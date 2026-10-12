@@ -3,16 +3,18 @@ use campfire_script::rhai::INT;
 
 use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::progression_effect::ProgressionEffect;
+use crate::progression::track_data::TrackData;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
-use crate::scripts::name_kind::NameKind;
+
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::units::track_id::TrackId;
 use crate::units::unit::Unit;
 
 /// The script API of `progression`: `ctx.add_xp` and `on_level_up`; reads of a unit's progress
@@ -31,18 +33,11 @@ impl ProgressionApi {
             "add_xp",
             &[&["unit", "track", "amount"]],
             "gives `unit` `amount` of experience on `track`, one of its unit type's",
-        )
-        .name(1, NameKind::Track);
-        api.bind(
+        );
+        api.call(
             add_xp,
-            |ctx: &mut Ctx, unit: Unit, track: &str, amount: Num| {
+            |ctx: &mut Ctx, unit: Unit, track: TrackId, amount: Num| {
                 ProgressionApi::add_xp(ctx, &unit, track, amount)
-            },
-        )
-        .bind(
-            add_xp,
-            |ctx: &mut Ctx, unit: Unit, track: &str, amount: INT| {
-                ProgressionApi::add_xp(ctx, &unit, track, ApiError::num(amount)?)
             },
         )
         .plan(call(
@@ -50,30 +45,24 @@ impl ProgressionApi {
             &[&["unit", "id"]],
             "gives `unit` the perk `id`, with no point and no requirement",
         ))
-        .bind(
+        .method(
             method(
                 "xp",
                 &[&["track"]],
                 "its experience on `track`, one of its unit type's",
-            )
-            .name(0, NameKind::Track),
-            |unit: Unit, track: &str| {
-                let view = unit.view();
-                let track = ProgressionColumn::track_named(view, track)?;
-                ProgressionColumn::xp(view, unit.row_index(), track)
+            ),
+            |unit: Unit, track: TrackId| {
+                ProgressionColumn::xp(unit.view(), unit.row_index(), track)
             },
         )
-        .bind(
+        .method(
             method(
                 "track_level",
                 &[&["track"]],
                 "its level on `track`, one of its unit type's",
-            )
-            .name(0, NameKind::Track),
-            |unit: Unit, track: &str| -> Checked<INT> {
-                let view = unit.view();
-                let track = ProgressionColumn::track_named(view, track)?;
-                let level = ProgressionColumn::level(view, unit.row_index(), track)?;
+            ),
+            |unit: Unit, track: TrackId| -> Checked<INT> {
+                let level = ProgressionColumn::level(unit.view(), unit.row_index(), track)?;
                 Ok(INT::from(level.get()))
             },
         )
@@ -93,14 +82,14 @@ impl ProgressionApi {
             "whether it has the perk `id`",
         ))
         .hook(Hook::OnLevelUp, Status::Runs(ApiVersion::FIRST))
-        .data(DataTable::Mode, &["tracks"], &[])
-        .data(DataTable::Track, &["levels", "level"], &[]);
+        .shared_data(DataTable::Mode, &["tracks"], &[])
+        .shared_data(DataTable::UnitType, &["tracks"], &[])
+        .data::<TrackData>(&["levels", "level"], &[]);
     }
 
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
-    fn add_xp(ctx: &Ctx, unit: &Unit, track: &str, amount: Num) -> Checked<()> {
+    fn add_xp(ctx: &Ctx, unit: &Unit, track: TrackId, amount: Num) -> Checked<()> {
         let view = ctx.view();
-        let track = ProgressionColumn::track_named(view, track)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }

@@ -20,7 +20,7 @@ use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{AvatarData, PackageDir, PackageFiles};
+use campfire_package::{AvatarFile, PackageDir, PackageFiles};
 use campfire_runner::internals::Arena;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 
@@ -35,7 +35,7 @@ fn hero(name: &str) -> PackageFiles {
 }
 
 /// The hero `name`, as its data file declares it.
-fn abilities(name: &str) -> AvatarData {
+fn abilities(name: &str) -> AvatarFile {
     let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }

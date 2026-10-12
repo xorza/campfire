@@ -8,7 +8,7 @@ use campfire_sim::Capability;
 /// place in the mode's packages, the mode's first, and its name there, as its client data names
 /// it. Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub struct TypeOrigins {
+pub struct TypeOriginBook {
     origins: Vec<TypeOrigin>,
 }
 
@@ -20,15 +20,15 @@ pub struct TypeOrigin {
     pub name: Box<str>,
 }
 
-impl FromIterator<TypeOrigin> for TypeOrigins {
-    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> TypeOrigins {
-        TypeOrigins {
+impl FromIterator<TypeOrigin> for TypeOriginBook {
+    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> TypeOriginBook {
+        TypeOriginBook {
             origins: origins.into_iter().collect(),
         }
     }
 }
 
-impl TypeOrigins {
+impl TypeOriginBook {
     pub(crate) fn push(&mut self, origin: TypeOrigin) {
         self.origins.push(origin);
     }
@@ -47,7 +47,7 @@ impl TypeOrigins {
     }
 }
 
-impl Book for TypeOrigins {
+impl Book for TypeOriginBook {
     const CAPABILITY: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 }

@@ -1,6 +1,9 @@
 use campfire_sim::Position;
 
 use crate::actions::delivery::DeliveryShape;
+use crate::actions::delivery_data::DeliveryData;
+use crate::areas::area_data::AreaData;
+use crate::areas::area_data::AreaInsideData;
 use crate::areas::areas_effect::AreasEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;
@@ -23,16 +26,16 @@ impl AreasApi {
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
-        api.bind_for(area, |ctx: &mut Ctx, pos: Position| {
+        api.call(area, |ctx: &mut Ctx, pos: Position| {
             AreasApi::land(ctx, pos)
         })
-        .data(DataTable::Delivery, &["area"], &[])
-        .data(
-            DataTable::Area,
+        .data::<DeliveryData>(&["area"], &[])
+        .shared_data(DataTable::UnitType, &["area"], &[])
+        .data::<AreaData>(
             &["radius", "delay_ms", "duration_ms", "affects", "inside"],
             &[],
         )
-        .data(DataTable::AreaInside, &["self", "allies", "enemies"], &[]);
+        .data::<AreaInsideData>(&["self", "allies", "enemies"], &[]);
     }
 
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new

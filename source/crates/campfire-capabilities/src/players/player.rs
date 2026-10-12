@@ -45,7 +45,7 @@ impl SimComponent for Player {
     // would hide the player's state from where it is looked for; and an entity is of one kind.
     fn check(&self, world: &World, entity: Entity) -> bool {
         world.get::<StableId>(entity) == Some(&StableId::of_player(self.0))
-            && world.non_send::<View>().has_player(self.0)
+            && world.non_send::<View>().names().has_player(self.0)
             && EntityKinds::alone(world, entity)
     }
 }

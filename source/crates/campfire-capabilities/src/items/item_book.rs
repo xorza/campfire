@@ -8,11 +8,14 @@ use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::names::Names;
 use campfire_sim::Capability;
 
 /// The mode's item types, by id, as its package load checked them: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ItemBook {
+    /// The items' names, by id.
+    names: Names<ItemId>,
     items: Vec<ItemSpec>,
     /// Every modifier an item holds, each once, in order.
     modifiers: Vec<ModifierId>,
@@ -32,15 +35,25 @@ pub(crate) struct ItemSpec {
 }
 
 impl ItemBook {
-    /// The book of `items`, the ids following their order.
-    pub(crate) fn new(items: Vec<ItemSpec>) -> ItemBook {
+    /// The book of `items`, named `names`, the ids following their order.
+    pub(crate) fn new(names: Names<ItemId>, items: Vec<ItemSpec>) -> ItemBook {
+        assert_eq!(names.len(), items.len(), "an item has a name");
         let mut modifiers: Vec<ModifierId> = items
             .iter()
             .flat_map(|item| item.modifiers.iter().copied())
             .collect();
         modifiers.sort_unstable();
         modifiers.dedup();
-        ItemBook { items, modifiers }
+        ItemBook {
+            names,
+            items,
+            modifiers,
+        }
+    }
+
+    /// The items' names, by id.
+    pub(crate) const fn names(&self) -> &Names<ItemId> {
+        &self.names
     }
 
     /// Every modifier an item holds, each once, in order.

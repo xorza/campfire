@@ -138,7 +138,7 @@ impl SimComponent for Relations {
         let view = world.non_send::<View>();
         self.pairs
             .iter()
-            .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
+            .all(|pair| view.names().has_team(pair.a) && view.names().has_team(pair.b))
     }
 }
 

@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
@@ -12,7 +13,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::delivery::Delivery;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
-use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_names::ScriptNames;
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
@@ -159,7 +160,7 @@ impl ActionsColumn {
     /// Shares the match's actions, as the load built them, with the view, which names them to
     /// scripts.
     pub(crate) fn share(view: &View, book: ActionBook) {
-        view.set_action_names(book.names());
+        view.names_mut().actions = ScriptNames::new(Arc::clone(book.names()));
         view.column_mut(|column: &mut ActionsColumn| {
             column.book = book;
         });
@@ -172,16 +173,9 @@ impl ActionsColumn {
         });
     }
 
-    /// The action `name` of `package`; an error for one the package does not declare.
-    pub(crate) fn action_named(view: &View, package: u16, name: &str) -> Checked<ActionId> {
-        let found = ActionsColumn::read(view, |column| column.book.named(package, name));
-        Ok(found.ok_or_else(|| ApiError::UnknownAbility.fail())?)
-    }
-
-    /// The slot kind `name`; an error for one the mode does not declare.
-    pub(crate) fn kind_named(view: &View, name: &str) -> Checked<SlotKind> {
-        let found = ActionsColumn::read(view, |column| column.kinds.named(name));
-        Ok(found.ok_or_else(|| ApiError::UnknownSlotKind.fail())?)
+    /// What `read` gives of the mode's slot kinds.
+    pub(crate) fn kinds<R>(view: &View, read: impl FnOnce(&SlotKinds) -> R) -> R {
+        ActionsColumn::read(view, |column| read(&column.kinds))
     }
 
     /// Whether action `id` has charges.

@@ -186,7 +186,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
     // (7, 2.5) clears it. One at (9.5, 2) reaches past the bounds. Two side by side at (1, 2) and
     // (3, 2) touch, and have room; at (1, 2) and (2.5, 2) they overlap, and the second is refused.
     let point = MapPoint::ground;
-    let rules = NavigationRules::default();
+    let rules = ModeNavigationData::default();
     let body_of = |unit_type: &str| match unit_type {
         "crate" => BodyForm::box_sized([Num::int(2), Num::int(2)]),
         other => corridor_body(other),

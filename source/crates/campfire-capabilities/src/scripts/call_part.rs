@@ -16,7 +16,7 @@ pub(crate) trait CallPart: Any + fmt::Debug {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
 
     /// The running call's param `name`, when this part holds the params of a call of `role`.
-    fn param_named(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic>;
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic>;
 
     /// Applies what the call wrote to it, once its effects applied.
     fn apply(&mut self, world: &mut World);
@@ -60,8 +60,8 @@ impl CallParts {
     }
 
     /// The running call's param `name` of the first part that holds it.
-    pub(crate) fn param_named(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
-        self.0.iter().find_map(|part| part.param_named(role, name))
+    pub(crate) fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+        self.0.iter().find_map(|part| part.param(role, name))
     }
 
     /// Applies what the call wrote to every part, in order.

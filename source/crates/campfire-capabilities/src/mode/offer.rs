@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::values::names::NameId;
+
 /// A value a choice offers: its place among the avatars the mode depends on, or among the
 /// entries of its loadout packages, by id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -12,6 +14,19 @@ impl Offer {
     }
 
     pub(crate) const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl NameId for Offer {
+    type Scope = ();
+    const LIMIT: usize = 1 << u16::BITS;
+
+    fn at(index: usize) -> Offer {
+        Offer::new(index)
+    }
+
+    fn index(self) -> usize {
         self.0 as usize
     }
 }

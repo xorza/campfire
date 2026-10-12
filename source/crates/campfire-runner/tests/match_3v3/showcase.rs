@@ -10,7 +10,7 @@ use campfire_capabilities::{
     Lifespan, ModifierId, Number, Points, PoolId, Rank, Ranked, Scalar, SlotTime, SlotTimes, Team,
     Toggle,
 };
-use campfire_capabilities::{PoolMeters, Stats};
+use campfire_capabilities::{Names, PoolMeters, Stats};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_runner::internals::{MatchUnits, Moba3v3, ScriptedMode};
@@ -126,7 +126,13 @@ const fn stamp(index: u64) -> u64 {
 /// The item `name` of the 3v3.
 fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     let mode = moba.packages().packages().next().unwrap();
-    ItemId::named(&mode.content.items, name).unwrap()
+    let items: Names<ItemId> = mode
+        .content
+        .items
+        .keys()
+        .map(DeclaredName::as_str)
+        .collect();
+    items.named(name).unwrap()
 }
 
 /// The farm: every hero reaches level 6 and learns every ability, its ultimate among them, with
@@ -379,9 +385,10 @@ pub(crate) fn assert_casts(
         // payments of each second: a tick adds the bits of its second's regeneration divided by
         // the ticks a second, and carries the remainder to the next, so it adds as much as the
         // tick before, or a bit more or less.
-        let pools = moba.packages().data();
+        let pools = moba.packages().data().pools.keys();
+        let pools: Names<PoolId> = pools.map(DeclaredName::as_str).collect();
         for (name, cost) in &data.cost {
-            let pool = PoolId::named(&pools.pools, name.as_str()).unwrap();
+            let pool = pools.named(name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools[pool.index()].unwrap();
             let paid = |at| toggles_paid(moba, showcase, player, at, name);
             let regen = left(tick - 1) - left(tick - 2) + paid(tick - 1);

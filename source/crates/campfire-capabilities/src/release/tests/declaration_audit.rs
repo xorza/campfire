@@ -12,7 +12,7 @@ use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResourc
 use serde::{Deserialize, Serialize};
 
 use crate::abilities::cast_spends::CastSpends;
-use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::actions::effect_queues::{EffectQueues, QueueListed};
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
@@ -513,7 +513,7 @@ fn each_key_a_caller_asks_for_has_its_callback() {
             .iter()
             .any(|callback| callback.registry.name == registry && callback.key == key)
     };
-    for does in CapabilityDoes::one_of_each() {
+    for does in CapabilityDoesSpec::one_of_each() {
         let key = format!("{:?}", does.capability());
         assert!(declared(type_name::<EffectQueues>(), key), "{does:?}");
     }

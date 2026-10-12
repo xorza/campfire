@@ -4,8 +4,8 @@ use std::fmt::Write;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{
-    ActionDataField, ActionField, ActionKind, AiError, DeclaredName, EffectData, EffectTo,
-    Effecting, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric, ModeError,
+    ActionDataField, ActionField, ActionKind, AiError, DeclaredName, DoesData, EffectData,
+    EffectTo, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric, ModeError,
     ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Release, Scalar,
     Status, SyncTo, TimeTooLarge, UnitKitError,
 };
@@ -168,7 +168,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
     let heal = EffectData {
-        does: Effecting::Heal(HealFields {
+        does: DoesData::Heal(HealFields {
             amount: Number::Value(Scalar::Int(1)),
         }),
         to: EffectTo::Source,
@@ -185,7 +185,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
-    let purge = Effecting::Purge(PurgeFields {
+    let purge = DoesData::Purge(PurgeFields {
         tag: DeclaredName::new("slowed").unwrap(),
     });
     assert_eq!(
@@ -239,7 +239,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-cinder")
         .unwrap();
-    let launch = Effecting::Launch(LaunchFields {
+    let launch = DoesData::Launch(LaunchFields {
         area: DeclaredName::new("eruption").unwrap(),
         on_hit: Vec::new(),
         on_end: Vec::new(),

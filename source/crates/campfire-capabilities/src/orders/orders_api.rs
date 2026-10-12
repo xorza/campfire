@@ -1,6 +1,7 @@
 use campfire_sim::Position;
 
 use crate::actions::actions_column::ActionsColumn;
+use crate::orders::ai_data::AiData;
 use crate::orders::unit_order::UnitOrder;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -22,7 +23,7 @@ impl OrdersApi {
         let order = |name, signature, description| {
             MemberSpec::call(name, signature, description).roles(RoleSet::AI)
         };
-        api.bind_for(
+        api.call(
             order(
                 "order_attack",
                 &[&["unit", "target"]],
@@ -30,7 +31,7 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
         )
-        .bind_for(
+        .call(
             order(
                 "order_follow_path",
                 &[&["unit"]],
@@ -38,7 +39,7 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
         )
-        .bind_for(
+        .call(
             order(
                 "order_move",
                 &[&["unit", "pos"]],
@@ -53,7 +54,7 @@ impl OrdersApi {
                     })
             },
         )
-        .bind_for(
+        .call(
             order(
                 "order_reset",
                 &[&["unit"]],
@@ -67,7 +68,8 @@ impl OrdersApi {
             },
         )
         .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))
-        .data(DataTable::Ai, &["ai", "think_ms"], &[]);
+        .data::<AiData>(&["ai", "think_ms"], &[])
+        .shared_data(DataTable::UnitType, &["orders"], &[]);
     }
 
     /// Queues an attack of `unit` on `target`, a living enemy that one of its learned weapons

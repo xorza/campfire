@@ -40,7 +40,7 @@ impl SimComponent for Owner {
     fn check(&self, world: &World, entity: Entity) -> bool {
         world
             .get::<Team>(entity)
-            .is_some_and(|&team| world.non_send::<View>().plays_for(self.0, team))
+            .is_some_and(|&team| world.non_send::<View>().names().plays_for(self.0, team))
     }
 }
 

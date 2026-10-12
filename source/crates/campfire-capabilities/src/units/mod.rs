@@ -36,7 +36,7 @@ use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
-use crate::units::type_origins::TypeOrigins;
+use crate::units::type_origin_book::TypeOriginBook;
 use crate::units::unit::Unit;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
@@ -104,7 +104,7 @@ pub(crate) mod team;
 pub(crate) mod team_set;
 pub(crate) mod teams;
 pub(crate) mod track_id;
-pub(crate) mod type_origins;
+pub(crate) mod type_origin_book;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_core;
@@ -118,7 +118,7 @@ pub(crate) mod unit_states;
 pub(crate) mod unit_tags;
 pub(crate) mod unit_ticks;
 pub(crate) mod unit_type;
-pub(crate) mod unit_type_data;
+pub(crate) mod unit_type_core;
 pub(crate) mod unit_types;
 pub(crate) mod units_api;
 pub(crate) mod units_call;
@@ -176,7 +176,7 @@ impl Module for Units {
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
         d.book::<UnitStateBook>();
-        d.book::<TypeOrigins>();
+        d.book::<TypeOriginBook>();
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptsCall>();
@@ -262,6 +262,7 @@ pub(crate) mod internals {
 
     use crate::units::Units;
     use crate::units::team::Team;
+    use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
     use crate::units::units_world::UnitsWorldCrate;
     use crate::units::view::View;
@@ -270,7 +271,11 @@ pub(crate) mod internals {
     impl Units {
         /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
         pub fn type_named(world: &World, name: &str) -> Option<UnitType> {
-            world.non_send::<View>().unit_type_named(name)
+            world
+                .non_send::<View>()
+                .names()
+                .unit_types()
+                .named((TypeScope::Mode, name))
         }
 
         /// Sets how the two teams of the match regard each other, as `ctx.set_relation`
@@ -316,7 +321,7 @@ pub(crate) mod test_world {
     use crate::units::unit_core::UnitCore;
     use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
-    use crate::units::unit_type_data::UnitTypeData;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::units::units_column::UnitsColumn;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
@@ -426,7 +431,7 @@ pub(crate) mod test_world {
                 !world.contains_resource::<TestUnitType>(),
                 "a match seals its unit types once"
             );
-            let unit_type = Units::load_next_type(world, &UnitTypeData::default());
+            let unit_type = Units::load_next_type(world, &UnitTypeCore::default());
             world.insert_resource(TestUnitType(unit_type));
             let book = world.non_send::<View>().types_mut().tag_book(effects);
             world.insert_resource(book);
@@ -504,15 +509,11 @@ pub(crate) mod test_world {
             pools: &[&str],
             resources: &[&str],
         ) {
-            let names = |names: &[&str]| -> Arc<[DeclaredName]> {
-                names
-                    .iter()
-                    .map(|name| DeclaredName::new(name).expect("a test names a name"))
-                    .collect()
-            };
             let view = world.non_send::<View>();
-            view.set_mode_names(&names(damage_kinds), names(resources));
-            StatsColumn::share_pool_names(view, names(pools));
+            let resources = Arc::new(resources.iter().copied().collect());
+            let kinds = Arc::new(damage_kinds.iter().copied().collect());
+            view.names_mut().set_mode_names(kinds, resources);
+            StatsColumn::share_pool_names(view, Arc::new(pools.iter().copied().collect()));
         }
 
         /// Declares every tag the match's packages name, in their order, after the engine's tags,
@@ -536,7 +537,7 @@ pub(crate) mod test_world {
             world: &mut World,
             scope: TypeScope,
             name: &str,
-            data: &UnitTypeData,
+            data: &UnitTypeCore,
         ) -> UnitType {
             let view = world.non_send::<View>().clone();
             // A package's own scope is that package's; the mode's, the mode package's.
@@ -545,7 +546,7 @@ pub(crate) mod test_world {
                 TypeScope::Package(package) => package,
             };
             let unit_type = view.types_mut().load(scope, package, name, data);
-            view.share_type_names();
+            view.names_mut().share_type_names();
             let states = view.types_mut().state_book();
             UnitsColumn::share(&view, states.clone());
             world.insert_resource(states);
@@ -553,7 +554,7 @@ pub(crate) mod test_world {
         }
 
         /// Loads `data` as the next unit type of the mode, named for its place.
-        pub(crate) fn load_next_type(world: &mut World, data: &UnitTypeData) -> UnitType {
+        pub(crate) fn load_next_type(world: &mut World, data: &UnitTypeCore) -> UnitType {
             let name = format!("type {}", world.non_send::<View>().types_count());
             Units::load_type(world, TypeScope::Mode, &name, data)
         }
@@ -563,7 +564,7 @@ pub(crate) mod test_world {
             tags: &[&str],
             params: &[(&str, Scalar)],
         ) -> UnitType {
-            let data = UnitTypeData::of(tags, params);
+            let data = UnitTypeCore::of(tags, params);
             Units::load_next_type(world, &data)
         }
     }

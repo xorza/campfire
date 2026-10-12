@@ -19,7 +19,7 @@ use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::Production;
 use crate::production::production_data::ProductionData;
-use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::supply_data::SupplyData;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::release::Release;
@@ -36,8 +36,7 @@ use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_core::UnitCore;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
-use crate::values::declared_name::DeclaredName;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::rank::Rank;
 
 /// The point `(x, z)` in halves of a meter.
@@ -95,7 +94,7 @@ impl Shop {
             let core = at.core(owner.map(Owner::new));
             core.spawn(world, Destination::default()).id()
         }));
-        let data = UnitTypeData::default();
+        let data = UnitTypeCore::default();
         let grunt = Units::load_type(game, TypeScope::Mode, "grunt", &data);
         let barracks = Units::load_type(game, TypeScope::Mode, "barracks", &data);
         let depot = Units::load_type(game, TypeScope::Mode, "depot", &data);
@@ -105,7 +104,7 @@ impl Shop {
         };
         game.resource_mut::<ByType<ProductionData>>()
             .set(barracks, production);
-        let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+        let gold = ResourceId::nth(0);
         Shop {
             grunt,
             barracks,
@@ -279,7 +278,7 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
 fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
@@ -348,7 +347,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
         };
         Binary::decode::<TrainQueue>(&Binary::encode(&fields))
     };
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     let five = ResourceAmount {
         resource: gold,
         amount: 5,

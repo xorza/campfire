@@ -46,7 +46,7 @@ impl Mine {
         Navigation::load_pathing(game, grid, &[], vec![walker]);
         let gold = shop.gold;
         Players::spawn(game, 1, 1);
-        let mineral = Units::load_type(game, TypeScope::Mode, "mineral", &UnitTypeData::default());
+        let mineral = Units::load_type(game, TypeScope::Mode, "mineral", &UnitTypeCore::default());
         let mut nodes = NodeBook::default();
         nodes.nodes.set(mineral, gold);
         nodes.drop_offs.set(shop.depot, ResourceSet::of([gold]));
@@ -397,11 +397,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
 
     // A load of another resource, sent to gather gold, is dropped.
-    let wood = ResourceId::named(
-        &["gold", "wood"].map(|name| DeclaredName::new(name).unwrap()),
-        "wood",
-    )
-    .unwrap();
+    let wood = ResourceId::nth(1);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {

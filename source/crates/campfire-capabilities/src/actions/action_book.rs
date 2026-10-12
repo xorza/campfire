@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
@@ -24,6 +23,7 @@ use crate::units::action_id::ActionId;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::values::names::Names;
 use crate::values::relation::Relation;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
@@ -32,8 +32,8 @@ use crate::values::relation::Relation;
 #[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ActionBook {
     actions: Arc<Vec<Action>>,
-    /// Every action's id, sorted by package, then name, for `named` to search.
-    by_name: Arc<Vec<ActionId>>,
+    /// Each action's name in its package.
+    names: Arc<Names<ActionId>>,
 }
 
 impl ActionBook {
@@ -62,15 +62,9 @@ impl ActionBook {
             "an action has a script exactly when its data names one"
         );
         let hooks = scripts.defines(script, ScriptRole::Action);
-        let id = ActionId::new(u32::try_from(self.actions.len()).expect("actions fit u32"));
-        let at = self
-            .by_name
-            .binary_search_by(|&held| self.order(held, package, name))
-            .expect_err("a package loads an action of a name once");
-        Arc::make_mut(&mut self.by_name).insert(at, id);
+        let id = Arc::make_mut(&mut self.names).add((package, name));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
-            name: name.into(),
             kind,
             passive,
             hold,
@@ -84,31 +78,13 @@ impl ActionBook {
         id
     }
 
-    /// Every action's name, by id.
-    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.actions.iter().map(|action| &*action.name)
+    /// Each action's name in its package.
+    pub(crate) fn names(&self) -> &Arc<Names<ActionId>> {
+        &self.names
     }
 
     pub(crate) fn get(&self, id: ActionId) -> Option<&Action> {
         self.actions.get(id.index())
-    }
-
-    /// The action `name` of `package`.
-    pub(crate) fn named(&self, package: u16, name: &str) -> Option<ActionId> {
-        let at = self
-            .by_name
-            .binary_search_by(|&id| self.order(id, package, name))
-            .ok()?;
-        Some(self.by_name[at])
-    }
-
-    /// How action `id` sorts against the action `name` of `package`: by package, then name.
-    fn order(&self, id: ActionId, package: u16, name: &str) -> Ordering {
-        let action = &self.actions[id.index()];
-        action
-            .package
-            .cmp(&package)
-            .then_with(|| (*action.name).cmp(name))
     }
 
     /// The action `aim` names of a unit with `slots` and their `times`, when it may go on: its
@@ -205,9 +181,14 @@ pub(crate) mod internals {
     use crate::units::action_id::ActionId;
 
     impl ActionBook {
-        /// Adds `action`; its id.
-        pub(crate) fn push(&mut self, action: Action) -> ActionId {
-            let id = ActionId::new(u32::try_from(self.actions.len()).unwrap());
+        /// Adds `action`, named `name` in its package, or for its place after `name` when an
+        /// action before it has that name, as a test adds several of one kind; its id.
+        pub(crate) fn push(&mut self, name: &str, action: Action) -> ActionId {
+            let names = Arc::make_mut(&mut self.names);
+            let id = names.try_add((action.package, name)).unwrap_or_else(|_| {
+                let placed = format!("{name} {}", names.len());
+                names.add((action.package, placed.as_str()))
+            });
             Arc::make_mut(&mut self.actions).push(action);
             id
         }

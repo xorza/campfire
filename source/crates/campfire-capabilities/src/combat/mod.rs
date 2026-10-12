@@ -39,7 +39,6 @@ pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_hooks;
-pub(crate) mod combat_rules;
 pub(crate) mod combat_world;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
@@ -51,6 +50,7 @@ pub(crate) mod heal;
 pub(crate) mod heal_handle;
 pub(crate) mod interval_due;
 pub(crate) mod kept;
+pub(crate) mod mode_combat_data;
 pub(crate) mod modifier_hooks;
 pub(crate) mod modifier_intervals;
 pub(crate) mod on_death;
@@ -204,7 +204,9 @@ pub(crate) mod internals {
         ) {
             let kind = world
                 .non_send::<View>()
-                .damage_kind_named(kind)
+                .names()
+                .damage_kinds
+                .named(kind)
                 .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
             world.resource_mut::<PassQueue>().push_damage(Damage {
                 source,

@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::values::declared_name::DeclaredName;
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_arg::name_script_arg;
+use crate::values::names::NameId;
 
 /// A player resource, by its place in the mode's `resources`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -11,14 +13,36 @@ impl ResourceId {
     /// The most player resources a mode declares: every index a `u8` holds.
     pub const LIMIT: usize = 256;
 
-    /// The resource `name` among the mode's `resources`; `None` when the mode does not declare
-    /// it.
-    pub fn named(resources: &[DeclaredName], name: &str) -> Option<ResourceId> {
-        let at = resources.iter().position(|held| held.as_str() == name)?;
-        Some(ResourceId(u8::try_from(at).ok()?))
-    }
-
     pub const fn index(self) -> usize {
         self.0 as usize
+    }
+}
+
+impl NameId for ResourceId {
+    type Scope = ();
+    const LIMIT: usize = ResourceId::LIMIT;
+
+    fn at(index: usize) -> ResourceId {
+        ResourceId(u8::try_from(index).expect("resources fit u8"))
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+name_script_arg!(ResourceId, NameKind::Resource, |ctx, name| {
+    ctx.view().names().resources.named(name)
+});
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::players::resource_id::ResourceId;
+
+    impl ResourceId {
+        /// The resource at `index` of the mode's.
+        pub(crate) const fn nth(index: u8) -> ResourceId {
+            ResourceId(index)
+        }
     }
 }

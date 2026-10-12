@@ -14,21 +14,22 @@ pub struct ApiMember {
 
 impl ApiMember {
     /// Its arguments that name something or take an engine enum, as the reference lists them
-    /// after its forms: `, `id` a modifier`, by their names in its first form.
+    /// after its forms: `, `id` a modifier`, each by its name in the first form that has it.
     pub(super) fn name_args_text(&self) -> String {
         let spec = &self.spec;
-        let Some(first) = spec.forms.first() else {
-            return String::new();
+        let arg = |at: usize| {
+            let form = spec.forms.iter().find(|form| at < form.len());
+            form.expect("a form has each argument that names something")[at]
         };
         let mut named = String::new();
         for (at, kind) in spec.names.iter().enumerate() {
             if let Some(kind) = kind {
-                write!(named, ", `{}` a {kind}", first[at]).expect("text writes into a string");
+                write!(named, ", `{}` a {kind}", arg(at)).expect("text writes into a string");
             }
         }
         for (at, engine_enum) in spec.enums.iter().enumerate() {
             if let Some(engine_enum) = engine_enum {
-                write!(named, ", `{}` a `{engine_enum}`", first[at])
+                write!(named, ", `{}` a `{engine_enum}`", arg(at))
                     .expect("text writes into a string");
             }
         }

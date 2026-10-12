@@ -9,6 +9,7 @@ use crate::progression::track_data::TrackData;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use campfire_sim::Capability;
 
 /// The tracks a match loaded, by id, each with the experience of its levels. Package data, not
@@ -20,7 +21,8 @@ pub(crate) struct TrackBook(Arc<Tracks>);
 /// The tracks of a `TrackBook`.
 #[derive(Debug)]
 struct Tracks {
-    names: Box<[DeclaredName]>,
+    /// Shared with the script view.
+    names: Arc<Names<TrackId>>,
     /// Every track's thresholds, track after track, from `starts[track]` to the next start.
     thresholds: Vec<Num>,
     starts: Vec<u32>,
@@ -35,46 +37,30 @@ impl TrackBook {
             tracks.len() <= TrackId::LIMIT,
             "the load checked the tracks"
         );
+        let mut names = Names::default();
         let mut book = Tracks {
-            names: tracks.keys().cloned().collect(),
+            names: Arc::default(),
             thresholds: Vec::new(),
             starts: Vec::with_capacity(tracks.len() + 1),
             level: None,
         };
-        for (at, track) in tracks.values().enumerate() {
+        for (name, track) in tracks {
+            let id = names.add(name.as_str());
             book.starts.push(Tracks::start(book.thresholds.len()));
             book.thresholds.extend_from_slice(track.levels.get());
             if track.level {
                 assert!(book.level.is_none(), "the load checked the level tracks");
-                book.level = Some(TrackBook::id_at(at));
+                book.level = Some(id);
             }
         }
         book.starts.push(Tracks::start(book.thresholds.len()));
+        book.names = Arc::new(names);
         TrackBook(Arc::new(book))
     }
 
-    /// The track `name`, if the mode declares it.
-    pub(crate) fn named(&self, name: &str) -> Option<TrackId> {
-        let at = self.0.names.iter().position(|held| held.as_str() == name)?;
-        Some(TrackBook::id_at(at))
-    }
-
-    /// The id of the track at `at` of the book, whose load keeps it below the limit.
-    fn id_at(at: usize) -> TrackId {
-        let index = u8::try_from(at)
-            .ok()
-            .filter(|&at| usize::from(at) < TrackId::LIMIT);
-        TrackId::new(index.expect("the load keeps the tracks below the limit"))
-    }
-
-    /// Whether the mode declares `track`.
-    pub(crate) fn has(&self, track: TrackId) -> bool {
-        track.index() < self.0.names.len()
-    }
-
-    /// Every track's name, by id.
-    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.0.names.iter().map(DeclaredName::as_str)
+    /// The tracks' names.
+    pub(crate) fn names(&self) -> &Arc<Names<TrackId>> {
+        &self.0.names
     }
 
     /// The track that is its units' `level`, if one is.

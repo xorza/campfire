@@ -1,6 +1,6 @@
 use super::*;
 use crate::production::player_supply::PlayerSupply;
-use crate::production::requirements::Requirements;
+use crate::production::requirement_book::RequirementBook;
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::modifier_id::ModifierId;
@@ -97,7 +97,7 @@ fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
         10,
         &[(shop.grunt, supply(3, 0)), (shop.barracks, supply(2, 5))],
     );
-    let costs = game.resource::<SupplyCosts>();
+    let costs = game.resource::<SupplyCostBook>();
     let queue = queue(train, &[9, 9]);
     let count = |dead| costs.unit(shop.barracks, dead, true, Some(&queue));
     assert_eq!((count(false).used, count(false).given), (8, 5));
@@ -114,7 +114,7 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     let shop = Shop::place(&mut game);
     let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(5), None);
     let drill = ModifierId::new(0);
-    let mut requirements = Requirements::default();
+    let mut requirements = RequirementBook::default();
     requirements.push(train, [shop.forge], [drill]);
     game.insert_resource(requirements);
     // A match of production alone, whose players hold no modifiers until one is given them.

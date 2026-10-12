@@ -124,21 +124,19 @@ mod tests {
     use super::*;
     use crate::release::Release;
     use crate::units::view::View;
-    use crate::values::declared_name::DeclaredName;
 
     #[test]
     fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
         // A match of gold alone: wood, the second of two resources, is not its own.
         let mut world = World::new();
-        let names = ["gold", "wood"].map(|name| DeclaredName::new(name).unwrap());
         let view = View::new(
             TickRate::new(NonZeroU32::new(30).unwrap()),
             Release::engine_tags(),
         );
-        view.set_mode_names(&[], Arc::from(&names[..1]));
+        view.names_mut().resources = Arc::new(["gold"].into_iter().collect());
         world.insert_non_send(view);
         let entity = world.spawn_empty().id();
-        let [gold, wood] = ["gold", "wood"].map(|name| ResourceId::named(&names, name).unwrap());
+        let [gold, wood] = [0, 1].map(ResourceId::nth);
         let mut ids = IdAllocator::default();
         let [first, second] = [0, 1].map(|z| NodeAt {
             node: ids.allocate(),

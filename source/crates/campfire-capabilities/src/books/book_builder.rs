@@ -18,16 +18,16 @@ use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::book_parts::BookParts;
 use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
-use crate::books::unit_type_file::UnitTypeFile;
+use crate::books::unit_type_data::UnitTypeData;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::items::item_book::{ItemBook, ItemSpec};
-use crate::items::item_data::ItemData;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
 use crate::items::shop_data::ShopData;
 use crate::mode::mode_books::{ModeBooks, ModeBooksInput};
 use crate::mode::mode_map::ModeMap;
+use crate::mode::mode_names::ModeNames;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
 use crate::mode::unit_type_setup::UnitTypeSetup;
@@ -36,7 +36,7 @@ use crate::orders::ai::Ai;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::Production;
-use crate::production::build_specs::{NewBuild, PlacementCheck, Style};
+use crate::production::build_book::{NewBuild, PlacementCheck, Style};
 use crate::production::resource_set::ResourceSet;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
@@ -61,6 +61,7 @@ use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::TimeTooLarge;
 use crate::values::filter_data::FilterData;
+use crate::values::names::Names;
 use crate::values::package_path::PackagePath;
 use crate::values::share::Share;
 use crate::values::stat::Stat;
@@ -77,6 +78,8 @@ pub(crate) struct BookBuilder<'a> {
     books: BookParts,
     /// The mode's stats, for every unit type, which every stat the packages name resolves by.
     stats: StatBook,
+    /// The mode's pools, players' resources, damage kinds and layers.
+    names: ModeNames,
     /// The life pool, none when the mode names none.
     life: Option<PoolId>,
     /// The ranks of every loadout entry.
@@ -91,14 +94,14 @@ pub(crate) struct BookBuilder<'a> {
 struct Standing<'f> {
     name: &'f str,
     scope: TypeScope,
-    file: &'f UnitTypeFile,
+    file: &'f UnitTypeData,
     declared: Option<&'f DeclaredName>,
 }
 
 impl<'f> Standing<'f> {
     /// The type `name` of the package at `index`: the mode's in its scope, another package's,
     /// a summon or a faction's unit, in the package's own.
-    fn declared(index: u16, name: &'f DeclaredName, file: &'f UnitTypeFile) -> Standing<'f> {
+    fn declared(index: u16, name: &'f DeclaredName, file: &'f UnitTypeData) -> Standing<'f> {
         Standing {
             name: name.as_str(),
             scope: TypeScope::of_package(index),
@@ -108,7 +111,7 @@ impl<'f> Standing<'f> {
     }
 
     /// The avatar of the package `package` names, in the mode's scope.
-    const fn avatar(package: &'f str, file: &'f UnitTypeFile) -> Standing<'f> {
+    const fn avatar(package: &'f str, file: &'f UnitTypeData) -> Standing<'f> {
         Standing {
             name: package,
             scope: TypeScope::Mode,
@@ -136,7 +139,7 @@ impl<'a> BookBuilder<'a> {
         }
         let mut books = BookParts {
             types: UnitTypes::new(Release::engine_tags()),
-            supply_rules: data.supply,
+            supply: data.supply,
             ..BookParts::default()
         };
         for name in input.tag_names {
@@ -145,11 +148,13 @@ impl<'a> BookBuilder<'a> {
         for (index, package) in (0..).zip(&input.packages) {
             BookBuilder::declare_types(&mut books.types, index, package);
         }
+        let names = ModeNames::of(data);
         BookBuilder {
             input,
             stats: BookBuilder::stat_book(input, &books.types),
             books,
-            life: data.combat.life_pool(&data.pools),
+            life: data.combat.life_pool(&names.pools),
+            names,
             loadout_ranks: data.loadout_ranks(),
             script_starts,
         }
@@ -179,7 +184,7 @@ impl<'a> BookBuilder<'a> {
                     self.package_units(index, units, &actions)?;
                     let unit = Standing::avatar(package.name, unit);
                     self.unit_type(index, unit, &actions)?;
-                    self.books.units.avatars.push(package.name);
+                    self.books.units.avatars.add(package.name);
                 }
                 BookKind::Loadout => {
                     let ranks = self.loadout_ranks;
@@ -197,22 +202,22 @@ impl<'a> BookBuilder<'a> {
         let types = &parts.types;
         let standing = |name: &str| {
             let stands = mode_units.get(name).is_some_and(|file| !file.delivers());
-            stands.then(|| types.named(TypeScope::Mode, name).expect(CHECKED))
+            stands.then(|| types.types().named((TypeScope::Mode, name)).expect(CHECKED))
         };
         let data = input.data;
         let map = ModeMap::resolve(
             input.map,
             input.teams,
             &data.relations,
-            &data.navigation,
+            &self.names.layers,
             standing,
         )
         .map_err(BookError::Mode)?;
-        let items = &input.packages[0].content.items;
+        let items = parts.items.names();
         let shop = data
             .shop
             .as_ref()
-            .map(|shop| BookBuilder::shop(shop, items, &data.resources, &map));
+            .map(|shop| BookBuilder::shop(shop, items, &self.names.resources, &map));
         let mode = ModeBooks::build(ModeBooksInput {
             data,
             unit_types: &parts.units.unit_types,
@@ -221,6 +226,7 @@ impl<'a> BookBuilder<'a> {
             stats: self.stats,
             life: self.life,
             loadout_ranks: self.loadout_ranks,
+            names: self.names,
             map,
             shop,
         });
@@ -235,14 +241,15 @@ impl<'a> BookBuilder<'a> {
         actions: &BTreeMap<&str, ActionId>,
     ) -> ItemBook {
         let items = &package.content.items;
-        let id = |name: &DeclaredName| ItemId::named(items, name.as_str()).expect(CHECKED);
-        let resources = &self.input.data.resources;
+        let ids: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
+        let id = |name: &DeclaredName| ids.named(name.as_str()).expect(CHECKED);
+        let resources = &self.names.resources;
         let specs = items.values().map(|item| ItemSpec {
             cost: item
                 .cost
                 .iter()
                 .map(|(resource, &amount)| ResourceAmount {
-                    resource: ResourceId::named(resources, resource.as_str()).expect(CHECKED),
+                    resource: resources.named(resource.as_str()).expect(CHECKED),
                     amount: i64::from(amount),
                 })
                 .collect(),
@@ -254,35 +261,39 @@ impl<'a> BookBuilder<'a> {
                 .iter()
                 .map(|modifier| {
                     let modifiers = &self.books.modifiers;
-                    modifiers.named(index, modifier.as_str()).expect(CHECKED)
+                    modifiers
+                        .names()
+                        .named((index, modifier.as_str()))
+                        .expect(CHECKED)
                 })
                 .collect(),
             action: item.action.as_ref().map(|action| actions[action.as_str()]),
         });
-        ItemBook::new(specs.collect())
+        let specs = specs.collect();
+        ItemBook::new(ids, specs)
     }
 
     /// The mode's shop of `data`, selling `items` by id, for one of `resources`, at the regions of
     /// `map`'s markers with its tag, each for the marker's team.
     fn shop(
         data: &ShopData,
-        items: &BTreeMap<DeclaredName, ItemData>,
-        resources: &[DeclaredName],
+        items: &Names<ItemId>,
+        resources: &Names<ResourceId>,
         map: &ModeMap,
     ) -> Shop {
         let sells = data
             .items
             .iter()
-            .map(|name| ItemId::named(items, name.as_str()).expect(CHECKED));
+            .map(|name| items.named(name.as_str()).expect(CHECKED));
         let places = map
             .markers
             .iter()
-            .filter(|marker| marker.tags.named(data.at.as_str()).is_some())
+            .filter(|marker| marker.tags.contains(&data.at))
             .map(|marker| ShopPlace {
                 team: marker.team.expect(CHECKED),
                 region: marker.region.expect(CHECKED),
             });
-        let resource = ResourceId::named(resources, data.resource.as_str()).expect(CHECKED);
+        let resource = resources.named(data.resource.as_str()).expect(CHECKED);
         Shop::new(sells.collect(), resource, places.collect(), data.sell_share)
     }
 
@@ -302,7 +313,7 @@ impl<'a> BookBuilder<'a> {
             declared.chain(avatar)
         });
         let setups = standing.filter_map(|(scope, name, file)| {
-            let unit_type = types.named(scope, name).expect(CHECKED);
+            let unit_type = types.types().named((scope, name)).expect(CHECKED);
             Some((unit_type, file.stats.as_ref()?))
         });
         let max_move_speed = input.max_move_speed.get();
@@ -322,10 +333,10 @@ impl<'a> BookBuilder<'a> {
                     TypeScope::of_package(index)
                 }
             };
-            types.load(scope, index, name.as_str(), &file.core);
+            types.load(scope, index, name.as_str(), &file.core());
         }
         if let BookKind::Avatar(unit) = package.kind {
-            types.load(TypeScope::Mode, index, package.name, &unit.core);
+            types.load(TypeScope::Mode, index, package.name, &unit.core());
         }
     }
 
@@ -451,7 +462,7 @@ impl<'a> BookBuilder<'a> {
         let building = data.unit_type.as_ref().expect(CHECKED);
         let collision = package.content.units[building].collision.as_ref();
         let build = NewBuild {
-            form: self.input.data.navigation.form(collision).expect(CHECKED),
+            form: self.names.form(collision).expect(CHECKED),
             style,
             start_life: data.start_life,
             refund: data.cancel_refund.unwrap_or(Share::ALL),
@@ -473,11 +484,13 @@ impl<'a> BookBuilder<'a> {
         let units = requires
             .units
             .iter()
-            .map(|name| types.named(scope, name.as_str()).expect(CHECKED));
-        let held = requires
-            .modifiers
-            .iter()
-            .map(|name| modifiers.named(index, name.as_str()).expect(CHECKED));
+            .map(|name| types.types().named((scope, name.as_str())).expect(CHECKED));
+        let held = requires.modifiers.iter().map(|name| {
+            modifiers
+                .names()
+                .named((index, name.as_str()))
+                .expect(CHECKED)
+        });
         books.requirements.push(action, units, held);
     }
 
@@ -486,6 +499,7 @@ impl<'a> BookBuilder<'a> {
     fn names(&self, package: u16, action: Option<ActionId>) -> BuildNames<'_> {
         BuildNames {
             input: self.input,
+            names: &self.names,
             stats: &self.stats,
             types: &self.books.types,
             modifiers: &self.books.modifiers,
@@ -501,7 +515,7 @@ impl<'a> BookBuilder<'a> {
     fn package_units(
         &mut self,
         index: u16,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        units: &BTreeMap<DeclaredName, UnitTypeData>,
         actions: &BTreeMap<&str, ActionId>,
     ) -> Result<(), BookError> {
         for (name, file) in units {
@@ -516,8 +530,8 @@ impl<'a> BookBuilder<'a> {
 
     /// Production's parts of `unit_type`, of `file`: its queue, its supply, and what it is as a
     /// node and as a drop-off, each tagged.
-    fn production(&mut self, unit_type: UnitType, file: &UnitTypeFile) {
-        let resources = &self.input.data.resources;
+    fn production(&mut self, unit_type: UnitType, file: &UnitTypeData) {
+        let resources = &self.names.resources;
         let books = &mut self.books;
         if let Some(production) = file.production {
             books.producers.set(unit_type, production);
@@ -526,7 +540,7 @@ impl<'a> BookBuilder<'a> {
             books.supplies.set(unit_type, supply);
         }
         if let Some(node) = &file.node {
-            let resource = ResourceId::named(resources, node.resource.as_str()).expect(CHECKED);
+            let resource = resources.named(node.resource.as_str()).expect(CHECKED);
             books.types.give_tag(unit_type, Production::NODE.tag());
             books.nodes.nodes.set(unit_type, resource);
         }
@@ -534,7 +548,7 @@ impl<'a> BookBuilder<'a> {
             let taken = drop_off
                 .resources
                 .iter()
-                .map(|name| ResourceId::named(resources, name.as_str()).expect(CHECKED));
+                .map(|name| resources.named(name.as_str()).expect(CHECKED));
             books.types.give_tag(unit_type, Production::DROP_OFF.tag());
             books.nodes.drop_offs.set(unit_type, ResourceSet::of(taken));
         }
@@ -554,7 +568,8 @@ impl<'a> BookBuilder<'a> {
         let unit_type = self
             .books
             .types
-            .named(unit.scope, unit.name)
+            .types()
+            .named((unit.scope, unit.name))
             .expect(CHECKED);
         let mut combat = file.combat.clone();
         if unit.declared.is_none() {
@@ -605,12 +620,12 @@ impl<'a> BookBuilder<'a> {
     ) -> Result<UnitKit, BookError> {
         let (file, data) = (unit.file, self.input.data);
         let pools = file.pools.iter().map(|pool| {
-            let id = PoolId::named(&data.pools, pool.as_str()).expect(CHECKED);
+            let id = self.names.pools.named(pool.as_str()).expect(CHECKED);
             (id, &data.pools[pool].max)
         });
         let tracks = TrackSet::of(file.tracks.iter().map(|track| {
             let tracks = self.books.tracks.as_ref().expect(CHECKED);
-            tracks.named(track.as_str()).expect(CHECKED)
+            tracks.names().named(track.as_str()).expect(CHECKED)
         }));
         let package = &self.input.packages[usize::from(index)];
         let slotted = |kind| {
@@ -621,7 +636,7 @@ impl<'a> BookBuilder<'a> {
             combat,
             pools,
             vision: file.vision.as_ref(),
-            body: data.navigation.form(file.collision.as_ref()),
+            body: self.names.form(file.collision.as_ref()),
             tracks,
             production: file.production.as_ref(),
             builds: slotted(ActionKind::Build),
@@ -629,7 +644,11 @@ impl<'a> BookBuilder<'a> {
             gathers: slotted(ActionKind::Gather),
             inventory: file.inventory.as_ref().map(|inventory| InventorySpec {
                 slots: inventory.slots,
-                kind: data.slots.named(inventory.kind.as_str()).expect(CHECKED),
+                kind: data
+                    .slots
+                    .names()
+                    .named(inventory.kind.as_str())
+                    .expect(CHECKED),
             }),
         };
         let rate = self.input.rate;
@@ -643,9 +662,9 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The kind of walker of `unit_type`, of `file`, when it walks.
-    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeFile) {
+    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData) {
         if file.walks() {
-            let form = self.input.data.navigation.form(file.collision.as_ref());
+            let form = self.names.form(file.collision.as_ref());
             let walker = Walker::of_form(form).expect("a unit type that walks has no box");
             self.books.walkers.set(unit_type, walker);
         }
@@ -655,13 +674,13 @@ impl<'a> BookBuilder<'a> {
     /// its kind's first rank.
     fn slot_actions(
         &self,
-        file: &UnitTypeFile,
+        file: &UnitTypeData,
         actions: &BTreeMap<&str, ActionId>,
     ) -> Vec<SlotAction> {
         let slots = &self.input.data.slots;
         let mut held = Vec::new();
         for (kind, ids) in &file.slots {
-            let kind = slots.named(kind.as_str()).expect(CHECKED);
+            let kind = slots.names().named(kind.as_str()).expect(CHECKED);
             let rank = slots.first_rank(kind);
             held.extend(ids.iter().map(|id| SlotAction {
                 kind,
@@ -674,9 +693,13 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The passive of `file`, a modifier of the package at `index`, when it has one.
-    fn passive(&self, index: u16, file: &UnitTypeFile) -> Option<ModifierId> {
+    fn passive(&self, index: u16, file: &UnitTypeData) -> Option<ModifierId> {
         let passive = file.passive.as_ref()?;
-        let modifier = self.books.modifiers.named(index, passive.as_str());
+        let modifier = self
+            .books
+            .modifiers
+            .names()
+            .named((index, passive.as_str()));
         Some(modifier.expect(CHECKED))
     }
 
@@ -687,12 +710,16 @@ impl<'a> BookBuilder<'a> {
         &mut self,
         index: u16,
         name: &DeclaredName,
-        file: &UnitTypeFile,
+        file: &UnitTypeData,
     ) -> Result<(), BookError> {
         let rate = self.input.rate;
         let books = &mut self.books;
         let scope = TypeScope::of_package(index);
-        let unit_type = books.types.named(scope, name.as_str()).expect(CHECKED);
+        let unit_type = books
+            .types
+            .types()
+            .named((scope, name.as_str()))
+            .expect(CHECKED);
         if let Some(projectile) = &file.projectile {
             books.types.give_tag(unit_type, Projectiles::TAG.tag());
             let spec = ProjectileSpec::of(projectile, &books.types, rate);
@@ -701,7 +728,12 @@ impl<'a> BookBuilder<'a> {
         if let Some(area) = &file.area {
             books.types.give_tag(unit_type, Areas::TAG.tag());
             let modifiers = &books.modifiers;
-            let modifier = |id: &DeclaredName| modifiers.named(index, id.as_str()).expect(CHECKED);
+            let modifier = |id: &DeclaredName| {
+                modifiers
+                    .names()
+                    .named((index, id.as_str()))
+                    .expect(CHECKED)
+            };
             let spec =
                 AreaSpec::of(area, &books.types, rate, modifier).map_err(|TimeTooLarge| {
                     BookError::AreaTime {
@@ -720,7 +752,7 @@ impl<'a> BookBuilder<'a> {
     /// The ranks `types` give each action they place, which the load checked agree.
     fn slotted_ranks<'u>(
         &self,
-        types: impl IntoIterator<Item = &'u UnitTypeFile>,
+        types: impl IntoIterator<Item = &'u UnitTypeData>,
     ) -> BTreeMap<&'u str, u8> {
         let slots = types.into_iter().map(|unit_type| &unit_type.slots);
         self.input.data.slots.slotted_ranks(slots).expect(CHECKED)
@@ -744,6 +776,7 @@ impl<'a> BookBuilder<'a> {
 #[derive(Debug)]
 struct BuildNames<'b> {
     input: &'b BookInput<'b>,
+    names: &'b ModeNames,
     stats: &'b StatBook,
     types: &'b UnitTypes,
     modifiers: &'b ModifierBook,
@@ -760,12 +793,13 @@ impl ActionNames for BuildNames<'_> {
     }
 
     fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
-        let combat = &self.input.data.combat;
-        combat.damage_kind(name.as_str()).expect(CHECKED)
+        let kinds = &self.names.damage_kinds;
+        kinds.named(name.as_str()).expect(CHECKED)
     }
 
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
-        self.input.data.cost_target_named(name)
+        let names = self.names;
+        CostTarget::named(&names.pools, &names.resources, name.as_str())
     }
 
     fn filter(&self, filter: &FilterData) -> Filter {
@@ -773,12 +807,18 @@ impl ActionNames for BuildNames<'_> {
     }
 
     fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
-        self.modifiers.named(package, name.as_str()).expect(CHECKED)
+        self.modifiers
+            .names()
+            .named((package, name.as_str()))
+            .expect(CHECKED)
     }
 
     fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
         let scope = TypeScope::of_package(package);
-        self.types.named(scope, name.as_str()).expect(CHECKED)
+        self.types
+            .types()
+            .named((scope, name.as_str()))
+            .expect(CHECKED)
     }
 
     fn homes(&self, package: u16, name: &DeclaredName) -> bool {
@@ -801,7 +841,7 @@ impl EffectNames for BuildNames<'_> {
     }
 
     fn pool(&self, name: &DeclaredName) -> PoolId {
-        PoolId::named(&self.input.data.pools, name.as_str()).expect(CHECKED)
+        self.names.pools.named(name.as_str()).expect(CHECKED)
     }
 
     fn modifier(&self, name: &DeclaredName) -> ModifierId {
@@ -810,12 +850,12 @@ impl EffectNames for BuildNames<'_> {
 
     fn track(&self, name: &DeclaredName) -> TrackId {
         self.tracks
-            .and_then(|tracks| tracks.named(name.as_str()))
+            .and_then(|tracks| tracks.names().named(name.as_str()))
             .expect(CHECKED)
     }
 
     fn tag(&self, name: &DeclaredName) -> Tag {
-        self.types.tag_named(name.as_str()).expect(CHECKED)
+        self.types.tags().named(name.as_str()).expect(CHECKED)
     }
 
     fn package_type(&self, name: &DeclaredName) -> UnitType {

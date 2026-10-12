@@ -33,7 +33,7 @@ use crate::units::dead::Dead;
 use crate::units::forced_move::DashTo;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::filter_data::FilterData;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
@@ -114,7 +114,7 @@ impl Volley {
             ),
         ];
         let [bolt, lance, dart, scout] = types.map(|(name, data)| {
-            let unit_type = Units::load_type(game, TypeScope::Mode, name, &UnitTypeData::default());
+            let unit_type = Units::load_type(game, TypeScope::Mode, name, &UnitTypeCore::default());
             Projectiles::load_type(game, unit_type, &data);
             unit_type
         });

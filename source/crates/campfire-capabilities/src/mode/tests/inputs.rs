@@ -137,7 +137,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         Mode::failures(&game),
         [
             FailureKind::Api(ApiError::ResourceOverflow),
-            FailureKind::Api(ApiError::UnknownResource)
+            FailureKind::Api(ApiError::Unknown(NameKind::Resource))
         ]
     );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
@@ -254,7 +254,7 @@ fn on_input(ctx, player, name, value) {
         ApiError::ChoiceCount,
         ApiError::RepeatedChoiceValue,
         ApiError::UnknownChoiceValue,
-        ApiError::UnknownChoice,
+        ApiError::Unknown(NameKind::Choice),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
     assert_eq!(Mode::field(&game, "kind"), text("hero-x,hero-y"));
@@ -274,8 +274,8 @@ fn on_input(ctx, player, name, value) {
     );
     let refused = [
         ApiError::SlotKindRanks,
-        ApiError::UnknownSlotKind,
-        ApiError::UnknownAction,
+        ApiError::Unknown(NameKind::SlotKind),
+        ApiError::Unknown(NameKind::Ability),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
     assert_eq!(

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 
-use crate::combat::combat_rules::CombatRules;
+use crate::combat::mode_combat_data::ModeCombatData;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 
@@ -17,7 +17,7 @@ pub(crate) struct CombatBindings {
 
 impl CombatBindings {
     /// The bindings of `rules` among the stats of `book`, which the load checked declares each.
-    pub(crate) fn new(rules: &CombatRules, book: &StatBook) -> CombatBindings {
+    pub(crate) fn new(rules: &ModeCombatData, book: &StatBook) -> CombatBindings {
         let leech = rules.leech.as_ref();
         let index = |stat| book.named(stat).expect("the load checked the bound stats");
         CombatBindings {

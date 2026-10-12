@@ -23,7 +23,7 @@ use crate::units::facing::Facing;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::track_id::TrackId;
 
-/// A state type a unit of the mode spawns with, when its kit gives it. `ModeBook::spawn` gives
+/// A state type a unit of the mode spawns with, when its kit gives it. `ModeSpec::spawn` gives
 /// each part a unit's kit gives, and a unit loses none while it stands, so a restore checks that
 /// each unit holds each part its kit gives, of the types the match's state holds.
 #[derive(Debug, Clone, Copy)]

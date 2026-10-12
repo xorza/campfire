@@ -1,7 +1,7 @@
 use campfire_common::PlayerSlot;
 
-use crate::production::supply_costs::{SupplyCosts, UnitSupply};
-use crate::production::supply_rules::SupplyRules;
+use crate::production::mode_supply_data::ModeSupplyData;
+use crate::production::supply_cost_book::{SupplyCostBook, UnitSupply};
 use crate::production::train_queue::TrainQueue;
 use crate::units::unit_type::UnitType;
 
@@ -37,8 +37,8 @@ impl Supply {
     /// `rules`' `max`.
     pub(crate) fn count<'a>(
         &mut self,
-        costs: &SupplyCosts,
-        rules: SupplyRules,
+        costs: &SupplyCostBook,
+        rules: ModeSupplyData,
         units: impl IntoIterator<Item = CountedUnit<'a>>,
     ) {
         self.players.clear();

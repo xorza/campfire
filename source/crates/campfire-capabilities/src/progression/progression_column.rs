@@ -1,4 +1,5 @@
 use std::ops::Range;
+use std::sync::Arc;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
@@ -9,6 +10,7 @@ use crate::progression::experience::Experience;
 use crate::progression::points::Points;
 use crate::progression::track_book::TrackBook;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_names::ScriptNames;
 use crate::stats::level::Level;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
 use crate::units::row_fill::RowFill;
@@ -143,18 +145,10 @@ impl ProgressionColumn {
 
     /// Shares the tracks the mode declares with the view, which names them to scripts.
     pub(crate) fn share(view: &View, book: TrackBook) {
-        view.set_track_names(book.names());
+        view.names_mut().tracks = ScriptNames::new(Arc::clone(book.names()));
         view.column_mut(|column: &mut ProgressionColumn| {
             column.book = book;
         });
-    }
-
-    /// The track `name`; an error for one the mode does not declare.
-    pub(crate) fn track_named(view: &View, name: &str) -> Checked<TrackId> {
-        let found = view.column(|column: &ProgressionColumn| column.book.named(name));
-        Ok(found
-            .flatten()
-            .ok_or_else(|| ApiError::UnknownTrack.fail())?)
     }
 
     /// Whether `id` has `track`; false for a unit the view does not hold.

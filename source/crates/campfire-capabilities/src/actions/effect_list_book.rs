@@ -9,10 +9,10 @@ use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::actions_effect::ActionsEffect;
 use crate::actions::amount::Amount;
-use crate::actions::capability_does::CapabilityDoes;
-use crate::actions::does::Does;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
+use crate::actions::does_spec::DoesSpec;
 use crate::actions::effect_data::{
-    DamageFields, EffectData, EffectTo, Effecting, HealFields, LaunchFields, ModifierFields,
+    DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
     MoveData, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
 use crate::actions::effect_names::EffectNames;
@@ -33,20 +33,20 @@ use crate::units::view::View;
 /// the run of each list a launch holds, `on_hit` and `on_end`. An action past the end has none.
 /// Package data, not state.
 #[derive(Resource, Debug, Default)]
-pub(crate) struct EffectLists {
-    effects: Vec<Listed>,
+pub(crate) struct EffectListBook {
+    effects: Vec<EffectSpec>,
     runs: Vec<[Range<u32>; 3]>,
     launches: Vec<[Range<u32>; 2]>,
 }
 
 /// An effect of a list: what it does, and to whom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Listed {
-    pub(crate) does: Does,
+pub(crate) struct EffectSpec {
+    pub(crate) does: DoesSpec,
     pub(crate) to: EffectTo,
 }
 
-impl EffectLists {
+impl EffectListBook {
     /// Adds the lists of `action`, which loaded last, from `data`, which the package load
     /// checked, their names resolved by `names`: `on_resolve`, `on_hit` and `on_end`, and the
     /// lists each launch of them holds, however deep.
@@ -67,9 +67,9 @@ impl EffectLists {
     /// Appends `list`, its names resolved by `names`, after the lists its launches hold, so its
     /// own effects lie together; its run.
     fn append(&mut self, list: &[EffectData], names: &impl EffectNames) -> Range<u32> {
-        let resolved: Vec<Listed> = list
+        let resolved: Vec<EffectSpec> = list
             .iter()
-            .map(|effect| Listed {
+            .map(|effect| EffectSpec {
                 does: self.resolve(&effect.does, names),
                 to: effect.to,
             })
@@ -80,54 +80,54 @@ impl EffectLists {
     }
 
     /// What `does` does, its names resolved by `names`; a launch's lists appended first.
-    fn resolve(&mut self, does: &Effecting, names: &impl EffectNames) -> Does {
+    fn resolve(&mut self, does: &DoesData, names: &impl EffectNames) -> DoesSpec {
         let amount = |number| Amount::of(number, names);
         let of_capability = match does {
-            Effecting::Modifier(ModifierFields { id, duration_ms }) => {
-                return Does::Modifier {
+            DoesData::Modifier(ModifierFields { id, duration_ms }) => {
+                return DoesSpec::Modifier {
                     id: names.modifier(id),
                     duration_ms: duration_ms.as_ref().map(amount),
                 };
             }
-            Effecting::Purge(PurgeFields { tag }) => {
-                return Does::Purge {
+            DoesData::Purge(PurgeFields { tag }) => {
+                return DoesSpec::Purge {
                     tag: names.tag(tag),
                 };
             }
-            Effecting::Spawn(SpawnFields {
+            DoesData::Spawn(SpawnFields {
                 unit_type,
                 duration_ms,
             }) => {
-                return Does::Spawn {
+                return DoesSpec::Spawn {
                     unit_type: names.package_type(unit_type),
                     duration_ms: duration_ms.as_ref().map(amount),
                 };
             }
-            Effecting::Damage(DamageFields {
+            DoesData::Damage(DamageFields {
                 amount: dealt,
                 kind,
-            }) => CapabilityDoes::Damage {
+            }) => CapabilityDoesSpec::Damage {
                 amount: amount(dealt),
                 kind: names.damage_kind(kind),
             },
-            Effecting::Heal(HealFields { amount: healed }) => CapabilityDoes::Heal {
+            DoesData::Heal(HealFields { amount: healed }) => CapabilityDoesSpec::Heal {
                 amount: amount(healed),
             },
-            Effecting::Restore(RestoreFields {
+            DoesData::Restore(RestoreFields {
                 pool,
                 amount: restored,
-            }) => CapabilityDoes::Restore {
+            }) => CapabilityDoesSpec::Restore {
                 pool: names.pool(pool),
                 amount: amount(restored),
             },
-            Effecting::Xp(XpFields {
+            DoesData::Xp(XpFields {
                 track,
                 amount: given,
-            }) => CapabilityDoes::Xp {
+            }) => CapabilityDoesSpec::Xp {
                 track: names.track(track),
                 amount: amount(given),
             },
-            Effecting::Launch(LaunchFields {
+            DoesData::Launch(LaunchFields {
                 area,
                 on_hit,
                 on_end,
@@ -135,30 +135,30 @@ impl EffectLists {
                 let lists = [self.append(on_hit, names), self.append(on_end, names)];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
-                CapabilityDoes::Launch {
+                CapabilityDoesSpec::Launch {
                     area: names.package_type(area),
                     launch,
                 }
             }
-            Effecting::Move(MoveData::Dash { to, speed }) => CapabilityDoes::Dash {
+            DoesData::Move(MoveData::Dash { to, speed }) => CapabilityDoesSpec::Dash {
                 to: *to,
                 speed: amount(speed),
             },
-            Effecting::Move(MoveData::KnockBack { from, distance, ms }) => {
-                CapabilityDoes::KnockBack {
+            DoesData::Move(MoveData::KnockBack { from, distance, ms }) => {
+                CapabilityDoesSpec::KnockBack {
                     from: *from,
                     distance: amount(distance),
                     ms: amount(ms),
                 }
             }
-            Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
+            DoesData::Planned(_) => unreachable!("the load refuses a planned effect"),
         };
-        Does::Capability(of_capability)
+        DoesSpec::Capability(of_capability)
     }
 
     /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or
     /// `on_end`, or a launch's `on_hit` or `on_end`.
-    pub(crate) fn of(&self, of: ListsOf, hook: Hook) -> &[Listed] {
+    pub(crate) fn of(&self, of: ListsOf, hook: Hook) -> &[EffectSpec] {
         let run = match (of, hook) {
             (ListsOf::Action(action), _) => {
                 let list = match hook {
@@ -199,7 +199,7 @@ impl EffectLists {
         view: &View,
         reached: ActionTarget,
     ) -> Result<(), CallError> {
-        let list = world.resource::<EffectLists>().of(of, hook);
+        let list = world.resource::<EffectListBook>().of(of, hook);
         if list.is_empty() {
             return Ok(());
         }
@@ -222,7 +222,7 @@ impl EffectLists {
                 EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
             };
             match listed.does {
-                Does::Spawn {
+                DoesSpec::Spawn {
                     unit_type,
                     duration_ms,
                 } => {
@@ -256,7 +256,7 @@ impl EffectLists {
                         life,
                     });
                 }
-                Does::Modifier { id, duration_ms } => {
+                DoesSpec::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| duration(ms, frame));
                     frame.effects.push(StatsEffect::Add {
                         target: unit(),
@@ -264,11 +264,11 @@ impl EffectLists {
                         duration,
                     });
                 }
-                Does::Purge { tag } => frame.effects.push(StatsEffect::Purge {
+                DoesSpec::Purge { tag } => frame.effects.push(StatsEffect::Purge {
                     carrier: unit(),
                     tag,
                 }),
-                Does::Capability(does) => {
+                DoesSpec::Capability(does) => {
                     queues.of(does.capability())(does, unit(), reached_unit, frame, view)?;
                 }
             }
@@ -282,7 +282,7 @@ fn position(len: usize) -> u32 {
     u32::try_from(len).expect("a match's effects fit u32")
 }
 
-impl Book for EffectLists {
+impl Book for EffectListBook {
     const CAPABILITY: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 }

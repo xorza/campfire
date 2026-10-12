@@ -1,32 +1,46 @@
 use std::ops::Range;
 
-use crate::values::name_list::NameList;
+use crate::values::names::{NameId, Names};
 
 /// Values by name in runs, one run for each owner, such as the params of a unit type or an
-/// ability: every name and every value in one buffer each, and each run sorted by name.
+/// ability: every name in one table, its scope the run, and every value in one buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NameTable<V> {
-    names: NameList,
+    names: Names<Entry>,
     values: Vec<V>,
-    /// Where each run starts in `names` and `values`, then where the last one ends.
+    /// Where each run starts in `values`, then where the last one ends.
     starts: Vec<u32>,
 }
 
+/// An entry of a `NameTable`, by its place among all the table's, in the scope of its run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Entry(u32);
+
+impl NameId for Entry {
+    type Scope = u32;
+    const LIMIT: usize = u32::MAX as usize;
+
+    fn at(index: usize) -> Entry {
+        Entry(u32::try_from(index).expect("entries fit u32"))
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 impl<V> NameTable<V> {
-    /// Adds a run of `entries`, sorted by name, and gives its index: the number of runs before it.
+    /// Adds a run of `entries`, each name once, and gives its index: the number of runs before it.
     pub(crate) fn push<'a>(&mut self, entries: impl IntoIterator<Item = (&'a str, V)>) -> usize {
-        let start = self.names.len();
+        let run = self.starts.len() - 1;
+        let scope = u32::try_from(run).expect("runs fit u32");
         for (name, value) in entries {
-            self.names.push(name);
+            self.names.add((scope, name));
             self.values.push(value);
         }
-        debug_assert!(
-            self.names.iter().skip(start).is_sorted(),
-            "a run is sorted by name"
-        );
         self.starts
-            .push(u32::try_from(self.names.len()).expect("names fit u32"));
-        self.starts.len() - 2
+            .push(u32::try_from(self.values.len()).expect("entries fit u32"));
+        run
     }
 
     /// Whether it holds run `run`.
@@ -36,21 +50,18 @@ impl<V> NameTable<V> {
 
     /// The place of `name` in run `run`; none for a run it does not hold.
     pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
-        self.names.sorted_named(self.run(run)?, name)
+        let range = self.run(run)?;
+        let scope = u32::try_from(run).ok()?;
+        let entry = self.names.named((scope, name))?;
+        Some(entry.index() - range.start)
     }
 
-    /// The value of `name` in run `run`; none for a run it does not hold.
-    pub(crate) fn get_named(&self, run: usize, name: &str) -> Option<&V> {
-        let at = self.named(run, name)?;
-        Some(&self.values(run)[at])
-    }
-
-    /// The values of run `run`, in the order of their names; none for a run it does not hold.
+    /// The values of run `run`, in the order they were pushed; none for a run it does not hold.
     pub(crate) fn values(&self, run: usize) -> &[V] {
         self.run(run).map_or(&[], |range| &self.values[range])
     }
 
-    /// Where run `run` lies in the buffers, when it holds the run.
+    /// Where run `run` lies in `values`, when it holds the run.
     fn run(&self, run: usize) -> Option<Range<usize>> {
         let end = *self.starts.get(run + 1)?;
         Some(self.starts[run] as usize..end as usize)
@@ -60,7 +71,7 @@ impl<V> NameTable<V> {
 impl<V> Default for NameTable<V> {
     fn default() -> NameTable<V> {
         NameTable {
-            names: NameList::default(),
+            names: Names::default(),
             values: Vec::new(),
             starts: vec![0],
         }
@@ -74,7 +85,7 @@ mod tests {
     #[test]
     fn each_run_finds_only_its_own_names() {
         let mut table = NameTable::default();
-        assert_eq!(table.push([("a", 1), ("c", 3)]), 0);
+        assert_eq!(table.push([("c", 3), ("a", 1)]), 0);
         assert_eq!(table.push([]), 1);
         assert_eq!(table.push([("a", 10), ("b", 20)]), 2);
         let found = [
@@ -86,16 +97,16 @@ mod tests {
             (2, "b"),
             (2, "c"),
         ]
-        .map(|(run, name)| table.get_named(run, name).copied());
+        .map(|(run, name)| table.named(run, name));
         assert_eq!(
             found,
-            [Some(1), None, Some(3), None, Some(10), Some(20), None]
+            [Some(1), None, Some(0), None, Some(0), Some(1), None]
         );
-        assert_eq!(table.named(2, "b"), Some(1));
-        assert_eq!(table.values(0), [1, 3]);
+        assert_eq!(table.values(0), [3, 1]);
         assert!(table.values(1).is_empty());
+        assert!(table.has_run(2) && !table.has_run(3));
         // A run past the last holds nothing.
         assert!(table.values(3).is_empty());
-        assert_eq!((table.named(3, "a"), table.get_named(3, "a")), (None, None));
+        assert_eq!(table.named(3, "a"), None);
     }
 }

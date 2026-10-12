@@ -13,7 +13,7 @@ use campfire_sim::Capability;
 /// What each build places and how its site grows, by action, its rates and its placement's
 /// rules one run after another: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct BuildSpecs {
+pub(crate) struct BuildBook {
     /// By action, as the book loads them in order.
     specs: Vec<Stored>,
     rates: Vec<Num>,
@@ -40,7 +40,7 @@ pub(crate) enum Style<'a> {
     Builders(&'a [Num]),
 }
 
-/// A `Style` as `BuildSpecs` holds it: its builders' rates a run of its rates.
+/// A `Style` as `BuildBook` holds it: its builders' rates a run of its rates.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum StoredStyle {
     Alone,
@@ -56,7 +56,7 @@ pub(crate) struct PlacementCheck {
     pub(crate) distance: Num,
 }
 
-/// One build's spec, as `BuildSpecs` holds it.
+/// One build's spec, as `BuildBook` holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BuildSpec<'a> {
     /// The building's box, before its angle turns it.
@@ -81,7 +81,7 @@ pub(crate) struct NewBuild<'a> {
     pub(crate) away: Vec<PlacementCheck>,
 }
 
-impl BuildSpecs {
+impl BuildBook {
     /// Gives `action`, loaded after every action it holds, its build.
     pub(crate) fn push(&mut self, action: ActionId, build: NewBuild<'_>) {
         debug_assert!(self.specs.last().is_none_or(|last| last.action < action));
@@ -148,7 +148,7 @@ impl BuildSpec<'_> {
     }
 }
 
-impl Book for BuildSpecs {
+impl Book for BuildBook {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }
@@ -161,7 +161,7 @@ mod tests {
     fn each_style_gives_its_rate_for_each_count_of_builders() {
         // Rates 1, 1.5 and 2 for one, two and three builders, the last for any count past it.
         let rates = [Num::ONE, Num::ONE + Num::HALF, Num::int(2)];
-        let mut specs = BuildSpecs::default();
+        let mut specs = BuildBook::default();
         for (at, style) in [Style::Alone, Style::Builder, Style::Builders(&rates)]
             .into_iter()
             .enumerate()

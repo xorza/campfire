@@ -6,10 +6,10 @@ use campfire_common::PlayerSlot;
 use campfire_script::rhai::INT;
 
 use crate::production::gatherer::Gatherer;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::site::Site;
 use crate::production::supply::SupplySums;
-use crate::production::supply_costs::{SupplyCosts, UnitSupply};
-use crate::production::supply_rules::SupplyRules;
+use crate::production::supply_cost_book::{SupplyCostBook, UnitSupply};
 use crate::production::train_queue::TrainQueue;
 use crate::units::dead::Dead;
 use crate::units::kept_rows::KeptRows;
@@ -36,8 +36,8 @@ pub(super) type RowReads = (
 #[derive(Debug, Default)]
 pub(crate) struct ProductionColumn {
     rows: KeptRows<Vec<SupplyRow>>,
-    costs: SupplyCosts,
-    rules: Option<SupplyRules>,
+    costs: SupplyCostBook,
+    rules: Option<ModeSupplyData>,
 }
 
 /// A unit's row of the production column: its player, none for a unit no player owns, what it
@@ -77,7 +77,7 @@ impl ViewColumn for ProductionColumn {
 
 impl ProductionColumn {
     /// Gives `view`'s column the mode's supply `rules` and `costs`.
-    pub(crate) fn share(view: &View, rules: Option<SupplyRules>, costs: SupplyCosts) {
+    pub(crate) fn share(view: &View, rules: Option<ModeSupplyData>, costs: SupplyCostBook) {
         view.column_mut(|column: &mut ProductionColumn| {
             column.rules = rules;
             column.costs = costs;
@@ -102,7 +102,7 @@ impl ProductionColumn {
         INT::from(load.unwrap_or(0))
     }
 
-    pub(crate) const fn costs(&self) -> &SupplyCosts {
+    pub(crate) const fn costs(&self) -> &SupplyCostBook {
         &self.costs
     }
 

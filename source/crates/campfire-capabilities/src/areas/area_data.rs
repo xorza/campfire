@@ -2,6 +2,8 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::scalar::Scalar;
@@ -16,21 +18,21 @@ pub struct AreaData {
     pub delay_ms: u64,
     pub duration_ms: u64,
     pub affects: Option<FilterData>,
-    pub inside: AreaInside,
+    pub inside: AreaInsideData,
 }
 
 /// The modifiers of its package an area holds on the units inside it: on its source, on the
 /// source's other allies, and on the units that may be attacked.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct AreaInside {
+pub struct AreaInsideData {
     #[serde(rename = "self")]
     pub caster: Option<DeclaredName>,
     pub allies: Option<DeclaredName>,
     pub enemies: Option<DeclaredName>,
 }
 
-impl AreaInside {
+impl AreaInsideData {
     /// The ids of the modifiers it names.
     pub fn modifiers(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         [&self.caster, &self.allies, &self.enemies]
@@ -52,7 +54,7 @@ impl<'de> Deserialize<'de> for AreaData {
             duration_ms: u64,
             affects: Option<FilterData>,
             #[serde(default)]
-            inside: AreaInside,
+            inside: AreaInsideData,
         }
         let fields = Fields::deserialize(deserializer)?;
         let radius = fields
@@ -68,4 +70,12 @@ impl<'de> Deserialize<'de> for AreaData {
             inside: fields.inside,
         })
     }
+}
+
+impl DataSection for AreaData {
+    const TABLE: DataTable = DataTable::Area;
+}
+
+impl DataSection for AreaInsideData {
+    const TABLE: DataTable = DataTable::AreaInside;
 }

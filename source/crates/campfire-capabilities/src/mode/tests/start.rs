@@ -74,7 +74,14 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             .unwrap()
             .tags
     };
-    let tag = |name| game.non_send::<View>().types_mut().tag_named(name).unwrap();
+    let tag = |name| {
+        game.non_send::<View>()
+            .names()
+            .types()
+            .tags()
+            .named(name)
+            .unwrap()
+    };
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
     assert_eq!(Mode::tracked_state(&game), state("start", 0, 0, 0));
@@ -107,7 +114,7 @@ fn a_mode_whose_start_fails_starts_no_match() {
         let failed = start_match(&failing, ScriptLimits::ROOMY, mode_files()).err();
         assert_eq!(
             failed.as_ref().map(CallError::kind),
-            Some(FailureKind::Api(ApiError::UnknownUnitType)),
+            Some(FailureKind::Api(ApiError::Unknown(NameKind::UnitType))),
             "{unit_type}: {failed:?}"
         );
     }
@@ -180,8 +187,8 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             })
             .collect()
     };
-    let rules = NavigationRules::default();
-    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], &rules, |_| None).err();
+    let layers = Names::default();
+    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], &layers, |_| None).err();
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }

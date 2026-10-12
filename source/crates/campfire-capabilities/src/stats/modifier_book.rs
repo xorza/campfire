@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
@@ -28,6 +27,7 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
 
@@ -38,14 +38,15 @@ use crate::values::stat::Stat;
 #[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ModifierBook {
     entries: Arc<Vec<ModifierEntry>>,
+    /// Each modifier's name in its package.
+    names: Arc<Names<ModifierId>>,
 }
 
-/// A loaded modifier: its package, its name there, its spec, and its compiled script with the
-/// combat events it hears.
+/// A loaded modifier: its package, its spec, and its compiled script with the combat events it
+/// hears.
 #[derive(Debug, Clone)]
 pub(crate) struct ModifierEntry {
     pub(crate) package: u16,
-    pub(crate) name: Box<str>,
     pub(crate) spec: ModifierSpec,
     pub(crate) script: Option<ScriptId>,
     pub(crate) hooks: HookSet,
@@ -93,9 +94,11 @@ impl ModifierBook {
             modifiers.is_sorted_by(|a, b| a.name < b.name),
             "a package's modifiers load by name"
         );
-        if let (Some(last), Some(first)) = (self.entries.last(), modifiers.first()) {
+        let last = start.checked_sub(1).map(ModifierBook::id_at);
+        if let (Some(last), Some(first)) = (last, modifiers.first()) {
+            let held = (self.names.scope(last), self.names.name(last));
             assert!(
-                last.order(package, first.name.as_str()).is_lt(),
+                held < (package, Some(first.name.as_str())),
                 "modifiers load by package, then name"
             );
         }
@@ -115,7 +118,8 @@ impl ModifierBook {
                 match at {
                     Ok(at) => ModifierBook::id_at(start + at),
                     Err(_) => self
-                        .named(package, name)
+                        .names
+                        .named((package, name))
                         .expect("the load checked the aura's modifier"),
                 }
             },
@@ -131,10 +135,11 @@ impl ModifierBook {
             .collect::<Result<Vec<_>, _>>()?;
         let entries = modifiers.iter().zip(specs).zip(tags);
         let book = Arc::make_mut(&mut self.entries);
+        let names = Arc::make_mut(&mut self.names);
         for ((modifier, spec), tags) in entries {
+            names.add((package, modifier.name.as_str()));
             book.push(ModifierEntry {
                 package,
-                name: modifier.name.as_str().into(),
                 spec,
                 script: modifier.script,
                 hooks: scripts.defines(modifier.script, ScriptRole::Modifier),
@@ -144,13 +149,9 @@ impl ModifierBook {
         Ok(())
     }
 
-    /// The modifier `name` of `package`.
-    pub(crate) fn named(&self, package: u16, name: &str) -> Option<ModifierId> {
-        let at = self
-            .entries
-            .binary_search_by(|entry| entry.order(package, name))
-            .ok()?;
-        Some(ModifierBook::id_at(at))
+    /// Each modifier's name in its package.
+    pub(crate) const fn names(&self) -> &Arc<Names<ModifierId>> {
+        &self.names
     }
 
     /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
@@ -295,15 +296,6 @@ impl ModifierBook {
     }
 }
 
-impl ModifierEntry {
-    /// How it sorts against the modifier `name` of `package`: by package, then name.
-    fn order(&self, package: u16, name: &str) -> Ordering {
-        self.package
-            .cmp(&package)
-            .then_with(|| (*self.name).cmp(name))
-    }
-}
-
 impl Book for ModifierBook {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
@@ -334,6 +326,8 @@ pub(crate) mod internals {
         ) -> ModifierId {
             let book = Arc::make_mut(&mut self.entries);
             let at = book.len();
+            let name = format!("{at:05}");
+            let id = Arc::make_mut(&mut self.names).add((u16::MAX, name.as_str()));
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
                 op,
@@ -341,7 +335,6 @@ pub(crate) mod internals {
             });
             book.push(ModifierEntry {
                 package: u16::MAX,
-                name: format!("{at:05}").into(),
                 spec: ModifierSpec {
                     duration: None,
                     interval: None,
@@ -359,7 +352,7 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
-            ModifierBook::id_at(at)
+            id
         }
 
         /// Makes modifier `id` grant `tags`, as a test's data would.

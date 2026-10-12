@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
@@ -52,14 +50,11 @@ impl Stat {
             .or_else(|| DeclaredName::new(name).map(|name| Stat::Declared(DeclaredStat(name))))
     }
 
-    /// How it sorts against the stat `name` names, as `Ord` sorts stats, with no stat built: a
-    /// name that is no stat sorts as a declared one.
-    pub(crate) fn order_to(&self, name: &str) -> Ordering {
-        match (self, EngineStat::named(name)) {
-            (Stat::Engine(stat), Some(other)) => stat.cmp(&other),
-            (Stat::Engine(_), None) => Ordering::Less,
-            (Stat::Declared(_), Some(_)) => Ordering::Greater,
-            (Stat::Declared(declared), None) => declared.0.as_str().cmp(name),
+    /// The stat as data and scripts name it.
+    pub fn name(&self) -> &str {
+        match self {
+            Stat::Engine(stat) => stat.name(),
+            Stat::Declared(declared) => declared.0.as_str(),
         }
     }
 
@@ -94,17 +89,10 @@ mod tests {
         assert_eq!(Stat::Engine(EngineStat::MoveSpeed).declared(), None);
         assert_eq!(Stat::named("Armor"), None);
         assert_eq!(armor.to_string(), "armor");
-        // `order_to` sorts as `Ord` does, for every pair of an engine stat and declared ones.
-        let mut stats: Vec<Stat> = ["armor", "move_speed", "zeal", "attack_damage"]
-            .map(|name| Stat::named(name).unwrap())
-            .into();
-        stats.sort();
-        for stat in &stats {
-            for other in &stats {
-                assert_eq!(stat.order_to(&other.to_string()), stat.cmp(other));
-            }
+        // Its name is what names it, an engine stat's or a declared one's.
+        for name in ["armor", "move_speed"] {
+            assert_eq!(Stat::named(name).unwrap().name(), name);
         }
-        assert_eq!(stats[0], Stat::Engine(EngineStat::MoveSpeed));
         // An engine stat's name reads as the engine stat, so it has no declared form.
         let read = |name: &str| Stat::deserialize(toml::Value::String(name.to_owned())).unwrap();
         assert_eq!(read("move_speed"), Stat::Engine(EngineStat::MoveSpeed));

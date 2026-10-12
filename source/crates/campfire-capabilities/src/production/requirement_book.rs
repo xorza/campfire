@@ -12,7 +12,7 @@ use campfire_sim::Capability;
 /// which it owns a living, complete unit, and player modifiers, one run of each after another.
 /// Package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct Requirements {
+pub(crate) struct RequirementBook {
     /// By action, as the book loads them in order.
     needs: Vec<Needs>,
     units: Vec<UnitType>,
@@ -33,7 +33,7 @@ pub(crate) struct Required<'a> {
     pub(crate) modifiers: &'a [ModifierId],
 }
 
-impl Requirements {
+impl RequirementBook {
     /// Gives `action`, loaded after every action it holds, what it needs.
     pub(crate) fn push(
         &mut self,
@@ -69,7 +69,7 @@ impl Requirements {
     }
 }
 
-impl Book for Requirements {
+impl Book for RequirementBook {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }
@@ -80,7 +80,7 @@ mod tests {
 
     #[test]
     fn each_action_finds_its_own_runs_and_one_with_none_finds_nothing() {
-        let mut requirements = Requirements::default();
+        let mut requirements = RequirementBook::default();
         requirements.push(ActionId::new(1), [UnitType::new(4)], []);
         requirements.push(
             ActionId::new(3),

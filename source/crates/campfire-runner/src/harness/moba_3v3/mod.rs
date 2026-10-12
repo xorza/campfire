@@ -2,8 +2,8 @@ use bevy_ecs::world::World;
 use campfire_capabilities::Mode;
 use campfire_capabilities::internals::{Density, KernelScene};
 use campfire_capabilities::{
-    Action, ActionSlots, Dead, InputValue, Inventory, ItemId, Life, ModeInput, Order, PathWalker,
-    Team,
+    Action, ActionSlots, Dead, DeclaredName, InputValue, Inventory, ItemId, Life, ModeInput, Names,
+    Order, PathWalker, Team,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::Num;
@@ -312,7 +312,8 @@ impl Moba3v3 {
     pub fn planned(plan: Vec<SlotPlan>) -> ScriptedMode<Moba3v3> {
         let packages = TestMode::Moba3v3.packages();
         let items = &packages.packages().next().expect("a mode").content.items;
-        let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
+        let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
+        let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);
         let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
         ScriptedMode::new(session, script)

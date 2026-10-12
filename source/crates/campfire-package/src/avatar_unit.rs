@@ -1,4 +1,4 @@
-use campfire_capabilities::UnitTypeFile;
+use campfire_capabilities::UnitTypeData;
 
 use crate::message_id::MessageId;
 
@@ -6,5 +6,5 @@ use crate::message_id::MessageId;
 #[derive(Debug)]
 pub struct AvatarUnit {
     pub name: MessageId,
-    pub unit: UnitTypeFile,
+    pub unit: UnitTypeData,
 }

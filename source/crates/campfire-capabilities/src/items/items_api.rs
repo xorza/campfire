@@ -1,3 +1,6 @@
+use crate::items::inventory_data::InventoryData;
+use crate::items::item_data::ItemData;
+use crate::items::shop_data::ShopData;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::data_table::DataTable;
 
@@ -8,17 +11,13 @@ pub(crate) struct ItemsApi;
 
 impl ItemsApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.data(DataTable::Mode, &["items", "shop"], &[])
-            .data(
-                DataTable::Item,
+        api.shared_data(DataTable::Mode, &["items", "shop"], &[])
+            .data::<ItemData>(
                 &["cost", "components", "stack", "uses", "modifiers", "action"],
                 &[],
             )
-            .data(DataTable::Inventory, &["slots", "kind"], &[])
-            .data(
-                DataTable::Shop,
-                &["items", "resource", "at", "sell_share"],
-                &[],
-            );
+            .data::<InventoryData>(&["slots", "kind"], &[])
+            .shared_data(DataTable::UnitType, &["inventory"], &[])
+            .data::<ShopData>(&["items", "resource", "at", "sell_share"], &[]);
     }
 }

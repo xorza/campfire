@@ -38,7 +38,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 - **Actions.** **Plan: G1.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
 - **Client.** **Plan: S2.** The client has no shop and no item keys: a player cannot buy, sell or use an item, which design 04's items give as orders.
-- **Core.** **Plan: F21.** `Hook::capability` (`scripts/hook.rs:153-178`), which the load check and the script API reference read, disagrees with the modules that record the hooks: it gives `OnHit` and `OnEnd` to `abilities`, which `deliveries` records, and `CalcDamage`, `CalcHeal` and `OnUnitDied` to `combat`, which the mode records.
 - **Interaction.** **Plan: U1.** `interaction` is planned: no action of the `use` kind runs.
 - **MOBA test content.** **Plan: I3.** The 3v3's `hero_died` gives assist gold to each of its `assisters` by the assister's `owner`, and an assister may be a unit no player owns, as a tower that struck the hero: the call fails with `Function not found: add_resource (Ctx, (), ...)`, changes nothing, and the kill gives no hero gold, the killer's own included.
 - **Quic.** **Plan: N1.** No limit holds live connections or new handshakes for each address, where design 15's D13 bounds both by the session's seats for each IPv4 address or IPv6 /64, and `net` gives the endpoint no seat count ([QUIC transport](../docs/design/15-quic-transport.md), D13).

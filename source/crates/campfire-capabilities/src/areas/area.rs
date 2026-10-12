@@ -6,7 +6,7 @@ use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_list_book::EffectListBook;
 use crate::areas::area_spec::AreaSpec;
 use crate::deliveries::delivering::Delivering;
 use crate::state_types::data_kind::DataKind;
@@ -72,7 +72,7 @@ impl SimComponent for Area {
         } = self.by;
         let launched = launch.is_none_or(|launch| {
             world
-                .get_resource::<EffectLists>()
+                .get_resource::<EffectListBook>()
                 .is_some_and(|lists| lists.has_launch(launch))
         });
         let applies = |modifier| Stats::modifier_has_way(world, modifier, Some(action), rank);

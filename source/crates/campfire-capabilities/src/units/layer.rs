@@ -1,3 +1,4 @@
+use crate::values::names::NameId;
 use serde::{Deserialize, Serialize};
 
 /// A layer bodies move on: its index in the mode's `[navigation] layers`, the first the default.
@@ -17,6 +18,19 @@ impl Layer {
     }
 
     pub(crate) const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
+impl NameId for Layer {
+    type Scope = ();
+    const LIMIT: usize = 1 << u8::BITS;
+
+    fn at(index: usize) -> Layer {
+        Layer(u8::try_from(index).expect("layers fit u8"))
+    }
+
+    fn index(self) -> usize {
         self.0 as usize
     }
 }

@@ -7,7 +7,7 @@ use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::lists_of::ListsOf;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
@@ -182,7 +182,7 @@ impl DamagePass {
         };
         let world = batch.world();
         if world
-            .resource::<EffectLists>()
+            .resource::<EffectListBook>()
             .of(ListsOf::Action(weapon), Hook::OnHit)
             .is_empty()
         {
@@ -205,7 +205,7 @@ impl DamagePass {
             let target = ActionTarget::Unit(damage.target);
             let lists = ListsOf::Action(weapon);
             let frame = &mut ctx.frame();
-            EffectLists::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
+            EffectListBook::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
         });
     }
 

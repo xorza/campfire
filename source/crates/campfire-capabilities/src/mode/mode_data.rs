@@ -3,21 +3,20 @@ use std::collections::BTreeMap;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
-use crate::actions::cost_target::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
-use crate::combat::combat_rules::CombatRules;
+use crate::combat::mode_combat_data::ModeCombatData;
 use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
-use crate::navigation::navigation_rules::NavigationRules;
-use crate::players::resource_id::ResourceId;
-use crate::production::supply_rules::SupplyRules;
+use crate::navigation::mode_navigation_data::ModeNavigationData;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::progression::track_data::TrackData;
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::stats::pool_data::PoolData;
-use crate::stats::pool_id::PoolId;
 use crate::stats::stat_rule::StatRule;
 use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
@@ -32,9 +31,9 @@ use crate::visibility::mode_visibility::ModeVisibility;
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
     #[serde(default)]
-    pub combat: CombatRules,
+    pub combat: ModeCombatData,
     #[serde(default)]
-    pub navigation: NavigationRules,
+    pub navigation: ModeNavigationData,
     /// The kinds of slot its units' actions sit in, in order.
     #[serde(default)]
     pub slots: SlotKinds,
@@ -77,20 +76,13 @@ pub struct ModeData {
     #[serde(default)]
     pub saves: SavesData,
     /// Whether it counts supply, and its most.
-    pub supply: Option<SupplyRules>,
+    pub supply: Option<ModeSupplyData>,
     /// Who receives each kind of its state, and what it leaves to the host.
     #[serde(default)]
     pub visibility: ModeVisibility,
 }
 
 impl ModeData {
-    /// What a cost named `name` takes from: one of its pools, or else one of its players'
-    /// resources; `None` for a name it declares neither as.
-    pub fn cost_target_named(&self, name: &DeclaredName) -> Option<CostTarget> {
-        let pool = PoolId::named(&self.pools, name.as_str()).map(CostTarget::Pool);
-        pool.or_else(|| ResourceId::named(&self.resources, name.as_str()).map(CostTarget::Resource))
-    }
-
     /// The ranks of every loadout entry: those of the slot kind a choice of loadout entries
     /// fills, which the load checked they all share, or 1 with none.
     pub fn loadout_ranks(&self) -> u8 {
@@ -98,7 +90,7 @@ impl ModeData {
             .choices
             .values()
             .filter_map(|choice| choice.slot.as_ref());
-        let kind = kinds.find_map(|kind| self.slots.named(kind.as_str()));
+        let kind = kinds.find_map(|kind| self.slots.names().named(kind.as_str()));
         kind.map_or(1, |kind| self.slots.ranks(kind))
     }
 }
@@ -148,4 +140,8 @@ impl ModeParam {
 pub enum ListEntry {
     Value(Scalar),
     Text(String),
+}
+
+impl DataSection for ModeData {
+    const TABLE: DataTable = DataTable::Mode;
 }

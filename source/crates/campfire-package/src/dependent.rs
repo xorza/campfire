@@ -4,7 +4,7 @@ use campfire_script::ScriptHost;
 use crate::avatar_unit::AvatarUnit;
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
-use crate::files::avatar_data::AvatarData;
+use crate::files::avatar_file::AvatarFile;
 use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
 use crate::package::Package;
@@ -51,7 +51,7 @@ impl Dependent {
         }
         let (content, kind) = match &manifest {
             Manifest::Avatar(_) => {
-                let AvatarData {
+                let AvatarFile {
                     name,
                     unit,
                     content,

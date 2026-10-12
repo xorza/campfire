@@ -12,11 +12,11 @@ use crate::mode::error::ModeError;
 use crate::mode::map_point::MapPoint;
 use crate::mode::mode_data::ModeParam;
 use crate::mode::region_data::RegionData;
-use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::scalar::Scalar;
 
 /// One of the mode's maps, `map/<name>/map.toml`: its metric, its bounds, its grids, its paths,
@@ -156,18 +156,18 @@ impl MapData {
         self.grid_of(self.navigation.as_ref().map(|navigation| navigation.cell))
     }
 
-    /// The map's walls, each on the layer of `rules` it names; an error for a layer the mode does
+    /// The map's walls, each on the layer of `layers` it names; an error for a layer the mode does
     /// not declare, a point that does not fit the map's metric or lies outside its bounds, and
     /// points that make no simple polygon.
-    pub(crate) fn walls(&self, rules: &NavigationRules) -> Result<Vec<Wall>, ModeError> {
+    pub(crate) fn walls(&self, layers: &Names<Layer>) -> Result<Vec<Wall>, ModeError> {
         let Some(navigation) = &self.navigation else {
             return Ok(Vec::new());
         };
         let mut walls = Vec::with_capacity(navigation.walls.len());
         for (wall, data) in navigation.walls.iter().enumerate() {
             let layer = match &data.layer {
-                Some(name) => rules
-                    .layer_named(name)
+                Some(name) => layers
+                    .named(name.as_str())
                     .ok_or_else(|| ModeError::UnknownLayer(name.clone()))?,
                 None => Layer::FIRST,
             };

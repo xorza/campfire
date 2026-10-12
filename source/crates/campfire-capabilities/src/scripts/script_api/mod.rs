@@ -1,9 +1,12 @@
+use std::collections::BTreeSet;
+
 use campfire_script::ScriptHost;
 use campfire_script::rhai::Engine;
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::hook::Hook;
 use crate::scripts::script_api::api_member::ApiMember;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::api_reference::ApiReference;
@@ -12,12 +15,11 @@ use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
 use crate::scripts::script_api::member_kind::MemberKind;
-use crate::scripts::script_api::member_spec::{MemberSpec, NameArgs};
+use crate::scripts::script_api::member_spec::{ArgKinds, MemberSpec, NameArgs};
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
 use crate::units::tag_property::TagProperty;
 use crate::values::engine_enum::EngineEnum;
-use crate::values::name_list::NameList;
 
 pub(crate) mod api_member;
 pub(crate) mod api_owner;
@@ -45,8 +47,8 @@ pub struct ScriptApi {
     /// The engine enums, in the order they bind.
     pub(super) enums: Vec<EnumRecord>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
-    /// `Num`'s, getters as `get$<field>`; sorted.
-    builtins: NameList,
+    /// `Num`'s, getters as `get$<field>`.
+    builtins: BTreeSet<String>,
 }
 
 impl ScriptApi {
@@ -62,13 +64,11 @@ impl ScriptApi {
         api
     }
 
-    /// The names of every function `engine` has, sorted, without repeats.
-    fn functions(engine: &Engine) -> NameList {
-        let mut names =
+    /// The names of every function `engine` has.
+    fn functions(engine: &Engine) -> BTreeSet<String> {
+        let names =
             engine.collect_fn_metadata(None, |info| Some(info.metadata.name.to_string()), true);
-        names.sort_unstable();
-        names.dedup();
-        names.iter().map(String::as_str).collect()
+        names.into_iter().collect()
     }
 
     /// Binds into `host` the script API that `bind` binds, and records it.
@@ -79,7 +79,7 @@ impl ScriptApi {
             tag_properties: Vec::new(),
             data: Vec::new(),
             enums: Vec::new(),
-            builtins: NameList::default(),
+            builtins: BTreeSet::new(),
         };
         bind(&mut ApiBuilder::new(host, &mut api));
         api
@@ -87,6 +87,11 @@ impl ScriptApi {
 
     pub fn hooks(&self) -> &[HookStatus] {
         &self.hooks
+    }
+
+    /// Whether the release calls `hook`, and its owner; none for a hook it does not record.
+    pub fn hook(&self, hook: Hook) -> Option<&HookStatus> {
+        self.hooks.iter().find(|held| held.hook == hook)
     }
 
     pub fn tag_properties(&self) -> &[TagPropertyStatus] {
@@ -107,9 +112,7 @@ impl ScriptApi {
     /// Whether the engine has a function `name` of its own, before the API: `get$<field>` for a
     /// field.
     pub fn builtin(&self, name: &str) -> bool {
-        self.builtins
-            .sorted_named(0..self.builtins.len(), name)
-            .is_some()
+        self.builtins.contains(name)
     }
 
     /// The script API's reference, in Markdown: every name, hook, state and data field, with
@@ -231,18 +234,9 @@ impl ScriptApi {
     }
 
     /// Records a binding of `spec`, written when `writable`, with `status`; another binding of a
-    /// name already recorded adds its writing, and gives the same spec and status.
+    /// name already recorded adds its writing and what its form's arguments name, and gives the
+    /// same spec and status otherwise.
     pub(crate) fn record(&mut self, spec: MemberSpec, writable: bool, status: Status) {
-        let first = spec.forms.first().map_or(0, |form| form.len());
-        for at in 0..MemberSpec::ARGS {
-            let names = spec.names[at].is_some() || spec.enums[at].is_some();
-            assert!(
-                !names || at < first,
-                "{:?}.{}: argument {at}, which names something, is in its first form",
-                spec.owner,
-                spec.name
-            );
-        }
         let key = (spec.owner, spec.name);
         match self
             .members
@@ -250,12 +244,17 @@ impl ScriptApi {
         {
             Ok(at) => {
                 let held = &mut self.members[at];
+                let args = ArgKinds {
+                    names: merged(&held.spec.names, &spec.names, &spec),
+                    enums: merged(&held.spec.enums, &spec.enums, &spec),
+                };
                 assert!(
-                    held.spec == spec && held.status == status,
+                    held.spec.with_args(args) == spec.with_args(args) && held.status == status,
                     "the bindings of {:?}.{} agree",
                     spec.owner,
                     spec.name
                 );
+                held.spec = held.spec.with_args(args);
                 held.writable |= writable;
             }
             Err(at) => self.members.insert(
@@ -268,6 +267,26 @@ impl ScriptApi {
             ),
         }
     }
+}
+
+/// What the forms of `spec` say each argument is, by place: the `held` forms' and this one's,
+/// which agree where both say.
+fn merged<T: Copy + PartialEq>(
+    held: &[Option<T>; MemberSpec::ARGS],
+    form: &[Option<T>; MemberSpec::ARGS],
+    spec: &MemberSpec,
+) -> [Option<T>; MemberSpec::ARGS] {
+    let mut merged = *held;
+    for (merged, &said) in merged.iter_mut().zip(form) {
+        assert!(
+            merged.is_none() || said.is_none() || *merged == said,
+            "the forms of {:?}.{} say alike what an argument is",
+            spec.owner,
+            spec.name
+        );
+        *merged = merged.or(said);
+    }
+    merged
 }
 
 #[cfg(test)]

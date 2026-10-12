@@ -143,7 +143,7 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("hero", "z"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::UnknownTeam)]
+        [FailureKind::Api(ApiError::Unknown(NameKind::Team))]
     );
     assert!(game.match_end().is_none());
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(2));

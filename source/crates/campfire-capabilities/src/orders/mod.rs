@@ -223,8 +223,7 @@ pub(crate) mod test_world {
     use crate::units::owner::Owner;
     use crate::units::team::Team;
     use crate::units::unit_type::UnitType;
-    use crate::units::unit_type_data::UnitTypeData;
-    use crate::values::declared_name::DeclaredName;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::values::package_path::PackagePath;
     use crate::values::scalar::Scalar;
 
@@ -237,7 +236,7 @@ pub(crate) mod test_world {
             params: &[(&str, Scalar)],
             ai: Option<&str>,
         ) -> UnitType {
-            let data = UnitTypeData::of(tags, params);
+            let data = UnitTypeCore::of(tags, params);
             let unit_type = Units::load_next_type(world, &data);
             if let Some(source) = ai {
                 let ai = AiData {
@@ -273,7 +272,7 @@ pub(crate) mod test_world {
         /// Player 0's gold.
         pub(crate) fn gold(world: &World) -> i64 {
             let resources = world.player_resources(PlayerSlot::new(0));
-            let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+            let gold = ResourceId::nth(0);
             resources.unwrap().amount(gold)
         }
 

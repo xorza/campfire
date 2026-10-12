@@ -28,6 +28,8 @@ impl SimResource for LevelUps {
     // A track the mode lacks has no name for `on_level_up` to read.
     fn check(&self, world: &World) -> bool {
         let book = world.resource::<TrackBook>();
-        self.0.iter().all(|level_up| book.has(level_up.track))
+        self.0
+            .iter()
+            .all(|level_up| book.names().has(level_up.track))
     }
 }

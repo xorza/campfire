@@ -16,7 +16,7 @@ use bevy::image::{
 };
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::world_serialization::WorldInstanceReady;
-use campfire_capabilities::TypeOrigins;
+use campfire_capabilities::TypeOriginBook;
 use campfire_package::{MaterialFile, ModePackages};
 
 use crate::view::client_data::ClientData;
@@ -53,7 +53,7 @@ impl Plugin for UnitModels {
 impl UnitModels {
     /// Loads every unit type's models, once the match's types are known.
     fn load_looks(
-        origins: Res<'_, TypeOrigins>,
+        origins: Res<'_, TypeOriginBook>,
         data: Res<'_, ClientData>,
         assets: Res<'_, AssetServer>,
         mut commands: Commands<'_, '_>,

@@ -1,3 +1,5 @@
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use bevy_ecs::resource::Resource;
 use serde::Deserialize;
 
@@ -5,6 +7,10 @@ use serde::Deserialize;
 /// not state.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SupplyRules {
+pub struct ModeSupplyData {
     pub max: u32,
+}
+
+impl DataSection for ModeSupplyData {
+    const TABLE: DataTable = DataTable::ModeSupply;
 }

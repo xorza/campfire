@@ -7,7 +7,7 @@ use campfire_sim::internals::SimWorldInternals;
 use super::*;
 use crate::actions::Actions;
 use crate::actions::launch_id::LaunchId;
-use crate::areas::area_data::{AreaData, AreaInside};
+use crate::areas::area_data::{AreaData, AreaInsideData};
 use crate::projectiles::Projectiles;
 use crate::release::Release;
 use crate::release::r#match::Match;
@@ -18,7 +18,7 @@ use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::{Number, ParamRef};
@@ -63,7 +63,7 @@ fn an_area_reads_only_with_a_radius_that_is_not_negative() {
             delay_ms: 0,
             duration_ms: 0,
             affects: None,
-            inside: AreaInside::default(),
+            inside: AreaInsideData::default(),
         }
     );
     for refused in ["radius = -1", "radius = \"-0.5\""] {
@@ -80,14 +80,14 @@ fn an_area_is_state_and_restores() {
     // A match of combat and areas with an area type and a train for its action, the same in both,
     // and a warding area type, which holds Rally on allies, reading its action's `ward`.
     let loads = |game: &mut Match| {
-        let data = UnitTypeData::default();
+        let data = UnitTypeCore::default();
         let field = Units::load_type(game, TypeScope::Mode, "field", &data);
         let area = AreaData {
             radius: Num::int(2),
             delay_ms: 0,
             duration_ms: 0,
             affects: None,
-            inside: AreaInside::default(),
+            inside: AreaInsideData::default(),
         };
         Areas::load_type(game, field, 0, &area);
         let action = Actions::add_train(game, field, Ticks::ZERO, None);
@@ -98,9 +98,9 @@ fn an_area_is_state_and_restores() {
         };
         Stats::load_modifier(game, 0, "rally", &rally, None);
         let warding = Units::load_type(game, TypeScope::Mode, "warding", &data);
-        let inside = AreaInside {
+        let inside = AreaInsideData {
             allies: Some(DeclaredName::new("rally").unwrap()),
-            ..AreaInside::default()
+            ..AreaInsideData::default()
         };
         let area = AreaData { inside, ..area };
         Areas::load_type(game, warding, 0, &area);

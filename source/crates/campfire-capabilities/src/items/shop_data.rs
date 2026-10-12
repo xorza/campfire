@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 use crate::values::share::Share;
 
@@ -13,4 +15,8 @@ pub struct ShopData {
     pub resource: DeclaredName,
     pub at: DeclaredName,
     pub sell_share: Share,
+}
+
+impl DataSection for ShopData {
+    const TABLE: DataTable = DataTable::Shop;
 }

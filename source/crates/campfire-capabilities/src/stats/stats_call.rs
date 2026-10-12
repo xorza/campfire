@@ -66,7 +66,7 @@ impl CallPart for StatsCall {
     }
 
     /// An ability's or a modifier's call reads its modifier's params, then its ability's.
-    fn param_named(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
         if !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
             return None;
         }

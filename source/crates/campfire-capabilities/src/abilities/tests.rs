@@ -22,7 +22,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{
-    DamageFields, EffectData, EffectTo, Effecting, LaunchFields, ModifierFields, MoveData,
+    DamageFields, DoesData, EffectData, EffectTo, LaunchFields, ModifierFields, MoveData,
     PurgeFields, RestoreFields, XpFields,
 };
 use crate::actions::error::ActionField;
@@ -36,7 +36,7 @@ use crate::actions::slot_times::SlotTimes;
 use crate::actions::targeting::Targeting;
 use crate::areas::Areas;
 use crate::areas::area::Area;
-use crate::areas::area_data::{AreaData, AreaInside};
+use crate::areas::area_data::{AreaData, AreaInsideData};
 use crate::combat::Combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
@@ -66,6 +66,7 @@ use crate::release::r#match::Match;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::internals::FailedCall;
@@ -104,7 +105,7 @@ use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_state::{SyncNone, UnitState};
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
@@ -359,7 +360,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     let failed = FailedCall {
         id: Some(husk),
         hook: Hook::OnResolve,
-        kind: FailureKind::Api(ApiError::UnknownDamageKind),
+        kind: FailureKind::Api(ApiError::Unknown(NameKind::DamageKind)),
     };
     assert_eq!(Abilities::failed_calls(&game), [failed]);
 }
@@ -527,7 +528,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         to: EffectTo::Reached,
         speed: int(30),
     };
-    let damage = Effecting::Damage(DamageFields {
+    let damage = DoesData::Damage(DamageFields {
         amount: int(1),
         kind: DeclaredName::new("true").unwrap(),
     });
@@ -537,8 +538,8 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
             Num::int(10),
         )))),
         on_resolve: vec![
-            effect(Effecting::Move(knock_back), EffectTo::Reached),
-            effect(Effecting::Move(dash), EffectTo::Source),
+            effect(DoesData::Move(knock_back), EffectTo::Reached),
+            effect(DoesData::Move(dash), EffectTo::Source),
         ],
         on_end: vec![effect(damage, EffectTo::Source)],
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
@@ -632,7 +633,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         &mut game,
         TypeScope::Mode,
         "spinner",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let ai = AiData {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
@@ -760,7 +761,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 #[test]
 fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let mut game = abilities_match();
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     let mut cost = cost("mana", int(10));
     cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
     let data = ActionData { cost, ..strike() };
@@ -886,8 +887,14 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
     let thrown = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } throw "out" }"#;
     let cases = [
         (spin, FailureKind::CallLimit),
-        (wrong_kind, FailureKind::Api(ApiError::UnknownDamageKind)),
-        (undeclared, FailureKind::Api(ApiError::UnknownParam)),
+        (
+            wrong_kind,
+            FailureKind::Api(ApiError::Unknown(NameKind::DamageKind)),
+        ),
+        (
+            undeclared,
+            FailureKind::Api(ApiError::Unknown(NameKind::Param)),
+        ),
         (overflow, FailureKind::Raised(Some(NumError::Overflow))),
         (thrown, FailureKind::Raised(None)),
     ];
@@ -1843,7 +1850,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
 fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let mut game = abilities_match();
     let mut load_type = |name: &str| {
-        let data = UnitTypeData::tagged(&[name]);
+        let data = UnitTypeCore::tagged(&[name]);
         Units::load_type(&mut game, TypeScope::Mode, name, &data)
     };
     let (hero, creep) = (load_type("avatar"), load_type("creep"));
@@ -2013,7 +2020,7 @@ fn on_resolve(ctx, caster, target) {
     Abilities::cast(&mut game, caster, ActionTarget::None);
     assert_eq!(Abilities::failed_calls(&game), []);
     let book = game.resource::<ModifierBook>();
-    let ids = [0, 1].map(|package| book.named(package, "mark").unwrap());
+    let ids = [0, 1].map(|package| book.names().named((package, "mark")).unwrap());
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
     let carried = ids.map(|id| modifiers.get(id, Some(caster)).is_some());
@@ -2041,7 +2048,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         &mut game,
         TypeScope::Mode,
         "target",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let stunned = TagData {
         blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
@@ -2109,7 +2116,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         &mut game,
         TypeScope::Mode,
         "target",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let stunned = TagData {
         blocks: vec![Block::Move],
@@ -2117,7 +2124,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
     Units::seal_types_with(&mut game, &effects);
-    let purge = Effecting::Purge(PurgeFields {
+    let purge = DoesData::Purge(PurgeFields {
         tag: DeclaredName::new("stunned").unwrap(),
     });
     let data = ActionData {
@@ -2226,7 +2233,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
 }
 
 /// `effecting` to `to`.
-const fn effect(effecting: Effecting, to: EffectTo) -> EffectData {
+const fn effect(effecting: DoesData, to: EffectTo) -> EffectData {
     EffectData {
         does: effecting,
         to,
@@ -2234,16 +2241,16 @@ const fn effect(effecting: Effecting, to: EffectTo) -> EffectData {
 }
 
 /// 10 experience on `valor`.
-fn valor_xp() -> Effecting {
-    Effecting::Xp(XpFields {
+fn valor_xp() -> DoesData {
+    DoesData::Xp(XpFields {
         track: DeclaredName::new("valor").unwrap(),
         amount: int(10),
     })
 }
 
 /// The `damage` param as true damage.
-fn true_damage() -> Effecting {
-    Effecting::Damage(DamageFields {
+fn true_damage() -> DoesData {
+    DoesData::Damage(DamageFields {
         amount: param("damage"),
         kind: DeclaredName::new("true").unwrap(),
     })
@@ -2307,7 +2314,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     // caster 10 experience on `valor`. The caster despawns as the bolt flies: the hit fails, and
     // the enemy 4 m out takes no damage.
     let (mut game, valor) = with_valor(&[Capability::Projectiles]);
-    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeData::default());
+    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
     let flight = ProjectileData {
         width: halves(1),
         range: Some(Num::int(6)),
@@ -2549,7 +2556,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
-    game.insert_resource(SlotKinds(vec![SlotKindData {
+    game.insert_resource(SlotKinds::from(vec![SlotKindData {
         name: DeclaredName::new("basic").unwrap(),
         ranks: Some(ranks),
     }]));
@@ -2649,7 +2656,7 @@ fn weapon_match() -> (Match, UnitType) {
         &mut game,
         TypeScope::Mode,
         "fighter",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let flat = |value| StatValue {
         base: Num::int(value),
@@ -2662,20 +2669,20 @@ fn weapon_match() -> (Match, UnitType) {
         .into();
     let book = StatBook::new(&rules, [(fighter, &growth)], Num::int(6));
     Stats::load_book(&mut game, book);
-    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeData::default());
+    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
     let flight = ProjectileData {
         homing: true,
         ..ProjectileData::flying(Num::int(30))
     };
     Projectiles::load_type(&mut game, bolt, &flight);
     for name in ["blast", "ring"] {
-        let area = Units::load_type(&mut game, TypeScope::Mode, name, &UnitTypeData::default());
+        let area = Units::load_type(&mut game, TypeScope::Mode, name, &UnitTypeCore::default());
         let data = AreaData {
             radius: Num::int(2),
             delay_ms: 0,
             duration_ms: 0,
             affects: None,
-            inside: AreaInside::default(),
+            inside: AreaInsideData::default(),
         };
         Areas::load_type(&mut game, area, 0, &data);
     }
@@ -2725,14 +2732,14 @@ fn sapper(ranged: bool) -> ActionData {
         ]),
         on_hit: vec![
             effect(
-                Effecting::Modifier(ModifierFields {
+                DoesData::Modifier(ModifierFields {
                     id: DeclaredName::new("mark").unwrap(),
                     duration_ms: None,
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Damage(DamageFields {
+                DoesData::Damage(DamageFields {
                     amount: param("bite"),
                     kind: DeclaredName::new("true").unwrap(),
                 }),
@@ -2822,16 +2829,16 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
 }
 
 /// `damage` true damage of `amount`.
-fn true_of(amount: Number) -> Effecting {
-    Effecting::Damage(DamageFields {
+fn true_of(amount: Number) -> DoesData {
+    DoesData::Damage(DamageFields {
         amount,
         kind: DeclaredName::new("true").unwrap(),
     })
 }
 
 /// A launch of `area` with its lists `on_hit` and `on_end`.
-fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> Effecting {
-    Effecting::Launch(LaunchFields {
+fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> DoesData {
+    DoesData::Launch(LaunchFields {
         area: DeclaredName::new(area).unwrap(),
         on_hit,
         on_end,
@@ -3067,7 +3074,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         &mut game,
         TypeScope::Mode,
         "caster",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
@@ -3155,7 +3162,7 @@ impl Veil {
     /// Loads Veil's type, stats and modifiers into `game`, a match of `CAPABILITIES`, and spawns
     /// her.
     fn place(game: &mut Match) -> Veil {
-        let veil_type = Units::load_type(game, TypeScope::Mode, "game", &UnitTypeData::default());
+        let veil_type = Units::load_type(game, TypeScope::Mode, "game", &UnitTypeCore::default());
         let attack_damage = Stat::named("attack_damage").unwrap();
         let growth = StatValue {
             base: Num::from_int(53).unwrap(),
@@ -3307,7 +3314,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
             Capability::Projectiles,
         ],
     );
-    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeData::default());
+    let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
     let data = ProjectileData {
         stop_on_hit: true,
         ..ProjectileData::flying(Num::int(15))
@@ -3390,7 +3397,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
                 ],
             );
             let bolt =
-                Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeData::default());
+                Units::load_type(&mut game, TypeScope::Mode, "bolt", &UnitTypeCore::default());
             let data = ProjectileData {
                 homing,
                 stop_on_hit: true,
@@ -3454,11 +3461,11 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                 decl: StateDecl::new(StateType::Int, Some(StateDefault::Int(default))).unwrap(),
                 sync: SyncTo::None,
             };
-            let data = UnitTypeData {
+            let data = UnitTypeCore {
                 state: [("charge", field(0)), ("mark", field(7))]
                     .map(|(name, field)| (DeclaredName::new(name).unwrap(), field))
                     .into(),
-                ..UnitTypeData::default()
+                ..UnitTypeCore::default()
             };
             let bolt = Units::load_type(&mut game, TypeScope::Mode, "bolt", &data);
             let (delivery, call) = if area {
@@ -3467,7 +3474,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                     delay_ms: 100,
                     duration_ms: 0,
                     affects: None,
-                    inside: AreaInside::default(),
+                    inside: AreaInsideData::default(),
                 };
                 Areas::load_type(&mut game, bolt, 0, &data);
                 let unit_type = DeclaredName::new("bolt").unwrap();
@@ -3543,21 +3550,21 @@ fn fan_of_frost() -> ActionData {
         }),
         on_hit: vec![
             effect(
-                Effecting::Damage(DamageFields {
+                DoesData::Damage(DamageFields {
                     amount: param("damage"),
                     kind: DeclaredName::new("physical").unwrap(),
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Modifier(ModifierFields {
+                DoesData::Modifier(ModifierFields {
                     id: DeclaredName::new("chilled").unwrap(),
                     duration_ms: None,
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                Effecting::Restore(RestoreFields {
+                DoesData::Restore(RestoreFields {
                     pool: DeclaredName::new("mana").unwrap(),
                     amount: int(2),
                 }),
@@ -3601,7 +3608,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         &mut game,
         TypeScope::Mode,
         "frost_arrow",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     let data = ProjectileData {
         width: halves(1),
@@ -3683,14 +3690,14 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             &mut game,
             TypeScope::Mode,
             "blast",
-            &UnitTypeData::default(),
+            &UnitTypeCore::default(),
         );
         let data = AreaData {
             radius: Num::int(2),
             delay_ms,
             duration_ms: 0,
             affects: None,
-            inside: AreaInside::default(),
+            inside: AreaInsideData::default(),
         };
         Areas::load_type(&mut game, blast, 0, &data);
         let shot = ActionData {
@@ -3789,13 +3796,13 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         Capability::Areas,
     ];
     let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
-    let grunt = UnitTypeData::tagged(&["grunt"]);
+    let grunt = UnitTypeCore::tagged(&["grunt"]);
     let grunt = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt);
     let field = Units::load_type(
         &mut game,
         TypeScope::Mode,
         "field",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     Abilities::load_stats(&mut game);
     let [cover, rally, slow] = ["cover", "rally", "slow"].map(|name| {
@@ -3809,7 +3816,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         delay_ms: 0,
         duration_ms: 100,
         affects: Some(FilterData::parse("enemies:grunt").unwrap()),
-        inside: AreaInside {
+        inside: AreaInsideData {
             caster: Some(DeclaredName::new("cover").unwrap()),
             allies: Some(DeclaredName::new("rally").unwrap()),
             enemies: Some(DeclaredName::new("slow").unwrap()),

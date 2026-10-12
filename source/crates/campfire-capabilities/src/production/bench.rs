@@ -31,10 +31,9 @@ use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_core::UnitCore;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view::View;
-use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 use crate::values::relation_set::RelationSet;
 
@@ -68,15 +67,15 @@ fn two_fields() -> Match {
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
     let mut world = Match::new(MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set));
 
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypes::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"]
-        .map(|name| types.load(TypeScope::Mode, 0, name, &UnitTypeData::default()));
+        .map(|name| types.load(TypeScope::Mode, 0, name, &UnitTypeCore::default()));
     world.insert_resource(types.tag_book(&BTreeMap::new()));
     world.insert_resource(types.state_book());
-    world.non_send::<View>().set_types(types);
+    world.non_send::<View>().names_mut().set_types(types);
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
     book.drop_offs.set(drop_off_type, ResourceSet::of([gold]));

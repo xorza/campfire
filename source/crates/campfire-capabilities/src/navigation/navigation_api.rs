@@ -2,6 +2,7 @@ use campfire_math::Num;
 use campfire_script::rhai::INT;
 use campfire_sim::Position;
 
+use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::navigation::navigation_column::NavigationColumn;
 use crate::navigation::navigation_effect::NavigationEffect;
 use crate::scripts::api_builder::ApiBuilder;
@@ -48,48 +49,48 @@ impl NavigationApi {
         );
         let point = DashTo::Point;
         let unit = |to: Unit| DashTo::Unit(to.id);
-        api.bind(
+        api.call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Position, speed: Num| {
                 NavigationApi::dash(ctx, &of, point(to), speed)
             },
         )
-        .bind(
+        .call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Position, speed: INT| {
                 NavigationApi::dash(ctx, &of, point(to), ApiError::num(speed)?)
             },
         )
-        .bind(
+        .call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Unit, speed: Num| {
                 NavigationApi::dash(ctx, &of, unit(to), speed)
             },
         )
-        .bind(
+        .call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Unit, speed: INT| {
                 NavigationApi::dash(ctx, &of, unit(to), ApiError::num(speed)?)
             },
         )
-        .bind(
+        .call(
             knock_back,
             |ctx: &mut Ctx, of: Unit, from: Position, distance: Num, ms: INT| {
                 NavigationApi::knock_back(ctx, &of, from, distance, ms)
             },
         )
-        .bind(
+        .call(
             knock_back,
             |ctx: &mut Ctx, of: Unit, from: Position, distance: INT, ms: INT| {
                 NavigationApi::knock_back(ctx, &of, from, ApiError::num(distance)?, ms)
             },
         )
-        .bind(teleport, |ctx: &mut Ctx, of: Unit, to: Position| {
+        .call(teleport, |ctx: &mut Ctx, of: Unit, to: Position| {
             let teleport = NavigationEffect::teleport(ctx.view(), of.id, to);
             ctx.queue(teleport.map_err(ApiError::fail)?)
         })
-        .data(DataTable::Mode, &["navigation"], &[])
-        .data(DataTable::ModeNavigation, &["layers"], &[]);
+        .shared_data(DataTable::Mode, &["navigation"], &[])
+        .data::<ModeNavigationData>(&["layers"], &[]);
     }
 
     fn dash(ctx: &Ctx, unit: &Unit, to: DashTo, speed: Num) -> Checked<()> {

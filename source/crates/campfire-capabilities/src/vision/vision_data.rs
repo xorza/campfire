@@ -1,6 +1,8 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::scalar::Scalar;
 use crate::vision::sight::Sight;
 
@@ -26,4 +28,8 @@ impl<'de> Deserialize<'de> for VisionData {
             .ok_or_else(|| D::Error::custom("a sight range is a number that is not negative"))?;
         Ok(VisionData { sight })
     }
+}
+
+impl DataSection for VisionData {
+    const TABLE: DataTable = DataTable::Vision;
 }

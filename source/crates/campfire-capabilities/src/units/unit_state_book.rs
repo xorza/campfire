@@ -47,7 +47,7 @@ impl UnitStateBook {
     }
 
     /// The field `name` of `unit_type`, when it declares one.
-    pub(crate) fn field_named(&self, unit_type: UnitType, name: &str) -> Option<StateField> {
+    pub(crate) fn field(&self, unit_type: UnitType, name: &str) -> Option<StateField> {
         let run = unit_type.index();
         let at = self.0.named(run, name)?;
         let fields = self.0.values(run);
@@ -124,14 +124,14 @@ mod tests {
         let mut table = NameTable::default();
         let unit_type = UnitType::new(u16::try_from(table.push(fields)).unwrap());
         let book = UnitStateBook::new(table);
-        let place = |name| book.field_named(unit_type, name).map(|field| field.place);
+        let place = |name| book.field(unit_type, name).map(|field| field.place);
         let at = |sync, at| Some(StatePlace { sync, at });
         assert_eq!(place("a"), at(SyncTo::Owner, 0));
         assert_eq!(place("b"), at(SyncTo::None, 0));
         assert_eq!(place("c"), at(SyncTo::Owner, 1));
         assert_eq!(place("d"), at(SyncTo::Team, 0));
         assert_eq!(place("e"), None);
-        let c = book.field_named(unit_type, "c").unwrap();
+        let c = book.field(unit_type, "c").unwrap();
         assert_eq!((c.at, c.kind), (2, StateType::Int));
 
         // It spawns with each class at its fields' first values, and none of all.

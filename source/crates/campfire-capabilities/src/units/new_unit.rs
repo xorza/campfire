@@ -3,6 +3,7 @@ use campfire_sim::StableId;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_arg::plain_script_arg;
 use crate::units::unit_state_access::UnitStateAccess;
 use crate::units::unit_type::UnitType;
 
@@ -28,3 +29,5 @@ impl NewUnit {
         );
     }
 }
+
+plain_script_arg!(NewUnit);

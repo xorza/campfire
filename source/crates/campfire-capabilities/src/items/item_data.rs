@@ -3,6 +3,8 @@ use std::num::NonZeroU32;
 
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 
 /// An item type, `[items.<id>]` of the mode package: what it costs in the mode's player
@@ -30,4 +32,8 @@ impl ItemData {
     const fn one() -> NonZeroU32 {
         NonZeroU32::MIN
     }
+}
+
+impl DataSection for ItemData {
+    const TABLE: DataTable = DataTable::Item;
 }

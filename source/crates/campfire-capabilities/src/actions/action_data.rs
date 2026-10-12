@@ -19,7 +19,9 @@ use crate::actions::rank_fields::{RankChannel, RankCharges, RankFields, RankTogg
 use crate::actions::requires_data::RequiresData;
 use crate::actions::targeting::Targeting;
 use crate::players::resource_amount::ResourceAmount;
+use crate::scripts::data_section::DataSection;
 use crate::scripts::hook::Hook;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -443,6 +445,10 @@ impl ActionData {
         }
         .into_iter()
     }
+}
+
+impl DataSection for ActionData {
+    const TABLE: DataTable = DataTable::Action;
 }
 
 #[cfg(test)]

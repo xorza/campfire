@@ -36,7 +36,7 @@ impl CallPart for ScriptsCall {
         Ok(())
     }
 
-    fn param_named(&self, _: Option<ScriptRole>, _: &str) -> Option<Dynamic> {
+    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<Dynamic> {
         None
     }
 

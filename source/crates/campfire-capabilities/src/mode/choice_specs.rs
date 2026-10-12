@@ -4,16 +4,20 @@ use std::ops::Range;
 use campfire_common::PlayerSlot;
 
 use crate::mode::choice_data::{ChoiceData, Offers};
+use crate::mode::choice_id::ChoiceId;
 use crate::mode::choices::Choices;
 use crate::mode::offer::Offer;
 use crate::mode::roster::Roster;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::{NameId, Names};
 
 /// The mode's choices, by name, and where each player's values of each sit in `Choices`.
 /// Package data, not state.
 #[derive(Debug, Default)]
-pub(crate) struct ChoiceBook {
-    choices: Vec<Choice>,
+pub(crate) struct ChoiceSpecs {
+    /// The choices' names, by id.
+    names: Names<ChoiceId>,
+    choices: Vec<ChoiceSpec>,
     /// The values of all choices of one player.
     width: usize,
 }
@@ -21,39 +25,43 @@ pub(crate) struct ChoiceBook {
 /// A choice: what it offers, whether its values are each one player's, and its run of values in
 /// a player's row.
 #[derive(Debug, Clone)]
-pub(crate) struct Choice {
-    name: DeclaredName,
+pub(crate) struct ChoiceSpec {
     pub(crate) offers: Offers,
     pub(crate) unique: bool,
     run: Range<usize>,
 }
 
-impl ChoiceBook {
-    pub(crate) fn new(choices: &BTreeMap<DeclaredName, ChoiceData>) -> ChoiceBook {
+impl ChoiceSpecs {
+    pub(crate) fn new(choices: &BTreeMap<DeclaredName, ChoiceData>) -> ChoiceSpecs {
         let mut width = 0;
+        let names = choices.keys().map(DeclaredName::as_str).collect();
         let choices = choices
-            .iter()
-            .map(|(name, data)| {
+            .values()
+            .map(|data| {
                 let start = width;
                 width += usize::from(data.count.get());
-                Choice {
-                    name: name.clone(),
+                ChoiceSpec {
                     offers: data.offers,
                     unique: data.unique,
                     run: start..width,
                 }
             })
             .collect();
-        ChoiceBook { choices, width }
+        ChoiceSpecs {
+            names,
+            choices,
+            width,
+        }
     }
 
-    /// The choice `name`.
-    pub(crate) fn named(&self, name: &str) -> Option<&Choice> {
-        let at = self
-            .choices
-            .binary_search_by(|choice| choice.name.as_str().cmp(name))
-            .ok()?;
-        Some(&self.choices[at])
+    /// The choices' names, by id.
+    pub(crate) const fn names(&self) -> &Names<ChoiceId> {
+        &self.names
+    }
+
+    /// The choice `id`.
+    pub(crate) fn get(&self, id: ChoiceId) -> &ChoiceSpec {
+        &self.choices[id.index()]
     }
 
     /// The choices of `players` players, none chosen.
@@ -83,7 +91,7 @@ impl ChoiceBook {
         &self,
         choices: &'a Choices,
         slot: PlayerSlot,
-        choice: &Choice,
+        choice: &ChoiceSpec,
     ) -> Option<impl Iterator<Item = Offer> + 'a> {
         let values = &choices.0[self.run(slot.index(), choice)];
         let chose = values.iter().all(Option::is_some);
@@ -95,7 +103,7 @@ impl ChoiceBook {
         &self,
         choices: &mut Choices,
         slot: PlayerSlot,
-        choice: &Choice,
+        choice: &ChoiceSpec,
         values: &[Offer],
     ) {
         let run = self.run(slot.index(), choice);
@@ -110,7 +118,7 @@ impl ChoiceBook {
         &self,
         choices: &Choices,
         slot: PlayerSlot,
-        choice: &Choice,
+        choice: &ChoiceSpec,
         offer: Offer,
     ) -> bool {
         let rows = choices.0.len().checked_div(self.width).unwrap_or(0);
@@ -120,13 +128,13 @@ impl ChoiceBook {
     }
 
     /// Where the values of the player in row `row`, its slot's index, for `choice` sit.
-    const fn run(&self, row: usize, choice: &Choice) -> Range<usize> {
+    const fn run(&self, row: usize, choice: &ChoiceSpec) -> Range<usize> {
         let start = row * self.width;
         start + choice.run.start..start + choice.run.end
     }
 }
 
-impl Choice {
+impl ChoiceSpec {
     /// How many values a player chooses.
     pub(crate) const fn count(&self) -> usize {
         self.run.end - self.run.start

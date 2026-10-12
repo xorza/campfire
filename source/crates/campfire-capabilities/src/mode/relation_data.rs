@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 use crate::values::relation::Relation;
 
@@ -19,4 +21,8 @@ impl RelationData {
     const fn vision_on() -> bool {
         true
     }
+}
+
+impl DataSection for RelationData {
+    const TABLE: DataTable = DataTable::Relation;
 }

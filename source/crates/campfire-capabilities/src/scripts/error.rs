@@ -3,6 +3,7 @@ use campfire_script::rhai::{EvalAltResult, INT};
 use campfire_script::{Raised, ScriptError};
 use thiserror::Error;
 
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::values::engine_enum::EngineEnum;
 
@@ -23,15 +24,11 @@ pub enum CallError {
 /// Why the script API refused a call: a script gave it a value it does not take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum ApiError {
-    /// A param the ability or the unit type does not declare.
-    #[error("param is not declared")]
-    UnknownParam,
-    /// A filter that is not a relation, such as `enemies`, with its tags, if any, after a `:`.
-    #[error("filter is not a relation with its tags")]
-    UnknownFilter,
-    /// A filter's tag that no unit type of the match declares.
-    #[error("tag is not declared by any unit type")]
-    UnknownTag,
+    /// A name of the kind that the match does not declare where the call reads it: a modifier or
+    /// an ability of the calling package, a unit type of the mode's scope, a param of the call or
+    /// the unit's type, a filter that is not a relation with its tags.
+    #[error("{0} is not one the match declares")]
+    Unknown(NameKind),
     #[error("radius is negative")]
     NegativeRadius,
     #[error("time is negative")]
@@ -39,14 +36,8 @@ pub enum ApiError {
     /// A time too long to count in ticks.
     #[error("time is too long to count in ticks")]
     TimeTooLarge,
-    /// A damage kind the mode does not declare.
-    #[error("damage kind is not one the mode declares")]
-    UnknownDamageKind,
     #[error("damage is negative")]
     NegativeDamage,
-    /// A track the mode does not declare.
-    #[error("no such track")]
-    UnknownTrack,
     /// Experience on a track the unit does not have.
     #[error("the unit does not have the track")]
     NoTrack,
@@ -68,9 +59,6 @@ pub enum ApiError {
     /// A stat or level field of a unit that has no stats.
     #[error("unit has no stats")]
     NoStats,
-    /// A stat the mode does not declare.
-    #[error("stat the mode does not declare")]
-    UnknownStat,
     /// A hook at the depth of combat events no chain reaches.
     #[error("a chain of combat events {} deep", ScriptLimits::CHAIN_DEPTH)]
     ChainTooDeep,
@@ -89,9 +77,6 @@ pub enum ApiError {
     /// A `calc_damage` that returns no number.
     #[error("calc_damage returns no number")]
     NotAnAmount,
-    /// A modifier the calling package does not declare.
-    #[error("modifier the package does not declare")]
-    UnknownModifier,
     /// A modifier whose param, as the call's action at its rank or no action gives it, does not
     /// hold for `problem`.
     #[error("a param of the modifier, as the call applies it")]
@@ -102,30 +87,18 @@ pub enum ApiError {
     /// A pool the unit does not have.
     #[error("unit has no such pool")]
     NoPool,
-    /// A pool the mode does not declare.
-    #[error("pool the mode does not declare")]
-    UnknownPool,
     /// An AI order for another unit than the one that thinks.
     #[error("an AI orders only the unit that thinks")]
     OtherUnit,
     /// An attack order on a unit that is not a living enemy.
     #[error("target is not a living enemy")]
     NotAnEnemy,
-    /// A team the mode does not have.
-    #[error("team is not one of the mode's")]
-    UnknownTeam,
     /// A text that names no member of the engine enum, as its `named` reads it.
     #[error("text names no member of {0}")]
     UnknownMember(EngineEnum),
     /// A relation of a team to itself, which is friendly.
     #[error("a team's relation to itself is friendly")]
     SelfRelation,
-    /// A unit type the mode does not have.
-    #[error("unit type is not one of the mode's")]
-    UnknownUnitType,
-    /// A path the map does not have.
-    #[error("path is not one of the map's")]
-    UnknownPath,
     /// A point outside the map's bounds.
     #[error("point is outside the map's bounds")]
     OutOfBounds,
@@ -146,9 +119,6 @@ pub enum ApiError {
     /// vision group is theirs.
     #[error("player is not on the unit's team")]
     PlayerOffTeam,
-    /// A choice the mode does not declare.
-    #[error("choice is not one the mode declares")]
-    UnknownChoice,
     /// A count of values other than the choice's.
     #[error("count of values is not the choice's")]
     ChoiceCount,
@@ -161,12 +131,6 @@ pub enum ApiError {
     /// A value of a unique choice another player chose.
     #[error("value is another player's choice")]
     ChoiceTaken,
-    /// A slot kind the mode does not declare.
-    #[error("slot kind is not one the mode declares")]
-    UnknownSlotKind,
-    /// An action that is no loadout entry the mode depends on.
-    #[error("action is not a loadout entry the mode depends on")]
-    UnknownAction,
     /// An action whose ranks are not those of the slot kind it goes in.
     #[error("action's ranks are not its slot kind's")]
     SlotKindRanks,
@@ -183,9 +147,6 @@ pub enum ApiError {
     /// units or a position.
     #[error("timer data is not a value state can hold")]
     TimerData,
-    /// A player resource the mode does not declare.
-    #[error("player resource is not one the mode declares")]
-    UnknownResource,
     /// A player's resource past what an integer holds.
     #[error("player resource overflows")]
     ResourceOverflow,
@@ -214,9 +175,6 @@ pub enum ApiError {
     /// A pick from an empty list.
     #[error("pick from an empty list")]
     EmptyPick,
-    /// An ability the calling package does not declare.
-    #[error("ability the package does not declare")]
-    UnknownAbility,
     /// An ability the unit does not hold.
     #[error("the unit does not hold the ability")]
     NotHeld,

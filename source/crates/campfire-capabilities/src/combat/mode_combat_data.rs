@@ -1,18 +1,18 @@
-use std::collections::BTreeMap;
-
 use serde::Deserialize;
 
-use crate::stats::pool_data::PoolData;
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::stats::pool_id::PoolId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::stat::Stat;
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
 /// and the stats its damage rules read.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CombatRules {
+pub struct ModeCombatData {
     /// The kinds of damage its scripts deal and its `calc_damage` weighs.
     #[serde(default)]
     pub damage_kinds: Vec<DeclaredName>,
@@ -20,7 +20,7 @@ pub struct CombatRules {
     pub assist_window_ms: Option<u64>,
     /// The pool that is life, which damage takes from and heals add to.
     pub life: Option<DeclaredName>,
-    pub leech: Option<Leech>,
+    pub leech: Option<LeechData>,
     /// The stat that scales the heals its unit receives, by one plus its value.
     pub heal_scale: Option<Stat>,
 }
@@ -29,31 +29,24 @@ pub struct CombatRules {
 /// `other` from any other damage's.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct Leech {
+pub struct LeechData {
     pub attack: Option<Stat>,
     pub other: Option<Stat>,
 }
 
-impl CombatRules {
+impl ModeCombatData {
     /// The most damage kinds it declares.
     pub const DAMAGE_KIND_LIMIT: usize = DamageKind::LIMIT;
 
     /// The id among `pools` of the life pool it names, which the load checked `pools` declares;
     /// `None` when it names none.
-    pub fn life_pool(&self, pools: &BTreeMap<DeclaredName, PoolData>) -> Option<PoolId> {
+    pub fn life_pool(&self, pools: &Names<PoolId>) -> Option<PoolId> {
         let life = self.life.as_ref()?;
-        Some(PoolId::named(pools, life.as_str()).expect("the load checked the life pool"))
-    }
-
-    /// The damage kind `name`, when the rules declare it.
-    pub(crate) fn damage_kind(&self, name: &str) -> Option<DamageKind> {
-        let at = self
-            .damage_kinds
-            .iter()
-            .position(|kind| kind.as_str() == name)?;
-        Some(DamageKind::new(
-            u8::try_from(at).expect("the load keeps damage kinds within u8"),
-        ))
+        Some(
+            pools
+                .named(life.as_str())
+                .expect("the load checked the life pool"),
+        )
     }
 
     /// Every stat its rules read.
@@ -67,4 +60,12 @@ impl CombatRules {
         .into_iter()
         .flatten()
     }
+}
+
+impl DataSection for ModeCombatData {
+    const TABLE: DataTable = DataTable::ModeCombat;
+}
+
+impl DataSection for LeechData {
+    const TABLE: DataTable = DataTable::Leech;
 }

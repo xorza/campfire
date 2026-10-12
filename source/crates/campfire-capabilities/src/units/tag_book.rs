@@ -116,7 +116,7 @@ mod tests {
     use crate::units::block::Block;
     use crate::units::tag_data::TagData;
     use crate::units::type_scope::TypeScope;
-    use crate::units::unit_type_data::UnitTypeData;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::units::unit_types::UnitTypes;
     use crate::values::declared_name::DeclaredName;
 
@@ -142,7 +142,7 @@ mod tests {
             [0, 1, 2, 3, 4, 5, 6]
         );
         assert_eq!(types.declare("tower").index(), 11);
-        let tower = UnitTypeData {
+        let tower = UnitTypeCore {
             tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),
             state: BTreeMap::new(),
@@ -196,7 +196,7 @@ mod tests {
             panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
         };
         assert!(fails(&mut |types| {
-            types.load(TypeScope::Mode, 0, "late", &UnitTypeData::default());
+            types.load(TypeScope::Mode, 0, "late", &UnitTypeCore::default());
         }));
         assert!(fails(&mut |types| types.give_tag(tower, stunned)));
         assert!(fails(&mut |types| drop(types.tag_book(&data))));

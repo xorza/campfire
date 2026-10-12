@@ -16,9 +16,8 @@ use crate::values::relation::Relation;
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
 pub(crate) struct Action {
-    /// Its package: 0 the mode, then each package the mode depends on, and its name there.
+    /// Its package: 0 the mode, then each package the mode depends on.
     pub(crate) package: u16,
-    pub(crate) name: Box<str>,
     pub(crate) kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
     pub(crate) passive: Option<Passive>,

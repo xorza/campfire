@@ -1,7 +1,7 @@
 //! The schemas of package files that only the package load reads: manifests, and the data files
 //! of avatars, loadout and unit types.
 
-pub(crate) mod avatar_data;
+pub(crate) mod avatar_file;
 pub(crate) mod backends;
 pub(crate) mod content_table;
 pub(crate) mod dependency;
@@ -12,5 +12,5 @@ pub(crate) mod mode_script;
 pub(crate) mod package_header;
 pub(crate) mod package_name;
 pub(crate) mod tick_range;
-pub(crate) mod units_data;
+pub(crate) mod units_file;
 pub(crate) mod version;

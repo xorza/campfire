@@ -80,7 +80,10 @@ impl SimComponent for PlayerResources {
 
     // A row of another width would place an amount under another resource.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world.non_send::<View>().fits_resources(self.0.len())
+        world
+            .non_send::<View>()
+            .names()
+            .fits_resources(self.0.len())
     }
 }
 

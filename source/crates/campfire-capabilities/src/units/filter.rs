@@ -1,6 +1,12 @@
-use crate::scripts::error::ApiError;
+use campfire_script::rhai::ImmutableString;
+
+use crate::scripts::arg_ctx::ArgCtx;
+use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_arg::ScriptArg;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
+use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
@@ -18,7 +24,7 @@ pub(crate) struct Filter {
 impl Filter {
     /// The filter `text` names, with its tags among the match's.
     pub(crate) fn parse(text: &str, types: &UnitTypes) -> Result<Filter, ApiError> {
-        let syntax = FilterSyntax::parse(text).ok_or(ApiError::UnknownFilter)?;
+        let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(NameKind::Filter))?;
         let terms = syntax.tags().map(|term| (term.name, term.negated));
         Filter::of(syntax.relations, terms, types)
     }
@@ -65,7 +71,10 @@ impl Filter {
             none: TagSet::default(),
         };
         for (name, negated) in terms {
-            let tag = types.tag_named(name).ok_or(ApiError::UnknownTag)?;
+            let tag = types
+                .tags()
+                .named(name)
+                .ok_or(ApiError::Unknown(NameKind::Tag))?;
             if negated {
                 filter.none = filter.none.with(tag);
             } else {
@@ -84,6 +93,24 @@ impl Filter {
     /// selects for regards it.
     pub(crate) const fn selects(self, relation: Relation, tags: TagSet) -> bool {
         self.relations.selects(relation) && tags.covers(self.all) && !tags.meets(self.none)
+    }
+}
+
+/// A filter a script gives, its tags among the match's.
+impl ScriptArg for Filter {
+    type Raw = ImmutableString;
+    type Int = ImmutableString;
+    const NAMES: Option<NameKind> = Some(NameKind::Filter);
+    const ENUM: Option<EngineEnum> = None;
+    const NUMBER: bool = false;
+
+    fn take(raw: ImmutableString, ctx: &ArgCtx<'_>) -> Checked<Filter> {
+        let filter = Filter::parse(raw.as_str(), ctx.get().view().names().types());
+        Ok(filter.map_err(ApiError::fail)?)
+    }
+
+    fn take_int(raw: ImmutableString, ctx: &ArgCtx<'_>) -> Checked<Filter> {
+        Filter::take(raw, ctx)
     }
 }
 

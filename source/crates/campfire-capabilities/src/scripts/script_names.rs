@@ -1,43 +1,60 @@
+use std::sync::Arc;
+
 use campfire_script::rhai::ImmutableString;
 
-/// Names of one kind, by id, in the form scripts read them, built once from the book that numbers
-/// them so that a read allocates nothing.
-#[derive(Debug, Default)]
-pub(crate) struct ScriptNames(Vec<ImmutableString>);
+use crate::values::names::{NameId, NameKey, Names};
 
-impl ScriptNames {
-    /// Puts `names`, in order of their ids, in place of those it held.
-    pub(crate) fn set<'a>(&mut self, names: impl Iterator<Item = &'a str>) {
-        self.0.clear();
-        self.0.extend(names.map(ImmutableString::from));
+/// The names of one kind as scripts read them: the table, shared with the book that holds it,
+/// and each id's name as a script string, built once, so a read allocates nothing.
+#[derive(Debug)]
+pub(crate) struct ScriptNames<I: NameId> {
+    names: Arc<Names<I>>,
+    text: Vec<ImmutableString>,
+}
+
+impl<I: NameId> ScriptNames<I> {
+    pub(crate) fn new(names: Arc<Names<I>>) -> ScriptNames<I> {
+        let text = names.texts().map(ImmutableString::from).collect();
+        ScriptNames { names, text }
     }
 
-    /// The name at `index`; none past the names.
-    pub(crate) fn get(&self, index: usize) -> Option<ImmutableString> {
-        self.0.get(index).cloned()
+    /// The table of the names.
+    pub(crate) fn names(&self) -> &Names<I> {
+        &self.names
     }
 
-    /// The index of `name`.
-    pub(crate) fn position(&self, name: &str) -> Option<usize> {
-        self.0.iter().position(|held| held == name)
+    /// The id named `key`.
+    pub(crate) fn named(&self, key: impl NameKey<I::Scope>) -> Option<I> {
+        self.names.named(key)
     }
 
-    pub(crate) const fn len(&self) -> usize {
-        self.0.len()
+    /// The name of `id`; none for an id past the table.
+    pub(crate) fn name(&self, id: I) -> Option<ImmutableString> {
+        self.text.get(id.index()).cloned()
+    }
+}
+
+impl<I: NameId> Default for ScriptNames<I> {
+    fn default() -> ScriptNames<I> {
+        ScriptNames::new(Arc::default())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::units::team::Team;
 
     #[test]
     fn a_name_is_found_by_its_id_and_its_id_by_the_name() {
-        let mut names = ScriptNames::default();
-        names.set(["a", "b"].into_iter());
-        assert_eq!((names.get(1), names.get(2)), (Some("b".into()), None));
-        assert_eq!((names.position("a"), names.position("c")), (Some(0), None));
-        names.set(["c"].into_iter());
-        assert_eq!((names.len(), names.position("c")), (1, Some(0)));
+        let names = ScriptNames::new(Arc::new(["a", "b"].into_iter().collect()));
+        let [a, b] = [0, 1].map(Team::new);
+        assert_eq!(
+            (names.name(b), names.name(Team::new(2))),
+            (Some("b".into()), None)
+        );
+        assert_eq!((names.named("a"), names.named("c")), (Some(a), None));
+        assert_eq!(names.names().len(), 2);
+        assert_eq!(ScriptNames::<Team>::default().name(a), None);
     }
 }

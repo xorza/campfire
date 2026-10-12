@@ -18,6 +18,7 @@ use crate::stats::modifier_handle::{HandleOf, ModifierHandle};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
+use crate::stats::stat_id::StatId;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::unit_pools::PoolMeters;
 use crate::stats::unit_stats::UnitStats;
@@ -27,9 +28,8 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::row_fill::RowFill;
 use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
-use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::rank::Rank;
-use crate::values::stat::Stat;
 
 /// The parts of a unit the stats read into its row.
 pub(super) type RowReads = (
@@ -46,10 +46,10 @@ pub(super) type RowReads = (
 /// state, a row each.
 #[derive(Debug, Default)]
 pub(crate) struct StatsColumn {
-    /// The stats the mode declares, in the order units' runs of stats hold them.
-    stat_names: Arc<[Stat]>,
-    /// The pools the mode declares, by pool id.
-    pool_names: Arc<[DeclaredName]>,
+    /// The stats the mode declares, by id, the order units' runs of stats hold them in.
+    stat_names: Arc<Names<StatId>>,
+    /// The pools the mode declares, by id.
+    pool_names: Arc<Names<PoolId>>,
     /// The mode's life pool, as the read found it.
     life_pool: Option<PoolId>,
     modifier_book: ModifierBook,
@@ -220,18 +220,29 @@ impl StatsColumn {
     }
 
     /// Names the stats the mode declares to scripts, in the order units' runs hold them.
-    pub(crate) fn share_stat_names(view: &View, names: Arc<[Stat]>) {
+    pub(crate) fn share_stat_names(view: &View, names: Arc<Names<StatId>>) {
         view.column_mut(|column: &mut StatsColumn| column.stat_names = names);
     }
 
     /// Names the pools the mode declares to scripts, by pool id.
-    pub(crate) fn share_pool_names(view: &View, names: Arc<[DeclaredName]>) {
+    pub(crate) fn share_pool_names(view: &View, names: Arc<Names<PoolId>>) {
         view.column_mut(|column: &mut StatsColumn| column.pool_names = names);
     }
 
-    /// Shares the match's modifiers, as the load built them.
+    /// Shares the match's modifiers, as the load built them, and names them to scripts.
     pub(crate) fn share_modifiers(view: &View, book: ModifierBook) {
+        view.names_mut().modifiers = Arc::clone(book.names());
         view.column_mut(|column: &mut StatsColumn| column.modifier_book = book);
+    }
+
+    /// The stats the mode declares, by id.
+    pub(crate) fn stat_names(&self) -> &Names<StatId> {
+        &self.stat_names
+    }
+
+    /// The pools the mode declares, by id.
+    pub(crate) fn pool_names(&self) -> &Names<PoolId> {
+        &self.pool_names
     }
 
     /// What `read` gives of the column; an error for a match with no stats.
@@ -249,34 +260,27 @@ impl StatsColumn {
         })
     }
 
-    /// The value of stat `name` of the unit in row `row`; an error for a stat the mode does not
-    /// declare, or a unit with no stats.
-    pub(crate) fn stat_named(view: &View, row: usize, name: &str) -> Checked<Num> {
+    /// The value of `stat` of the unit in row `row`; an error for a unit with no stats.
+    pub(crate) fn stat(view: &View, row: usize, stat: StatId) -> Checked<Num> {
         StatsColumn::read(view, |column| {
-            let at = column
-                .stat_names
-                .binary_search_by(|stat| stat.order_to(name))
-                .ok()
-                .ok_or_else(|| ApiError::UnknownStat.fail())?;
             column
                 .rows
                 .now()
                 .stats(row)
-                .get(at)
+                .get(stat.index())
                 .copied()
                 .ok_or_else(|| ApiError::NoStats.fail().into())
         })
     }
 
-    /// What `read` gives of pool `name` of the unit in row `row`; an error for a pool the mode
-    /// does not declare, or one the unit does not have.
+    /// What `read` gives of `pool` of the unit in row `row`; an error for a pool the unit does
+    /// not have.
     pub(crate) fn pool(
         view: &View,
         row: usize,
-        name: &str,
+        pool: PoolId,
         read: fn(Meter) -> Num,
     ) -> Checked<Num> {
-        let pool = StatsColumn::pool_named(view, name)?;
         StatsColumn::read(view, |column| {
             let row = &column.rows.now().rows[row];
             let pools = PoolMeters::new(column.life_pool, row.life.as_ref(), row.pools.as_ref());
@@ -284,32 +288,6 @@ impl StatsColumn {
                 .meter(pool)
                 .map(read)
                 .ok_or_else(|| ApiError::NoPool.fail().into())
-        })
-    }
-
-    /// The pool `name`; an error for one the mode does not declare.
-    pub(crate) fn pool_named(view: &View, name: &str) -> Checked<PoolId> {
-        StatsColumn::pool_id_named(view, name).ok_or_else(|| ApiError::UnknownPool.fail().into())
-    }
-
-    /// The pool `name`; `None` for one the mode does not declare.
-    pub(crate) fn pool_id_named(view: &View, name: &str) -> Option<PoolId> {
-        view.column(|column: &StatsColumn| {
-            let at = column
-                .pool_names
-                .iter()
-                .position(|pool| pool.as_str() == name)?;
-            let pool = u8::try_from(at).ok().and_then(PoolId::new);
-            Some(pool.expect("the load keeps the pools within the limit"))
-        })
-        .flatten()
-    }
-
-    /// The modifier `name` of `package`; an error when it declares none.
-    pub(crate) fn modifier_named(view: &View, package: u16, name: &str) -> Checked<ModifierId> {
-        StatsColumn::read(view, |column| {
-            let found = column.modifier_book.named(package, name);
-            Ok(found.ok_or_else(|| ApiError::UnknownModifier.fail())?)
         })
     }
 
@@ -331,9 +309,8 @@ impl StatsColumn {
         })
     }
 
-    /// Whether the unit in row `row` carries the modifier `name` of `package`.
-    pub(crate) fn has_modifier(view: &View, row: usize, package: u16, name: &str) -> Checked<bool> {
-        let id = StatsColumn::modifier_named(view, package, name)?;
+    /// Whether the unit in row `row` carries the modifier `id`.
+    pub(crate) fn has_modifier(view: &View, row: usize, id: ModifierId) -> Checked<bool> {
         StatsColumn::read(view, |column| {
             Ok(column.run(row).iter().any(|modifier| modifier.id == id))
         })
@@ -458,8 +435,7 @@ pub(crate) mod internals {
         /// The place of `stat` among the stats the mode declares; `None` when it does not
         /// declare it.
         pub(crate) fn stat_index(&self, stat: &Stat) -> Option<StatId> {
-            let at = self.stat_names.binary_search(stat).ok()?;
-            Some(StatId::new(at))
+            self.stat_names.named(stat.name())
         }
     }
 }

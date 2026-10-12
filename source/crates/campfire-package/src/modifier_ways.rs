@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    ActionData, Applies, DeclaredName, DeliveryData, PackagePath, UnitTypeFile,
+    ActionData, Applies, DeclaredName, DeliveryData, PackagePath, UnitTypeData,
 };
 use derive_more::Display;
 
@@ -65,7 +65,7 @@ impl<'a> ModifierWays<'a> {
                 found.add(modifier, way);
             }
         }
-        let standing: Vec<&UnitTypeFile> = match view.kind {
+        let standing: Vec<&UnitTypeData> = match view.kind {
             ViewKind::Mode => {
                 let units = content.units.values();
                 units.filter(|unit| !unit.delivers()).collect()

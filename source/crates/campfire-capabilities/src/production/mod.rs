@@ -6,7 +6,7 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::navigation::NavigationSet;
-use crate::production::build_specs::BuildSpecs;
+use crate::production::build_book::BuildBook;
 use crate::production::builder::Builder;
 use crate::production::construction::Construction;
 use crate::production::gather_loop::GatherLoop;
@@ -18,9 +18,9 @@ use crate::production::production_api::ProductionApi;
 use crate::production::production_column::{ProductionColumn, RowReads};
 use crate::production::production_data::ProductionData;
 use crate::production::rally::Rally;
-use crate::production::requirements::Requirements;
+use crate::production::requirement_book::RequirementBook;
 use crate::production::site::Site;
-use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
 use crate::stats::StatsSet;
@@ -32,7 +32,7 @@ use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-pub(crate) mod build_specs;
+pub(crate) mod build_book;
 pub(crate) mod build_target;
 pub(crate) mod builder;
 pub(crate) mod construction;
@@ -41,6 +41,7 @@ pub(crate) mod gather_loop;
 pub(crate) mod gatherer;
 pub(crate) mod held;
 pub(crate) mod holdings;
+pub(crate) mod mode_supply_data;
 pub(crate) mod node;
 pub(crate) mod node_book;
 pub(crate) mod node_data;
@@ -52,13 +53,12 @@ pub(crate) mod production_column;
 pub(crate) mod production_data;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
-pub(crate) mod requirements;
+pub(crate) mod requirement_book;
 pub(crate) mod resource_set;
 pub(crate) mod site;
 pub(crate) mod supply;
-pub(crate) mod supply_costs;
+pub(crate) mod supply_cost_book;
 pub(crate) mod supply_data;
-pub(crate) mod supply_rules;
 pub(crate) mod train_queue;
 pub(crate) mod trains;
 
@@ -95,9 +95,9 @@ impl Module for Production {
         d.component::<Node>();
         d.component::<Gatherer>();
         d.book::<ByType<ProductionData>>();
-        d.book::<Requirements>();
-        d.book::<SupplyCosts>();
-        d.book::<BuildSpecs>();
+        d.book::<RequirementBook>();
+        d.book::<SupplyCostBook>();
+        d.book::<BuildBook>();
         d.book::<NodeBook>();
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
@@ -203,10 +203,10 @@ pub(crate) mod test_world {
     use crate::production::build_target::BuildTarget;
     use crate::production::builder::Builder;
     use crate::production::gatherer::{GatherStep, Gatherer};
+    use crate::production::mode_supply_data::ModeSupplyData;
     use crate::production::site::Site;
-    use crate::production::supply_costs::SupplyCosts;
+    use crate::production::supply_cost_book::SupplyCostBook;
     use crate::production::supply_data::SupplyData;
-    use crate::production::supply_rules::SupplyRules;
     use crate::stats::life::Life;
     use crate::units::Units;
     use crate::units::body::Body;
@@ -229,9 +229,9 @@ pub(crate) mod test_world {
             for &(unit_type, supply) in supplies {
                 types.set(unit_type, supply);
             }
-            let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
+            let costs = SupplyCostBook::new(types, world.resource::<ActionBook>());
             world.insert_resource(costs);
-            world.insert_resource(SupplyRules { max });
+            world.insert_resource(ModeSupplyData { max });
         }
 
         /// A unit of `unit_type` owned by `owner`, at the origin.

@@ -1,5 +1,5 @@
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::{Dynamic, INT, NativeCallContext};
+use campfire_script::rhai::Dynamic;
 use campfire_script::{NumError, Raised};
 use campfire_sim::Position;
 
@@ -27,46 +27,39 @@ impl UnitsApi {
             "whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
         );
         api.ty::<Position>("Pos")
-            .bind(
+            .method(
                 position(
                     "distance_to",
                     &[&["pos"]],
                     "the distance to `pos` in the map's metric",
                 ),
-                |call: NativeCallContext<'_>, from: Position, to: Position| {
-                    Ctx::of_call(&call)
-                        .view()
+                |ctx: &Ctx, from: Position, to: Position| {
+                    ctx.view()
                         .metric()
                         .offset(from, to)
                         .checked_length()
                         .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
                 },
             )
-            .bind(
+            .method(
                 within,
-                |call: NativeCallContext<'_>, from: Position, to: Position, radius: Num| {
-                    UnitsApi::within(&call, from, to, radius)
+                |ctx: &Ctx, from: Position, to: Position, radius: Num| {
+                    UnitsApi::within(ctx, from, to, radius)
                 },
             )
-            .bind(
-                within,
-                |call: NativeCallContext<'_>, from: Position, to: Position, radius: INT| {
-                    UnitsApi::within(&call, from, to, ApiError::num(radius)?)
-                },
-            )
-            .bind(
+            .method(
                 position(
                     "direction_to",
                     &[&["pos"]],
                     "the unit vector towards `pos` in the map's metric, `()` for the same point",
                 ),
-                |call: NativeCallContext<'_>, from: Position, to: Position| {
-                    Ctx::of_call(&call)
+                |ctx: &Ctx, from: Position, to: Position| {
+                    Ok(ctx
                         .view()
                         .metric()
                         .offset(from, to)
                         .normalized()
-                        .map_or(Dynamic::UNIT, Dynamic::from)
+                        .map_or(Dynamic::UNIT, Dynamic::from))
                 },
             );
         let vector = |name, signature, description| {
@@ -78,36 +71,27 @@ impl UnitsApi {
             "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
         );
         api.ty::<Vec3>("Vector")
-            .bind(rotated, |vector: Vec3, degrees: Num| {
+            .method(rotated, |vector: Vec3, degrees: Num| {
                 UnitsApi::rotated(vector, degrees)
-            })
-            .bind(rotated, |vector: Vec3, degrees: INT| {
-                UnitsApi::rotated(vector, ApiError::num(degrees)?)
             });
         let scaled = MemberSpec::operator(
             ApiOwner::Vector,
             "*",
             "the vector scaled by a number, on either side",
         );
-        api.bind(
+        api.method(
             MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
             |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_add(b)),
         )
-        .bind(
+        .method(
             MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
             |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_sub(b)),
         )
-        .bind(scaled, |vector: Vec3, factor: Num| {
+        .method(scaled, |vector: Vec3, factor: Num| {
             UnitsApi::exact(vector.checked_mul(factor))
         })
-        .bind(scaled, |factor: Num, vector: Vec3| {
+        .method(scaled, |factor: Num, vector: Vec3| {
             UnitsApi::exact(vector.checked_mul(factor))
-        })
-        .bind(scaled, |vector: Vec3, factor: INT| {
-            UnitsApi::exact(vector.checked_mul(ApiError::num(factor)?))
-        })
-        .bind(scaled, |factor: INT, vector: Vec3| {
-            UnitsApi::exact(vector.checked_mul(ApiError::num(factor)?))
         });
     }
 
@@ -127,14 +111,9 @@ impl UnitsApi {
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule
     /// between two points, which have no bodies.
-    fn within(
-        call: &NativeCallContext<'_>,
-        from: Position,
-        to: Position,
-        radius: Num,
-    ) -> Checked<bool> {
+    fn within(ctx: &Ctx, from: Position, to: Position, radius: Num) -> Checked<bool> {
         let radius = ApiError::radius(radius)?;
-        let metric = Ctx::of_call(call).view().metric();
+        let metric = ctx.view().metric();
         Ok(metric.reaches(from, Shape::POINT, radius, to, Shape::POINT))
     }
 }

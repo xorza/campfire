@@ -9,6 +9,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_arg::plain_script_arg;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stats_effect::StatsEffect;
@@ -167,13 +168,13 @@ impl ModifierHandle {
         api.ty::<ModifierState>("ModifierState")
             .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
-                let at = data.field_named(name)?;
+                let at = data.field(name)?;
                 Ok(data.state[at].to_dynamic(&data.view))
             })
             .index_set(
                 |_, state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
-                    let at = data.field_named(name)?;
+                    let at = data.field(name)?;
                     let value = StateValue::from_dynamic(data.fields[at].kind, &value)
                         .ok_or_else(|| ApiError::WrongStateType.fail())?;
                     data.state[at] = value;
@@ -186,10 +187,12 @@ impl ModifierHandle {
 
 impl HandleData {
     /// The place of the state field `name`; one the modifier does not declare fails the call.
-    fn field_named(&self, name: &str) -> Checked<usize> {
+    fn field(&self, name: &str) -> Checked<usize> {
         self.fields
             .binary_search_by(|field| (*field.name).cmp(name))
             .ok()
             .ok_or_else(|| ApiError::UnknownState.fail().into())
     }
 }
+
+plain_script_arg!(ModifierHandle);

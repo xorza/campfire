@@ -4,6 +4,8 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -70,4 +72,8 @@ impl<'de> Deserialize<'de> for DeliveryData {
             _ => Err(D::Error::custom("a delivery names a projectile or an area")),
         }
     }
+}
+
+impl DataSection for DeliveryData {
+    const TABLE: DataTable = DataTable::Delivery;
 }

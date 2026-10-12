@@ -1,8 +1,8 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionId, Actions, Match, ModeUnits, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures,
-    Stats, Team, Units, Vision,
+    ActionId, Actions, DeclaredName, Match, ModeUnits, ModifierId, Names, Order, PoolId,
+    ScriptFailure, ScriptFailures, Stats, Team, Units, Vision,
 };
 use campfire_common::PlayerSlot;
 use campfire_package::ModePackages;
@@ -73,7 +73,11 @@ impl Arena {
 
     /// The pool `name` of the arena's mode.
     pub fn pool(&self, name: &str) -> PoolId {
-        PoolId::named(&self.packages.data().pools, name).unwrap_or_else(|| panic!("no pool {name}"))
+        let pools = self.packages.data().pools.keys();
+        let pools: Names<PoolId> = pools.map(DeclaredName::as_str).collect();
+        pools
+            .named(name)
+            .unwrap_or_else(|| panic!("no pool {name}"))
     }
 
     /// Gives `game`, the arena's match, the map's vision grid and its brush, for `teams` teams,

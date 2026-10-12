@@ -21,9 +21,9 @@ use crate::actions::targets::Targets;
 use crate::actions::test_world::TestWeapon;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::combat::damage::DamageCause;
 use crate::combat::deaths::Fallen;
+use crate::combat::mode_combat_data::{LeechData, ModeCombatData};
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::test_world::Armed;
@@ -45,7 +45,6 @@ use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_cost::PoolCost;
-use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
@@ -61,11 +60,12 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::units_world::UnitsWorldCrate;
 use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
+use crate::values::names::Names;
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
@@ -199,10 +199,10 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     // its rate of 6 attacks a second, a period of 30 ÷ 6 = 5 ticks.
     let mut game = fight_match();
     let types = ["ground", "air", "structure"].map(|tag| {
-        let data = UnitTypeData::tagged(&[tag]);
+        let data = UnitTypeCore::tagged(&[tag]);
         Units::load_type(&mut game, TypeScope::Mode, tag, &data)
     });
-    let hover = UnitTypeData::tagged(&["ground", "air"]);
+    let hover = UnitTypeCore::tagged(&["ground", "air"]);
     let hover = Units::load_type(&mut game, TypeScope::Mode, "hover", &hover);
     let weapon = |game: &mut Match, aim: &str, range, windup, damage| {
         let view = game.non_send::<View>().clone();
@@ -339,7 +339,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // A weapon of 2 m, a windup of 2 ticks, 6 attacks a second, a period of 5 ticks, and 10
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut game = fight_match();
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
@@ -800,17 +800,16 @@ fn load_damage_stats(world: &mut World) {
         .into();
     let book = StatBook::new(&rules, [], Num::int(10));
     let health = DeclaredName::new("health").unwrap();
-    let combat = CombatRules {
+    let combat = ModeCombatData {
         life: Some(health.clone()),
-        leech: Some(Leech {
+        leech: Some(LeechData {
             attack: Some(attack),
             other: Some(other),
         }),
         heal_scale: Some(heal),
-        ..CombatRules::default()
+        ..ModeCombatData::default()
     };
-    let max = Stat::named("health").unwrap();
-    let pools = BTreeMap::from([(health, PoolData { max, regen: None })]);
+    let pools: Names<PoolId> = [health.as_str()].into_iter().collect();
     world.insert_resource(LifePool(combat.life_pool(&pools).unwrap()));
     world.insert_resource(CombatBindings::new(&combat, &book));
     Stats::load_book(world, book);

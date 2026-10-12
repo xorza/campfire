@@ -2,6 +2,8 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::filter_data::FilterData;
 use crate::values::relation_set::RelationSet;
 use crate::values::scalar::Scalar;
@@ -100,6 +102,10 @@ impl<'de> Deserialize<'de> for ProjectileHits {
                 .ok_or_else(|| D::Error::custom(format!("filter {filter:?}"))),
         }
     }
+}
+
+impl DataSection for ProjectileData {
+    const TABLE: DataTable = DataTable::Projectile;
 }
 
 #[cfg(test)]

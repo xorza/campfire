@@ -6,29 +6,27 @@ use campfire_sim::Position;
 
 use crate::navigation::path_walker::PathEnd;
 use crate::units::path_id::PathId;
-use crate::values::name_list::NameList;
+use crate::values::names::Names;
 
 /// The map's paths, each a named list of waypoints that walkers go along forward or backward. Map
 /// data, not state: a restore takes it from the map, as a new match does.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Paths {
     /// Shared with the script view, which names paths to scripts.
-    names: Arc<NameList>,
+    names: Arc<Names<PathId>>,
     points: Vec<Position>,
     /// Each path's waypoints in `points`.
     ranges: Vec<Range<u32>>,
 }
 
 impl Paths {
-    /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
-    pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Position])>) -> Paths {
-        let mut names = NameList::default();
-        let mut points = Vec::new();
-        let mut ranges = Vec::new();
-        for (name, path) in paths {
+    /// The paths named `names`, by id, of the waypoints `paths`, each of one at the least.
+    pub(crate) fn of(names: Names<PathId>, paths: &[Vec<Position>]) -> Paths {
+        assert_eq!(names.len(), paths.len(), "a path has a name");
+        let mut points = Vec::with_capacity(paths.iter().map(Vec::len).sum());
+        let mut ranges = Vec::with_capacity(paths.len());
+        for path in paths {
             assert!(!path.is_empty(), "a path has a waypoint");
-            assert!(names.named(name).is_none(), "a path's name is its own");
-            names.push(name);
             let start = u32::try_from(points.len()).expect("waypoints fit u32");
             points.extend_from_slice(path);
             let end = u32::try_from(points.len()).expect("waypoints fit u32");
@@ -41,13 +39,13 @@ impl Paths {
         }
     }
 
-    /// Each path's name, by path.
-    pub fn names(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.names.iter()
+    /// The paths' names.
+    pub fn names(&self) -> &Names<PathId> {
+        &self.names
     }
 
     /// The names, shared with a reader of them outside the world.
-    pub(crate) fn shared_names(&self) -> Arc<NameList> {
+    pub(crate) fn shared_names(&self) -> Arc<Names<PathId>> {
         Arc::clone(&self.names)
     }
 
@@ -55,18 +53,8 @@ impl Paths {
         u32::try_from(self.ranges.len()).expect("paths fit u32")
     }
 
-    /// The path named `name`.
-    pub fn named(&self, name: &str) -> Option<PathId> {
-        self.names.named(name).map(Paths::id_at)
-    }
-
-    /// The id of the path at `at`, as the map numbers at most `u32` of them.
-    pub(crate) fn id_at(at: usize) -> PathId {
-        PathId::new(u32::try_from(at).expect("paths fit u32"))
-    }
-
     pub fn name(&self, path: PathId) -> &str {
-        self.names.get(path.index()).expect("a path of the map")
+        self.names.name(path).expect("a path of the map")
     }
 
     /// The waypoints of `path`, from its start.
@@ -88,6 +76,27 @@ impl Paths {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use campfire_sim::Position;
+
+    use crate::navigation::paths::Paths;
+    use crate::values::names::Names;
+
+    impl Paths {
+        /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
+        pub(crate) fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Position])>) -> Paths {
+            let mut names = Names::default();
+            let mut points = Vec::new();
+            for (name, path) in paths {
+                names.add(name);
+                points.push(path.to_vec());
+            }
+            Paths::of(names, &points)
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
 
     use super::*;
@@ -103,7 +112,7 @@ mod tests {
         ]);
         assert_eq!(paths.count(), 2);
         assert_eq!(
-            (paths.named("far"), paths.named("none")),
+            (paths.names().named("far"), paths.names().named("none")),
             (Some(PathId::new(1)), None)
         );
         assert_eq!(

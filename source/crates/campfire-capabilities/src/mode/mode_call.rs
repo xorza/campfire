@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 
 use crate::mode::choices::Choices;
-use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_spec::ModeSpec;
 use crate::mode::mode_world::{ModeWorld, ModeWorldCrate};
 use crate::navigation::body_index::IndexedBody;
 use crate::scripts::call_part::CallPart;
@@ -21,7 +21,7 @@ use crate::units::unit_state::{SyncAll, SyncNone};
 /// a box it spawns next needs room from.
 #[derive(Debug)]
 pub(crate) struct ModeCall {
-    book: Rc<ModeBook>,
+    book: Rc<ModeSpec>,
     /// Every field of the mode's state, in the order of their names.
     pub(crate) state: Vec<StateValue>,
     /// The fields of each class, `none` and `all`, as a commit splits them.
@@ -51,11 +51,11 @@ impl CallPart for ModeCall {
     }
 
     /// A mode's or an AI's call reads the mode's params.
-    fn param_named(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
         if matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
             return None;
         }
-        self.book.schema.param_named(name)
+        self.book.schema.param(name)
     }
 
     /// A mode call commits its state and choices itself, before its effects apply.
@@ -63,7 +63,7 @@ impl CallPart for ModeCall {
 }
 
 impl ModeCall {
-    pub(crate) fn new(book: Rc<ModeBook>) -> ModeCall {
+    pub(crate) fn new(book: Rc<ModeSpec>) -> ModeCall {
         ModeCall {
             book,
             state: Vec::new(),

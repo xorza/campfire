@@ -17,7 +17,7 @@ use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRows;
-use crate::production::build_specs::{BuildSpec, BuildSpecs, Style};
+use crate::production::build_book::{BuildBook, BuildSpec, Style};
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::{BuildOrder, Builder};
 use crate::production::construction::Construction;
@@ -25,7 +25,7 @@ use crate::production::construction::step::{Start, Step};
 use crate::production::held::Held;
 use crate::production::holdings::Holdings;
 use crate::production::placement::Placement;
-use crate::production::requirements::Requirements;
+use crate::production::requirement_book::RequirementBook;
 use crate::production::site::Site;
 use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
@@ -47,8 +47,8 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) tick: Res<'w, SimTick>,
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
-    pub(super) builds: Res<'w, BuildSpecs>,
-    pub(super) requirements: Res<'w, Requirements>,
+    pub(super) builds: Res<'w, BuildBook>,
+    pub(super) requirements: Res<'w, RequirementBook>,
     pub(super) metric: Res<'w, Metric>,
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) life: Option<Res<'w, LifePool>>,

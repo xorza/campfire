@@ -11,7 +11,7 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting, HealFields};
+use crate::actions::effect_data::{DoesData, EffectData, EffectTo, HealFields};
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::targeting::Targeting;
 use crate::combat::on_death::OnDeath;
@@ -45,7 +45,6 @@ use crate::units::block::Block;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
-use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
@@ -82,7 +81,6 @@ impl Carrier {
     /// Loads the carrier's stats, modifier, actions and shop into `game`, a match of
     /// `CAPABILITIES`, and spawns it.
     fn place(game: &mut Match) -> Carrier {
-        let gold = DeclaredName::new("gold").unwrap();
         Units::name_kinds(game, &["physical"], &["health"], &["gold"]);
         let attack_damage = Stat::named("attack_damage").unwrap();
         Stats::load_rules(
@@ -100,7 +98,7 @@ impl Carrier {
         Stats::load_modifier(game, 0, "might", &might, None);
         let might = Stats::modifier(game, 0, "might").unwrap();
         let heal = EffectData {
-            does: Effecting::Heal(HealFields {
+            does: DoesData::Heal(HealFields {
                 amount: Number::Value(Scalar::Int(50)),
             }),
             to: EffectTo::Source,
@@ -119,7 +117,7 @@ impl Carrier {
             id
         };
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));
-        stock(game, gold, [drink, flash], might);
+        stock(game, [drink, flash], might);
         let kind = SlotKind::new(0);
         let slots = ActionSlots::new([]).with_empty(kind, 3).timed();
         let mut life = Life::full(Num::int(500));
@@ -199,8 +197,8 @@ fn carrier_match() -> Match {
 }
 
 /// Gives `game` the item book, the shop at the origin, and player 0's 1000 of `gold`.
-fn stock(game: &mut Match, gold: DeclaredName, [drink, flash]: [ActionId; 2], might: ModifierId) {
-    let resource = ResourceId::named(&[gold], "gold").unwrap();
+fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
+    let resource = ResourceId::nth(0);
     let item =
         |cost: i64, stack: u32, uses: Option<u32>, action, modifiers: Vec<ModifierId>| ItemSpec {
             cost: vec![ResourceAmount {
@@ -213,11 +211,15 @@ fn stock(game: &mut Match, gold: DeclaredName, [drink, flash]: [ActionId; 2], mi
             modifiers,
             action,
         };
-    game.insert_resource(ItemBook::new(vec![
-        item(50, 2, Some(1), Some(drink), Vec::new()),
-        item(100, 1, None, Some(flash), Vec::new()),
-        item(300, 1, None, None, vec![might]),
-    ]));
+    let names = ["drink", "flash", "might"].into_iter().collect();
+    game.insert_resource(ItemBook::new(
+        names,
+        vec![
+            item(50, 2, Some(1), Some(drink), Vec::new()),
+            item(100, 1, None, Some(flash), Vec::new()),
+            item(300, 1, None, None, vec![might]),
+        ],
+    ));
     let share = Share::deserialize(toml::Value::String("0.5".to_owned())).unwrap();
     let places = vec![ShopPlace {
         team: Team::new(0),

@@ -23,7 +23,7 @@ use crate::mode::mode_world::ModeWorld;
 use crate::navigation::paths::Paths;
 use crate::navigation::walls::Walls;
 use crate::players::entity_parts::EntityParts;
-use crate::production::supply_rules::SupplyRules;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
@@ -118,7 +118,7 @@ impl DeclaredResources {
             TypeId::of::<VisionGrid>(),
             TypeId::of::<Shop>(),
             TypeId::of::<AssistWindow>(),
-            TypeId::of::<SupplyRules>(),
+            TypeId::of::<ModeSupplyData>(),
         ]
     }
 }

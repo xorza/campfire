@@ -123,7 +123,7 @@ impl UnitsColumn {
     /// The field `name` of a unit of `unit_type`; one its type does not declare fails the call.
     pub(crate) fn field(view: &View, unit_type: UnitType, name: &str) -> Checked<StateField> {
         let found = view
-            .column(|column: &UnitsColumn| column.book.field_named(unit_type, name))
+            .column(|column: &UnitsColumn| column.book.field(unit_type, name))
             .expect("a view of units has their state");
         Ok(found.ok_or_else(|| ApiError::UnknownState.fail())?)
     }

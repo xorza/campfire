@@ -2,41 +2,42 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use campfire_script::rhai::INT;
 
 use crate::players::resource_id::ResourceId;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_names::ScriptNames;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 use crate::units::path_id::PathId;
-use crate::units::tag::Tag;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
-use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::damage_kind::DamageKind;
-use crate::values::declared_name::DeclaredName;
-use crate::values::name_list::NameList;
+use crate::values::names::Names;
 
 /// The names scripts read and write, as the match's load and its mode set them: the unit types
 /// and tags, the teams and players, the paths, the damage kinds, tracks and actions, and the
-/// players' resources.
+/// players' resources, each kind in its table.
 #[derive(Debug, Default)]
 pub(crate) struct ViewNames {
     types: UnitTypes,
+    /// The unit types' names, each in its scope, as `types` holds them.
+    unit_types: ScriptNames<UnitType>,
     /// The match's teams; none before a mode sets them.
     teams: Option<Rc<Teams>>,
-    /// The name of each path, by index, once a mode sets them.
-    paths: Arc<NameList>,
-    /// The names scripts read of the actions, unit types, tracks and damage kinds, by id.
-    action_names: ScriptNames,
-    unit_type_names: ScriptNames,
-    track_names: ScriptNames,
-    damage_kind_names: ScriptNames,
-    /// The players' resources the mode declares, by resource id.
-    resource_names: Arc<[DeclaredName]>,
+    /// The teams' names, as `teams` holds them.
+    team_names: ScriptNames<Team>,
+    pub(crate) paths: ScriptNames<PathId>,
+    /// The actions' names, each in its package.
+    pub(crate) actions: ScriptNames<ActionId>,
+    pub(crate) tracks: ScriptNames<TrackId>,
+    pub(crate) damage_kinds: ScriptNames<DamageKind>,
+    pub(crate) resources: Arc<Names<ResourceId>>,
+    /// The modifiers' names, each in its package.
+    pub(crate) modifiers: Arc<Names<ModifierId>>,
 }
 
 impl ViewNames {
@@ -49,8 +50,19 @@ impl ViewNames {
         }
     }
 
+    /// The unit types and tags, with each type's params.
     pub(crate) const fn types(&self) -> &UnitTypes {
         &self.types
+    }
+
+    /// The unit types' names, each in its scope.
+    pub(crate) const fn unit_types(&self) -> &ScriptNames<UnitType> {
+        &self.unit_types
+    }
+
+    /// The teams' names; none before a mode sets them.
+    pub(crate) const fn team_names(&self) -> &ScriptNames<Team> {
+        &self.team_names
     }
 
     /// Sets the match's unit types and tags, as the load built them, and gives scripts their
@@ -62,45 +74,30 @@ impl ViewNames {
 
     /// Gives scripts the names of the unit types as the view holds them.
     pub(crate) fn share_type_names(&mut self) {
-        self.unit_type_names.set(self.types.names());
+        self.unit_types = ScriptNames::new(Arc::clone(self.types.types()));
     }
 
     /// Names the teams and the paths.
-    pub(crate) fn set_teams(&mut self, teams: Rc<Teams>, paths: Arc<NameList>) {
+    pub(crate) fn set_teams(&mut self, teams: Rc<Teams>, paths: Arc<Names<PathId>>) {
+        self.team_names = ScriptNames::new(Arc::clone(teams.names()));
         self.teams = Some(teams);
-        self.paths = paths;
+        self.paths = ScriptNames::new(paths);
     }
 
-    /// Sets the damage kinds and the players' resources the mode declares, by id.
+    /// Sets the damage kinds and the players' resources the mode declares.
     pub(crate) fn set_mode_names(
         &mut self,
-        damage_kinds: &[DeclaredName],
-        resources: Arc<[DeclaredName]>,
+        damage_kinds: Arc<Names<DamageKind>>,
+        resources: Arc<Names<ResourceId>>,
     ) {
-        let kinds = damage_kinds.iter().map(DeclaredName::as_str);
-        self.damage_kind_names.set(kinds);
-        self.resource_names = resources;
-    }
-
-    /// Names the tracks the mode declares, by track id.
-    pub(crate) fn set_track_names<'a>(&mut self, names: impl Iterator<Item = &'a str>) {
-        self.track_names.set(names);
-    }
-
-    /// Names the match's actions, by action id.
-    pub(crate) fn set_action_names<'a>(&mut self, names: impl Iterator<Item = &'a str>) {
-        self.action_names.set(names);
-    }
-
-    /// Whether the match loaded `unit_type`.
-    pub(crate) fn has_type(&self, unit_type: UnitType) -> bool {
-        self.types.contains(unit_type)
+        self.damage_kinds = ScriptNames::new(damage_kinds);
+        self.resources = resources;
     }
 
     /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
     pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
-        let count = self.damage_kind_names.len();
-        count == 0 || kind.index() < count
+        let kinds = self.damage_kinds.names();
+        kinds.is_empty() || kinds.has(kind)
     }
 
     /// Whether `team` is one of the mode's teams; any team is before a mode sets them, as every
@@ -123,15 +120,10 @@ impl ViewNames {
         teams.is_none_or(|teams| teams.of(slot) == Some(team))
     }
 
-    /// How many resources the mode declares; none before a mode sets them.
-    pub(crate) fn resource_count(&self) -> usize {
-        self.resource_names.len()
-    }
-
     /// Whether a player's `resources` amounts make one of each resource the mode declares; any do
     /// before a mode sets the teams.
     pub(crate) fn fits_resources(&self, resources: usize) -> bool {
-        self.teams.is_none() || resources == self.resource_names.len()
+        self.teams.is_none() || resources == self.resources.len()
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
@@ -140,72 +132,6 @@ impl ViewNames {
             Some(teams) => teams.player(player),
             None => Err(ApiError::UnknownPlayer.fail().into()),
         }
-    }
-
-    /// The name of `team`; none for a team the mode does not have.
-    pub(crate) fn team_name(&self, team: Team) -> Option<ImmutableString> {
-        let name = self.teams.as_deref()?.name(team)?;
-        Some(ImmutableString::from(name))
-    }
-
-    /// The player resource `name`; `None` for one the mode does not declare.
-    pub(crate) fn resource_named(&self, name: &str) -> Option<ResourceId> {
-        ResourceId::named(&self.resource_names, name)
-    }
-
-    /// The damage kind `name`, when the mode declares it.
-    pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
-        let at = self.damage_kind_names.position(name)?;
-        Some(DamageKind::new(
-            u8::try_from(at).expect("the load keeps damage kinds within u8"),
-        ))
-    }
-
-    /// The name of track `track`.
-    pub(crate) fn track_name(&self, track: TrackId) -> Option<ImmutableString> {
-        self.track_names.get(track.index())
-    }
-
-    /// The name of damage kind `kind`; none before a mode names the damage kinds.
-    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> Option<ImmutableString> {
-        self.damage_kind_names.get(kind.index())
-    }
-
-    /// The name of ability `id` in its package.
-    pub(crate) fn ability_name(&self, id: ActionId) -> Option<ImmutableString> {
-        self.action_names.get(id.index())
-    }
-
-    /// The name of `path`.
-    pub(crate) fn path_name(&self, path: PathId) -> Option<ImmutableString> {
-        self.paths.get(path.index()).map(ImmutableString::from)
-    }
-
-    /// The path named `name`.
-    pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
-        let at = self.paths.named(name)?;
-        Some(PathId::new(u32::try_from(at).expect("paths fit u32")))
-    }
-
-    /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
-    pub(crate) fn unit_type_named(&self, name: &str) -> Option<UnitType> {
-        self.types.named(TypeScope::Mode, name)
-    }
-
-    /// The name of `unit_type`.
-    pub(crate) fn unit_type_name(&self, unit_type: UnitType) -> Option<ImmutableString> {
-        self.unit_type_names.get(unit_type.index())
-    }
-
-    /// The tag `name`, when the match has it.
-    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
-        self.types.tag_named(name)
-    }
-
-    /// The param `name` of `unit_type`.
-    pub(crate) fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Dynamic> {
-        let value = self.types.param_named(unit_type, name)?;
-        Some(value.to_dynamic())
     }
 }
 

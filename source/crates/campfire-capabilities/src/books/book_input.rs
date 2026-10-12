@@ -1,7 +1,7 @@
 use campfire_sim::TickRate;
 
 use crate::books::package_content::PackageContent;
-use crate::books::unit_type_file::UnitTypeFile;
+use crate::books::unit_type_data::UnitTypeData;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
@@ -49,7 +49,7 @@ pub struct BookPackage<'a> {
 #[derive(Debug, Clone, Copy)]
 pub enum BookKind<'a> {
     Mode,
-    Avatar(&'a UnitTypeFile),
+    Avatar(&'a UnitTypeData),
     Loadout,
     /// A rules package, whose scripts a mode runs; its content is empty, as the load checks.
     Rules,

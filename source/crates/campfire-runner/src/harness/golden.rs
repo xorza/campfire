@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use campfire_capabilities::PoolMeters;
 use campfire_capabilities::{
-    Dead, Deaths, Match, Owner, PlayersWorld, PoolId, ResourceId, ScriptFailures, Team,
+    Dead, Deaths, DeclaredName, Match, Names, Owner, PlayersWorld, PoolId, ResourceId,
+    ScriptFailures, Team,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
@@ -39,11 +40,9 @@ const DIGITS: usize = 16;
 impl Golden {
     /// A record of a match of `packages` for `players` players.
     pub fn new(packages: &ModePackages, players: u32) -> Golden {
-        let names = &packages.data().resources;
-        let resources = names
-            .iter()
-            .map(|name| ResourceId::named(names, name.as_str()).expect("a declared resource"))
-            .collect();
+        let names = packages.data().resources.iter();
+        let names: Names<ResourceId> = names.map(DeclaredName::as_str).collect();
+        let resources = names.iter().map(|(resource, _)| resource).collect();
         Golden {
             resources,
             players,

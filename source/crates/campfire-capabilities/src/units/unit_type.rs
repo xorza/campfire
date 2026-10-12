@@ -5,6 +5,8 @@ use bevy_ecs::world::{DeferredWorld, World};
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_arg::name_script_arg;
 use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -12,11 +14,13 @@ use crate::state_types::sending::SentOnce;
 use crate::units::Units;
 use crate::units::avatar::Avatar;
 use crate::units::tag_book::TagBook;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::view::View;
+use crate::values::names::NameId;
 
 /// A unit's type, by its place in the match's unit types. Its tags, which it requires, come with
 /// it on every path, a spawn, a restore and a client's replication, as its hook writes them.
@@ -59,6 +63,19 @@ impl UnitType {
     }
 }
 
+impl NameId for UnitType {
+    type Scope = TypeScope;
+    const LIMIT: usize = 1 << u16::BITS;
+
+    fn at(index: usize) -> UnitType {
+        UnitType(u16::try_from(index).expect("unit types fit u16"))
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 impl SimComponent for UnitType {
     const NAME: &'static str = "units.unit_type";
     type Host = UnitEntity;
@@ -66,7 +83,7 @@ impl SimComponent for UnitType {
     // A type the match did not load names nothing its books hold, and a unit without a class of
     // the state its type declares would read a field it lacks.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let known = world.non_send::<View>().has_type(*self);
+        let known = world.non_send::<View>().names().types().contains(*self);
         let unit = world.entity(entity);
         let states = || {
             let book = world.resource::<UnitStateBook>();
@@ -85,3 +102,11 @@ impl Replication for UnitType {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentOnce;
 }
+
+// A unit type a script names is of the mode's scope: one of the mode's, or an avatar.
+name_script_arg!(UnitType, NameKind::UnitType, |ctx, name| {
+    ctx.view()
+        .names()
+        .unit_types()
+        .named((TypeScope::Mode, name))
+});

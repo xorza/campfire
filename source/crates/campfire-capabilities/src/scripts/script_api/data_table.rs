@@ -3,6 +3,7 @@ campfire_common::enum_all! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub enum DataTable {
         Mode,
+        UnitType,
         ModeCombat,
         ModeNavigation,
         SlotKind,
@@ -42,6 +43,7 @@ impl DataTable {
     pub const fn title(self) -> &'static str {
         match self {
             DataTable::Mode => "`data/mode.toml`",
+            DataTable::UnitType => "A unit type, `[units.<id>]`",
             DataTable::ModeCombat => "The mode's `[combat]`",
             DataTable::ModeNavigation => "The mode's `[navigation]`",
             DataTable::SlotKind => "A slot kind, `[[slots]]`",

@@ -6,7 +6,7 @@ use campfire_sim::{SimTick, SimWorld};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::lists_of::ListsOf;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
@@ -72,7 +72,7 @@ impl DeliveryHooks {
                     .expect("a delivery's action is in the book");
                 let script = action.hook(hook).filter(|_| by.launch.is_none());
                 let package = action.package;
-                let lists = batch.world().resource::<EffectLists>();
+                let lists = batch.world().resource::<EffectListBook>();
                 let of = by
                     .launch
                     .map_or(ListsOf::Action(by.action), ListsOf::Launch);
@@ -94,7 +94,7 @@ impl DeliveryHooks {
                 };
                 let pool = Pool::of(owner);
                 batch.hook_call(start, hook, Some(by.source), |batch| {
-                    EffectLists::queue(
+                    EffectListBook::queue(
                         batch.world(),
                         of,
                         hook,

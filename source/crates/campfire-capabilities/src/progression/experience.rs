@@ -100,7 +100,7 @@ impl SimComponent for Experience {
         let book = world.resource::<TrackBook>();
         self.tracks.iter().all(|track| {
             let own = track.level.is_some();
-            book.has(track.track) && own != (book.level_track() == Some(track.track))
+            book.names().has(track.track) && own != (book.level_track() == Some(track.track))
         })
     }
 }

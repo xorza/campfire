@@ -12,7 +12,7 @@ use campfire_capabilities::{
     PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
     SyncAll, SyncNone, Team, UnitsWorld,
 };
-use campfire_capabilities::{Stats, Units};
+use campfire_capabilities::{DeclaredName, Names, Stats, Units};
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -555,7 +555,9 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // gold from the start, and 100 more every 5 s, 100 ticks at its 20 Hz; its state's `joined`
     // goes to every client, and `left` to none.
     let packages = TestMode::Proving.packages();
-    let gold = ResourceId::named(&packages.data().resources, "gold").unwrap();
+    let resources = packages.data().resources.iter();
+    let resources: Names<ResourceId> = resources.map(DeclaredName::as_str).collect();
+    let gold = resources.named("gold").unwrap();
     let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.players = 2;
     let mut local = InProcessMatch::of_mode(setup, packages);

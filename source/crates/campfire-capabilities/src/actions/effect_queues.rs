@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::{Capability, StableId};
 
-use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::declare::callbacks::Callbacks;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
@@ -11,7 +11,7 @@ use crate::units::view::View;
 /// to `unit`, of the list that reached `reached`, if a unit, in the call `frame` holds, which
 /// `view` sees.
 pub(crate) type QueueListed =
-    fn(CapabilityDoes, StableId, Option<StableId>, &mut Frame, &View) -> Result<(), CallError>;
+    fn(CapabilityDoesSpec, StableId, Option<StableId>, &mut Frame, &View) -> Result<(), CallError>;
 
 /// How the listed effects of each capability above the action pipeline queue, by capability:
 /// each declares its own, as a call's effects apply themselves, so the lists name no

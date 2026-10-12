@@ -8,13 +8,14 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct PoolBook {
-    /// Shared with the script view, which names them to scripts.
-    names: Arc<[DeclaredName]>,
+    /// The pools' names, by id; shared with the script view, which names them to scripts.
+    names: Arc<Names<PoolId>>,
     pools: Vec<PoolStats>,
 }
 
@@ -26,11 +27,16 @@ pub(crate) struct PoolStats {
 }
 
 impl PoolBook {
-    /// The book of `pools`, whose stats the load checked `book` declares.
-    pub(crate) fn new(pools: &BTreeMap<DeclaredName, PoolData>, book: &StatBook) -> PoolBook {
+    /// The book of `pools`, named `names`, whose stats the load checked `book` declares.
+    pub(crate) fn new(
+        pools: &BTreeMap<DeclaredName, PoolData>,
+        names: Arc<Names<PoolId>>,
+        book: &StatBook,
+    ) -> PoolBook {
+        assert_eq!(names.len(), pools.len(), "a pool has a name");
         let index = |stat| book.named(stat).expect("the load checked the pools' stats");
         PoolBook {
-            names: pools.keys().cloned().collect(),
+            names,
             pools: pools
                 .values()
                 .map(|pool| PoolStats {
@@ -41,9 +47,9 @@ impl PoolBook {
         }
     }
 
-    /// The pools, by id.
-    pub(crate) fn names(&self) -> Arc<[DeclaredName]> {
-        Arc::clone(&self.names)
+    /// The pools' names, by id.
+    pub(crate) const fn names(&self) -> &Arc<Names<PoolId>> {
+        &self.names
     }
 
     /// Each pool, with its stats.

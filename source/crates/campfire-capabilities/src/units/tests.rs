@@ -20,6 +20,7 @@ use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
@@ -30,9 +31,8 @@ use crate::units::entity_kinds::EntityKinds;
 use crate::units::path_id::PathId;
 use crate::units::tag_book::TagBook;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::scalar::Scalar;
-use crate::values::stat::Stat;
 
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
@@ -125,11 +125,11 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     let refusals = [
         (
             r#"ctx.find(of, of.pos, 5, "friends")"#,
-            ApiError::UnknownFilter,
+            ApiError::Unknown(NameKind::Filter),
         ),
         (
             r#"ctx.find(of, of.pos, 5, "enemies:boss")"#,
-            ApiError::UnknownTag,
+            ApiError::Unknown(NameKind::Tag),
         ),
         (
             r#"ctx.find(of, of.pos, -1, "all")"#,
@@ -410,7 +410,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert_eq!(Unit::ids(attackers), [near, recent]);
 
     let refusals = [
-        ("of.params.gold", ApiError::UnknownParam),
+        ("of.params.gold", ApiError::Unknown(NameKind::Param)),
         ("of.recent_attackers(-1)", ApiError::NegativeTime),
     ];
     for (expression, refusal) in refusals {
@@ -435,8 +435,8 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     let mut game = units_match();
     // Level 3, with armor 25 and health 10 among the mode's stats; its health pool of 10, 4
     // taken, and no mana pool. One unit has a pool and no stats, one neither.
-    let names = ["armor", "health"].map(|name| Stat::named(name).unwrap());
-    StatsColumn::share_stat_names(game.non_send::<View>(), Arc::from(names));
+    let names = ["armor", "health"].into_iter().collect();
+    StatsColumn::share_stat_names(game.non_send::<View>(), Arc::new(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([Num::int(25), Num::int(10)]);
     let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), Level::new(3).unwrap());
@@ -468,11 +468,19 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     );
 
     let refusals = [
-        (of, r#"of.stat("spirit")"#, ApiError::UnknownStat),
+        (
+            of,
+            r#"of.stat("spirit")"#,
+            ApiError::Unknown(NameKind::Stat),
+        ),
         (bare, "of.level", ApiError::NoStats),
         (bare, r#"of.stat("armor")"#, ApiError::NoStats),
         (of, r#"of.pool("mana")"#, ApiError::NoPool),
-        (of, r#"of.pool_max("rage")"#, ApiError::UnknownPool),
+        (
+            of,
+            r#"of.pool_max("rage")"#,
+            ApiError::Unknown(NameKind::Pool),
+        ),
         (shell, r#"of.pool("health")"#, ApiError::NoPool),
         (shell, r#"of.pool_max("health")"#, ApiError::NoPool),
     ];
@@ -489,7 +497,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 #[test]
 fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let mut game = units_match();
-    let data = UnitTypeData::default();
+    let data = UnitTypeCore::default();
     let mut load = |scope, name| Units::load_type(&mut game, scope, name, &data);
     let first = load(TypeScope::Mode, "grunt");
     let second = load(TypeScope::Mode, "tower");
@@ -497,16 +505,23 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let theirs = load(TypeScope::Package(1), "grunt");
     let view = game.non_send::<View>();
     assert_eq!(
-        (view.unit_type_named("grunt"), view.unit_type_named("tower")),
+        (
+            view.names().unit_types().named((TypeScope::Mode, "grunt")),
+            view.names().unit_types().named((TypeScope::Mode, "tower"))
+        ),
         (Some(first), Some(second))
     );
-    assert_eq!(view.unit_type_named("wolf"), None);
-    let types = view.types_mut();
-    assert_eq!(types.named(TypeScope::Package(1), "grunt"), Some(theirs));
-    assert_eq!(types.named(TypeScope::Package(2), "grunt"), None);
+    assert_eq!(
+        view.names().unit_types().named((TypeScope::Mode, "wolf")),
+        None
+    );
+    let names = view.names();
+    let types = names.unit_types();
+    assert_eq!(types.named((TypeScope::Package(1), "grunt")), Some(theirs));
+    assert_eq!(types.named((TypeScope::Package(2), "grunt")), None);
     assert_ne!(theirs, first);
     // Each type's origin: its package and its name there.
-    let origins = types.origins();
+    let origins = view.names().types().origins();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
         (origin.package, &*origin.name)
@@ -520,10 +535,10 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
 }
 
 #[test]
-#[should_panic(expected = "a scope names a type once")]
+#[should_panic(expected = "a scope names an id once: grunt")]
 fn a_type_named_twice_in_one_scope_is_a_logic_error() {
     let mut game = units_match();
-    let data = UnitTypeData::default();
+    let data = UnitTypeCore::default();
     Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
     Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
 }

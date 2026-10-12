@@ -1,46 +1,44 @@
+use crate::mode::offer::Offer;
 use crate::units::action_id::ActionId;
-use crate::values::name_list::NameList;
+use crate::values::names::Names;
 
-/// The entries of the mode's loadout packages, loaded: each one's id and ability, by place.
+/// The entries of the mode's loadout packages, loaded: each one's id and ability, by offer.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LoadoutSetup {
-    ids: NameList,
+    ids: Names<Offer>,
     abilities: Vec<ActionId>,
 }
 
 impl LoadoutSetup {
-    /// Adds the entry `id` of `action` after the others.
+    /// Adds the entry `id` of `action` after the others; no other entry has its id, which the
+    /// load checked.
     pub(crate) fn push(&mut self, id: &str, action: ActionId) {
-        self.ids.push(id);
+        self.ids.add(id);
         self.abilities.push(action);
     }
 
-    /// The same entries, sorted by id.
+    /// The same entries, sorted by id: each entry's offer is its place in that order.
     pub(crate) fn sorted(&self) -> LoadoutSetup {
-        let mut order: Vec<usize> = (0..self.len()).collect();
+        let mut order: Vec<Offer> = self.ids.iter().map(|(offer, _)| offer).collect();
         order.sort_by(|&a, &b| self.id(a).cmp(self.id(b)));
         let mut sorted = LoadoutSetup::default();
-        for at in order {
-            sorted.push(self.id(at), self.abilities[at]);
+        for offer in order {
+            sorted.push(self.id(offer), self.ability(offer));
         }
         sorted
     }
 
-    /// The place of the entry `id`, in entries sorted by id.
-    pub(crate) fn sorted_place(&self, id: &str) -> Option<usize> {
-        debug_assert!(
-            self.ids.iter().is_sorted(),
-            "a loadout searched by id is sorted"
-        );
-        self.ids.sorted_named(0..self.len(), id)
+    /// The entries' ids.
+    pub(crate) const fn ids(&self) -> &Names<Offer> {
+        &self.ids
     }
 
-    pub(crate) fn id(&self, at: usize) -> &str {
-        self.ids.get(at).expect("an entry of the loadout")
+    pub(crate) fn id(&self, offer: Offer) -> &str {
+        self.ids.name(offer).expect("an entry of the loadout")
     }
 
-    pub(crate) fn ability(&self, at: usize) -> ActionId {
-        self.abilities[at]
+    pub(crate) fn ability(&self, offer: Offer) -> ActionId {
+        self.abilities[offer.index()]
     }
 
     pub(crate) const fn len(&self) -> usize {
@@ -61,22 +59,13 @@ mod tests {
         loadout.push("blink", blink);
         let sorted = loadout.sorted();
         let entries: Vec<_> = (0..sorted.len())
-            .map(|at| (sorted.id(at), sorted.ability(at)))
+            .map(|at| (sorted.id(Offer::new(at)), sorted.ability(Offer::new(at))))
             .collect();
         assert_eq!(entries, [("arc", arc), ("blink", blink), ("haste", haste)]);
+        let offer = |at| Some(Offer::new(at));
         assert_eq!(
-            ["arc", "blink", "haste", "bolt"].map(|id| sorted.sorted_place(id)),
-            [Some(0), Some(1), Some(2), None]
+            ["arc", "blink", "haste", "bolt"].map(|id| sorted.ids().named(id)),
+            [offer(0), offer(1), offer(2), None]
         );
-    }
-
-    #[test]
-    #[cfg(debug_assertions)]
-    #[should_panic(expected = "a loadout searched by id is sorted")]
-    fn a_loadout_not_sorted_is_not_searched_by_id() {
-        let mut loadout = LoadoutSetup::default();
-        loadout.push("haste", ActionId::new(0));
-        loadout.push("arc", ActionId::new(1));
-        loadout.sorted_place("arc");
     }
 }

@@ -3,13 +3,13 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionKind, ActionRange, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DamageFields, DataTable, DeclaredName, DeliveryData, EffectData,
-    EffectTo, Effecting, EngineTag, EnumRecord, FilterData, HealFields, Hook, ItemData, KindData,
-    LaunchFields, MemberKind, Metric, ModifierData, ModifierFields, ModifierProblem, MoveData,
-    NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId, ProjectileHits,
-    PurgeFields, RangeField, Rank, Release, ResourceId, RestoreFields, Scalar, ScriptApi,
-    ScriptRole, Share, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId, TypePlace,
-    UnitTypeData, UnitTypeFile, XpFields,
+    CollisionData, DamageFields, DataTable, DeclaredName, DeliveryData, DoesData, EffectData,
+    EffectTo, EngineTag, EnumRecord, FilterData, HealFields, Hook, ItemData, KindData,
+    LaunchFields, MemberKind, Metric, ModeCombatData, ModifierData, ModifierFields,
+    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId,
+    ProjectileHits, PurgeFields, RangeField, Rank, Release, ResourceId, RestoreFields, Scalar,
+    ScriptApi, ScriptRole, Share, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId,
+    TypePlace, UnitTypeCore, UnitTypeData, XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -31,6 +31,7 @@ use crate::error::script_problem::ScriptProblem;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
+use crate::name_tables::NameTables;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 use crate::script_facts::{EnumString, Function, ScriptFacts, ScriptName};
@@ -43,8 +44,8 @@ use crate::script_facts::{EnumString, Function, ScriptFacts, ScriptName};
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
-    /// The tags a filter may name: every tag the mode's packages name.
-    tags: BTreeSet<&'a str>,
+    /// The names the mode's packages declare, each kind in its table.
+    names: NameTables<'a>,
     /// The release's engine tags, which no package gives.
     engine: Vec<EngineTag>,
     /// The move speed cap, in meters a second.
@@ -63,7 +64,7 @@ pub(crate) struct LoadCheck<'a> {
 /// delivers and those it spawns.
 #[derive(Debug, Clone, Copy)]
 struct EffectScope<'u> {
-    units: &'u BTreeMap<DeclaredName, UnitTypeFile>,
+    units: &'u BTreeMap<DeclaredName, UnitTypeData>,
 }
 
 /// The facts one package's checks share.
@@ -109,11 +110,9 @@ impl<'a> LoadCheck<'a> {
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         let names = packages.tag_names();
         let engine = Release::engine_tags();
-        if engine.len() + names.len() > UnitTypeData::TAG_LIMIT {
+        if engine.len() + names.len() > UnitTypeCore::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
-        let mut tags: BTreeSet<&str> = names.iter().map(DeclaredName::as_str).collect();
-        tags.extend(engine.iter().map(|tag| tag.name()));
         // A dependency's delivery types are in its own scope, so they share no name with
         // another package's; an avatar is in the mode's, by its package's name.
         let units = &packages.content.units;
@@ -131,7 +130,7 @@ impl<'a> LoadCheck<'a> {
                 unit_types += 1;
             }
         }
-        if unit_types > UnitTypeData::TYPE_LIMIT {
+        if unit_types > UnitTypeCore::TYPE_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
         }
         let every = [&packages.mode].into_iter().chain(
@@ -148,7 +147,7 @@ impl<'a> LoadCheck<'a> {
         }
         let check = LoadCheck {
             packages,
-            tags,
+            names: NameTables::of(packages),
             engine,
             cap: manifest.max_move_speed.get(),
             api,
@@ -418,7 +417,7 @@ impl<'a> LoadCheck<'a> {
     /// them; an action placed in kinds of other ranks fails.
     fn slotted_ranks<'u>(
         &self,
-        types: impl IntoIterator<Item = &'u UnitTypeFile>,
+        types: impl IntoIterator<Item = &'u UnitTypeData>,
     ) -> Result<BTreeMap<&'u str, u8>, LoadProblem> {
         self.packages
             .slotted_ranks(types)
@@ -431,7 +430,7 @@ impl<'a> LoadCheck<'a> {
     fn actions(
         &self,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        units: &BTreeMap<DeclaredName, UnitTypeData>,
         ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
@@ -658,7 +657,8 @@ impl<'a> LoadCheck<'a> {
                 let Some(hook) = self.hook(function, roles).map_err(fail)? else {
                     continue;
                 };
-                if let Some(capability) = hook.capability() {
+                let owner = self.api.hook(hook).and_then(|status| status.capability);
+                if let Some(capability) = owner {
                     self.require(capability, &at)?;
                 }
             }
@@ -757,7 +757,7 @@ impl<'a> LoadCheck<'a> {
                 ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
             };
             let units = content.units.values().chain(avatar);
-            let units = units.flat_map(|unit| unit.core.state.keys());
+            let units = units.flat_map(|unit| unit.state.keys());
             fields.extend(modifiers.chain(units).map(DeclaredName::as_str));
         }
         fields
@@ -782,9 +782,8 @@ impl<'a> LoadCheck<'a> {
         }
         let planned = self
             .api
-            .hooks()
-            .iter()
-            .any(|held| held.hook == hook && held.status == Status::Planned);
+            .hook(hook)
+            .is_some_and(|held| held.status == Status::Planned);
         if planned {
             return Err(ScriptProblem::Planned(name.clone()));
         }
@@ -872,7 +871,7 @@ impl<'a> LoadCheck<'a> {
                 }));
             }
             NameKind::SlotKind => {
-                if data.slots.named(name).is_some() {
+                if self.names.has(NameKind::SlotKind, name) {
                     return Ok(());
                 }
                 return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
@@ -885,20 +884,14 @@ impl<'a> LoadCheck<'a> {
                 .markers
                 .iter()
                 .any(|marker| declares(marker.tags.iter(), name)),
-            NameKind::Resource => ResourceId::named(&data.resources, name).is_some(),
-            NameKind::Pool => declares(data.pools.keys(), name),
-            NameKind::DamageKind => declares(data.combat.damage_kinds.iter(), name),
-            NameKind::Track => declares(data.tracks.keys(), name),
-            NameKind::Tag => self.tags.contains(name),
-            NameKind::Team => {
-                let teams = &packages.manifest.teams;
-                declares(teams.iter().map(|team| &team.name), name)
-            }
-            NameKind::Path => declares(packages.map.paths.iter().map(|path| &path.name), name),
-            NameKind::UnitType => {
-                packages.content.units.contains_key(name)
-                    || packages.avatar_names().any(|avatar| avatar == name)
-            }
+            NameKind::Resource
+            | NameKind::Pool
+            | NameKind::DamageKind
+            | NameKind::Track
+            | NameKind::Tag
+            | NameKind::Team
+            | NameKind::Path
+            | NameKind::UnitType => self.names.has(named.kind, name),
             NameKind::Param
             | NameKind::Cost
             | NameKind::Layer
@@ -918,7 +911,7 @@ impl<'a> LoadCheck<'a> {
     const fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
-        if kinds.len() > CombatRules::DAMAGE_KIND_LIMIT {
+        if kinds.len() > ModeCombatData::DAMAGE_KIND_LIMIT {
             return Err(LoadProblem::TooMany(Limit::DamageKinds));
         }
         if !self
@@ -937,7 +930,9 @@ impl<'a> LoadCheck<'a> {
 
     /// The mode's player resource `name`, as `at` names it.
     fn resource(&self, name: &DeclaredName, at: &Place) -> Result<ResourceId, LoadProblem> {
-        ResourceId::named(&self.packages.data.resources, name.as_str())
+        let resources = self.names.resources();
+        resources
+            .named(name.as_str())
             .ok_or_else(|| unknown(at, name, NameKind::Resource))
     }
 
@@ -980,7 +975,7 @@ impl<'a> LoadCheck<'a> {
         id: &DeclaredName,
         action: &ActionData,
         name: &DeclaredName,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        units: &BTreeMap<DeclaredName, UnitTypeData>,
     ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
@@ -1033,7 +1028,7 @@ impl<'a> LoadCheck<'a> {
         &self,
         id: &DeclaredName,
         action: &ActionData,
-        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        units: &BTreeMap<DeclaredName, UnitTypeData>,
     ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         let run = matches!(
@@ -1201,7 +1196,7 @@ impl<'a> LoadCheck<'a> {
         let aims_point = list == Hook::OnResolve
             && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
-            let placed = aims_point && matches!(effect.does, Effecting::Spawn(SpawnFields { .. }));
+            let placed = aims_point && matches!(effect.does, DoesData::Spawn(SpawnFields { .. }));
             if effect.to == EffectTo::Reached && !reaches && !placed {
                 return Err(fail(EffectProblem::NoUnit));
             }
@@ -1211,23 +1206,23 @@ impl<'a> LoadCheck<'a> {
                 name: name.to_string(),
             };
             match &effect.does {
-                Effecting::Planned(planned) => {
+                DoesData::Planned(planned) => {
                     return Err(fail(EffectProblem::Planned(*planned)));
                 }
-                Effecting::Damage(DamageFields { kind, .. }) => {
+                DoesData::Damage(DamageFields { kind, .. }) => {
                     self.require(Capability::Combat, &at)?;
                     if !data.combat.damage_kinds.contains(kind) {
                         return Err(unknown(NameKind::DamageKind, kind));
                     }
                 }
-                Effecting::Heal(HealFields { .. }) => self.require(Capability::Combat, &at)?,
-                Effecting::Restore(RestoreFields { pool, .. }) => {
+                DoesData::Heal(HealFields { .. }) => self.require(Capability::Combat, &at)?,
+                DoesData::Restore(RestoreFields { pool, .. }) => {
                     self.require(Capability::Combat, &at)?;
                     if !data.pools.contains_key(pool) {
                         return Err(unknown(NameKind::Pool, pool));
                     }
                 }
-                Effecting::Modifier(ModifierFields { duration_ms, .. }) => {
+                DoesData::Modifier(ModifierFields { duration_ms, .. }) => {
                     self.require(Capability::Stats, &at)?;
                     if let Some(duration) = duration_ms
                         && !whole_ms(action, duration)
@@ -1235,21 +1230,21 @@ impl<'a> LoadCheck<'a> {
                         return Err(fail(EffectProblem::Duration));
                     }
                 }
-                Effecting::Xp(XpFields { track, .. }) => {
+                DoesData::Xp(XpFields { track, .. }) => {
                     self.require(Capability::Progression, &at)?;
                     if !data.tracks.contains_key(track) {
                         return Err(unknown(NameKind::Track, track));
                     }
                 }
-                Effecting::Purge(PurgeFields { tag }) => {
+                DoesData::Purge(PurgeFields { tag }) => {
                     self.require(Capability::Stats, &at)?;
                     self.own_tags(slice::from_ref(tag), &at)?;
-                    if !self.tags.contains(tag.as_str()) {
+                    if !self.names.has(NameKind::Tag, tag.as_str()) {
                         return Err(unknown(NameKind::Tag, tag));
                     }
                 }
-                Effecting::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
-                Effecting::Launch(LaunchFields {
+                DoesData::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
+                DoesData::Launch(LaunchFields {
                     area,
                     on_hit,
                     on_end,
@@ -1268,7 +1263,7 @@ impl<'a> LoadCheck<'a> {
                     self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
                     self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
                 }
-                Effecting::Spawn(SpawnFields {
+                DoesData::Spawn(SpawnFields {
                     unit_type,
                     duration_ms,
                 }) => scope.spawn(action, unit_type, duration_ms.as_ref(), &at, fail)?,
@@ -1360,13 +1355,14 @@ impl<'a> LoadCheck<'a> {
         collision: Option<&CollisionData>,
         at: &Place,
     ) -> Result<(), LoadProblem> {
-        let navigation = &self.packages.data.navigation;
         match collision.and_then(|collision| collision.layer.as_ref()) {
-            Some(layer) if navigation.layer_named(layer).is_none() => Err(LoadProblem::Unknown {
-                of: NameKind::Layer,
-                at: at.clone(),
-                name: layer.to_string(),
-            }),
+            Some(layer) if !self.names.has(NameKind::Layer, layer.as_str()) => {
+                Err(LoadProblem::Unknown {
+                    of: NameKind::Layer,
+                    at: at.clone(),
+                    name: layer.to_string(),
+                })
+            }
             _ => Ok(()),
         }
     }
@@ -1418,7 +1414,7 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// A box body only on a type that does not walk, on a planar map.
-    fn body_box(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+    fn body_box(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let boxed = unit_type
             .collision
             .as_ref()
@@ -1440,24 +1436,9 @@ impl<'a> LoadCheck<'a> {
 
     /// The capability of each section `unit_type` holds, at `at`, the mode declares; and a
     /// `supply` needs the mode's `[supply]`.
-    fn sections(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
-        let sections = [
-            (unit_type.stats.is_some(), Capability::Stats),
-            (unit_type.combat.is_some(), Capability::Combat),
-            (unit_type.orders.is_some(), Capability::Orders),
-            (unit_type.vision.is_some(), Capability::Vision),
-            (!unit_type.slots.is_empty(), Capability::Abilities),
-            (!unit_type.tracks.is_empty(), Capability::Progression),
-            (unit_type.production.is_some(), Capability::Production),
-            (unit_type.supply.is_some(), Capability::Production),
-            (unit_type.node.is_some(), Capability::Production),
-            (unit_type.drop_off.is_some(), Capability::Production),
-            (unit_type.projectile.is_some(), Capability::Projectiles),
-            (unit_type.area.is_some(), Capability::Areas),
-            (unit_type.inventory.is_some(), Capability::Items),
-        ];
-        for (used, capability) in sections {
-            if used {
+    fn sections(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
+        for field in unit_type.given() {
+            if let Some(capability) = self.api.data_owner(DataTable::UnitType, field) {
                 self.require(capability, at)?;
             }
         }
@@ -1483,13 +1464,13 @@ impl<'a> LoadCheck<'a> {
     /// cap, its filter of the match's tags, and an area's `inside` modifiers of `modifiers`.
     fn unit_type(
         &self,
-        unit_type: &UnitTypeFile,
+        unit_type: &UnitTypeData,
         at: &Place,
         actions: &BTreeMap<DeclaredName, ActionData>,
         modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
         self.sections(unit_type, at)?;
-        self.own_tags(&unit_type.core.tags, at)?;
+        self.own_tags(&unit_type.tags, at)?;
         self.body_box(unit_type, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
@@ -1533,7 +1514,7 @@ impl<'a> LoadCheck<'a> {
         let kinds = &self.packages.data.slots;
         let mut slotted = BTreeSet::new();
         for (kind, ids) in &unit_type.slots {
-            kinds.named(kind.as_str()).ok_or_else(|| {
+            kinds.names().named(kind.as_str()).ok_or_else(|| {
                 LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
                     at: at.clone(),
                     kind: kind.to_string(),
@@ -1576,17 +1557,20 @@ impl<'a> LoadCheck<'a> {
     /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
     /// of one rank, as an item's action has, and its slots and the type's own are no more than a
     /// unit holds.
-    fn inventory(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+    fn inventory(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let Some(inventory) = &unit_type.inventory else {
             return Ok(());
         };
         let kinds = &self.packages.data.slots;
-        let kind = kinds.named(inventory.kind.as_str()).ok_or_else(|| {
-            LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                at: at.clone(),
-                kind: inventory.kind.to_string(),
-            })
-        })?;
+        let kind = kinds
+            .names()
+            .named(inventory.kind.as_str())
+            .ok_or_else(|| {
+                LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                    at: at.clone(),
+                    kind: inventory.kind.to_string(),
+                })
+            })?;
         if kinds.ranks(kind) != 1 {
             return Err(LoadProblem::Item(ItemProblem::RankedInventory {
                 at: at.clone(),
@@ -1607,13 +1591,13 @@ impl<'a> LoadCheck<'a> {
     /// needs `items`.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let (data, content) = (&packages.data, &packages.content);
+        let content = &packages.content;
         let items = &content.items;
         for (id, item) in items {
             let at = Place::Item(id.clone());
             self.require(Capability::Items, &at)?;
-            let resource =
-                |name: &&DeclaredName| ResourceId::named(&data.resources, name.as_str()).is_none();
+            let resources = self.names.resources();
+            let resource = |name: &&DeclaredName| resources.named(name.as_str()).is_none();
             if let Some(name) = item.cost.keys().find(resource) {
                 return Err(unknown(&at, name, NameKind::Resource));
             }
@@ -1692,7 +1676,12 @@ impl<'a> LoadCheck<'a> {
         if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
             return Err(unknown(&at, name, NameKind::Item));
         }
-        if ResourceId::named(&data.resources, shop.resource.as_str()).is_none() {
+        if self
+            .names
+            .resources()
+            .named(shop.resource.as_str())
+            .is_none()
+        {
             return Err(unknown(&at, &shop.resource, NameKind::Resource));
         }
         let markers = &packages.map.markers;
@@ -1741,7 +1730,7 @@ impl<'a> LoadCheck<'a> {
                         DependentKind::Loadout | DependentKind::Rules => None,
                     },
                 ));
-        let typed: Vec<(Place, &UnitTypeFile)> = typed.collect();
+        let typed: Vec<(Place, &UnitTypeData)> = typed.collect();
         let kinds: BTreeSet<&DeclaredName> = typed
             .iter()
             .filter_map(|(_, unit_type)| Some(&unit_type.inventory.as_ref()?.kind))
@@ -1802,7 +1791,7 @@ impl<'a> LoadCheck<'a> {
     /// gives its ranks levels in a mode with no `level` track to read them on.
     fn slot_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        let kinds = &data.slots.0;
+        let kinds = data.slots.kinds();
         if kinds.len() > ActionSlots::LIMIT {
             return Err(LoadProblem::Choice(ChoiceProblem::TooManySlotKinds));
         }
@@ -1833,7 +1822,7 @@ impl<'a> LoadCheck<'a> {
         let mut ranks = None;
         for (name, choice) in &data.choices {
             let fills = |kind: &DeclaredName| {
-                data.slots.named(kind.as_str()).ok_or_else(|| {
+                data.slots.names().named(kind.as_str()).ok_or_else(|| {
                     LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
                         at: Place::Choice(name.clone()),
                         kind: kind.to_string(),
@@ -1896,10 +1885,9 @@ impl<'a> LoadCheck<'a> {
     /// Every per-rank array of `action` has `ranks` entries, each pool its cost names is one
     /// the mode declares, and each capability field holds at every rank.
     fn ranked(&self, id: &DeclaredName, action: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
         if let Some(name) = action
             .cost_names()
-            .find(|name| data.cost_target_named(name).is_none())
+            .find(|name| self.names.cost_target(name).is_none())
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
@@ -1915,7 +1903,7 @@ impl<'a> LoadCheck<'a> {
         }
         for rank in (1..=ranks).filter_map(Rank::new) {
             action
-                .fields_at(rank, |name| data.cost_target_named(name))
+                .fields_at(rank, |name| self.names.cost_target(name))
                 .map_err(|field| LoadProblem::ActionField {
                     action: id.clone(),
                     field,
@@ -1971,7 +1959,7 @@ impl<'a> LoadCheck<'a> {
         if filter
             .tags
             .iter()
-            .all(|tag| self.tags.contains(tag.name.as_str()))
+            .all(|tag| self.names.has(NameKind::Tag, tag.name.as_str()))
         {
             return Ok(());
         }
@@ -2168,7 +2156,7 @@ fn delivery_holds(
     id: &DeclaredName,
     action: &ActionData,
     delivery: &DeliveryData,
-    units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    units: &BTreeMap<DeclaredName, UnitTypeData>,
     hooks_hit: bool,
 ) -> Result<(), LoadProblem> {
     let fail = |problem: fn(DeclaredName) -> DeliveryProblem| {
@@ -2231,7 +2219,7 @@ fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -
 fn requires(
     id: &DeclaredName,
     action: &ActionData,
-    units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    units: &BTreeMap<DeclaredName, UnitTypeData>,
     modifiers: &BTreeMap<DeclaredName, ModifierData>,
 ) -> Result<(), LoadProblem> {
     let Some(requires) = &action.requires else {
@@ -2241,7 +2229,7 @@ fn requires(
     if let Some(name) = requires
         .units
         .iter()
-        .find(|name| units.get(*name).is_none_or(UnitTypeFile::delivers))
+        .find(|name| units.get(*name).is_none_or(UnitTypeData::delivers))
     {
         return Err(unknown(&at, name, NameKind::UnitType));
     }

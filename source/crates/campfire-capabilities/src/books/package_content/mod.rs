@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::actions::action_data::ActionData;
-use crate::books::unit_type_file::UnitTypeFile;
+use crate::books::unit_type_data::UnitTypeData;
 use crate::items::item_data::ItemData;
 use crate::stats::modifier_data::ModifierData;
 use crate::values::declared_name::DeclaredName;
@@ -19,7 +19,7 @@ pub struct PackageContent {
     #[serde(default)]
     pub modifiers: BTreeMap<DeclaredName, ModifierData>,
     #[serde(default)]
-    pub units: BTreeMap<DeclaredName, UnitTypeFile>,
+    pub units: BTreeMap<DeclaredName, UnitTypeData>,
     #[serde(default)]
     pub items: BTreeMap<DeclaredName, ItemData>,
 }

@@ -14,7 +14,7 @@ use crate::units::unit_type::UnitType;
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
 /// not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct SupplyCosts {
+pub(crate) struct SupplyCostBook {
     types: ByType<SupplyData>,
     /// By action, 0 for an action that trains nothing.
     trains: Vec<u32>,
@@ -28,9 +28,9 @@ pub(crate) struct UnitSupply {
     pub(crate) given: u64,
 }
 
-impl SupplyCosts {
+impl SupplyCostBook {
     /// The costs of `types`, and of the trains of `book`.
-    pub(crate) fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCosts {
+    pub(crate) fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCostBook {
         let trains = (0..)
             .map_while(|at| book.get(ActionId::new(at)))
             .map(|action| match action.kind {
@@ -40,7 +40,7 @@ impl SupplyCosts {
                 }
             })
             .collect();
-        SupplyCosts { types, trains }
+        SupplyCostBook { types, trains }
     }
 
     /// What a unit of `unit_type` uses as it joins a queue.
@@ -75,7 +75,7 @@ impl SupplyCosts {
     }
 }
 
-impl Book for SupplyCosts {
+impl Book for SupplyCostBook {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }

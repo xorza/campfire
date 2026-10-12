@@ -1,5 +1,7 @@
 use std::num::NonZeroU32;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use serde::Deserialize;
 
 /// The mode's `[saves]`: who may ask for a save, beside the mode, and how often the mode saves on
@@ -21,6 +23,10 @@ pub enum SaveBy {
     Player,
     /// The mode alone, by `ctx.save()` and its autosaves.
     Mode,
+}
+
+impl DataSection for SavesData {
+    const TABLE: DataTable = DataTable::Saves;
 }
 
 #[cfg(test)]

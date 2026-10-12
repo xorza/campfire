@@ -3,7 +3,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_math::Num;
 use campfire_sim::{SimWorld, StableId};
 
-use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::progression::points::Points;
@@ -31,13 +31,13 @@ impl ProgressionEffect {
     /// Queues the listed `does`, experience, to `id` in `frame`; a unit `view` does not hold,
     /// or that does not have the track, fails the call, as `ctx.add_xp` does.
     pub(crate) fn queue_listed(
-        does: CapabilityDoes,
+        does: CapabilityDoesSpec,
         id: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
     ) -> Result<(), CallError> {
-        let CapabilityDoes::Xp { track, amount } = does else {
+        let CapabilityDoesSpec::Xp { track, amount } = does else {
             unreachable!("progression queues only its own listed effects")
         };
         if !ProgressionColumn::has(view, id, track) {

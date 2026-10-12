@@ -51,10 +51,10 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(ready(&game), start + 2);
     assert_eq!(Mode::failures(&game), []);
     let refused = [
-        ("unknown", ApiError::UnknownAbility),
+        ("unknown", ApiError::Unknown(NameKind::Ability)),
         ("unheld", ApiError::NotHeld),
         ("negative", ApiError::NegativeTime),
-        ("kind", ApiError::UnknownSlotKind),
+        ("kind", ApiError::Unknown(NameKind::SlotKind)),
         ("share", ApiError::NotAFraction),
     ];
     for (value, error) in refused {

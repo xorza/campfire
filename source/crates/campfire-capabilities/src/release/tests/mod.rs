@@ -308,88 +308,58 @@ fn a_module_imports_only_from_its_layer_and_below() {
 }
 
 /// Every lookup by name that the production code calls, by file: a method or function whose
-/// name ends in `named`, as each lookup of an id by its name is spelled. Each runs in a script
-/// call, which resolves the names it is given once, or in the load, which resolves the
-/// packages' names once; but the one marked, which runs as a modifier applies. The test fails
-/// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 74] = [
+/// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
+/// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
+/// types take them, or in the load, which resolves the packages' names once; but the one marked,
+/// which runs as a modifier applies. The test fails when a lookup appears and when one listed
+/// here is gone.
+const LOOKUPS: [(&str, &str); 42] = [
     // The load.
+    ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
-    ("books/book_builder.rs", "cost_target_named"),
     ("books/book_builder.rs", "named"),
-    ("books/book_builder.rs", "tag_named"),
     ("combat/combat_bindings.rs", "named"),
-    ("combat/combat_rules.rs", "named"),
-    ("mode/mode_books.rs", "tag_named"),
+    ("combat/mode_combat_data.rs", "named"),
+    ("mode/map_data.rs", "named"),
+    ("mode/mode_books.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
+    ("mode/mode_names.rs", "named"),
     ("mode/unit_kit/mod.rs", "named"),
-    ("navigation/navigation_rules.rs", "layer_named"),
-    ("scripts/script_api/mod.rs", "sorted_named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/pool_book.rs", "named"),
+    ("stats/stat_book.rs", "named"),
+    ("units/unit_types.rs", "named"),
+    ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting.rs", "named"),
     // The load, and a filter a script names.
-    ("units/filter.rs", "tag_named"),
+    ("units/filter.rs", "named"),
     ("values/filter_data.rs", "named"),
-    // Script calls, and the mode inputs, whose names enter with the players' inputs.
-    ("abilities/abilities_api.rs", "action_named"),
-    ("abilities/abilities_api.rs", "kind_named"),
-    ("actions/actions_column.rs", "named"),
-    ("combat/combat_api.rs", "damage_kind_named"),
-    ("combat/combat_api.rs", "pool_named"),
-    ("mode/map_data.rs", "layer_named"),
-    ("mode/marker.rs", "named"),
-    ("mode/mode_api.rs", "kind_named"),
-    ("mode/mode_api.rs", "named"),
-    ("mode/mode_api.rs", "path_named"),
-    ("mode/mode_api.rs", "resource_named"),
-    ("mode/mode_api.rs", "state_field_named"),
-    ("mode/mode_api.rs", "unit_type_named"),
-    ("mode/mode_call.rs", "param_named"),
-    ("mode/mode_hooks.rs", "input_type_named"),
-    ("mode/mode_schema.rs", "get_named"),
+    // Script calls, each argument by its type, and the mode inputs, whose names enter with the
+    // players' inputs.
+    ("actions/slot_kind.rs", "named"),
+    ("mode/choice_id.rs", "named"),
     ("mode/mode_schema.rs", "named"),
-    ("mode/loadout_setup.rs", "sorted_named"),
     ("mode/roster.rs", "named"),
-    ("navigation/paths.rs", "named"),
-    ("progression/progression_api.rs", "track_named"),
-    ("progression/progression_column.rs", "named"),
+    ("players/resource_id.rs", "named"),
     ("scripts/api_builder.rs", "named"),
-    ("scripts/ctx.rs", "param_named"),
-    ("scripts/call_part.rs", "param_named"),
-    ("scripts/frame.rs", "param_named"),
-    ("stats/modifier_handle.rs", "field_named"),
+    ("scripts/script_arg.rs", "named"),
+    ("scripts/script_names.rs", "named"),
     ("stats/param_table.rs", "named"),
-    ("stats/stats_api.rs", "modifier_named"),
-    ("stats/stats_api.rs", "stat_named"),
+    ("stats/pool_id.rs", "named"),
+    ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
-    ("stats/stats_column.rs", "modifier_named"),
-    ("stats/stats_column.rs", "named"),
-    ("stats/stats_column.rs", "pool_id_named"),
-    ("stats/stats_column.rs", "pool_named"),
-    ("units/view.rs", "damage_kind_named"),
-    ("units/view.rs", "param_named"),
-    ("units/view.rs", "path_named"),
-    ("units/view.rs", "resource_named"),
-    ("units/view.rs", "tag_named"),
-    ("units/view.rs", "unit_type_named"),
-    ("units/teams.rs", "named"),
-    ("units/unit.rs", "param_named"),
-    ("units/unit.rs", "tag_named"),
+    ("units/action_id.rs", "named"),
+    ("units/modifier_id.rs", "named"),
+    ("units/path_id.rs", "named"),
+    ("units/tag.rs", "named"),
+    ("units/team.rs", "named"),
+    ("units/track_id.rs", "named"),
     ("units/unit_state_book.rs", "named"),
-    ("units/unit_types.rs", "get_named"),
-    ("units/unit_types.rs", "named"),
-    ("units/unit_types.rs", "tag_named"),
-    ("units/units_column.rs", "field_named"),
-    ("units/view_names.rs", "named"),
-    ("units/view_names.rs", "param_named"),
-    ("units/view_names.rs", "tag_named"),
+    ("units/unit_type.rs", "named"),
     ("values/name_table.rs", "named"),
-    ("values/name_table.rs", "sorted_named"),
-    ("values/stat.rs", "named"),
     // As a modifier applies: a param of the ability that applies it, by name, as the place
     // differs by ability.
     ("stats/param_book.rs", "named"),
@@ -536,6 +506,94 @@ fn each_role_of_a_module_takes_the_modules_name() {
             .collect();
         assert_eq!(misnamed_roles(module, file, &code), expected, "{code}");
     }
+}
+
+/// Each role whose types take a suffix, wherever they are: the trait a type implements to hold
+/// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
+const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
+
+/// The types that hold a suffix role but are named for what they are: the one generic book, a
+/// book of a value for each unit type.
+const SUFFIX_EXCEPTIONS: [&str; 1] = ["ByType"];
+
+/// The `*Book` types that are no books yet: resources of package data that F24 declares as books.
+const BOOKS_TO_DECLARE: [&str; 4] = ["PoolBook", "ScriptBook", "StatBook", "TagBook"];
+
+/// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
+fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
+    let opening = format!(" {role} for ");
+    let mut found = Vec::new();
+    for (at, _) in code.match_indices(&opening) {
+        let line = code[..at].rsplit('\n').next().unwrap_or_default();
+        if !line.trim_start().starts_with("impl") {
+            continue;
+        }
+        let rest = &code[at + opening.len()..];
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        found.push(&rest[..end]);
+    }
+    found
+}
+
+/// The types `code` declares whose name ends in `suffix`.
+fn suffixed<'c>(code: &'c str, suffix: &str) -> Vec<&'c str> {
+    let mut found = Vec::new();
+    for (at, _) in code.match_indices("struct ") {
+        let rest = &code[at + "struct ".len()..];
+        let end = rest
+            .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        if rest[..end].ends_with(suffix) {
+            found.push(&rest[..end]);
+        }
+    }
+    found
+}
+
+#[test]
+fn a_book_and_a_data_table_take_their_suffix() {
+    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    let mut holders: [Vec<String>; SUFFIX_ROLES.len()] = Default::default();
+    let mut books = Vec::new();
+    production(src, &mut |_, code| {
+        for (holders, (role, _)) in holders.iter_mut().zip(SUFFIX_ROLES) {
+            holders.extend(implementers(code, role).into_iter().map(str::to_owned));
+        }
+        books.extend(suffixed(code, "Book").into_iter().map(str::to_owned));
+    });
+    let mut misnamed = Vec::new();
+    for (holders, (_, suffix)) in holders.iter().zip(SUFFIX_ROLES) {
+        assert!(
+            !holders.is_empty(),
+            "the walk finds the holders of each role"
+        );
+        let wrong = holders
+            .iter()
+            .filter(|name| !name.ends_with(suffix) && !SUFFIX_EXCEPTIONS.contains(&name.as_str()));
+        misnamed.extend(wrong.cloned());
+    }
+    assert_eq!(
+        misnamed,
+        Vec::<String>::new(),
+        "a holder of a role misnamed"
+    );
+    // Every `*Book` is a book, but those F24 declares.
+    let mut no_books: Vec<_> = books
+        .iter()
+        .filter(|name| !holders[0].contains(name))
+        .cloned()
+        .collect();
+    no_books.sort();
+    assert_eq!(no_books, BOOKS_TO_DECLARE, "a `*Book` that is no book");
+
+    // A generic impl and a plain one are found, and a mention in a comment is not.
+    let code =
+        "impl<T: PerType> Book for ByType<T> {}\nimpl Book for ActionBook {}\n// a Book for all";
+    assert_eq!(implementers(code, "Book"), ["ByType", "ActionBook"]);
+    let code = "pub(crate) struct ModeBooks;\nstruct StatBook(u8);";
+    assert_eq!(suffixed(code, "Book"), ["StatBook"]);
 }
 
 #[test]

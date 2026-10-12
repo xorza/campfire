@@ -3,6 +3,8 @@ use std::num::NonZeroU8;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
 
@@ -77,4 +79,8 @@ impl<'de> Deserialize<'de> for SlotKindData {
         };
         Ok(SlotKindData { name, ranks })
     }
+}
+
+impl DataSection for SlotKindData {
+    const TABLE: DataTable = DataTable::SlotKind;
 }

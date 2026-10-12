@@ -3,10 +3,10 @@ use campfire_sim::internals::SimWorldInternals;
 use super::*;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::production::gatherer::{Gatherer, Load};
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::production_column::ProductionColumn;
-use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::supply_data::SupplyData;
-use crate::production::supply_rules::SupplyRules;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
@@ -126,7 +126,12 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     let view = game.non_send::<View>().clone();
-    let named = |name: &str| view.unit_type_named(name).unwrap();
+    let named = |name: &str| {
+        view.names()
+            .unit_types()
+            .named((TypeScope::Mode, name))
+            .unwrap()
+    };
     let (hero, grunt) = (named("hero-x"), named("grunt"));
     let mut types = ByType::default();
     types.set(
@@ -143,8 +148,8 @@ fn on_mode_input(ctx, player, name, value) {
             provides: 0,
         },
     );
-    let costs = SupplyCosts::new(types, game.resource::<ActionBook>());
-    ProductionColumn::share(&view, Some(SupplyRules { max: 5 }), costs);
+    let costs = SupplyCostBook::new(types, game.resource::<ActionBook>());
+    ProductionColumn::share(&view, Some(ModeSupplyData { max: 5 }), costs);
     // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
     // third gathers and carries nothing.
     let gold = resource("gold").unwrap();
@@ -184,7 +189,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(70_000));
     assert_eq!(Mode::failures(&game), []);
     // A mode that counts no supply fails the call.
-    ProductionColumn::share(&view, None, SupplyCosts::default());
+    ProductionColumn::share(&view, None, SupplyCostBook::default());
     Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
         Mode::failures(&game),

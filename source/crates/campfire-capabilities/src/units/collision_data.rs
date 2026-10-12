@@ -1,6 +1,8 @@
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::units::body_form::BodyForm;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
@@ -11,7 +13,7 @@ use crate::values::scalar::Scalar;
 /// and it moves on the first layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollisionData {
-    /// Its body, on the first layer until `NavigationRules::form` puts it on its own.
+    /// Its body, on the first layer until `ModeNavigationData::form` puts it on its own.
     pub form: BodyForm,
     pub layer: Option<DeclaredName>,
 }
@@ -51,4 +53,8 @@ impl<'de> Deserialize<'de> for CollisionData {
             layer: fields.layer,
         })
     }
+}
+
+impl DataSection for CollisionData {
+    const TABLE: DataTable = DataTable::Collision;
 }

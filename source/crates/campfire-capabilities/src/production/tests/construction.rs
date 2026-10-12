@@ -10,7 +10,7 @@ use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::orders::order::Action;
-use crate::production::build_specs::{BuildSpecs, NewBuild, PlacementCheck, Style};
+use crate::production::build_book::{BuildBook, NewBuild, PlacementCheck, Style};
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::Builder;
 use crate::production::site::Site;
@@ -122,7 +122,7 @@ impl Yard {
             amount: 15,
         };
         let build = Actions::add_build(game, depot, Num::ONE, Ticks::new(4), Some(cost));
-        let mut builds = BuildSpecs::default();
+        let mut builds = BuildBook::default();
         let new = NewBuild {
             form,
             style: rules.style,

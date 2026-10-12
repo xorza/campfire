@@ -11,8 +11,8 @@ use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal::Heal;
 use crate::combat::heal_handle::HealHandle;
 use crate::mode::choices::Choices;
-use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_call::ModeCall;
+use crate::mode::mode_spec::ModeSpec;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
@@ -29,8 +29,8 @@ pub(crate) struct Calls<'a, 'w> {
 
 impl Calls<'_, '_> {
     /// The match's mode.
-    pub(crate) fn book(&self) -> &ModeBook {
-        ModeBook::of_match(&self.ctx)
+    pub(crate) fn book(&self) -> &ModeSpec {
+        ModeSpec::of_match(&self.ctx)
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its

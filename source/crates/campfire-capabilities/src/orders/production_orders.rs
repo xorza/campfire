@@ -10,7 +10,7 @@ use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRowsMut;
 use crate::players::resource_amount::ResourceAmount;
-use crate::production::build_specs::BuildSpecs;
+use crate::production::build_book::BuildBook;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
@@ -42,7 +42,7 @@ impl ProductionOrders {
             Res<'_, TickOrders>,
             Res<'_, EntityIndex>,
         ),
-        builds: Res<'_, BuildSpecs>,
+        builds: Res<'_, BuildBook>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: Query<
             '_,

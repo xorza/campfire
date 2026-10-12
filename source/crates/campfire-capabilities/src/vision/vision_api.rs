@@ -6,15 +6,16 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::units::filter::Filter;
 use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
 use crate::vision::vision_column::VisionColumn;
+use crate::vision::vision_data::VisionData;
 use crate::vision::vision_effect::VisionEffect;
 
 /// The script API and data of `vision` beside the queries the view answers: the sight range, the
@@ -31,13 +32,13 @@ impl VisionApi {
             "shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit",
         )
         .roles(RoleSet::ACTING);
-        api.bind_for(
+        api.call(
             reveal,
             |ctx: &mut Ctx, pos: Position, radius: Num, ms: INT| {
                 VisionApi::reveal(ctx, pos, radius, ms)
             },
         )
-        .bind_for(
+        .call(
             reveal,
             |ctx: &mut Ctx, pos: Position, radius: INT, ms: INT| {
                 VisionApi::reveal(ctx, pos, ApiError::num(radius)?, ms)
@@ -45,7 +46,8 @@ impl VisionApi {
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
         .tag_property(TagProperty::Detects, Status::Runs(ApiVersion::FIRST))
-        .data(DataTable::Vision, &["sight_range"], &[]);
+        .data::<VisionData>(&["sight_range"], &[])
+        .shared_data(DataTable::UnitType, &["vision"], &[]);
     }
 
     /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`
@@ -72,43 +74,29 @@ impl VisionApi {
             &[&["unit"]],
             "whether its team sees the other unit",
         );
-        api.bind(can_see, |unit: Unit, other: Unit| {
-            VisionColumn::can_see(&unit, &other)
+        api.method(can_see, |unit: Unit, other: Unit| {
+            Ok(VisionColumn::can_see(&unit, &other))
         });
         let visible = MemberSpec::call(
             "find_visible",
             &[&["of", "pos", "radius", "filter"]],
             "as `find`, of the units `of`'s team sees",
-        )
-        .name(3, NameKind::Filter);
-        api.bind(
+        );
+        api.call(
             visible,
-            |_: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                VisionColumn::find(&of, pos, radius, filter)
-            },
-        )
-        .bind(
-            visible,
-            |_: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
-                VisionColumn::find(&of, pos, ApiError::num(radius)?, filter)
+            |_: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
+                VisionColumn::find(&of, pos, radius, &filter)
             },
         );
         let nearest = MemberSpec::call(
             "nearest_visible",
             &[&["of", "radius", "filter"]],
             "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
-        )
-        .name(2, NameKind::Filter);
-        api.bind(
+        );
+        api.call(
             nearest,
-            |_: &mut Ctx, of: Unit, radius: Num, filter: &str| {
-                VisionColumn::nearest(&of, radius, filter)
-            },
-        )
-        .bind(
-            nearest,
-            |_: &mut Ctx, of: Unit, radius: INT, filter: &str| {
-                VisionColumn::nearest(&of, ApiError::num(radius)?, filter)
+            |_: &mut Ctx, of: Unit, radius: Num, filter: Filter| {
+                VisionColumn::nearest(&of, radius, &filter)
             },
         );
     }

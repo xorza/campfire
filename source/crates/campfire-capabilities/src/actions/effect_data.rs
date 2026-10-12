@@ -1,6 +1,8 @@
 use serde::de::{Error, IgnoredAny};
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
 
@@ -8,13 +10,13 @@ use crate::values::number::Number;
 /// reached, or with `to = "source"`, the acting unit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectData {
-    pub does: Effecting,
+    pub does: DoesData,
     pub to: EffectTo,
 }
 
 /// What an effect does: each the table of one key.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Effecting {
+pub enum DoesData {
     /// `damage = { amount, kind }`.
     Damage(DamageFields),
     /// `heal = { amount }`, of the life pool.
@@ -191,22 +193,22 @@ pub struct LaunchFields {
     pub on_end: Vec<EffectData>,
 }
 
-impl Effecting {
+impl DoesData {
     /// The numbers it gives: its amount, a modifier's duration, a dash's speed, or a knock
     /// back's distance and time.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
         let numbers = match self {
-            Effecting::Damage(DamageFields { amount, .. })
-            | Effecting::Heal(HealFields { amount })
-            | Effecting::Restore(RestoreFields { amount, .. })
-            | Effecting::Xp(XpFields { amount, .. })
-            | Effecting::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
-            Effecting::Modifier(ModifierFields { duration_ms, .. })
-            | Effecting::Spawn(SpawnFields { duration_ms, .. }) => [duration_ms.as_ref(), None],
-            Effecting::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
-            Effecting::Purge(PurgeFields { .. })
-            | Effecting::Launch(LaunchFields { .. })
-            | Effecting::Planned(_) => [None, None],
+            DoesData::Damage(DamageFields { amount, .. })
+            | DoesData::Heal(HealFields { amount })
+            | DoesData::Restore(RestoreFields { amount, .. })
+            | DoesData::Xp(XpFields { amount, .. })
+            | DoesData::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
+            DoesData::Modifier(ModifierFields { duration_ms, .. })
+            | DoesData::Spawn(SpawnFields { duration_ms, .. }) => [duration_ms.as_ref(), None],
+            DoesData::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
+            DoesData::Purge(PurgeFields { .. })
+            | DoesData::Launch(LaunchFields { .. })
+            | DoesData::Planned(_) => [None, None],
         };
         numbers.into_iter().flatten()
     }
@@ -214,7 +216,7 @@ impl Effecting {
     /// The effects of the lists it holds: a launch's `on_hit`, then its `on_end`.
     pub fn nested(&self) -> impl Iterator<Item = &EffectData> + '_ {
         let (on_hit, on_end): (&[EffectData], &[EffectData]) = match self {
-            Effecting::Launch(LaunchFields { on_hit, on_end, .. }) => (on_hit, on_end),
+            DoesData::Launch(LaunchFields { on_hit, on_end, .. }) => (on_hit, on_end),
             _ => (&[], &[]),
         };
         on_hit.iter().chain(on_end)
@@ -223,7 +225,7 @@ impl Effecting {
     /// The modifier of its package it applies, if it applies one.
     pub const fn modifier(&self) -> Option<&DeclaredName> {
         match self {
-            Effecting::Modifier(ModifierFields { id, .. }) => Some(id),
+            DoesData::Modifier(ModifierFields { id, .. }) => Some(id),
             _ => None,
         }
     }
@@ -267,23 +269,23 @@ impl<'de> Deserialize<'de> for EffectData {
         let planned = planned
             .into_iter()
             .filter(|&(given, _)| given)
-            .map(|(_, effect)| Effecting::Planned(effect));
-        let damage = fields.damage.map(Effecting::Damage);
-        let heal = fields.heal.map(Effecting::Heal);
-        let restore = fields.restore.map(Effecting::Restore);
-        let modifier = fields.modifier.map(Effecting::Modifier);
-        let xp = fields.xp.map(Effecting::Xp);
-        let purge = fields.purge.map(Effecting::Purge);
-        let launch = fields.launch.map(Effecting::Launch);
+            .map(|(_, effect)| DoesData::Planned(effect));
+        let damage = fields.damage.map(DoesData::Damage);
+        let heal = fields.heal.map(DoesData::Heal);
+        let restore = fields.restore.map(DoesData::Restore);
+        let modifier = fields.modifier.map(DoesData::Modifier);
+        let xp = fields.xp.map(DoesData::Xp);
+        let purge = fields.purge.map(DoesData::Purge);
+        let launch = fields.launch.map(DoesData::Launch);
         let moves = match fields.moves.map(MoveFields::data) {
             Some(None) => {
                 return Err(D::Error::custom(
                     "a dash's `to` and `speed`, or a knock back's `from`, `distance` and `ms`",
                 ));
             }
-            moves => moves.flatten().map(Effecting::Move),
+            moves => moves.flatten().map(DoesData::Move),
         };
-        let spawn = fields.spawn.map(Effecting::Spawn);
+        let spawn = fields.spawn.map(DoesData::Spawn);
         let mut effects = [
             damage, heal, restore, modifier, xp, purge, launch, moves, spawn,
         ]
@@ -299,4 +301,8 @@ impl<'de> Deserialize<'de> for EffectData {
         };
         Ok(EffectData { does, to })
     }
+}
+
+impl DataSection for EffectData {
+    const TABLE: DataTable = DataTable::Effect;
 }

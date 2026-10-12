@@ -149,7 +149,7 @@ fn on_level_up(ctx, unit, track, level) {
     // the call, and change nothing.
     let refused = [
         ("tower", ApiError::NoTrack),
-        ("fame", ApiError::UnknownTrack),
+        ("fame", ApiError::Unknown(NameKind::Track)),
         ("negative", ApiError::NegativeXp),
     ];
     for (value, error) in refused {
@@ -170,7 +170,7 @@ fn on_level_up(ctx, unit, track, level) {
     let unread = [
         ("tower points", ApiError::NoTrack),
         ("tower level", ApiError::NoTrack),
-        ("fame level", ApiError::UnknownTrack),
+        ("fame level", ApiError::Unknown(NameKind::Track)),
     ];
     for (value, error) in unread {
         Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);

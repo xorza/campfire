@@ -3,7 +3,7 @@ use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
-use campfire_capabilities::{TypeOrigins, UnitType};
+use campfire_capabilities::{TypeOriginBook, UnitType};
 
 use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;
@@ -32,7 +32,11 @@ pub(crate) struct ModelParts {
 
 impl UnitLooks {
     /// The looks of every type of `origins`: the models of the type's key in its package's units.
-    pub(crate) fn of(origins: &TypeOrigins, data: &ClientData, assets: &AssetServer) -> UnitLooks {
+    pub(crate) fn of(
+        origins: &TypeOriginBook,
+        data: &ClientData,
+        assets: &AssetServer,
+    ) -> UnitLooks {
         let looks =
             origins
                 .iter()
@@ -111,7 +115,7 @@ mod tests {
             package,
             name: name.into(),
         };
-        let origins: TypeOrigins = [origin(0, "tank"), origin(1, "tank"), origin(0, "tower")]
+        let origins: TypeOriginBook = [origin(0, "tank"), origin(1, "tank"), origin(0, "tower")]
             .into_iter()
             .collect();
         let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());

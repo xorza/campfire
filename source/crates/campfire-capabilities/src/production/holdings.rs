@@ -1,7 +1,7 @@
 use campfire_common::PlayerSlot;
 
 use crate::production::held::Held;
-use crate::production::requirements::Required;
+use crate::production::requirement_book::Required;
 use crate::stats::player_modifiers::PlayerModifiers;
 
 /// What the players hold as a tick's trains and builds start: their living, complete units, by

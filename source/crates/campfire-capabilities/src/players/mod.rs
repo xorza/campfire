@@ -56,7 +56,7 @@ impl Module for Players {
         d.require::<Player, Team>();
         d.check::<MatchEntity>(Players::match_spawned);
         d.part::<Player, PlayerResources>(|world| {
-            PlayerResources::new(world.non_send::<View>().resource_count())
+            PlayerResources::new(world.non_send::<View>().names().resources.len())
         });
     }
 

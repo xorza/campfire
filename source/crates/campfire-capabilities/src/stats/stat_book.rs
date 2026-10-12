@@ -10,6 +10,7 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
+use crate::values::names::Names;
 use crate::values::stat::{EngineStat, Stat};
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
@@ -17,8 +18,8 @@ use crate::values::stat::{EngineStat, Stat};
 /// Package data, not state.
 #[derive(Resource, Debug)]
 pub(crate) struct StatBook {
-    /// Shared with the script view, which names them to scripts.
-    stats: Arc<[Stat]>,
+    /// The stats' names, by id; shared with the script view, which names them to scripts.
+    names: Arc<Names<StatId>>,
     rules: Vec<StatRule>,
     /// Each engine stat's place among the stats, by the engine stat's order, when the mode
     /// declares it.
@@ -49,33 +50,34 @@ impl StatBook {
         types: impl IntoIterator<Item = (UnitType, &'a StatsData)>,
         max_move_speed: Num,
     ) -> StatBook {
-        let stats: Arc<[Stat]> = rules.keys().cloned().collect();
-        let stats_len = u16::try_from(stats.len()).expect("stats fit u16");
+        let names: Names<StatId> = rules.keys().map(Stat::name).collect();
+        let count = names.len();
+        let stats_len = u16::try_from(count).expect("stats fit u16");
         let mut engine = [None; EngineStat::ALL.len()];
-        for (at, stat) in stats.iter().enumerate() {
+        for (at, stat) in rules.keys().enumerate() {
             if let Stat::Engine(stat) = stat {
                 engine[*stat as usize] = Some(at);
             }
         }
         let mut growth = Vec::new();
         for (unit_type, data) in types {
-            let first = unit_type.index() * stats.len();
-            if growth.len() < first + stats.len() {
-                growth.resize(first + stats.len(), None);
+            let first = unit_type.index() * count;
+            if growth.len() < first + count {
+                growth.resize(first + count, None);
             }
             for (stat, value) in &data.0 {
-                let Ok(at) = stats.binary_search(stat) else {
+                let Some(at) = names.named(stat.name()) else {
                     continue;
                 };
-                growth[first + at] = Some(Growth {
+                growth[first + at.index()] = Some(Growth {
                     base: value.base,
                     per_level: value.per_level,
                 });
             }
         }
         StatBook {
-            order: (0..stats.len()).map(StatId::new).collect(),
-            stats,
+            order: (0..count).map(StatId::new).collect(),
+            names: Arc::new(names),
             rules: rules.values().copied().collect(),
             engine,
             growth,
@@ -94,7 +96,7 @@ impl StatBook {
             sorted
                 .iter()
                 .copied()
-                .eq((0..self.stats.len()).map(StatId::new)),
+                .eq((0..self.names.len()).map(StatId::new)),
             "an order holds every stat once"
         );
         let mut positions = vec![0; order.len()];
@@ -110,7 +112,7 @@ impl StatBook {
 
     /// How many stats the mode declares.
     pub(crate) fn len(&self) -> u16 {
-        u16::try_from(self.stats.len()).expect("stats fit u16")
+        u16::try_from(self.names.len()).expect("stats fit u16")
     }
 
     /// The stats in the order the refresh computes them.
@@ -127,7 +129,7 @@ impl StatBook {
     /// modifiers.
     pub(crate) fn totals(&self, unit_type: UnitType, level: u32, totals: &mut Vec<StatTotals>) {
         totals.extend(
-            (0..self.stats.len())
+            (0..self.names.len())
                 .map(|at| StatTotals::base(self.base_bits(unit_type, StatId::new(at), level))),
         );
     }
@@ -140,7 +142,7 @@ impl StatBook {
     /// The value of each stat, by id, of a unit of `unit_type` at `level` with no modifiers, as a
     /// refresh computes it.
     pub(crate) fn base_values(&self, unit_type: UnitType, level: u32) -> Vec<Num> {
-        let ids = (0..self.stats.len()).map(StatId::new);
+        let ids = (0..self.names.len()).map(StatId::new);
         ids.map(|stat| {
             let totals = StatTotals::base(self.base_bits(unit_type, stat, level));
             self.value(stat, totals)
@@ -150,7 +152,7 @@ impl StatBook {
 
     /// Whether `unit_type` gives `stat` a value of its own.
     pub(crate) fn gives(&self, unit_type: UnitType, stat: StatId) -> bool {
-        let first = unit_type.index() * self.stats.len();
+        let first = unit_type.index() * self.names.len();
         self.growth
             .get(first + stat.index())
             .is_some_and(Option::is_some)
@@ -159,7 +161,7 @@ impl StatBook {
     /// The value of a unit of `unit_type` at `level` of `stat`, before its modifiers, in bits:
     /// `base + per_level × (level − 1)`, 0 where the type gives none.
     pub(crate) fn base_bits(&self, unit_type: UnitType, stat: StatId, level: u32) -> i128 {
-        let first = unit_type.index() * self.stats.len();
+        let first = unit_type.index() * self.names.len();
         let growth = self.growth.get(first + stat.index()).copied().flatten();
         growth.map_or(0, |growth| {
             i128::from(growth.base.to_bits())
@@ -167,15 +169,14 @@ impl StatBook {
         })
     }
 
-    /// The stats, by id.
-    pub(crate) fn names(&self) -> Arc<[Stat]> {
-        Arc::clone(&self.stats)
+    /// The stats' names, by id.
+    pub(crate) const fn names(&self) -> &Arc<Names<StatId>> {
+        &self.names
     }
 
     /// The id of `stat`; `None` when the mode does not declare it.
     pub(crate) fn named(&self, stat: &Stat) -> Option<StatId> {
-        let at = self.stats.binary_search(stat).ok()?;
-        Some(StatId::new(at))
+        self.names.named(stat.name())
     }
 
     /// Engine stat `stat` among `values`; `None` when the mode does not declare it.

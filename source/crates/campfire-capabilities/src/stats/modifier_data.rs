@@ -6,6 +6,8 @@ use campfire_math::Num;
 use campfire_sim::TickRate;
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::stat_change::StatChange;
 use crate::values::declared_name::DeclaredName;
@@ -109,4 +111,12 @@ pub struct AuraData {
     pub radius: Number,
     pub affects: FilterData,
     pub modifier: DeclaredName,
+}
+
+impl DataSection for ModifierData {
+    const TABLE: DataTable = DataTable::Modifier;
+}
+
+impl DataSection for AuraData {
+    const TABLE: DataTable = DataTable::Aura;
 }

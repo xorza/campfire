@@ -90,7 +90,7 @@ fn on_input(ctx, player, name, value) {
         &[(0, input("probe", "unknown")), (0, input("probe", "rally"))],
     );
     let missing = ApiError::ModifierParam(ParamProblem::Missing);
-    let refused = [ApiError::UnknownModifier, missing];
+    let refused = [ApiError::Unknown(NameKind::Modifier), missing];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
 }
 
@@ -168,7 +168,7 @@ fn on_mode_input(ctx, player, name, value) {
     );
     let missing = ApiError::ModifierParam(ParamProblem::Missing);
     let refused = [
-        ApiError::UnknownModifier,
+        ApiError::Unknown(NameKind::Modifier),
         ApiError::UnknownPlayer,
         missing,
         ApiError::PlayerOffTeam,

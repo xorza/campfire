@@ -25,8 +25,8 @@ The engine's capabilities and the core under them. The design is `docs/design/04
 
 ## Names and scripts
 
-- Text becomes a type where it enters. A lookup of an id by its name is a method whose name ends in `named`, called only by the load or a script call: `LOOKUPS` in `release/tests/mod.rs` lists each, and a new one joins it.
-- The script API is bound through `ApiBuilder`: `bind` for a member that serves every role, `bind_for` for one that serves some roles, which checks the role before the body runs. `docs/design/08-script-api-reference.md` is generated: write it again with `CAMPFIRE_BLESS=1` and the test `the_reference_is_what_the_registry_writes`.
+- Text becomes a type where it enters. Each id's names are one `Names` table, which its book holds and the script view shares; a lookup of an id by its name is the table's `named`, called only by the load or a script call: `LOOKUPS` in `release/tests/mod.rs` lists each, and a new one joins it.
+- The script API is bound through `ApiBuilder`: `call` for a call or a value of `ctx`, which checks the role before the body runs, `method` for a method or an operator of a handle, and `bind` for a value or a field's getter, which takes no argument. Each argument of a call or a method is a `ScriptArg`: its type resolves a name, records the name's kind in the member's spec, and binds the integer form of a `Num`. A table of package data is a `DataSection`, which `data` records by its type. `docs/design/08-script-api-reference.md` is generated: write it again with `CAMPFIRE_BLESS=1` and the test `the_reference_is_what_the_registry_writes`.
 - No genre words in production code: a mode names its heroes, lanes and resources in its data. The engine's words are the model's: unit, tag, stat, pool, modifier, action, effect, avatar, spawn group, path, marker.
 
 ## Tests

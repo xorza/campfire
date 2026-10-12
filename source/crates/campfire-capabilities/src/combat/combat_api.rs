@@ -5,24 +5,27 @@ use campfire_sim::Capability;
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::actions_column::ActionsColumn;
 use crate::combat::combat_column::CombatColumn;
+use crate::combat::combat_data::CombatData;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
+use crate::combat::mode_combat_data::LeechData;
+use crate::combat::mode_combat_data::ModeCombatData;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
-use crate::stats::stats_column::StatsColumn;
+use crate::stats::pool_id::PoolId;
 use crate::units::block::Block;
 use crate::units::tag_property::TagProperty;
 use crate::units::unit::Unit;
+use crate::values::damage_kind::DamageKind;
 
 /// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, and the
 /// `Damage` handle.
@@ -39,8 +42,7 @@ impl CombatApi {
             "damage",
             &[&["target", "amount", "kind"]],
             "deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target`",
-        )
-        .name(2, NameKind::DamageKind);
+        );
         let heal = call(
             "heal",
             &[&["unit", "amount"]],
@@ -50,52 +52,36 @@ impl CombatApi {
             "restore",
             &[&["unit", "pool", "amount"]],
             "gives `unit` back `amount` of its `pool`, unscaled",
-        )
-        .name(1, NameKind::Pool);
+        );
         let attack_hit = call(
             "attack_hit",
             &[&["target"]],
             "an extra attack of the acting unit on `target`: no crit, and no `on_attack`",
         )
         .roles(RoleSet::ACTING);
-        api.bind(
+        api.call(
             damage,
-            |ctx: &mut Ctx, target: Unit, amount: Num, kind: &str| {
+            |ctx: &mut Ctx, target: Unit, amount: Num, kind: DamageKind| {
                 CombatApi::damage(ctx, &target, amount, kind)
             },
         )
-        .bind(
-            damage,
-            |ctx: &mut Ctx, target: Unit, amount: INT, kind: &str| {
-                CombatApi::damage(ctx, &target, ApiError::num(amount)?, kind)
-            },
-        )
-        .bind(heal, |ctx: &mut Ctx, unit: Unit, amount: Num| {
+        .call(heal, |ctx: &mut Ctx, unit: Unit, amount: Num| {
             CombatApi::mend(ctx, amount, |amount| CombatEffect::Heal {
                 unit: unit.id,
                 amount,
             })
         })
-        .bind(heal, |ctx: &mut Ctx, unit: Unit, amount: INT| {
-            let amount = ApiError::num(amount)?;
-            CombatApi::mend(ctx, amount, |amount| CombatEffect::Heal {
-                unit: unit.id,
-                amount,
-            })
-        })
-        .bind(
+        .call(
             restore,
-            |ctx: &mut Ctx, unit: Unit, pool: &str, amount: Num| {
-                CombatApi::restore(ctx, &unit, pool, amount)
+            |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
+                CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
+                    id: unit.id,
+                    pool,
+                    amount,
+                })
             },
         )
-        .bind(
-            restore,
-            |ctx: &mut Ctx, unit: Unit, pool: &str, amount: INT| {
-                CombatApi::restore(ctx, &unit, pool, ApiError::num(amount)?)
-            },
-        )
-        .bind_for(attack_hit, |ctx: &mut Ctx, target: Unit| {
+        .call(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
         .tag_property(
@@ -110,8 +96,7 @@ impl CombatApi {
             TagProperty::Blocks(Block::Damage),
             Status::Runs(ApiVersion::FIRST),
         )
-        .data(
-            DataTable::ModeCombat,
+        .data::<ModeCombatData>(
             &[
                 "damage_kinds",
                 "assist_window_ms",
@@ -121,15 +106,18 @@ impl CombatApi {
             ],
             &[],
         )
-        .data(DataTable::Leech, &["attack", "other"], &[])
-        .data(DataTable::Combat, &["on_death"], &[])
-        .data(DataTable::Mode, &["combat"], &[])
+        .data::<LeechData>(&["attack", "other"], &[])
+        .data::<CombatData>(&["on_death"], &[])
+        .shared_data(DataTable::Mode, &["combat"], &[])
+        .shared_data(DataTable::UnitType, &["combat"], &[])
         .action_fields(ActionDataField::of(Some(Capability::Combat)))
         .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST));
+        .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::CalcDamage, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::CalcHeal, Status::Runs(ApiVersion::FIRST));
     }
 
     /// What combat adds to a `Unit` handle.
@@ -140,17 +128,13 @@ impl CombatApi {
             &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         );
-        api.bind(recent_attackers, |unit: Unit, ms: INT| {
+        api.method(recent_attackers, |unit: Unit, ms: INT| {
             CombatColumn::recent_attackers(&unit, ms)
         });
     }
 
-    /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.
-    fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        let kind = ctx
-            .view()
-            .damage_kind_named(kind)
-            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
+    /// Queues `amount` of `kind` damage to `target`.
+    fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: DamageKind) -> Checked<()> {
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }
@@ -159,16 +143,6 @@ impl CombatApi {
             target,
             amount,
             kind,
-        })
-    }
-
-    /// Queues a restore of `amount` of `unit`'s pool `name`, a pool the mode declares.
-    fn restore(ctx: &Ctx, unit: &Unit, name: &str, amount: Num) -> Checked<()> {
-        let pool = StatsColumn::pool_named(ctx.view(), name)?;
-        CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-            id: unit.id,
-            pool,
-            amount,
         })
     }
 

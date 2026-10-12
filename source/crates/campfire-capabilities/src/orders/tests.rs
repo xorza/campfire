@@ -69,7 +69,6 @@ use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
-use crate::values::declared_name::DeclaredName;
 use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::scalar::Scalar;
@@ -1302,7 +1301,7 @@ fn every_orders_type_is_state_and_restores() {
 /// gives 70% back on a sale.
 fn shop_match() -> Match {
     let mut game = orders_match_with_items();
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
             resource: gold,
@@ -1314,12 +1313,16 @@ fn shop_match() -> Match {
         modifiers: Vec::new(),
         action: None,
     };
-    let book = ItemBook::new(vec![
-        item(300, &[], 1),
-        item(1000, &[0, 0], 1),
-        item(50, &[], 3),
-        item(125, &[], 1),
-    ]);
+    let names = ["boots", "blade", "potion", "ward"].into_iter().collect();
+    let book = ItemBook::new(
+        names,
+        vec![
+            item(300, &[], 1),
+            item(1000, &[0, 0], 1),
+            item(50, &[], 3),
+            item(125, &[], 1),
+        ],
+    );
     let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
     let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
     let places = vec![ShopPlace {
@@ -1417,7 +1420,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
     // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
-    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::nth(0);
     let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(gold, -1000).unwrap();
     step(&mut game, &[buy(1)]);

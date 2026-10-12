@@ -107,7 +107,7 @@ impl ApiReference<'_> {
                 hook.name(),
                 hook.param_names().join(", "),
                 hook.role().name(),
-                capability(hook.capability()),
+                capability(status.capability),
                 status.status,
             )?;
         }

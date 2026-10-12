@@ -11,7 +11,7 @@ use crate::values::scalar::Scalar;
 /// params its scripts read as `unit.params`, and the script state its units hold, `unit.state`.
 /// Each capability the type uses reads its own section.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-pub struct UnitTypeData {
+pub struct UnitTypeCore {
     #[serde(default)]
     pub tags: Vec<DeclaredName>,
     #[serde(default)]
@@ -20,7 +20,7 @@ pub struct UnitTypeData {
     pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
 }
 
-impl UnitTypeData {
+impl UnitTypeCore {
     /// The most tags the unit types of a match declare together.
     pub const TAG_LIMIT: usize = Tag::LIMIT;
     /// The most unit types a match loads.
@@ -31,20 +31,20 @@ impl UnitTypeData {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use crate::units::unit_type_data::UnitTypeData;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
 
-    impl UnitTypeData {
+    impl UnitTypeCore {
         /// A type of `tags` and no params.
-        pub(crate) fn tagged(tags: &[&str]) -> UnitTypeData {
-            UnitTypeData::of(tags, &[])
+        pub(crate) fn tagged(tags: &[&str]) -> UnitTypeCore {
+            UnitTypeCore::of(tags, &[])
         }
 
         /// A type of `tags` and `params`.
-        pub(crate) fn of(tags: &[&str], params: &[(&str, Scalar)]) -> UnitTypeData {
+        pub(crate) fn of(tags: &[&str], params: &[(&str, Scalar)]) -> UnitTypeCore {
             let name = |name| DeclaredName::new(name).unwrap();
-            UnitTypeData {
+            UnitTypeCore {
                 tags: tags.iter().map(|&tag| name(tag)).collect(),
                 params: params
                     .iter()

@@ -16,7 +16,7 @@ use crate::mode::map_point::MapPoint;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::error::MapProblem;
-use crate::navigation::navigation_rules::NavigationRules;
+use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::wall::Wall;
 use crate::release::Release;
@@ -30,6 +30,7 @@ use crate::units::path_id::PathId;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::scalar::Scalar;
 
 const ONE: i64 = 1 << 24;
@@ -817,12 +818,17 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     }
 }
 
+/// The layers `rules` declares, by layer.
+fn layer_table(rules: &ModeNavigationData) -> Names<Layer> {
+    rules.layers.iter().map(DeclaredName::as_str).collect()
+}
+
 /// `map` resolved as a mode of one team, `west`, of `rules`, and checked walkable for `walkers`,
 /// its placed units' bodies by their types' names as `body_of` gives them.
 fn check_walkable(
     map: &MapData,
     walkers: &[Walker],
-    rules: &NavigationRules,
+    rules: &ModeNavigationData,
     body_of: impl Fn(&str) -> Option<BodyForm>,
 ) -> Result<(), MapProblem> {
     const TYPES: [&str; 4] = ["tower", "creep", "cloud", "crate"];
@@ -834,7 +840,7 @@ fn check_walkable(
         name: DeclaredName::new("west").unwrap(),
         slots: 0,
     }];
-    let map = ModeMap::resolve(map, &teams, &[], rules, unit_type).unwrap();
+    let map = ModeMap::resolve(map, &teams, &[], &layer_table(rules), unit_type).unwrap();
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
     map.check_walkable(walkers, |unit_type| body_of(name(unit_type)), named)
@@ -860,7 +866,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
     let map = corridor;
     let body_of = corridor_body;
-    let rules = NavigationRules::default();
+    let rules = ModeNavigationData::default();
     let check = |towers: &[(i64, i64)], neutral| {
         check_walkable(&map(towers, neutral), &[ground(half)], &rules, body_of)
     };
@@ -918,7 +924,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
 fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() {
     let half = Num::HALF;
     let point = MapPoint::ground;
-    let rules = NavigationRules::default();
+    let rules = ModeNavigationData::default();
     let flyer = Walker {
         layer: AIR,
         radius: half,
@@ -952,7 +958,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
     assert_eq!(check_walkable(&round, &both, &rules, body_of), blocked);
     let air = DeclaredName::new("air").unwrap();
-    let layered = NavigationRules {
+    let layered = ModeNavigationData {
         layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],
     };
     let refused = [
@@ -987,10 +993,10 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         ),
     ];
     for (wall, rules, error) in refused {
-        assert_eq!(walled(vec![wall]).walls(rules), Err(error));
+        assert_eq!(walled(vec![wall]).walls(&layer_table(rules)), Err(error));
     }
     let lifted = walled(vec![wall(Some("air"), &[(5, 0), (6, 0), (6, 4)])]);
-    let walls = lifted.walls(&layered).unwrap();
+    let walls = lifted.walls(&layer_table(&layered)).unwrap();
     assert_eq!(
         walls.iter().map(|wall| wall.layer).collect::<Vec<_>>(),
         [AIR]

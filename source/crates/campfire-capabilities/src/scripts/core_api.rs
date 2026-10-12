@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic, INT};
+use campfire_script::rhai::{Array, Dynamic};
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -11,6 +11,8 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::block::Block;
+use crate::units::collision_data::CollisionData;
+use crate::units::tag_data::TagData;
 use crate::units::tag_property::TagProperty;
 
 /// The script API of the core: `ctx` itself, `ctx.p`, and the core's and the movement calls
@@ -26,18 +28,15 @@ impl CoreApi {
             "true with probability `p`, from 0 to 1, from the secret stream",
         );
         api.ty::<Ctx>("Ctx")
-            .bind(
+            .call(
                 MemberSpec::value(
                     "p",
                     "the params: an ability's at its rank, a modifier's then its ability's, or the mode's",
                 ),
-                |ctx: &mut Ctx| Params(ctx.clone()),
+                |ctx: &mut Ctx| Ok(Params(ctx.clone())),
             )
-            .bind(chance, |ctx: &mut Ctx, p: Num| CoreApi::chance(ctx, p))
-            .bind(chance, |ctx: &mut Ctx, p: INT| {
-                CoreApi::chance(ctx, ApiError::num(p)?)
-            })
-            .bind(
+            .call(chance, |ctx: &mut Ctx, p: Num| CoreApi::chance(ctx, p))
+            .call(
                 MemberSpec::call(
                     "pick",
                     &[&["list"]],
@@ -45,8 +44,9 @@ impl CoreApi {
                 ),
                 |ctx: &mut Ctx, list: Array| CoreApi::pick(ctx, &list),
             )
-            .data(DataTable::Collision, &["radius", "box", "layer"], &[])
-            .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
+            .data::<CollisionData>(&["radius", "box", "layer"], &[])
+            .shared_data(DataTable::UnitType, &["tags", "params", "state", "collision"], &[])
+            .data::<TagData>(&["blocks", "hidden", "detects", "immune"], &[]);
         api.tag_property(
             TagProperty::Blocks(Block::Move),
             Status::Runs(ApiVersion::FIRST),

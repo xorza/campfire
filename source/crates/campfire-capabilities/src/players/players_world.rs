@@ -61,7 +61,7 @@ impl PlayersWorldCrate for World {
     }
 
     fn declared_resources(&self) -> usize {
-        self.non_send::<View>().resource_count()
+        self.non_send::<View>().names().resources.len()
     }
 }
 

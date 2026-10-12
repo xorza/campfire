@@ -1,16 +1,16 @@
 use crate::actions::action_book::ActionBook;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_list_book::EffectListBook;
 use crate::areas::area_spec::AreaSpec;
 use crate::items::item_book::ItemBook;
 use crate::mode::mode_units::ModeUnits;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
-use crate::production::build_specs::BuildSpecs;
+use crate::production::build_book::BuildBook;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::node_book::NodeBook;
 use crate::production::production_data::ProductionData;
-use crate::production::requirements::Requirements;
+use crate::production::requirement_book::RequirementBook;
 use crate::production::supply_data::SupplyData;
-use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_book::TrackBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::stats::modifier_book::ModifierBook;
@@ -30,7 +30,7 @@ pub(crate) struct BookParts {
     pub(super) actions: ActionBook,
     /// Every action's and modifier's params.
     pub(super) params: ParamTables,
-    pub(super) effects: EffectLists,
+    pub(super) effects: EffectListBook,
     pub(super) ais: ByType<Ai>,
     pub(super) projectiles: ByType<ProjectileSpec>,
     pub(super) areas: ByType<AreaSpec>,
@@ -38,12 +38,12 @@ pub(crate) struct BookParts {
     pub(super) sights: ByType<Sight>,
     pub(super) producers: ByType<ProductionData>,
     pub(super) supplies: ByType<SupplyData>,
-    pub(super) requirements: Requirements,
-    pub(super) builds: BuildSpecs,
+    pub(super) requirements: RequirementBook,
+    pub(super) builds: BuildBook,
     pub(super) nodes: NodeBook,
     /// The kind of walker of each unit type that walks.
     pub(super) walkers: ByType<Walker>,
-    pub(super) supply_rules: Option<SupplyRules>,
+    pub(super) supply: Option<ModeSupplyData>,
     /// The mode's item types.
     pub(super) items: ItemBook,
     pub(super) units: ModeUnits,

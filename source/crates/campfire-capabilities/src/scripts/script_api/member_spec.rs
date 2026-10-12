@@ -38,6 +38,13 @@ pub type NameArgs = [Option<NameKind>; MemberSpec::ARGS];
 /// refuses a string literal an argument of an enum is given.
 pub type EnumArgs = [Option<EngineEnum>; MemberSpec::ARGS];
 
+/// What the arguments of a form name, and the engine enums they take, as their types say.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ArgKinds {
+    pub(crate) names: NameArgs,
+    pub(crate) enums: EnumArgs,
+}
+
 impl MemberSpec {
     /// The most arguments a member's name roles reach.
     pub(crate) const ARGS: usize = 4;
@@ -132,15 +139,11 @@ impl MemberSpec {
         self
     }
 
-    /// The same, its argument at `at`, the receiver aside, a name of `kind`.
-    pub(crate) const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
-        self.names[at] = Some(kind);
-        self
-    }
-
-    /// The same, its argument at `at`, the receiver aside, a member of `engine_enum`.
-    pub(crate) const fn takes(mut self, at: usize, engine_enum: EngineEnum) -> MemberSpec {
-        self.enums[at] = Some(engine_enum);
+    /// The same, its arguments naming and taking what `args` says, the receiver aside, as the
+    /// types of a form's arguments say.
+    pub(crate) const fn with_args(mut self, args: ArgKinds) -> MemberSpec {
+        self.names = args.names;
+        self.enums = args.enums;
         self
     }
 }

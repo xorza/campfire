@@ -16,7 +16,7 @@ use crate::players::player_resources::PlayerResources;
 use crate::players::players_world::PlayersWorld;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::Production;
-use crate::production::build_specs::{BuildSpecs, Style};
+use crate::production::build_book::{BuildBook, Style};
 use crate::production::build_target::BuildTarget;
 use crate::production::builder::{BuildOrder, Builder};
 use crate::production::construction::build_view::{BuildView, Placed};
@@ -205,7 +205,7 @@ impl Construction {
         let spawner = world.non_send::<Spawner>().clone();
         let site = spawner.spawn(world, at, owner.map(Owner::slot));
         let spec = world
-            .resource::<BuildSpecs>()
+            .resource::<BuildBook>()
             .of(action)
             .expect("a build's spec is in the book");
         let start_life = spec.start_life;
@@ -246,7 +246,7 @@ impl Construction {
         (index, book, builds, metric): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
-            Res<'_, BuildSpecs>,
+            Res<'_, BuildBook>,
             Res<'_, Metric>,
         ),
         mut sites: Query<

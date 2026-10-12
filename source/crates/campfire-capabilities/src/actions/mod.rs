@@ -5,7 +5,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_api::ActionsApi;
 use crate::actions::actions_column::{ActionsColumn, RowReads};
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
 use crate::actions::slot_kinds::SlotKinds;
@@ -31,16 +31,16 @@ pub(crate) mod actions_api;
 pub(crate) mod actions_column;
 pub(crate) mod actions_effect;
 pub(crate) mod amount;
-pub(crate) mod capability_does;
+pub(crate) mod capability_does_spec;
 pub(crate) mod channel_call;
 pub(crate) mod checked_action;
 pub(crate) mod construct_data;
 pub(crate) mod cost_target;
 pub(crate) mod delivery;
 pub(crate) mod delivery_data;
-pub(crate) mod does;
+pub(crate) mod does_spec;
 pub(crate) mod effect_data;
-pub(crate) mod effect_lists;
+pub(crate) mod effect_list_book;
 pub(crate) mod effect_names;
 pub(crate) mod effect_queues;
 pub(crate) mod error;
@@ -100,7 +100,7 @@ impl Module for Actions {
         d.require::<ActionSlots, SlotTimes>();
         d.book::<ActionBook>();
         d.book::<ParamBook>();
-        d.book::<EffectLists>();
+        d.book::<EffectListBook>();
         d.calls::<EffectQueues>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
@@ -164,7 +164,10 @@ pub(crate) mod internals {
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
         pub fn named(world: &World, package: u16, name: &str) -> Option<ActionId> {
-            world.resource::<ActionBook>().named(package, name)
+            world
+                .resource::<ActionBook>()
+                .names()
+                .named((package, name))
         }
 
         /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
@@ -178,9 +181,9 @@ pub(crate) mod internals {
         ) -> ActionId {
             Actions::push(
                 world,
+                "gather",
                 Action {
                     package: 0,
-                    name: "gather".into(),
                     kind: KindSpec::Gather(spec),
                     passive: None,
                     hold: None,
@@ -203,10 +206,11 @@ pub(crate) mod internals {
             )
         }
 
-        /// Adds `action` to the match's action book, and shares the book with the script view.
-        pub(crate) fn push(world: &mut World, action: Action) -> ActionId {
+        /// Adds `action`, named `name` in its package, to the match's action book, and shares
+        /// the book with the script view.
+        pub(crate) fn push(world: &mut World, name: &str, action: Action) -> ActionId {
             let mut book = world.resource_mut::<ActionBook>();
-            let id = book.push(action);
+            let id = book.push(name, action);
             let book = book.clone();
             ActionsColumn::share(world.non_send::<View>(), book);
             id
@@ -235,14 +239,13 @@ pub(crate) mod test_world {
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::cost_target::CostTarget;
     use crate::actions::delivery::{Delivery, DeliveryShape};
-    use crate::actions::effect_lists::EffectLists;
+    use crate::actions::effect_list_book::EffectListBook;
     use crate::actions::effect_names::EffectNames;
     use crate::actions::fan::Fan;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
-    use crate::progression::progression_column::ProgressionColumn;
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::hook_set::HookSet;
     use crate::scripts::script_book::ScriptBook;
@@ -316,9 +319,9 @@ pub(crate) mod test_world {
             });
             Actions::push(
                 world,
+                "weapon",
                 Action {
                     package: 0,
-                    name: "weapon".into(),
                     kind: KindSpec::Attack(Weapon {
                         rate: weapon.rate,
                         damage: weapon.damage,
@@ -355,7 +358,7 @@ pub(crate) mod test_world {
             data: &ActionData,
         ) {
             let view = world.non_send::<View>().clone();
-            let mut lists = world.remove_resource::<EffectLists>().unwrap();
+            let mut lists = world.remove_resource::<EffectListBook>().unwrap();
             let names = MatchEffectNames::new(world, &view, action, package);
             lists.push(action, data, &names);
             world.insert_resource(lists);
@@ -398,9 +401,9 @@ pub(crate) mod test_world {
         ) -> ActionId {
             Actions::push(
                 world,
+                "train",
                 Action {
                     package: 0,
-                    name: "train".into(),
                     kind: KindSpec::Train(unit_type),
                     passive: None,
                     hold: None,
@@ -435,9 +438,9 @@ pub(crate) mod test_world {
             let range = range.into();
             Actions::push(
                 world,
+                "build",
                 Action {
                     package: 0,
-                    name: "build".into(),
                     kind: KindSpec::Build(unit_type),
                     passive: None,
                     hold: None,
@@ -498,13 +501,17 @@ pub(crate) mod test_world {
 
         fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
             self.view
-                .damage_kind_named(name.as_str())
+                .names()
+                .damage_kinds
+                .named(name.as_str())
                 .expect("the load checked an effect's damage kind")
         }
 
         fn pool(&self, name: &DeclaredName) -> PoolId {
-            StatsColumn::pool_id_named(self.view, name.as_str())
-                .expect("the load checked an effect's pool")
+            let pools = self
+                .view
+                .column(|column: &StatsColumn| column.pool_names().named(name.as_str()));
+            pools.flatten().expect("the load checked an effect's pool")
         }
 
         fn modifier(&self, name: &DeclaredName) -> ModifierId {
@@ -513,21 +520,28 @@ pub(crate) mod test_world {
         }
 
         fn track(&self, name: &DeclaredName) -> TrackId {
-            ProgressionColumn::track_named(self.view, name.as_str())
+            self.view
+                .names()
+                .tracks
+                .named(name.as_str())
                 .expect("the load checked an effect's track")
         }
 
         fn tag(&self, name: &DeclaredName) -> Tag {
             self.view
-                .tag_named(name.as_str())
+                .names()
+                .types()
+                .tags()
+                .named(name.as_str())
                 .expect("the load checked an effect's tag")
         }
 
         fn package_type(&self, name: &DeclaredName) -> UnitType {
             let scope = TypeScope::of_package(self.package);
             self.view
-                .types_mut()
-                .named(scope, name.as_str())
+                .names()
+                .unit_types()
+                .named((scope, name.as_str()))
                 .expect("the load checked an effect's unit type")
         }
     }
@@ -564,7 +578,9 @@ pub(crate) mod test_world {
 
         fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
             self.view
-                .damage_kind_named(name.as_str())
+                .names()
+                .damage_kinds
+                .named(name.as_str())
                 .expect("the load checked the damage kind")
         }
 
@@ -580,7 +596,8 @@ pub(crate) mod test_world {
 
         fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
             self.modifiers
-                .named(package, name.as_str())
+                .names()
+                .named((package, name.as_str()))
                 .expect("the load checked the modifier")
         }
 
@@ -596,8 +613,9 @@ pub(crate) mod test_world {
         fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
             let scope = TypeScope::of_package(package);
             self.view
-                .types_mut()
-                .named(scope, name.as_str())
+                .names()
+                .unit_types()
+                .named((scope, name.as_str()))
                 .expect("a test loads an action's unit type before the action")
         }
     }

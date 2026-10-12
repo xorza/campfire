@@ -1,3 +1,5 @@
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use serde::Deserialize;
 
 /// The mode's `[players]`: who may take a slot once the match started, beside the players it
@@ -35,6 +37,10 @@ pub enum Leaver {
     Bot,
     /// It is open, for a new player when `late_join` is on.
     Open,
+}
+
+impl DataSection for PlayersData {
+    const TABLE: DataTable = DataTable::Players;
 }
 
 #[cfg(test)]

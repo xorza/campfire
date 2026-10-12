@@ -7,6 +7,8 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_arg::plain_script_arg;
+use crate::units::tag::Tag;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_state_access::UnitStateAccess;
 use crate::units::view::View;
@@ -91,16 +93,20 @@ impl Unit {
             .bind(
                 field("team", "its team's name"),
                 |unit: &mut Unit| -> Checked<Dynamic> {
-                    let name = unit.view.team_name(unit.read(|row| row.team));
+                    let name = unit
+                        .view
+                        .names()
+                        .team_names()
+                        .name(unit.read(|row| row.team));
                     name.map(Dynamic::from)
-                        .ok_or_else(|| ApiError::UnknownTeam.fail().into())
+                        .ok_or_else(|| ApiError::Unknown(NameKind::Team).fail().into())
                 },
             )
             .bind(
                 field("unit_type", "its unit type's name"),
                 |unit: &mut Unit| {
                     let unit_type = unit.read(|row| row.unit_type);
-                    let name = unit.view.unit_type_name(unit_type);
+                    let name = unit.view.names().unit_types().name(unit_type);
                     name.map_or(Dynamic::UNIT, Dynamic::from)
                 },
             )
@@ -131,22 +137,15 @@ impl Unit {
         let method = |name, signature, description| {
             MemberSpec::method(ApiOwner::Unit, name, signature, description)
         };
-        api.bind(
+        api.method(
             method(
                 "has_tag",
                 &[&["tag"]],
                 "whether it has the tag, of its type or a modifier",
-            )
-            .name(0, NameKind::Tag),
-            |unit: Unit, name: &str| -> Checked<bool> {
-                let tag = unit
-                    .view
-                    .tag_named(name)
-                    .ok_or_else(|| ApiError::UnknownTag.fail())?;
-                Ok(unit.read(|row| row.tags.tags.contains(tag)))
-            },
+            ),
+            |unit: Unit, tag: Tag| Ok(unit.read(|row| row.tags.tags.contains(tag))),
         )
-        .bind(
+        .method(
             method(
                 "is_enemy_of",
                 &[&["unit"]],
@@ -155,16 +154,16 @@ impl Unit {
             |unit: Unit, other: Unit| {
                 let teams = [&unit, &other].map(|unit| unit.read(|row| row.team));
                 let relation = unit.view.relation(teams[0], teams[1]);
-                relation.may_attack()
+                Ok(relation.may_attack())
             },
         )
-        .bind(
+        .method(
             MemberSpec::operator(ApiOwner::Unit, "==", "whether the two are one unit"),
-            |a: Unit, b: Unit| a.id == b.id,
+            |a: Unit, b: Unit| Ok(a.id == b.id),
         )
-        .bind(
+        .method(
             MemberSpec::operator(ApiOwner::Unit, "!=", "whether the two are two units"),
-            |a: Unit, b: Unit| a.id != b.id,
+            |a: Unit, b: Unit| Ok(a.id != b.id),
         );
     }
 }
@@ -173,11 +172,15 @@ impl UnitParams {
     /// The param `name`; one the unit's type does not declare fails the call.
     fn get(&self, name: &str) -> Checked<Dynamic> {
         let unit = &self.0;
-        unit.view
-            .param_named(unit.read(|row| row.unit_type), name)
-            .ok_or_else(|| ApiError::UnknownParam.fail().into())
+        let unit_type = unit.read(|row| row.unit_type);
+        let param = unit.view.names().types().param(unit_type, name);
+        Ok(param
+            .ok_or_else(|| ApiError::Unknown(NameKind::Param).fail())?
+            .to_dynamic())
     }
 }
+
+plain_script_arg!(Unit);
 
 #[cfg(test)]
 pub(crate) mod internals {

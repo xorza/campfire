@@ -8,7 +8,7 @@ use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_capabilities::Areas;
-use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins};
+use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOriginBook};
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
 use campfire_sim::IdAllocator;
@@ -225,7 +225,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         heights: GroundHeights::of(&grid),
         ..ClientData::default()
     };
-    let origins: TypeOrigins = [TypeOrigin {
+    let origins: TypeOriginBook = [TypeOrigin {
         package: 0,
         name: "tank".into(),
     }]
@@ -273,7 +273,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
 #[test]
 fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     let mut app = view();
-    let origins: TypeOrigins = [TypeOrigin {
+    let origins: TypeOriginBook = [TypeOrigin {
         package: 0,
         name: "fire_pool".into(),
     }]

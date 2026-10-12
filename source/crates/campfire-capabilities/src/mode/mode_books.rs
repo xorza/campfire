@@ -8,8 +8,10 @@ use crate::combat::combat_bindings::CombatBindings;
 use crate::items::shop::Shop;
 use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
+use crate::mode::mode_names::ModeNames;
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::walker::Walker;
+use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
@@ -21,7 +23,8 @@ use crate::units::layer::Layer;
 use crate::units::tag_book::TagBook;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view::View;
-use crate::values::declared_name::DeclaredName;
+use crate::values::damage_kind::DamageKind;
+use crate::values::names::Names;
 
 /// The books of the mode's own rules: its stats, at the match's rate, under its move speed cap;
 /// its pools; its tags' properties and each unit type's own tags; what its combat reads; its slot
@@ -35,8 +38,8 @@ pub struct ModeBooks {
     pub(crate) life: Option<LifePool>,
     pub(crate) bindings: Option<CombatBindings>,
     pub(crate) slot_kinds: SlotKinds,
-    pub(crate) damage_kinds: Arc<[DeclaredName]>,
-    pub(crate) resources: Arc<[DeclaredName]>,
+    pub(crate) damage_kinds: Arc<Names<DamageKind>>,
+    pub(crate) resources: Arc<Names<ResourceId>>,
     pub(crate) map: ModeMap,
     /// Its shop, when it has one.
     pub(crate) shop: Option<Shop>,
@@ -61,6 +64,8 @@ pub(crate) struct ModeBooksInput<'a> {
     pub(crate) life: Option<PoolId>,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
+    /// The names of its pools, its players' resources, its damage kinds and its layers.
+    pub(crate) names: ModeNames,
     pub(crate) map: ModeMap,
     pub(crate) shop: Option<Shop>,
 }
@@ -88,7 +93,8 @@ impl ModeBooks {
         } = self;
         world
             .non_send::<View>()
-            .set_mode_names(&damage_kinds, resources);
+            .names_mut()
+            .set_mode_names(damage_kinds, resources);
         if let Some(life) = life {
             world.insert_resource(life);
         }
@@ -116,29 +122,30 @@ impl ModeBooks {
             stats,
             life,
             loadout_ranks,
+            names,
             map,
             shop,
         } = input;
         let life = life.map(LifePool);
-        let layers = &data.navigation.layers;
         for unit_type in unit_types {
             let layer = unit_type.kit.body.map_or(Layer::FIRST, BodyForm::layer);
-            if let Some(name) = layers.get(layer.index()) {
+            if let Some(name) = names.layers.name(layer) {
                 let tag = types
-                    .tag_named(name.as_str())
+                    .tags()
+                    .named(name)
                     .expect("the match declared every tag its packages name");
                 types.give_tag(unit_type.unit_type, tag);
             }
         }
         ModeBooks {
-            pools: PoolBook::new(&data.pools, &stats),
+            pools: PoolBook::new(&data.pools, names.pools, &stats),
             bindings: life.map(|_| CombatBindings::new(&data.combat, &stats)),
             life,
             tags: types.tag_book(&data.tags),
             stats,
             slot_kinds: data.slots.clone(),
-            damage_kinds: data.combat.damage_kinds.as_slice().into(),
-            resources: data.resources.as_slice().into(),
+            damage_kinds: names.damage_kinds,
+            resources: names.resources,
             map,
             shop,
             loadout_ranks,

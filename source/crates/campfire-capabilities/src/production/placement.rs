@@ -10,7 +10,7 @@ use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::walls::Walls;
 use crate::players::on_match::OnMatch;
-use crate::production::build_specs::{BuildSpec, PlacementCheck};
+use crate::production::build_book::{BuildSpec, PlacementCheck};
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;

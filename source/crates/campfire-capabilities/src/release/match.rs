@@ -157,7 +157,7 @@ pub(crate) mod test_matches {
                     name: DeclaredName::new("basic").unwrap(),
                     ranks: None,
                 };
-                world.insert_resource(SlotKinds(vec![basic]));
+                world.insert_resource(SlotKinds::from(vec![basic]));
             }
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);

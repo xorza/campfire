@@ -23,9 +23,9 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targeting::Targeting;
-use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::heal::{Heal, HealCause};
+use crate::combat::mode_combat_data::ModeCombatData;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -44,6 +44,7 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_input::{InputValue, ModeInput};
+use crate::mode::mode_names::ModeNames;
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::mode_world::ModeWorld;
 use crate::mode::offer::Offer;
@@ -55,7 +56,7 @@ use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::{InventorySpec, UnitKit};
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
-use crate::navigation::navigation_rules::NavigationRules;
+use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::paths::Paths;
 use crate::navigation::route::Route;
@@ -74,6 +75,7 @@ use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError, ParamProblem};
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
@@ -115,11 +117,12 @@ use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::FilterData;
+use crate::values::names::Names;
 use crate::values::number::{Number, ParamRef};
 use crate::values::rank::Rank;
 use crate::values::ranked::Ranked;
@@ -321,20 +324,20 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
 
 /// The grunt's core fields: its tag, and its script state, `hits` of 2, which only its owner
 /// receives, and `mark`, a text of none, which every client that sees it receives.
-fn grunt_data() -> UnitTypeData {
+fn grunt_data() -> UnitTypeCore {
     let decl = |kind, default, sync| SyncedStateDecl {
         decl: field(kind, default),
         sync,
     };
     let hits = decl(StateType::Int, Some(StateDefault::Int(2)), SyncTo::Owner);
-    UnitTypeData {
+    UnitTypeCore {
         state: [
             ("hits", hits),
             ("mark", decl(StateType::String, None, SyncTo::All)),
         ]
         .map(|(name, decl)| (DeclaredName::new(name).unwrap(), decl))
         .into(),
-        ..UnitTypeData::tagged(&["grunt"])
+        ..UnitTypeCore::tagged(&["grunt"])
     }
 }
 
@@ -481,7 +484,7 @@ fn slot_kinds() -> SlotKinds {
         name: DeclaredName::new(name).unwrap(),
         ranks: NonZeroU8::new(ranks).map(|count| SlotRanks::new(count, None).unwrap()),
     };
-    SlotKinds(vec![kind("basic", 2), kind("spell", 0)])
+    SlotKinds::from(vec![kind("basic", 2), kind("spell", 0)])
 }
 
 /// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may
@@ -506,8 +509,10 @@ fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
 
 /// The resource `name` of the mode's `RESOURCES`.
 fn resource(name: &str) -> Option<ResourceId> {
-    let names = RESOURCES.map(|name| DeclaredName::new(name).unwrap());
-    ResourceId::named(&names, name)
+    RESOURCES
+        .into_iter()
+        .collect::<Names<ResourceId>>()
+        .named(name)
 }
 
 /// The mode's state fields: `kind` and `seen` kept on the server, every other sent to all.
@@ -550,13 +555,13 @@ fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
         data: ModeData {
-            combat: CombatRules {
+            combat: ModeCombatData {
                 damage_kinds: DAMAGE_KINDS
                     .map(|kind| DeclaredName::new(kind).unwrap())
                     .into(),
-                ..CombatRules::default()
+                ..ModeCombatData::default()
             },
-            navigation: NavigationRules {
+            navigation: ModeNavigationData {
                 layers: ["ground", "air"]
                     .map(|name| DeclaredName::new(name).unwrap())
                     .into(),
@@ -741,7 +746,7 @@ fn start_match_setup(
     Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
-        let data = UnitTypeData::tagged(&[tag]);
+        let data = UnitTypeCore::tagged(&[tag]);
         Units::load_type(&mut game, TypeScope::Mode, name, &data)
     };
     let tower_type = load("tower", "tower");
@@ -783,18 +788,20 @@ fn start_match_setup(
         let view = game.non_send::<View>();
         let stats = StatBook::new(&files.data.stats, [], Num::int(10));
         let relations = &files.data.relations;
-        let unit_type = |name: &str| view.unit_type_named(name);
-        let rules = &files.data.navigation;
-        let map = ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
+        let unit_type = |name: &str| view.names().unit_types().named((TypeScope::Mode, name));
         let data = &files.data;
+        let mode_names = ModeNames::of(data);
+        let layers = &mode_names.layers;
+        let map = ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap();
         ModeBooks::build(ModeBooksInput {
             data,
             unit_types: &setup.units.unit_types,
             types: &mut view.types_mut(),
             walkers: &walkers,
             stats,
-            life: data.combat.life_pool(&data.pools),
+            life: data.combat.life_pool(&mode_names.pools),
             loadout_ranks: data.loadout_ranks(),
+            names: mode_names,
             map,
             shop: None,
         })

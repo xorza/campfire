@@ -5,7 +5,8 @@ use campfire_script::rhai::{
 use campfire_sim::Capability;
 
 use crate::scripts::api_version::ApiVersion;
-use crate::scripts::ctx_fn::CtxFn;
+use crate::scripts::ctx_fn::{CtxFn, MethodFn};
+use crate::scripts::data_section::DataSection;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
@@ -99,8 +100,8 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Binds `f` as a form of `spec`, which serves every role: a value's or a field's getter, or
-    /// a call, a method or an operator.
+    /// Binds `f` as the form of `spec`, a value or a field's getter, which serves every role and
+    /// takes no argument.
     pub(crate) fn bind<
         A: 'static,
         const N: usize,
@@ -113,10 +114,15 @@ impl<'a> ApiBuilder<'a> {
         f: impl RhaiNativeFunc<A, N, X, R, F> + 'static,
     ) -> &mut Self {
         let spec = self.owned(spec);
+        assert!(
+            matches!(spec.kind, MemberKind::Value | MemberKind::Field),
+            "`{}` takes arguments, which `call` or `method` binds",
+            spec.name
+        );
         assert_eq!(
             spec.roles,
             RoleSet::ALL,
-            "`{}` serves some roles only, which `bind_for` checks",
+            "`{}` serves some roles only, which `call` checks",
             spec.name
         );
         self.host
@@ -127,25 +133,46 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Binds `f`, a form of `spec` that takes `ctx` first, as `bind` does, for the roles of
-    /// `spec` only: a call in another role fails before `f` runs.
-    pub(crate) fn bind_for<Args, R>(
-        &mut self,
-        spec: MemberSpec,
-        f: impl CtxFn<Args, R>,
-    ) -> &mut Self {
-        let spec = self.owned(spec);
-        assert_ne!(
-            spec.roles,
-            RoleSet::ALL,
-            "`{}` serves every role, which `bind` binds",
+    /// Binds `f`, a form of `spec`, a call or a value of `ctx` that takes `ctx` first, for the
+    /// roles of `spec`: a call in another role fails before `f` runs. The types of its arguments
+    /// say what each names.
+    pub(crate) fn call<Args, R, F: CtxFn<Args, R>>(&mut self, spec: MemberSpec, f: F) -> &mut Self {
+        let spec = self.owned(spec).with_args(F::args());
+        assert!(
+            matches!(spec.kind, MemberKind::Call | MemberKind::Value),
+            "`{}` is no call or value of `ctx`",
             spec.name
         );
         f.register(
             self.host.engine_mut(),
-            ApiBuilder::bound_name(&spec),
+            &ApiBuilder::bound_name(&spec),
             spec.roles,
         );
+        self.api
+            .record(spec, false, Status::Runs(ApiVersion::FIRST));
+        self
+    }
+
+    /// Binds `f`, a form of `spec`, a method or an operator of a handle, which serves every role.
+    /// The types of its arguments say what each names.
+    pub(crate) fn method<M, H, Args, R, F: MethodFn<M, H, Args, R>>(
+        &mut self,
+        spec: MemberSpec,
+        f: F,
+    ) -> &mut Self {
+        let spec = self.owned(spec).with_args(F::args());
+        assert!(
+            matches!(spec.kind, MemberKind::Method | MemberKind::Operator),
+            "`{}` is no method or operator",
+            spec.name
+        );
+        assert_eq!(
+            spec.roles,
+            RoleSet::ALL,
+            "`{}`, a method, serves every role",
+            spec.name
+        );
+        f.register(self.host.engine_mut(), &ApiBuilder::bound_name(&spec));
         self.api
             .record(spec, false, Status::Runs(ApiVersion::FIRST));
         self
@@ -181,9 +208,14 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records whether the release calls `hook`, as the code that calls it says.
+    /// Records whether the release calls `hook`, as the code that calls it says, of the
+    /// capability of the module that calls it and binds.
     pub(crate) fn hook(&mut self, hook: Hook, status: Status) -> &mut Self {
-        self.api.record_hook(HookStatus { hook, status });
+        self.api.record_hook(HookStatus {
+            hook,
+            status,
+            capability: self.capability,
+        });
         self
     }
 
@@ -193,13 +225,29 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records the fields of `table` the release reads, `runs`, and those it plans.
-    pub(crate) fn data(
+    /// Records the fields of `T`'s table the release reads, `runs`, and those it plans.
+    pub(crate) fn data<T: DataSection>(
+        &mut self,
+        runs: &[&'static str],
+        planned: &[&'static str],
+    ) -> &mut Self {
+        self.api
+            .record_data(T::TABLE, runs, planned, self.capability);
+        self
+    }
+
+    /// Records the fields of `table`, the mode's or a unit type's, which many modules share, that
+    /// the release reads, `runs`, and those it plans: the module's own.
+    pub(crate) fn shared_data(
         &mut self,
         table: DataTable,
         runs: &[&'static str],
         planned: &[&'static str],
     ) -> &mut Self {
+        assert!(
+            matches!(table, DataTable::Mode | DataTable::UnitType),
+            "{table:?} is one module's, which `data` records by its type"
+        );
         self.api.record_data(table, runs, planned, self.capability);
         self
     }

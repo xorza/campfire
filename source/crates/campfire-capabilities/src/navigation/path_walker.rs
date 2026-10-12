@@ -4,6 +4,7 @@ use bevy_ecs::world::World;
 use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::scripts::script_arg::enum_script_arg;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
@@ -104,6 +105,8 @@ impl Replication for PathWalker {
     const KIND: DataKind = DataKind::Prediction;
     type Sending = SentPredicted;
 }
+
+enum_script_arg!(PathEnd);
 
 #[cfg(test)]
 mod tests {

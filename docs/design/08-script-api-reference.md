@@ -14,7 +14,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
-| `avatars` | `()` or `(team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
+| `avatars` | `()` or `(team)`, `team` a team | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
 | `chance` | `(p)` | every role | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
 | `charge` | read | action | abilities | since 1.0 | the share of its most a charged action charged, from 0 to 1 |
@@ -22,7 +22,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
 | `damage` | `(target, amount, kind)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
 | `dash` | `(unit, to, speed)` | every role | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
-| `end` | `(team)` or `(())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
+| `end` | `(team)` or `(())`, `team` a team | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
@@ -196,8 +196,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Hook | Role | Capability | Status |
 | --- | --- | --- | --- |
 | `on_resolve(ctx, unit, target)` | action | abilities | since 1.0 |
-| `on_hit(ctx, unit, target, hit)` | action | abilities | since 1.0 |
-| `on_end(ctx, unit, hit)` | action | abilities | since 1.0 |
+| `on_hit(ctx, unit, target, hit)` | action | core | since 1.0 |
+| `on_end(ctx, unit, hit)` | action | core | since 1.0 |
 | `on_channel_tick(ctx, unit)` | action | abilities | since 1.0 |
 | `on_interrupt(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_interval(ctx, m)` | modifier | stats | since 1.0 |
@@ -211,7 +211,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_timer(ctx, name, data)` | mode | core | since 1.0 |
 | `on_player_join(ctx, player)` | mode | core | since 1.0 |
 | `on_player_leave(ctx, player)` | mode | core | since 1.0 |
-| `on_unit_died(ctx, unit, killer, assisters)` | mode | combat | since 1.0 |
+| `on_unit_died(ctx, unit, killer, assisters)` | mode | core | since 1.0 |
 | `calc_damage(ctx, d)` | mode | combat | since 1.0 |
 | `calc_heal(ctx, h)` | mode | combat | since 1.0 |
 | `on_think(ctx, unit)` | AI | orders | since 1.0 |
@@ -261,6 +261,30 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `saves` | core | since 1.0 |
 | `visibility` | core | since 1.0 |
 | `state_version` | core | planned |
+
+### A unit type, `[units.<id>]`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `tags` | core | since 1.0 |
+| `params` | core | since 1.0 |
+| `state` | core | since 1.0 |
+| `collision` | core | since 1.0 |
+| `stats` | stats | since 1.0 |
+| `pools` | stats | since 1.0 |
+| `passive` | stats | since 1.0 |
+| `tracks` | progression | since 1.0 |
+| `combat` | combat | since 1.0 |
+| `vision` | vision | since 1.0 |
+| `projectile` | projectiles | since 1.0 |
+| `area` | areas | since 1.0 |
+| `slots` | abilities | since 1.0 |
+| `production` | production | since 1.0 |
+| `supply` | production | since 1.0 |
+| `node` | production | since 1.0 |
+| `drop_off` | production | since 1.0 |
+| `inventory` | items | since 1.0 |
+| `orders` | orders | since 1.0 |
 
 ### The mode's `[combat]`
 

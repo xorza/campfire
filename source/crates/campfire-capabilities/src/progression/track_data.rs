@@ -2,6 +2,8 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::scalar::Scalar;
 
 /// A track as the mode's `[tracks.<name>]` declares it.
@@ -52,4 +54,8 @@ impl<'de> Deserialize<'de> for Thresholds {
             )
         })
     }
+}
+
+impl DataSection for TrackData {
+    const TABLE: DataTable = DataTable::Track;
 }

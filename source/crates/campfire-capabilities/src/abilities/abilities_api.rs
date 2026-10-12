@@ -6,13 +6,14 @@ use crate::abilities::abilities_effect::AbilitiesEffect;
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_range::ActionRange;
 use crate::actions::actions_column::ActionsColumn;
+use crate::actions::slot_kind::SlotKind;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::units::action_id::ActionId;
@@ -33,57 +34,48 @@ impl AbilitiesApi {
             "reduce_cooldowns",
             &[&["unit", "kind", "fraction"]],
             "takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind`",
-        )
-        .name(1, NameKind::SlotKind);
-        api.bind_for(
+        );
+        api.call(
             cast(
                 "range",
                 "the ability's range at its rank in meters, `()` for a global one",
             ),
             |ctx: &mut Ctx| Ok(AbilitiesApi::range(ctx)),
         )
-        .bind_for(
+        .call(
             cast(
                 "charge",
                 "the share of its most a charged action charged, from 0 to 1",
             ),
             |ctx: &mut Ctx| AbilitiesApi::charge(ctx),
         )
-        .bind_for(
+        .call(
             cast("origin", "where the action's unit stood as it started"),
             |ctx: &mut Ctx| AbilitiesApi::origin(ctx),
         )
-        .bind(
+        .call(
             call(
                 "reduce_cooldown",
                 &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
-            )
-            .name(1, NameKind::Ability),
-            |ctx: &mut Ctx, unit: Unit, id: &str, ms: INT| {
+            ),
+            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: INT| {
                 AbilitiesApi::reduce_cooldown(ctx, &unit, id, ms)
             },
         )
-        .bind(
+        .call(
             cut,
-            |ctx: &mut Ctx, unit: Unit, kind: &str, fraction: Num| {
+            |ctx: &mut Ctx, unit: Unit, kind: SlotKind, fraction: Num| {
                 AbilitiesApi::reduce_cooldowns(ctx, &unit, kind, fraction)
             },
         )
-        .bind(
-            cut,
-            |ctx: &mut Ctx, unit: Unit, kind: &str, fraction: INT| {
-                AbilitiesApi::reduce_cooldowns(ctx, &unit, kind, ApiError::num(fraction)?)
-            },
-        )
-        .bind(
+        .call(
             call(
                 "add_charge",
                 &[&["unit", "id"]],
                 "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
-            )
-            .name(1, NameKind::Ability),
-            |ctx: &mut Ctx, unit: Unit, id: &str| AbilitiesApi::add_charge(ctx, &unit, id),
+            ),
+            |ctx: &mut Ctx, unit: Unit, id: ActionId| AbilitiesApi::add_charge(ctx, &unit, id),
         );
         api.tag_property(
             TagProperty::Blocks(Block::Cast),
@@ -92,7 +84,8 @@ impl AbilitiesApi {
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
-        .action_fields(ActionDataField::of(Some(Capability::Abilities)));
+        .action_fields(ActionDataField::of(Some(Capability::Abilities)))
+        .shared_data(DataTable::UnitType, &["slots"], &[]);
     }
 
     /// Where the running call's action's unit stood as the action started.
@@ -123,7 +116,7 @@ impl AbilitiesApi {
 
     /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
     /// package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: &str, ms: INT) -> Checked<()> {
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: ActionId, ms: INT) -> Checked<()> {
         let action = AbilitiesApi::held(ctx, unit, id)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
@@ -135,7 +128,7 @@ impl AbilitiesApi {
 
     /// Queues a charge more of `unit`'s action `id` of the script's package, which it holds and
     /// which has charges.
-    fn add_charge(ctx: &Ctx, unit: &Unit, id: &str) -> Checked<()> {
+    fn add_charge(ctx: &Ctx, unit: &Unit, id: ActionId) -> Checked<()> {
         let action = AbilitiesApi::held(ctx, unit, id)?;
         if !ActionsColumn::has_charges(ctx.view(), action) {
             return Err(ApiError::NoCharges.fail().into());
@@ -146,19 +139,16 @@ impl AbilitiesApi {
         })
     }
 
-    /// The action `id` of the script's package, which `unit` holds.
-    fn held(ctx: &Ctx, unit: &Unit, id: &str) -> Checked<ActionId> {
-        let view = ctx.view();
-        let action = ActionsColumn::action_named(view, ctx.frame().package(), id)?;
-        if !ActionsColumn::holds(view, unit.row_index(), action) {
+    /// The action `action`, which `unit` holds.
+    fn held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<ActionId> {
+        if !ActionsColumn::holds(ctx.view(), unit.row_index(), action) {
             return Err(ApiError::NotHeld.fail().into());
         }
         Ok(action)
     }
 
     /// Queues `fraction` of what is left off the cooldowns of `unit`'s actions in `kind`.
-    fn reduce_cooldowns(ctx: &Ctx, unit: &Unit, kind: &str, fraction: Num) -> Checked<()> {
-        let kind = ActionsColumn::kind_named(ctx.view(), kind)?;
+    fn reduce_cooldowns(ctx: &Ctx, unit: &Unit, kind: SlotKind, fraction: Num) -> Checked<()> {
         if !(Num::ZERO..=Num::ONE).contains(&fraction) {
             return Err(ApiError::NotAFraction.fail().into());
         }

@@ -1,3 +1,5 @@
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use serde::Deserialize;
 
 /// A unit type's `supply` section: what a unit of the type uses of its player's supply, and what
@@ -9,4 +11,8 @@ pub struct SupplyData {
     pub cost: u32,
     #[serde(default)]
     pub provides: u32,
+}
+
+impl DataSection for SupplyData {
+    const TABLE: DataTable = DataTable::Supply;
 }

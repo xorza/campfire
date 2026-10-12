@@ -2,6 +2,8 @@ use std::num::NonZeroU8;
 
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::values::declared_name::DeclaredName;
 
 /// A choice of the mode's `[choices]`: what it offers, how many values a player chooses, whether
@@ -31,4 +33,8 @@ impl ChoiceData {
     const fn one() -> NonZeroU8 {
         NonZeroU8::MIN
     }
+}
+
+impl DataSection for ChoiceData {
+    const TABLE: DataTable = DataTable::Choice;
 }

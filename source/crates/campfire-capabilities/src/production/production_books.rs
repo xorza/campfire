@@ -1,10 +1,10 @@
 use bevy_ecs::system::{Res, SystemParam};
 
 use crate::actions::action_book::ActionBook;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::production_data::ProductionData;
-use crate::production::requirements::Requirements;
-use crate::production::supply_costs::SupplyCosts;
-use crate::production::supply_rules::SupplyRules;
+use crate::production::requirement_book::RequirementBook;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::units::by_type::ByType;
 
 /// The books a train is checked and paid by: the actions, each producer's data, what a train
@@ -13,7 +13,7 @@ use crate::units::by_type::ByType;
 pub(crate) struct ProductionBooks<'w> {
     pub(crate) actions: Res<'w, ActionBook>,
     pub(crate) producers: Res<'w, ByType<ProductionData>>,
-    pub(crate) requirements: Res<'w, Requirements>,
-    pub(crate) costs: Res<'w, SupplyCosts>,
-    pub(crate) rules: Option<Res<'w, SupplyRules>>,
+    pub(crate) requirements: Res<'w, RequirementBook>,
+    pub(crate) costs: Res<'w, SupplyCostBook>,
+    pub(crate) rules: Option<Res<'w, ModeSupplyData>>,
 }

@@ -1,46 +1,36 @@
-use std::cell::{Ref, RefCell};
+use std::cell::{Ref, RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
-use std::sync::Arc;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Array, Dynamic, INT};
 use campfire_sim::{Position, StableId, TickRate};
 
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
-use crate::players::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::action_id::ActionId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
-use crate::units::path_id::PathId;
 use crate::units::row_fill::RowFill;
 use crate::units::row_reads::RowReads;
 use crate::units::tag::Tag;
 use crate::units::target_index::{TargetIndex, TargetQuery};
 use crate::units::team::Team;
-use crate::units::teams::Teams;
-use crate::units::track_id::TrackId;
 use crate::units::unit::Unit;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_rows::UnitRows;
-use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::units::view_names::ViewNames;
-use crate::values::damage_kind::DamageKind;
-use crate::values::declared_name::DeclaredName;
-use crate::values::name_list::NameList;
 use crate::values::relation::Relation;
 
 /// What scripts see, as the host and every handle share it: the match's names, its units, those
@@ -77,6 +67,11 @@ impl View {
         self.0.names.borrow()
     }
 
+    /// The names, for the load and the mode to set.
+    pub(crate) fn names_mut(&self) -> RefMut<'_, ViewNames> {
+        self.0.names.borrow_mut()
+    }
+
     /// The units as the running phase read them.
     pub(crate) fn rows(&self) -> Ref<'_, UnitRows> {
         self.0.rows.borrow()
@@ -95,63 +90,6 @@ impl View {
 
     pub(crate) fn metric(&self) -> Metric {
         self.rows().metric()
-    }
-
-    /// Whether the match loaded `unit_type`.
-    pub(crate) fn has_type(&self, unit_type: UnitType) -> bool {
-        self.names().has_type(unit_type)
-    }
-
-    /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
-    pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
-        self.names().has_damage_kind(kind)
-    }
-
-    /// See `ViewNames::has_team`.
-    pub(crate) fn has_team(&self, team: Team) -> bool {
-        self.names().has_team(team)
-    }
-
-    /// See `ViewNames::has_player`.
-    pub(crate) fn has_player(&self, slot: PlayerSlot) -> bool {
-        self.names().has_player(slot)
-    }
-
-    /// See `ViewNames::plays_for`.
-    pub(crate) fn plays_for(&self, slot: PlayerSlot, team: Team) -> bool {
-        self.names().plays_for(slot, team)
-    }
-
-    /// See `ViewNames::resource_count`.
-    pub(crate) fn resource_count(&self) -> usize {
-        self.names().resource_count()
-    }
-
-    /// See `ViewNames::fits_resources`.
-    pub(crate) fn fits_resources(&self, resources: usize) -> bool {
-        self.names().fits_resources(resources)
-    }
-
-    /// Player `player`'s slot, as a script names it, when the session has it.
-    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
-        self.names().player(player)
-    }
-
-    /// Names the teams and the paths.
-    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<NameList>) {
-        self.0.names.borrow_mut().set_teams(teams, paths);
-    }
-
-    /// Sets the damage kinds and the players' resources the mode declares, by id.
-    pub(crate) fn set_mode_names(
-        &self,
-        damage_kinds: &[DeclaredName],
-        resources: Arc<[DeclaredName]>,
-    ) {
-        self.0
-            .names
-            .borrow_mut()
-            .set_mode_names(damage_kinds, resources);
     }
 
     /// The tick the units were read in.
@@ -186,49 +124,9 @@ impl View {
         self.ticks(ms)
     }
 
-    /// Sets the match's unit types and tags, as the load built them.
-    pub(crate) fn set_types(&self, types: UnitTypes) {
-        self.0.names.borrow_mut().set_types(types);
-    }
-
     /// How `of` regards `other`, as the units were read.
     pub(crate) fn relation(&self, of: Team, other: Team) -> Relation {
         self.rows().relations().between(of, other)
-    }
-
-    /// The player resource `name`; `None` for one the mode does not declare.
-    pub(crate) fn resource_named(&self, name: &str) -> Option<ResourceId> {
-        self.names().resource_named(name)
-    }
-
-    /// The damage kind `name`, when the mode declares it.
-    pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
-        self.names().damage_kind_named(name)
-    }
-
-    /// Names the tracks the mode declares, by track id.
-    pub(crate) fn set_track_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
-        self.0.names.borrow_mut().set_track_names(names);
-    }
-
-    /// The name of track `track`.
-    pub(crate) fn track_name(&self, track: TrackId) -> Option<ImmutableString> {
-        self.names().track_name(track)
-    }
-
-    /// The name of damage kind `kind`; none before a mode names the damage kinds.
-    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> Option<ImmutableString> {
-        self.names().damage_kind_name(kind)
-    }
-
-    /// Names the match's actions, by action id.
-    pub(crate) fn set_action_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
-        self.0.names.borrow_mut().set_action_names(names);
-    }
-
-    /// The name of ability `id` in its package.
-    pub(crate) fn ability_name(&self, id: ActionId) -> Option<ImmutableString> {
-        self.names().ability_name(id)
     }
 
     /// Adds how a capability fills its column of each row, and its fields of the core row,
@@ -280,36 +178,6 @@ impl View {
         self.rows().index(id)
     }
 
-    /// The name of `team`; none for a team the mode does not have.
-    pub(crate) fn team_name(&self, team: Team) -> Option<ImmutableString> {
-        self.names().team_name(team)
-    }
-
-    /// The name of `path`.
-    pub(crate) fn path_name(&self, path: PathId) -> Option<ImmutableString> {
-        self.names().path_name(path)
-    }
-
-    /// The path named `name`.
-    pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
-        self.names().path_named(name)
-    }
-
-    /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
-    pub(crate) fn unit_type_named(&self, name: &str) -> Option<UnitType> {
-        self.names().unit_type_named(name)
-    }
-
-    /// The name of `unit_type`.
-    pub(crate) fn unit_type_name(&self, unit_type: UnitType) -> Option<ImmutableString> {
-        self.names().unit_type_name(unit_type)
-    }
-
-    /// The tag `name`, when the match has it.
-    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
-        self.names().tag_named(name)
-    }
-
     /// Every unit, living or dead, that `keep` keeps, by stable id.
     fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> Array {
         let rows = self.rows();
@@ -321,12 +189,9 @@ impl View {
             .collect()
     }
 
-    /// Every unit, living or dead, with the tag `name`, by stable id.
-    pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
-        let tag = self
-            .tag_named(name)
-            .ok_or_else(|| ApiError::UnknownTag.fail())?;
-        Ok(self.units_where(|row| row.tags.tags.contains(tag)))
+    /// Every unit, living or dead, with `tag`, by stable id.
+    pub(crate) fn units_tagged(&self, tag: Tag) -> Array {
+        self.units_where(|row| row.tags.tags.contains(tag))
     }
 
     /// Every avatar, living or dead, of `team` or of every team, by stable id.
@@ -365,7 +230,7 @@ impl View {
     /// The name of action `id` as a script value: `()` for none.
     pub(crate) fn ability_value(&self, id: Option<ActionId>) -> Dynamic {
         id.map_or(Dynamic::UNIT, |id| {
-            let name = self.ability_name(id);
+            let name = self.names().actions.name(id);
             Dynamic::from(name.expect("an action of the match is named"))
         })
     }
@@ -382,11 +247,6 @@ impl View {
         })
     }
 
-    /// The param `name` of `unit_type`.
-    pub(crate) fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Dynamic> {
-        self.names().param_named(unit_type, name)
-    }
-
     /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
     /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
     /// the view's columns and their rows, by stable id.
@@ -395,11 +255,10 @@ impl View {
         of: &Unit,
         pos: Position,
         radius: Num,
-        filter: &str,
+        filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Array> {
         let radius = ApiError::radius(radius)?;
-        let filter = Filter::parse(filter, self.names().types()).map_err(ApiError::fail)?;
         let rows = self.rows();
         let units = rows.units();
         let query = TargetQuery {
@@ -407,7 +266,7 @@ impl View {
             from: pos,
             shape: Shape::POINT,
             radius,
-            filter: &filter,
+            filter,
         };
         let mut targets = self.0.targets.borrow_mut();
         let found = targets.find(&rows, query, seen);
@@ -423,11 +282,10 @@ impl View {
         &self,
         of: &Unit,
         radius: Num,
-        filter: &str,
+        filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
     ) -> Checked<Dynamic> {
         let radius = ApiError::radius(radius)?;
-        let filter = Filter::parse(filter, self.names().types()).map_err(ApiError::fail)?;
         let rows = self.rows();
         let of = rows.units()[of.row_index()];
         let query = TargetQuery {
@@ -435,7 +293,7 @@ impl View {
             from: of.pos,
             shape: of.shape,
             radius,
-            filter: &filter,
+            filter,
         };
         let metric = rows.metric();
         let mut nearest = None;
@@ -460,19 +318,11 @@ impl View {
             "find",
             &[&["of", "pos", "radius", "filter"]],
             "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
-        )
-        .name(3, NameKind::Filter);
-        api.bind(
+        );
+        api.call(
             find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                ctx.view().find(&of, pos, radius, filter, |_, _| true)
-            },
-        )
-        .bind(
-            find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
-                let radius = ApiError::num(radius)?;
-                ctx.view().find(&of, pos, radius, filter, |_, _| true)
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
+                ctx.view().find(&of, pos, radius, &filter, |_, _| true)
             },
         );
     }
@@ -511,11 +361,6 @@ pub(crate) mod internals {
             self.names().types().count()
         }
 
-        /// Gives scripts the names of the unit types as the view holds them.
-        pub(crate) fn share_type_names(&self) {
-            self.0.names.borrow_mut().share_type_names();
-        }
-
         pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
             RefMut::map(self.0.names.borrow_mut(), ViewNames::types_mut)
         }
@@ -530,8 +375,8 @@ pub(crate) mod internals {
         /// What a cost named `name` takes from: a pool, or else a player resource; `None` for
         /// a name the mode declares neither as.
         pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
-            let pool = StatsColumn::pool_id_named(self, name).map(CostTarget::Pool);
-            pool.or_else(|| self.resource_named(name).map(CostTarget::Resource))
+            let pools = self.column(|column: &StatsColumn| column.pool_names().clone());
+            CostTarget::named(&pools.unwrap_or_default(), &self.names().resources, name)
         }
     }
 }

@@ -3,7 +3,9 @@ use campfire_sim::{Capability, Position};
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::delivery::DeliveryShape;
+use crate::actions::delivery_data::DeliveryData;
 use crate::deliveries::delivering::Delivering;
+use crate::projectiles::projectile_data::ProjectileData;
 use crate::projectiles::projectiles_effect::{ProjectilesEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -26,23 +28,19 @@ impl ProjectilesApi {
             "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
-        api.bind_for(
+        api.call(
             projectile,
             |ctx: &mut Ctx, from: Position, direction: Vec3| {
                 ProjectilesApi::launch(ctx, from, Toward::Direction(direction))
             },
         )
-        .bind_for(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
+        .call(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
             ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
         })
         .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
-        .data(
-            DataTable::Delivery,
-            &["projectile", "count", "spread_deg"],
-            &[],
-        )
-        .data(
-            DataTable::Projectile,
+        .data::<DeliveryData>(&["projectile", "count", "spread_deg"], &[])
+        .shared_data(DataTable::UnitType, &["projectile"], &[])
+        .data::<ProjectileData>(
             &[
                 "speed",
                 "width",

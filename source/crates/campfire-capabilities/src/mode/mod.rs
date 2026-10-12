@@ -27,12 +27,12 @@ use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_api::ModeApi;
-use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_hooks::ModeHooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
+use crate::mode::mode_spec::{MapStart, ModeSpec};
 use crate::mode::mode_state::ModeState;
 use crate::mode::mode_world::ModeWorldCrate;
 use crate::mode::placed_unit::PlacedPath;
@@ -69,8 +69,9 @@ use crate::units::view::View;
 use crate::vision::Vision;
 
 pub(crate) mod calls;
-pub(crate) mod choice_book;
 pub(crate) mod choice_data;
+pub(crate) mod choice_id;
+pub(crate) mod choice_specs;
 pub(crate) mod choices;
 pub(crate) mod error;
 pub(crate) mod game_map;
@@ -82,10 +83,10 @@ pub(crate) mod map_ground;
 pub(crate) mod map_point;
 pub(crate) mod marker;
 pub(crate) mod marker_spec;
+pub(crate) mod marker_tag;
 pub(crate) mod match_end;
 pub(crate) mod match_mode;
 pub(crate) mod mode_api;
-pub(crate) mod mode_book;
 pub(crate) mod mode_books;
 pub(crate) mod mode_call;
 pub(crate) mod mode_data;
@@ -93,8 +94,10 @@ pub(crate) mod mode_effect;
 pub(crate) mod mode_hooks;
 pub(crate) mod mode_input;
 pub(crate) mod mode_map;
+pub(crate) mod mode_names;
 pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
+pub(crate) mod mode_spec;
 pub(crate) mod mode_state;
 pub(crate) mod mode_units;
 pub(crate) mod mode_world;
@@ -193,6 +196,7 @@ impl Mode {
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
         let ModeMap {
             ground,
+            teams,
             relations,
             paths,
             placed,
@@ -201,12 +205,16 @@ impl Mode {
             brush,
         } = books.install(world);
         ground.install(world, walkers);
-        let book = ModeBook::new(
-            setup,
-            world.resource::<ScriptBook>(),
+        let start = MapStart {
+            teams,
             placed,
             relations,
-            GameMap::new(paths.names().map(ImmutableString::from), &markers),
+            map: GameMap::new(paths.names().texts().map(ImmutableString::from), &markers),
+        };
+        let book = ModeSpec::new(
+            setup,
+            world.resource::<ScriptBook>(),
+            start,
             loadout_ranks,
             KitPart::of_state(registry),
         );
@@ -216,7 +224,8 @@ impl Mode {
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
         }
-        view.set_names(Rc::clone(&book.teams), paths.shared_names());
+        view.names_mut()
+            .set_teams(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
@@ -252,7 +261,7 @@ impl Mode {
 
     /// Whether each unit but a delivery holds every part its type's kit gives it as it spawns,
     /// none of which a unit loses while it stands, so no system finds one missing; the first
-    /// that lacks one. A match with no progression has no level track, as `ModeBook::spawn` reads
+    /// that lacks one. A match with no progression has no level track, as `ModeSpec::spawn` reads
     /// it.
     fn kits_held(world: &World) -> Result<(), Breach> {
         let book = world.non_send::<MatchMode>();
@@ -319,7 +328,7 @@ pub(crate) mod internals {
 
     use crate::mode::Mode;
     use crate::mode::match_mode::MatchMode;
-    use crate::scripts::ctx::Ctx;
+    use crate::units::Units;
     use crate::units::spawn_at::SpawnAt;
     use crate::units::spawner::Spawner;
     use crate::units::team::Team;
@@ -328,11 +337,8 @@ pub(crate) mod internals {
         /// Spawns a unit of the mode's type `name` on `team` at `pos`, with the parts its type's
         /// kit gives, as the mode's own spawns do.
         pub fn spawn_typed(world: &mut World, name: &str, team: Team, pos: Position) -> StableId {
-            let ctx = world.non_send::<Ctx>().clone();
             let book = world.non_send::<MatchMode>().clone();
-            let unit_type = ctx
-                .view()
-                .unit_type_named(name)
+            let unit_type = Units::type_named(world, name)
                 .filter(|&unit_type| book.kit(unit_type).is_some())
                 .expect("a type of the mode, with a kit");
             let id = world.resource_mut::<IdAllocator>().allocate();
@@ -372,8 +378,8 @@ pub(crate) mod test_world {
     use crate::combat::damage::{Damage, DamageCause};
     use crate::combat::pass_queue::PassQueue;
     use crate::mode::Mode;
-    use crate::mode::mode_book::ModeBook;
     use crate::mode::mode_input::{InputValue, ModeInput};
+    use crate::mode::mode_spec::ModeSpec;
     use crate::mode::mode_world::ModeWorld;
     use crate::navigation::path_walker::{PathEnd, PathWalker};
     use crate::scripts::call_start::CallStart;
@@ -452,10 +458,10 @@ pub(crate) mod test_world {
         /// The state field `name`: the state holds the fields in the order of their names.
         pub(crate) fn field(world: &World, name: &str) -> StateValue {
             let ctx = world.non_send::<Ctx>();
-            let at = ModeBook::of(ctx)
+            let at = ModeSpec::of(ctx)
                 .unwrap()
                 .schema
-                .state_field_named(name)
+                .state_field(name)
                 .unwrap()
                 .index;
             world.mode_state()[at].clone()
@@ -506,7 +512,7 @@ pub(crate) mod test_world {
                 ..NewInstance::bare(id, None)
             };
             let modifiers = Modifiers::bundle([Application::refresh(instance)]);
-            let grunt = world.non_send::<View>().unit_type_named("grunt").unwrap();
+            let grunt = Units::type_named(world, "grunt").unwrap();
             let parts = (
                 Life::full(Num::int(1000)),
                 Level::default(),
@@ -528,7 +534,9 @@ pub(crate) mod test_world {
         ) {
             let kind = world
                 .non_send::<View>()
-                .damage_kind_named(kind)
+                .names()
+                .damage_kinds
+                .named(kind)
                 .expect("the mode names the damage kind");
             world.resource_mut::<PassQueue>().push_damage(Damage {
                 source,

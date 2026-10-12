@@ -40,7 +40,7 @@ use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
@@ -131,12 +131,14 @@ fn stat_match(types: &[StatsData]) -> Match {
     let types: Vec<_> = types
         .iter()
         .map(|data| {
-            let unit_type = Units::load_next_type(&mut game, &UnitTypeData::default());
+            let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
             (unit_type, data)
         })
         .collect();
     let book = StatBook::new(&rules(), types, Num::int(6));
-    let pools = PoolBook::new(&pools(), &book);
+    let pools = pools();
+    let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
+    let pools = PoolBook::new(&pools, names, &book);
     Stats::load_books(&mut game, book, pools);
     game
 }
@@ -500,7 +502,7 @@ fn warding_match() -> (Match, ModifierId) {
         &mut game,
         TypeScope::Mode,
         "armored",
-        &UnitTypeData::default(),
+        &UnitTypeCore::default(),
     );
     Stats::load_modifier(&mut game, 0, "heartened", &modifier_data(None), None);
     let param = |name: &str| {
@@ -626,8 +628,12 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let far = spawn(&mut game, 3, 0);
     let enemy = spawn(&mut game, 1, 1);
     let entity = |game: &Match, id: StableId| game.entity_of(id).unwrap();
-    let [inspired, presence] = ["inspired", "presence"]
-        .map(|name| game.resource::<ModifierBook>().named(0, name).unwrap());
+    let [inspired, presence] = ["inspired", "presence"].map(|name| {
+        game.resource::<ModifierBook>()
+            .names()
+            .named((0, name))
+            .unwrap()
+    });
     let holder = entity(&game, carrier);
     let mut presence_carrier = CarriedMut::of(&mut game, holder).unwrap();
     presence_carrier.apply(aura(presence, carrier, Num::int(2)));
@@ -712,7 +718,8 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
-        .named(0, "inspired")
+        .names()
+        .named((0, "inspired"))
         .unwrap();
     // A capability lists the hold for one tick, as an area does: the tick holds it, and takes
     // the list, so the next tick, with nothing listed, lets go of it.

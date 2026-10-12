@@ -38,7 +38,7 @@ impl DamageHandle {
             .bind(
                 field("kind", "one of the mode's `[combat] damage_kinds`"),
                 |d: &mut DamageHandle| {
-                    let name = d.view.damage_kind_name(d.damage.kind);
+                    let name = d.view.names().damage_kinds.name(d.damage.kind);
                     name.expect("a damage's kind is one of the mode's")
                 },
             )

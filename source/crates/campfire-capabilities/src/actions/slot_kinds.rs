@@ -7,15 +7,43 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
+use crate::values::names::Names;
 use crate::values::rank::Rank;
 
-/// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order. As a resource,
-/// the match's, which the `learn` order reads; empty until the mode's books install.
+/// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order, and their names.
+/// As a resource, the match's, which the `learn` order reads; empty until the mode's books
+/// install.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(transparent)]
-pub struct SlotKinds(pub Vec<SlotKindData>);
+#[serde(from = "Vec<SlotKindData>")]
+pub struct SlotKinds {
+    kinds: Vec<SlotKindData>,
+    names: Names<SlotKind>,
+}
+
+/// The kinds of `kinds`, in order, each named by its id. A list that names a kind twice, or holds
+/// more kinds than an id counts, names none, so no id stands for another's place: the package
+/// load refuses both.
+impl From<Vec<SlotKindData>> for SlotKinds {
+    fn from(kinds: Vec<SlotKindData>) -> SlotKinds {
+        let names = Names::all_of(kinds.iter().map(|kind| kind.name.as_str()));
+        SlotKinds {
+            kinds,
+            names: names.unwrap_or_default(),
+        }
+    }
+}
 
 impl SlotKinds {
+    /// Every kind, in order.
+    pub fn kinds(&self) -> &[SlotKindData] {
+        &self.kinds
+    }
+
+    /// The kinds' names.
+    pub const fn names(&self) -> &Names<SlotKind> {
+        &self.names
+    }
+
     /// The ranks of each action that the unit types of `slots` place, each type's actions by
     /// slot kind: those of the kind it sits in. An error names an action they place in kinds of
     /// other ranks. A kind it does not hold places nothing.
@@ -26,7 +54,7 @@ impl SlotKinds {
         let mut ranks = BTreeMap::new();
         for slots in slots {
             for (kind, ids) in slots {
-                let Some(kind) = self.named(kind.as_str()) else {
+                let Some(kind) = self.names.named(kind.as_str()) else {
                     continue;
                 };
                 for id in ids {
@@ -40,16 +68,10 @@ impl SlotKinds {
         Ok(ranks)
     }
 
-    /// The kind `name`, if the mode declares it.
-    pub fn named(&self, name: &str) -> Option<SlotKind> {
-        let at = self.0.iter().position(|kind| kind.name.as_str() == name)?;
-        Some(SlotKind::new(u8::try_from(at).ok()?))
-    }
-
     /// Whether `kind` is one of the mode's, where an action of `ranks` ranks finds a level for
     /// each rank, when the kind gives them.
     pub(crate) fn holds(&self, kind: SlotKind, ranks: usize) -> bool {
-        self.0.get(kind.index()).is_some_and(|data| {
+        self.kinds.get(kind.index()).is_some_and(|data| {
             let levels = data.ranks.as_ref().and_then(SlotRanks::levels);
             levels.is_none_or(|levels| ranks <= levels.len())
         })
@@ -57,7 +79,7 @@ impl SlotKinds {
 
     /// How many ranks an action in `kind` has.
     pub fn ranks(&self, kind: SlotKind) -> u8 {
-        self.0[kind.index()]
+        self.kinds[kind.index()]
             .ranks
             .as_ref()
             .map_or(1, |ranks| ranks.count().get())
@@ -66,14 +88,17 @@ impl SlotKinds {
     /// The level of the `level` track that `rank`, from 1, of an action in `kind` needs; none
     /// when the kind gives its ranks no levels.
     pub(crate) fn level_of(&self, kind: SlotKind, rank: Rank) -> Option<Level> {
-        let levels = self.0[kind.index()].ranks.as_ref()?.levels()?;
+        let levels = self.kinds[kind.index()].ranks.as_ref()?.levels()?;
         Some(levels[rank.index()])
     }
 
     /// The rank an action in `kind` has as its unit spawns or it is granted: the first for a kind
     /// with no `ranks`, none for one whose ranks are learned.
     pub(crate) fn first_rank(&self, kind: SlotKind) -> Option<Rank> {
-        self.0[kind.index()].ranks.is_none().then_some(Rank::FIRST)
+        self.kinds[kind.index()]
+            .ranks
+            .is_none()
+            .then_some(Rank::FIRST)
     }
 }
 
@@ -122,9 +147,16 @@ mod tests {
         // The mode's kinds hold an action in one of them that finds a level for each of its
         // ranks: in `basic`, of three levels, three ranks and no more; in `spell`, of none, any.
         let basic = read("name = \"basic\"\nranks = 3\nlevels = [6, 11, 16]").unwrap();
-        let kinds = SlotKinds(vec![basic, read("name = \"spell\"").unwrap()]);
+        let kinds = SlotKinds::from(vec![basic, read("name = \"spell\"").unwrap()]);
         let [basic, spell, past] = [0, 1, 2].map(SlotKind::new);
         assert!(kinds.holds(basic, 3) && !kinds.holds(basic, 4));
         assert!(kinds.holds(spell, 30) && !kinds.holds(past, 0));
+        assert_eq!(kinds.names().named("spell"), Some(spell));
+        // A list that names a kind twice names none, so `spell`, after the repeat, takes no id
+        // that stands for the repeat's place.
+        let kind = |name: &str| read(&format!("name = \"{name}\"")).unwrap();
+        let twice = SlotKinds::from(vec![kind("basic"), kind("basic"), kind("spell")]);
+        assert_eq!(twice.names().named("spell"), None);
+        assert_eq!(twice.kinds().len(), 3);
     }
 }

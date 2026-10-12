@@ -18,7 +18,7 @@ use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::navigation::error::MapProblem;
 use crate::production::production_column::ProductionColumn;
-use crate::production::supply_costs::SupplyCosts;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::progression::progression_column::ProgressionColumn;
 use crate::scripts::ctx::Ctx;
 use crate::stats::param_book::ParamBook;
@@ -37,7 +37,7 @@ pub(crate) mod error;
 pub(crate) mod mode_inputs;
 pub(crate) mod package_content;
 pub(crate) mod type_place;
-pub(crate) mod unit_type_file;
+pub(crate) mod unit_type_data;
 
 /// The books of a match, built once from its packages at its tick rate: what the builder loads
 /// package by package, and the books of the mode's own rules, which read the unit types it
@@ -85,7 +85,7 @@ impl Books {
                 .filter(|_| !walks)
         };
         let name_of = |unit_type: UnitType| {
-            let name = self.parts.types.names().nth(unit_type.index());
+            let name = self.parts.types.types().name(unit_type);
             DeclaredName::new(name.expect("a type of the books"))
                 .expect("a type's name is declared")
         };
@@ -104,7 +104,7 @@ impl Books {
         UnitsColumn::share(&view, states.clone());
         Books::put(world, set, scripts, states);
         Books::put(world, set, scripts, parts.types.origins());
-        view.set_types(parts.types);
+        view.names_mut().set_types(parts.types);
         StatsColumn::share_modifiers(&view, parts.modifiers.clone());
         let params = ParamBook::new(parts.params);
         if let Some(ctx) = world.get_non_send::<Ctx>() {
@@ -116,7 +116,7 @@ impl Books {
             Books::put(world, set, scripts, tracks);
         }
         ActionsColumn::share(&view, parts.actions.clone());
-        let costs = SupplyCosts::new(parts.supplies, &parts.actions);
+        let costs = SupplyCostBook::new(parts.supplies, &parts.actions);
         Books::put(world, set, scripts, parts.modifiers);
         Books::put(world, set, scripts, parts.actions);
         Books::put(world, set, scripts, parts.effects);
@@ -129,9 +129,9 @@ impl Books {
         Books::put(world, set, scripts, parts.builds);
         Books::put(world, set, scripts, parts.nodes);
         Books::put(world, set, scripts, parts.walkers);
-        ProductionColumn::share(&view, parts.supply_rules, costs.clone());
+        ProductionColumn::share(&view, parts.supply, costs.clone());
         Books::put(world, set, scripts, costs);
-        if let Some(rules) = parts.supply_rules {
+        if let Some(rules) = parts.supply {
             world.insert_resource(rules);
         }
         Books::put(world, set, scripts, parts.items);

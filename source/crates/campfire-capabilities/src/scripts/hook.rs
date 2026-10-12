@@ -1,4 +1,3 @@
-use campfire_sim::Capability;
 use serde::Deserialize;
 
 use crate::scripts::script_role::ScriptRole;
@@ -127,34 +126,6 @@ impl Hook {
             Hook::OnThink => ScriptRole::Ai,
         }
     }
-
-    /// The capability that calls it; `None` for the core's.
-    pub const fn capability(self) -> Option<Capability> {
-        match self {
-            Hook::OnResolve
-            | Hook::OnHit
-            | Hook::OnEnd
-            | Hook::OnChannelTick
-            | Hook::OnInterrupt => Some(Capability::Abilities),
-            Hook::OnInterval => Some(Capability::Stats),
-            Hook::OnAttack
-            | Hook::OnAttackHit
-            | Hook::OnDamageTaken
-            | Hook::OnKill
-            | Hook::OnTakedown
-            | Hook::OnUnitDied
-            | Hook::CalcDamage
-            | Hook::CalcHeal => Some(Capability::Combat),
-            Hook::OnMatchStart
-            | Hook::OnModeInput
-            | Hook::OnTimer
-            | Hook::OnPlayerJoin
-            | Hook::OnPlayerLeave
-            | Hook::OnGenerate => None,
-            Hook::OnThink => Some(Capability::Orders),
-            Hook::OnLevelUp => Some(Capability::Progression),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -182,11 +153,8 @@ mod tests {
         // A few as design 08 lists them.
         let think = Hook::OnThink;
         assert_eq!((think.params(), think.role()), (2, ScriptRole::Ai));
-        assert_eq!(think.capability(), Some(Capability::Orders));
         let hit = Hook::OnHit;
         assert_eq!((hit.params(), hit.role()), (4, ScriptRole::Action));
-        assert_eq!(Hook::CalcHeal.capability(), Some(Capability::Combat));
         assert_eq!(Hook::OnModeInput.params(), 4);
-        assert_eq!(Hook::OnTimer.capability(), None);
     }
 }

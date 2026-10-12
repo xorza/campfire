@@ -141,7 +141,7 @@ fn probe(ctx, unit) {
         ),
         (
             r#"ctx.set_relation("a", "c", Relation::Neutral)"#,
-            ApiError::UnknownTeam,
+            ApiError::Unknown(NameKind::Team),
         ),
     ] {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");

@@ -5,3 +5,12 @@ use thiserror::Error;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("time too large to count in ticks")]
 pub struct TimeTooLarge;
+
+/// Why a table of names refused a name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum NamesError {
+    #[error("its scope names it already")]
+    Repeated,
+    #[error("the table holds the most ids of its kind")]
+    Full,
+}

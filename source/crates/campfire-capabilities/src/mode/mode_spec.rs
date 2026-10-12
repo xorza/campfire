@@ -9,7 +9,7 @@ use campfire_math::Num;
 use campfire_sim::Position;
 
 use crate::actions::action_slots::ActionSlots;
-use crate::mode::choice_book::ChoiceBook;
+use crate::mode::choice_specs::ChoiceSpecs;
 use crate::mode::game_map::GameMap;
 use crate::mode::group_unit::GroupUnit;
 use crate::mode::mode_schema::ModeSchema;
@@ -38,15 +38,16 @@ use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_type::UnitType;
+use crate::values::names::Names;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
 #[derive(Debug)]
-pub(crate) struct ModeBook {
+pub(crate) struct ModeSpec {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
-    pub(crate) choices: ChoiceBook,
+    pub(crate) choices: ChoiceSpecs,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
     /// What each of the mode's unit types spawns with.
@@ -74,41 +75,51 @@ struct ModeType {
     actions: Range<usize>,
 }
 
-impl ModeBook {
+/// What the mode's map gives its book: the teams' names, the units it places, how the teams
+/// regard each other as the match starts, and the map as scripts read it.
+#[derive(Debug)]
+pub(crate) struct MapStart {
+    pub(crate) teams: Names<Team>,
+    pub(crate) placed: Vec<PlacedUnit>,
+    pub(crate) relations: Relations,
+    pub(crate) map: GameMap,
+}
+
+impl ModeSpec {
     /// The mode of the match `ctx` runs in, once it installed.
-    pub(crate) fn of(ctx: &Ctx) -> Option<&ModeBook> {
+    pub(crate) fn of(ctx: &Ctx) -> Option<&ModeSpec> {
         ctx.mode()?.downcast_ref()
     }
 
     /// The mode of the match `ctx` runs in, which has one: the mode's own systems and calls run
     /// only in such a match.
-    pub(crate) fn of_match(ctx: &Ctx) -> &ModeBook {
-        ModeBook::of(ctx).expect("a match with a mode")
+    pub(crate) fn of_match(ctx: &Ctx) -> &ModeSpec {
+        ModeSpec::of(ctx).expect("a match with a mode")
     }
 
     /// The mode of the match `ctx` runs in; an error in a match with none.
-    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeBook> {
-        ModeBook::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
+    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeSpec> {
+        ModeSpec::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
     }
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
-    /// seat, with the units its map places, the `relations` its teams start with, `map` as
-    /// scripts read it, `loadout_ranks`, the ranks of every loadout entry, and `kit_parts`, the
-    /// parts a kit may give that the match's state holds.
+    /// seat, with what its map gives, `start`, `loadout_ranks`, the ranks of every loadout entry,
+    /// and `kit_parts`, the parts a kit may give that the match's state holds.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
-        placed: Vec<PlacedUnit>,
-        relations: Relations,
-        map: GameMap,
+        start: MapStart,
         loadout_ranks: u8,
         kit_parts: Vec<KitPart>,
-    ) -> ModeBook {
-        let teams = setup
-            .teams
-            .iter()
-            .map(|team| (team.name.as_str(), team.slots));
-        let teams = Teams::new(teams, setup.players)
+    ) -> ModeSpec {
+        let MapStart {
+            teams,
+            placed,
+            relations,
+            map,
+        } = start;
+        let slots = setup.teams.iter().map(|team| team.slots);
+        let teams = Teams::new(teams, slots, setup.players)
             .expect("the session checked its players against the teams' slots");
         let mut types = ByType::default();
         let mut actions = Vec::new();
@@ -122,11 +133,11 @@ impl ModeBook {
             };
             types.set(unit_type.unit_type, held);
         }
-        ModeBook {
+        ModeSpec {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
-            choices: ChoiceBook::new(&setup.data.choices),
+            choices: ChoiceSpecs::new(&setup.data.choices),
             loadout_ranks,
             types,
             actions,

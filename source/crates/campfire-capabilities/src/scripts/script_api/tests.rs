@@ -7,6 +7,8 @@ use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
+use campfire_math::Num;
+use campfire_script::rhai::INT;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
@@ -17,26 +19,29 @@ use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::requires_data::RequiresData;
 use crate::actions::slot_kind_data::SlotKindData;
-use crate::areas::area_data::{AreaData, AreaInside};
+use crate::areas::area_data::{AreaData, AreaInsideData};
+use crate::books::unit_type_data::UnitTypeData;
 use crate::combat::combat_data::CombatData;
-use crate::combat::combat_rules::{CombatRules, Leech};
+use crate::combat::mode_combat_data::{LeechData, ModeCombatData};
 use crate::items::inventory_data::InventoryData;
 use crate::items::item_data::ItemData;
 use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::mode_data::ModeData;
+use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
-use crate::navigation::navigation_rules::NavigationRules;
+use crate::mode::saves_data::SavesData;
+use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::orders::ai_data::AiData;
 use crate::production::drop_off_data::DropOffData;
+use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::node_data::NodeData;
 use crate::production::production_data::ProductionData;
 use crate::production::supply_data::SupplyData;
-use crate::production::supply_rules::SupplyRules;
 use crate::progression::track_data::TrackData;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::release::Release;
-use crate::scripts::hook::Hook;
+use crate::scripts::data_section::DataSection;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::stats::modifier_data::{AuraData, ModifierData};
@@ -97,6 +102,51 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
     recorded.sort_unstable();
     recorded.dedup();
     assert_eq!(bound, recorded);
+}
+
+#[test]
+fn each_form_that_takes_a_num_takes_an_integer_in_its_place_too() {
+    // Each function the API binds, by its name and its parameters' types; Rhai's own before it
+    // binds aside.
+    let forms = |engine: &Engine| {
+        let mut forms = engine.collect_fn_metadata(
+            None,
+            |info| {
+                Some((
+                    info.metadata.name.to_string(),
+                    info.metadata.param_types.to_vec(),
+                ))
+            },
+            true,
+        );
+        forms.sort_unstable();
+        forms.dedup();
+        forms
+    };
+    let mut host = ScriptHost::new(NonZeroU64::MIN);
+    let before = forms(host.engine_mut());
+    Release::bind_script_api(&mut host);
+    let bound: Vec<(String, Vec<TypeId>)> = forms(host.engine_mut())
+        .into_iter()
+        .filter(|form| !before.contains(form))
+        .collect();
+    let (num, int) = (TypeId::of::<Num>(), TypeId::of::<INT>());
+    let numbers: Vec<_> = bound
+        .iter()
+        .filter(|(_, params)| params.contains(&num))
+        .collect();
+    // `ctx.damage`, `ctx.heal`, `pos.within`, `vector * n` and `n * vector` among them.
+    assert!(numbers.len() >= 5, "{numbers:?}");
+    for (name, params) in numbers {
+        let as_int: Vec<TypeId> = params
+            .iter()
+            .map(|&param| if param == num { int } else { param })
+            .collect();
+        assert!(
+            bound.contains(&(name.clone(), as_int)),
+            "`{name}` takes an integer for each `Num`"
+        );
+    }
 }
 
 #[test]
@@ -200,11 +250,17 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                let spec = MemberSpec::call("named", &[&["unit"]], "a test call")
-                    .name(1, NameKind::Modifier);
-                api.record(spec, false, Status::Planned);
+                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                let mut names = damage.names;
+                names[2] = Some(NameKind::Pool);
+                let args = ArgKinds {
+                    names,
+                    enums: damage.enums,
+                };
+                let status = Status::Runs(ApiVersion::FIRST);
+                api.record(damage.with_args(args), false, status);
             },
-            "Ctx.named: argument 1, which names something, is in its first form",
+            "the forms of Ctx.damage say alike what an argument is",
         ),
         (
             |api| {
@@ -238,6 +294,11 @@ fn a_binding_records_its_spec_once_and_whole() {
         said.contains("names the capability of the module that binds it"),
         "{said}"
     );
+}
+
+/// The table of `T`, and the fields its schema reads, sorted.
+fn table<T: DataSection>() -> (DataTable, Vec<&'static str>) {
+    (T::TABLE, serde_fields::<T>())
 }
 
 /// The names serde reads for `T`'s fields, as its derive or its own impl gives them.
@@ -341,38 +402,49 @@ fn the_data_fields_are_the_schemas() {
     let mut mode = serde_fields::<ModeData>();
     mode.extend(["actions", "modifiers", "items", "script"]);
     mode.sort_unstable();
+    let mut unit_type = UnitTypeData::FIELDS.to_vec();
+    unit_type.sort_unstable();
+    // Its fields as `given` names them are those its table reads.
+    assert_eq!(unit_type, serde_fields::<UnitTypeData>());
     let tables = [
         (DataTable::Mode, mode),
-        (DataTable::ModeCombat, serde_fields::<CombatRules>()),
-        (DataTable::ModeNavigation, serde_fields::<NavigationRules>()),
-        (DataTable::SlotKind, serde_fields::<SlotKindData>()),
-        (DataTable::Choice, serde_fields::<ChoiceData>()),
-        (DataTable::Leech, serde_fields::<Leech>()),
-        (DataTable::Relation, serde_fields::<RelationData>()),
-        (DataTable::Action, serde_fields::<ActionData>()),
-        (DataTable::Effect, serde_fields::<EffectData>()),
-        (DataTable::Delivery, serde_fields::<DeliveryData>()),
-        (DataTable::Projectile, serde_fields::<ProjectileData>()),
-        (DataTable::Area, serde_fields::<AreaData>()),
-        (DataTable::AreaInside, serde_fields::<AreaInside>()),
-        (DataTable::Track, serde_fields::<TrackData>()),
-        (DataTable::Modifier, serde_fields::<ModifierData>()),
-        (DataTable::Aura, serde_fields::<AuraData>()),
-        (DataTable::Combat, serde_fields::<CombatData>()),
-        (DataTable::Production, serde_fields::<ProductionData>()),
-        (DataTable::Supply, serde_fields::<SupplyData>()),
-        (DataTable::ModeSupply, serde_fields::<SupplyRules>()),
-        (DataTable::Requires, serde_fields::<RequiresData>()),
-        (DataTable::Node, serde_fields::<NodeData>()),
-        (DataTable::DropOff, serde_fields::<DropOffData>()),
-        (DataTable::Vision, serde_fields::<VisionData>()),
-        (DataTable::Collision, serde_fields::<CollisionData>()),
-        (DataTable::Ai, serde_fields::<AiData>()),
-        (DataTable::Tag, serde_fields::<TagData>()),
-        (DataTable::Item, serde_fields::<ItemData>()),
-        (DataTable::Inventory, serde_fields::<InventoryData>()),
-        (DataTable::Shop, serde_fields::<ShopData>()),
+        (DataTable::UnitType, unit_type),
+        table::<ModeCombatData>(),
+        table::<ModeNavigationData>(),
+        table::<SlotKindData>(),
+        table::<ChoiceData>(),
+        table::<LeechData>(),
+        table::<RelationData>(),
+        table::<PlayersData>(),
+        table::<SavesData>(),
+        table::<ActionData>(),
+        table::<EffectData>(),
+        table::<DeliveryData>(),
+        table::<ProjectileData>(),
+        table::<AreaData>(),
+        table::<AreaInsideData>(),
+        table::<TrackData>(),
+        table::<ModifierData>(),
+        table::<AuraData>(),
+        table::<CombatData>(),
+        table::<ProductionData>(),
+        table::<SupplyData>(),
+        table::<ModeSupplyData>(),
+        table::<RequiresData>(),
+        table::<NodeData>(),
+        table::<DropOffData>(),
+        table::<VisionData>(),
+        table::<CollisionData>(),
+        table::<AiData>(),
+        table::<TagData>(),
+        table::<ItemData>(),
+        table::<InventoryData>(),
+        table::<ShopData>(),
     ];
+    // Each table once, its type the one its section names.
+    let mut held: Vec<DataTable> = tables.iter().map(|&(table, _)| table).collect();
+    held.sort_unstable();
+    assert_eq!(held, DataTable::ALL);
     for (table, schema) in tables {
         let mut recorded: Vec<_> = api
             .data()

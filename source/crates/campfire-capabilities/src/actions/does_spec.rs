@@ -1,5 +1,5 @@
 use crate::actions::amount::Amount;
-use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
 use crate::units::unit_type::UnitType;
@@ -7,7 +7,7 @@ use crate::units::unit_type::UnitType;
 /// What a listed effect does, its names resolved: an effect the action pipeline queues itself,
 /// as `stats` and the core are below it, or one a capability above it queues.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Does {
+pub(crate) enum DoesSpec {
     Modifier {
         id: ModifierId,
         duration_ms: Option<Amount>,
@@ -20,5 +20,5 @@ pub(crate) enum Does {
         unit_type: UnitType,
         duration_ms: Option<Amount>,
     },
-    Capability(CapabilityDoes),
+    Capability(CapabilityDoesSpec),
 }

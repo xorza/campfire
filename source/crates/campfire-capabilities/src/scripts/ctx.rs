@@ -9,6 +9,7 @@ use campfire_sim::StableId;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::view::View;
@@ -112,7 +113,7 @@ impl Params {
         if modes && ctx.mode().is_none() {
             return Err(ApiError::NoMode.fail().into());
         }
-        let value = ctx.frame().param_named(name);
-        value.ok_or_else(|| ApiError::UnknownParam.fail().into())
+        let value = ctx.frame().param(name);
+        value.ok_or_else(|| ApiError::Unknown(NameKind::Param).fail().into())
     }
 }

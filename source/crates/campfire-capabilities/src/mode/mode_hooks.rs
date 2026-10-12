@@ -71,7 +71,7 @@ impl ModeHooks {
         world.mode_calls(now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
-                    call.book().schema.input_type_named(name)
+                    call.book().schema.input_type(name)
                 }) else {
                     continue;
                 };
@@ -253,7 +253,9 @@ impl ModeHooks {
                     if let Some(handle) = view.unit(id) {
                         let level = INT::from(level.get());
                         let name = view
-                            .track_name(track)
+                            .names()
+                            .tracks
+                            .name(track)
                             .expect("a track of the match is named");
                         let args = (call.ctx.clone(), handle, name, level);
                         if call

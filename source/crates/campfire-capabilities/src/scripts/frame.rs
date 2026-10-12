@@ -202,8 +202,8 @@ impl Frame {
     }
 
     /// The running call's param `name`, of the part that holds its role's params.
-    pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
-        self.parts.param_named(self.role(), name)
+    pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
+        self.parts.param(self.role(), name)
     }
 }
 

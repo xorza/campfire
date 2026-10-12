@@ -4,7 +4,7 @@ use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::capability_does::CapabilityDoes;
+use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_pass::DamagePass;
 use crate::combat::heal::{Heal, HealCause};
@@ -45,23 +45,23 @@ impl CombatEffect {
         reason = "its signature is the one every capability's listed effects queue by"
     )]
     pub(crate) fn queue_listed(
-        does: CapabilityDoes,
+        does: CapabilityDoesSpec,
         id: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         _: &View,
     ) -> Result<(), CallError> {
         let effect = match does {
-            CapabilityDoes::Damage { amount, kind } => CombatEffect::Damage {
+            CapabilityDoesSpec::Damage { amount, kind } => CombatEffect::Damage {
                 target: id,
                 amount: amount.number(frame),
                 kind,
             },
-            CapabilityDoes::Heal { amount } => CombatEffect::Heal {
+            CapabilityDoesSpec::Heal { amount } => CombatEffect::Heal {
                 unit: id,
                 amount: amount.number(frame),
             },
-            CapabilityDoes::Restore { pool, amount } => CombatEffect::Restore {
+            CapabilityDoesSpec::Restore { pool, amount } => CombatEffect::Restore {
                 id,
                 pool,
                 amount: amount.number(frame),

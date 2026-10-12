@@ -136,7 +136,7 @@ impl SimComponent for Projectile {
         let carries = match self.payload {
             Payload::Attack {
                 action, rank, kind, ..
-            } => ranked(action, rank) && world.non_send::<View>().has_damage_kind(kind),
+            } => ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind),
             Payload::Action { action, rank, .. } => ranked(action, rank),
         };
         flies && carries

@@ -121,7 +121,9 @@ impl NavigationColumn {
         let view = unit.view();
         let path =
             view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
-        let name = path.flatten().and_then(|path| view.path_name(path));
+        let name = path
+            .flatten()
+            .and_then(|path| view.names().paths.name(path));
         name.map_or(Dynamic::UNIT, Dynamic::from)
     }
 

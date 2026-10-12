@@ -5,7 +5,7 @@ use std::{fmt, iter};
 use campfire_capabilities::{
     ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EngineTag, MapData,
     ModeData, PackageContent, PackagePath, Param, Release, ScriptBook, StatGraph, StatId,
-    UnitTypeFile,
+    UnitTypeData,
 };
 use campfire_common::{Fingerprint, MapName};
 use campfire_script::{ScriptHost, ScriptId};
@@ -21,7 +21,7 @@ use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::mode_script::ModeScript;
 use crate::files::package_name::PackageName;
-use crate::files::units_data::UnitsData;
+use crate::files::units_file::UnitsFile;
 use crate::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
@@ -352,7 +352,7 @@ impl ModePackages {
     /// declare places nothing.
     pub(crate) fn slotted_ranks<'u>(
         &self,
-        types: impl IntoIterator<Item = &'u UnitTypeFile>,
+        types: impl IntoIterator<Item = &'u UnitTypeData>,
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
         let slots = types.into_iter().map(|unit_type| &unit_type.slots);
         self.data.slots.slotted_ranks(slots)
@@ -390,7 +390,7 @@ impl ModePackages {
         let types = contents
             .flat_map(|content| content.units.values())
             .chain(avatars)
-            .flat_map(|unit_type| &unit_type.core.tags);
+            .flat_map(|unit_type| &unit_type.tags);
         let declared = data
             .tags
             .iter()
@@ -431,7 +431,7 @@ impl ModePackages {
             .read_data(&PackageDir::engine_path(MODE_DATA))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
-        let units: UnitsData = files
+        let units: UnitsFile = files
             .read_data(&PackageDir::engine_path(UNITS_DATA))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;

@@ -1,5 +1,7 @@
 use serde::Deserialize;
 
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::units::block::Block;
 use crate::values::declared_name::DeclaredName;
 
@@ -17,4 +19,8 @@ pub struct TagData {
     /// The tags whose modifiers it holds without effect.
     #[serde(default)]
     pub immune: Vec<DeclaredName>,
+}
+
+impl DataSection for TagData {
+    const TABLE: DataTable = DataTable::Tag;
 }

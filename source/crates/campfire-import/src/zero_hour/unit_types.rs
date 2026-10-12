@@ -52,7 +52,7 @@ impl UnitTypes {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::UnitTypeFile;
+    use campfire_capabilities::UnitTypeData;
     use serde::Deserialize;
 
     use super::*;
@@ -61,7 +61,7 @@ mod tests {
     fn templates_become_unit_types_unless_two_take_one_name() {
         #[derive(Debug, Deserialize)]
         struct Units {
-            units: BTreeMap<DeclaredName, UnitTypeFile>,
+            units: BTreeMap<DeclaredName, UnitTypeData>,
         }
         let mut types = UnitTypes::default();
         assert_eq!(types.name(b"Rocks1").unwrap().as_str(), "rocks1");

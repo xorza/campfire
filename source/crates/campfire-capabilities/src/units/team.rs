@@ -5,12 +5,15 @@ use campfire_sim::{Either, SimComponent};
 use serde::{Deserialize, Serialize};
 
 use crate::players::player::Player;
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_arg::name_script_arg;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnInsert;
 use crate::units::bits256::Bits256;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
+use crate::values::names::NameId;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.
@@ -39,13 +42,26 @@ impl Team {
     }
 }
 
+impl NameId for Team {
+    type Scope = ();
+    const LIMIT: usize = Team::LIMIT;
+
+    fn at(index: usize) -> Team {
+        Team(u8::try_from(index).expect("teams fit u8"))
+    }
+
+    fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 impl SimComponent for Team {
     const NAME: &'static str = "units.team";
     type Host = Either<UnitEntity, Player>;
 
     // The vision groups and the mode's tables hold a place for each of the mode's teams only.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world.non_send::<View>().has_team(*self)
+        world.non_send::<View>().names().has_team(*self)
     }
 }
 
@@ -55,3 +71,7 @@ impl Replication for Team {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentOnInsert;
 }
+
+name_script_arg!(Team, NameKind::Team, |ctx, name| {
+    ctx.view().names().team_names().named(name)
+});
