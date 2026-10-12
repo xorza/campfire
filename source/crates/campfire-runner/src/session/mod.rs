@@ -1,8 +1,11 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_capabilities::Mode;
 use campfire_capabilities::{Match, Release, SavesData};
+use campfire_common::Tick;
 use campfire_common::{SegmentSeed, StateHash, Ticks};
 use campfire_package::{ModePackages, PackageStore};
+use campfire_protocol::SnapshotFingerprint;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, Signing};
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
@@ -12,12 +15,11 @@ use campfire_protocol::{
 use campfire_sim::{SimWorld, SnapshotError, TickRate};
 
 use crate::match_build::MatchBuild;
-use crate::session::error::{CheckpointBeginError, ServerInputRefused, StartError};
+use crate::session::error::{CheckpointBeginError, ResumeError, ServerInputRefused, StartError};
 use crate::session_rules::SessionRules;
 use crate::slot_rules::SlotRules;
 
 pub(crate) mod error;
-pub(crate) mod session_match;
 pub(crate) mod session_world;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
@@ -264,6 +266,115 @@ impl Session {
 
     pub const fn log(&self) -> &SessionLog {
         &self.log
+    }
+
+    /// Prepares the world, a new one, for the match of `log`'s header, of the mode `packages`
+    /// holds, at the header's tick rate and with the randomness of the first segment's seed of
+    /// `seeds` and the players' contributions; starts the match; and inserts the session, which
+    /// records into `log` from its first tick. An error when the terms name another release,
+    /// mode or dependencies than this release and `packages`, a tick rate outside the mode's
+    /// range, or more slots than the mode's teams have, when `seeds` are not the seeds of the
+    /// chain the header commits to or do not reach the last segment of `log`, when a change of
+    /// a slot's controller the log holds, as a published log replayed does, breaks the mode's
+    /// `[players]`, or when the packages do not load into the match.
+    pub fn start(
+        world: &mut World,
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+    ) -> Result<(), StartError> {
+        assert_eq!(
+            log.next_tick(),
+            Tick::new(0),
+            "a session starts before its first tick"
+        );
+        let session = Session::build(world, log, seeds, packages, 0)?;
+        Mode::start(world).map_err(StartError::MatchStart)?;
+        world.insert_resource(session);
+        Ok(())
+    }
+
+    /// Prepares the world, a new one, for the match of `log`, rewound to replay its ticks, from
+    /// the checkpoint of it that starts `segment`, as a restore does: builds the match as
+    /// `Session::start` does, but starts no mode, as the state is the checkpoint's `snapshot`;
+    /// and seals the log's ticks before the checkpoint without running them, so the next tick
+    /// the session runs is the checkpoint's. An error as `Session::start` gives one, and when the
+    /// log holds no such checkpoint, when `snapshot` is not the one the checkpoint
+    /// fingerprints, when it does not restore, or restores to another state hash than the
+    /// checkpoint's.
+    pub fn resume(
+        world: &mut World,
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+        snapshot: &[u8],
+    ) -> Result<(), ResumeError> {
+        assert_eq!(
+            log.next_tick(),
+            Tick::new(0),
+            "a resumed log replays from its first tick"
+        );
+        let record = log
+            .checkpoints()
+            .find(|record| record.segment == segment)
+            .ok_or(ResumeError::NoCheckpoint)?;
+        let (tick, state_hash) = (record.tick, record.state_hash);
+        if SnapshotFingerprint::of(snapshot) != record.snapshot {
+            return Err(ResumeError::Fingerprint);
+        }
+        let mut session =
+            Session::build(world, log, seeds, packages, segment).map_err(ResumeError::Start)?;
+        world.restore(snapshot).map_err(ResumeError::Snapshot)?;
+        if world.state_hash() != state_hash {
+            return Err(ResumeError::StateHash);
+        }
+        session.log.seal_until(tick);
+        world.insert_resource(session);
+        Ok(())
+    }
+
+    /// The match of `log` in a world of its own, as a verifier replays a log in: no network layer,
+    /// and nothing but the session drives its ticks; started as `Session::start` starts it.
+    pub fn start_match(
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+    ) -> Result<Match, StartError> {
+        let mut world = World::new();
+        Session::start(&mut world, log, seeds, packages)?;
+        Ok(Match::from_built(world))
+    }
+
+    /// The match of `log` in a world of its own, resumed from the checkpoint that starts
+    /// `segment`, as `Session::resume` resumes it.
+    pub fn resume_match(
+        log: SessionLog,
+        seeds: ServerSeeds,
+        packages: &ModePackages,
+        segment: u32,
+        snapshot: &[u8],
+    ) -> Result<Match, ResumeError> {
+        let mut world = World::new();
+        Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
+        Ok(Match::from_built(world))
+    }
+
+    /// Loads into `game`, a session's match, the save that starts segment `segment`, whose
+    /// snapshot is `snapshot`: the log goes back to it, as `SessionLog::load` says, and the match
+    /// of the mode `packages` holds resumes from it, as `resume_match` does.
+    pub fn load_save(
+        mut game: Match,
+        segment: u32,
+        snapshot: &[u8],
+        packages: &ModePackages,
+    ) -> Result<Match, ResumeError> {
+        let session = game
+            .remove_resource::<Session>()
+            .expect("a session's match holds its session");
+        let SessionParts { mut log, seeds } = session.into_parts();
+        log.load(segment).map_err(ResumeError::Load)?;
+        Session::resume_match(log.rewound(), seeds, packages, segment, snapshot)
     }
 }
 

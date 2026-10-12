@@ -267,7 +267,7 @@ impl SimServer {
         let terms = log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
         let slots = log.slot_count();
-        world.start_session(log, seeds, packages)?;
+        Session::start(world, log, seeds, packages)?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
         SimServer::open_door(world, terms, server, journal);
         if let Some(snapshots) = snapshots {

@@ -22,12 +22,12 @@ use campfire_protocol::{
     ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
     SlotPlan, SnapshotFingerprint, Taken,
 };
-use campfire_runner::internals::{
-    FixedMatch, FixedSession, HarnessWorldInternals, HashTrail, Moba3v3,
-};
+use campfire_runner::Session;
+use campfire_runner::internals::MatchUnits;
+use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, Moba3v3};
 use campfire_runner::{
-    InputRules, ResultMismatch, ServerInputRefused, SessionMatch, SessionWorld, SlotRuleError,
-    StartError, TermsError,
+    InputRules, ResultMismatch, ServerInputRefused, SessionWorld, SlotRuleError, StartError,
+    TermsError,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_store::{AppendWriter, PathError, ReadError, Scratch};
@@ -108,7 +108,7 @@ struct Hero {
 
 /// Where player `slot`'s hero stands and walks to.
 fn hero(game: &Match, slot: u32) -> Hero {
-    let id = game.match_units().hero(slot);
+    let id = MatchUnits::of(game).hero(slot);
     let entity = game.entity_of(id).unwrap();
     let hero = game.entity(entity);
     Hero {
@@ -258,7 +258,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // Seeds that reach segment 0 alone do not start the log of two.
     let first = ServerSeeds::new(0, FixedSession::seed(0));
     assert!(matches!(
-        Match::start_session(
+        Session::start_match(
             SessionLog::decode(&encoded(log)).unwrap().rewound(),
             first,
             &packages()
@@ -338,7 +338,7 @@ fn run_and_replay_agree_on_every_tick() {
 /// The order that moves player `slot`'s hero to (`x`, `z`).
 fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
-        fixed.game().match_units().hero(slot),
+        MatchUnits::of(fixed.game()).hero(slot),
         Action::Move {
             x: Num::int(x),
             z: Num::int(z),
@@ -523,7 +523,7 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     // The replay learned what the match did: Cinder's and Veil's first basic ability, and Rime's
     // second.
     let world = replay.game();
-    let units = world.match_units();
+    let units = MatchUnits::of(world);
     let ranks = [(0, 0), (5, 0), (4, 1)].map(|(slot, action)| {
         let entity = world.entity_of(units.hero(slot)).unwrap();
         let slots = world.get::<ActionSlots>(entity).unwrap();
@@ -708,7 +708,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert!(matches!(
-        Match::start_session(
+        Session::start_match(
             session.log(),
             ServerSeeds::new(0, ServerSeed::new([8; 32])),
             &packages()
@@ -784,7 +784,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         1,
     );
     let refused =
-        Match::start_session(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
+        Session::start_match(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");
     };

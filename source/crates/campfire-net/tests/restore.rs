@@ -2,13 +2,12 @@
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
 //! its log; and it refuses a session of another release, naming it.
 
-use campfire_capabilities::Match;
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
 use campfire_store::Scratch;
 
@@ -104,7 +103,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         (Tick::new(cut), Outcome::Aborted, *before.last().unwrap())
     );
     let seeds = log.revealed_seeds().unwrap();
-    let mut replay = Match::start_session(log.rewound(), seeds, local.packages()).unwrap();
+    let mut replay = Session::start_match(log.rewound(), seeds, local.packages()).unwrap();
     let mut replayed = Vec::new();
     while replay.session().log().next_tick() < Tick::new(cut) {
         replay.run_tick_alone();

@@ -5,13 +5,13 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_capabilities::{
-    Destination, Experience, Leaver, Match, ModeWorld, Owner, PlayersData, StateValue,
+    Destination, Experience, Leaver, ModeWorld, Owner, PlayersData, StateValue,
 };
 use campfire_common::{PlayerSlot, StateHash};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
 use campfire_store::Scratch;
 
@@ -82,7 +82,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     let live = world.resource::<TickHashes>().get().to_vec();
     let decoded = SessionLog::decode(&bytes).unwrap();
     let seeds = InProcessMatch::SEED_CHAIN.seeds();
-    let mut replay = Match::start_session(decoded.rewound(), seeds, local.packages()).unwrap();
+    let mut replay = Session::start_match(decoded.rewound(), seeds, local.packages()).unwrap();
     let mut replayed = Vec::new();
     for _ in &live {
         replay.run_tick_alone();

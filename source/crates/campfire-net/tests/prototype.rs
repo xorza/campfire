@@ -7,7 +7,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life, Match,
+    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life,
     MatchResult, Metric, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
     PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
     SyncAll, SyncNone, Team, UnitsWorld,
@@ -24,7 +24,7 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
@@ -148,7 +148,7 @@ fn server_and_replay_agree_on_every_tick() {
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
         let seed = decoded.revealed_seeds().unwrap();
-        let mut replay = Match::start_session(decoded.rewound(), seed, local.packages()).unwrap();
+        let mut replay = Session::start_match(decoded.rewound(), seed, local.packages()).unwrap();
         let mut replayed = HashTrail::default();
         for _ in live.totals() {
             replay.run_tick_alone();

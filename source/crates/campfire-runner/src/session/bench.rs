@@ -10,8 +10,8 @@ use campfire_sim::{SimSet, SimWorld, StateDelta};
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
-use crate::harness::harness_world::HarnessWorldInternals;
 use crate::harness::moba_3v3::Moba3v3;
+use crate::harness::scripted_mode::ScriptedMode;
 use crate::session::session_world::SessionWorld;
 
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
@@ -22,7 +22,7 @@ const BATTLE_TICKS: u64 = 60;
 
 /// The server's tick of the MOBA 3v3, whole and by stage, from one load of its packages.
 pub(crate) fn server(c: &mut Criterion) {
-    let moba: LazyCell<Moba3v3> = LazyCell::new(Moba3v3::load);
+    let moba: LazyCell<ScriptedMode<Moba3v3>> = LazyCell::new(Moba3v3::load);
     server_tick(c, &moba);
     server_stage(c, &moba);
     battle(c, &moba);
@@ -36,7 +36,7 @@ pub(crate) fn server(c: &mut Criterion) {
 /// its checkpoint thread is free; and
 /// the mean tick of such a match, `mean_3v3`, a whole match each iteration, its throughput the
 /// ticks. A rollback re-simulates whole ticks, so it costs its depth times these.
-fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+fn server_tick(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let mut group = c.benchmark_group("integration/server_tick");
     group.sample_size(10);
     group.bench_function("first_3v3", |b| {
@@ -89,7 +89,7 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
 /// `mean_3v3_<stage>`, a whole match each iteration, its throughput the ticks. The stages'
 /// means add up to `integration/server_tick/mean_3v3` less the parts of a tick that run outside
 /// them: the session log's, the tick's start and end, and `SimEdge::Start`.
-fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+fn server_stage(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let id = |statistic: &str, stage: SimSet| {
         format!("{statistic}_3v3_{}", format!("{stage:?}").to_lowercase())
     };
@@ -120,7 +120,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
 /// `crowded_<stage>` is the stage's mean tick over `BATTLE_TICKS` ticks of a new battle each
 /// iteration, its throughput the ticks: the creeps' targeting, strikes, bolts and damage at the
 /// scale of a large battle, where a 3v3 match's few creeps leave them small.
-fn battle(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+fn battle(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let mut group = c.benchmark_group("integration/battle");
     group.sample_size(10);
     group.throughput(Throughput::Elements(BATTLE_TICKS));
@@ -131,7 +131,7 @@ fn battle(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
                 (0..battles)
                     .map(|_| {
                         let mut fixed = clocked(moba);
-                        fixed.game_mut().crowd_creeps();
+                        Moba3v3::crowd_creeps(fixed.game_mut());
                         let spent = (0..BATTLE_TICKS)
                             .map(|_| stage_tick(fixed.game_mut(), stage))
                             .sum::<Duration>();
@@ -154,7 +154,7 @@ struct PlayedLog {
 }
 
 impl PlayedLog {
-    fn new(moba: &Moba3v3) -> PlayedLog {
+    fn new(moba: &ScriptedMode<Moba3v3>) -> PlayedLog {
         let mut fixed = moba.start();
         for tick in 0..TICKS {
             moba.play_tick(&mut fixed, tick);
@@ -169,7 +169,7 @@ impl PlayedLog {
 /// ticks, as a server writes it at the session's end and a verifier reads it: `encode_3v3`, its
 /// file written; and `decode_3v3`, that file read back, which records each entry again and so
 /// checks each chain link and signature.
-fn session_log(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
+fn session_log(c: &mut Criterion, moba: &LazyCell<ScriptedMode<Moba3v3>>) {
     let mut played = None;
     let mut out = Vec::new();
     let mut group = c.benchmark_group("integration/session_log");
@@ -239,7 +239,7 @@ impl MatchCost {
 }
 
 /// A new match of `moba`, with `StageClock`'s probes in its schedule.
-fn clocked(moba: &Moba3v3) -> FixedMatch {
+fn clocked(moba: &ScriptedMode<Moba3v3>) -> FixedMatch {
     let mut fixed = moba.start();
     StageClock::install(fixed.game_mut());
     fixed

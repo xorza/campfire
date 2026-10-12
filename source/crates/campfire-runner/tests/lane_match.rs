@@ -11,9 +11,8 @@ use campfire_capabilities::{
 use campfire_common::{MapName, StateHash, Tick};
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
-use campfire_runner::internals::{
-    CopyCheck, FixedMatch, FixedSession, Golden, HarnessWorldInternals,
-};
+use campfire_runner::internals::MatchUnits;
+use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_sim::{SimWorld, StableId};
 
@@ -67,7 +66,7 @@ mod scripted_match {
         let mut golden = Golden::new(session.packages(), session.slots());
         let mut fixed = session.start();
         let mut copy = CopyCheck::new(fixed.game_mut());
-        let walker = fixed.game().match_units().hero(0);
+        let walker = MatchUnits::of(fixed.game()).hero(0);
         // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
         // it as they meet; the west's strike the runner, so the walker alone fells these.
         let mut east = Vec::new();
@@ -94,9 +93,7 @@ mod scripted_match {
             let state = copy.check(fixed.game_mut()).total;
             golden.record(fixed.game(), state);
             if tick == 0 {
-                east = fixed
-                    .game()
-                    .match_units()
+                east = MatchUnits::of(fixed.game())
                     .all()
                     .filter(|(_, unit)| {
                         unit.contains::<PathWalker>() && unit.get::<Team>() == Some(&Team::new(1))
@@ -199,7 +196,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     // The towers, the map's first units, think every ⌈250 ms × 30 / 1000⌉ = 8 ticks, each in the
     // ticks whose remainder by 8 is its stable id: in ticks 0 to 9, 0 and 8 for the west's, id 0,
     // and 1 and 9 for the east's, id 1.
-    let units = fixed.game().match_units();
+    let units = MatchUnits::of(fixed.game());
     let [west, east] = [units.spawned_at(-8, -3), units.spawned_at(8, -3)];
     assert_eq!([west.get(), east.get()], [0, 1]);
     let failed = |tick, unit| ScriptCallFailed {

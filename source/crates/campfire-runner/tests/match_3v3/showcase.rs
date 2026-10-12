@@ -13,10 +13,10 @@ use campfire_capabilities::{
 use campfire_capabilities::{PoolMeters, Stats};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{HarnessWorldInternals, MatchUnits, Moba3v3};
+use campfire_runner::internals::{MatchUnits, Moba3v3, ScriptedMode};
 use campfire_sim::{Position, SimWorld, TickRate};
 
-use crate::moba::MobaWorldTest;
+use crate::moba::gold;
 
 /// Each player's hero's package and its abilities, slot by slot: Cinder, Gale and Husk north;
 /// Kensho, Rime and Veil south.
@@ -85,11 +85,11 @@ impl Showcase {
     const FIRST: u64 = Moba3v3::SHOP - 1;
 
     /// Reads tick `tick` of the 3v3 of `moba`, which `world` just ran.
-    pub(crate) fn read(&mut self, world: &World, moba: &Moba3v3, tick: u64) {
+    pub(crate) fn read(&mut self, world: &World, moba: &ScriptedMode<Moba3v3>, tick: u64) {
         if tick < Showcase::FIRST {
             return;
         }
-        let units = world.match_units();
+        let units = MatchUnits::of(world);
         let heroes = [0, 1, 2, 3, 4, 5].map(|slot| {
             let hero = units.hero(slot);
             let entity = world.entity_of(hero).unwrap();
@@ -105,7 +105,7 @@ impl Showcase {
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect(),
-                gold: world.gold(moba, slot),
+                gold: gold(moba, world, slot),
             }
         });
         self.ticks.push(heroes);
@@ -124,7 +124,7 @@ const fn stamp(index: u64) -> u64 {
 }
 
 /// The item `name` of the 3v3.
-fn item(moba: &Moba3v3, name: &str) -> ItemId {
+fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     let mode = moba.packages().packages().next().unwrap();
     ItemId::named(&mode.content.items, name).unwrap()
 }
@@ -151,7 +151,7 @@ pub(crate) fn assert_farm(showcase: &Showcase) {
 /// The shop, in the tick after an income: each hero pays each item's cost, or a built item's
 /// cost less its components', and Veil sells her long sword back for 70% of its cost in the
 /// next tick; each item lands in the first empty slot, a built one in its first component's.
-pub(crate) fn assert_shop(moba: &Moba3v3, showcase: &Showcase) {
+pub(crate) fn assert_shop(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase) {
     let shop = Moba3v3::SHOP;
     let paid =
         |player, tick: u64| showcase.at(tick - 1, player).gold - showcase.at(tick, player).gold;
@@ -194,7 +194,7 @@ pub(crate) fn assert_shop(moba: &Moba3v3, showcase: &Showcase) {
 
 /// The data of player `player`'s action in slot `slot`: an ability of its hero's package, or the
 /// active of the item it carries there, of the mode's.
-fn action(moba: &Moba3v3, player: u32, slot: u8) -> &ActionData {
+fn action(moba: &ScriptedMode<Moba3v3>, player: u32, slot: u8) -> &ActionData {
     let (package, name) = match (player, slot) {
         (2, INVENTORY) => ("moba-3v3", "harden"),
         (3, INVENTORY) => ("moba-3v3", "cleanse"),
@@ -223,7 +223,7 @@ fn int(ranked: &Ranked<Number>, rank: Option<Rank>) -> i64 {
 /// What player `player`'s toggles that pay each second paid of the pool `name` in tick `at`:
 /// each one's cost at its rank, when it was due in that tick.
 fn toggles_paid(
-    moba: &Moba3v3,
+    moba: &ScriptedMode<Moba3v3>,
     showcase: &Showcase,
     player: u32,
     at: u64,
@@ -286,7 +286,12 @@ impl Showcase {
 /// its cooldown, spends a charge or turns its toggle on as its data says. The consumables are
 /// used up, the potions and the elixir give their modifiers, the wards stand where Gale placed
 /// them, and the toggles turn off when their heroes cast them again.
-pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, end: u64) {
+pub(crate) fn assert_casts(
+    moba: &ScriptedMode<Moba3v3>,
+    showcase: &Showcase,
+    world: &World,
+    end: u64,
+) {
     // Each start, by the index of its cast in the showcase, its player, its slot, and whether its
     // hero walks into range first: the item actives in slot 7, and the abilities in slots 0 to 3.
     // Cyclone, Gale's first, charges as its first cast starts and starts its cooldown as the
@@ -398,7 +403,7 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
 /// carries in its slot, which empties as it starts, and give its modifier; casts 4 and 5 place
 /// Gale's wards 3 m and a little more from her, which spend her two slots: the sight ward lives
 /// 90 s, 1800 ticks, and the vision ward with no end.
-fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
+fn assert_consumables(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase, world: &World) {
     let modifier = |name| Stats::modifier(world, 0, name).unwrap();
     let drinks = [
         (1, 4, 0, "health_potion"),
@@ -426,7 +431,7 @@ fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
     // Gale's ward at `x`: the unit there she owns, other than herself, as any hero may walk onto
     // the spot.
     let north = Team::new(0);
-    let units = world.match_units();
+    let units = MatchUnits::of(world);
     let gale = units.hero(1);
     let ward = |x: i64| {
         let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-23))).unwrap();

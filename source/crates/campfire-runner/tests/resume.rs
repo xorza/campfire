@@ -4,13 +4,13 @@
 
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{Dead, Deaths, Match};
+use campfire_capabilities::{Dead, Deaths};
 use campfire_common::{MapName, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::internals::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
-use campfire_runner::{ResumeError, SessionMatch, SessionWorld};
+use campfire_runner::{ResumeError, Session, SessionWorld};
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 
 /// A run of a match with a checkpoint before each of three ticks: its log, the snapshot of each
@@ -94,7 +94,7 @@ impl Checkpointed {
             let log = SessionLog::decode(&self.log).unwrap().rewound();
             let segment = checkpoint + 1;
             let mut game =
-                Match::resume_session(log, FixedSession::seeds(), packages, segment, snapshot)
+                Session::resume_match(log, FixedSession::seeds(), packages, segment, snapshot)
                     .unwrap_or_else(|error| {
                         panic!("segment {segment}: {}", ErrorReport::of(&error))
                     });
@@ -116,12 +116,9 @@ impl Checkpointed {
 fn the_proving_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let proving = ProvingMatch::load();
     let at = [100, 250, 400];
-    let run = Checkpointed::run(
-        proving.start(),
-        at,
-        ProvingMatch::TICKS,
-        ProvingMatch::play_tick,
-    );
+    let run = Checkpointed::run(proving.start(), at, ProvingMatch::TICKS, |fixed, tick| {
+        proving.play_tick(fixed, tick);
+    });
     run.check(proving.packages(), at);
 }
 
@@ -178,7 +175,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
                 record.state_hash = StateHash::new([0; 32]);
             });
         }
-        ProvingMatch::play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed, tick);
     }
     let garbage = checkpoint(&mut fixed, |record, snapshot| {
         *snapshot = b"no snapshot".to_vec();
@@ -188,7 +185,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
         let log = SessionLog::decode(&bytes).unwrap().rewound();
-        Match::resume_session(
+        Session::resume_match(
             log,
             FixedSession::seeds(),
             proving.packages(),
@@ -224,7 +221,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
         if tick == 150 {
             fixed.checkpoint(&mut Vec::new());
         }
-        ProvingMatch::play_tick(&mut fixed, tick);
+        proving.play_tick(&mut fixed, tick);
         hashes.push(fixed.game().state_hash());
     }
     let record = fixed
@@ -237,10 +234,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
 
     // The load of the save: the match stands before tick 100 again, and plays 50 ticks with no
     // order, unlike the ticks the load dropped.
-    let mut game = fixed
-        .into_game()
-        .load_save(1, &save, proving.packages())
-        .unwrap();
+    let mut game = Session::load_save(fixed.into_game(), 1, &save, proving.packages()).unwrap();
     assert_eq!(game.session().log().next_tick(), Tick::new(100));
     assert_eq!(game.state_hash(), hashes[99]);
     for _ in 100..150 {
@@ -262,7 +256,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     assert_eq!(published.next_tick(), Tick::new(150));
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&record]);
     let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Match::start_session(published.rewound(), seeds, proving.packages()).unwrap();
+    let mut replay = Session::start_match(published.rewound(), seeds, proving.packages()).unwrap();
     while replay.session().log().next_tick() < Tick::new(150) {
         if replay.session().log().next_tick() == Tick::new(100) {
             assert_eq!(replay.state_hash(), record.state_hash);

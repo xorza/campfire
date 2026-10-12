@@ -1,32 +1,27 @@
 use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
-use campfire_common::{MapName, PlayerSlot};
-use campfire_log::ErrorReport;
+use campfire_common::MapName;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::{AfterLeave, LeaveReason, ServerInput, SlotPlan};
+use campfire_protocol::SlotPlan;
 use campfire_sim::{Position, StableId};
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;
 use crate::harness::match_units::MatchUnits;
 use crate::harness::scripted::{Aim, Plan, Scripted, TICK_HZ};
+use crate::harness::scripted_mode::ScriptedMode;
 use crate::input_rules::InputRules;
-
-/// The proving mode of `packages/test`: a small match that uses every capability the release
-/// runs, played by two scripted players, the second of whom joins slot 1, open at the start,
-/// before tick `JOIN`, and leaves it, reserved, before tick `LEAVE`. It is owned by the tests, so
-/// no balance change of the MOBA test content moves it.
-#[derive(Debug)]
-pub struct ProvingMatch {
-    session: FixedSession,
-}
 
 /// The camps team, which holds the neutral boulder.
 const CAMPS: Team = Team::new(2);
 
-/// What a proving player orders, by the role of the units it names.
+/// The proving mode of `packages/test`: a small match that uses every capability the release
+/// runs, played by two scripted players, the second of whom joins slot 1, open at the start,
+/// before tick `JOIN`, and leaves it, reserved, before tick `LEAVE`. It is owned by the tests, so
+/// no balance change of the MOBA test content moves it. Its plan is what a proving player orders,
+/// by the role of the units it names.
 #[derive(Debug, Clone, Copy)]
-enum ProvingPlan {
+pub enum ProvingMatch {
     /// The hero walks to a point.
     Move { x: i64, z: i64 },
     /// The hero casts the action in `slot` at `at`.
@@ -55,32 +50,34 @@ enum ProvingPlan {
 ///   body near the lane, which its weapon reaches from the box's edge.
 /// - North's east barracks posts a ward by the south's barracks, which no unit of north sees
 ///   otherwise.
-const SCRIPT: [Scripted<ProvingPlan>; 22] = [
-    Scripted::new(2, 0, ProvingPlan::Train { barracks: 0 }),
-    Scripted::new(2, 0, ProvingPlan::Train { barracks: 1 }),
-    Scripted::new(2, 1, ProvingPlan::Train { barracks: 0 }),
-    Scripted::new(3, 0, ProvingPlan::Move { x: -1, z: -1 }),
-    Scripted::new(3, 1, ProvingPlan::Move { x: 2, z: 2 }),
-    Scripted::new(5, 0, ProvingPlan::AttackHero { slot: 1 }),
-    Scripted::new(29, 0, ProvingPlan::AttackHero { slot: 1 }),
+const SCRIPT: [Scripted<ProvingMatch>; 24] = [
+    Scripted::join(ProvingMatch::JOIN, 1),
+    Scripted::leave(ProvingMatch::LEAVE, 1),
+    Scripted::new(2, 0, ProvingMatch::Train { barracks: 0 }),
+    Scripted::new(2, 0, ProvingMatch::Train { barracks: 1 }),
+    Scripted::new(2, 1, ProvingMatch::Train { barracks: 0 }),
+    Scripted::new(3, 0, ProvingMatch::Move { x: -1, z: -1 }),
+    Scripted::new(3, 1, ProvingMatch::Move { x: 2, z: 2 }),
+    Scripted::new(5, 0, ProvingMatch::AttackHero { slot: 1 }),
+    Scripted::new(29, 0, ProvingMatch::AttackHero { slot: 1 }),
     cast(30, 0, 0, Aim::HeroPoint { slot: 1 }),
     cast(40, 1, 0, Aim::Hero { slot: 0 }),
     cast(60, 0, 1, Aim::HeroPoint { slot: 1 }),
     cast(70, 1, 1, Aim::Nothing),
     cast(80, 0, 2, Aim::Nothing),
     cast(100, 1, 2, Aim::Point { x: 2, z: 6 }),
-    Scripted::new(105, 0, ProvingPlan::Train { barracks: 1 }),
-    Scripted::new(105, 0, ProvingPlan::Train { barracks: 0 }),
-    Scripted::new(120, 0, ProvingPlan::Move { x: -3, z: 4 }),
-    Scripted::new(150, 0, ProvingPlan::AttackBoulder),
-    Scripted::new(160, 1, ProvingPlan::Move { x: -6, z: -1 }),
+    Scripted::new(105, 0, ProvingMatch::Train { barracks: 1 }),
+    Scripted::new(105, 0, ProvingMatch::Train { barracks: 0 }),
+    Scripted::new(120, 0, ProvingMatch::Move { x: -3, z: 4 }),
+    Scripted::new(150, 0, ProvingMatch::AttackBoulder),
+    Scripted::new(160, 1, ProvingMatch::Move { x: -6, z: -1 }),
     cast(200, 0, 0, Aim::HeroPoint { slot: 1 }),
     cast(260, 1, 0, Aim::Hero { slot: 0 }),
     cast(260, 0, 1, Aim::Point { x: -4, z: -1 }),
     Scripted::new(
         300,
         0,
-        ProvingPlan::Ward {
+        ProvingMatch::Ward {
             barracks: 1,
             x: 12,
             z: 9,
@@ -89,11 +86,11 @@ const SCRIPT: [Scripted<ProvingPlan>; 22] = [
 ];
 
 /// A cast by the player `slot`'s hero of its ability slot `action` at `aim`.
-const fn cast(stamp: u64, slot: u32, action: u8, aim: Aim) -> Scripted<ProvingPlan> {
+const fn cast(stamp: u64, slot: u32, action: u8, aim: Aim) -> Scripted<ProvingMatch> {
     Scripted::new(
         stamp,
         slot,
-        ProvingPlan::Cast {
+        ProvingMatch::Cast {
             slot: action,
             at: aim,
         },
@@ -109,85 +106,58 @@ impl ProvingMatch {
     pub const JOIN: u64 = 1;
     pub const LEAVE: u64 = 400;
 
-    pub fn load() -> ProvingMatch {
+    pub fn load() -> ScriptedMode<ProvingMatch> {
         let packages = ModePackages::from_dir(
             &PackageDir::workspace("test/modes/proving"),
             &MapName::new("proving").unwrap(),
         )
         .unwrap();
         let plan = vec![SlotPlan::Player, SlotPlan::Open];
-        ProvingMatch {
-            session: FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan),
-        }
-    }
-
-    pub const fn packages(&self) -> &ModePackages {
-        self.session.packages()
-    }
-
-    /// A match at tick 0, no input sent yet.
-    pub fn start(&self) -> FixedMatch {
-        self.session.start()
-    }
-
-    /// Runs tick `tick` of `fixed`: first logs player 1's join or leave in its tick, and sends the
-    /// scripted inputs stamped for it, then runs it.
-    pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
-        let refused = |error| panic!("tick {tick}: {}", ErrorReport::of(&error));
-        match tick {
-            ProvingMatch::JOIN => fixed.join(1).unwrap_or_else(refused),
-            ProvingMatch::LEAVE => {
-                let leave = ServerInput::Leave {
-                    slot: PlayerSlot::new(1),
-                    reason: LeaveReason::Asked,
-                    becomes: AfterLeave::Reserve,
-                };
-                fixed.serve(leave).unwrap_or_else(refused);
-            }
-            _ => {}
-        }
-        Scripted::play_tick(&SCRIPT, fixed, tick);
+        let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
+        ScriptedMode::new(session, SCRIPT.to_vec())
     }
 }
 
-impl Plan for ProvingPlan {
+impl Plan for ProvingMatch {
+    fn start(_: &mut FixedMatch, _: &[SlotPlan]) {}
+
     fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
         let hero = units.hero(slot);
         let (unit, action) = match self {
-            ProvingPlan::Move { x, z } => (
+            ProvingMatch::Move { x, z } => (
                 hero,
                 Action::Move {
                     x: Num::int(x),
                     z: Num::int(z),
                 },
             ),
-            ProvingPlan::AttackBoulder => (
+            ProvingMatch::AttackBoulder => (
                 hero,
                 Action::Attack {
                     target: boulder(units),
                 },
             ),
-            ProvingPlan::AttackHero { slot } => (
+            ProvingMatch::AttackHero { slot } => (
                 hero,
                 Action::Attack {
                     target: units.hero(slot),
                 },
             ),
-            ProvingPlan::Train { barracks: at } => (
+            ProvingMatch::Train { barracks: at } => (
                 barracks(units, slot)[at],
                 Action::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
-            ProvingPlan::Ward { barracks: at, x, z } => (
+            ProvingMatch::Ward { barracks: at, x, z } => (
                 barracks(units, slot)[at],
                 Action::Slot {
                     slot: 1,
                     target: ActionTarget::Point(ground(Num::int(x), Num::int(z))),
                 },
             ),
-            ProvingPlan::Cast { slot, at } => (
+            ProvingMatch::Cast { slot, at } => (
                 hero,
                 Action::Slot {
                     slot,

@@ -8,7 +8,6 @@ use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
 
 use bevy_app::AppExit;
-use campfire_capabilities::Match;
 use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
@@ -16,7 +15,7 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::{EntryKind, InputFile, Scratch};
 
@@ -91,7 +90,7 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     }
     let ticks = published.next_tick();
     let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Match::start_session(published.rewound(), seeds, packages).unwrap();
+    let mut replay = Session::start_match(published.rewound(), seeds, packages).unwrap();
     while replay.session().log().next_tick() < ticks {
         let next = replay.session().log().next_tick();
         if let Some(record) = replay.session().log().checkpoint_at(next) {

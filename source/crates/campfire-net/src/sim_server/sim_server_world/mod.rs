@@ -119,10 +119,10 @@ impl SimServerWorld for World {
                 StateRegistry::MAX_SNAPSHOT_LEN,
             )
             .map_err(RestoreMatchError::ReadSnapshot)?;
-            self.resume_session(log.rewound(), seeds, packages, segment, &snapshot)
+            Session::resume(self, log.rewound(), seeds, packages, segment, &snapshot)
                 .map_err(RestoreMatchError::Resume)?;
         } else {
-            self.start_session(log.rewound(), seeds, packages)
+            Session::start(self, log.rewound(), seeds, packages)
                 .map_err(RestoreMatchError::Start)?;
         }
         self.insert_resource(JournalWatch(journal.watch()));

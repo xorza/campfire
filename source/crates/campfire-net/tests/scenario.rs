@@ -2,16 +2,14 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{
-    Action, Body, Dead, Life, Match, PoolId, Pools, SeenBy, SlotTimes, Team,
-};
+use campfire_capabilities::{Action, Body, Dead, Life, PoolId, Pools, SeenBy, SlotTimes, Team};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{Position, SimWorld, StableId};
 
 const MATCH_TICKS: u64 = 600;
@@ -164,7 +162,7 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         "{applied:?}"
     );
     let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Match::start_session(decoded.rewound(), seed, local.packages()).unwrap();
+    let mut replay = Session::start_match(decoded.rewound(), seed, local.packages()).unwrap();
     let mut replayed = HashTrail::default();
     for _ in live.totals() {
         replay.run_tick_alone();
