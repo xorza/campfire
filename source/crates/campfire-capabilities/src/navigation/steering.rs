@@ -211,7 +211,7 @@ mod tests {
     use crate::navigation::terrain::Terrain;
 
     /// The point `(x, z)` in eighths of a meter.
-    fn at(x: i64, z: i64) -> Position {
+    fn eighths(x: i64, z: i64) -> Position {
         let eighth = |value: i64| Num::from_bits(value << (Num::FRAC_BITS - 3));
         Position::new(Vec3::new(eighth(x), Num::ZERO, eighth(z))).unwrap()
     }
@@ -242,19 +242,19 @@ mod tests {
         let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
             id: blocker,
-            pos: at(43, 0),
+            pos: eighths(43, 0),
             shape: Shape::Circle(quarter),
             layer: Layer::FIRST,
         };
         let mut steering = Steering::default();
         steering.read(&statics, [standing], [], []);
-        let goal = at(64, 0);
+        let goal = eighths(64, 0);
         let mut route = Route::default();
         route.ask(goal, Tick::new(0), None);
         route.answer(&[goal], true);
         let steered = Steered {
             id,
-            pos: at(7, 0),
+            pos: eighths(7, 0),
             step: quarter,
             walker,
             stuck: false,
@@ -283,11 +283,11 @@ mod tests {
         let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
             id: blocker,
-            pos: at(8, 0),
+            pos: eighths(8, 0),
             shape: Shape::Circle(quarter),
             layer: Layer::FIRST,
         };
-        let goal = at(48, 0);
+        let goal = eighths(48, 0);
         let mut route = Route::default();
         route.ask(goal, Tick::new(0), None);
         route.answer(&[goal], true);
@@ -297,7 +297,7 @@ mod tests {
             steering.read(&statics, [standing], [], [blocker]);
             let steered = Steered {
                 id,
-                pos: at(0, 0),
+                pos: eighths(0, 0),
                 step: quarter,
                 walker,
                 stuck: false,

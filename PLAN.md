@@ -2,12 +2,6 @@
 
 The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open items only: remove a step when it is done. Each step ends with the check chain passing for the crates it touches, and a stop for review. The slice ends when the user plays it in the client. Slice 3, replication audiences, comes first, in the order of [PLAN_NET.md](PLAN_NET.md), after the network steps that order puts before it; slice 2 goes on from S1 after it.
 
-## Refactor — conversions by value
-
-The rule of [Determinism core](docs/design/09-determinism-core.md), D7, and the tests' rule of [Testing](docs/design/02-engine-core.md#testing-and-diagnostics): `From` where every value converts exactly, `TryFrom` where one can fail, and the tests' helpers take `impl Into`. Each step ends with the check chain over the workspace.
-
-3. **C3. Positions in fractions of a meter** (`capabilities`): the six helpers that convert half, quarter and eighth meters; see [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#c3-positions-in-fractions-of-a-meter).
-
 ## Slice 2 — Wide bodies, uses, the shop and gravity
 
 The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.

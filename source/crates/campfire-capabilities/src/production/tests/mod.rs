@@ -40,6 +40,11 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 
+/// The point `(x, z)` in halves of a meter.
+fn halves(x: i64, z: i64) -> Position {
+    Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap()
+}
+
 /// A match of production alone, for a shop.
 fn shop_match() -> Match {
     shop_match_of(&[Capability::Production])

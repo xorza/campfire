@@ -44,11 +44,11 @@ fn walled_to(max: [i64; 2], more: &[([i64; 2], [i64; 2])]) -> Match {
 /// The route of a walker of no body from (2, 1) to (8, 1) round the wall: over its top, row 4,
 /// by (3.5, 4.5) and (6.5, 4.5).
 fn over_the_wall() -> [Position; 3] {
-    [point(7, 9), point(13, 9), point(16, 2)]
+    [halves(7, 9), halves(13, 9), halves(16, 2)]
 }
 
-/// The point at `x` and `z` half meters.
-fn point(x: i64, z: i64) -> Position {
+/// The point `(x, z)` in halves of a meter.
+fn halves(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap()
 }
 
@@ -165,17 +165,17 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
     // (8.5, −1), is taken into the bounds, (8.5, 0), which it sees from (6.5, 4.5).
     let mut game = walled(&[([2, 4], [3, 6])]);
     let party = ordered(Position::from((8, 0, 1)));
-    let near = game.member(Position::from((2, 0, 1)), point(17, 0), party);
-    let hidden = game.member(Position::from((1, 0, 5)), point(15, 6), party);
+    let near = game.member(Position::from((2, 0, 1)), halves(17, 0), party);
+    let hidden = game.member(Position::from((1, 0, 5)), halves(15, 6), party);
     game.step();
     assert_eq!(game.searches(), 2);
     let [first, second, _] = over_the_wall();
     assert_eq!(
         game.part::<Route>(near).ahead(),
-        [first, second, point(17, 0)]
+        [first, second, halves(17, 0)]
     );
     let own = game.part::<Route>(hidden);
-    assert_eq!(own.ahead().last(), Some(&point(15, 6)));
+    assert_eq!(own.ahead().last(), Some(&halves(15, 6)));
     assert!(own.reached() && !own.ahead().contains(&first));
 }
 
@@ -223,10 +223,10 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
         [10, 6],
         vec![ground(Num::ZERO)],
     );
-    let goal = point(17, 7);
+    let goal = halves(17, 7);
     let party = ordered(goal);
     let members: Vec<StableId> = (0..50)
-        .map(|_| game.member(point(5, 7), goal, party))
+        .map(|_| game.member(halves(5, 7), goal, party))
         .collect();
     let waiting = |game: &Match| -> Vec<usize> {
         (0..members.len())
