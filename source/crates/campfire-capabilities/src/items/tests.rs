@@ -1,3 +1,4 @@
+use campfire_sim::internals::SimWorldInternals;
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 

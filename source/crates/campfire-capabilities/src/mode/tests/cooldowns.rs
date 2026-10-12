@@ -1,4 +1,5 @@
 use campfire_common::Tick;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 use crate::actions::slot_times::SlotTimes;

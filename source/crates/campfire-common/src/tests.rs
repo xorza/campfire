@@ -721,41 +721,6 @@ fn the_dependency_and_name_checks_fail_on_what_breaks_them() {
     );
 }
 
-/// The functions visible past their module that take a world first and are no system: install
-/// machinery, which takes the world, the schedule and the registry together, and constructors
-/// of types that keep queries over the world, as Bevy's `SystemState::new` is (design 02, the
-/// world rule), by their file and their owner's and their own name.
-const WORLD_FIRST: [(&str, &str); 7] = [
-    (
-        "crates/campfire-capabilities/src/declare/install_cx.rs",
-        "InstallCx::new",
-    ),
-    (
-        "crates/campfire-capabilities/src/mode/mod.rs",
-        "Mode::install",
-    ),
-    (
-        "crates/campfire-capabilities/src/units/player_units.rs",
-        "HeldPlayerUnits::new",
-    ),
-    (
-        "crates/campfire-capabilities/src/units/row_fill.rs",
-        "RowSource::new",
-    ),
-    (
-        "crates/campfire-sim/src/sim_update/mod.rs",
-        "SimUpdate::prepare",
-    ),
-    (
-        "crates/campfire-sim/src/sim_world_builder.rs",
-        "SimWorldBuilder::new",
-    ),
-    (
-        "crates/campfire-sim/src/sim_world_builder.rs",
-        "SimWorldBuilder::reopen",
-    ),
-];
-
 /// A function whose first parameter is a world: its line, its name with its owner's, as
 /// `Owner::name`, or alone for a free function, and whether code past its module may call it.
 #[derive(Debug, PartialEq, Eq)]
@@ -884,10 +849,10 @@ fn named_as_value(text: &str, name: &str) -> bool {
 }
 
 #[test]
-fn a_function_that_takes_a_world_first_is_a_system_or_a_step_of_its_module() {
-    // Design 02's world rule: what acts on a match is a method of a world trait. A function
-    // past its module that takes the world first is a system or a function a table holds, named
-    // as a value, or one `WORLD_FIRST` lists.
+fn a_free_function_that_takes_a_world_first_is_a_system() {
+    // Design 02's world rule: what acts on the match's content is a function of its module's
+    // type, and a value made from the world a constructor of its own. A free function past its
+    // module that takes the world first is a system or a function a table holds, named as a value.
     let sources = sources();
     let production: Vec<(&str, &str)> = sources
         .iter()
@@ -895,27 +860,19 @@ fn a_function_that_takes_a_world_first_is_a_system_or_a_step_of_its_module() {
         .collect();
     let mut found = Vec::new();
     for &(path, code) in &production {
-        for function in world_first(code).into_iter().filter(|f| f.visible) {
-            let listed = WORLD_FIRST.contains(&(path, function.name.as_str()));
+        let free = world_first(code)
+            .into_iter()
+            .filter(|f| f.visible && !f.name.contains("::"));
+        for function in free {
             let valued = production
                 .iter()
                 .any(|&(_, text)| named_as_value(text, &function.name));
-            if !listed && !valued {
+            if !valued {
                 found.push(format!("{path}:{} {}", function.line, function.name));
             }
         }
     }
     assert_eq!(found, Vec::<String>::new());
-    for (path, name) in WORLD_FIRST {
-        let (_, code) = production
-            .iter()
-            .find(|&&(file, _)| file == path)
-            .unwrap_or_else(|| panic!("{path}"));
-        assert!(
-            world_first(code).iter().any(|f| f.name == name),
-            "{path}: {name}"
-        );
-    }
 }
 
 #[test]

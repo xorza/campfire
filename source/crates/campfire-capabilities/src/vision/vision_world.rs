@@ -33,6 +33,7 @@ pub(crate) mod test_world {
     use bevy_ecs::world::World;
     use campfire_math::{Num, Vec3};
     use campfire_script::{Budget, ScriptHost};
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Position, SimTick, StableId};
 
     use crate::geometry::bounds::Bounds;

@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity_disabling::DefaultQueryFilters;
+use bevy_ecs::world::World;
 
 /// Marks a unit a world holds as its authority sent it, and does not simulate: on a predicting
 /// client, every replicated unit its player does not control. It hides the unit from every query
@@ -7,3 +9,13 @@ use bevy_ecs::component::Component;
 /// ones, and presentation reads these units with `Allow<Unpredicted>`.
 #[derive(Component, Debug)]
 pub struct Unpredicted;
+
+impl Unpredicted {
+    /// Hides every unit of `world` with the marker from the queries that do not name it.
+    pub fn register(world: &mut World) {
+        let id = world.register_component::<Unpredicted>();
+        world
+            .resource_mut::<DefaultQueryFilters>()
+            .register_disabling_component(id);
+    }
+}

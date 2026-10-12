@@ -3,6 +3,7 @@ use bevy_ecs::query::With;
 use campfire_codec::{Binary, Toml};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_math::RngSource;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimComponent, SimWorld, SnapshotError};
 
 use super::*;

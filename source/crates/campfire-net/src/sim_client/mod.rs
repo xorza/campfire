@@ -21,9 +21,7 @@ use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicPlugin};
 use campfire_runner::SessionRules;
-use campfire_sim::{
-    SimTick, SimUpdate, SimWorld, StableId, TickInput, TickInputs, TickRate, Unpredicted,
-};
+use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RemoteTimeline,
 };
@@ -645,7 +643,7 @@ fn run_predicted_tick(world: &mut World) {
 /// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the
 /// two markers arrive, and again as the server stops its prediction here, as its owner changes.
 fn mark_unpredicted(world: &mut World) {
-    world.register_unpredicted();
+    Unpredicted::register(world);
     world.add_observer(
         |added: On<'_, '_, Add, Replicated>,
          predicted: Query<'_, '_, (), With<Predicted>>,

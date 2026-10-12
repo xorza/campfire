@@ -1,3 +1,4 @@
+use campfire_sim::internals::SimWorldInternals;
 use std::num::NonZeroU8;
 
 use campfire_codec::Binary;

@@ -701,7 +701,7 @@ fn entity(world: &World, id: StableId) -> Entity {
 fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     // A world whose queries skip the unpredicted, as a predicting client's do.
     let mut world = plain_world();
-    world.register_unpredicted();
+    Unpredicted::register(&mut world);
     let mut following = Following::new(registry(), world);
     let (first, second) = (StableId::new(0), StableId::new(1));
     assert_eq!(by_type(&following.copy), by_type(&following.world));

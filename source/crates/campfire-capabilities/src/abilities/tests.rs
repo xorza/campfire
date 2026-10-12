@@ -7,7 +7,7 @@ use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, Position, SimRng, SimTick, SimWorld, StableId};
+use campfire_sim::{EntityIndex, Position, SimRng, SimTick, SimWorld, StableId, StateCopy};
 
 use super::*;
 use crate::abilities::abilities_world::test_world::{
@@ -3067,7 +3067,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     game.give_from(ward, source, "dual_path");
     // A copy of the state follows the match: the value a live change last had is state, and
     // each write of it marks its change.
-    let mut copy = game.state_copy();
+    let mut copy = StateCopy::of(&mut game);
     game.step();
     game.check_copy(&mut copy);
     let vamp = Num::from_bits(1_847_173);

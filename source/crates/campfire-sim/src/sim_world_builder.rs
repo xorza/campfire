@@ -38,11 +38,7 @@ pub struct SimParts<'a> {
 
 impl<'w> SimWorldBuilder<'w> {
     /// Starts the build of a sim in `world`, a new world, at `rate`, drawing from `seed`.
-    pub(crate) fn new(
-        world: &'w mut World,
-        seed: SegmentSeed,
-        rate: TickRate,
-    ) -> SimWorldBuilder<'w> {
+    pub fn new(world: &'w mut World, seed: SegmentSeed, rate: TickRate) -> SimWorldBuilder<'w> {
         SimUpdate::prepare(world, seed, rate);
         SimWorldBuilder {
             world,
@@ -54,7 +50,7 @@ impl<'w> SimWorldBuilder<'w> {
 
     /// Opens `world`, a sim world built before, again, for an install after the build, as a mode
     /// installs into a match whose capabilities are in place.
-    pub(crate) fn reopen(world: &'w mut World) -> SimWorldBuilder<'w> {
+    pub fn reopen(world: &'w mut World) -> SimWorldBuilder<'w> {
         let schedule = world
             .resource_mut::<Schedules>()
             .remove(SimUpdate)
@@ -163,7 +159,6 @@ mod tests {
 
     use super::*;
     use crate::sim_tick::SimTick;
-    use crate::sim_world::SimWorld;
 
     const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
@@ -179,13 +174,13 @@ mod tests {
                 .is_some_and(|schedules| schedules.contains(SimUpdate))
                 && world.contains_resource::<StateRegistry>()
         };
-        let mut builder = world.sim_builder(SegmentSeed::new([0; 32]), RATE);
+        let mut builder = SimWorldBuilder::new(&mut world, SegmentSeed::new([0; 32]), RATE);
         assert!(!held(builder.world()));
         builder.build();
         assert!(held(&world));
         world.run_schedule(SimUpdate);
         assert_eq!(world.resource::<SimTick>().start().get(), 1);
-        let mut builder = world.reopen_sim();
+        let mut builder = SimWorldBuilder::reopen(&mut world);
         assert!(!held(builder.world()));
         builder.build();
         assert!(held(&world));
@@ -193,7 +188,11 @@ mod tests {
         // A builder dropped before `build` would leave its world with no schedule: it panics.
         let dropped = panic::catch_unwind(|| {
             let mut world = World::new();
-            drop(world.sim_builder(SegmentSeed::new([0; 32]), RATE));
+            drop(SimWorldBuilder::new(
+                &mut world,
+                SegmentSeed::new([0; 32]),
+                RATE,
+            ));
         });
         assert_eq!(
             dropped.unwrap_err().downcast_ref::<&str>(),

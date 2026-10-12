@@ -8,8 +8,8 @@ use crate::sim_update::SimSet;
 const EDGES: usize = SimSet::ALL.len() + 1;
 
 /// When the last tick passed each edge between its stages, as the probes
-/// `SimWorldInternals::install_stage_clock` adds to the sim's schedule note it: what each stage of a real tick costs, its `SimEdge::After` included,
-/// for a bench. The tick's start and end and `SimEdge::Start` fall outside every stage. It stays
+/// `StageClock::install` adds to the sim's schedule note it: what each stage of a real tick
+/// costs, its `SimEdge::After` included, for a bench. The tick's start and end and `SimEdge::Start` fall outside every stage. It stays
 /// outside the sim's state, and the probes touch nothing else, so a match with them plays as one
 /// without.
 #[derive(Resource, Debug)]
@@ -18,21 +18,6 @@ pub struct StageClock {
 }
 
 impl StageClock {
-    /// The edges around a tick's stages: before the first, between each two, after the last.
-    pub(crate) const EDGES: usize = EDGES;
-
-    /// A clock whose every edge passed now.
-    pub(crate) fn started() -> StageClock {
-        StageClock {
-            edges: [Instant::now(); EDGES],
-        }
-    }
-
-    /// Notes that the tick passed edge `edge` now.
-    pub(crate) fn pass(&mut self, edge: usize) {
-        self.edges[edge] = Instant::now();
-    }
-
     /// How long `stage` took in the last tick.
     pub fn stage(&self, stage: SimSet) -> Duration {
         let index = SimSet::ALL
@@ -40,6 +25,46 @@ impl StageClock {
             .position(|&each| each == stage)
             .expect("a stage of the tick");
         self.edges[index + 1].duration_since(self.edges[index])
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::time::Instant;
+
+    use bevy_ecs::schedule::IntoScheduleConfigs;
+    use bevy_ecs::system::ResMut;
+    use bevy_ecs::world::World;
+
+    use crate::sim_update::stage_clock::{EDGES, StageClock};
+    use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick};
+
+    impl StageClock {
+        /// Adds a probe at each edge of the sim schedule of `world`, after the stage before it
+        /// and its `SimEdge::After` and before the stage after it, and the clock they write.
+        pub fn install(world: &mut World) {
+            world.insert_resource(StageClock {
+                edges: [Instant::now(); EDGES],
+            });
+            let probe = |edge: usize| {
+                move |mut clock: ResMut<'_, StageClock>| clock.edges[edge] = Instant::now()
+            };
+            world.schedule_scope(SimUpdate, |_, schedule| {
+                schedule.add_systems(probe(0).after(SimEdge::Start).before(SimSet::Inputs));
+                for (edge, stages) in SimSet::ALL.windows(2).enumerate() {
+                    schedule.add_systems(
+                        probe(edge + 1)
+                            .after(SimEdge::After(stages[0]))
+                            .before(stages[1]),
+                    );
+                }
+                schedule.add_systems(
+                    probe(EDGES - 1)
+                        .after(SimEdge::After(SimSet::Vision))
+                        .before(end_tick),
+                );
+            });
+        }
     }
 }
 
@@ -54,8 +79,7 @@ mod tests {
 
     use super::*;
     use crate::sim_update::{SimEdge, SimUpdate};
-    use crate::sim_world::SimWorld;
-    use crate::sim_world::internals::SimWorldInternals;
+    use crate::sim_world_builder::SimWorldBuilder;
     use crate::tick_rate::TickRate;
 
     /// When each test system ran, with the stage whose time holds it, or none for one before the
@@ -70,7 +94,7 @@ mod tests {
             move |mut ran: ResMut<'_, Ran>| ran.0.push((stage, Instant::now()))
         };
         let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-        world.sim_builder(SegmentSeed::new([7; 32]), rate).build();
+        SimWorldBuilder::new(&mut world, SegmentSeed::new([7; 32]), rate).build();
         world.init_resource::<Ran>();
         world.resource_mut::<Schedules>().add_systems(
             SimUpdate,
@@ -82,7 +106,7 @@ mod tests {
                 note(Some(SimSet::Vision)).in_set(SimEdge::After(SimSet::Vision)),
             ),
         );
-        world.install_stage_clock();
+        StageClock::install(&mut world);
         let installed = Instant::now();
         world.run_schedule(SimUpdate);
 

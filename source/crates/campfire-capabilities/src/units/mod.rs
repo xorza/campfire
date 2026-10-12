@@ -3,7 +3,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
-use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, SimWorld};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
@@ -215,7 +215,7 @@ impl Units {
     /// vision and navigation index the map's cells by it; the first that does not.
     fn within_bounds(world: &World) -> Result<(), Breach> {
         let bounds = *world.resource::<Bounds>();
-        world.first_breach(|entity| {
+        Breach::first(world, |entity| {
             world
                 .get::<Position>(entity)
                 .is_some_and(|&at| !bounds.contains(at))

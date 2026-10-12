@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
+use campfire_sim::SimWorld;
 use campfire_sim::{HostRule, SnapshotError, StateDelta};
 
 use super::*;

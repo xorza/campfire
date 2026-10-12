@@ -5,6 +5,7 @@ use crate::production::production_column::ProductionColumn;
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::supply_data::SupplyData;
 use crate::production::supply_rules::SupplyRules;
+use campfire_sim::internals::SimWorldInternals;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {

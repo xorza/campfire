@@ -1,5 +1,6 @@
 #[cfg(test)]
 pub(crate) mod test_world {
+    use campfire_sim::internals::SimWorldInternals;
     use std::collections::BTreeMap;
 
     use bevy_ecs::bundle::Bundle;

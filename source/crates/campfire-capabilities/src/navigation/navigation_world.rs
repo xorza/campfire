@@ -127,6 +127,7 @@ impl NavigationWorldCrate for World {
 pub(crate) mod test_world {
     use bevy_ecs::world::World;
     use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Position, StableId};
 
     use crate::geometry::bounds::Bounds;

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
 use campfire_capabilities::{Life, Match, Pools};
 use campfire_protocol::SessionLog;
-use campfire_sim::internals::{SimWorldInternals, StageClock};
+use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, SimWorld, StateDelta};
 use criterion::{Criterion, Throughput};
 
@@ -241,7 +241,7 @@ impl MatchCost {
 /// A new match of `moba`, with `StageClock`'s probes in its schedule.
 fn clocked(moba: &Moba3v3) -> FixedMatch {
     let mut fixed = moba.start();
-    fixed.game_mut().install_stage_clock();
+    StageClock::install(fixed.game_mut());
     fixed
 }
 

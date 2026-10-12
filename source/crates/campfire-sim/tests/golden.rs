@@ -21,7 +21,7 @@ use campfire_log::internals::LogCheck;
 use campfire_math::{Num, RngSource, RngStream, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, SimWorld,
-    StableId, StateRegistry, TickRate,
+    SimWorldBuilder, StableId, StateRegistry, TickRate,
 };
 use serde::{Deserialize, Serialize};
 
@@ -271,7 +271,7 @@ fn tick_section(hasher: &mut Hasher) {
         *chunk = inputs.next().to_le_bytes();
     }
     let mut world = World::new();
-    world.sim_builder(SegmentSeed::new(seed), RATE).build();
+    SimWorldBuilder::new(&mut world, SegmentSeed::new(seed), RATE).build();
     world.resource_mut::<Schedules>().add_systems(
         SimUpdate,
         (

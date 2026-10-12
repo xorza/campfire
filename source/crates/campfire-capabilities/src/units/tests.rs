@@ -1,3 +1,4 @@
+use campfire_sim::SimWorld;
 use std::sync::Arc;
 
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};

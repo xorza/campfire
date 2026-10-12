@@ -1,7 +1,6 @@
 use std::num::NonZeroU32;
 
 use campfire_sim::EntityIndex;
-use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 use crate::actions::actions_world::internals::ActionsWorldCrateInternals;

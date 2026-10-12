@@ -2,6 +2,7 @@ use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
 use crate::actions::actions_world::test_world::ActionsWorldTest;

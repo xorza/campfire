@@ -1,6 +1,7 @@
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId, Unpredicted};
 
 use super::*;
@@ -182,7 +183,7 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     let fixed = game.body(at(2, 0, 0), None, None, half);
     let resting = game.body(at(2, 0, 4), None, Some(quarter), half);
     // As on a client: the sim runs on no held unit, and collision names them.
-    game.register_unpredicted();
+    Unpredicted::register(&mut game);
     for held in [fixed, resting] {
         game.insert_parts(held, Unpredicted);
     }
@@ -213,7 +214,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     let tower = game.body(place(-6, -6), None, None, half);
     let held = game.body(place(6, 6), None, None, half);
     game.body(place(0, 0), Some(at(0, 0, 1)), Some(Num::ONE), half);
-    game.register_unpredicted();
+    Unpredicted::register(&mut game);
     game.insert_parts(held, Unpredicted);
     assert_eq!(blocked(&game), Vec::<usize>::new());
     game.step();

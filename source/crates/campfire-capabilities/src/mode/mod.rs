@@ -9,7 +9,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{Breach, Capability, SimSet, SimWorld, StateRegistry, TickRate};
+use campfire_sim::{Breach, Capability, SimSet, StateRegistry, TickRate};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -252,7 +252,7 @@ impl Mode {
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
-        world.first_breach(|entity| {
+        Breach::first(world, |entity| {
             let unit = world.entity(entity);
             unit.contains::<UnitEntity>()
                 && !unit.contains::<DeliveryEntity>()

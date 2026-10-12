@@ -1,3 +1,4 @@
+use campfire_sim::internals::SimWorldInternals;
 use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use bevy_ecs::bundle::Bundle;

@@ -13,7 +13,7 @@ use campfire_capabilities::{
 };
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
-use campfire_sim::{IdAllocator, SimWorld};
+use campfire_sim::IdAllocator;
 
 use super::*;
 use crate::view::unit_looks::ModelParts;
@@ -26,7 +26,7 @@ fn view() -> App {
     app.init_asset::<StandardMaterial>();
     app.init_resource::<EntityIndex>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-    app.world_mut().register_unpredicted();
+    Unpredicted::register(app.world_mut());
     app.add_plugins(View);
     app.update();
     app

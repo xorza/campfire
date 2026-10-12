@@ -592,7 +592,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let mut game = Match::server(&[Capability::Stats], scripts);
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
-    game.register_unpredicted();
+    Unpredicted::register(&mut game);
     let book = StatBook::new(&rules(), [], Num::int(6));
     game.load_stat_books(book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.

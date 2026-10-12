@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_sim::{SimParts, SimWorld};
+use campfire_sim::{SimParts, SimWorldBuilder};
 
 use crate::actions::Actions;
 use crate::declare::capability_set::CapabilitySet;
@@ -33,7 +33,7 @@ pub trait ReleaseWorld {
 
 impl ReleaseWorld for World {
     fn build_match(&mut self, spec: MatchSpec) {
-        let mut sim = self.sim_builder(spec.seed, spec.rate);
+        let mut sim = SimWorldBuilder::new(self, spec.seed, spec.rate);
         #[cfg(any(test, feature = "internals"))]
         if spec.without_sync_points {
             sim.without_sync_points();
@@ -69,7 +69,7 @@ impl ReleaseWorld for World {
 
     fn install_mode(&mut self, setup: ModeSetup<'_>, books: ModeBooks) {
         let set = *self.resource::<CapabilitySet>();
-        let mut sim = self.reopen_sim();
+        let mut sim = SimWorldBuilder::reopen(self);
         let SimParts {
             world,
             schedule,
@@ -83,15 +83,15 @@ impl ReleaseWorld for World {
 
 #[cfg(test)]
 pub(crate) mod test_world {
+    use campfire_sim::internals::SimWorldInternals;
     use std::collections::BTreeMap;
 
     use bevy_ecs::bundle::Bundle;
-    use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::entity::Entity;
     use bevy_ecs::resource::Resource;
     use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
     use bevy_ecs::system::{Query, Res};
-    use bevy_ecs::world::{Mut, World};
+    use bevy_ecs::world::World;
     use campfire_common::Tick;
     use campfire_math::Num;
     use campfire_script::rhai::Dynamic;
@@ -159,13 +159,6 @@ pub(crate) mod test_world {
 
         fn unit_entity(&self, id: StableId) -> Entity;
 
-        fn part<C: Component>(&self, id: StableId) -> &C;
-
-        /// Unit `id`'s part `C`; `None` when the unit is gone or lacks it.
-        fn try_part<C: Component>(&self, id: StableId) -> Option<&C>;
-
-        fn part_mut<C: Component<Mutability = Mutable>>(&mut self, id: StableId) -> Mut<'_, C>;
-
         fn insert_parts(&mut self, id: StableId, parts: impl Bundle);
 
         /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
@@ -193,9 +186,6 @@ pub(crate) mod test_world {
         /// applied in that stage would.
         fn block_at(&mut self, id: StableId, tick: u64, stage: SimSet, blocks: &'static [Block]);
 
-        /// The tick the match runs next.
-        fn now(&self) -> Tick;
-
         /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state
         /// type of it hashes as the match's own.
         fn check_copy(&mut self, copy: &mut StateCopy);
@@ -205,9 +195,6 @@ pub(crate) mod test_world {
 
         /// `expression` evaluated with `ctx` and `of`, the unit `of`, on the units as they are now.
         fn read(&mut self, expression: &str, of: StableId) -> Result<Dynamic, CallError>;
-
-        /// Runs ticks until the next is `tick`.
-        fn run_until(&mut self, tick: u64);
     }
 
     impl ReleaseWorldTest for World {
@@ -267,20 +254,6 @@ pub(crate) mod test_world {
 
         fn unit_entity(&self, id: StableId) -> Entity {
             self.entity_of(id).expect("a unit of the match")
-        }
-
-        fn part<C: Component>(&self, id: StableId) -> &C {
-            self.try_part(id).expect("a unit with the part")
-        }
-
-        fn try_part<C: Component>(&self, id: StableId) -> Option<&C> {
-            let entity = self.entity_of(id)?;
-            self.get::<C>(entity)
-        }
-
-        fn part_mut<C: Component<Mutability = Mutable>>(&mut self, id: StableId) -> Mut<'_, C> {
-            let entity = self.unit_entity(id);
-            self.get_mut::<C>(entity).expect("a unit with the part")
         }
 
         fn insert_parts(&mut self, id: StableId, parts: impl Bundle) {
@@ -345,10 +318,6 @@ pub(crate) mod test_world {
                 .add_systems(SimUpdate, block.in_set(stage));
         }
 
-        fn now(&self) -> Tick {
-            self.resource::<SimTick>().start()
-        }
-
         fn check_copy(&mut self, copy: &mut StateCopy) {
             copy.follow(self);
             let (mut copied, mut own) = (Vec::new(), Vec::new());
@@ -381,12 +350,6 @@ pub(crate) mod test_world {
 
         fn read(&mut self, expression: &str, of: StableId) -> Result<Dynamic, CallError> {
             self.probe(&format!("fn probe(ctx, of) {{ {expression} }}"), of)
-        }
-
-        fn run_until(&mut self, tick: u64) {
-            while self.now().get() < tick {
-                self.step();
-            }
         }
     }
 }

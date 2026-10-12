@@ -1,5 +1,6 @@
 use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
 

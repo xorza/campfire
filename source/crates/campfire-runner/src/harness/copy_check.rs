@@ -20,7 +20,7 @@ impl CopyCheck {
     /// A copy of the state of `game` as it stands.
     pub fn new(game: &mut Match) -> CopyCheck {
         CopyCheck {
-            copy: game.state_copy(),
+            copy: StateCopy::of(game),
             copied: Vec::new(),
             own: Vec::new(),
         }

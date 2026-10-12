@@ -1,3 +1,4 @@
+use campfire_sim::internals::SimWorldInternals;
 use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;

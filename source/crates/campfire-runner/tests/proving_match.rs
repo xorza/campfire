@@ -14,7 +14,7 @@ use campfire_runner::SessionWorld;
 use campfire_runner::internals::{
     CopyCheck, FixedMatch, Golden, HarnessMatchInternals, HarnessWorldInternals, ProvingMatch,
 };
-use campfire_sim::internals::{Draws, Mutation, SimWorldInternals};
+use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
 /// What the match showed over its ticks.
@@ -343,7 +343,7 @@ struct Inert;
 fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    fixed.game_mut().install_stage_clock();
+    StageClock::install(fixed.game_mut());
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
     let mut copy = CopyCheck::new(fixed.game_mut());
     let mut units = Vec::new();
