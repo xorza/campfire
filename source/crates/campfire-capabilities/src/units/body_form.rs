@@ -1,5 +1,7 @@
 use campfire_math::Num;
+use campfire_sim::Capability;
 
+use crate::declare::per_type::PerType;
 use crate::geometry::body_box::BodyBox;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
@@ -72,4 +74,9 @@ impl BodyForm {
             Form::Box(_) => None,
         }
     }
+}
+
+impl PerType for BodyForm {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }

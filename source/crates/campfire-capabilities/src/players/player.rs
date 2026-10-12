@@ -34,7 +34,6 @@ impl KindMarker for Player {}
 impl EntityKind for Player {
     const AUDIENCE: KindAudience = KindAudience::EverySeat;
     const OWNER_PREDICTS: bool = false;
-    const DECLARED_PARTS: bool = true;
 }
 
 impl SimComponent for Player {

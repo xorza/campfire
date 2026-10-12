@@ -18,6 +18,7 @@ use crate::declare::book::Book;
 use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
@@ -103,7 +104,8 @@ struct DeclarationAudit {
     books: Vec<DeclaredBook>,
     columns: Vec<Named>,
     call_parts: Vec<Named>,
-    parts: Vec<(Named, Named)>,
+    /// Each part: its host, the kinds the host takes, and its type.
+    parts: Vec<(Named, Vec<TypeId>, Named)>,
     calls: Vec<Named>,
     callbacks: Vec<DeclaredCallback>,
     /// The types the match derives again, which no state holds.
@@ -155,7 +157,7 @@ impl DeclarationAudit {
             "call part",
             self.call_parts.iter().map(|ty| ty.name).collect(),
         );
-        once("part", self.parts.iter().map(|(_, ty)| ty.name).collect());
+        once("part", self.parts.iter().map(|(.., ty)| ty.name).collect());
         let kinds_declared = |kinds: &[TypeId]| kinds.iter().all(|kind| self.kinds.contains(kind));
         for state in &self.states {
             let hosted = self.hosts.iter().find(|(ty, _)| ty.id == state.ty.id);
@@ -196,12 +198,13 @@ impl DeclarationAudit {
                 problems.push(format!("{} is declared by another module", book.ty.name));
             }
         }
-        for (kind, ty) in &self.parts {
-            let of_kind = self
-                .state_of(ty.id)
-                .is_some_and(|state| state.kinds.as_deref() == Some(&[kind.id][..]));
-            if !of_kind {
-                problems.push(format!("{} is no state of {}", ty.name, kind.name));
+        for (host, kinds, ty) in &self.parts {
+            let of_host = self.state_of(ty.id).is_some_and(|state| {
+                let held = state.kinds.as_deref().unwrap_or_default();
+                kinds.iter().all(|kind| held.contains(kind))
+            });
+            if !of_host {
+                problems.push(format!("{} is no state of {}", ty.name, host.name));
             }
         }
         self.engine_tag_problems(&mut problems);
@@ -354,8 +357,12 @@ impl Declarations for DeclarationAudit {
         self.call_parts.push(Named::of::<P>());
     }
 
-    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {
-        self.parts.push((Named::of::<K>(), Named::of::<C>()));
+    fn part<H: HostRule + SimComponent, C: SimComponent>(
+        &mut self,
+        _: fn(&KindSpawn<'_, H>) -> Option<C>,
+    ) {
+        let kinds = kinds_of::<H>().expect("a part's host names its kinds");
+        self.parts.push((Named::of::<H>(), kinds, Named::of::<C>()));
     }
 
     fn calls<C: Callbacks>(&mut self) {
@@ -384,12 +391,12 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, and the 29 books, 9 of the core's.
+    // player, the mode's three of the match, the 24 of a unit, and the 40 books, 12 of the core's.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 5);
-    assert_eq!(audit.books.len(), 29);
+    assert_eq!(audit.parts.len(), 29);
+    assert_eq!(audit.books.len(), 40);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
-    assert_eq!(core.count(), 9);
+    assert_eq!(core.count(), 12);
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
     assert_eq!(
@@ -462,7 +469,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.require::<UnitEntity, Player>();
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
-    audit.part::<Player, Stray>(|_| Stray);
+    audit.part::<Player, Stray>(|_| Some(Stray));
     audit.engine_tags(&STRAY_TAGS);
     // A column that reads a type no module declares.
     let reads_undeclared: ColumnFill<&Undeclared, VisionColumn> = |_, _| {};

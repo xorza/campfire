@@ -36,6 +36,7 @@ use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
 use crate::units::body::Body;
+use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
@@ -110,6 +111,12 @@ impl Module for Navigation {
         d.book::<NavigationBook>();
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
+        // A unit that walks, which its move step tells, takes a destination, a route and a progress.
+        d.part::<BodyUnit, Destination>(|at| {
+            at.of_type::<MoveStep>().map(|_| Destination::default())
+        });
+        d.part::<BodyUnit, Route>(|at| at.of_type::<MoveStep>().map(|_| Route::default()));
+        d.part::<BodyUnit, Progress>(|at| at.of_type::<MoveStep>().map(|_| Progress::default()));
     }
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for

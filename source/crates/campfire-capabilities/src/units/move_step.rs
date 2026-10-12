@@ -2,10 +2,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::SimComponent;
+use campfire_sim::{Capability, SimComponent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
@@ -56,6 +57,11 @@ impl<'de> Deserialize<'de> for MoveStep {
         MoveStep::new(Num::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("negative move step"))
     }
+}
+
+impl PerType for MoveStep {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

@@ -8,10 +8,11 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick, StateRegistry};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
+use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::DamageWeigher;
@@ -32,13 +33,13 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_spec::{MapStart, ModeSpec};
 use crate::mode::mode_state::ModeState;
+use crate::mode::mode_units::ModeUnits;
 use crate::mode::mode_world::ModeWorldCrate;
 use crate::mode::placed_unit::PlacedPath;
 use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
-use crate::mode::unit_kit::kit_part::KitPart;
 use crate::navigation::NavigationSet;
 use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
@@ -50,7 +51,6 @@ use crate::players::out_of_play::OutOfPlay;
 use crate::players::player::Player;
 use crate::players::players_world::PlayersWorld;
 use crate::production::ProductionSet;
-use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -58,12 +58,12 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
-use crate::units::body_unit::BodyUnit;
+use crate::units::body_form::BodyForm;
+use crate::units::by_type::ByType;
 use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::unit_state::{SyncAll, SyncNone};
-use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 
 pub(crate) mod calls;
@@ -73,7 +73,6 @@ pub(crate) mod choice_specs;
 pub(crate) mod choices;
 pub(crate) mod error;
 pub(crate) mod game_map;
-pub(crate) mod group_unit;
 pub(crate) mod height_grid;
 pub(crate) mod loadout_setup;
 pub(crate) mod map_data;
@@ -107,12 +106,11 @@ pub(crate) mod relation_data;
 pub(crate) mod roster;
 pub(crate) mod save_asked;
 pub(crate) mod saves_data;
-pub(crate) mod slot_action;
+pub(crate) mod spawn_group;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unanswered_deaths;
 pub(crate) mod unanswered_slot_events;
-pub(crate) mod unit_kit;
 pub(crate) mod unit_type_setup;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
@@ -134,14 +132,15 @@ impl Module for Mode {
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
         d.check::<Player>(Mode::players_seated);
-        d.part::<MatchEntity, Relations>(|world| world.non_send::<MatchMode>().relations.clone());
-        d.part::<MatchEntity, ModeState<SyncNone>>(|world| {
-            world.non_send::<MatchMode>().state_none.clone()
+        d.part::<MatchEntity, Relations>(|at| {
+            Some(at.world().non_send::<MatchMode>().relations.clone())
         });
-        d.part::<MatchEntity, ModeState<SyncAll>>(|world| {
-            world.non_send::<MatchMode>().state_all.clone()
+        d.part::<MatchEntity, ModeState<SyncNone>>(|at| {
+            Some(at.world().non_send::<MatchMode>().state_none.clone())
         });
-        d.check::<UnitType>(Mode::kits_held);
+        d.part::<MatchEntity, ModeState<SyncAll>>(|at| {
+            Some(at.world().non_send::<MatchMode>().state_all.clone())
+        });
         d.api(ModeApi::register);
     }
 
@@ -179,12 +178,7 @@ impl Mode {
     /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
     /// and whose unit types, abilities and AI are loaded, with what `load` takes from the books:
     /// the map's pathing grid, for the kinds of its walkers, and its teams.
-    pub(crate) fn load(
-        world: &mut World,
-        registry: &StateRegistry,
-        setup: ModeSetup<'_>,
-        load: ModeLoad,
-    ) {
+    pub(crate) fn load(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
         let view = world.non_send::<View>().clone();
         let ModeLoad {
             map,
@@ -209,12 +203,14 @@ impl Mode {
             relations,
             map: GameMap::new(path_names.map(ImmutableString::from), &markers),
         };
+        Mode::load_units(world, &setup.units);
         let book = ModeSpec::new(
             setup,
             world.resource::<ScriptBook>(),
             start,
             loadout_ranks,
-            KitPart::of_state(registry),
+            world.resource::<ByType<BodyForm>>(),
+            world.resource::<ByType<ActionSlots>>(),
         );
         view.names_mut().set_teams(Rc::clone(&book.teams));
         let players = book.teams.players() as usize;
@@ -225,9 +221,6 @@ impl Mode {
         ctx.frame().add_part(ModeCall::new(Rc::clone(&book)));
         ctx.set_mode(Rc::clone(&book) as Rc<dyn Any>);
         world.insert_non_send(MatchMode(Rc::clone(&book)));
-        world.insert_non_send(Spawner::new(move |world, at, owner| {
-            book.spawn_owned(world, at, owner)
-        }));
         // A mode that defines either hook declares combat, as the load checks.
         if hooks.contains(Hook::CalcDamage) {
             let weigher = DamageWeigher::new(Calls::weigh_damage);
@@ -249,19 +242,10 @@ impl Mode {
         Breach::of_match(seated)
     }
 
-    /// Whether each unit but a delivery holds every part its type's kit gives it as it spawns,
-    /// none of which a unit loses while it stands, so no system finds one missing; the first
-    /// that lacks one. A match with no progression has no level track, as `ModeSpec::spawn` reads
-    /// it.
-    fn kits_held(world: &World) -> Result<(), Breach> {
-        let book = world.non_send::<MatchMode>();
-        let level_track = world
-            .get_resource::<TrackBook>()
-            .and_then(TrackBook::level_track);
-        Breach::first(world, |entity| {
-            let unit = world.entity(entity);
-            unit.contains::<BodyUnit>() && !book.holds_kit(unit, level_track)
-        })
+    /// Loads the spawner of `units`, the mode's unit types, into `world`: from then on, the mode
+    /// and each capability spawn a unit of a type the mode spawns through it.
+    pub fn load_units(world: &mut World, units: &ModeUnits) {
+        world.insert_non_send(units.spawner());
     }
 
     /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
@@ -276,25 +260,27 @@ impl Mode {
             world,
             slots.map(|slot| teams.of(slot).expect("every player has a team")),
         );
+        let spawner = world.non_send::<Spawner>().clone();
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
                 unit_type: placed.unit_type,
                 team: placed.team,
                 pos: placed.pos,
+                owner: None,
                 angle: placed.angle,
             };
             match placed.path {
-                None => book.spawn(world, at, None, ()),
+                None => spawner.spawn(world, at, ()),
                 Some(PlacedPath { path, from: None }) => {
-                    book.spawn(world, at, None, OnPath::new(path))
+                    spawner.spawn(world, at, OnPath::new(path))
                 }
                 Some(PlacedPath {
                     path,
                     from: Some(from),
                 }) => {
                     let walker = (OnPath::new(path), PathWalker::start(from, at.id));
-                    book.spawn(world, at, None, walker)
+                    spawner.spawn(world, at, walker)
                 }
             };
         }
@@ -312,38 +298,40 @@ impl Mode {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position, StableId};
 
     use crate::mode::Mode;
-    use crate::mode::match_mode::MatchMode;
     use crate::units::Units;
     use crate::units::spawn_at::SpawnAt;
     use crate::units::spawner::Spawner;
     use crate::units::team::Team;
 
     impl Mode {
-        /// Spawns a unit of the mode's type `name` on `team` at `pos`, with the parts its type's
-        /// kit gives, as the mode's own spawns do.
-        pub fn spawn_typed(world: &mut World, name: &str, team: Team, pos: Position) -> StableId {
-            let book = world.non_send::<MatchMode>().clone();
-            let unit_type = Units::type_named(world, name)
-                .filter(|&unit_type| book.kit(unit_type).is_some())
-                .expect("a type of the mode, with a kit");
+        /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
+        /// `parts`, as the mode's own spawns do.
+        pub fn spawn_typed(
+            world: &mut World,
+            name: &str,
+            pos: Position,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            let unit_type =
+                Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
             let id = world.resource_mut::<IdAllocator>().allocate();
+            let at = SpawnAt {
+                id,
+                unit_type,
+                team,
+                owner: None,
+                pos,
+                angle: Num::ZERO,
+            };
             let spawner = world.non_send::<Spawner>().clone();
-            spawner.spawn(
-                world,
-                SpawnAt {
-                    id,
-                    unit_type,
-                    team,
-                    pos,
-                    angle: Num::ZERO,
-                },
-                None,
-            );
+            spawner.spawn(world, at, parts);
             id
         }
     }

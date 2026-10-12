@@ -10,11 +10,12 @@ use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::entity_parts::EntityParts;
+use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::mode::mode_world::ModeWorld;
-use crate::players::entity_parts::EntityParts;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
@@ -114,9 +115,6 @@ impl StateTypes for DeclaredResources {
 impl KindVisitor for DeclaredResources {
     fn kind<K: EntityKind>(&mut self) {
         self.ids.push(TypeId::of::<EntityKinds>());
-        if K::DECLARED_PARTS {
-            self.ids.push(TypeId::of::<EntityParts<K>>());
-        }
     }
 }
 
@@ -161,7 +159,12 @@ impl Declarations for DeclaredResources {
 
     fn call_part<P: CallPart + Default>(&mut self) {}
 
-    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+    fn part<H: HostRule + SimComponent, C: SimComponent>(
+        &mut self,
+        _: fn(&KindSpawn<'_, H>) -> Option<C>,
+    ) {
+        self.ids.push(TypeId::of::<EntityParts<H>>());
+    }
 
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 

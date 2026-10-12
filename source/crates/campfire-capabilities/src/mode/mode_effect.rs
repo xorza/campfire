@@ -6,20 +6,18 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
 use crate::combat::respawn::Respawn;
-use crate::mode::group_unit::GroupUnit;
 use crate::mode::match_end::{MatchEnd, MatchResult};
-use crate::mode::match_mode::MatchMode;
 use crate::mode::save_asked::SaveAsked;
+use crate::mode::spawn_group::SpawnGroup;
 use crate::mode::timers::Timers;
-use crate::navigation::path_walker::PathEnd;
 use crate::players::held_out::HeldOut;
 use crate::players::players_world::PlayersWorld;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::scripts::state_value::StateValue;
 use crate::units::action_id::ActionId;
-use crate::units::path_id::PathId;
 use crate::units::spawn_at::SpawnAt;
+use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::units_world::UnitsWorldCrate;
 use crate::values::rank::Rank;
@@ -35,17 +33,9 @@ pub(crate) enum ModeEffect {
         data: Option<StateValue>,
     },
     End(MatchResult),
-    /// Owned by the player, if the call names one.
-    SpawnUnit {
-        at: SpawnAt,
-        owner: Option<PlayerSlot>,
-    },
-    SpawnGroup {
-        team: Team,
-        path: PathId,
-        from: PathEnd,
-        units: Vec<GroupUnit>,
-    },
+    /// A unit the call spawns, owned by the player it names, if it names one.
+    SpawnUnit(SpawnAt),
+    SpawnGroup(SpawnGroup),
     Grant {
         id: StableId,
         kind: SlotKind,
@@ -81,7 +71,6 @@ impl Effect for ModeEffect {
     /// kind's first rank, and nothing for a unit that is gone.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let book = world.non_send::<MatchMode>().clone();
         match self {
             ModeEffect::Timer {
                 name,
@@ -98,15 +87,11 @@ impl Effect for ModeEffect {
                     .expect("a match that runs has its entity");
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
-            ModeEffect::SpawnUnit { at, owner } => {
-                book.spawn_owned(world, at, owner);
+            ModeEffect::SpawnUnit(at) => {
+                let spawner = world.non_send::<Spawner>().clone();
+                spawner.spawn(world, at, ());
             }
-            ModeEffect::SpawnGroup {
-                team,
-                path,
-                from,
-                units,
-            } => book.spawn_group(world, team, path, from, &units),
+            ModeEffect::SpawnGroup(group) => group.spawn(world),
             ModeEffect::Grant {
                 id,
                 kind,

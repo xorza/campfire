@@ -10,13 +10,8 @@ pub enum KindAudience {
 }
 
 /// A kind of entity, by its marker, which each entity of the kind holds and no other: who
-/// receives its entities, whether its owner's client predicts one, and whether its one spawn puts
-/// on the parts the modules declare for it.
+/// receives its entities, and whether its owner's client predicts one.
 pub trait EntityKind: KindMarker {
     const AUDIENCE: KindAudience;
     const OWNER_PREDICTS: bool;
-    /// Whether an entity of the kind spawns with the parts the modules declare for it, each made
-    /// from what the world holds then: the match's entity, and each player's. A unit's parts come
-    /// from its kit instead.
-    const DECLARED_PARTS: bool;
 }

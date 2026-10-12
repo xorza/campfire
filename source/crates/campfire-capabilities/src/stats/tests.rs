@@ -31,7 +31,6 @@ use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::body_unit::BodyUnit;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::tag_book::TagBook;

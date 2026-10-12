@@ -5,6 +5,7 @@ use campfire_sim::{Breach, Capability, HostRule, SimComponent};
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
+use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
@@ -12,7 +13,6 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::StateTypes;
 use crate::units::engine_tag::EngineTag;
-use crate::units::entity_kind::EntityKind;
 use crate::units::row_fill::RowFill;
 use crate::units::row_reads::RowReads;
 use crate::units::view_column::ViewColumn;
@@ -65,9 +65,13 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
     /// `P`, a part of every script call.
     fn call_part<P: CallPart + Default>(&mut self);
 
-    /// `C`, a part of each entity of the kind `K`, which `start` makes as the entity spawns; a
-    /// restore checks that every entity of the kind holds one.
-    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, start: fn(&World) -> C);
+    /// `C`, a part of each entity of the host `H`, a kind or every unit, which `start` makes as
+    /// the entity spawns, when it gives one; a restore checks that each entity of the host holds
+    /// each part its spawn would give it.
+    fn part<H: HostRule + SimComponent, C: SimComponent>(
+        &mut self,
+        start: fn(&KindSpawn<'_, H>) -> Option<C>,
+    );
 
     /// `tags`, the module's engine tags, which the tag book places after those declared before
     /// them: each at its number, as the module list gives the numbers.

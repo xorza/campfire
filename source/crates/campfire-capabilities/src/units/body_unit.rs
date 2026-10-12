@@ -11,8 +11,8 @@ use crate::units::entity_kind::{EntityKind, KindAudience};
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::unit_entity::UnitEntity;
 
-/// The kind of a unit with a body of its own, which a mode, a train or a test spawns with its kit:
-/// every unit but a delivery. It is state, so a unit stays of its kind through a restore.
+/// The kind of a unit with a body of its own, which a mode, a train or a test spawns: every unit
+/// but a delivery. It is state, so a unit stays of its kind through a restore.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable, on_add = EntityKinds::one)]
 #[require(UnitEntity)]
@@ -23,7 +23,6 @@ impl KindMarker for BodyUnit {}
 impl EntityKind for BodyUnit {
     const AUDIENCE: KindAudience = KindAudience::Seers;
     const OWNER_PREDICTS: bool = true;
-    const DECLARED_PARTS: bool = false;
 }
 
 impl SimComponent for BodyUnit {

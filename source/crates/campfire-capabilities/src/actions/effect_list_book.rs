@@ -264,15 +264,12 @@ impl EffectListBook {
                         id: frame.take_id(),
                         unit_type,
                         team: source.team,
+                        owner: source.owner,
                         pos,
                         angle: Num::ZERO,
                     };
                     let life = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(ActionsEffect {
-                        at,
-                        owner: source.owner,
-                        life,
-                    });
+                    frame.effects.push(ActionsEffect { at, life });
                 }
                 DoesSpec::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| duration(ms, frame));

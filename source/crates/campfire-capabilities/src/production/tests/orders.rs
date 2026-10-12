@@ -46,7 +46,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         train,
         queue,
     );
-    let held = |game: &Match| {
+    let held = |game: &mut Match| {
         let amount = game.player_resources(player).unwrap().amount(gold);
         (
             amount,
@@ -58,19 +58,19 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     // Tick 0: the entry behind the head gives back its 20; the head keeps its time. Another
     // player's cancel, and one past the queue's end, do nothing.
     Production::tick_ordering(&mut game, 0, producer, cancel(1));
-    assert_eq!(held(&game), (20, 2, 0));
+    assert_eq!(held(&mut game), (20, 2, 0));
     Production::tick_ordering(&mut game, 1, producer, cancel(0));
     Production::tick_ordering(&mut game, 0, producer, cancel(2));
-    assert_eq!(held(&game), (20, 2, 0));
+    assert_eq!(held(&mut game), (20, 2, 0));
     // Tick 3: the head gives back its 10, and the last starts at time 3, to be done at time 7,
     // the end of tick 6, not at time 4.
     Production::tick_ordering(&mut game, 0, producer, cancel(0));
-    assert_eq!(held(&game), (30, 1, 0));
+    assert_eq!(held(&mut game), (30, 1, 0));
     for tick in 4..=6 {
-        assert_eq!(held(&game).2, 0, "tick {tick}");
+        assert_eq!(held(&mut game).2, 0, "tick {tick}");
         game.step();
     }
-    assert_eq!(held(&game), (30, 0, 1));
+    assert_eq!(held(&mut game), (30, 0, 1));
 
     // A refund that would carry the amount past an `i64` refuses the cancel: the entry stays.
     let mut queue = TrainQueue::default();
@@ -89,7 +89,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, i64::MAX - 35).unwrap();
     Production::tick_ordering(&mut game, 0, producer, cancel(0));
-    assert_eq!(held(&game), (i64::MAX - 5, 1, 1));
+    assert_eq!(held(&mut game), (i64::MAX - 5, 1, 1));
 }
 
 #[test]
@@ -162,9 +162,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         Production::tick_ordering(&mut game, 0, producer, Action::Rally { target });
         Production::order_train(&mut game, producer);
         game.step();
-        let spawned = Shop::spawned(&game)[at];
-        assert_eq!(spawned.at.pos, place, "{target:?}");
-        let entity = game.entity_of(spawned.at.id).unwrap();
+        let spawned = Shop::spawned(&mut game, shop.grunt)[at];
+        assert_eq!(spawned.pos, place, "{target:?}");
+        let entity = game.entity_of(spawned.id).unwrap();
         let destination = game.get::<Destination>(entity).unwrap().get();
         assert_eq!(destination, walks, "{target:?}");
     }
@@ -173,8 +173,8 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(flag)));
     Production::order_train(&mut game, producer);
     game.step();
-    let spawned = Shop::spawned(&game)[4];
-    assert_eq!(spawned.at.pos, halves(0, 0));
+    let spawned = Shop::spawned(&mut game, shop.grunt)[4];
+    assert_eq!(spawned.pos, halves(0, 0));
 
     // With a vision grid, a rally to a unit of team 0 at (0, 6) that the producer's team 1 does
     // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
@@ -198,7 +198,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(watch)));
         Production::order_train(&mut game, producer);
         game.step();
-        let spawned = Shop::spawned(&game)[5 + at];
-        assert_eq!(spawned.at.pos, place, "{seers:?}");
+        let spawned = Shop::spawned(&mut game, shop.grunt)[5 + at];
+        assert_eq!(spawned.pos, place, "{seers:?}");
     }
 }

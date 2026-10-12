@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
@@ -7,7 +8,7 @@ use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{Capability, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 /// A node workers gather from: what it holds, and the worker that gathers it now, one at a time.
@@ -63,4 +64,9 @@ impl SimComponent for Node {
 impl Replication for Node {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentPredicted;
+}
+
+impl PerType for Node {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }

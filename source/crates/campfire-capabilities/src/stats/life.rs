@@ -2,9 +2,10 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{SimComponent, TickRate};
+use campfire_sim::{Capability, SimComponent, TickRate};
 use serde::{Deserialize, Serialize};
 
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
@@ -101,4 +102,9 @@ pub(crate) mod internals {
             Life(Meter::new(max).expect("a positive maximum"))
         }
     }
+}
+
+impl PerType for Life {
+    const OWNER: Option<Capability> = Some(Capability::Combat);
+    const SCRIPTS_ONLY: bool = false;
 }

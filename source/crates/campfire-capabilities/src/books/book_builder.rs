@@ -8,6 +8,7 @@ use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_names::ActionNames;
 use crate::actions::action_parts::ActionParts;
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
@@ -24,11 +25,13 @@ use crate::books::book_place::BookPlace;
 use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
+use crate::books::unit_start::{StartOf, UnitStart};
 use crate::books::unit_type_data::UnitTypeData;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_book::CombatBook;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
+use crate::items::inventory::Inventory;
 use crate::items::item_book::{ItemBook, ItemSpec};
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
@@ -38,8 +41,6 @@ use crate::mode::mode_inputs::ModeInputs;
 use crate::mode::mode_load::ModeLoad;
 use crate::mode::mode_map::{ModeMap, ResolvedMap};
 use crate::mode::mode_names::ModeNames;
-use crate::mode::slot_action::SlotAction;
-use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
@@ -47,6 +48,9 @@ use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::Production;
 use crate::production::build_book::{NewBuild, PlacementCheck, Style};
+use crate::production::builder::Builder;
+use crate::production::gatherer::Gatherer;
+use crate::production::node::Node;
 use crate::production::resource_set::ResourceSet;
 use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
@@ -67,7 +71,6 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
-use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -150,6 +153,22 @@ impl<'f> Standing<'f> {
 
     fn at(&self) -> BookPlace {
         BookPlace::UnitType(self.place())
+    }
+}
+
+/// A unit type that stands as the builder loads it: the place of its package among the match's,
+/// the type as its package gives it, and its id.
+#[derive(Debug, Clone, Copy)]
+struct TypeAt<'f> {
+    package: u16,
+    unit: Standing<'f>,
+    unit_type: UnitType,
+}
+
+impl TypeAt<'_> {
+    /// The error of `name`, which the type names and the mode does not declare.
+    fn unknown(self, name: UnknownName) -> BookError {
+        BookError::unknown(self.package, self.unit.at(), name)
     }
 }
 
@@ -273,8 +292,9 @@ impl<'a> BookBuilder<'a> {
         let bindings = CombatBindings::new(&data.combat, |stat| {
             BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
         })?;
-        let bodies = parts.units.unit_types.iter();
-        let bodies = bodies.map(|setup| (setup.unit_type, setup.kit.body));
+        let standing = parts.units.unit_types.iter();
+        let bodies =
+            standing.map(|setup| (setup.unit_type, parts.bodies.get(setup.unit_type).copied()));
         parts.types.tag_layers(&self.names.layers, bodies);
         let mut kinds: Vec<Walker> = parts.walkers.values().copied().collect();
         kinds.sort_unstable();
@@ -309,6 +329,17 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.projectiles);
         built.add(parts.areas);
         built.add(parts.sights);
+        built.add(parts.lives);
+        built.add(parts.pools);
+        built.add(parts.deaths);
+        built.add(parts.steps);
+        built.add(parts.bodies);
+        built.add(parts.type_tracks);
+        built.add(parts.builders);
+        built.add(parts.node_starts);
+        built.add(parts.gatherers);
+        built.add(parts.inventories);
+        built.add(parts.slots);
         built.add(navigation);
         built.add(parts.walkers);
         built.add(vision);
@@ -703,7 +734,7 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// Loads the unit types of the package at `index`, `units`, whose actions are `actions`: its
-    /// delivery types, and its types that stand, each with its kit.
+    /// delivery types, and its types that stand, each with its parts.
     fn package_units(
         &mut self,
         index: u16,
@@ -751,9 +782,8 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The unit type `unit` that stands, of the package at `index`, whose slots hold the package's
-    /// `actions`: its AI, its kit of the values `stats` gives it, its production parts, its kind
-    /// of walker, its slots, kind after kind, and its passive. An avatar's is tagged `avatar`,
-    /// and stays when it dies.
+    /// `actions`: its AI, its parts, its production parts, its kind of walker, and its passive.
+    /// An avatar's is tagged `avatar`, and stays when it dies.
     fn unit_type(
         &mut self,
         index: u16,
@@ -767,8 +797,11 @@ impl<'a> BookBuilder<'a> {
             .types()
             .named((unit.scope, unit.name))
             .expect(DECLARED);
-        let unknown = |name| BookError::unknown(index, unit.at(), name);
-        let body = self.names.form(file.collision.as_ref()).map_err(unknown)?;
+        let at = TypeAt {
+            package: index,
+            unit,
+            unit_type,
+        };
         let mut combat = file.combat.clone();
         if unit.declared.is_none() {
             self.books.types.give_tag(unit_type, Units::AVATAR.tag());
@@ -776,51 +809,43 @@ impl<'a> BookBuilder<'a> {
                 combat.on_death = OnDeath::Stay;
             }
         }
-        self.ai(index, unit, unit_type)?;
-        let kit = self.kit(index, unit, unit_type, combat.as_ref(), body)?;
+        self.ai(at)?;
+        self.parts(at, combat.as_ref(), actions)?;
+        let unknown = |name| at.unknown(name);
         self.production(unit_type, file).map_err(unknown)?;
-        self.walker(unit_type, file, body);
+        self.walker(unit_type, file);
         let setup = UnitTypeSetup {
             unit_type,
-            kit,
-            actions: self.slot_actions(file, actions).map_err(unknown)?,
             passive: self.passive(index, file).map_err(unknown)?,
         };
         self.books.units.unit_types.push(setup);
         Ok(())
     }
 
-    /// The AI of `unit`, of the package at `index`, `unit_type`, when it takes orders.
-    fn ai(&mut self, index: u16, unit: Standing<'_>, unit_type: UnitType) -> Result<(), BookError> {
-        let Some(orders) = &unit.file.orders else {
+    /// The AI of `at`, when it takes orders.
+    fn ai(&mut self, at: TypeAt<'_>) -> Result<(), BookError> {
+        let Some(orders) = &at.unit.file.orders else {
             return Ok(());
         };
-        let script = self.script(index, &orders.ai);
+        let script = self.script(at.package, &orders.ai);
         let ai = Ai::of(orders, script, self.input.scripts, self.input.rate).map_err(|error| {
             BookError::Ai {
-                package: index,
-                unit_type: unit.place(),
+                package: at.package,
+                unit_type: at.unit.place(),
                 error,
             }
         })?;
-        self.books.ais.set(unit_type, ai);
+        self.books.ais.set(at.unit_type, ai);
         Ok(())
     }
 
-    /// The kit of `unit`, of the package at `index`, `unit_type`, with `combat`, its combat
-    /// section as the type spawns with it, and `body`, the body of its `collision` section; an
-    /// error for a name the mode does not declare.
-    fn kit(
-        &self,
-        index: u16,
-        unit: Standing<'_>,
-        unit_type: UnitType,
-        combat: Option<&CombatData>,
-        body: Option<BodyForm>,
-    ) -> Result<UnitKit, BookError> {
-        let (file, data) = (unit.file, self.input.data);
-        let unknown = |name| BookError::unknown(index, unit.at(), name);
-        let pools: Vec<(PoolId, &Stat)> = file
+    /// What `at` starts with of its stats, with `combat`, its combat section as the type spawns
+    /// with it; an error for a pool the mode does not declare, or for stats that make no unit.
+    fn start(&self, at: TypeAt<'_>, combat: Option<&CombatData>) -> Result<UnitStart, BookError> {
+        let data = self.input.data;
+        let pools: Vec<(PoolId, &Stat)> = at
+            .unit
+            .file
             .pools
             .iter()
             .map(|pool| {
@@ -829,8 +854,43 @@ impl<'a> BookBuilder<'a> {
                 Ok((id, &data.pools[pool].max))
             })
             .collect::<Result<_, UnknownName>>()
-            .map_err(unknown)?;
-        let names = self.names(index, None);
+            .map_err(|name| at.unknown(name))?;
+        let of = StartOf {
+            book: &self.stats,
+            life: self.life,
+            rate: self.input.rate,
+            unit_type: at.unit_type,
+            combat,
+            pools: &pools,
+        };
+        UnitStart::new(of).map_err(|error| BookError::Start {
+            package: at.package,
+            unit_type: at.unit.place(),
+            error,
+        })
+    }
+
+    /// The parts `at` spawns with, each in its book: its start of its stats, with `combat`, its
+    /// combat section as the type spawns with it, its sight, the body of its `collision` section,
+    /// its tracks, whether it builds, what it holds as a node, whether it gathers, its inventory,
+    /// and its slots of the package's `actions`; an error for a name the mode does not declare,
+    /// or for stats that make no unit.
+    fn parts(
+        &mut self,
+        at: TypeAt<'_>,
+        combat: Option<&CombatData>,
+        actions: &BTreeMap<&str, ActionId>,
+    ) -> Result<(), BookError> {
+        let UnitStart {
+            life,
+            pools,
+            on_death,
+            step,
+        } = self.start(at, combat)?;
+        let unknown = |name| at.unknown(name);
+        let (file, input, unit_type) = (at.unit.file, self.input, at.unit_type);
+        let body = self.names.form(file.collision.as_ref()).map_err(unknown)?;
+        let names = self.names(at.package, None);
         let tracks: TrackSet = file
             .tracks
             .iter()
@@ -838,70 +898,77 @@ impl<'a> BookBuilder<'a> {
             .collect::<Result<_, UnknownName>>()
             .map_err(unknown)?;
         let inventory = file.inventory.as_ref().map(|inventory| {
-            let kind = data.slots.names().named(inventory.kind.as_str());
-            Ok(InventorySpec {
-                slots: inventory.slots,
-                kind: kind.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &inventory.kind))?,
-            })
+            let kind = input.data.slots.names().named(inventory.kind.as_str());
+            let kind = kind.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &inventory.kind))?;
+            Ok(Inventory::new(inventory.slots, kind))
         });
         let inventory = inventory.transpose().map_err(unknown)?;
-        let package = &self.input.packages[usize::from(index)];
+        let slots = self
+            .slots(file, actions, inventory.as_ref())
+            .map_err(unknown)?;
+        let package = &input.packages[usize::from(at.package)];
         let slotted = |kind| {
             let mut slotted = file.slots.values().flatten();
             slotted.any(|id| package.content.actions[id].kind == kind)
         };
-        let sections = KitSections {
-            combat,
-            pools,
-            vision: file.vision.as_ref(),
-            body,
-            tracks,
-            production: file.production.as_ref(),
-            builds: slotted(ActionKind::Build),
-            node: file.node.as_ref().map(|node| node.amount),
-            gathers: slotted(ActionKind::Gather),
-            inventory,
-        };
-        let rate = self.input.rate;
-        UnitKit::new(&self.stats, unit_type, sections, self.life, rate).map_err(|error| {
-            BookError::Kit {
-                package: index,
-                unit_type: unit.place(),
-                error,
-            }
-        })
+        let books = &mut self.books;
+        books.lives.set_some(unit_type, life);
+        books.pools.set_some(unit_type, pools);
+        books.deaths.set_some(unit_type, on_death);
+        books.steps.set_some(unit_type, step);
+        books.bodies.set_some(unit_type, body);
+        books
+            .sights
+            .set_some(unit_type, file.vision.map(|vision| vision.sight));
+        books
+            .type_tracks
+            .set_some(unit_type, (!tracks.is_empty()).then_some(tracks));
+        let builds = slotted(ActionKind::Build).then(Builder::default);
+        books.builders.set_some(unit_type, builds);
+        let node = file.node.as_ref().map(|node| Node::new(node.amount.get()));
+        books.node_starts.set_some(unit_type, node);
+        let gathers = slotted(ActionKind::Gather).then(Gatherer::default);
+        books.gatherers.set_some(unit_type, gathers);
+        books.inventories.set_some(unit_type, inventory);
+        books.slots.set_some(unit_type, slots);
+        Ok(())
     }
 
-    /// The kind of walker of `unit_type`, of `file` and of `body`, the body of its `collision`
-    /// section, when it walks.
-    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData, body: Option<BodyForm>) {
+    /// The kind of walker of `unit_type`, of `file` and of its body, when it walks.
+    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData) {
         if file.walks() {
+            let body = self.books.bodies.get(unit_type).copied();
             let walker = Walker::of_form(body).expect("a unit type that walks has no box");
             self.books.walkers.set(unit_type, walker);
         }
     }
 
-    /// The actions in the slots of `file`, of the package's `actions`, kind after kind, each at
-    /// its kind's first rank; an error for a kind the mode does not declare.
-    fn slot_actions(
+    /// The slots of `file`: the package's `actions` it names, kind after kind, each at its kind's
+    /// first rank, then an empty slot of its `inventory`'s kind for each inventory slot; none for
+    /// a type with neither, and an error for a kind the mode does not declare.
+    fn slots(
         &self,
         file: &UnitTypeData,
         actions: &BTreeMap<&str, ActionId>,
-    ) -> Result<Vec<SlotAction>, UnknownName> {
+        inventory: Option<&Inventory>,
+    ) -> Result<Option<ActionSlots>, UnknownName> {
         let slots = &self.input.data.slots;
         let mut held = Vec::new();
         for (kind, ids) in &file.slots {
             let named = slots.names().named(kind.as_str());
             let kind = named.ok_or_else(|| UnknownName::new(NameKind::SlotKind, kind))?;
             let rank = slots.first_rank(kind);
-            held.extend(ids.iter().map(|id| SlotAction {
-                kind,
-                action: actions[id.as_str()],
-                rank,
-            }));
+            held.extend(ids.iter().map(|id| (actions[id.as_str()], kind, rank)));
         }
-        held.sort_by_key(|action| action.kind);
-        Ok(held)
+        if held.is_empty() && inventory.is_none() {
+            return Ok(None);
+        }
+        held.sort_by_key(|&(_, kind, _)| kind);
+        let slots = ActionSlots::new(held);
+        Ok(Some(match inventory {
+            Some(inventory) => inventory.extend_slots(slots),
+            None => slots,
+        }))
     }
 
     /// The passive of `file`, a modifier of the package at `index`, when it has one; an error
@@ -955,9 +1022,9 @@ impl<'a> BookBuilder<'a> {
                 })?;
             books.areas.set(unit_type, spec);
         }
-        if let Some(vision) = file.vision {
-            books.sights.set(unit_type, vision.sight);
-        }
+        books
+            .sights
+            .set_some(unit_type, file.vision.map(|vision| vision.sight));
         Ok(())
     }
 

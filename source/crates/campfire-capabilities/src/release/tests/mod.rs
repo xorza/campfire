@@ -12,8 +12,8 @@ use campfire_store::internals::SourceFiles;
 
 use super::*;
 use crate::actions::action_book::ActionBook;
+use crate::declare::entity_parts::EntityParts;
 use crate::orders::ai::Ai;
-use crate::players::entity_parts::EntityParts;
 use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::release::r#match::Match;
@@ -118,14 +118,14 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         }
     }
     let mut scripted = scripted;
-    scripted.resource_scope(|world, parts: Mut<'_, EntityParts<Player>>| {
-        let mut player = world.spawn_empty();
-        parts.put_on(&mut player);
+    {
+        let mut player = scripted.spawn_empty();
+        EntityParts::<Player>::give(&mut player);
         assert_eq!(
             player.get::<PlayerResources>(),
             Some(&PlayerResources::new(0))
         );
-    });
+    }
     let combat_only = installed(&[Stats, Combat], Some(scripts));
     assert!(combat_only.contains_resource::<ActionBook>());
 }
@@ -318,12 +318,12 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "named"),
+    ("books/unit_start/mod.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
     ("mode/map_data.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
     ("mode/mode_names.rs", "named"),
-    ("mode/unit_kit/mod.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("units/unit_types.rs", "named"),

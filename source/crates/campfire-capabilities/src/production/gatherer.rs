@@ -2,9 +2,10 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_sim::{Capability, Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::declare::per_type::PerType;
 use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
@@ -111,6 +112,11 @@ impl SimComponent for Gatherer {
 impl Replication for Gatherer {
     const KIND: DataKind = DataKind::Prediction;
     type Sending = SentPredicted;
+}
+
+impl PerType for Gatherer {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

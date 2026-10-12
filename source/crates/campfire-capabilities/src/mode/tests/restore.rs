@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
-use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta};
+use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
@@ -189,16 +189,12 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         |world| {
             let entity = world.match_entity().unwrap();
             world.entity_mut(entity).remove::<Relations>();
-            lacks(MatchEntity::NAME, Relations::NAME, StableId::MATCH)
+            invalid(Relations::NAME, Some(StableId::MATCH))
         },
         |world| {
             let entity = world.match_entity().unwrap();
             world.entity_mut(entity).remove::<ModeState<SyncAll>>();
-            lacks(
-                MatchEntity::NAME,
-                ModeState::<SyncAll>::NAME,
-                StableId::MATCH,
-            )
+            invalid(ModeState::<SyncAll>::NAME, Some(StableId::MATCH))
         },
         // A seat the session has with no player's entity is a breach of the whole match.
         |world| {
@@ -210,21 +206,21 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerResources>();
             let id = StableId::of_player(PlayerSlot::new(0));
-            lacks(Player::NAME, PlayerResources::NAME, id)
+            invalid(PlayerResources::NAME, Some(id))
         },
         |world| {
             let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerModifiers>();
             let id = StableId::of_player(PlayerSlot::new(0));
-            lacks(Player::NAME, PlayerModifiers::NAME, id)
+            invalid(PlayerModifiers::NAME, Some(id))
         },
-        // A unit: one of a kind its kit gives a level loses it, a unit loses a class of the
-        // state its type declares, or its team; a living unit holds a respawn; a unit's life sits
-        // on the match's entity; slots come without their times.
+        // A unit: one the mode spawned loses its level, which stats declares for it, a unit
+        // loses a class of the state its type declares, or its team; a living unit holds a
+        // respawn; a unit's life sits on the match's entity; slots come without their times.
         |world| {
             let unit = first::<Level>(world);
             world.entity_mut(unit).remove::<Level>();
-            invalid(UnitType::NAME, Some(id_of(world, unit)))
+            invalid(Level::NAME, Some(id_of(world, unit)))
         },
         |world| {
             let unit = first::<UnitState<SyncOwner>>(world);

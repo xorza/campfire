@@ -1,9 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{Capability, SimComponent};
 use serde::{Deserialize, Serialize};
 
+use crate::declare::per_type::PerType;
 use crate::production::build_target::BuildTarget;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -48,4 +49,9 @@ impl SimComponent for Builder {
 impl Replication for Builder {
     const KIND: DataKind = DataKind::Prediction;
     type Sending = SentPredicted;
+}
+
+impl PerType for Builder {
+    const OWNER: Option<Capability> = Some(Capability::Production);
+    const SCRIPTS_ONLY: bool = false;
 }

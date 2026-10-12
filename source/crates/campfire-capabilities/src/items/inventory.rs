@@ -3,12 +3,13 @@ use std::num::{NonZeroU8, NonZeroU32};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{Capability, SimComponent};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
+use crate::declare::per_type::PerType;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
@@ -42,6 +43,13 @@ impl Inventory {
             kind,
             slots: vec![None; usize::from(slots.get())],
         }
+    }
+
+    /// `slots` with an empty slot of the inventory's kind for each of its slots, after the slots
+    /// of that kind, as a carrier's are as it spawns.
+    pub(crate) fn extend_slots(&self, slots: ActionSlots) -> ActionSlots {
+        let count = u8::try_from(self.slots.len()).expect("an inventory's slots fit u8");
+        slots.with_empty(self.kind, count)
     }
 
     /// The group a tag blocks of the action in a slot of `kind`, of a unit that carries
@@ -272,4 +280,9 @@ impl SimComponent for Inventory {
 impl Replication for Inventory {
     const KIND: DataKind = DataKind::Inventory;
     type Sending = SentOnChange;
+}
+
+impl PerType for Inventory {
+    const OWNER: Option<Capability> = Some(Capability::Items);
+    const SCRIPTS_ONLY: bool = false;
 }

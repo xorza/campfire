@@ -233,9 +233,10 @@ impl Trains {
                     unit_type,
                     team,
                     pos,
+                    owner,
                     angle: Num::ZERO,
                 };
-                let trained = spawner.spawn(world, at, owner);
+                let trained = spawner.spawn(world, at, ());
                 let gathers = Self::gather_at_rally(world, entity, trained);
                 if gathers.is_none()
                     && let Some(to) = rally

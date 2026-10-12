@@ -1,41 +1,22 @@
-use std::ops::Range;
 use std::rc::Rc;
-
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{EntityRef, World};
-use campfire_common::PlayerSlot;
-use campfire_math::Num;
-use campfire_sim::Position;
 
 use crate::actions::action_slots::ActionSlots;
 use crate::mode::choice_specs::ChoiceSpecs;
 use crate::mode::game_map::GameMap;
-use crate::mode::group_unit::GroupUnit;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::placed_unit::PlacedUnit;
 use crate::mode::roster::Roster;
-use crate::mode::slot_action::SlotAction;
-use crate::mode::unit_kit::UnitKit;
-use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
-use crate::navigation::navigation_book::NavigationBook;
-use crate::navigation::on_path::OnPath;
-use crate::navigation::path_walker::{PathEnd, PathWalker};
+use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
+use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
-use crate::units::facing::Facing;
-use crate::units::modifier_id::ModifierId;
-use crate::units::owner::Owner;
-use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
-use crate::units::spawn_at::SpawnAt;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
-use crate::units::track_id::TrackId;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_type::UnitType;
 use crate::values::names::Names;
@@ -50,10 +31,8 @@ pub(crate) struct ModeSpec {
     pub(crate) choices: ChoiceSpecs,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
-    /// What each of the mode's unit types spawns with.
+    /// What the mode keeps of each of its unit types.
     types: ByType<ModeType>,
-    /// The unit types' actions, a run of each, kind after kind.
-    actions: Vec<SlotAction>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
     /// How the teams regard each other as the match starts, and the mode's state, each class.
@@ -62,17 +41,14 @@ pub(crate) struct ModeSpec {
     pub(crate) state_all: ModeState<SyncAll>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
-    /// The parts a unit's kit may give it that the match's state holds.
-    kit_parts: Vec<KitPart>,
 }
 
-/// What a unit type of the mode spawns with: its kit, its passive, if it holds one, and its run of
-/// the book's actions.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// What the mode keeps of a unit type it spawns for a script's spawn, which checks them before
+/// the unit is: its body and how many slots it spawns with. The books hold its parts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct ModeType {
-    kit: UnitKit,
-    passive: Option<ModifierId>,
-    actions: Range<usize>,
+    body: Option<BodyForm>,
+    slots: usize,
 }
 
 /// What the mode's map gives its book: the teams' names, the units it places, how the teams
@@ -104,13 +80,14 @@ impl ModeSpec {
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
     /// seat, with what its map gives, `start`, `loadout_ranks`, the ranks of every loadout entry,
-    /// and `kit_parts`, the parts a kit may give that the match's state holds.
+    /// and the `bodies` and the `spawn_slots` of its types.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
         start: MapStart,
         loadout_ranks: u8,
-        kit_parts: impl IntoIterator<Item = KitPart>,
+        bodies: &ByType<BodyForm>,
+        spawn_slots: &ByType<ActionSlots>,
     ) -> ModeSpec {
         let MapStart {
             teams,
@@ -122,16 +99,12 @@ impl ModeSpec {
         let teams = Teams::new(teams, slots, setup.players)
             .expect("the session checked its players against the teams' slots");
         let mut types = ByType::default();
-        let mut actions = Vec::new();
-        for unit_type in &setup.units.unit_types {
-            let start = actions.len();
-            actions.extend_from_slice(&unit_type.actions);
+        for &UnitTypeSetup { unit_type, .. } in &setup.units.unit_types {
             let held = ModeType {
-                kit: unit_type.kit,
-                passive: unit_type.passive,
-                actions: start..actions.len(),
+                body: bodies.get(unit_type).copied(),
+                slots: spawn_slots.get(unit_type).map_or(0, ActionSlots::len),
             };
-            types.set(unit_type.unit_type, held);
+            types.set(unit_type, held);
         }
         ModeSpec {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
@@ -140,125 +113,31 @@ impl ModeSpec {
             choices: ChoiceSpecs::new(&setup.data.choices),
             loadout_ranks,
             types,
-            actions,
             placed,
             relations,
             state_none: ModeState::initial(setup.data),
             state_all: ModeState::initial(setup.data),
             map,
-            kit_parts: kit_parts.into_iter().collect(),
         }
     }
 
-    /// The actions of `unit_type`, kind after kind.
-    pub(crate) fn actions(&self, unit_type: UnitType) -> &[SlotAction] {
-        self.types
-            .get(unit_type)
-            .map_or(&[], |held| &self.actions[held.actions.clone()])
+    /// How many slots a unit of `unit_type` spawns with.
+    pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> usize {
+        self.types.get(unit_type).map_or(0, |held| held.slots)
     }
 
-    /// The slots a unit of `unit_type` spawns with: its actions, each at the first rank of its
-    /// kind, then an empty slot of its inventory's kind for each inventory slot; none for a type
-    /// with neither.
-    pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> Option<ActionSlots> {
-        self.kit(unit_type)?.slots(self.actions(unit_type))
+    /// The body of a unit of `unit_type`, when the mode spawns the type and it has one.
+    pub(crate) fn body(&self, unit_type: UnitType) -> Option<BodyForm> {
+        self.types.get(unit_type)?.body
     }
 
-    pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
-        self.types.get(unit_type).map(|held| held.kit)
-    }
-
-    /// Whether a unit of `unit_type` spawns with slots: actions, or an inventory.
-    fn has_slots(&self, unit_type: UnitType) -> bool {
-        self.kit(unit_type)
-            .is_some_and(|kit| kit.has_slots(self.actions(unit_type)))
-    }
-
-    /// Whether `unit` holds every part a unit of its type spawns with, of a match whose `level`
-    /// track is `level_track`: its slots when its type gives any, and each part of `kit_parts`
-    /// its kit gives.
-    pub(crate) fn holds_kit(&self, unit: EntityRef<'_>, level_track: Option<TrackId>) -> bool {
-        let Some((&unit_type, kit)) = unit
-            .get::<UnitType>()
-            .and_then(|unit_type| Some((unit_type, self.kit(*unit_type)?)))
-        else {
-            return false;
-        };
-        let Some(&pos) = unit.get::<Position>() else {
-            return false;
-        };
-        let at = KitSpawn {
-            kit: &kit,
-            level_track,
-            pos,
-            angle: unit
-                .get::<Facing>()
-                .map_or(Num::ZERO, |facing| facing.degrees()),
-        };
-        let slots = !self.has_slots(unit_type) || unit.contains::<ActionSlots>();
-        slots && self.kit_parts.iter().all(|part| part.held_by(unit, &at))
+    /// Whether the mode spawns units of `unit_type`: a projectile or an area type it does not, as
+    /// only actions deliver its units.
+    pub(crate) fn spawns(&self, unit_type: UnitType) -> bool {
+        self.types.get(unit_type).is_some()
     }
 
     pub(crate) fn map(&self) -> GameMap {
         self.map.clone()
-    }
-
-    /// Spawns `at` as `spawn` does, owned by `owner` when it names a player.
-    pub(crate) fn spawn_owned(
-        &self,
-        world: &mut World,
-        at: SpawnAt,
-        owner: Option<PlayerSlot>,
-    ) -> Entity {
-        self.spawn(world, at, owner.map(Owner::new), ())
-    }
-
-    /// Spawns `at` with its type's kit, actions and passive, as `UnitKit::spawn` does, and
-    /// `parts`.
-    pub(crate) fn spawn(
-        &self,
-        world: &mut World,
-        at: SpawnAt,
-        owner: Option<Owner>,
-        parts: impl Bundle,
-    ) -> Entity {
-        let held = self
-            .types
-            .get(at.unit_type)
-            .expect("a unit type of the mode has a kit");
-        let actions = &self.actions[held.actions.clone()];
-        held.kit
-            .spawn(world, at, owner, actions, held.passive, parts)
-    }
-
-    /// Spawns `units` of `team`, each a unit type with the id a call took for it, in order at the
-    /// end `from` of `path`, walking it from there as one spawn group.
-    pub(crate) fn spawn_group(
-        &self,
-        world: &mut World,
-        team: Team,
-        path: PathId,
-        from: PathEnd,
-        units: &[GroupUnit],
-    ) {
-        let Some(first) = units.first() else {
-            return;
-        };
-        let pos = world
-            .resource::<NavigationBook>()
-            .paths
-            .waypoint(path, 0, from)
-            .expect("a path has a waypoint");
-        for &GroupUnit { unit_type, id } in units {
-            let walker = (OnPath::new(path), PathWalker::start(from, first.id));
-            let at = SpawnAt {
-                id,
-                unit_type,
-                team,
-                pos,
-                angle: Num::ZERO,
-            };
-            self.spawn(world, at, None, walker);
-        }
     }
 }

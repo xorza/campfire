@@ -9,10 +9,11 @@ use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::entity_parts::EntityParts;
+use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::players::entity_parts::EntityParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
@@ -101,9 +102,6 @@ impl KindVisitor for Installer<'_> {
     fn kind<K: EntityKind>(&mut self) {
         let id = self.world.register_component::<K>();
         self.world.get_resource_or_init::<EntityKinds>().add(id);
-        if K::DECLARED_PARTS {
-            self.world.init_resource::<EntityParts<K>>();
-        }
     }
 }
 
@@ -165,20 +163,14 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, start: fn(&World) -> C) {
-        const {
-            assert!(
-                K::DECLARED_PARTS,
-                "a kind whose entities spawn with declared parts"
-            );
-        }
+    fn part<H: HostRule + SimComponent, C: SimComponent>(
+        &mut self,
+        start: fn(&KindSpawn<'_, H>) -> Option<C>,
+    ) {
         self.world
-            .resource_mut::<EntityParts<K>>()
-            .add(move |entity| {
-                let part = start(entity.world());
-                entity.insert(part);
-            });
-        self.registry.require::<K, C>();
+            .get_resource_or_init::<EntityParts<H>>()
+            .add(start);
+        self.registry.add_check::<C>(EntityParts::<H>::check::<C>);
     }
 
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}

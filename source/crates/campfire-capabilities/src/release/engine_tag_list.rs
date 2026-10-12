@@ -8,6 +8,7 @@ use crate::declare::book::Book;
 use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
+use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
@@ -78,7 +79,11 @@ impl Declarations for EngineTagList {
 
     fn call_part<P: CallPart + Default>(&mut self) {}
 
-    fn part<K: EntityKind + SimComponent, C: SimComponent>(&mut self, _: fn(&World) -> C) {}
+    fn part<H: HostRule + SimComponent, C: SimComponent>(
+        &mut self,
+        _: fn(&KindSpawn<'_, H>) -> Option<C>,
+    ) {
+    }
 
     fn engine_tags(&mut self, tags: &'static [EngineTag]) {
         self.0.extend_from_slice(tags);

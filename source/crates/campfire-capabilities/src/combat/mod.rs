@@ -28,6 +28,8 @@ use crate::declare::module::Module;
 use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::life::Life;
+use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::spawn_point::SpawnPoint;
 
@@ -113,6 +115,14 @@ impl Module for Combat {
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
+        d.book::<ByType<Life>>();
+        d.book::<ByType<OnDeath>>();
+        d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
+        d.part::<BodyUnit, OnDeath>(|at| at.of_type::<OnDeath>().copied());
+        // A unit that can die keeps who struck it, for its death's assisters.
+        d.part::<BodyUnit, RecentAttackers>(|at| {
+            at.of_type::<OnDeath>().map(|_| RecentAttackers::default())
+        });
     }
 
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
@@ -394,8 +404,8 @@ pub(crate) mod test_world {
         }
 
         /// The components of a new unit of this type in `world`, whose book takes its weapon: its
-        /// life pool, which its kit gives; its death and its attackers, which its `combat` gives;
-        /// and its weapon's parts.
+        /// life pool, its death and its attackers, which combat declares for a unit, and its
+        /// weapon's parts.
         pub(crate) fn bundle(self, world: &mut World) -> impl Bundle + use<> {
             let parts = self
                 .arms

@@ -14,8 +14,10 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, and its script state; its type gives it its tags. Each spawn path spawns the unit with its own
-/// parts, then puts the core on: a mode's unit its kit after, a delivery its spec before.
+/// owner, and its script state; its type gives it its tags. Each spawn path spawns the unit with
+/// its own parts, puts the core on, then the parts the modules declare for its kind, made from its
+/// type's books: the mode's spawner and the delivery spawn do, and a test spawn gives no declared
+/// part.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitCore {
     pub(crate) id: StableId,

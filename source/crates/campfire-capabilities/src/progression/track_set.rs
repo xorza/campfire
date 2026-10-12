@@ -1,4 +1,6 @@
+use crate::declare::per_type::PerType;
 use crate::units::track_id::TrackId;
+use campfire_sim::Capability;
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -36,6 +38,11 @@ impl TrackSet {
             .map(TrackId::new)
             .filter(move |&track| self.contains(track))
     }
+}
+
+impl PerType for TrackSet {
+    const OWNER: Option<Capability> = Some(Capability::Progression);
+    const SCRIPTS_ONLY: bool = false;
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use campfire_capabilities::{
     ActionDataField, ActionField, ActionKind, AiError, ApiVersion, DeclaredName, EngineTag, Hook,
     MapProblem, ModeError, ModifierProblem, NameKind, PackagePath, ParamProblem, Stat,
-    TimeTooLarge, UnitKitError,
+    TimeTooLarge, UnitStartError,
 };
 use campfire_common::MapName;
 use campfire_sim::Capability;
@@ -216,10 +216,10 @@ pub enum LoadProblem {
     /// A unit type at `at` makes no unit: its stats, pools and combat do not hold together at
     /// level 1.
     #[error("{at}")]
-    UnitKit {
+    UnitStart {
         at: Place,
         #[source]
-        error: UnitKitError,
+        error: UnitStartError,
     },
     /// A unit type's AI at `at` does not load.
     #[error("{at}")]

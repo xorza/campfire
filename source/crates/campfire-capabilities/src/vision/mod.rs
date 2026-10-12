@@ -5,6 +5,7 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::units::by_type::ByType;
+use crate::units::unit_entity::UnitEntity;
 use crate::vision::reveals::Reveals;
 use crate::vision::seeing::Seeing;
 use crate::vision::seen_by::SeenBy;
@@ -50,13 +51,13 @@ impl Module for Vision {
         d.book::<VisionBook>();
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
+        d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
     }
 
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
-    /// the grid. The sights of the delivery types, which no kit holds, are a book of their own.
-    /// What a team sees is the server's: a predicting client holds the units its team sees, as
+    /// the grid. What a team sees is the server's: a predicting client holds the units its team sees, as
     /// the server sends them, and reveals nothing.
     fn install(cx: &mut InstallCx<'_>) {
         if !cx.predicting() {

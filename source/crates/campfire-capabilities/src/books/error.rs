@@ -2,12 +2,13 @@ use thiserror::Error;
 
 use crate::books::book_place::BookPlace;
 use crate::books::type_place::TypePlace;
-use crate::mode::error::{ModeError, UnitKitError};
+use crate::mode::error::ModeError;
 use crate::orders::error::AiError;
 use crate::scripts::error::UnknownName;
 use crate::stats::error::ModifierProblem;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::TimeTooLarge;
+use crate::values::stat::Stat;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
@@ -15,11 +16,11 @@ use crate::values::error::TimeTooLarge;
 pub enum BookError {
     /// The unit type makes no unit.
     #[error("{unit_type}")]
-    Kit {
+    Start {
         package: u16,
         unit_type: TypePlace,
         #[source]
-        error: UnitKitError,
+        error: UnitStartError,
     },
     /// The unit type's AI does not load.
     #[error("{unit_type}")]
@@ -69,4 +70,22 @@ impl BookError {
     pub(crate) const fn unknown(package: u16, at: BookPlace, name: UnknownName) -> BookError {
         BookError::Unknown { package, at, name }
     }
+}
+
+/// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum UnitStartError {
+    /// A stat its pools need is not one it gives a value.
+    #[error("stat {0} is not declared")]
+    MissingStat(Stat),
+    /// A pool's maximum is not positive at level 1.
+    #[error("stat {0} is not positive")]
+    NotPositive(Stat),
+    /// It has a `combat` section but not the life pool.
+    #[error("a unit type with combat lacks the life pool")]
+    NoLifePool,
+    /// It has the life pool but no `combat` section.
+    #[error("a unit type with the life pool lacks combat")]
+    NoCombat,
 }

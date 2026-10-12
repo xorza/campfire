@@ -1,8 +1,8 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionId, Actions, DeclaredName, Match, ModeUnits, ModifierId, Names, Order, PoolId,
-    ScriptFailure, ScriptFailures, Stats, Team, Units, Vision,
+    ActionId, Actions, DeclaredName, Match, Mode, ModifierId, Names, Order, PoolId, ScriptFailure,
+    ScriptFailures, Stats, Team, Vision,
 };
 use campfire_common::PlayerSlot;
 use campfire_package::ModePackages;
@@ -40,7 +40,7 @@ impl Arena {
     }
 
     /// A unit of the mode's type `unit_type` and `team` at `pos`, with `parts`, spawned as the
-    /// mode spawns one: with its type's kit, stats, slots and passive.
+    /// mode spawns one: with the parts its type's books give and its passive.
     pub fn spawn(
         &self,
         game: &mut World,
@@ -49,14 +49,7 @@ impl Arena {
         team: Team,
         parts: impl Bundle,
     ) -> StableId {
-        let unit_type = Units::type_named(game, unit_type)
-            .unwrap_or_else(|| panic!("no unit type {unit_type}"));
-        let units = game
-            .remove_non_send::<ArenaUnits>()
-            .expect("an arena holds its mode's unit types");
-        let id = units.0.spawn(game, unit_type, pos, team, parts);
-        game.insert_non_send(units);
-        id
+        Mode::spawn_typed(game, unit_type, pos, team, parts)
     }
 
     /// The action `name` of the arena's package `package`.
@@ -123,10 +116,6 @@ impl Arena {
         u16::try_from(at).unwrap()
     }
 }
-
-/// The unit types of an arena's mode, which its tests spawn.
-#[derive(Debug)]
-pub(crate) struct ArenaUnits(pub(crate) ModeUnits);
 
 /// Every script failure since an arena's match began; `ScriptFailures` keeps only the last tick's.
 #[derive(Debug, Default)]

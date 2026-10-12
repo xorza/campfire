@@ -20,7 +20,6 @@ use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
-use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation_set::RelationSet;
 
@@ -453,17 +452,9 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let node = mine.mineral(&mut game, halves(0, 12), 100);
     let gather = mine.gather;
     let worker_type = shop.grunt;
-    game.insert_non_send(Spawner::new(move |world, at, owner| {
-        let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]).timed();
-        let parts = (
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            slots,
-            Gatherer::default(),
-        );
-        assert_eq!(at.unit_type, worker_type);
-        at.core(owner.map(Owner::new)).spawn(world, parts).id()
-    }));
+    let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]);
+    Shop::give(&mut game, worker_type, slots);
+    Shop::give(&mut game, worker_type, Gatherer::default());
     let train = Actions::add_train(&mut game, worker_type, Ticks::ZERO, None);
     let barracks = Production::allocate_id(&mut game);
     let player = Some(PlayerSlot::new(0));

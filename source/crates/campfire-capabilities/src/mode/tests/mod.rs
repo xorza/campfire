@@ -39,6 +39,7 @@ use crate::combat::respawn::Respawn;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
+use crate::items::inventory::Inventory;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::error::ModeError;
 use crate::mode::loadout_setup::LoadoutSetup;
@@ -51,15 +52,12 @@ use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_map::ResolvedMap;
 use crate::mode::mode_names::ModeNames;
-use crate::mode::mode_units::ModeUnits;
 use crate::mode::mode_world::ModeWorld;
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
-use crate::mode::slot_action::SlotAction;
 use crate::mode::team_manifest::TeamManifest;
-use crate::mode::unit_kit::{InventorySpec, UnitKit};
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::navigation::mode_navigation_data::ModeNavigationData;
@@ -107,7 +105,6 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
-use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::facing::Facing;
@@ -346,21 +343,69 @@ fn grunt_data() -> UnitTypeCore {
     }
 }
 
-/// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
-fn grunt() -> UnitKit {
-    UnitKit {
-        life: Some(Life::full(Num::int(10))),
-        pools: None,
-        on_death: Some(OnDeath::Stay),
-        step: Some(MoveStep::new(Num::ONE).unwrap()),
-        sight: None,
-        body: None,
-        tracks: TrackSet::default(),
-        queue: None,
-        builds: false,
-        node: None,
-        gathers: false,
-        inventory: None,
+/// A unit type of the test mode, as its books give it: 10 health, combat that keeps it when it
+/// dies, its step, its body, its tracks, its slots, of its actions and its inventory, and its
+/// passive.
+#[derive(Debug, Clone)]
+struct TestType {
+    unit_type: UnitType,
+    step: Option<MoveStep>,
+    body: Option<BodyForm>,
+    tracks: TrackSet,
+    actions: Vec<(ActionId, SlotKind, Option<Rank>)>,
+    inventory: Option<Inventory>,
+    passive: Option<ModifierId>,
+}
+
+impl TestType {
+    /// A grunt of `unit_type`: a step of 1 m, no body, track, slot or passive.
+    fn grunt(unit_type: UnitType) -> TestType {
+        TestType {
+            unit_type,
+            step: Some(MoveStep::new(Num::ONE).unwrap()),
+            body: None,
+            tracks: TrackSet::default(),
+            actions: Vec::new(),
+            inventory: None,
+            passive: None,
+        }
+    }
+
+    /// Its slots: its actions, then its inventory's; none with neither.
+    fn slots(&self) -> Option<ActionSlots> {
+        if self.actions.is_empty() && self.inventory.is_none() {
+            return None;
+        }
+        let slots = ActionSlots::new(self.actions.iter().copied());
+        Some(match &self.inventory {
+            Some(inventory) => inventory.extend_slots(slots),
+            None => slots,
+        })
+    }
+
+    /// Loads the parts of `types` into `game`, each book as the install loads it.
+    fn load(game: &mut Match, types: &[TestType]) {
+        let mut lives = ByType::default();
+        let mut deaths = ByType::default();
+        let mut steps = ByType::default();
+        let mut bodies = ByType::default();
+        let mut tracks = ByType::default();
+        let mut slots = ByType::default();
+        for unit in types {
+            let unit_type = unit.unit_type;
+            lives.set(unit_type, Life::full(Num::int(10)));
+            deaths.set(unit_type, OnDeath::Stay);
+            steps.set_some(unit_type, unit.step);
+            bodies.set_some(unit_type, unit.body);
+            tracks.set_some(unit_type, (!unit.tracks.is_empty()).then_some(unit.tracks));
+            slots.set_some(unit_type, unit.slots());
+        }
+        Books::load(game, lives);
+        Books::load(game, deaths);
+        Books::load(game, steps);
+        Books::load(game, bodies);
+        Books::load(game, tracks);
+        Books::load(game, slots);
     }
 }
 
@@ -642,65 +687,56 @@ fn mode_files() -> ModeFiles {
     }
 }
 
-/// The test mode's setup from `files`, of `script`: its grunt, tower, two heroes' and crate's unit
-/// types, the heroes on both tracks, the crate a box of 2 by 2 m, its one spell, and hero X's one
-/// ability, `strike`.
-fn setup(
-    files: &ModeFiles,
-    script: ScriptId,
-    types: [UnitType; 5],
-    spell: LoadoutSetup,
-    strike: ActionId,
-    blessing: ModifierId,
-) -> ModeSetup<'_> {
-    let [grunt_type, tower_type, x, y, crate_type] = types;
-    let hero = UnitKit {
+/// The test mode's unit types: its grunt, tower, two heroes' and crate's, the heroes on both
+/// tracks, hero X with one ability, `strike`, and hero Y with the passive `blessing`, the tower a
+/// circle of 1 m on the second layer and the crate a box of 2 by 2 m, neither of which walks.
+fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> Vec<TestType> {
+    let [grunt, tower, x, y, crate_type] = types.map(TestType::grunt);
+    let hero = |grunt: TestType| TestType {
         tracks: TrackSet::from([0, 1].map(TrackId::new)),
-        ..grunt()
+        ..grunt
     };
-    let unit = |unit_type, kit| UnitTypeSetup {
-        unit_type,
-        kit,
-        actions: Vec::new(),
-        passive: None,
-    };
+    vec![
+        grunt,
+        TestType {
+            actions: vec![(strike, SlotKind::new(0), None)],
+            ..hero(x)
+        },
+        TestType {
+            passive: Some(blessing),
+            ..hero(y)
+        },
+        TestType {
+            step: None,
+            body: BodyForm::circle(Num::int(1)).map(|form| form.on(Layer::new(1))),
+            ..tower
+        },
+        TestType {
+            step: None,
+            body: BodyForm::box_sized([Num::int(2), Num::int(2)]),
+            ..crate_type
+        },
+    ]
+}
+
+/// The test mode's setup from `files`, of `script`, of the unit `types`, with its one spell.
+fn setup<'a>(
+    files: &'a ModeFiles,
+    script: ScriptId,
+    types: &[TestType],
+    spell: LoadoutSetup,
+) -> ModeSetup<'a> {
+    let unit_types = types.iter().map(|unit| UnitTypeSetup {
+        unit_type: unit.unit_type,
+        passive: unit.passive,
+    });
     ModeSetup {
         script,
         data: &files.data,
         teams: &files.teams,
         players: 3,
         units: ModeUnits {
-            unit_types: vec![
-                unit(grunt_type, grunt()),
-                UnitTypeSetup {
-                    actions: vec![SlotAction {
-                        kind: SlotKind::new(0),
-                        action: strike,
-                        rank: None,
-                    }],
-                    ..unit(x, hero)
-                },
-                UnitTypeSetup {
-                    passive: Some(blessing),
-                    ..unit(y, hero)
-                },
-                unit(
-                    tower_type,
-                    UnitKit {
-                        step: None,
-                        body: BodyForm::circle(Num::int(1)).map(|form| form.on(Layer::new(1))),
-                        ..grunt()
-                    },
-                ),
-                unit(
-                    crate_type,
-                    UnitKit {
-                        step: None,
-                        body: BodyForm::box_sized([Num::int(2), Num::int(2)]),
-                        ..grunt()
-                    },
-                ),
-            ],
+            unit_types: unit_types.collect(),
             avatars: Names::from(["hero-x", "hero-y"]),
             loadout: spell,
         },
@@ -722,14 +758,14 @@ fn start_match(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<M
     start_match_setup(script, limits, files, |_| {})
 }
 
-/// Loads the books of the mode of `files` and `setup` into `game`, each as the install loads it,
-/// and gives back what `Mode::load` takes beside them.
-fn load_mode_books(game: &mut Match, files: &ModeFiles, setup: &ModeSetup<'_>) -> ModeLoad {
+/// Loads the books of the mode of `files` and its unit `types` into `game`, each as the install
+/// loads it, and gives back what `Mode::load` takes beside them.
+fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> ModeLoad {
     // The grunt and both heroes walk with the grunt's body: one kind.
     let mut walkers = ByType::default();
-    for setup in &setup.units.unit_types {
-        if setup.kit.step.is_some() {
-            walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
+    for unit in types {
+        if unit.step.is_some() {
+            walkers.set(unit.unit_type, Walker::of_form(unit.body).unwrap());
         }
     }
     // The mode's books, each loaded as the install loads it.
@@ -752,17 +788,15 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, setup: &ModeSetup<'_>) -
     let bindings = CombatBindings::new(&data.combat, stat).unwrap();
     let tags = {
         let view = game.non_send::<View>();
-        let mut types = view.types_mut();
-        let bodies = setup.units.unit_types.iter();
-        types.tag_layers(
-            &mode_names.layers,
-            bodies.map(|setup| (setup.unit_type, setup.kit.body)),
-        );
-        types.tag_book(&data.tags)
+        let mut unit_types = view.types_mut();
+        let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
+        unit_types.tag_layers(&mode_names.layers, bodies);
+        unit_types.tag_book(&data.tags)
     };
     Books::load(game, stats);
     Books::load(game, pools);
     Books::load(game, tags);
+    TestType::load(game, types);
     Books::load(game, SlotKindBook(data.slots.clone()));
     let assist_window = data.combat.assist_window_ms.map(|ms| RATE.window(ms));
     Books::load(
@@ -787,7 +821,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, setup: &ModeSetup<'_>) -
     let mut kinds: Vec<Walker> = walkers.values().copied().collect();
     kinds.sort_unstable();
     kinds.dedup();
-    assert_eq!(kinds, [Walker::of_form(grunt().body).unwrap()]);
+    assert_eq!(kinds, [Walker::of_form(None).unwrap()]);
     ModeLoad {
         map,
         walkers: kinds,
@@ -800,7 +834,7 @@ fn start_match_setup(
     script: &str,
     limits: ScriptLimits,
     files: ModeFiles,
-    adjust: impl FnOnce(&mut ModeSetup<'_>),
+    adjust: impl FnOnce(&mut [TestType]),
 ) -> Result<Match, CallError> {
     let scripts = ScriptBudgets::new(limits, 3);
     let declared = [
@@ -830,7 +864,7 @@ fn start_match_setup(
     let tower_type = load("tower", "tower");
     let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
     let crate_type = load("crate", "crate");
-    // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
+    // A type the mode does not spawn, as a projectile's is: the view knows it, a spawn does
     // not.
     load("bolt", "projectile");
     // The stats first, as a match's books know them before any action or modifier; the mode's
@@ -853,9 +887,10 @@ fn start_match_setup(
     }
     let script = Units::compile_hooked(&mut game, &format!("{script}{PICK}")).unwrap();
     let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
-    let mut setup = setup(&files, script, types, spell, strike, blessing);
-    adjust(&mut setup);
-    let load = load_mode_books(&mut game, &files, &setup);
+    let mut types = test_types(types, strike, blessing);
+    adjust(&mut types);
+    let setup = setup(&files, script, &types, spell);
+    let load = load_mode_books(&mut game, &files, &types);
     Release::install_mode(&mut game, setup, load);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);

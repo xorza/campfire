@@ -11,6 +11,9 @@ use crate::progression::progression_api::ProgressionApi;
 use crate::progression::progression_column::{ProgressionColumn, RowReads};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
+use crate::progression::track_set::TrackSet;
+use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;
@@ -38,6 +41,26 @@ impl Module for Progression {
         d.book::<TrackBook>();
         d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
+        d.book::<ByType<TrackSet>>();
+        d.part::<BodyUnit, Experience>(|at| {
+            let tracks = *at.of_type::<TrackSet>()?;
+            (!tracks.is_empty()).then(|| {
+                Experience::new(
+                    tracks,
+                    at.world()
+                        .get_resource::<TrackBook>()
+                        .and_then(TrackBook::level_track),
+                )
+            })
+        });
+        d.part::<BodyUnit, Points>(|at| {
+            Points::at_spawn(
+                *at.of_type::<TrackSet>()?,
+                at.world()
+                    .get_resource::<TrackBook>()
+                    .and_then(TrackBook::level_track),
+            )
+        });
     }
 
     /// Progression runs no system of its own: its effects queue through its callback.

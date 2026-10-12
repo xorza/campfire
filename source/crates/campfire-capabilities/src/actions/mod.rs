@@ -15,6 +15,8 @@ use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::stats::StatsSet;
 use crate::stats::param_book::ParamBook;
+use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 
 pub(crate) mod action;
 pub(crate) mod action_book;
@@ -106,6 +108,9 @@ impl Module for Actions {
         d.calls::<EffectQueues>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
+        d.book::<ByType<ActionSlots>>();
+        d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
+        d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
     }
 
     /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match

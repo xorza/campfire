@@ -1,3 +1,4 @@
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
@@ -5,7 +6,7 @@ use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{Capability, SimComponent};
 use serde::{Deserialize, Serialize};
 
 /// What becomes of a unit when it dies, as its unit type says: in data, `stay` or `despawn`.
@@ -33,4 +34,9 @@ impl SimComponent for OnDeath {
 impl Replication for OnDeath {
     const KIND: DataKind = DataKind::Prediction;
     type Sending = SentOnce;
+}
+
+impl PerType for OnDeath {
+    const OWNER: Option<Capability> = Some(Capability::Combat);
+    const SCRIPTS_ONLY: bool = false;
 }

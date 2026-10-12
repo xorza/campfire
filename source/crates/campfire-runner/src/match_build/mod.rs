@@ -61,13 +61,12 @@ pub(crate) mod bench;
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_capabilities::internals::Players;
-    use campfire_capabilities::{Match, MatchSpec, ModeInputs, Vision};
+    use campfire_capabilities::{Match, MatchSpec, Mode, ModeInputs, Vision};
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
     use campfire_package::ModePackages;
     use campfire_sim::TickRate;
 
-    use crate::harness::arena::ArenaUnits;
     use crate::match_build::MatchBuild;
 
     /// The seed of a match whose randomness no test reads.
@@ -76,8 +75,8 @@ pub(crate) mod internals {
     impl MatchBuild {
         /// The match of `packages` at `rate`, for `players` players, with every book in place but
         /// the map's vision grid, and no mode installed, as an arena holds it; it starts
-        /// with the match's entity alone, holds the mode's unit types for a test to spawn, and
-        /// fails its test on any warning it logs.
+        /// with the match's entity alone, spawns the mode's unit types as the mode does for a
+        /// test to spawn, and fails its test on any warning it logs.
         pub(crate) fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
             let spec = MatchBuild::spec(packages, ZERO_SEED, rate, players);
@@ -85,7 +84,7 @@ pub(crate) mod internals {
             let ModeInputs { units, .. } = MatchBuild::books(packages, &mut game);
             Vision::clear_grid(&mut game);
             Players::start_without_mode(&mut game, [], 0);
-            game.insert_non_send(ArenaUnits(units));
+            Mode::load_units(&mut game, &units);
             game
         }
 

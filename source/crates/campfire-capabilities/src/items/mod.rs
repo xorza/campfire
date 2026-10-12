@@ -16,6 +16,8 @@ use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
 use crate::items::items_api::ItemsApi;
 use crate::items::shop_book::ShopBook;
+use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 
 pub(crate) mod inventory;
 pub(crate) mod inventory_data;
@@ -50,6 +52,8 @@ impl Module for Items {
         d.book::<ItemBook>();
         d.book::<ShopBook>();
         d.api(ItemsApi::register);
+        d.book::<ByType<Inventory>>();
+        d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
     }
 
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the

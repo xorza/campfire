@@ -17,5 +17,4 @@ impl KindMarker for DeliveryEntity {}
 impl EntityKind for DeliveryEntity {
     const AUDIENCE: KindAudience = KindAudience::Seers;
     const OWNER_PREDICTS: bool = false;
-    const DECLARED_PARTS: bool = false;
 }

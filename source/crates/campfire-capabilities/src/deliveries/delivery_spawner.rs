@@ -2,17 +2,18 @@ use std::fmt;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
+use bevy_ecs::world::EntityWorldMut;
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 
-use crate::units::by_type::ByType;
+use crate::declare::entity_parts::EntityParts;
 use crate::units::entity_filters::UnitFilter;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::units::unit_core::UnitCore;
+use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
-use crate::vision::sight::Sight;
 
 /// Spawns the units that actions deliver, projectiles and areas, each for its source.
 #[derive(SystemParam)]
@@ -22,7 +23,6 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     index: Res<'w, EntityIndex>,
     states: Res<'w, UnitStateBook>,
     new_states: ResMut<'w, NewUnitStates>,
-    sights: Option<Res<'w, ByType<Sight>>>,
     sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), UnitFilter>,
 }
 
@@ -36,9 +36,8 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 impl DeliverySpawner<'_, '_> {
     /// Spawns a unit of `unit_type` at `pos` with what `make` gives for its stable id, `id`, which
     /// a script took for it, or else a new one, of `source`'s team and player, with its type's
-    /// tags, its sight if its type has one, and its script state at their defaults but what the
-    /// script wrote, and gives its id;
-    /// none, and no id taken, when `source` is gone.
+    /// tags, the parts the modules declare for every unit, and its script state at their defaults
+    /// but what the script wrote, and gives its id; none, and no id taken, when `source` is gone.
     pub(crate) fn spawn<B: Bundle>(
         &mut self,
         source: StableId,
@@ -62,9 +61,9 @@ impl DeliverySpawner<'_, '_> {
         let parts = core.made(&self.states, &mut self.new_states);
         let mut unit = self.commands.spawn(make(id));
         parts.insert_into(&mut unit);
-        if let Some(&sight) = self.sights.as_deref().and_then(|book| book.get(unit_type)) {
-            unit.insert(sight);
-        }
+        unit.queue(|mut unit: EntityWorldMut<'_>| {
+            EntityParts::<UnitEntity>::give(&mut unit);
+        });
         Some(id)
     }
 }

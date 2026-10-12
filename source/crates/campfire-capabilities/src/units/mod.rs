@@ -19,7 +19,9 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::avatar::Avatar;
 use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::engine_tag::EngineTag;
@@ -190,6 +192,14 @@ impl Module for Units {
         d.api(NewUnit::register);
         d.api(UnitsApi::register);
         d.api(View::register_queries);
+        d.book::<ByType<MoveStep>>();
+        d.book::<ByType<BodyForm>>();
+        // The spawner gives a unit the facing of its angle, which its body turns by; this part
+        // holds every unit to one.
+        d.part::<BodyUnit, Facing>(|at| Some(Facing::of(at.angle())));
+        d.part::<BodyUnit, SpawnPoint>(|at| at.pos().map(SpawnPoint::new));
+        d.part::<BodyUnit, Body>(|at| at.of_type::<BodyForm>().map(|form| form.at(at.angle())));
+        d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
     }
 
     /// Adds the core to a match. With scripts, in
@@ -393,18 +403,6 @@ pub(crate) mod test_world {
             Units::seal_types(world);
             core.spawn_as(world, kind, parts);
             id
-        }
-
-        /// The unit of `core`, with `parts`, spawned as a mode's unit and a delivery are; the first
-        /// spawn seals the match's unit types.
-        pub(crate) fn spawn_core(
-            world: &mut World,
-            core: UnitCore,
-            parts: impl Bundle,
-        ) -> StableId {
-            Units::seal_types(world);
-            core.spawn(world, parts);
-            core.id
         }
 
         /// The type of the units a test spawns with no type of its own: one of no tag, param or

@@ -7,7 +7,7 @@ use campfire_capabilities::{
     ActionDataField, ActionField, ActionKind, AiError, DeclaredName, DoesData, EffectData,
     EffectTo, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric, ModeError,
     ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Release, Scalar,
-    Status, SyncTo, TimeTooLarge, UnitKitError,
+    Status, SyncTo, TimeTooLarge, UnitStartError,
 };
 use campfire_codec::Toml;
 use campfire_common::MapName;
@@ -1689,9 +1689,9 @@ static FLAWS: [Flaw; 275] = [
         |problem| {
             matches!(
                 problem,
-                LoadProblem::UnitKit {
+                LoadProblem::UnitStart {
                     at: Place::Avatar(_),
-                    error: UnitKitError::NoLifePool
+                    error: UnitStartError::NoLifePool
                 }
             )
         },
@@ -1700,7 +1700,7 @@ static FLAWS: [Flaw; 275] = [
         UNITS,
         Edit::Replace("pools = [\"health\"]\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnitKit { at: Place::UnitType(name), error: UnitKitError::NoLifePool } if name == "melee_creep"),
+        |problem| matches!(problem, LoadProblem::UnitStart { at: Place::UnitType(name), error: UnitStartError::NoLifePool } if name == "melee_creep"),
     ),
     flaw(
         UNITS,
@@ -1753,7 +1753,7 @@ static FLAWS: [Flaw; 275] = [
         UNITS,
         Edit::Set("units.melee_creep.stats.health.base", "0"),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnitKit { at: Place::UnitType(name), error: UnitKitError::NotPositive(_) } if name == "melee_creep"),
+        |problem| matches!(problem, LoadProblem::UnitStart { at: Place::UnitType(name), error: UnitStartError::NotPositive(_) } if name == "melee_creep"),
     ),
     flaw(
         UNITS,

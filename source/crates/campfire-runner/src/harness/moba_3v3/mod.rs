@@ -328,7 +328,7 @@ impl Moba3v3 {
         for unit in 0..KernelScene::UNITS {
             let pos = Position::new(scene.point(Density::Crowded.span())).unwrap();
             let team = Team::new(u8::from(unit % 4 >= 2));
-            Mode::spawn_typed(world, CREEPS[unit % 2], team, pos);
+            Mode::spawn_typed(world, CREEPS[unit % 2], pos, team, ());
         }
     }
 

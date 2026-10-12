@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_sim::{Capability, Position, SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -19,6 +19,7 @@ use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_times::{SlotTimes, TimedSlots};
+use crate::declare::per_type::PerType;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
@@ -611,4 +612,9 @@ impl SimComponent for ActionSlots {
 impl Replication for ActionSlots {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentPredicted;
+}
+
+impl PerType for ActionSlots {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
 }

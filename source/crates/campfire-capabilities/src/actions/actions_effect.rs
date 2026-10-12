@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::Ticks;
 
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
@@ -12,7 +12,6 @@ use crate::units::spawner::Spawner;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ActionsEffect {
     pub(crate) at: SpawnAt,
-    pub(crate) owner: Option<PlayerSlot>,
     pub(crate) life: Option<Ticks>,
 }
 
@@ -21,7 +20,7 @@ impl Effect for ActionsEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let spawner = world.non_send::<Spawner>().clone();
-        let entity = spawner.spawn(world, self.at, self.owner);
+        let entity = spawner.spawn(world, self.at, ());
         if let Some(life) = self.life {
             world
                 .entity_mut(entity)

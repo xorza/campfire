@@ -82,7 +82,7 @@ pub use crate::areas::area_reach::AreaReach;
 pub use crate::books::Books;
 pub use crate::books::book_input::{BookInput, BookKind, BookPackage};
 pub use crate::books::book_place::BookPlace;
-pub use crate::books::error::BookError;
+pub use crate::books::error::{BookError, UnitStartError};
 pub use crate::books::package_content::PackageContent;
 pub use crate::books::type_place::TypePlace;
 pub use crate::books::unit_type_data::UnitTypeData;
@@ -111,7 +111,7 @@ pub use crate::items::item_id::ItemId;
 pub use crate::items::shop_data::ShopData;
 pub use crate::mode::Mode;
 pub use crate::mode::choice_data::{ChoiceData, Offers};
-pub use crate::mode::error::{ModeError, UnitKitError};
+pub use crate::mode::error::ModeError;
 pub use crate::mode::height_grid::HeightGrid;
 pub use crate::mode::map_data::{
     BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
@@ -134,7 +134,6 @@ pub use crate::mode::relation_data::RelationData;
 pub use crate::mode::save_asked::SaveAsked;
 pub use crate::mode::saves_data::{SaveBy, SavesData};
 pub use crate::mode::team_manifest::TeamManifest;
-pub use crate::mode::unit_kit::{InventorySpec, UnitKit};
 pub use crate::navigation::Navigation;
 pub use crate::navigation::destination::Destination;
 pub use crate::navigation::error::MapProblem;

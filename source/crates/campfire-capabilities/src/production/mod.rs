@@ -26,6 +26,7 @@ use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
+use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_properties::TagProperties;
@@ -104,6 +105,16 @@ impl Module for Production {
         d.book::<SupplyBook>();
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
+        d.book::<ByType<Builder>>();
+        d.book::<ByType<Node>>();
+        d.book::<ByType<Gatherer>>();
+        d.part::<BodyUnit, TrainQueue>(|at| {
+            at.of_type::<ProductionData>()
+                .map(|_| TrainQueue::default())
+        });
+        d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
+        d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
+        d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
     }
 
     /// Adds production to a match: in Act, after the other orders start, ordered trains pass their

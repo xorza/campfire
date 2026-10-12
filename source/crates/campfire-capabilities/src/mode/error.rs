@@ -2,25 +2,6 @@ use thiserror::Error;
 
 use crate::geometry::polygon::error::PolygonError;
 use crate::values::declared_name::DeclaredName;
-use crate::values::stat::Stat;
-
-/// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
-/// failure.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum UnitKitError {
-    /// A stat its pools need is not one it gives a value.
-    #[error("stat {0} is not declared")]
-    MissingStat(Stat),
-    /// A pool's maximum is not positive at level 1.
-    #[error("stat {0} is not positive")]
-    NotPositive(Stat),
-    /// It has a `combat` section but not the life pool.
-    #[error("a unit type with combat lacks the life pool")]
-    NoLifePool,
-    /// It has the life pool but no `combat` section.
-    #[error("a unit type with the life pool lacks combat")]
-    NoCombat,
-}
 
 /// Why the mode's teams, relations or map do not load: they name what the mode does not have.
 /// Packages are untrusted, so each is an expected failure.

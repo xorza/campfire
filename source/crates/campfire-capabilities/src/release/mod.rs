@@ -236,7 +236,7 @@ impl Release {
         let called = Release::called(set);
         let mut cx = InstallCx::new(world, schedule, set, true, false, called);
         Installing::new(&mut cx, registry).install::<Mode>();
-        Mode::load(world, registry, setup, load);
+        Mode::load(world, setup, load);
         sim.build();
     }
 }

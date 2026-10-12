@@ -8,7 +8,6 @@ use super::*;
 use crate::books::Books;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
-use crate::progression::track_set::TrackSet;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::stats::level::Level;

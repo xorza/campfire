@@ -296,11 +296,8 @@ fn on_input(ctx, player, name, value) {
 }
 "#;
     let spell = SlotKind::new(1);
-    let carry = |setup: &mut ModeSetup<'_>| {
-        setup.units.unit_types[2].kit.inventory = Some(InventorySpec {
-            slots: NonZeroU8::MAX,
-            kind: spell,
-        });
+    let carry = |types: &mut [TestType]| {
+        types[2].inventory = Some(Inventory::new(NonZeroU8::MAX, spell));
     };
     let script = format!("{script}{PICKING}");
     let mut game = start_match_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();

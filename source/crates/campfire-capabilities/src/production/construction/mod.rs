@@ -201,10 +201,11 @@ impl Construction {
             unit_type: start.unit_type,
             team,
             pos: start.pos,
+            owner: owner.map(Owner::slot),
             angle: start.angle,
         };
         let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, owner.map(Owner::slot));
+        let site = spawner.spawn(world, at, ());
         let spec = world
             .resource::<BuildBook>()
             .of(action)

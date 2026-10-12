@@ -1,6 +1,5 @@
 use std::num::NonZeroU8;
 
-use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
@@ -12,6 +11,10 @@ use serde::Serialize;
 use crate::actions::Actions;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
+use crate::declare::per_type::PerType;
+use crate::mode::Mode;
+use crate::mode::mode_units::ModeUnits;
+use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
@@ -29,12 +32,13 @@ use crate::units::action_id::ActionId;
 use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
+use crate::units::move_step::MoveStep;
 use crate::units::owner::Owner;
 use crate::units::spawn_at::SpawnAt;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_core::UnitCore;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::rank::Rank;
@@ -69,9 +73,9 @@ fn shop_match_of(declared: &[Capability]) -> Match {
     Match::client(declared)
 }
 
-/// A shop's match: a grunt type to train, a producer type of a queue of 3, a depot and a forge
-/// type for supply and requirements to count, and the gold its players hold; its spawner logs each
-/// spawn it is asked for.
+/// A shop's match: a grunt type to train, a circle of 0.5 m that walks 1 m a tick, a producer type of a queue of 3,
+/// a depot and a forge type for supply and requirements to count, and the gold its players hold;
+/// the mode spawns each type.
 #[derive(Debug, Clone, Copy)]
 struct Shop {
     grunt: UnitType,
@@ -82,18 +86,8 @@ struct Shop {
 }
 
 impl Shop {
-    /// Loads the shop's types into `game`, a match with production, and gives it a spawner that
-    /// logs each spawn.
+    /// Loads the shop's types into `game`, a match with production, as the mode's.
     fn place(game: &mut Match) -> Shop {
-        game.init_resource::<SpawnLog>();
-        game.insert_non_send(Spawner::new(|world, at, owner| {
-            world
-                .resource_mut::<SpawnLog>()
-                .0
-                .push(Spawned { at, owner });
-            let core = at.core(owner.map(Owner::new));
-            core.spawn(world, Destination::default()).id()
-        }));
         let data = UnitTypeCore::default();
         let grunt = Units::load_type(game, TypeScope::Mode, "grunt", &data);
         let barracks = Units::load_type(game, TypeScope::Mode, "barracks", &data);
@@ -102,8 +96,18 @@ impl Shop {
         let production = ProductionData {
             queue: NonZeroU8::new(3).unwrap(),
         };
-        game.resource_mut::<ByType<ProductionData>>()
-            .set(barracks, production);
+        Shop::give(game, barracks, production);
+        Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
+        Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
+        let unit_types = [grunt, barracks, depot, forge].map(|unit_type| UnitTypeSetup {
+            unit_type,
+            passive: None,
+        });
+        let units = ModeUnits {
+            unit_types: unit_types.into(),
+            ..ModeUnits::default()
+        };
+        Mode::load_units(game, &units);
         let gold = ResourceId::nth(0);
         Shop {
             grunt,
@@ -114,9 +118,26 @@ impl Shop {
         }
     }
 
-    /// Each spawn production asked for so far, in order.
-    fn spawned(game: &World) -> &[Spawned] {
-        &game.resource::<SpawnLog>().0
+    /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
+    fn give<T: PerType>(game: &mut World, unit_type: UnitType, value: T) {
+        game.resource_mut::<ByType<T>>().set(unit_type, value);
+    }
+
+    /// Each unit of `unit_type` so far, by stable id: in the order production spawned them.
+    fn spawned(game: &mut World, unit_type: UnitType) -> Vec<Spawned> {
+        let mut units = game.query::<(&StableId, &UnitType, &Team, &SpawnPoint, Option<&Owner>)>();
+        let mut spawned: Vec<Spawned> = units
+            .iter(game)
+            .filter(|&(_, &of, ..)| of == unit_type)
+            .map(|(&id, _, &team, point, owner)| Spawned {
+                id,
+                team,
+                pos: point.get(),
+                owner: owner.map(|owner| owner.slot()),
+            })
+            .collect();
+        spawned.sort_unstable_by_key(|spawned| spawned.id);
+        spawned
     }
 
     /// A producer `id` at `x` meters of `team`, owned by `owner`, with `train` in its slot 0
@@ -136,25 +157,25 @@ impl Shop {
         queue: TrainQueue,
     ) {
         let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
-        let core = UnitCore {
+        let at = SpawnAt {
             id,
-            pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap(),
             unit_type: self.barracks,
             team,
-            owner: owner.map(Owner::new),
+            pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap(),
+            owner,
+            angle: Num::ZERO,
         };
-        Units::spawn_core(game, core, (slots, queue));
+        let spawner = game.non_send::<Spawner>().clone();
+        spawner.spawn(game, at, (slots, queue));
     }
 
-    /// Each spawn so far, by producer: the team and position of the producer it came from,
+    /// Each grunt trained so far, in order: the team and position of the producer it came from,
     /// and its owner.
-    fn spawns(self, game: &World) -> Vec<(Team, Position, Option<PlayerSlot>)> {
-        let grunt = self.grunt;
-        let spawned = Shop::spawned(game);
-        assert!(spawned.iter().all(|spawn| spawn.at.unit_type == grunt));
+    fn spawns(self, game: &mut World) -> Vec<(Team, Position, Option<PlayerSlot>)> {
+        let spawned = Shop::spawned(game, self.grunt);
         spawned
             .iter()
-            .map(|spawn| (spawn.at.team, spawn.at.pos, spawn.owner))
+            .map(|spawn| (spawn.team, spawn.pos, spawn.owner))
             .collect()
     }
 
@@ -166,13 +187,9 @@ impl Shop {
     }
 
     /// The depots spawned so far, by stable id.
-    fn depots(self, game: &World) -> Vec<StableId> {
-        let depot = self.depot;
-        Shop::spawned(game)
-            .iter()
-            .filter(|spawn| spawn.at.unit_type == depot)
-            .map(|spawn| spawn.at.id)
-            .collect()
+    fn depots(self, game: &mut World) -> Vec<StableId> {
+        let spawned = Shop::spawned(game, self.depot);
+        spawned.iter().map(|spawn| spawn.id).collect()
     }
 
     /// Player 0's hall at `pos`.
@@ -187,16 +204,14 @@ impl Shop {
     }
 }
 
-/// A spawn production asked for: what and where, and the player that owns it.
+/// A unit as it spawned: its stable id, team and place, and the player that owns it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Spawned {
-    at: SpawnAt,
+    id: StableId,
+    team: Team,
+    pos: Position,
     owner: Option<PlayerSlot>,
 }
-
-/// Each spawn a shop's spawner was asked for, in order.
-#[derive(Resource, Debug, Default)]
-struct SpawnLog(Vec<Spawned>);
 
 /// A queue of `train`, once for each of `times`, in ticks, pushed at tick 0.
 fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
@@ -248,18 +263,21 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     // spawn one after the other: each next starts at time 1 and is done at once. Its third, of
     // 1 tick, starts at time 1 and is done at time 2, the end of tick 1.
     game.step();
-    assert_eq!(shop.spawns(&game), [from_first, from_second, from_second]);
+    assert_eq!(
+        shop.spawns(&mut game),
+        [from_first, from_second, from_second]
+    );
     game.step();
     assert_eq!(
-        shop.spawns(&game),
+        shop.spawns(&mut game),
         [from_first, from_second, from_second, from_second]
     );
 
     // A train of no time ordered in tick 2 starts at time 2 and spawns at the end of tick 2.
     Production::order_train(&mut game, first);
     game.step();
-    assert_eq!(shop.spawns(&game).len(), 5);
-    assert_eq!(shop.spawns(&game)[4], from_first);
+    assert_eq!(shop.spawns(&mut game).len(), 5);
+    assert_eq!(shop.spawns(&mut game)[4], from_first);
 
     // Dead through ticks 3 and 4, the first's queue holds a train done since time 0: it spawns in
     // tick 5, the tick the producer lives again.
@@ -267,11 +285,11 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     game.insert_parts(first, (queue(train, &[0]), Dead));
     game.step();
     game.step();
-    assert_eq!(shop.spawns(&game).len(), 5);
+    assert_eq!(shop.spawns(&mut game).len(), 5);
     game.entity_mut(entity).remove::<Dead>();
     game.step();
-    assert_eq!(shop.spawns(&game).len(), 6);
-    assert_eq!(shop.spawns(&game)[5], from_first);
+    assert_eq!(shop.spawns(&mut game).len(), 6);
+    assert_eq!(shop.spawns(&mut game)[5], from_first);
 }
 
 #[test]
@@ -318,7 +336,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     Production::order_train(&mut game, unowned);
     game.step();
     assert_eq!(
-        shop.spawns(&game),
+        shop.spawns(&mut game),
         [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
     );
     let held = game.player_resources(player).unwrap().amount(gold);

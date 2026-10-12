@@ -186,13 +186,13 @@ impl<'a> LoadCheck<'a> {
             TypePlace::Declared(name) => Place::UnitType(name),
         };
         let (package, problem) = match error {
-            BookError::Kit {
+            BookError::Start {
                 package,
                 unit_type,
                 error,
             } => (
                 package,
-                LoadProblem::UnitKit {
+                LoadProblem::UnitStart {
                     at: at(package, unit_type),
                     error,
                 },

@@ -35,7 +35,7 @@ value = (base + Σ add) × (1 + Σ pct) × (1 − max cut)
 
 then clamped to the stat's limits. `add` and `pct` sum, so modifier order never matters; only the largest `cut` counts, as only the strongest slow does in League of Legends, and a cut counts at most 1. Each product rounds once, to nearest; a sum past a number's range stops at its end. A modifier writes a number for `add` and a table for the others: `stats = { armor = 20, move_speed = { cut = "0.3" }, attack_speed = { pct = "0.25" } }`.
 
-The engine reads only the stats its mechanisms need; one the mode does not declare keeps the value its unit's kit gave it:
+The engine reads only the stats its mechanisms need; one the mode does not declare keeps the value its unit's type gave it as it spawned:
 
 | Stat | Engine use |
 | --- | --- |

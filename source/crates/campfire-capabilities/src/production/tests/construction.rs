@@ -19,7 +19,6 @@ use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
-use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::team_set::TeamSet;
 use crate::values::relation_set::RelationSet;
@@ -90,19 +89,8 @@ impl Yard {
     fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Yard {
         let depot = shop.depot;
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
-        game.insert_non_send(Spawner::new(move |world, at, owner| {
-            world
-                .resource_mut::<SpawnLog>()
-                .0
-                .push(Spawned { at, owner });
-            let mut unit = at.core(owner.map(Owner::new)).spawn(world, ());
-            let entity = unit.id();
-            if at.unit_type == depot {
-                unit.insert((form.at(at.angle), Life::full(Num::int(100))));
-                Navigation::make_room(world, entity);
-            }
-            entity
-        }));
+        Shop::give(game, depot, form);
+        Shop::give(game, depot, Life::full(Num::int(100)));
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
         game.resource_mut::<MapBook>().bounds = bounds;
         let walker = Walker {
@@ -175,13 +163,13 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     for _ in 1..7 {
-        assert_eq!((shop.depots(&game), shop.gold(&game)), (vec![], 100));
+        assert_eq!((shop.depots(&mut game), shop.gold(&game)), (vec![], 100));
         game.step();
     }
     let lives = [65, 110, 155, 200].map(|halves| Num::HALF * halves);
     for (tick, life) in (7..=10).zip(lives) {
         game.step();
-        let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+        let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
         if tick == 7 {
             // A restore checks a site's progress against its build's time, 4 ticks: a progress
             // of 4 passes, one a bit past it fails.
@@ -246,7 +234,7 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
         let first = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
         let second = yard.builder(&mut game, halves(6, 0), Team::new(0), 0);
         Production::build_at(&mut game, first, 0, 0);
-        let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+        let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
         let mut seen = vec![Production::site(&game, depot).1];
         Production::tick_ordering(&mut game, 0, second, at_site(depot));
         seen.push(Production::site(&game, depot).1);
@@ -278,7 +266,7 @@ fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
     let first = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     let second = yard.builder(&mut game, halves(6, 0), Team::new(0), 0);
     Production::build_at(&mut game, first, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     Vision::fog_grid(&mut game, 1);
     for (seers, joined) in [
         (TeamSet::NONE, None),
@@ -302,7 +290,7 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Builder));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     let away = Action::Move {
         x: Num::int(-10),
         z: Num::ZERO,
@@ -331,7 +319,7 @@ fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     game.step();
     assert_eq!(Production::site(&game, depot).0, Num::int(55));
     game.part_mut::<Life>(depot).take(Num::int(30));
@@ -353,7 +341,7 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     assert_eq!(shop.gold(&game), 85);
     Production::tick_ordering(&mut game, 1, depot, Action::CancelBuild);
     assert!(game.try_part::<Site>(depot).is_some());
@@ -369,7 +357,7 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(shop.depots(&game)).unwrap();
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     game.insert_parts(depot, Dead);
     for _ in 0..4 {
         game.step();
@@ -461,7 +449,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         );
         Production::build_at(&mut game, builder, x, 0);
         assert_eq!(
-            (shop.depots(&game), shop.gold(&game)),
+            (shop.depots(&mut game), shop.gold(&game)),
             (vec![], 100),
             "{case}"
         );
@@ -473,7 +461,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!((shop.depots(&game).len(), shop.gold(&game)), (1, 85));
+    assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let near = Rules {
@@ -485,7 +473,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
     Units::spawn(&mut game, halves(0, 6), Team::new(1), enemy);
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!(shop.depots(&game).len(), 1);
+    assert_eq!(shop.depots(&mut game).len(), 1);
 }
 
 #[test]
@@ -506,7 +494,7 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     let friend = Production::yard_walker(&mut game, halves(-1, -1), Team::new(0), None);
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!(shop.depots(&game).len(), 1);
+    assert_eq!(shop.depots(&mut game).len(), 1);
     let at = |id| *game.part::<Position>(id);
     assert_eq!([at(hidden), at(friend)], [halves(1, 3), halves(-1, -3)]);
 
@@ -521,7 +509,7 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     game.insert_parts(enemy, Unpredicted);
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!((shop.depots(&game), shop.gold(&game)), (vec![], 100));
+    assert_eq!((shop.depots(&mut game), shop.gold(&game)), (vec![], 100));
     assert_eq!(Production::order_of(&game, builder), None);
 
     // A wall over x −1 to 1 from z 1.25 to 3 holds the centers (±0.5, 1.5) and (±0.5, 2.5): a
@@ -572,7 +560,7 @@ fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
         0,
         &[(second, at_point(0, 0)), (first, at_point(0, 0))],
     );
-    assert_eq!((shop.depots(&game).len(), shop.gold(&game)), (1, 85));
+    assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
     assert_eq!(
         [
             Production::order_of(&game, first),
@@ -580,6 +568,6 @@ fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
         ],
         [None, None]
     );
-    let spawned = Shop::spawned(&game);
+    let spawned = Shop::spawned(&mut game, shop.depot);
     assert_eq!(spawned[0].owner, Some(PlayerSlot::new(0)));
 }

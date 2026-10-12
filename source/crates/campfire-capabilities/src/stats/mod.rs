@@ -34,6 +34,8 @@ use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::{RowReads, StatsColumn};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
+use crate::units::body_unit::BodyUnit;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -119,13 +121,18 @@ impl Module for Stats {
         d.scratch::<HeldModifiers>();
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
-        d.part::<Player, PlayerModifiers>(|_| PlayerModifiers::default());
+        d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
         d.book::<ModifierBook>();
         d.book::<StatBook>();
         d.book::<PoolBook>();
         d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
         d.call_part::<StatsCall>();
         d.api(StatsApi::register);
+        d.book::<ByType<Pools>>();
+        d.part::<BodyUnit, Level>(|_| Some(Level::default()));
+        d.part::<BodyUnit, Modifiers>(|_| Some(Modifiers::default()));
+        d.part::<BodyUnit, ModifierClocks>(|_| Some(ModifierClocks::default()));
+        d.part::<BodyUnit, Pools>(|at| at.of_type::<Pools>().copied());
     }
 
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,

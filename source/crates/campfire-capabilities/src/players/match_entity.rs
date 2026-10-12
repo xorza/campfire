@@ -5,7 +5,7 @@ use campfire_common::PlayerSlot;
 use campfire_sim::{KindMarker, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::players::entity_parts::EntityParts;
+use crate::declare::entity_parts::EntityParts;
 use crate::players::player::Player;
 use crate::players::players_world::PlayersWorld;
 use crate::state_types::data_kind::DataKind;
@@ -22,20 +22,16 @@ use crate::units::team::Team;
 pub struct MatchEntity;
 
 impl MatchEntity {
-    /// Spawns the entity of player `slot` on `team`, of its named id, with `parts`, in a match
-    /// whose entity spawned: no player is of a match that has none.
-    pub(super) fn spawn_player_of(
-        world: &mut World,
-        parts: &EntityParts<Player>,
-        slot: PlayerSlot,
-        team: Team,
-    ) -> Entity {
+    /// Spawns the entity of player `slot` on `team`, of its named id, with the parts the
+    /// installed modules declare for a player, in a match whose entity spawned: no player is of a
+    /// match that has none.
+    pub(super) fn spawn_player_of(world: &mut World, slot: PlayerSlot, team: Team) -> Entity {
         assert!(
             world.match_entity().is_some(),
             "players join a match that started, which holds its entity"
         );
         let mut player = world.spawn((StableId::of_player(slot), Player::new(slot), team));
-        parts.put_on(&mut player);
+        EntityParts::<Player>::give(&mut player);
         player.id()
     }
 }
@@ -45,7 +41,6 @@ impl KindMarker for MatchEntity {}
 impl EntityKind for MatchEntity {
     const AUDIENCE: KindAudience = KindAudience::EverySeat;
     const OWNER_PREDICTS: bool = false;
-    const DECLARED_PARTS: bool = true;
 }
 
 impl SimComponent for MatchEntity {

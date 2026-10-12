@@ -10,7 +10,6 @@ use crate::combat::combat_column::CombatColumn;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::choice_id::ChoiceId;
 use crate::mode::game_map::GameMap;
-use crate::mode::group_unit::GroupUnit;
 use crate::mode::marker::Marker;
 use crate::mode::marker_tag::MarkerTag;
 use crate::mode::match_end::MatchResult;
@@ -20,6 +19,7 @@ use crate::mode::mode_spec::ModeSpec;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::saves_data::SavesData;
+use crate::mode::spawn_group::{GroupUnit, SpawnGroup};
 use crate::navigation::body_index::IndexedBody;
 use crate::navigation::navigation_column::NavigationColumn;
 use crate::navigation::path_walker::PathEnd;
@@ -300,9 +300,7 @@ impl ModeApi {
             grant,
             |ctx: &mut Ctx, unit: NewUnit, kind: SlotKind, ids: Array| {
                 let book = ModeSpec::of_or_fail(ctx)?;
-                let slots = book
-                    .spawn_slots(unit.unit_type)
-                    .map_or(0, |slots| slots.len());
+                let slots = book.spawn_slots(unit.unit_type);
                 ModeApi::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
@@ -541,10 +539,9 @@ impl ModeApi {
         Ok(!(choice.unique && taken))
     }
 
-    /// `unit_type`, when `book` can spawn it: it has a kit. A projectile or an area type has
-    /// none, as only actions deliver its units.
+    /// `unit_type`, when `book` spawns it.
     fn spawnable(book: &ModeSpec, unit_type: UnitType) -> Checked<UnitType> {
-        if book.kit(unit_type).is_none() {
+        if !book.spawns(unit_type) {
             return Err(ApiError::Unknown(NameKind::UnitType).fail().into());
         }
         Ok(unit_type)
@@ -564,10 +561,7 @@ impl ModeApi {
             return Err(ApiError::OutOfBounds.fail().into());
         }
         let unit_type = ModeApi::spawnable(book, unit_type)?;
-        let boxed = book
-            .kit(unit_type)
-            .and_then(|kit| kit.body)
-            .filter(|form| form.is_box());
+        let boxed = book.body(unit_type).filter(|form| form.is_box());
         let body = boxed.map(|form| form.at(Num::ZERO));
         if let Some(body) = body {
             let room = {
@@ -593,9 +587,10 @@ impl ModeApi {
             unit_type,
             team,
             pos,
+            owner,
             angle: Num::ZERO,
         };
-        ctx.queue(ModeEffect::SpawnUnit { at: spawn, owner })?;
+        ctx.queue(ModeEffect::SpawnUnit(spawn))?;
         Ok(NewUnit { id, unit_type })
     }
 
@@ -670,12 +665,12 @@ impl ModeApi {
                 id: frame.take_id(),
             })
             .collect();
-        frame.effects.push(ModeEffect::SpawnGroup {
+        frame.effects.push(ModeEffect::SpawnGroup(SpawnGroup {
             team,
             path,
             from,
             units,
-        });
+        }));
         Ok(())
     }
 

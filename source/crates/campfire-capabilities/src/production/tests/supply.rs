@@ -71,7 +71,7 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     Units::spawn_of(&mut game, depot, (0, 0, 0), Team::new(1), ());
     step(&mut game, 0, 2, (6, 4), 4);
     assert!(
-        Shop::spawned(&game)
+        Shop::spawned(&mut game, shop.grunt)
             .iter()
             .all(|spawn| spawn.owner == Some(player))
     );

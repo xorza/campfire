@@ -19,6 +19,7 @@ use crate::navigation::walker::Walker;
 use crate::players::resource_id::ResourceId;
 use crate::release::Release;
 use crate::scripts::ctx::Ctx;
+use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::map_book::MapBook;
 use crate::units::predicting::Predicting;
@@ -38,6 +39,7 @@ pub(crate) mod built_books;
 pub(crate) mod error;
 pub(crate) mod package_content;
 pub(crate) mod type_place;
+pub(crate) mod unit_start;
 pub(crate) mod unit_type_data;
 
 /// The books of a match, built once from its packages at its tick rate, each until the install
@@ -84,19 +86,20 @@ impl Books {
     /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as
     /// `ModeMap::check_walkable` says, among its placed units of the types that do not walk.
     pub fn check_walkable(&self) -> Result<(), MapProblem> {
-        let kits = &self.inputs.units.unit_types;
+        let standing = &self.inputs.units.unit_types;
         let walkers = self
             .built
             .get::<ByType<Walker>>()
             .expect("the walkers are built");
+        let bodies = self
+            .built
+            .get::<ByType<BodyForm>>()
+            .expect("the bodies are built");
         let body_of = |unit_type| {
+            let stands = standing.iter().any(|setup| setup.unit_type == unit_type);
+            assert!(stands, "a placed unit's type stands");
             let walks = walkers.get(unit_type).is_some();
-            let placed = kits.iter().find(|setup| setup.unit_type == unit_type);
-            placed
-                .expect("a placed unit's type stands")
-                .kit
-                .body
-                .filter(|_| !walks)
+            bodies.get(unit_type).copied().filter(|_| !walks)
         };
         let name_of = |unit_type: UnitType| {
             let name = self.types.types().name(unit_type);
