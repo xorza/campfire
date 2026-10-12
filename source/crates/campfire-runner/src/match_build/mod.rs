@@ -6,6 +6,10 @@ use campfire_sim::TickRate;
 
 /// A match of a mode, built from its read packages.
 #[derive(Debug)]
+#[cfg_attr(
+    not(feature = "internals"),
+    expect(unreachable_pub, reason = "the internals facade exports it, for its restore targets")
+)]
 pub struct MatchBuild;
 
 impl MatchBuild {

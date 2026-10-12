@@ -39,7 +39,6 @@ mod api_binder;
 mod installer;
 pub(crate) mod r#match;
 pub(crate) mod match_spec;
-pub(crate) mod release_world;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, each capability in the order they

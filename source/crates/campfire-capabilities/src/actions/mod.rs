@@ -148,18 +148,14 @@ pub(crate) mod internals {
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_book::internals::TestWeapon;
-    use crate::actions::action_range::ActionRange;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::fan::Fan;
-    use crate::actions::gather_spec::GatherSpec;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::scripts::hook_set::HookSet;
-    use crate::stats::pool_cost::PoolCost;
     use crate::units::action_id::ActionId;
-    use crate::units::filter::Filter;
     use crate::units::view::View;
     use crate::values::damage_kind::DamageKind;
 
@@ -222,6 +218,11 @@ pub(crate) mod internals {
             range: Num,
             time: Ticks,
         ) -> ActionId {
+            use crate::actions::action_range::ActionRange;
+            use crate::actions::gather_spec::GatherSpec;
+            use crate::stats::pool_cost::PoolCost;
+            use crate::units::filter::Filter;
+
             Actions::push(
                 world,
                 Action {

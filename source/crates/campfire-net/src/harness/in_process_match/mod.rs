@@ -45,7 +45,6 @@ use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::sim_client_world::SimClientWorld;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::SimServer;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
@@ -535,15 +534,14 @@ impl InProcessMatch {
         server.cleanup();
         run_in_order(&mut server);
         server.update();
-        server
-            .world_mut()
-            .restore_match(
-                session,
-                &self.packages,
-                &self.server_setup(),
-                self.server_bots(),
-            )
-            .unwrap();
+        SimServer::restore_match(
+            server.world_mut(),
+            session,
+            &self.packages,
+            &self.server_setup(),
+            self.server_bots(),
+        )
+        .unwrap();
         server.world_mut().insert_resource(data);
         self.server = server;
         for client in 0..self.clients.len() {
@@ -916,7 +914,7 @@ impl ClientApp {
             .rollback_policy
             .state = setup.rollbacks[player];
         pass_through_delay_lines(&mut client);
-        let entity = client.world_mut().spawn_client();
+        let entity = SimClient::spawn(client.world_mut());
         ClientApp {
             app: client,
             entity,

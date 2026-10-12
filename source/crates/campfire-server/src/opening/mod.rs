@@ -7,9 +7,10 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::MapName;
 use campfire_log::{ErrorReport, LogEvent};
+use campfire_net::SimServer;
 use campfire_net::{
     Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
-    SessionRestored, SimServerWorld,
+    SessionRestored,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
@@ -172,7 +173,7 @@ impl Restore {
             .remove_resource::<Restore>()
             .expect("a restore runs while one waits");
         let id = session.log.session_id();
-        match world.restore_match(session, &packages, &server, bots) {
+        match SimServer::restore_match(world, session, &packages, &server, bots) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();
