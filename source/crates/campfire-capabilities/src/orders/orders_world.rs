@@ -1,43 +1,3 @@
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-    use campfire_script::ScriptId;
-    use campfire_sim::TickRate;
-
-    use crate::orders::ai::Ai;
-    use crate::orders::ai_data::AiData;
-    use crate::orders::error::AiError;
-    use crate::scripts::script_book::ScriptBook;
-    use crate::units::by_type::ByType;
-    use crate::units::unit_type::UnitType;
-
-    /// What the orders module gives a world for the tests and benches of every crate.
-    pub trait OrdersWorldInternals {
-        /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
-        /// becomes whole ticks at the match's rate, rounded up, and at least one.
-        fn load_ai(
-            &mut self,
-            unit_type: UnitType,
-            data: &AiData,
-            script: ScriptId,
-        ) -> Result<(), AiError>;
-    }
-
-    impl OrdersWorldInternals for World {
-        fn load_ai(
-            &mut self,
-            unit_type: UnitType,
-            data: &AiData,
-            script: ScriptId,
-        ) -> Result<(), AiError> {
-            let rate = *self.resource::<TickRate>();
-            let ai = Ai::of(data, script, self.resource::<ScriptBook>(), rate)?;
-            self.resource_mut::<ByType<Ai>>().set(unit_type, ai);
-            Ok(())
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_world {
     use bevy_ecs::resource::Resource;
@@ -54,8 +14,8 @@ pub(crate) mod test_world {
     use crate::items::inventory::{Inventory, ItemStack};
     use crate::navigation::Navigation;
     use crate::navigation::destination::Destination;
+    use crate::orders::Orders;
     use crate::orders::ai_data::AiData;
-    use crate::orders::orders_world::internals::OrdersWorldInternals;
     use crate::players::players_world::PlayersWorld;
     use crate::players::resource_id::ResourceId;
     use crate::release::release_world::test_world::ReleaseWorldTest;
@@ -145,7 +105,7 @@ pub(crate) mod test_world {
                     think_ms: 250,
                 };
                 let script = self.compile_hooked(source).unwrap();
-                self.load_ai(unit_type, &ai, script).unwrap();
+                Orders::load_ai(self, unit_type, &ai, script).unwrap();
             }
             unit_type
         }

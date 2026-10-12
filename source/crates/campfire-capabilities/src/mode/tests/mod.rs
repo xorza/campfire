@@ -13,12 +13,12 @@ use campfire_sim::{
 };
 
 use super::*;
+use crate::actions::Actions;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::internals::ActionsWorldInternals;
 use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
@@ -72,8 +72,8 @@ use crate::progression::points::Points;
 use crate::progression::progression_world::test_world::ProgressionWorldTest;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
+use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::release_world::ReleaseWorld;
 use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError, ParamProblem};
@@ -84,6 +84,7 @@ use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
+use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::instance::StatShare;
 use crate::stats::level::Level;
@@ -97,7 +98,6 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_world::internals::StatsWorldInternals;
 use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
@@ -761,9 +761,9 @@ fn start_match_setup(
     let strike = game.load_action(0, "strike", &blink, None, 2).unwrap();
     let blink = game.load_action(0, "blink", &blink, None, 1).unwrap();
     // Loaded out of name order, each is found by its name, and only in its package.
-    let named = ["blink", "strike", "dash"].map(|name| game.action_named(0, name));
+    let named = ["blink", "strike", "dash"].map(|name| Actions::named(&game, 0, name));
     assert_eq!(named, [Some(blink), Some(strike), None]);
-    assert_eq!(game.action_named(1, "blink"), None);
+    assert_eq!(Actions::named(&game, 1, "blink"), None);
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
@@ -772,7 +772,7 @@ fn start_match_setup(
         game.load_modifier(0, name, data, None);
     }
     let script = game.compile_hooked(&format!("{script}{PICK}")).unwrap();
-    let blessing = game.modifier_named(0, "blessing").unwrap();
+    let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
     let mut setup = setup(&files, script, types, spell, strike, blessing);
     adjust(&mut setup);
     // The grunt and both heroes walk with the grunt's body: one kind.
@@ -803,10 +803,10 @@ fn start_match_setup(
         })
     };
     assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
-    game.install_mode(setup, books);
+    Release::install_mode(&mut game, setup, books);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     game.name_kinds(&DAMAGE_KINDS, &POOLS, &RESOURCES);
-    game.start_mode()?;
+    Mode::start(&mut game)?;
     game.insert_resource(ModeAbilities { blink, strike });
     Ok(game)
 }

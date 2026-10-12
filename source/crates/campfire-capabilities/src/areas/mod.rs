@@ -123,5 +123,49 @@ impl Areas {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_common::{Tick, Ticks};
+    use campfire_math::Num;
+    use campfire_sim::IdAllocator;
+
+    use crate::areas::Areas;
+    use crate::areas::area::Area;
+    use crate::areas::area_spec::{AreaSpec, Inside};
+    use crate::deliveries::delivering::Delivering;
+    use crate::units::action_id::ActionId;
+    use crate::units::by_type::ByType;
+    use crate::units::filter::Filter;
+    use crate::units::unit_type::UnitType;
+    use crate::values::rank::Rank;
+    use crate::values::relation_set::RelationSet;
+
+    impl Areas {
+        /// An area unit of `unit_type`, a type that reaches `radius`, as a client draws it: the
+        /// type's spec in the match's book of them, and the area, from tick 0 to tick 1.
+        pub fn standing(world: &mut World, unit_type: UnitType, radius: Num) -> Area {
+            let spec = AreaSpec {
+                radius,
+                delay: Ticks::new(0),
+                duration: Ticks::new(1),
+                affects: Filter::of_relations(RelationSet::All),
+                inside: Inside::default(),
+            };
+            world
+                .get_resource_or_init::<ByType<AreaSpec>>()
+                .set(unit_type, spec);
+            let by = Delivering {
+                source: IdAllocator::default().allocate(),
+                action: ActionId::new(0),
+                rank: Rank::FIRST,
+                start: None,
+                launch: None,
+            };
+            Area::new(by, None, Tick::new(1))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -1,270 +1,5 @@
-use bevy_ecs::world::World;
-use campfire_math::Num;
-use campfire_sim::TickRate;
-
-use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_effect::ActionsEffect;
-use crate::actions::amount::Amount;
-use crate::actions::does::Does;
-use crate::actions::effect_data::EffectTo;
-use crate::actions::effect_lists::EffectLists;
-use crate::actions::effect_queues::EffectQueues;
-use crate::actions::lists_of::ListsOf;
-use crate::scripts::error::CallError;
-use crate::scripts::frame::Frame;
-use crate::scripts::hook::Hook;
-use crate::stats::stats_effect::StatsEffect;
-use crate::units::spawn_at::SpawnAt;
-use crate::units::view::View;
-
-/// What the actions module gives a world, for its own crate.
-pub(crate) trait ActionsWorldCrate {
-    /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
-    /// its rank, which the match runs: each effect to the unit `reached`, what the list reached, or
-    /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
-    /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
-    /// pipeline; every other effect queues as its capability registered, which can fail the
-    /// call, as experience to a unit without the track fails `ctx.add_xp`.
-    fn queue_effect_list(
-        &self,
-        of: ListsOf,
-        hook: Hook,
-        frame: &mut Frame,
-        view: &View,
-        reached: ActionTarget,
-    ) -> Result<(), CallError>;
-}
-
-impl ActionsWorldCrate for World {
-    fn queue_effect_list(
-        &self,
-        of: ListsOf,
-        hook: Hook,
-        frame: &mut Frame,
-        view: &View,
-        reached: ActionTarget,
-    ) -> Result<(), CallError> {
-        let list = self.resource::<EffectLists>().of(of, hook);
-        if list.is_empty() {
-            return Ok(());
-        }
-        let rate = *self.resource::<TickRate>();
-        let queues = self.resource::<EffectQueues>();
-        let acting = frame.acting();
-        let reached_unit = reached.unit();
-        let duration = |ms: Amount, frame: &Frame| {
-            // Whole, as the load checked, so the floor is exact.
-            let ms = ms.number(frame).floor();
-            let ms = u64::try_from(ms).expect("the load checked a duration not negative");
-            rate.duration(ms)
-                .expect("the load checked a duration within reach")
-        };
-        for &listed in list {
-            let unit = || match listed.to {
-                EffectTo::Reached => {
-                    reached_unit.expect("the load lets only an effect to the source reach no unit")
-                }
-                EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
-            };
-            match listed.does {
-                Does::Spawn {
-                    unit_type,
-                    duration_ms,
-                } => {
-                    let source = acting.and_then(|id| view.row(id));
-                    let source = source.expect("an action's list runs for its acting unit");
-                    let pos = match (listed.to, reached) {
-                        (EffectTo::Source, _) => source.pos,
-                        (EffectTo::Reached, ActionTarget::Point(at)) => at,
-                        (EffectTo::Reached, ActionTarget::Unit(id)) => {
-                            view.row(id)
-                                .expect("a list reaches a unit the view holds")
-                                .pos
-                        }
-                        (EffectTo::Reached, ActionTarget::None) => {
-                            unreachable!(
-                                "the load lets a spawn reach no place only from the source"
-                            )
-                        }
-                    };
-                    let at = SpawnAt {
-                        id: frame.take_id(),
-                        unit_type,
-                        team: source.team,
-                        pos,
-                        angle: Num::ZERO,
-                    };
-                    let life = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(ActionsEffect {
-                        at,
-                        owner: source.owner,
-                        life,
-                    });
-                }
-                Does::Modifier { id, duration_ms } => {
-                    let duration = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(StatsEffect::Add {
-                        target: unit(),
-                        id,
-                        duration,
-                    });
-                }
-                Does::Purge { tag } => frame.effects.push(StatsEffect::Purge {
-                    carrier: unit(),
-                    tag,
-                }),
-                Does::Capability(does) => {
-                    queues.of(does.capability())(does, unit(), reached_unit, frame, view)?;
-                }
-            }
-        }
-        Ok(())
-    }
-}
-
 #[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use std::num::NonZeroU8;
-
-    use bevy_ecs::world::World;
-    use campfire_common::Ticks;
-    use campfire_math::Num;
-
-    use crate::actions::action::{Action, Aim};
-    use crate::actions::action_book::ActionBook;
-    use crate::actions::action_book::internals::TestWeapon;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::actions::action_range::ActionRange;
-    use crate::actions::actions_column::ActionsColumn;
-    use crate::actions::delivery::{Delivery, DeliveryShape};
-    use crate::actions::fan::Fan;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::actions::gather_spec::GatherSpec;
-    use crate::actions::kind_spec::KindSpec;
-    use crate::actions::rank_values::RankValues;
-    use crate::actions::weapon::Weapon;
-    use crate::scripts::hook_set::HookSet;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::stats::pool_cost::PoolCost;
-    use crate::units::action_id::ActionId;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::units::filter::Filter;
-    use crate::units::view::View;
-    use crate::values::damage_kind::DamageKind;
-
-    /// What the actions module gives a world for the tests and benches of every crate.
-    pub trait ActionsWorldInternals {
-        /// The action `name` of `package`, as the match loaded it.
-        fn action_named(&self, package: u16, name: &str) -> Option<ActionId>;
-    }
-
-    impl ActionsWorldInternals for World {
-        fn action_named(&self, package: u16, name: &str) -> Option<ActionId> {
-            self.resource::<ActionBook>().named(package, name)
-        }
-    }
-
-    /// What the actions module gives a world for the tests and benches of its own crate.
-    pub(crate) trait ActionsWorldCrateInternals {
-        /// Adds `weapon` to the match's action book, which deals damage of the first kind.
-        fn add_weapon(&mut self, weapon: TestWeapon) -> ActionId;
-
-        /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
-        /// `time`, to the match's action book.
-        #[cfg(any(test, feature = "bench"))]
-        fn add_gather(
-            &mut self,
-            spec: GatherSpec,
-            aim: Filter,
-            range: Num,
-            time: Ticks,
-        ) -> ActionId;
-
-        /// Adds `action` to the match's action book, and shares the book with the script view.
-        fn push_action(&mut self, action: Action) -> ActionId;
-    }
-
-    impl ActionsWorldCrateInternals for World {
-        fn add_weapon(&mut self, weapon: TestWeapon) -> ActionId {
-            let delivery = weapon.projectile.map(|unit_type| Delivery {
-                unit_type,
-                shape: DeliveryShape::Projectile {
-                    fan: Fan {
-                        count: NonZeroU8::MIN,
-                        spread_deg: Num::ZERO,
-                    },
-                    homes: true,
-                },
-            });
-            self.push_action(Action {
-                package: 0,
-                name: "weapon".into(),
-                kind: KindSpec::Attack(Weapon {
-                    rate: weapon.rate,
-                    damage: weapon.damage,
-                    kind: DamageKind::new(0),
-                }),
-                passive: None,
-                hold: None,
-                aim: Aim::Unit(weapon.aim),
-                ranks: vec![RankValues {
-                    range: weapon.range,
-                    cooldown: Ticks::ZERO,
-                    cost: weapon.cost,
-                    windup: weapon.windup,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: weapon.resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery,
-            })
-        }
-
-        #[cfg(any(test, feature = "bench"))]
-        fn add_gather(
-            &mut self,
-            spec: GatherSpec,
-            aim: Filter,
-            range: Num,
-            time: Ticks,
-        ) -> ActionId {
-            self.push_action(Action {
-                package: 0,
-                name: "gather".into(),
-                kind: KindSpec::Gather(spec),
-                passive: None,
-                hold: None,
-                aim: Aim::Unit(aim),
-                ranks: vec![RankValues {
-                    range: ActionRange::Meters(range),
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: Box::default(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            })
-        }
-
-        fn push_action(&mut self, action: Action) -> ActionId {
-            let mut book = self.resource_mut::<ActionBook>();
-            let id = book.push(action);
-            let book = book.clone();
-            ActionsColumn::share(self.non_send::<View>(), book);
-            id
-        }
-    }
-}
+pub(crate) mod internals {}
 
 #[cfg(test)]
 pub(crate) mod test_world {
@@ -274,6 +9,7 @@ pub(crate) mod test_world {
     use campfire_script::ScriptId;
     use campfire_sim::TickRate;
 
+    use crate::actions::Actions;
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_data::ActionData;
@@ -281,7 +17,6 @@ pub(crate) mod test_world {
     use crate::actions::action_parts::ActionParts;
     use crate::actions::action_range::ActionRange;
     use crate::actions::actions_column::ActionsColumn;
-    use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
     use crate::actions::cost_target::CostTarget;
     use crate::actions::effect_lists::EffectLists;
     use crate::actions::effect_names::EffectNames;
@@ -292,13 +27,13 @@ pub(crate) mod test_world {
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::hook_set::HookSet;
     use crate::scripts::script_book::ScriptBook;
+    use crate::stats::Stats;
     use crate::stats::modifier_book::ModifierBook;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_cost::PoolCost;
     use crate::stats::pool_id::PoolId;
     use crate::stats::stat_id::StatId;
     use crate::stats::stats_column::StatsColumn;
-    use crate::stats::stats_world::internals::StatsWorldInternals;
     use crate::stats::stats_world::test_world::StatsWorldTest;
     use crate::units::action_id::ActionId;
     use crate::units::by_type::ByType;
@@ -403,28 +138,31 @@ pub(crate) mod test_world {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
-            self.push_action(Action {
-                package: 0,
-                name: "train".into(),
-                kind: KindSpec::Train(unit_type),
-                passive: None,
-                hold: None,
-                aim: Aim::None,
-                ranks: vec![RankValues {
-                    range: ActionRange::Global,
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            })
+            Actions::push(
+                self,
+                Action {
+                    package: 0,
+                    name: "train".into(),
+                    kind: KindSpec::Train(unit_type),
+                    passive: None,
+                    hold: None,
+                    aim: Aim::None,
+                    ranks: vec![RankValues {
+                        range: ActionRange::Global,
+                        cooldown: Ticks::ZERO,
+                        cost: PoolCost::default(),
+                        windup: time,
+                        charges: None,
+                        toggle: None,
+                        channel: None,
+                        charge: None,
+                    }],
+                    resource_costs: resource_cost.into_iter().collect(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery: None,
+                },
+            )
         }
 
         fn add_build(
@@ -434,28 +172,31 @@ pub(crate) mod test_world {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
-            self.push_action(Action {
-                package: 0,
-                name: "build".into(),
-                kind: KindSpec::Build(unit_type),
-                passive: None,
-                hold: None,
-                aim: Aim::Point { clamp: false },
-                ranks: vec![RankValues {
-                    range: ActionRange::Meters(range),
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            })
+            Actions::push(
+                self,
+                Action {
+                    package: 0,
+                    name: "build".into(),
+                    kind: KindSpec::Build(unit_type),
+                    passive: None,
+                    hold: None,
+                    aim: Aim::Point { clamp: false },
+                    ranks: vec![RankValues {
+                        range: ActionRange::Meters(range),
+                        cooldown: Ticks::ZERO,
+                        cost: PoolCost::default(),
+                        windup: time,
+                        charges: None,
+                        toggle: None,
+                        channel: None,
+                        charge: None,
+                    }],
+                    resource_costs: resource_cost.into_iter().collect(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery: None,
+                },
+            )
         }
     }
 
@@ -490,8 +231,7 @@ pub(crate) mod test_world {
         }
 
         fn modifier(&self, name: &DeclaredName) -> ModifierId {
-            self.world
-                .modifier_named(self.package, name.as_str())
+            Stats::modifier(self.world, self.package, name.as_str())
                 .expect("the load checked an effect's modifier")
         }
 

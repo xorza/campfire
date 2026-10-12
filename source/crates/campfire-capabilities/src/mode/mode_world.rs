@@ -1,22 +1,14 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_sim::{IdAllocator, SimTick};
 
 use crate::mode::calls::Calls;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_state::{ModeState, ModeSync};
-use crate::mode::placed_unit::PlacedPath;
 use crate::mode::save_asked::SaveAsked;
-use crate::navigation::on_path::OnPath;
-use crate::navigation::path_walker::PathWalker;
-use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
-use crate::scripts::error::CallError;
-use crate::scripts::hook::Hook;
-use crate::scripts::pool::Pool;
+use crate::players::players_world::PlayersWorld;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::scripts::state_value::StateValue;
-use crate::units::spawn_at::SpawnAt;
 use crate::units::team::Team;
 use crate::units::unit_state::{SyncAll, SyncNone};
 
@@ -36,12 +28,6 @@ pub trait ModeWorld {
     /// The team of player `slot` in the match; `None` before the mode installs, or for
     /// a slot the session does not have.
     fn team_of(&self, slot: PlayerSlot) -> Option<Team>;
-
-    /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
-    /// walking them as they name, then `on_match_start` runs. A timer it sets counts from the
-    /// start. An error when the call fails: a match its mode cannot start would run without its
-    /// rules.
-    fn start_mode(&mut self) -> Result<(), CallError>;
 }
 
 impl ModeWorld for World {
@@ -67,45 +53,6 @@ impl ModeWorld for World {
 
     fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
         self.get_non_send::<MatchMode>()?.teams.of(slot)
-    }
-
-    fn start_mode(&mut self) -> Result<(), CallError> {
-        let book = self.non_send::<MatchMode>().clone();
-        let teams = &book.teams;
-        let slots = (0..teams.players()).map(PlayerSlot::new);
-        self.spawn_match_entities(
-            slots.map(|slot| teams.of(slot).expect("every player has a team")),
-        );
-        for placed in &book.placed {
-            let at = SpawnAt {
-                id: self.resource_mut::<IdAllocator>().allocate(),
-                unit_type: placed.unit_type,
-                team: placed.team,
-                pos: placed.pos,
-                angle: placed.angle,
-            };
-            match placed.path {
-                None => book.spawn(self, at, None, ()),
-                Some(PlacedPath { path, from: None }) => {
-                    book.spawn(self, at, None, OnPath::new(path))
-                }
-                Some(PlacedPath {
-                    path,
-                    from: Some(from),
-                }) => {
-                    let walker = (OnPath::new(path), PathWalker::start(from, at.id));
-                    book.spawn(self, at, None, walker)
-                }
-            };
-        }
-        if !book.schema.hooks.contains(Hook::OnMatchStart) {
-            return Ok(());
-        }
-        let now = self.resource::<SimTick>().start();
-        self.mode_calls(now, |call| {
-            call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
-        })
-        .map_err(CallError::from_script)
     }
 }
 
@@ -154,56 +101,8 @@ impl ModeWorldCrate for World {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::{IdAllocator, Position, StableId};
-
-    use crate::mode::match_mode::MatchMode;
-    use crate::scripts::ctx::Ctx;
-    use crate::units::spawn_at::SpawnAt;
-    use crate::units::spawner::Spawner;
-    use crate::units::team::Team;
-
-    /// What the mode module gives a world for the tests and benches of every crate.
-    pub trait ModeWorldInternals {
-        /// Spawns a unit of the mode's type `name` on `team` at `pos`, with the parts its type's
-        /// kit gives, as the mode's own spawns do.
-        fn spawn_typed(&mut self, name: &str, team: Team, pos: Position) -> StableId;
-    }
-
-    impl ModeWorldInternals for World {
-        fn spawn_typed(&mut self, name: &str, team: Team, pos: Position) -> StableId {
-            let ctx = self.non_send::<Ctx>().clone();
-            let book = self.non_send::<MatchMode>().clone();
-            let unit_type = ctx
-                .view()
-                .unit_type_named(name)
-                .filter(|&unit_type| book.kit(unit_type).is_some())
-                .expect("a type of the mode, with a kit");
-            let id = self.resource_mut::<IdAllocator>().allocate();
-            let spawner = self.non_send::<Spawner>().clone();
-            spawner.spawn(
-                self,
-                SpawnAt {
-                    id,
-                    unit_type,
-                    team,
-                    pos,
-                    angle: Num::ZERO,
-                },
-                None,
-            );
-            id
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_world {
-    use campfire_sim::internals::SimWorldInternals;
     use std::slice;
 
     use bevy_ecs::entity::Entity;
@@ -213,6 +112,7 @@ pub(crate) mod test_world {
     use campfire_math::Num;
     use campfire_script::rhai::Dynamic;
     use campfire_script::{Budget, ScriptHost};
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         EntityIndex, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId, TickInputs,
     };
@@ -231,6 +131,7 @@ pub(crate) mod test_world {
     use crate::scripts::script_failures::ScriptFailures;
     use crate::scripts::script_role::ScriptRole;
     use crate::scripts::state_value::StateValue;
+    use crate::stats::Stats;
     use crate::stats::application::{Application, NewInstance};
     use crate::stats::instance::StatShare;
     use crate::stats::level::Level;
@@ -238,7 +139,6 @@ pub(crate) mod test_world {
     use crate::stats::modifiers::Modifiers;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_op::StatOp;
-    use crate::stats::stats_world::internals::StatsWorldInternals;
     use crate::stats::stats_world::test_world::StatsWorldTest;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::action_id::ActionId;
@@ -454,7 +354,7 @@ pub(crate) mod test_world {
                     ctx.frame().begin(self, start).unwrap();
                 }
                 ScriptRole::Modifier => {
-                    let blessing = self.modifier_named(0, "blessing").unwrap();
+                    let blessing = Stats::modifier(self, 0, "blessing").unwrap();
                     let start = CallStart {
                         acting: Some(actor),
                         ..CallStart::hook(blessing, 0, 1, now)

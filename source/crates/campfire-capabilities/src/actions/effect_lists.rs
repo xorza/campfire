@@ -1,9 +1,13 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_sim::Capability;
+use bevy_ecs::world::World;
+use campfire_math::Num;
+use campfire_sim::{Capability, TickRate};
 
 use crate::actions::action_data::ActionData;
+use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_effect::ActionsEffect;
 use crate::actions::amount::Amount;
 use crate::actions::capability_does::CapabilityDoes;
 use crate::actions::does::Does;
@@ -12,11 +16,17 @@ use crate::actions::effect_data::{
     MoveData, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
 use crate::actions::effect_names::EffectNames;
+use crate::actions::effect_queues::EffectQueues;
 use crate::actions::launch_id::LaunchId;
 use crate::actions::lists_of::ListsOf;
 use crate::declare::book::Book;
+use crate::scripts::error::CallError;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
+use crate::stats::stats_effect::StatsEffect;
 use crate::units::action_id::ActionId;
+use crate::units::spawn_at::SpawnAt;
+use crate::units::view::View;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
@@ -173,6 +183,97 @@ impl EffectLists {
     /// Whether the match loaded `launch`.
     pub(crate) fn has_launch(&self, launch: LaunchId) -> bool {
         (launch.0 as usize) < self.launches.len()
+    }
+
+    /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
+    /// its rank, which the match runs: each effect to the unit `reached`, what the list reached, or
+    /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
+    /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
+    /// pipeline; every other effect queues as its capability registered, which can fail the
+    /// call, as experience to a unit without the track fails `ctx.add_xp`.
+    pub(crate) fn queue(
+        world: &World,
+        of: ListsOf,
+        hook: Hook,
+        frame: &mut Frame,
+        view: &View,
+        reached: ActionTarget,
+    ) -> Result<(), CallError> {
+        let list = world.resource::<EffectLists>().of(of, hook);
+        if list.is_empty() {
+            return Ok(());
+        }
+        let rate = *world.resource::<TickRate>();
+        let queues = world.resource::<EffectQueues>();
+        let acting = frame.acting();
+        let reached_unit = reached.unit();
+        let duration = |ms: Amount, frame: &Frame| {
+            // Whole, as the load checked, so the floor is exact.
+            let ms = ms.number(frame).floor();
+            let ms = u64::try_from(ms).expect("the load checked a duration not negative");
+            rate.duration(ms)
+                .expect("the load checked a duration within reach")
+        };
+        for &listed in list {
+            let unit = || match listed.to {
+                EffectTo::Reached => {
+                    reached_unit.expect("the load lets only an effect to the source reach no unit")
+                }
+                EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
+            };
+            match listed.does {
+                Does::Spawn {
+                    unit_type,
+                    duration_ms,
+                } => {
+                    let source = acting.and_then(|id| view.row(id));
+                    let source = source.expect("an action's list runs for its acting unit");
+                    let pos = match (listed.to, reached) {
+                        (EffectTo::Source, _) => source.pos,
+                        (EffectTo::Reached, ActionTarget::Point(at)) => at,
+                        (EffectTo::Reached, ActionTarget::Unit(id)) => {
+                            view.row(id)
+                                .expect("a list reaches a unit the view holds")
+                                .pos
+                        }
+                        (EffectTo::Reached, ActionTarget::None) => {
+                            unreachable!(
+                                "the load lets a spawn reach no place only from the source"
+                            )
+                        }
+                    };
+                    let at = SpawnAt {
+                        id: frame.take_id(),
+                        unit_type,
+                        team: source.team,
+                        pos,
+                        angle: Num::ZERO,
+                    };
+                    let life = duration_ms.map(|ms| duration(ms, frame));
+                    frame.effects.push(ActionsEffect {
+                        at,
+                        owner: source.owner,
+                        life,
+                    });
+                }
+                Does::Modifier { id, duration_ms } => {
+                    let duration = duration_ms.map(|ms| duration(ms, frame));
+                    frame.effects.push(StatsEffect::Add {
+                        target: unit(),
+                        id,
+                        duration,
+                    });
+                }
+                Does::Purge { tag } => frame.effects.push(StatsEffect::Purge {
+                    carrier: unit(),
+                    tag,
+                }),
+                Does::Capability(does) => {
+                    queues.of(does.capability())(does, unit(), reached_unit, frame, view)?;
+                }
+            }
+        }
+        Ok(())
     }
 }
 

@@ -1,33 +1,3 @@
-use bevy_ecs::world::World;
-
-use crate::geometry::grid::Grid;
-use crate::geometry::polygon::Polygon;
-use crate::vision::brush_map::BrushMap;
-use crate::vision::reveals::Reveals;
-use crate::vision::vision_grid::VisionGrid;
-
-/// What the vision module gives a world, for every crate.
-pub trait VisionWorld {
-    /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
-    /// and the number of its teams.
-    fn load_vision_grid(&mut self, grid: Grid, brush: &[Polygon], teams: usize);
-}
-
-impl VisionWorld for World {
-    fn load_vision_grid(&mut self, grid: Grid, brush: &[Polygon], teams: usize) {
-        debug_assert!(
-            self.contains_resource::<Reveals>(),
-            "a map's vision grid is vision's, which the load checked the mode declares"
-        );
-        assert!(
-            teams <= VisionGrid::MAX_TEAMS,
-            "the mode's check limits the teams of a map with vision"
-        );
-        let brush = BrushMap::new(&grid, brush);
-        self.insert_resource(VisionGrid { grid, brush, teams });
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_world {
     use bevy_ecs::world::World;

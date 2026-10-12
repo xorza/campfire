@@ -10,7 +10,7 @@
 mod showcase;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::internals::StatsWorldInternals;
+use campfire_capabilities::Stats;
 use campfire_capabilities::{
     ActionSlot, ActionSlots, Dead, Deaths, Level, Match, ModeParam, ModeWorld, Owner, PathWalker,
     Points, Rank, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
@@ -234,8 +234,8 @@ impl Seen {
                 .packages()
                 .position(|view| view.package.header.name == "player-spells");
             let spells = u16::try_from(spells.unwrap()).unwrap();
-            let haste = world.modifier_named(spells, "haste").unwrap();
-            let carried = world.carried_modifiers(husk);
+            let haste = Stats::modifier(world, spells, "haste").unwrap();
+            let carried = Stats::carried_modifiers(world, husk);
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));
         }
         if (1878..=1880).contains(&tick) {

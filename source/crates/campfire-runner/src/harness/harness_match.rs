@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use campfire_capabilities::internals::PlayersWorldInternals;
+use campfire_capabilities::internals::Players;
 use campfire_capabilities::{Match, MatchSpec, ModeInputs};
 use campfire_common::SegmentSeed;
 use campfire_log::internals::LogCheck;
@@ -41,7 +41,7 @@ impl HarnessMatchInternals for Match {
         let mut game = Match::new(MatchBuild::spec(&packages, seed, rate, players)).with_log(log);
         let ModeInputs { books, .. } = MatchBuild::books(&packages, &mut game);
         books.install(&mut game);
-        game.start_without_mode([], 0);
+        Players::start_without_mode(&mut game, [], 0);
         game.insert_non_send(ArenaPackages(packages));
         game.insert_non_send(ArenaFailures::default());
         game

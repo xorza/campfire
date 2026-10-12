@@ -15,55 +15,6 @@ impl CombatWorld for World {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::StableId;
-
-    use crate::combat::damage::{Damage, DamageCause};
-    use crate::combat::pass_queue::PassQueue;
-    use crate::units::view::View;
-
-    /// What the combat module gives a world for the tests and benches of every crate.
-    pub trait CombatWorldInternals {
-        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
-        /// pass, as an effect of no action deals it: for a test that deals what no input can.
-        fn queue_damage(
-            &mut self,
-            source: Option<StableId>,
-            target: StableId,
-            amount: Num,
-            kind: &str,
-        );
-    }
-
-    impl CombatWorldInternals for World {
-        fn queue_damage(
-            &mut self,
-            source: Option<StableId>,
-            target: StableId,
-            amount: Num,
-            kind: &str,
-        ) {
-            let kind = self
-                .non_send::<View>()
-                .damage_kind_named(kind)
-                .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
-            self.resource_mut::<PassQueue>().push_damage(Damage {
-                source,
-                target,
-                amount,
-                kind,
-                cause: DamageCause::Effect,
-                action: None,
-                depth: 0,
-                hit: None,
-            });
-        }
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_world {
     use bevy_ecs::world::World;

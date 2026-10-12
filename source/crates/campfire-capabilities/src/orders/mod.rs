@@ -154,5 +154,36 @@ impl Orders {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
+
+    use crate::orders::Orders;
+    use crate::orders::ai::Ai;
+    use crate::orders::ai_data::AiData;
+    use crate::orders::error::AiError;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::units::by_type::ByType;
+    use crate::units::unit_type::UnitType;
+
+    impl Orders {
+        /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
+        /// becomes whole ticks at the match's rate, rounded up, and at least one.
+        pub fn load_ai(
+            world: &mut World,
+            unit_type: UnitType,
+            data: &AiData,
+            script: ScriptId,
+        ) -> Result<(), AiError> {
+            let rate = *world.resource::<TickRate>();
+            let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
+            world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

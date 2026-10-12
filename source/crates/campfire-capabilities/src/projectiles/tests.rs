@@ -35,9 +35,9 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::filter_data::FilterData;
+use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
-use crate::vision::vision_world::VisionWorld;
 
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
@@ -455,7 +455,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     ]);
     let scout = game.volley().scout;
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
-    game.load_vision_grid(Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
+    Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
     game.resource_mut::<ByType<Sight>>().set(scout, sight);
     let source = game.spawn_armed(Team::new(0), at(0, -9), target());

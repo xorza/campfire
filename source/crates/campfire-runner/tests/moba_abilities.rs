@@ -9,13 +9,14 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_capabilities::internals::{self, Arms, CombatWorldInternals, StatsWorldInternals};
+use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
     Life, Match, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner,
     PackagePath, Param, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar,
-    Scaling, SeenBy, SlotKind, SlotTimes, Stat, StatsWorld, Targeting, Team, UnitEntity,
+    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
 };
+use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_package::{AvatarData, PackageDir, PackageFiles};
@@ -100,7 +101,7 @@ fn health(game: &Match, id: StableId) -> i64 {
 
 fn pool(game: &Match, id: StableId, name: &str) -> Num {
     let entity = game.entity_of(id).unwrap();
-    let meters = game.pool_meters(entity);
+    let meters = PoolMeters::of(game, entity);
     meters.current(game.arena_pool(name)).unwrap()
 }
 
@@ -136,7 +137,7 @@ fn caster(
 
 /// The modifiers `id` carries, each with its source.
 fn carried(game: &Match, id: StableId) -> Vec<(ModifierId, Option<StableId>)> {
-    game.carried_modifiers(id)
+    Stats::carried_modifiers(game, id)
 }
 
 /// How many projectiles the match holds.
@@ -246,7 +247,7 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     let blade = spawn(&mut game, 0, 0, (player, Modifiers::default()));
     let dummy = spawn(&mut game, 1, 1, ());
     let twin_cut = game.arena_modifier("hero-kensho", "twin_cut");
-    game.give_modifier(blade, twin_cut, Some((blade, None, 1)), true);
+    Stats::give_modifier(&mut game, blade, twin_cut, Some((blade, None, 1)), true);
     // 20 an attack, every 10 ticks from tick 0, so 7 within 4 s are consecutive: 6 by tick 50,
     // 500 − 120; the 7th, in tick 60, hits twice, − 40; its extra hit counts for nothing, so
     // the next 6 take 120 by tick 120, and the 14th, in tick 130, hits twice, − 40.
@@ -369,7 +370,7 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
     // On again, it ends as Husk dies.
     game.arena_tick(0, &[cast(husk, ActionTarget::None)]);
     assert!(toggled(&game, husk));
-    game.queue_damage(None, husk, Num::int(1000), "true");
+    Combat::queue_damage(&mut game, None, husk, Num::int(1000), "true");
     game.arena_step();
     game.arena_step();
     assert!(!toggled(&game, husk));
@@ -440,7 +441,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let marked = spawn(&mut game, 1, 1, Modifiers::default());
     let marks = |game: &Match| !carried(game, marked).is_empty();
     let from = Some((veil, Some(action), 2));
-    game.give_modifier(marked, dusk_mark, from, false);
+    Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
     arm(&mut game, other, 30, 100);
     arm(&mut game, veil, 30, 100);
     // Another unit's attack of 30 in tick 0 leaves the mark.
@@ -621,7 +622,7 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     let burning = enemy(&mut game, milli(6000, 1000));
     let ally = spawn_at(&mut game, 0, milli(6000, 0), (0, 0), Modifiers::default());
     let from = Some((caster, Some(eruption), 1));
-    game.give_modifier(burning, kindle, from, false);
+    Stats::give_modifier(&mut game, burning, kindle, from, false);
 
     game.arena_tick(0, &[cast(caster, ActionTarget::Point(milli(6000, 0)))]);
     let units = [center, edge, beyond, burning, ally];

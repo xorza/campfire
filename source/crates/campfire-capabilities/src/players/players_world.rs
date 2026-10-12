@@ -3,12 +3,8 @@ use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
 use campfire_sim::{SimWorld, StableId};
 
-use crate::players::kind_parts::KindParts;
-use crate::players::match_entity::MatchEntity;
-use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::units::owner::Owner;
-use crate::units::team::Team;
 use crate::units::view::View;
 
 /// What the players module gives a world: the match's entity, and each player's entity and
@@ -41,10 +37,6 @@ impl PlayersWorld for World {
 
 /// What the players module gives a world, for its own crate.
 pub(crate) trait PlayersWorldCrate {
-    /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
-    /// team, each with its named id and the parts the installed modules declare for its kind.
-    fn spawn_match_entities(&mut self, teams: impl Iterator<Item = Team>);
-
     /// The resources of the player that owns a unit of `owner`: none for a unit no
     /// player owns, or in a match that keeps no players' resources.
     fn owner_resources<'w>(&'w self, owner: Option<&Owner>) -> Option<&'w PlayerResources>;
@@ -59,17 +51,6 @@ pub(crate) trait PlayersWorldCrate {
 }
 
 impl PlayersWorldCrate for World {
-    fn spawn_match_entities(&mut self, teams: impl Iterator<Item = Team>) {
-        self.resource_scope(|world, parts: Mut<'_, KindParts<MatchEntity>>| {
-            parts.put_on(&mut world.spawn((StableId::MATCH, MatchEntity)));
-        });
-        self.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
-            for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
-                MatchEntity::spawn_player_of(world, &parts, slot, team);
-            }
-        });
-    }
-
     fn owner_resources<'w>(&'w self, owner: Option<&Owner>) -> Option<&'w PlayerResources> {
         self.player_resources(owner?.slot())
     }
@@ -84,61 +65,6 @@ impl PlayersWorldCrate for World {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::{Mut, World};
-    use campfire_common::PlayerSlot;
-
-    use crate::players::kind_parts::KindParts;
-    use crate::players::match_entity::MatchEntity;
-    use crate::players::player::Player;
-    use crate::players::player_resources::PlayerResources;
-    use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
-    use crate::units::relations::Relations;
-    use crate::units::team::Team;
-
-    /// What a match with no mode to start it needs of its world, in tests and benches: its start,
-    /// and players who join it after.
-    pub trait PlayersWorldInternals {
-        /// Starts the match, as a mode's start does: the match's entity spawns, of teams that
-        /// regard each other as hostile, then the entity of each player of `teams`, in slot
-        /// order, with none of each of `resources` resources.
-        fn start_without_mode(&mut self, teams: impl IntoIterator<Item = Team>, resources: usize);
-
-        /// Spawns, in a match that started, the entities of players 0 to `players`, all on team
-        /// 0, with what the installed capabilities put on them and none of each of `resources`
-        /// resources, as a mode's start does.
-        fn spawn_players(&mut self, players: u32, resources: usize);
-    }
-
-    impl PlayersWorldInternals for World {
-        fn start_without_mode(&mut self, teams: impl IntoIterator<Item = Team>, resources: usize) {
-            let teams: Vec<Team> = teams.into_iter().collect();
-            self.spawn_match_entities(teams.iter().copied());
-            let entity = self.match_entity().expect("the match's entity spawned");
-            self.entity_mut(entity).insert(Relations::default());
-            for slot in (0..).map(PlayerSlot::new).take(teams.len()) {
-                let player = self
-                    .player_entity(slot)
-                    .expect("each player's entity spawned");
-                self.entity_mut(player)
-                    .insert(PlayerResources::new(resources));
-            }
-        }
-
-        fn spawn_players(&mut self, players: u32, resources: usize) {
-            self.resource_scope(|world, parts: Mut<'_, KindParts<Player>>| {
-                for slot in (0..players).map(PlayerSlot::new) {
-                    let player = MatchEntity::spawn_player_of(world, &parts, slot, Team::new(0));
-                    world
-                        .entity_mut(player)
-                        .insert(PlayerResources::new(resources));
-                }
-            });
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use std::panic;
@@ -146,10 +72,12 @@ mod tests {
     use campfire_sim::Capability;
 
     use super::*;
-    use crate::players::players_world::internals::PlayersWorldInternals;
+    use crate::players::Players;
+    use crate::players::player::Player;
     use crate::release::r#match::Match;
     use crate::stats::player_modifiers::PlayerModifiers;
     use crate::units::relations::Relations;
+    use crate::units::team::Team;
 
     #[test]
     fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_one_unstarted() {
@@ -157,7 +85,7 @@ mod tests {
         // relations of hostile teams, and each player's its slot, its team, the stats' part and
         // two resources at 0.
         let mut game = Match::test_unstarted(&[Capability::Stats], Match::TEST_RATE, None);
-        game.start_without_mode([Team::new(1), Team::new(0)], 2);
+        Players::start_without_mode(&mut game, [Team::new(1), Team::new(0)], 2);
         let entity = game.match_entity().unwrap();
         assert_eq!(game.get::<Relations>(entity), Some(&Relations::default()));
         for (slot, team) in [(0, 1), (1, 0)] {
@@ -176,7 +104,7 @@ mod tests {
         // A player joins only a match that started: one of no match entity refuses it.
         let mut unstarted = Match::test_unstarted(&[Capability::Stats], Match::TEST_RATE, None);
         let joined = panic::catch_unwind(panic::AssertUnwindSafe(|| {
-            unstarted.spawn_players(1, 0);
+            Players::spawn(&mut unstarted, 1, 0);
         }));
         let refusal = joined.unwrap_err();
         assert_eq!(

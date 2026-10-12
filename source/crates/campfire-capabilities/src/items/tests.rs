@@ -1,9 +1,9 @@
-use campfire_sim::internals::SimWorldInternals;
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimComponent, SimWorld};
 use serde::Deserialize;
 
@@ -23,14 +23,15 @@ use crate::items::item_id::ItemId;
 use crate::items::items_world::test_world::{Carrier, ItemsWorldTest};
 use crate::items::shop::{Shop, ShopPlace};
 use crate::orders::order::Action;
+use crate::players::Players;
 use crate::players::players_world::PlayersWorldCrate;
-use crate::players::players_world::internals::PlayersWorldInternals;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::release::r#match::Match;
 use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::Stats;
 use crate::stats::life::Life;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
@@ -38,7 +39,6 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_world::internals::StatsWorldInternals;
 use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
@@ -87,7 +87,7 @@ fn carrier_match() -> Match {
         ..ModifierData::default()
     };
     game.load_modifier(0, "might", &might, None);
-    let might = game.modifier_named(0, "might").unwrap();
+    let might = Stats::modifier(&game, 0, "might").unwrap();
     let heal = EffectData {
         does: Effecting::Heal(HealFields {
             amount: Number::Value(Scalar::Int(50)),
@@ -161,7 +161,7 @@ fn stock(game: &mut Match, gold: DeclaredName, [drink, flash]: [ActionId; 2], mi
     }];
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
     game.insert_resource(Shop::new(sells, resource, places, share));
-    game.spawn_players(1, 1);
+    Players::spawn(game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 1000)

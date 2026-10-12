@@ -5,8 +5,7 @@
 //! golden and no replay. The test pins the content's values, so a change to the content changes
 //! it, by design.
 
-use campfire_capabilities::internals::{CombatWorldInternals, StatsWorldInternals};
-use campfire_capabilities::{MatchResult, ModeWorld, Team};
+use campfire_capabilities::{Combat, MatchResult, ModeWorld, Stats, Team};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_runner::internals::{HarnessWorldInternals, Moba3v3};
@@ -31,9 +30,13 @@ fn the_3v3s_late_rules_follow_each_fall() {
 
     // Kensho fells the north's west inhibitor in tick 1200: its 50 gold to player 3, and it
     // comes back 240 s, 4800 ticks, after the end of that tick, at the start of tick 6001.
-    fixed
-        .game_mut()
-        .queue_damage(Some(kensho), north_west_inhibitor, Num::int(4000), "true");
+    Combat::queue_damage(
+        fixed.game_mut(),
+        Some(kensho),
+        north_west_inhibitor,
+        Num::int(4000),
+        "true",
+    );
     run_to(&mut fixed, 1201);
     let world = fixed.game();
     assert!(world.dead(north_west_inhibitor));
@@ -46,19 +49,16 @@ fn the_3v3s_late_rules_follow_each_fall() {
     // Husk fells the warden in tick 1201: its 150 gold to player 2; each north hero takes the
     // blessing, no south hero does; it comes back 360 s, 7200 ticks, after the end of that
     // tick, at tick 8402.
-    fixed
-        .game_mut()
-        .queue_damage(Some(husk), warden, Num::int(5000), "true");
+    Combat::queue_damage(fixed.game_mut(), Some(husk), warden, Num::int(5000), "true");
     run_to(&mut fixed, 1202);
     let world = fixed.game();
     assert!(world.dead(warden));
     assert_eq!(world.respawn_at(warden), Some(Tick::new(8402)));
     assert_eq!(world.gold(&moba, 2), 150);
-    let blessing = world.modifier_named(0, "warden_blessing").unwrap();
+    let blessing = Stats::modifier(world, 0, "warden_blessing").unwrap();
     let blessed: Vec<bool> = (0..Moba3v3::PLAYERS)
         .map(|slot| {
-            world
-                .carried_modifiers(world.match_units().hero(slot))
+            Stats::carried_modifiers(world, world.match_units().hero(slot))
                 .contains(&(blessing, None))
         })
         .collect();
@@ -83,9 +83,13 @@ fn the_3v3s_late_rules_follow_each_fall() {
     );
 
     // Kensho fells the north core in tick 2400: the match ends then, won by the south.
-    fixed
-        .game_mut()
-        .queue_damage(Some(kensho), north_core, Num::int(5500), "true");
+    Combat::queue_damage(
+        fixed.game_mut(),
+        Some(kensho),
+        north_core,
+        Num::int(5500),
+        "true",
+    );
     run_to(&mut fixed, 2401);
     let end = fixed.game().match_end().expect("the match ended");
     assert_eq!(

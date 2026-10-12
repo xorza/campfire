@@ -3,12 +3,11 @@ use std::num::NonZeroU32;
 use campfire_sim::EntityIndex;
 
 use super::*;
-use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
+use crate::actions::Actions;
 use crate::actions::gather_spec::GatherSpec;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
-use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
 use crate::production::gatherer::{GatherStep, Gatherer, Load};
@@ -42,10 +41,10 @@ fn mine_match() -> Match {
         radius: Num::HALF,
     };
     let grid = Grid::new(Num::ONE, bounds).unwrap();
-    game.load_pathing(grid, &[], vec![walker]);
+    Navigation::load_pathing(&mut game, grid, &[], vec![walker]);
     let shop = game.shop();
     let gold = shop.gold;
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     let mineral = game.load_unit_type(TypeScope::Mode, "mineral", &UnitTypeData::default());
     let mut nodes = NodeBook::default();
     nodes.nodes.set(mineral, gold);
@@ -57,7 +56,7 @@ fn mine_match() -> Match {
         bounce: Num::int(4),
     };
     let all = Filter::of_relations(RelationSet::All);
-    let gather = game.add_gather(spec, all, Num::ONE, Ticks::new(3));
+    let gather = Actions::add_gather(&mut game, spec, all, Num::ONE, Ticks::new(3));
     game.insert_resource(Mine { gather, mineral });
     game
 }

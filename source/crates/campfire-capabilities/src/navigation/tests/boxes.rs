@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use super::*;
 use crate::geometry::body_box::BodyBox;
 use crate::units::forced_move::{DashTo, ForcedMove};
@@ -103,14 +101,14 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     game.step();
     let building = game.spawn_unit(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = game.unit_entity(building);
-    game.make_room(entity);
+    Navigation::make_room(&mut game, entity);
     assert_eq!(*game.part::<Position>(walker), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch.
     let mut bare = walk_match();
     let walker = bare.body(quarters(1, 0), None, Some(QUARTER), QUARTER);
     let building = bare.spawn_unit(at(0, 0, 0), Team::new(0), boxed(2, 2, 0));
     let entity = bare.unit_entity(building);
-    bare.make_room(entity);
+    Navigation::make_room(&mut bare, entity);
     assert_eq!(*bare.part::<Position>(walker), quarters(5, 0));
 }
 

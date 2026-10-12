@@ -3,7 +3,7 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
-use campfire_capabilities::internals::UnitsWorldInternals;
+use campfire_capabilities::Units;
 use campfire_capabilities::{
     Action, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
 };
@@ -167,10 +167,12 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     });
     let hero = local.avatar(0);
     let (west, east) = (Team::new(0), Team::new(1));
-    local
-        .server_mut()
-        .world_mut()
-        .set_relation(west, east, Relation::Neutral);
+    Units::set_relation(
+        local.server_mut().world_mut(),
+        west,
+        east,
+        Relation::Neutral,
+    );
     for _ in 0..10 {
         local.step();
     }

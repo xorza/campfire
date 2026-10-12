@@ -1,5 +1,5 @@
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{MatchEnd, MatchResult, ModeWorld, ScriptFailures};
+use campfire_capabilities::{MatchEnd, MatchResult, Mode, ModeWorld, ScriptFailures};
 use campfire_common::Tick;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -108,7 +108,7 @@ impl SessionWorld for World {
             "a session starts before its first tick"
         );
         let session = Session::build(self, log, seeds, packages, 0)?;
-        self.start_mode().map_err(StartError::MatchStart)?;
+        Mode::start(self).map_err(StartError::MatchStart)?;
         self.insert_resource(session);
         Ok(())
     }

@@ -1,37 +1,15 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
-use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::TickRate;
 
-use crate::players::kind_parts::KindParts;
-use crate::players::match_entity::MatchEntity;
-use crate::players::player::Player;
 use crate::players::players_world::PlayersWorld;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::script_budgets::ScriptBudgets;
-use crate::scripts::script_failures::ScriptFailures;
 use crate::units::relations::Relations;
-use crate::units::tag_book::TagBook;
-use crate::units::tag_effect::TagEffect;
-use crate::units::tag_set::TagSet;
-use crate::units::unit_tags::UnitTags;
-use crate::units::view::View;
 
 /// What the units module gives a world, for every crate.
 pub trait UnitsWorld {
-    /// Compiles `source` in the match's script host, once for every capability that runs it.
-    fn compile_script(&mut self, source: &str) -> Result<ScriptId, ScriptError>;
-
     /// The relations of the match, once its entity spawned, or reached a client.
     fn held_relations(&self) -> Option<&Relations>;
 }
 
 impl UnitsWorld for World {
-    fn compile_script(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
-        self.non_send_mut::<ScriptHost>().compile(source)
-    }
-
     fn held_relations(&self) -> Option<&Relations> {
         self.get(self.match_entity()?)
     }
@@ -39,52 +17,15 @@ impl UnitsWorld for World {
 
 /// What the units module gives a world, for its own crate.
 pub(crate) trait UnitsWorldCrate {
-    /// Opens a match for the modules' installs: the script view, and with `budgets`, the script
-    /// host the scripts run in within them, and the context of their calls. A client runs no
-    /// scripts.
-    fn open_units(&mut self, budgets: Option<ScriptBudgets>);
-
     /// The relations of the match, on its entity, which every match spawns as it
     /// starts.
     fn relations(&self) -> &Relations;
 
     /// The relations of the match, to change.
     fn relations_mut(&mut self) -> Mut<'_, Relations>;
-
-    /// Which modifiers take effect on the unit of `entity`: every one in a match with no tag
-    /// book, or on a unit with no tags.
-    fn tag_effect(&self, entity: Entity) -> TagEffect;
 }
 
 impl UnitsWorldCrate for World {
-    fn tag_effect(&self, entity: Entity) -> TagEffect {
-        let granting = self
-            .get_resource::<TagBook>()
-            .map_or(TagSet::default(), TagBook::granting);
-        let immune = self
-            .get::<UnitTags>(entity)
-            .map_or(TagSet::default(), |tags| tags.immune);
-        TagEffect::new(granting, immune)
-    }
-
-    fn open_units(&mut self, budgets: Option<ScriptBudgets>) {
-        let rate = *self.resource::<TickRate>();
-        let view = View::new(rate);
-        self.init_resource::<KindParts<MatchEntity>>();
-        self.init_resource::<KindParts<Player>>();
-        if let Some(budgets) = budgets {
-            let ctx = Ctx::new(view.clone());
-            let mut host = ScriptHost::new(budgets.limits().per_call);
-            host.engine_mut()
-                .set_default_tag(Dynamic::from(ctx.clone()));
-            self.insert_non_send(ctx);
-            self.insert_non_send(host);
-            self.insert_non_send(ScriptFailures::default());
-            self.insert_resource(budgets);
-        }
-        self.insert_non_send(view);
-    }
-
     fn relations(&self) -> &Relations {
         self.held_relations()
             .expect("a match that started holds its relations")
@@ -96,28 +37,6 @@ impl UnitsWorldCrate for World {
             .expect("a match that started has its entity");
         self.get_mut(entity)
             .expect("the match's entity holds the relations")
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-
-    use crate::units::team::Team;
-    use crate::units::units_world::UnitsWorldCrate;
-    use crate::values::relation::Relation;
-
-    /// What the units module gives a world for the tests and benches of every crate.
-    pub trait UnitsWorldInternals {
-        /// Sets how the two teams of the match regard each other, as `ctx.set_relation`
-        /// does, their vision as it was.
-        fn set_relation(&mut self, of: Team, other: Team, relation: Relation);
-    }
-
-    impl UnitsWorldInternals for World {
-        fn set_relation(&mut self, of: Team, other: Team, relation: Relation) {
-            self.relations_mut().set_keeping_vision(of, other, relation);
-        }
     }
 }
 
@@ -137,12 +56,12 @@ pub(crate) mod test_world {
     use crate::release::release_world::test_world::ReleaseWorldTest;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::stats_column::StatsColumn;
+    use crate::units::Units;
     use crate::units::team::Team;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_data::UnitTypeData;
     use crate::units::units_column::UnitsColumn;
-    use crate::units::units_world::UnitsWorld;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
@@ -189,7 +108,7 @@ pub(crate) mod test_world {
 
     impl UnitsWorldTest for World {
         fn compile_hooked(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
-            let script = self.compile_script(source)?;
+            let script = Units::compile(self, source)?;
             self.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");
                 scripts.push(world.non_send::<ScriptHost>().functions(script));

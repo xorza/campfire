@@ -39,8 +39,8 @@ use crate::actions::targeting::Targeting;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::areas::areas_world::test_world::AreasWorldTest;
+use crate::combat::Combat;
 use crate::combat::assist_window::AssistWindow;
-use crate::combat::combat_world::internals::CombatWorldInternals;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
@@ -49,10 +49,10 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::geometry::body_box::BodyBox;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
+use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
-use crate::orders::orders_world::internals::OrdersWorldInternals;
-use crate::players::players_world::internals::PlayersWorldInternals;
+use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_id::ResourceId;
 use crate::progression::experience::Experience;
@@ -75,6 +75,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
+use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
@@ -91,7 +92,6 @@ use crate::stats::stat_graph::StatGraph;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
-use crate::stats::stats_world::internals::StatsWorldInternals;
 use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
@@ -331,7 +331,7 @@ fn abilities_match_with(limits: ScriptLimits, declared: &[Capability]) -> Match 
     let mut game = Match::server(declared, ScriptBudgets::new(limits, 2));
     // The damage kinds a mode would declare: the MOBA test content's.
     game.name_kinds(&["physical", "magic", "true"], &POOLS, &["gold"]);
-    game.spawn_players(2, 1);
+    Players::spawn(&mut game, 2, 1);
     game
 }
 
@@ -638,7 +638,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = game.compile_hooked(spin).unwrap();
-    game.load_ai(spinner, &ai, spin).unwrap();
+    Orders::load_ai(&mut game, spinner, &ai, spin).unwrap();
     let strike = game.load("strike", &strike(), STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn_combatant(1, ground(Num::int(5), Num::ZERO), ());
@@ -1329,7 +1329,7 @@ fn on_interrupt(ctx, caster, target) {
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     };
     let drain = game.load("drain", &drain, script);
-    let ward = game.modifier_named(0, "ward").unwrap();
+    let ward = Stats::modifier(&game, 0, "ward").unwrap();
     // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
     let run = |game: &mut Match, x: i64, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = game.caster(drain, 1);
@@ -1381,7 +1381,7 @@ fn on_interrupt(ctx, caster, target) {
     // Death in tick 5's Resolve cuts it too; its `on_interrupt` runs in the next tick's Hit.
     let killed = run(&mut game, 60, &|game, caster| {
         let damage = Num::int(1000);
-        game.queue_damage(None, caster, damage, "true");
+        Combat::queue_damage(game, None, caster, damage, "true");
     });
     let late = [500, 500, 500, 490, 490, 483, 483, 483, 483, 483, 483, 483];
     assert_eq!(health(&killed), late);
@@ -1794,7 +1794,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let caster = game.caster(action, 0);
     let entity = game.unit_entity(caster);
     game.insert_parts(caster, Modifiers::default());
-    let id = game.modifier_named(0, "guard").unwrap();
+    let id = Stats::modifier(&game, 0, "guard").unwrap();
     let shield = |game: &Match| {
         let modifiers = game.get::<Modifiers>(entity).unwrap();
         let held = modifiers.get(id, Some(caster))?;
@@ -1857,7 +1857,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let entity = game.unit_entity(beast);
     game.insert_parts(beast, Modifiers::default());
     game.step();
-    let ward = game.modifier_named(0, "ward").unwrap();
+    let ward = Stats::modifier(&game, 0, "ward").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
     assert!(modifiers.get(ward, Some(beast)).is_some());
@@ -1898,7 +1898,7 @@ fn on_resolve(ctx, caster, target) {
     game.cast(caster, ActionTarget::None);
     // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
     // ticks a second, 30 ticks, so it ends as tick t + 31 starts.
-    let id = game.modifier_named(0, "mark").unwrap();
+    let id = Stats::modifier(&game, 0, "mark").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let held = modifiers.get(id, Some(caster)).unwrap();
     assert_eq!(
@@ -2036,8 +2036,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         game.give_from(freed, source, "stun");
     }
     game.give_from(freed, second, "slow");
-    let [stun, slow] = ["stun", "slow"].map(|name| game.modifier_named(0, name).unwrap());
-    game.give_modifier(held, stun, Some((first, None, 1)), true);
+    let [stun, slow] = ["stun", "slow"].map(|name| Stats::modifier(&game, 0, name).unwrap());
+    Stats::give_modifier(&mut game, held, stun, Some((first, None, 1)), true);
     game.give_from(held, first, "stun");
     game.give_from(held, second, "stun");
     game.step();
@@ -2051,8 +2051,11 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         (second, ActionTarget::Unit(held)),
     ]);
     assert_eq!(game.failed_calls(), []);
-    assert_eq!(game.carried_modifiers(freed), [(slow, Some(second))]);
-    assert_eq!(game.carried_modifiers(held), [(stun, Some(first))]);
+    assert_eq!(
+        Stats::carried_modifiers(&game, freed),
+        [(slow, Some(second))]
+    );
+    assert_eq!(Stats::carried_modifiers(&game, held), [(stun, Some(first))]);
     assert_eq!([stopped(&game, freed), stopped(&game, held)], [false, true]);
 }
 
@@ -2433,7 +2436,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let parts = (Level::default(), points, Modifiers::default());
     game.insert_parts(caster, (parts, Navigation::walker(step)));
     let entity = game.unit_entity(caster);
-    let id = game.modifier_named(0, "guard").unwrap();
+    let id = Stats::modifier(&game, 0, "guard").unwrap();
     let send = |game: &mut Match, slot: u32, actions: &[Action]| {
         let orders: Vec<_> = actions
             .iter()
@@ -2952,7 +2955,7 @@ fn on_resolve(ctx, caster, target) {
     // deals, 500 → 230, and the shield of the caster's mark holds.
     assert_eq!(game.failed_calls(), []);
     assert_eq!(game.health(target), 230);
-    let mark = game.modifier_named(0, "mark").unwrap();
+    let mark = Stats::modifier(&game, 0, "mark").unwrap();
     let entity = game.unit_entity(caster);
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
@@ -3085,7 +3088,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     game.check_copy(&mut copy);
     assert_eq!(game.veil_values(ward)[1], vamp);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
-    let dual_path = game.modifier_named(0, "dual_path").unwrap();
+    let dual_path = Stats::modifier(&game, 0, "dual_path").unwrap();
     let mut modifiers = game.get_mut::<Modifiers>(ward_entity).unwrap();
     modifiers.set_stacks(dual_path, Some(source), 0, Tick::new(0));
     game.step();
@@ -3423,7 +3426,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     }
     game.cast(caster, ActionTarget::Point(point(Num::int(10), Num::ZERO)));
     game.run_until(16);
-    let chill = game.modifier_named(0, "chilled").unwrap();
+    let chill = Stats::modifier(&game, 0, "chilled").unwrap();
     let struck = |id: StableId| {
         let entity = game.unit_entity(id);
         let chilled = game
@@ -3541,7 +3544,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     game.load_stats();
     let [cover, rally, slow] = ["cover", "rally", "slow"].map(|name| {
         game.load_modifier(0, name, &changing(&[], &[], None), None);
-        game.modifier_named(0, name).unwrap()
+        Stats::modifier(&game, 0, name).unwrap()
     });
     // Radius 2 and 100 ms, 3 ticks at 30 a second; it hits only enemy grunts, and holds a
     // modifier of its own on its caster, its caster's allies and its enemies.
@@ -3595,7 +3598,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         far_ally,
         far_grunt,
     ];
-    let held = |game: &Match| units.map(|unit| game.carried_modifiers(unit));
+    let held = |game: &Match| units.map(|unit| Stats::carried_modifiers(game, unit));
     let from_caster = |id| vec![(id, Some(caster))];
     let inside = [
         from_caster(cover),

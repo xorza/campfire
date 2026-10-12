@@ -1,6 +1,5 @@
 #[cfg(test)]
 pub(crate) mod test_world {
-    use campfire_sim::internals::SimWorldInternals;
     use std::collections::BTreeMap;
 
     use bevy_ecs::bundle::Bundle;
@@ -8,6 +7,7 @@ pub(crate) mod test_world {
     use bevy_ecs::world::World;
     use campfire_common::PlayerSlot;
     use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Position, SimWorld, StableId};
 
     use crate::actions::action_data::ActionData;
@@ -25,6 +25,7 @@ pub(crate) mod test_world {
     use crate::scripts::hook::Hook;
     use crate::scripts::script_failures::ScriptFailures;
     use crate::scripts::script_failures::internals::FailedCall;
+    use crate::stats::Stats;
     use crate::stats::level::Level;
     use crate::stats::life::Life;
     use crate::stats::modifier_clocks::ModifierClocks;
@@ -32,7 +33,6 @@ pub(crate) mod test_world {
     use crate::stats::pool_id::PoolId;
     use crate::stats::pools::Pools;
     use crate::stats::stat_rule::StatRule;
-    use crate::stats::stats_world::internals::StatsWorldInternals;
     use crate::stats::stats_world::test_world::StatsWorldTest;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::action_id::ActionId;
@@ -250,13 +250,13 @@ pub(crate) mod test_world {
         }
 
         fn give_from(&mut self, id: StableId, source: StableId, name: &str) {
-            let modifier = self.modifier_named(0, name).unwrap();
+            let modifier = Stats::modifier(self, 0, name).unwrap();
             let entity = self.unit_entity(id);
             if !self.entity(entity).contains::<Modifiers>() {
                 self.insert_parts(id, Modifiers::default());
             }
             let from = Some((source, None, 1));
-            self.give_modifier(id, modifier, from, false);
+            Stats::give_modifier(self, id, modifier, from, false);
         }
 
         fn calls(&self) -> Vec<(StableId, Hook)> {
@@ -278,7 +278,7 @@ pub(crate) mod test_world {
         }
 
         fn mark(&self, id: StableId, source: StableId) -> Option<Num> {
-            let mark = self.modifier_named(0, "mark").unwrap();
+            let mark = Stats::modifier(self, 0, "mark").unwrap();
             let entity = self.unit_entity(id);
             let modifiers = self.get::<Modifiers>(entity).unwrap();
             let clocks = self.get::<ModifierClocks>(entity).unwrap();

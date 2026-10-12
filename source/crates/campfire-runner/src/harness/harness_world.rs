@@ -1,10 +1,9 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::internals::{
-    ActionsWorldInternals, Density, KernelScene, ModeWorldInternals, StatsWorldInternals,
-};
+use campfire_capabilities::internals::{Density, KernelScene};
 use campfire_capabilities::{
-    ActionId, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures, Team, VisionWorld,
+    ActionId, ModifierId, Order, PoolId, ScriptFailure, ScriptFailures, Team,
 };
+use campfire_capabilities::{Actions, Mode, Stats, Vision};
 use campfire_common::PlayerSlot;
 use campfire_package::ModePackages;
 use campfire_sim::internals::SimWorldInternals;
@@ -59,16 +58,16 @@ impl HarnessWorldInternals for World {
         let grid = packages.map().grid().unwrap();
         let grid = grid.expect("the map has a vision grid");
         let brush = packages.map().brush().unwrap();
-        self.load_vision_grid(grid, &brush, teams);
+        Vision::load_grid(self, grid, &brush, teams);
     }
 
     fn arena_action(&self, package: &str, name: &str) -> ActionId {
-        self.action_named(arena_package(self, package), name)
+        Actions::named(self, arena_package(self, package), name)
             .unwrap_or_else(|| panic!("no action {name} in {package}"))
     }
 
     fn arena_modifier(&self, package: &str, name: &str) -> ModifierId {
-        self.modifier_named(arena_package(self, package), name)
+        Stats::modifier(self, arena_package(self, package), name)
             .unwrap_or_else(|| panic!("no modifier {name} in {package}"))
     }
 
@@ -113,7 +112,7 @@ impl HarnessWorldInternals for World {
         for unit in 0..KernelScene::UNITS {
             let pos = Position::new(scene.point(Density::Crowded.span())).unwrap();
             let team = Team::new(u8::from(unit % 4 >= 2));
-            self.spawn_typed(CREEPS[unit % 2], team, pos);
+            Mode::spawn_typed(self, CREEPS[unit % 2], team, pos);
         }
     }
 }

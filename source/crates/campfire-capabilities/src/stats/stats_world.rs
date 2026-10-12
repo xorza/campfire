@@ -1,175 +1,19 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_sim::{SimWorld, StableId, TickRate};
 
 use crate::players::players_world::PlayersWorld;
-use crate::stats::carried_mut::CarriedMut;
-use crate::stats::level::Level;
-use crate::stats::life_pool::LifePool;
-use crate::stats::modifier_book::ModifierBook;
-use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifiers::Modifiers;
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_source::ParamSource;
 use crate::stats::player_modifiers::PlayerModifiers;
-use crate::stats::pool_book::PoolBook;
-use crate::stats::stat_book::StatBook;
-use crate::stats::stats_column::StatsColumn;
-use crate::stats::unit_pools::PoolMeters;
-use crate::stats::unit_stats::UnitStats;
-use crate::units::action_id::ActionId;
-use crate::units::modifier_id::ModifierId;
-use crate::units::unit_type::UnitType;
-use crate::units::view::View;
-use crate::values::rank::Rank;
-
-/// What the stats module gives a world, for every crate.
-pub trait StatsWorld {
-    /// The pools of the unit of `entity`, the life pool the match's.
-    fn pool_meters(&self, entity: Entity) -> PoolMeters<'_>;
-}
-
-impl StatsWorld for World {
-    fn pool_meters(&self, entity: Entity) -> PoolMeters<'_> {
-        let life_pool = self.get_resource::<LifePool>().map(|life| life.0);
-        PoolMeters::new(life_pool, self.get(entity), self.get(entity))
-    }
-}
 
 /// What the stats module gives a world, for its own crate.
 pub(crate) trait StatsWorldCrate {
-    /// The modifiers and clocks of `entity`; none when it carries none.
-    fn carried_mut(&mut self, entity: Entity) -> Option<CarriedMut<'_>>;
-
-    /// `has_way` of the match's books at its rate.
-    fn modifier_has_way(&self, id: ModifierId, action: Option<ActionId>, rank: Rank) -> bool;
-
-    /// Gives the match the mode's stat book and pool book, whose names its scripts read.
-    fn load_stat_books(&mut self, book: StatBook, pools: PoolBook);
-
-    /// `id` as a source; `None` when it is gone, or the match has no stat book.
-    fn param_source(&self, id: StableId) -> Option<ParamSource<'_>>;
-
     /// The modifiers player `slot` holds, to change; none before its entity spawns.
     fn player_modifiers_mut(&mut self, slot: PlayerSlot) -> Option<Mut<'_, PlayerModifiers>>;
 }
 
 impl StatsWorldCrate for World {
-    fn carried_mut(&mut self, entity: Entity) -> Option<CarriedMut<'_>> {
-        let (modifiers, clocks) = self
-            .get_entity_mut(entity)
-            .ok()?
-            .into_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
-            .ok()?;
-        Some(CarriedMut::new(modifiers, clocks))
-    }
-
-    fn modifier_has_way(&self, id: ModifierId, action: Option<ActionId>, rank: Rank) -> bool {
-        let (book, params) = (
-            self.resource::<ModifierBook>(),
-            self.resource::<ParamBook>(),
-        );
-        book.has_way(id, action, rank, params, *self.resource::<TickRate>())
-    }
-
-    fn load_stat_books(&mut self, book: StatBook, pools: PoolBook) {
-        let view = self.non_send::<View>();
-        StatsColumn::share_stat_names(view, book.names());
-        StatsColumn::share_pool_names(view, pools.names());
-        self.insert_resource(book);
-        self.insert_resource(pools);
-    }
-
-    fn param_source(&self, id: StableId) -> Option<ParamSource<'_>> {
-        let book = self.get_resource::<StatBook>()?;
-        let entity = self.entity_of(id)?;
-        let id = self.entity(entity);
-        Some(ParamSource::of_parts(
-            book,
-            *id.get::<UnitType>()?,
-            id.get::<Level>(),
-            id.get::<UnitStats>(),
-        ))
-    }
-
     fn player_modifiers_mut(&mut self, slot: PlayerSlot) -> Option<Mut<'_, PlayerModifiers>> {
         let entity = self.player_entity(slot)?;
         self.get_mut(entity)
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-    use campfire_sim::{SimWorld, StableId};
-
-    use crate::stats::applier::Applier;
-    use crate::stats::lifetime::Hold;
-    use crate::stats::modifier_book::ModifierBook;
-    use crate::stats::modifiers::Modifiers;
-    use crate::stats::stats_effect::StatsEffect;
-    use crate::units::action_id::ActionId;
-    use crate::units::modifier_id::ModifierId;
-    use crate::values::rank::Rank;
-
-    /// What the stats module gives a world for the tests and benches of every crate.
-    pub trait StatsWorldInternals {
-        /// The modifier `name` of `package`, as the match loaded it.
-        fn modifier_named(&self, package: u16, name: &str) -> Option<ModifierId>;
-
-        /// Gives `target` the modifier `id` from `source`, by `action` at `rank`, and a passive when
-        /// `passive`, as an application in the running tick would.
-        fn give_modifier(
-            &mut self,
-            target: StableId,
-            id: ModifierId,
-            from: Option<(StableId, Option<ActionId>, u8)>,
-            passive: bool,
-        );
-
-        /// The modifiers `id` carries, each with its source, in their order.
-        fn carried_modifiers(&self, id: StableId) -> Vec<(ModifierId, Option<StableId>)>;
-    }
-
-    impl StatsWorldInternals for World {
-        fn modifier_named(&self, package: u16, name: &str) -> Option<ModifierId> {
-            self.resource::<ModifierBook>().named(package, name)
-        }
-
-        fn give_modifier(
-            &mut self,
-            target: StableId,
-            id: ModifierId,
-            from: Option<(StableId, Option<ActionId>, u8)>,
-            passive: bool,
-        ) {
-            let (source, action, rank) = from.map_or((None, None, 1), |(source, action, rank)| {
-                (Some(source), action, rank)
-            });
-            let rank = Rank::new(rank).expect("a modifier is given at a rank");
-            let applier = Applier {
-                source,
-                action,
-                rank,
-                hold: passive.then_some(Hold::Passive),
-            };
-            let add = StatsEffect::Add {
-                target,
-                id,
-                duration: None,
-            };
-            add.apply_by(self, applier);
-        }
-
-        fn carried_modifiers(&self, id: StableId) -> Vec<(ModifierId, Option<StableId>)> {
-            let entity = self.entity_of(id).expect("a unit of the match");
-            self.get::<Modifiers>(entity)
-                .into_iter()
-                .flat_map(Modifiers::iter)
-                .map(|instance| (instance.id, instance.source))
-                .collect()
-        }
     }
 }
 

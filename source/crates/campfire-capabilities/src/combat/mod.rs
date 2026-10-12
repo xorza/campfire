@@ -179,16 +179,19 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
     use campfire_math::{Num, Rounding};
-    use campfire_sim::TickRate;
+    use campfire_sim::{StableId, TickRate};
 
+    use crate::actions::Actions;
     use crate::actions::action_book::internals::TestWeapon;
     use crate::actions::action_range::ActionRange;
     use crate::actions::action_slots::ActionSlots;
-    use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
     use crate::actions::slot_kind::SlotKind;
     use crate::actions::slot_times::TimedSlots;
+    use crate::combat::Combat;
+    use crate::combat::damage::{Damage, DamageCause};
     #[cfg(test)]
     use crate::combat::on_death::OnDeath;
+    use crate::combat::pass_queue::PassQueue;
     #[cfg(test)]
     use crate::combat::recent_attackers::RecentAttackers;
     #[cfg(test)]
@@ -197,6 +200,7 @@ pub(crate) mod internals {
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
+    use crate::units::view::View;
     use crate::values::rank::Rank;
     use crate::values::relation_set::RelationSet;
 
@@ -263,7 +267,7 @@ pub(crate) mod internals {
                     self.windup,
                 )
             };
-            let id = world.add_weapon(weapon);
+            let id = Actions::add_weapon(world, weapon);
             // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
             let period = Num::from_int(i64::try_from(self.period.get()).unwrap()).unwrap();
@@ -346,6 +350,33 @@ pub(crate) mod internals {
                 RecentAttackers::default(),
                 parts,
             )
+        }
+    }
+
+    impl Combat {
+        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
+        /// pass, as an effect of no action deals it: for a test that deals what no input can.
+        pub fn queue_damage(
+            world: &mut World,
+            source: Option<StableId>,
+            target: StableId,
+            amount: Num,
+            kind: &str,
+        ) {
+            let kind = world
+                .non_send::<View>()
+                .damage_kind_named(kind)
+                .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
+            world.resource_mut::<PassQueue>().push_damage(Damage {
+                source,
+                target,
+                amount,
+                kind,
+                cause: DamageCause::Effect,
+                action: None,
+                depth: 0,
+                hit: None,
+            });
         }
     }
 }

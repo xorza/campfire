@@ -5,12 +5,12 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_capabilities::internals::StatsWorldInternals;
 use campfire_capabilities::{
     ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
-    Lifespan, ModifierId, Number, Points, PoolId, Rank, Ranked, Scalar, SlotTime, SlotTimes,
-    StatsWorld, Team, Toggle,
+    Lifespan, ModifierId, Number, Points, PoolId, Rank, Ranked, Scalar, SlotTime, SlotTimes, Team,
+    Toggle,
 };
+use campfire_capabilities::{PoolMeters, Stats};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_runner::internals::{HarnessWorldInternals, MatchUnits, Moba3v3};
@@ -66,7 +66,7 @@ struct HeroState {
 
 /// The current amount of each pool of the unit of `entity`, by pool id, its life among them.
 fn pools_of(world: &World, entity: Entity) -> [Option<Num>; PoolId::LIMIT] {
-    let meters = world.pool_meters(entity);
+    let meters = PoolMeters::of(world, entity);
     let mut held = [None; PoolId::LIMIT];
     for pool in (0..).map_while(PoolId::new) {
         held[pool.index()] = meters.current(pool);
@@ -101,8 +101,7 @@ impl Showcase {
                 times: unit.get::<SlotTimes>().unwrap().iter().collect(),
                 pools: pools_of(world, entity),
                 carried: unit.get::<Inventory>().unwrap().slots().to_vec(),
-                modifiers: world
-                    .carried_modifiers(hero)
+                modifiers: Stats::carried_modifiers(world, hero)
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect(),
@@ -400,7 +399,7 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
 /// Gale's wards 3 m and a little more from her, which spend her two slots: the sight ward lives
 /// 90 s, 1800 ticks, and the vision ward with no end.
 fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
-    let modifier = |name| world.modifier_named(0, name).unwrap();
+    let modifier = |name| Stats::modifier(world, 0, name).unwrap();
     let drinks = [
         (1, 4, 0, "health_potion"),
         (2, 5, 0, "health_potion"),

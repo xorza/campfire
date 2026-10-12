@@ -1,12 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
-use campfire_sim::SimWorld;
-use campfire_sim::{HostRule, SnapshotError, StateDelta};
+use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta};
 
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
-use crate::navigation::on_path::OnPath;
 use crate::orders::next_think::NextThink;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
@@ -344,7 +342,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(&game, fighter));
     // Rally reads its action's `ward`, which an instance of it from no action lacks; its next
     // application would fail.
-    let rally = game.modifier_named(0, "rally").unwrap();
+    let rally = Stats::modifier(&game, 0, "rally").unwrap();
     assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(&game, fighter));
     assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(&game, fighter));
     let state = vec![StateValue::Bool(true)];

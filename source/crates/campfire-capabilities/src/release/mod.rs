@@ -1,7 +1,8 @@
 use std::num::NonZeroU64;
 
+use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_sim::{Capability, StateRegistry};
+use campfire_sim::{Capability, SimParts, SimWorldBuilder, StateRegistry};
 
 use crate::abilities::Abilities;
 use crate::actions::Actions;
@@ -15,6 +16,9 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
+use crate::mode::match_end::MatchEnd;
+use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_setup::ModeSetup;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::production::Production;
@@ -22,6 +26,7 @@ use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::release::api_binder::ApiBinder;
 use crate::release::installer::Installer;
+use crate::release::match_spec::MatchSpec;
 use crate::release::state_only::StateOnly;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::ScriptApi;
@@ -188,6 +193,60 @@ impl Release {
     fn module<M: Declares, D: Declarations>(d: &mut D) {
         d.module(M::MODULE);
         M::declare(d);
+    }
+
+    /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
+    /// installs the core, then each capability the release runs, each after the ones it builds
+    /// on, its declarations, then its install. A match that ended runs no stage. The world then
+    /// holds the match whole: its schedule, its state registry, and its capabilities.
+    pub fn build(world: &mut World, spec: MatchSpec) {
+        let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
+        #[cfg(any(test, feature = "internals"))]
+        if spec.without_sync_points {
+            sim.without_sync_points();
+        }
+        let set = spec.set;
+        let SimParts {
+            world,
+            schedule,
+            registry,
+        } = sim.parts();
+        world.insert_resource(set);
+        let scripts = spec.budgets.is_some();
+        Units::open(world, spec.budgets);
+        if scripts {
+            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
+        }
+        MatchEnd::stop_stages(schedule);
+        let mut cx = InstallCx::new(world, schedule, set, scripts);
+        Release::install_module::<Units>(&mut cx, registry, Units::install);
+        Release::install_module::<Actions>(&mut cx, registry, Actions::install);
+        Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);
+        for row in CAPABILITIES {
+            if let Some(install) = row.install
+                && set.contains(row.capability)
+            {
+                let mut installer = Installer::new(cx.world, registry, set, scripts);
+                Release::declare_capability(row.capability, &mut installer);
+                install(&mut cx);
+            }
+        }
+        sim.build();
+    }
+
+    /// Installs the mode of `setup` into the match the world holds, once the capabilities'
+    /// books are in place but the mode's own, `books`: its declarations, then its install.
+    pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, books: ModeBooks) {
+        let set = *world.resource::<CapabilitySet>();
+        let mut sim = SimWorldBuilder::reopen(world);
+        let SimParts {
+            world,
+            schedule,
+            registry,
+        } = sim.parts();
+        Release::module::<Mode, _>(&mut Installer::new(world, registry, set, true));
+        Mode::install(world, schedule, registry, setup, books);
+        sim.build();
     }
 }
 

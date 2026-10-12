@@ -14,8 +14,8 @@ use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
 use crate::actions::slot_times::SlotTimes;
 use crate::geometry::bounds::Bounds;
+use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
-use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
@@ -320,6 +320,6 @@ impl Trains {
             return pos;
         };
         let near = Body::shape_of(producer.get::<Body>()).nearest_point(pos, to);
-        world.open_cell(walker, near).unwrap_or(pos)
+        Navigation::open_cell(world, walker, near).unwrap_or(pos)
     }
 }

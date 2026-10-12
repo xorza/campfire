@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Match, ReleaseWorld, SavesData};
+use campfire_capabilities::{Match, Release, SavesData};
 use campfire_common::{SegmentSeed, StateHash, Ticks};
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, Signing};
@@ -79,7 +79,7 @@ impl Session {
         }
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
-        world.build_match(MatchBuild::spec(packages, seed, rate, players));
+        Release::build(world, MatchBuild::spec(packages, seed, rate, players));
         MatchBuild::install_mode(packages, world, players);
         let saves = packages.data().saves;
         let autosave = saves

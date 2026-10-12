@@ -7,7 +7,6 @@ use campfire_script::ScriptError;
 use super::*;
 use crate::combat::kept::Kept;
 use crate::progression::level_ups::LevelUps;
-use crate::scripts::pool::Pool;
 
 #[test]
 fn a_player_spends_only_their_own_pool() {

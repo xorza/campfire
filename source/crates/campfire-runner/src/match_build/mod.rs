@@ -1,7 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::{
-    MatchSpec, ModeInputs, ModeSetup, ReleaseWorld, ScriptBudgets, UnitsWorld,
-};
+use campfire_capabilities::{MatchSpec, ModeInputs, ModeSetup, Release, ScriptBudgets, Units};
 use campfire_common::SegmentSeed;
 use campfire_package::ModePackages;
 use campfire_sim::TickRate;
@@ -37,14 +35,14 @@ impl MatchBuild {
             players,
             units,
         };
-        world.install_mode(setup, books);
+        Release::install_mode(world, setup, books);
     }
 
     /// The first part of `install_mode`: every package's scripts and the books at the match's
     /// rate in place, but the mode's own, which it gives back.
     pub(crate) fn books(packages: &ModePackages, world: &mut World) -> ModeInputs {
         let set = packages.manifest().capabilities;
-        packages.compile_scripts(|source| world.compile_script(source));
+        packages.compile_scripts(|source| Units::compile(world, source));
         world.insert_resource(packages.script_book().clone());
         let rate = *world.resource::<TickRate>();
         packages.books(rate).install(world, set, true)

@@ -98,7 +98,7 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     requirements.push(train, [shop.forge], [drill]);
     game.insert_resource(requirements);
     // A match of production alone, whose players hold no modifiers until one is given them.
-    game.spawn_players(2, 0);
+    Players::spawn(&mut game, 2, 0);
     let entity = game.player_entity(PlayerSlot::new(0)).unwrap();
     let given = PlayerModifiers::default();
     game.entity_mut(entity).insert(given);

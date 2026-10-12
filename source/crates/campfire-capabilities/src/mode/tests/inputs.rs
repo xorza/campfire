@@ -1,5 +1,3 @@
-use campfire_sim::IdAllocator;
-
 use super::*;
 
 #[test]

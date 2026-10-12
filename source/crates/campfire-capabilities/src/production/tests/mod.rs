@@ -1,9 +1,9 @@
-use campfire_sim::internals::SimWorldInternals;
 use std::num::NonZeroU8;
 
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use serde::Serialize;
 
@@ -11,7 +11,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::slot_kind::SlotKind;
 use crate::navigation::destination::Destination;
-use crate::players::players_world::internals::PlayersWorldInternals;
+use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -155,7 +155,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let shop = game.shop();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let player = PlayerSlot::new(0);
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
         .unwrap()
         .add(gold, 5)

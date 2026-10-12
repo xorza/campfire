@@ -1,12 +1,11 @@
-use campfire_sim::SimWorld;
 use std::sync::Arc;
 
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
-use campfire_script::rhai::{Array, Dynamic};
-use campfire_sim::{EntityIndex, SimComponent, SimTick, SnapshotError};
+use campfire_script::rhai::Array;
+use campfire_sim::{EntityIndex, SimComponent, SimTick, SimWorld, SnapshotError};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -16,7 +15,6 @@ use crate::release::r#match::Match;
 use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
-use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::life::Life;

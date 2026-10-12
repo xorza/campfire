@@ -1,16 +1,21 @@
 use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::world::World;
 use campfire_sim::{Capability, SimSet};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
 use crate::declare::install_cx::InstallCx;
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::Polygon;
 use crate::units::by_type::ByType;
+use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
 use crate::vision::seeing::Seeing;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
 use crate::vision::vision_api::VisionApi;
 use crate::vision::vision_column::{RowParts, VisionColumn};
+use crate::vision::vision_grid::VisionGrid;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -57,6 +62,21 @@ impl Vision {
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
         cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
         cx.world.insert_resource(Reveals::default());
+    }
+
+    /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
+    /// and the number of its teams.
+    pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {
+        debug_assert!(
+            world.contains_resource::<Reveals>(),
+            "a map's vision grid is vision's, which the load checked the mode declares"
+        );
+        assert!(
+            teams <= VisionGrid::MAX_TEAMS,
+            "the mode's check limits the teams of a map with vision"
+        );
+        let brush = BrushMap::new(&grid, brush);
+        world.insert_resource(VisionGrid { grid, brush, teams });
     }
 }
 

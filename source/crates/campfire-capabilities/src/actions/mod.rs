@@ -136,3 +136,127 @@ impl Actions {
         ));
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::num::NonZeroU8;
+
+    use bevy_ecs::world::World;
+    use campfire_common::Ticks;
+    use campfire_math::Num;
+
+    use crate::actions::Actions;
+    use crate::actions::action::{Action, Aim};
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_book::internals::TestWeapon;
+    use crate::actions::action_range::ActionRange;
+    use crate::actions::actions_column::ActionsColumn;
+    use crate::actions::delivery::{Delivery, DeliveryShape};
+    use crate::actions::fan::Fan;
+    use crate::actions::gather_spec::GatherSpec;
+    use crate::actions::kind_spec::KindSpec;
+    use crate::actions::rank_values::RankValues;
+    use crate::actions::weapon::Weapon;
+    use crate::scripts::hook_set::HookSet;
+    use crate::stats::pool_cost::PoolCost;
+    use crate::units::action_id::ActionId;
+    use crate::units::filter::Filter;
+    use crate::units::view::View;
+    use crate::values::damage_kind::DamageKind;
+
+    impl Actions {
+        /// The action `name` of `package`, as the match loaded it.
+        pub fn named(world: &World, package: u16, name: &str) -> Option<ActionId> {
+            world.resource::<ActionBook>().named(package, name)
+        }
+
+        /// Adds `weapon` to the match's action book, which deals damage of the first kind.
+        pub(crate) fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
+            let delivery = weapon.projectile.map(|unit_type| Delivery {
+                unit_type,
+                shape: DeliveryShape::Projectile {
+                    fan: Fan {
+                        count: NonZeroU8::MIN,
+                        spread_deg: Num::ZERO,
+                    },
+                    homes: true,
+                },
+            });
+            Actions::push(
+                world,
+                Action {
+                    package: 0,
+                    name: "weapon".into(),
+                    kind: KindSpec::Attack(Weapon {
+                        rate: weapon.rate,
+                        damage: weapon.damage,
+                        kind: DamageKind::new(0),
+                    }),
+                    passive: None,
+                    hold: None,
+                    aim: Aim::Unit(weapon.aim),
+                    ranks: vec![RankValues {
+                        range: weapon.range,
+                        cooldown: Ticks::ZERO,
+                        cost: weapon.cost,
+                        windup: weapon.windup,
+                        charges: None,
+                        toggle: None,
+                        channel: None,
+                        charge: None,
+                    }],
+                    resource_costs: weapon.resource_cost.into_iter().collect(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery,
+                },
+            )
+        }
+
+        /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
+        /// `time`, to the match's action book.
+        #[cfg(any(test, feature = "bench"))]
+        pub(crate) fn add_gather(
+            world: &mut World,
+            spec: GatherSpec,
+            aim: Filter,
+            range: Num,
+            time: Ticks,
+        ) -> ActionId {
+            Actions::push(
+                world,
+                Action {
+                    package: 0,
+                    name: "gather".into(),
+                    kind: KindSpec::Gather(spec),
+                    passive: None,
+                    hold: None,
+                    aim: Aim::Unit(aim),
+                    ranks: vec![RankValues {
+                        range: ActionRange::Meters(range),
+                        cooldown: Ticks::ZERO,
+                        cost: PoolCost::default(),
+                        windup: time,
+                        charges: None,
+                        toggle: None,
+                        channel: None,
+                        charge: None,
+                    }],
+                    resource_costs: Box::default(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery: None,
+                },
+            )
+        }
+
+        /// Adds `action` to the match's action book, and shares the book with the script view.
+        pub(crate) fn push(world: &mut World, action: Action) -> ActionId {
+            let mut book = world.resource_mut::<ActionBook>();
+            let id = book.push(action);
+            let book = book.clone();
+            ActionsColumn::share(world.non_send::<View>(), book);
+            id
+        }
+    }
+}

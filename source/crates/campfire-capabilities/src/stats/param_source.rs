@@ -1,4 +1,6 @@
+use bevy_ecs::world::World;
 use campfire_math::Num;
+use campfire_sim::{SimWorld, StableId};
 
 use crate::stats::level::Level;
 use crate::stats::stat_book::StatBook;
@@ -60,5 +62,18 @@ impl<'a> ParamSource<'a> {
     /// The part of its stat at `at` above its type's value at its level, in bits.
     pub(crate) fn bonus_bits(&self, at: StatId) -> i128 {
         self.stat_bits(at) - self.book.base_bits(self.unit_type, at, self.level)
+    }
+
+    /// `id` as a source; `None` when it is gone, or the match has no stat book.
+    pub(crate) fn of(world: &World, id: StableId) -> Option<ParamSource<'_>> {
+        let book = world.get_resource::<StatBook>()?;
+        let entity = world.entity_of(id)?;
+        let id = world.entity(entity);
+        Some(ParamSource::of_parts(
+            book,
+            *id.get::<UnitType>()?,
+            id.get::<Level>(),
+            id.get::<UnitStats>(),
+        ))
     }
 }

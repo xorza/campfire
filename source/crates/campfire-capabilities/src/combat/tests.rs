@@ -1,4 +1,3 @@
-use campfire_sim::internals::SimWorldInternals;
 use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
@@ -7,13 +6,13 @@ use bevy_ecs::world::World;
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
 
 use super::*;
 use crate::actions::action_book::internals::TestWeapon;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::{ActionSlot, ActionSlots};
-use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::channel_call::ChannelCall;
 use crate::actions::in_progress::InProgress;
 use crate::actions::slot_kind::SlotKind;
@@ -29,7 +28,7 @@ use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
 use crate::geometry::metric::Metric;
-use crate::players::players_world::internals::PlayersWorldInternals;
+use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -221,7 +220,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
                 Ticks::new(windup),
             )
         };
-        game.add_weapon(weapon)
+        Actions::add_weapon(game, weapon)
     };
     let ground = weapon(&mut game, "enemies:ground", 1, 0, StatId::new(1));
     let air = weapon(&mut game, "enemies:air", 5, 1, StatId::new(2));
@@ -342,7 +341,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut game = fight_match();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 5)
@@ -360,7 +359,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             Ticks::new(2),
         )
     };
-    let weapon = game.add_weapon(weapon);
+    let weapon = Actions::add_weapon(&mut game, weapon);
     let mut stats = UnitStats::default();
     stats.refill().extend([Num::int(6), Num::int(10)]);
     let id = game.spawn_armed(Team::new(0), at(0, 0, 0), dummy());

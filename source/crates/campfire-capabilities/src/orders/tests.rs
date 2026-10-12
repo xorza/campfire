@@ -1,4 +1,3 @@
-use campfire_sim::internals::SimWorldInternals;
 use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
 
 use bevy_ecs::bundle::Bundle;
@@ -8,15 +7,16 @@ use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId};
 use serde::Deserialize;
 
 use super::*;
+use crate::actions::Actions;
 use crate::actions::action_book::internals::TestWeapon;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
-use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::slot_aim::SlotAim;
@@ -32,7 +32,6 @@ use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
-use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
@@ -42,10 +41,9 @@ use crate::navigation::walker::Walker;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
 use crate::orders::order::{Action, Order};
-use crate::orders::orders_world::internals::OrdersWorldInternals;
 use crate::orders::orders_world::test_world::{OrdersWorldTest, TwoHeroes};
+use crate::players::Players;
 use crate::players::players_world::PlayersWorldCrate;
-use crate::players::players_world::internals::PlayersWorldInternals;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::release::r#match::Match;
@@ -380,7 +378,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     // A player's entity of the hero's team holds a team and no `SeenBy`, and is no unit: an order
     // at it changes nothing either.
     let own = PlayerSlot::new(0);
-    game.spawn_players(1, 0);
+    Players::spawn(&mut game, 1, 0);
     game.tick(&[(0, &at_unit(StableId::of_player(own)))]);
     assert_eq!(ordered(&game), Some(train_order));
     game.tick(&[(0, &at_unit(hero))]);
@@ -743,7 +741,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     ] {
         let unit_type = game.ai_type(&[], &[], None);
         let script = game.compile_hooked(source).unwrap();
-        let error = game.load_ai(unit_type, &ai, script).unwrap_err();
+        let error = Orders::load_ai(&mut game, unit_type, &ai, script).unwrap_err();
         assert!(matches!(error, AiError::NoThink), "{source}: {error:?}");
     }
 
@@ -810,7 +808,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             ActionRange::Meters(Num::int(20)),
             Ticks::new(2),
         );
-        let weapon = game.add_weapon(weapon);
+        let weapon = Actions::add_weapon(&mut game, weapon);
         let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
         let stats = arm(&mut game, standing());
         let id = game.spawn_unit_of(striker, at(0, 0, 0), Team::new(0), stats);
@@ -853,7 +851,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = game.compile_hooked(spin).unwrap();
-    game.load_ai(spinner, &ai, spin).unwrap();
+    Orders::load_ai(&mut game, spinner, &ai, spin).unwrap();
     let stats = arm(&mut game, standing());
     let first = game.spawn_unit_of(spinner, at(0, 0, 0), Team::new(0), stats);
     let stats = arm(&mut game, standing());
@@ -938,7 +936,12 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
         layer: Layer::FIRST,
         radius: Num::ZERO,
     };
-    game.load_pathing(Grid::new(Num::ONE, bounds).unwrap(), &[], vec![ground]);
+    Navigation::load_pathing(
+        &mut game,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        &[],
+        vec![ground],
+    );
     for z in 0..3 {
         game.spawn_unit(place(4, z).unwrap(), Team::new(0), Body::new(half).unwrap());
     }
@@ -1184,7 +1187,7 @@ fn shop_match() -> Match {
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     game.insert_resource(book);
     game.insert_resource(Shop::new(sells, gold, places, share));
-    game.spawn_players(2, 1);
+    Players::spawn(&mut game, 2, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 2000)
@@ -1353,7 +1356,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
             radius: Num::ZERO,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        game.load_pathing(grid, &[], vec![walker]);
+        Navigation::load_pathing(&mut game, grid, &[], vec![walker]);
         let walkers = [at(1, 0, 2), at(4, 0, 6), at(2, 0, 3)]
             .map(|at| game.hero(0, Team::new(0), at, dummy(10)));
         let other = game.hero(1, Team::new(1), at(3, 0, 3), dummy(10));

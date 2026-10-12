@@ -8,14 +8,14 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
 use criterion::{Criterion, Throughput};
 
+use crate::actions::Actions;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::slot_kind::SlotKind;
 use crate::declare::capability_set::CapabilitySet;
 use crate::navigation::destination::Destination;
+use crate::players::Players;
 use crate::players::players_world::PlayersWorld;
-use crate::players::players_world::internals::PlayersWorldInternals;
 use crate::players::resource_id::ResourceId;
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::node::Node;
@@ -69,7 +69,7 @@ fn two_fields() -> Match {
     let mut world = Match::new(MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set));
 
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    world.start_without_mode([Team::new(0)], 1);
+    Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypes::default();
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"]
@@ -87,7 +87,7 @@ fn two_fields() -> Match {
         bounce: Num::int(4),
     };
     let all = Filter::of_relations(RelationSet::All);
-    let action = world.add_gather(spec, all, Num::int(16), Ticks::new(3));
+    let action = Actions::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));
     let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();

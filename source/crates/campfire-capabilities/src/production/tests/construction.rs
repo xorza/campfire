@@ -6,7 +6,7 @@ use super::*;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
-use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 use crate::orders::order::Action;
@@ -97,7 +97,7 @@ fn yard_match(rules: Rules<'_>) -> Match {
         let entity = unit.id();
         if at.unit_type == depot {
             unit.insert((form.at(at.angle), Life::full(Num::int(100))));
-            world.make_room(entity);
+            Navigation::make_room(world, entity);
         }
         entity
     }));
@@ -108,10 +108,10 @@ fn yard_match(rules: Rules<'_>) -> Match {
         radius: Num::HALF,
     };
     let grid = Grid::new(Num::ONE, bounds).unwrap();
-    game.load_pathing(grid, &rules.walls, vec![walker]);
+    Navigation::load_pathing(&mut game, grid, &rules.walls, vec![walker]);
     let gold = game.shop().gold;
     let player = PlayerSlot::new(0);
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
         .unwrap()
         .add(gold, 100)

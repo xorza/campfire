@@ -3,7 +3,9 @@ use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
-use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet};
+use campfire_script::rhai::Dynamic;
+use campfire_script::{ScriptError, ScriptHost, ScriptId};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::declares::Declares;
@@ -11,10 +13,14 @@ use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
+use crate::players::kind_parts::KindParts;
 use crate::players::match_entity::MatchEntity;
 use crate::players::player::Player;
 use crate::players::players_world::PlayersWorld;
 use crate::scripts::core_api::CoreApi;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -226,6 +232,52 @@ impl Units {
     /// finds it missing.
     fn match_spawned(world: &World) -> Result<(), Breach> {
         Breach::of_match(world.match_entity().is_some())
+    }
+
+    /// Compiles `source` in the match's script host, once for every capability that runs it.
+    pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
+        world.non_send_mut::<ScriptHost>().compile(source)
+    }
+
+    /// Opens a match for the modules' installs: the script view, and with `budgets`, the script
+    /// host the scripts run in within them, and the context of their calls. A client runs no
+    /// scripts.
+    pub(crate) fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
+        let rate = *world.resource::<TickRate>();
+        let view = View::new(rate);
+        world.init_resource::<KindParts<MatchEntity>>();
+        world.init_resource::<KindParts<Player>>();
+        if let Some(budgets) = budgets {
+            let ctx = Ctx::new(view.clone());
+            let mut host = ScriptHost::new(budgets.limits().per_call);
+            host.engine_mut()
+                .set_default_tag(Dynamic::from(ctx.clone()));
+            world.insert_non_send(ctx);
+            world.insert_non_send(host);
+            world.insert_non_send(ScriptFailures::default());
+            world.insert_resource(budgets);
+        }
+        world.insert_non_send(view);
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::units::Units;
+    use crate::units::team::Team;
+    use crate::units::units_world::UnitsWorldCrate;
+    use crate::values::relation::Relation;
+
+    impl Units {
+        /// Sets how the two teams of the match regard each other, as `ctx.set_relation`
+        /// does, their vision as it was.
+        pub fn set_relation(world: &mut World, of: Team, other: Team, relation: Relation) {
+            world
+                .relations_mut()
+                .set_keeping_vision(of, other, relation);
+        }
     }
 }
 

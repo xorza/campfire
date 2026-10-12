@@ -1,7 +1,7 @@
 use super::*;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
-use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::Action;
 use crate::production::rally_target::RallyTarget;
@@ -24,7 +24,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let mut game = ordering_match();
     let shop = game.shop();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    game.spawn_players(1, 1);
+    Players::spawn(&mut game, 1, 1);
     let train = game.add_train(shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();
     for paid in [10, 20, 30] {
@@ -99,7 +99,12 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         radius: Num::HALF,
     };
     game.insert_resource(bounds);
-    game.load_pathing(Grid::new(Num::ONE, bounds).unwrap(), &[], vec![walker]);
+    Navigation::load_pathing(
+        &mut game,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        &[],
+        vec![walker],
+    );
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);
     game.insert_resource(walkers);

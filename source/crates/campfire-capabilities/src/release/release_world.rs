@@ -1,89 +1,5 @@
-use bevy_ecs::world::World;
-use campfire_script::ScriptHost;
-use campfire_sim::{SimParts, SimWorldBuilder};
-
-use crate::actions::Actions;
-use crate::declare::capability_set::CapabilitySet;
-use crate::declare::install_cx::InstallCx;
-use crate::deliveries::Deliveries;
-use crate::mode::Mode;
-use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_books::ModeBooks;
-use crate::mode::mode_setup::ModeSetup;
-use crate::release::installer::Installer;
-use crate::release::match_spec::MatchSpec;
-use crate::release::{CAPABILITIES, Release};
-use crate::scripts::script_api::ScriptApi;
-use crate::units::Units;
-use crate::units::units_world::UnitsWorldCrate;
-
-/// How the release builds a match in a world: the one build of every host's match, a test's, a
-/// verifier's, a client's and a server's alike.
-pub trait ReleaseWorld {
-    /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
-    /// installs the core, then each capability the release runs, each after the ones it builds
-    /// on, its declarations, then its install. A match that ended runs no stage. The world then
-    /// holds the match whole: its schedule, its state registry, and its capabilities.
-    fn build_match(&mut self, spec: MatchSpec);
-
-    /// Installs the mode of `setup` into the match the world holds, once the capabilities'
-    /// books are in place but the mode's own, `books`: its declarations, then its install.
-    fn install_mode(&mut self, setup: ModeSetup<'_>, books: ModeBooks);
-}
-
-impl ReleaseWorld for World {
-    fn build_match(&mut self, spec: MatchSpec) {
-        let mut sim = SimWorldBuilder::new(self, spec.seed, spec.rate);
-        #[cfg(any(test, feature = "internals"))]
-        if spec.without_sync_points {
-            sim.without_sync_points();
-        }
-        let set = spec.set;
-        let SimParts {
-            world,
-            schedule,
-            registry,
-        } = sim.parts();
-        world.insert_resource(set);
-        let scripts = spec.budgets.is_some();
-        world.open_units(spec.budgets);
-        if scripts {
-            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
-        }
-        MatchEnd::stop_stages(schedule);
-        let mut cx = InstallCx::new(world, schedule, set, scripts);
-        Release::install_module::<Units>(&mut cx, registry, Units::install);
-        Release::install_module::<Actions>(&mut cx, registry, Actions::install);
-        Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);
-        for row in CAPABILITIES {
-            if let Some(install) = row.install
-                && set.contains(row.capability)
-            {
-                let mut installer = Installer::new(cx.world, registry, set, scripts);
-                Release::declare_capability(row.capability, &mut installer);
-                install(&mut cx);
-            }
-        }
-        sim.build();
-    }
-
-    fn install_mode(&mut self, setup: ModeSetup<'_>, books: ModeBooks) {
-        let set = *self.resource::<CapabilitySet>();
-        let mut sim = SimWorldBuilder::reopen(self);
-        let SimParts {
-            world,
-            schedule,
-            registry,
-        } = sim.parts();
-        Release::module::<Mode, _>(&mut Installer::new(world, registry, set, true));
-        Mode::install(world, schedule, registry, setup, books);
-        sim.build();
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod test_world {
-    use campfire_sim::internals::SimWorldInternals;
     use std::collections::BTreeMap;
 
     use bevy_ecs::bundle::Bundle;
@@ -96,6 +12,7 @@ pub(crate) mod test_world {
     use campfire_math::Num;
     use campfire_script::rhai::Dynamic;
     use campfire_script::{Budget, ScriptHost};
+    use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         IdAllocator, Position, SimSet, SimTick, SimUpdate, SimWorld, SnapshotError, StableId,
         StateCopy, StateRegistry,

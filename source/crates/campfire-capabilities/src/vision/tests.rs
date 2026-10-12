@@ -5,8 +5,6 @@ use campfire_sim::{Position, SimWorld, StableId};
 use super::*;
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
-use crate::geometry::grid::Grid;
-use crate::geometry::polygon::Polygon;
 use crate::release::r#match::Match;
 use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::ApiError;
@@ -22,7 +20,6 @@ use crate::units::team_set::TeamSet;
 use crate::units::unit::Unit;
 use crate::units::units_world::UnitsWorldCrate;
 use crate::values::relation::Relation;
-use crate::vision::vision_world::VisionWorld;
 use crate::vision::vision_world::test_world::VisionWorldTest;
 
 fn at(x: i64, z: i64) -> Position {
@@ -47,7 +44,7 @@ fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
     let mut game = Match::server(&declared, scripts);
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     let grid = Grid::new(Num::int(1), bounds).unwrap();
-    game.load_vision_grid(grid, brush, teams);
+    Vision::load_grid(&mut game, grid, brush, teams);
     game
 }
 
