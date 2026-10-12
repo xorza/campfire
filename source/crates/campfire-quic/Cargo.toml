@@ -32,6 +32,7 @@ zeroize.workspace = true
 campfire-common = { workspace = true, features = ["internals"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
+campfire-quic = { workspace = true, features = ["internals"] }
 lightyear_serde.workspace = true
 
 [[test]]

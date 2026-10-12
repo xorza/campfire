@@ -110,7 +110,7 @@ pub use crate::sim_server::slot_bot_file::SlotBotFile;
 pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::tick_hashes::TickHashes;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

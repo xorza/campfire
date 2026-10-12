@@ -67,7 +67,7 @@ impl fmt::Display for Exposure {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::io;
     use std::path::Path;

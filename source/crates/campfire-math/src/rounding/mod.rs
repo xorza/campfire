@@ -1,6 +1,6 @@
 use crate::wide_division::WideDivision;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// How an exact quotient that is not whole becomes a whole one: the caller names it, as Java's

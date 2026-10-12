@@ -9,7 +9,7 @@ pub(crate) mod srgb;
 pub(crate) mod texture_format;
 pub(crate) mod tga_file;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::texture::dds_file::DdsFile;
     use crate::texture::dds_file::internals::dds;

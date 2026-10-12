@@ -15,6 +15,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-codec.workspace = true
+campfire-common = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [[test]]

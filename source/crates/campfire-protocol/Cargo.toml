@@ -5,8 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = []
-bench = ["internals", "dep:criterion"]
+internals = ["dep:criterion"]
 
 [dependencies]
 campfire-codec.workspace = true
@@ -23,6 +22,7 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+campfire-protocol = { workspace = true, features = ["internals"] }
 # A test reads and writes the pinned log files.
 campfire-store = { workspace = true, features = ["internals"] }
 # A test names the postcard error a decode keeps.
@@ -35,7 +35,7 @@ bench = false
 [[bench]]
 name = "protocol"
 harness = false
-required-features = ["bench"]
+required-features = ["internals"]
 
 [lints]
 workspace = true

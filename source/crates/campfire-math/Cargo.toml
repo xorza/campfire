@@ -5,8 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = []
-bench = ["internals", "dep:criterion"]
+internals = ["dep:criterion"]
 
 [dependencies]
 campfire-common.workspace = true
@@ -18,6 +17,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-codec.workspace = true
+campfire-math = { workspace = true, features = ["internals"] }
 proptest.workspace = true
 
 # Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
@@ -27,7 +27,7 @@ bench = false
 [[bench]]
 name = "math"
 harness = false
-required-features = ["bench"]
+required-features = ["internals"]
 
 [lints]
 workspace = true

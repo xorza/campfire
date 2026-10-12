@@ -126,7 +126,7 @@ impl<'de> Deserialize<'de> for Body {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::cmp::Ordering;
 

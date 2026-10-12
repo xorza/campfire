@@ -16,7 +16,7 @@ use crate::units::body::Body;
 use crate::units::layer::Layer;
 use crate::values::row_directory::{RowDirectory, RowEntries};
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query

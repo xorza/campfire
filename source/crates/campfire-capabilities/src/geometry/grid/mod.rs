@@ -7,7 +7,7 @@ use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::halves::Halves;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min

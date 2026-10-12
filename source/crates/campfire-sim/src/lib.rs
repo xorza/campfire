@@ -55,14 +55,14 @@ pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use crate::tick_rate::TickRate;
 pub use crate::unpredicted::Unpredicted;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::sim_update::stage_clock::StageClock;
     pub use crate::sim_world::internals::SimWorldInternals;
     pub use crate::state_registry::internals::{Draws, Mutation};
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

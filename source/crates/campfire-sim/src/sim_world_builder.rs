@@ -136,7 +136,7 @@ impl fmt::Debug for SimParts<'_> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_schedule::StrictSchedule;
 

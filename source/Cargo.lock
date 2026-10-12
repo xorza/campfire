@@ -2090,6 +2090,7 @@ name = "campfire-capabilities"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-capabilities",
  "campfire-codec",
  "campfire-common",
  "campfire-log",
@@ -2146,6 +2147,7 @@ version = "0.1.0"
 dependencies = [
  "backtrace",
  "campfire-codec",
+ "campfire-common",
  "campfire-store",
  "derive_more",
  "serde",
@@ -2159,6 +2161,7 @@ dependencies = [
  "campfire-capabilities",
  "campfire-codec",
  "campfire-common",
+ "campfire-import",
  "campfire-log",
  "campfire-math",
  "campfire-package",
@@ -2201,6 +2204,7 @@ version = "0.1.0"
 dependencies = [
  "campfire-codec",
  "campfire-common",
+ "campfire-log",
  "campfire-store",
  "clap",
  "serde",
@@ -2216,6 +2220,7 @@ dependencies = [
  "blake3",
  "campfire-codec",
  "campfire-common",
+ "campfire-math",
  "criterion 0.8.2",
  "proptest",
  "serde",
@@ -2282,6 +2287,7 @@ dependencies = [
  "blake3",
  "campfire-codec",
  "campfire-common",
+ "campfire-protocol",
  "campfire-store",
  "criterion 0.8.2",
  "derive_more",
@@ -2305,6 +2311,7 @@ dependencies = [
  "bytes",
  "campfire-common",
  "campfire-log",
+ "campfire-quic",
  "campfire-store",
  "igd-next",
  "lightyear",
@@ -2354,6 +2361,7 @@ name = "campfire-script"
 version = "0.1.0"
 dependencies = [
  "campfire-math",
+ "campfire-script",
  "criterion 0.8.2",
  "rhai",
  "thiserror 2.0.21",
@@ -2397,6 +2405,7 @@ dependencies = [
  "campfire-log",
  "campfire-math",
  "campfire-schedule",
+ "campfire-sim",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
@@ -2406,6 +2415,7 @@ dependencies = [
 name = "campfire-store"
 version = "0.1.0"
 dependencies = [
+ "campfire-store",
  "libc",
  "signal-hook",
  "tempfile",

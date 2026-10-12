@@ -166,7 +166,7 @@ impl Orders {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_script::ScriptId;

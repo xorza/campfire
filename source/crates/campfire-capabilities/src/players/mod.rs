@@ -25,7 +25,7 @@ use crate::units::team::Team;
 /// The players and the match as entities: what spawns them, under every capability.
 #[derive(Debug)]
 #[cfg_attr(
-    not(any(test, feature = "internals")),
+    not(feature = "internals"),
     expect(
         unreachable_pub,
         reason = "the internals facade exports it, for its spawns"
@@ -48,7 +48,7 @@ impl Players {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::{Mut, World};
     use campfire_common::PlayerSlot;

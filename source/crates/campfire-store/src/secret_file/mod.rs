@@ -84,7 +84,7 @@ impl fmt::Display for SecretFile {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::platform::owner_only::OwnerOnly;
     use crate::secret_file::SecretFile;

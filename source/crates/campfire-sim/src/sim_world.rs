@@ -90,7 +90,7 @@ impl SimWorld for World {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::collections::BTreeSet;
 

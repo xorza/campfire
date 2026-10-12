@@ -19,15 +19,15 @@ mod input_file;
 mod latest_writer;
 mod output_file;
 mod path_error;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod pinned_file;
 mod platform;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod race;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod scratch;
 mod secret_file;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod source_files;
 mod stream_writer;
 mod worker;
@@ -57,7 +57,7 @@ pub use crate::worker::Worker;
 
 /// What the tests of the engine's crates use of files: a test's own directory, the files it pins,
 /// the workspace's sources, a race of writers and a link.
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::pinned_file::PinnedFile;
     pub use crate::platform::file_link::FileLink;

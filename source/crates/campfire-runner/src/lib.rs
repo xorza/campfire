@@ -23,7 +23,7 @@ pub use crate::session_rules::SessionRules;
 pub use crate::session_rules::error::TermsError;
 pub use crate::slot_rules::error::SlotRuleError;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

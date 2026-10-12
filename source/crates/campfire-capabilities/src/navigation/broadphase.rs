@@ -233,7 +233,7 @@ impl Broadphase {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_math::Num;

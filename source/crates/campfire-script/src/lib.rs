@@ -11,7 +11,7 @@ pub use crate::script_host::{ScriptHost, ScriptId};
 /// script API with.
 pub use rhai;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

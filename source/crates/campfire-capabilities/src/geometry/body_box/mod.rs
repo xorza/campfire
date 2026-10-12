@@ -11,7 +11,7 @@ use crate::geometry::polygon::Polygon;
 use crate::geometry::shape::Shape;
 use crate::geometry::squared_distance::SquaredDistance;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// A box body: a parallelogram on the ground plane around its unit's position, held as its two

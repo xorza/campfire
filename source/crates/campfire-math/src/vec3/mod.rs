@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use crate::num::{Num, SinCos};
 use crate::vec3::step_moves::StepMoves;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod step_moves;
 

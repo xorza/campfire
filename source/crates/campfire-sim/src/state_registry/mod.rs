@@ -30,7 +30,7 @@ use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
 use crate::unpredicted::Unpredicted;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod breach;
 mod copy_queries;
@@ -91,14 +91,14 @@ struct Entry {
     /// Records each removal of the type's component, at its place in the registry, in the
     /// world's `StateChanges`.
     watch: fn(&mut World, u16),
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     scramble: fn(&mut internals::Draws, &mut World) -> bool,
     /// Changes where a value of the type sits, as a mutation says.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     mutate: fn(&mut internals::Draws, &mut World, internals::Mutation) -> bool,
     /// Writes into the buffer the encodings of values of the type the draws make: what its
     /// layout fingerprint digests.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     layout: fn(&mut internals::Draws, &mut Vec<u8>),
 }
 
@@ -179,11 +179,11 @@ impl StateRegistry {
             copy_query: None,
             apply: |_, _, _| {},
             watch: |_, _| {},
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             scramble: |_, _| false,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             mutate: |_, _, _| false,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             layout: |_, _| {},
         };
         registry.register(entities);
@@ -203,11 +203,11 @@ impl StateRegistry {
             copy_query: Some(copy_query::<C>),
             apply: apply_component::<C>,
             watch: watch_component::<C>,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             scramble: internals::Draws::scramble_component::<C>,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             mutate: internals::Draws::mutate_component::<C>,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             layout: internals::Draws::layout_of::<C>,
         });
     }
@@ -261,11 +261,11 @@ impl StateRegistry {
             copy_query: None,
             apply: apply_resource::<R>,
             watch: |_, _| {},
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             scramble: internals::Draws::scramble_resource::<R>,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             mutate: internals::Draws::mutate_resource::<R>,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             layout: internals::Draws::layout_of::<R>,
         });
     }
@@ -826,7 +826,7 @@ fn check_resource<R: SimResource>(world: &World) -> Result<(), SnapshotError> {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals;
 
 #[cfg(test)]

@@ -414,7 +414,7 @@ fn io_error(error: Error) -> io::Error {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::os::windows::fs::symlink_file;
     use std::os::windows::process::CommandExt;

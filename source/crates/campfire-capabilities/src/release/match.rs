@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::world::World;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 use campfire_log::internals::LogCheck;
 use campfire_sim::StateRegistry;
 
@@ -18,7 +18,7 @@ pub struct Match {
     world: World,
     /// A test's check of the warnings its match logs: last, so it drops after the world and sees
     /// what the world logs as it drops.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     _log: Option<LogCheck>,
 }
 
@@ -29,7 +29,7 @@ impl Match {
         Release::build(&mut world, spec);
         Match {
             world,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             _log: None,
         }
     }
@@ -44,7 +44,7 @@ impl Match {
         );
         Match {
             world,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             _log: None,
         }
     }
@@ -64,7 +64,7 @@ impl DerefMut for Match {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_log::internals::LogCheck;
 

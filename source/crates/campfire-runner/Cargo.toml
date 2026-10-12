@@ -13,8 +13,9 @@ internals = [
     "campfire-protocol/internals",
     "campfire-sim/internals",
     "campfire-store/internals",
+    "dep:criterion",
+    "dep:campfire-script",
 ]
-bench = ["internals", "dep:criterion", "dep:campfire-script"]
 
 [dependencies]
 campfire-capabilities.workspace = true
@@ -38,7 +39,7 @@ tracing.workspace = true
 # The integration tests read the test types `internals` gives, so a plain test run builds them.
 [dev-dependencies]
 campfire-runner = { workspace = true, features = ["internals"] }
-campfire-script.workspace = true
+campfire-script = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true
@@ -54,4 +55,4 @@ bench = false
 [[bench]]
 name = "runner"
 harness = false
-required-features = ["bench"]
+required-features = ["internals"]

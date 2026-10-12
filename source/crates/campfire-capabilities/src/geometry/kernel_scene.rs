@@ -69,7 +69,6 @@ impl KernelScene {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
 mod walls {
     use campfire_math::Num;
 

@@ -259,7 +259,7 @@ fn normal(path: &Path) -> PathBuf {
     normal
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};

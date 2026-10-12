@@ -88,7 +88,7 @@ impl Replication for Pools {
     type Sending = SentOnChange;
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_math::Num;
 

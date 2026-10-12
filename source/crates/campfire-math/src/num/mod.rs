@@ -9,7 +9,7 @@ use crate::num::decimal::Decimal;
 use crate::num::error::{IntToNumError, ParseNumError};
 use crate::rounding::Rounding;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod decimal;
 pub(crate) mod error;

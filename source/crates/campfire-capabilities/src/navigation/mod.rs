@@ -42,7 +42,7 @@ use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod body_index;
 pub(crate) mod broadphase;

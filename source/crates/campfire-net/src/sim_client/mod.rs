@@ -66,7 +66,7 @@ use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 use crate::watch_teams::WatchTeams;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;

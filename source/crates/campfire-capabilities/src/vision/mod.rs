@@ -17,7 +17,7 @@ use crate::vision::vision_api::VisionApi;
 use crate::vision::vision_column::{RowParts, VisionColumn};
 use crate::vision::vision_grid::VisionGrid;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod brush_map;
 pub(crate) mod fog;

@@ -11,7 +11,7 @@ pub struct ModeUnits {
     pub(crate) loadout: LoadoutSetup,
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;

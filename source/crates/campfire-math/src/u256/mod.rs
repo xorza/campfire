@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use crate::rounding::Rounding;
 use crate::wide_division::WideDivision;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// An unsigned integer of 256 bits, for exact comparisons of products that pass `u128`: the high

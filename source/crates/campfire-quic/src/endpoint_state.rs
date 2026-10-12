@@ -331,14 +331,13 @@ impl EndpointState {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     #[cfg(test)]
     use bevy_ecs::entity::Entity;
 
     use crate::endpoint_state::EndpointState;
 
-    #[cfg(feature = "internals")]
     impl EndpointState {
         /// Drops the datagrams each connection received, linked or not: how many.
         pub(crate) fn take_datagrams(&mut self) -> usize {

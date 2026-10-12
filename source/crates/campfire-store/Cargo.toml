@@ -20,6 +20,7 @@ signal-hook.workspace = true
 windows.workspace = true
 
 [dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
 tempfile.workspace = true
 
 [lints]

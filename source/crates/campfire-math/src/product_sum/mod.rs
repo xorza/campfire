@@ -2,7 +2,7 @@ use crate::num::Num;
 use crate::rounding::Rounding;
 use crate::u256::U256;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// A sum of products of raw values, exact at any size: a 256-bit two's complement number, its

@@ -1,4 +1,4 @@
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// The exact integer square root, rounded down. A float gives only the first estimate, which

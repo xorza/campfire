@@ -1,6 +1,6 @@
 use crate::floor_root::FloorRoot;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// The exact integer square root, rounded up.

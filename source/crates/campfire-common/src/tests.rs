@@ -42,7 +42,7 @@ fn dependencies(manifest: &str) -> Vec<&str> {
         } else {
             assert!(!section.is_empty(), "{line:?} before the first section");
             if section == "dependencies" {
-                names.push(line.split(['.', ' ', '=']).next().unwrap());
+                names.push(dependency(line));
             }
         }
     }
@@ -93,7 +93,6 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
 fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     // Design 02's module table names each module in its first column and its status in the
     // second; a built module's crate is `campfire-<module>` in `crates/` or `checks/`.
-    let source = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let design = read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../docs/design/02-engine-core.md"
@@ -113,18 +112,7 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
         }
     }
     built.sort_unstable();
-    let mut crates = Vec::new();
-    for folder in ["crates", "checks"] {
-        for entry in DirEntries::read(&source.join(folder)).unwrap() {
-            let dir = source.join(folder).join(&entry.name);
-            let manifest = |inner: &DirEntry| inner.name == "Cargo.toml";
-            if entry.kind == EntryKind::Dir && DirEntries::read(&dir).unwrap().iter().any(manifest)
-            {
-                crates.push(entry.name.into_string().unwrap());
-            }
-        }
-    }
-    crates.sort_unstable();
+    let crates: Vec<String> = manifests().into_iter().map(|(name, _)| name).collect();
     assert_eq!(built, crates);
 }
 
@@ -398,6 +386,140 @@ fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// The crates of the workspace, each by its name, with the text of its manifest.
+fn manifests() -> Vec<(String, String)> {
+    let source = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let mut found = Vec::new();
+    for folder in ["crates", "checks"] {
+        for entry in DirEntries::read(&source.join(folder)).unwrap() {
+            if entry.kind != EntryKind::Dir {
+                continue;
+            }
+            let dir = source.join(folder).join(&entry.name);
+            let manifest = |inner: &DirEntry| inner.name == "Cargo.toml";
+            if DirEntries::read(&dir).unwrap().iter().any(manifest) {
+                let text = read(dir.join("Cargo.toml").to_str().unwrap());
+                found.push((entry.name.into_string().unwrap(), text));
+            }
+        }
+    }
+    found.sort_unstable();
+    found
+}
+
+/// The lines of `manifest`'s section `[name]`, past its header.
+fn section<'a>(manifest: &'a str, name: &str) -> impl Iterator<Item = &'a str> {
+    let header = format!("[{name}]");
+    manifest
+        .lines()
+        .map(str::trim)
+        .skip_while(move |line| *line != header)
+        .skip(1)
+        .take_while(|line| !line.starts_with('['))
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+}
+
+/// The crate a line of a manifest's dependencies names.
+fn dependency(line: &str) -> &str {
+    line.split(['.', ' ', '=']).next().unwrap()
+}
+
+/// What breaks the rule of the `internals` feature, by crate: a test build turns it on through
+/// the dev-dependencies alone, so the code a test or a bench reaches has one gate,
+/// `feature = "internals"`. A crate with the feature dev-depends on itself with it; each
+/// dev-dependency on a crate with it turns it on, as a test of one crate uses another's helpers;
+/// and no crate has a `bench` feature beside it.
+fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
+    let has = |manifest: &str, feature: &str| {
+        section(manifest, "features").any(|line| line.starts_with(&format!("{feature} = ")))
+    };
+    let mut problems = Vec::new();
+    for (name, manifest) in manifests {
+        if has(manifest, "bench") {
+            problems.push(format!("{name} has a bench feature"));
+        }
+        for line in section(manifest, "dev-dependencies") {
+            let other = dependency(line);
+            let with_internals = manifests
+                .iter()
+                .any(|(crate_name, manifest)| crate_name == other && has(manifest, "internals"));
+            if with_internals && !line.contains(r#""internals""#) {
+                problems.push(format!("{name} dev-depends on {other} with no internals"));
+            }
+        }
+        let itself = section(manifest, "dev-dependencies")
+            .any(|line| dependency(line) == name && line.contains(r#""internals""#));
+        if has(manifest, "internals") && !itself {
+            problems.push(format!("{name} dev-depends on itself with no internals"));
+        }
+    }
+    problems
+}
+
+/// The lines of `text` that gate code on a test build or the `internals` feature, where the
+/// feature alone gates it.
+fn test_or_internals(text: &str) -> Vec<usize> {
+    let gate = concat!("any(test, feature = ", "\"internals\"");
+    text.lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains(gate))
+        .map(|(at, _)| at + 1)
+        .collect()
+}
+
+#[test]
+fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it() {
+    assert_eq!(internals_problems(&manifests()), Vec::<String>::new());
+    let gated: Vec<String> = sources()
+        .iter()
+        .flat_map(|file| {
+            test_or_internals(&file.text)
+                .into_iter()
+                .map(|line| format!("{}:{line}", file.path))
+        })
+        .collect();
+    assert_eq!(gated, Vec::<String>::new());
+}
+
+#[test]
+fn the_internals_rule_names_each_crate_that_breaks_it() {
+    // `a` has the feature and no dev-dependency on itself; `b` has it on itself, and on `a`
+    // without it, and a `bench` feature beside it; `c` has none, and dev-depends on `b` with it.
+    let crates = [
+        (
+            "a",
+            "[features]\ninternals = []\n\n[dev-dependencies]\nb.workspace = true\n",
+        ),
+        (
+            "b",
+            concat!(
+                "[features]\ninternals = []\nbench = []\n\n[dev-dependencies]\n",
+                "a.workspace = true\nb = { workspace = true, features = [\"internals\"] }\n"
+            ),
+        ),
+        (
+            "c",
+            "[dev-dependencies]\nb = { workspace = true, features = [\"internals\"] }\n",
+        ),
+    ]
+    .map(|(name, manifest)| (name.to_owned(), manifest.to_owned()));
+    assert_eq!(
+        internals_problems(&crates),
+        [
+            "a dev-depends on b with no internals",
+            "a dev-depends on itself with no internals",
+            "b has a bench feature",
+            "b dev-depends on a with no internals",
+        ]
+    );
+    // The gate is spelled in parts, so this file holds none.
+    let text = concat!(
+        "#[cfg(feature = \"internals\")]\n#[cfg(any(test, feature = ",
+        "\"internals\"))]\n"
+    );
+    assert_eq!(test_or_internals(text), [2]);
+}
+
 /// Each Rust source file of the workspace's crates and checks, by its path under `source/`,
 /// with its text.
 fn sources() -> Vec<SourceFile> {
@@ -407,7 +529,7 @@ fn sources() -> Vec<SourceFile> {
         for file in SourceFiles::under(&source.join(folder)) {
             read.push(SourceFile {
                 path: format!("{folder}/{}", file.path),
-                text: file.text,
+                ..file
             });
         }
     }
@@ -855,19 +977,19 @@ fn a_free_function_that_takes_a_world_first_is_a_system() {
     // type, and a value made from the world a constructor of its own. A free function past its
     // module that takes the world first is a system or a function a table holds, named as a value.
     let sources = sources();
-    let production: Vec<(&str, &str)> = sources
+    let production: Vec<(&str, String)> = sources
         .iter()
         .filter_map(|file| Some((file.path.as_str(), file.production()?)))
         .collect();
     let mut found = Vec::new();
-    for &(path, code) in &production {
+    for (path, code) in &production {
         let free = world_first(code)
             .into_iter()
             .filter(|f| f.visible && !f.name.contains("::"));
         for function in free {
             let valued = production
                 .iter()
-                .any(|&(_, text)| named_as_value(text, &function.name));
+                .any(|(_, text)| named_as_value(text, &function.name));
             if !valued {
                 found.push(format!("{path}:{} {}", function.line, function.name));
             }

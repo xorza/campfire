@@ -3,7 +3,7 @@
 //! family, keeps it the way its OS can.
 
 pub(crate) mod durable_name;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod file_link;
 pub(crate) mod owner_only;
 pub(crate) mod stop_signals;

@@ -20,7 +20,7 @@ use crate::harness::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::harness::scripted_mode::ScriptedMode;
 use crate::input_rules::InputRules;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// The hero each slot picks.

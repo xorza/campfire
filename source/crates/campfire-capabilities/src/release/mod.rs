@@ -203,7 +203,7 @@ impl Release {
             Unpredicted::register(world);
         }
         let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         if spec.without_sync_points {
             sim.without_sync_points();
         }
@@ -234,7 +234,7 @@ impl Release {
                 install(&mut cx);
             }
         }
-        #[cfg(any(test, feature = "internals"))]
+        #[cfg(feature = "internals")]
         if spec.unbuilt {
             sim.leave_unbuilt();
             return;
@@ -258,7 +258,7 @@ impl Release {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::any::TypeId;
     use std::collections::BTreeSet;

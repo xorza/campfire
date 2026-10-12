@@ -5,7 +5,7 @@ use crate::geometry::cell_levels::CellLevels;
 use crate::geometry::shape::Shape;
 use crate::values::row_directory::{RowDirectory, RowEntries};
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// The bodies of a stage, as a sorted index of cells of the ground plane in levels by size: a

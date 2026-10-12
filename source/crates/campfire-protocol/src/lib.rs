@@ -10,7 +10,7 @@ mod connect;
 mod controller;
 mod delegation;
 mod engine_release;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 mod harness;
 mod input_chain;
 mod input_hash;
@@ -91,7 +91,7 @@ pub mod internals {
     pub use crate::harness::test_key::TestKey;
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

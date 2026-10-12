@@ -41,7 +41,7 @@ impl Replication for SeenBy {
     type Sending = NotSent;
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::units::team_set::TeamSet;
     use crate::vision::seen_by::SeenBy;

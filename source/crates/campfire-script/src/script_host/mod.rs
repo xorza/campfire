@@ -15,7 +15,7 @@ use crate::script_host::error::ScriptError;
 use crate::script_host::num_api::NumApi;
 use crate::script_host::property_forwards::PropertyForwards;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod budget;
 pub(crate) mod error;

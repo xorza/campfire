@@ -20,7 +20,7 @@ impl InputRules {
     };
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_common::Ticks;
 

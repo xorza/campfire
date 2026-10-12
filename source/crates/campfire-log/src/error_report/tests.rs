@@ -150,7 +150,7 @@ fn writes_its_source(lines: &[&str]) -> bool {
 
 /// The production code of `file`, under `crates/` or `checks/`: none for one outside a member's
 /// `src`.
-fn production(file: &SourceFile) -> Option<&str> {
+fn production(file: &SourceFile) -> Option<String> {
     let mut names = file.path.split('/');
     if names.nth(1) != Some("src") {
         return None;
@@ -169,7 +169,7 @@ fn every_error_the_workspace_writes_goes_through_its_report() {
                 continue;
             };
             files += 1;
-            for line in unreported(code) {
+            for line in unreported(&code) {
                 found.push(format!("{group}/{}: {line}", file.path));
             }
         }

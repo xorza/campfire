@@ -7,7 +7,7 @@
 #[cfg(feature = "start")]
 mod error;
 mod error_report;
-#[cfg(any(test, feature = "internals", feature = "start"))]
+#[cfg(any(feature = "internals", feature = "start"))]
 mod json_layer;
 mod json_text;
 mod log_event;

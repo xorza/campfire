@@ -339,7 +339,7 @@ impl RouteAsks {
     }
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use campfire_sim::Position;

@@ -14,5 +14,5 @@ pub(crate) mod polygon;
 pub(crate) mod shape;
 pub(crate) mod squared_distance;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod kernel_scene;

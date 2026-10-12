@@ -103,7 +103,7 @@ impl TgaFile {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     /// A TGA of `width` by `height` texels of `depth` bits, `descriptor` its last header byte,
     /// `texels` as stored, and the TGA 2.0 footer that names no extension area.

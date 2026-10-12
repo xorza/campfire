@@ -290,7 +290,7 @@ pub use crate::vision::seen_by::SeenBy;
 pub use crate::vision::sight::Sight;
 pub use crate::vision::vision_data::VisionData;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::players::Players;
@@ -301,7 +301,7 @@ pub mod internals {
     pub use crate::vision::seen_by::internals::seen_by_all;
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

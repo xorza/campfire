@@ -4,12 +4,12 @@ use campfire_common::SegmentSeed;
 use crate::num::Num;
 use crate::rng::rng_stream::RngStream;
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod rng_opener;
 pub(crate) mod rng_source;
 pub(crate) mod rng_stream;
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod split_mix64;
 
 /// Starts every message, so no other use of a segment seed can produce the same output.

@@ -10,7 +10,7 @@ pub trait LogEvent: DeserializeOwned {
     fn log(&self);
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::fmt::Debug;
 

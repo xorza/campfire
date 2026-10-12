@@ -196,7 +196,7 @@ const LAYERS: [(&str, u8); 24] = [
 fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
     for file in SourceFiles::under(dir) {
         if let Some(code) = file.production() {
-            visit(&file.path, code);
+            visit(&file.path, &code);
         }
     }
 }

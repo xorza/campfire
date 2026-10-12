@@ -21,11 +21,11 @@ pub struct MatchSpec {
     pub(crate) out: OutView,
     /// Whether the tick's schedule leaves out Bevy's automatic sync points, for the ambiguity
     /// check that sees every pair only a sync point keeps in order.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     pub(crate) without_sync_points: bool,
     /// Whether the build leaves the tick's schedule unbuilt, its systems in its graph, for a test
     /// that reads what each one accesses.
-    #[cfg(any(test, feature = "internals"))]
+    #[cfg(feature = "internals")]
     pub(crate) unbuilt: bool,
 }
 
@@ -40,9 +40,9 @@ impl MatchSpec {
             budgets: None,
             predicting: false,
             out: OutView::Team,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             without_sync_points: false,
-            #[cfg(any(test, feature = "internals"))]
+            #[cfg(feature = "internals")]
             unbuilt: false,
         }
     }
@@ -79,7 +79,7 @@ impl MatchSpec {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::release::match_spec::MatchSpec;
 

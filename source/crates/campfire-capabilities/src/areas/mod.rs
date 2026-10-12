@@ -126,7 +126,7 @@ impl Areas {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::{Tick, Ticks};

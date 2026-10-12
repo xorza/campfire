@@ -27,7 +27,7 @@ use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod build_specs;
 pub(crate) mod build_target;

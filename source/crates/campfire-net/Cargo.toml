@@ -11,8 +11,8 @@ internals = [
     "campfire-math/internals",
     "campfire-package/internals",
     "campfire-protocol/internals",
+    "dep:criterion",
 ]
-bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
@@ -61,7 +61,7 @@ bench = false
 [[bench]]
 name = "net"
 harness = false
-required-features = ["bench"]
+required-features = ["internals"]
 
 [lints]
 workspace = true

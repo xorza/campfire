@@ -32,12 +32,12 @@ pub use crate::simd::u64x4::U64x4;
 pub use crate::u256::U256;
 pub use crate::vec3::Vec3;
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::rng::split_mix64::SplitMix64;
 }
 
-#[cfg(feature = "bench")]
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

@@ -28,7 +28,6 @@ impl StageClock {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use std::time::Instant;
 

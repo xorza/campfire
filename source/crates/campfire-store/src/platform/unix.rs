@@ -127,7 +127,7 @@ impl Os {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::os::unix::fs::{PermissionsExt, symlink};
     use std::os::unix::process::CommandExt;

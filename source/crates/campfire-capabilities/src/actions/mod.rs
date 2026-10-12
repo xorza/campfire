@@ -140,24 +140,25 @@ impl Actions {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
-    #[cfg(any(test, feature = "bench"))]
     use campfire_common::Ticks;
-    #[cfg(any(test, feature = "bench"))]
     use campfire_math::Num;
 
     use crate::actions::Actions;
+    use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
+    use crate::actions::action_range::ActionRange;
+    use crate::actions::actions_column::ActionsColumn;
+    use crate::actions::gather_spec::GatherSpec;
+    use crate::actions::kind_spec::KindSpec;
+    use crate::actions::rank_values::RankValues;
+    use crate::scripts::hook_set::HookSet;
+    use crate::stats::pool_cost::PoolCost;
     use crate::units::action_id::ActionId;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::{
-        actions::action::Action, actions::action::Aim, actions::action_range::ActionRange,
-        actions::actions_column::ActionsColumn, actions::gather_spec::GatherSpec,
-        actions::kind_spec::KindSpec, actions::rank_values::RankValues, scripts::hook_set::HookSet,
-        stats::pool_cost::PoolCost, units::filter::Filter, units::view::View,
-    };
+    use crate::units::filter::Filter;
+    use crate::units::view::View;
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -167,7 +168,6 @@ pub(crate) mod internals {
 
         /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
         /// `time`, to the match's action book.
-        #[cfg(any(test, feature = "bench"))]
         pub(crate) fn add_gather(
             world: &mut World,
             spec: GatherSpec,
@@ -203,7 +203,6 @@ pub(crate) mod internals {
         }
 
         /// Adds `action` to the match's action book, and shares the book with the script view.
-        #[cfg(any(test, feature = "bench"))]
         pub(crate) fn push(world: &mut World, action: Action) -> ActionId {
             let mut book = world.resource_mut::<ActionBook>();
             let id = book.push(action);

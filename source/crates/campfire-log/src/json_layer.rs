@@ -17,7 +17,7 @@ where
         .with_writer(writer)
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::cell::RefCell;
     use std::io::{self, Write};

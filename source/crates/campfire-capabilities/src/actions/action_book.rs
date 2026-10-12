@@ -196,7 +196,7 @@ impl Book for ActionBook {
     const SCRIPTS_ONLY: bool = false;
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::sync::Arc;
 
