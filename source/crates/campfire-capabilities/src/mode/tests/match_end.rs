@@ -47,7 +47,7 @@ fn on_mode_input(ctx, player, name, value) {
     let (one, two, four) = (ids[1], ids[2], ids[4]);
     game.resource_scope(|world, index: Mut<'_, EntityIndex>| {
         let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
-        attackers.record(two, Tick::new(0), &index);
+        attackers.struck(two, Tick::new(0), &index);
     });
     game.resource_mut::<PassQueue>().push_damage(Damage {
         source: Some(four),

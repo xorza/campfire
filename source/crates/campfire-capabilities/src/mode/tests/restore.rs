@@ -292,7 +292,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
             "{at}"
         );
         let mut attackers = RecentAttackers::default();
-        attackers.record(unit, at, game.resource::<EntityIndex>());
+        attackers.struck(unit, at, game.resource::<EntityIndex>());
         assert_eq!(Match::decodes(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         route.ask(*game.get::<Position>(grunt).unwrap(), at, None);

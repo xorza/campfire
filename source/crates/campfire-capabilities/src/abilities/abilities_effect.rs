@@ -1,4 +1,4 @@
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::{SimWorld, StableId};
@@ -42,22 +42,21 @@ impl Effect for AbilitiesEffect {
         let Some(entity) = world.entity_of(id) else {
             return;
         };
-        world.resource_scope(|world, book: Mut<'_, ActionBook>| {
-            let mut id = world.entity_mut(entity);
-            let (slots, mut times) = id
-                .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
-                .expect("a unit the view held with the ability has slots");
-            match self {
-                AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
-                    times.cut_cooldown(slots, action, cut, now);
-                }
-                AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
-                    times.cut_cooldowns(slots, kind, fraction, now);
-                }
-                AbilitiesEffect::AddCharge { action, .. } => {
-                    times.add_charge(slots, action, &book);
-                }
+        let book = world.resource::<ActionBook>().clone();
+        let mut id = world.entity_mut(entity);
+        let (slots, mut times) = id
+            .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
+            .expect("a unit the view held with the ability has slots");
+        match self {
+            AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
+                times.cut_cooldown(slots, action, cut, now);
             }
-        });
+            AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
+                times.cut_cooldowns(slots, kind, fraction, now);
+            }
+            AbilitiesEffect::AddCharge { action, .. } => {
+                times.add_charge(slots, action, &book);
+            }
+        }
     }
 }

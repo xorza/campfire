@@ -135,11 +135,14 @@ fn an_attack_winds_up_and_strikes_each_period() {
 
     // A list keeps each attacker once, by stable id, and forgets one that despawned: the dummy.
     let index = game.resource::<EntityIndex>();
+    let record = |recent: &mut RecentAttackers, source, tick| {
+        recent.struck(source, Tick::new(tick), index);
+    };
     let mut recent = RecentAttackers::default();
-    recent.record(dummy, Tick::new(3), index);
-    recent.record(fighter, Tick::new(4), index);
+    record(&mut recent, dummy, 3);
+    record(&mut recent, fighter, 4);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 4)]);
-    recent.record(fighter, Tick::new(6), index);
+    record(&mut recent, fighter, 6);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 6)]);
     // One that despawned stays while known attackers strike again, and goes when a new one
     // comes: the list never outgrows the units of the match.
@@ -148,11 +151,16 @@ fn an_attack_winds_up_and_strikes_each_period() {
         Binary::decode::<RecentAttackers>(&bytes).unwrap()
     };
     let mut recent = held(&[attack(fighter, 4), attack(dummy, 3)]);
-    recent.record(fighter, Tick::new(7), index);
+    let mut gone = vec![dummy];
+    recent.gone(fighter, index, &mut gone);
+    assert_eq!(gone, []);
+    record(&mut recent, fighter, 7);
     let attacks = recent.iter().collect::<Vec<_>>();
     assert_eq!(attacks, [attack(fighter, 7), attack(dummy, 3)]);
     let mut recent = held(&[attack(dummy, 3)]);
-    recent.record(fighter, Tick::new(8), index);
+    recent.gone(fighter, index, &mut gone);
+    assert_eq!(gone, [dummy]);
+    record(&mut recent, fighter, 8);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 8)]);
 }
 

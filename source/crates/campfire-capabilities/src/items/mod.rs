@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_sim::{Capability, SimSet};
 
 use crate::abilities::cast_spends::CastSpends;
@@ -78,14 +78,13 @@ impl Items {
     /// Spends a use of the consumable in `slot` of the unit of `entity`, whose action resolved,
     /// when the slot is one of its inventory's.
     fn spend_use(world: &mut World, entity: Entity, slot: u8) {
-        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
-            let mut caster = world.entity_mut(entity);
-            let carried =
-                caster.get_components_mut::<(&mut Inventory, &mut ActionSlots, &mut SlotTimes)>();
-            if let Ok((mut inventory, mut slots, mut times)) = carried {
-                inventory.spend_use(&book, (&mut *slots, &mut *times), slot);
-            }
-        });
+        let book = world.resource::<ItemBook>().clone();
+        let mut caster = world.entity_mut(entity);
+        let carried =
+            caster.get_components_mut::<(&mut Inventory, &mut ActionSlots, &mut SlotTimes)>();
+        if let Ok((mut inventory, mut slots, mut times)) = carried {
+            inventory.spend_use(&book, (&mut *slots, &mut *times), slot);
+        }
     }
 }
 

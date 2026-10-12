@@ -355,7 +355,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut attackers = RecentAttackers::default();
     // A strike later than the view's tick, as a rollback can leave, is not recent either.
     for (source, tick) in [(near, 39), (recent, 40), (fallen, 100), (bare, 101)] {
-        attackers.record(source, Tick::new(tick), index);
+        attackers.struck(source, Tick::new(tick), index);
     }
     *game.get_mut::<RecentAttackers>(entity).unwrap() = attackers;
 

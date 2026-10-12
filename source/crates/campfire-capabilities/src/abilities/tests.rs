@@ -2417,7 +2417,7 @@ fn on_interval(ctx, m) { throw "interval"; }
     let target = game.unit_entity(victim);
     game.resource_scope(|world, index: Mut<'_, EntityIndex>| {
         let mut attackers = world.get_mut::<RecentAttackers>(target).unwrap();
-        attackers.record(assister, Tick::new(0), &index);
+        attackers.struck(assister, Tick::new(0), &index);
     });
     game.step();
     assert_eq!(Stats::health(&game, victim), 0);

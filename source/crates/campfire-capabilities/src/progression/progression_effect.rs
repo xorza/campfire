@@ -1,5 +1,5 @@
 use bevy_ecs::change_detection::DetectChangesMut;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{SimWorld, StableId};
 
@@ -60,37 +60,36 @@ impl Effect for ProgressionEffect {
         match self {
             ProgressionEffect::AddXp { id, track, amount } => {
                 let entity = world.entity_of(id).expect("a unit given experience exists");
-                world.resource_scope(|world, book: Mut<'_, TrackBook>| {
-                    let mut carrier = world.entity_mut(entity);
-                    let (mut experience, mut level, points) = carrier
-                        .get_components_mut::<(
-                            &mut Experience,
-                            Option<&mut Level>,
-                            Option<&mut Points>,
-                        )>()
-                        .expect("a unit given experience has tracks");
-                    // The unit's level counts as changed only when it rises, as its stats are
-                    // derived again when it changes.
-                    let mut unit_level = level.as_deref().copied();
-                    let raised = experience.add(track, amount, &book, unit_level.as_mut());
-                    if let (Some(level), Some(value)) = (&mut level, unit_level) {
-                        level.set_if_neq(value);
-                    }
-                    if raised.to == raised.from {
-                        return;
-                    }
-                    if level.is_some() && book.level_track() == Some(track) {
-                        points
-                            .expect("a unit with the `level` track has points")
-                            .gain(raised.to.get() - raised.from.get());
-                    }
-                    let reached = (raised.from.get() + 1..=raised.to.get())
-                        .map(|level| Level::new(level).expect("a level past another"));
-                    let mut level_ups = world.resource_mut::<LevelUps>();
-                    level_ups
-                        .0
-                        .extend(reached.map(|level| LevelUp { id, track, level }));
-                });
+                let book = world.resource::<TrackBook>().clone();
+                let mut carrier = world.entity_mut(entity);
+                let (mut experience, mut level, points) = carrier
+                    .get_components_mut::<(
+                        &mut Experience,
+                        Option<&mut Level>,
+                        Option<&mut Points>,
+                    )>()
+                    .expect("a unit given experience has tracks");
+                // The unit's level counts as changed only when it rises, as its stats are
+                // derived again when it changes.
+                let mut unit_level = level.as_deref().copied();
+                let raised = experience.add(track, amount, &book, unit_level.as_mut());
+                if let (Some(level), Some(value)) = (&mut level, unit_level) {
+                    level.set_if_neq(value);
+                }
+                if raised.to == raised.from {
+                    return;
+                }
+                if level.is_some() && book.level_track() == Some(track) {
+                    points
+                        .expect("a unit with the `level` track has points")
+                        .gain(raised.to.get() - raised.from.get());
+                }
+                let reached = (raised.from.get() + 1..=raised.to.get())
+                    .map(|level| Level::new(level).expect("a level past another"));
+                let mut level_ups = world.resource_mut::<LevelUps>();
+                level_ups
+                    .0
+                    .extend(reached.map(|level| LevelUp { id, track, level }));
             }
         }
     }

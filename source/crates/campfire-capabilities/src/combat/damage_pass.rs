@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
@@ -74,6 +74,14 @@ impl<'w> PassRun<'_, 'w> {
     }
 }
 
+/// The buffers the pass keeps between its runs: the attackers a damage's target forgets as its
+/// source strikes it, and the assisters of a death, then of the kill whose events run.
+#[derive(Debug, Default)]
+pub(crate) struct PassScratch {
+    gone: Vec<StableId>,
+    assisters: Vec<StableId>,
+}
+
 impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
@@ -81,32 +89,26 @@ impl DamagePass {
     /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
     /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal
     /// of a unit at zero life.
-    pub(crate) fn run(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
+    pub(crate) fn run(world: &mut World, mut scratch: Local<'_, PassScratch>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
         world.resource_mut::<PassQueue>().begin();
-        let hooks = world
-            .remove_non_send::<CombatHooks>()
-            .expect("combat installs its hooks");
+        let hooks = world.non_send::<CombatHooks>().clone();
         if !hooks.scripted() {
-            DamagePass::drain(&mut PassRun::Plain(world), &hooks, now, &mut assisters);
+            DamagePass::drain(&mut PassRun::Plain(world), &hooks, &mut scratch);
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                DamagePass::drain(run, &hooks, now, &mut assisters);
+                DamagePass::drain(run, &hooks, &mut scratch);
             });
         }
-        world.insert_non_send(hooks);
         world.resource_mut::<PassQueue>().end();
     }
 
-    /// Deals the queue's entries in order, with the pass's `hooks` when `run` runs them.
-    fn drain(
-        run: &mut PassRun<'_, '_>,
-        hooks: &CombatHooks,
-        now: Tick,
-        assisters: &mut Vec<StableId>,
-    ) {
+    /// Deals the queue's entries in order, with the pass's `hooks` when `run` runs them, and its
+    /// buffers, `scratch`.
+    fn drain(run: &mut PassRun<'_, '_>, hooks: &CombatHooks, scratch: &mut PassScratch) {
+        let now = run.world().resource::<SimTick>().start();
         while let Some(entry) = run.world().resource_mut::<PassQueue>().next() {
             let damage = match entry {
                 PassEntry::Damage(damage) => damage,
@@ -139,7 +141,8 @@ impl DamagePass {
                 }
                 _ => damage.amount,
             };
-            let landed = DamagePass::deal(run.world(), damage, amount, now);
+            let weighed = Damage { amount, ..damage };
+            let landed = DamagePass::deal(run.world(), weighed, scratch);
             let Some(batch) = run.batch() else {
                 continue;
             };
@@ -152,7 +155,7 @@ impl DamagePass {
                     amount: amount.max(Num::ZERO),
                     ..damage
                 };
-                DamagePass::answer(batch, events, dealt, landed, assisters);
+                DamagePass::answer(batch, events, dealt, landed, &mut scratch.assisters);
             }
         }
     }
@@ -248,18 +251,20 @@ impl DamagePass {
         }
     }
 
-    /// Deals `damage` as `amount` in tick `now`, a negative amount as 0: shields absorb it, then
-    /// the life pool takes the rest. The source is recorded as the target's attacker; when the
-    /// damage took the target to zero, the source is its killer if it still exists, and the others
-    /// that damaged it within the assist window assisted. A living source heals by its `leech`
-    /// stat, `attack` for an attack's damage and `other` for the rest, times the life taken.
-    fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
+    /// Deals `damage`, its amount weighed, in this tick, a negative amount as 0: shields absorb
+    /// it, then the life pool takes the rest. The source is recorded as the target's attacker;
+    /// when the damage took the target to zero, the source is its killer if it still exists, and
+    /// the others that damaged it within the assist window assisted. A living source heals by its
+    /// `leech` stat, `attack` for an attack's damage and `other` for the rest, times the life
+    /// taken. Each write follows the reads it needs, which go to `scratch`.
+    fn deal(world: &mut World, damage: Damage, scratch: &mut PassScratch) -> Landed {
         let Some(entity) = DamagePass::damageable(world, damage.target) else {
             return Landed::Nothing;
         };
+        let now = world.resource::<SimTick>().start();
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
-        let mut left = amount.max(Num::ZERO);
+        let mut left = damage.amount.max(Num::ZERO);
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
             let takes_effect = TagEffect::of(world, entity);
@@ -282,32 +287,37 @@ impl DamagePass {
             Num::ZERO
         };
         let killed = !living(world);
-        world.resource_scope(|world, index: Mut<'_, EntityIndex>| {
-            let mut attackers = world.get_mut::<RecentAttackers>(entity);
-            if let (Some(source), Some(attackers)) = (damage.source, attackers.as_deref_mut()) {
-                attackers.record(source, now, &index);
+        if let Some(source) = source {
+            let index = world.resource::<EntityIndex>();
+            if let Some(attackers) = world.get::<RecentAttackers>(entity) {
+                attackers.gone(source, index, &mut scratch.gone);
+                world
+                    .get_mut::<RecentAttackers>(entity)
+                    .expect("a unit with attackers")
+                    .record(source, now, &scratch.gone);
             }
-        });
+        }
         let death = killed.then(|| {
-            world.resource_scope(|world, mut deaths: Mut<'_, Deaths>| {
-                let window = world.resource::<CombatBook>().assist_window;
-                let index = world.resource::<EntityIndex>();
-                let assisted = |attack: &RecentAttack| {
-                    let within = window
-                        .zip(now.since(attack.tick))
-                        .is_some_and(|(window, since)| since <= window);
-                    let exists = index.get(attack.source).is_some();
-                    Some(attack.source) != damage.source && within && exists
-                };
-                let assisters = world
-                    .get::<RecentAttackers>(entity)
-                    .into_iter()
-                    .flat_map(RecentAttackers::iter)
-                    .filter(assisted)
-                    .map(|attack| attack.source);
-                let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
-                deaths.push(fallen, source, assisters)
-            })
+            let window = world.resource::<CombatBook>().assist_window;
+            let index = world.resource::<EntityIndex>();
+            let assisted = |attack: &RecentAttack| {
+                let within = window
+                    .zip(now.since(attack.tick))
+                    .is_some_and(|(window, since)| since <= window);
+                let exists = index.get(attack.source).is_some();
+                Some(attack.source) != damage.source && within && exists
+            };
+            let assisters = world
+                .get::<RecentAttackers>(entity)
+                .into_iter()
+                .flat_map(RecentAttackers::iter)
+                .filter(assisted)
+                .map(|attack| attack.source);
+            scratch.assisters.clear();
+            scratch.assisters.extend(assisters);
+            let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
+            let mut deaths = world.resource_mut::<Deaths>();
+            deaths.push(fallen, source, scratch.assisters.iter().copied())
         });
         if let Some((id, entity)) =
             source.and_then(|id| DamagePass::living(world, id).map(|entity| (id, entity)))

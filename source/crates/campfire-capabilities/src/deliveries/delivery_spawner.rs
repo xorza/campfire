@@ -58,7 +58,7 @@ impl DeliverySpawner<'_, '_> {
             team,
             owner: owner.copied(),
         };
-        let parts = core.made(&self.states, &mut self.new_states);
+        let parts = core.made(self.states.initial(unit_type), &mut self.new_states);
         let mut unit = self.commands.spawn(make(id));
         parts.insert_into(&mut unit);
         unit.queue(|mut unit: EntityWorldMut<'_>| {

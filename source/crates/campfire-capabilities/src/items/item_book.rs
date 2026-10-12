@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 
@@ -13,12 +14,17 @@ use crate::units::view::View;
 use crate::values::names::Names;
 use campfire_sim::Capability;
 
-/// The mode's item types, by id, as its package load checked them: package data, not state.
+/// The mode's item types, by id, as its package load checked them: package data, not state. A
+/// clone shares the items, as a write that reads them holds them.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct ItemBook {
+pub(crate) struct ItemBook(Arc<Items>);
+
+/// The items of an `ItemBook`.
+#[derive(Debug, Default, PartialEq, Eq)]
+struct Items {
     /// The items' names, by id.
     names: Names<ItemId>,
-    items: Vec<ItemSpec>,
+    specs: Vec<ItemSpec>,
     /// Every modifier an item holds, each once, in order.
     modifiers: Vec<ModifierId>,
 }
@@ -47,25 +53,25 @@ impl ItemBook {
             .collect();
         modifiers.sort_unstable();
         modifiers.dedup();
-        ItemBook {
+        ItemBook(Arc::new(Items {
             names,
-            items,
+            specs: items,
             modifiers,
-        }
+        }))
     }
 
     /// The items' names, by id.
-    pub(crate) const fn names(&self) -> &Names<ItemId> {
-        &self.names
+    pub(crate) fn names(&self) -> &Names<ItemId> {
+        &self.0.names
     }
 
     /// Every modifier an item holds, each once, in order.
-    pub(crate) const fn modifiers(&self) -> &[ModifierId] {
-        self.modifiers.as_slice()
+    pub(crate) fn modifiers(&self) -> &[ModifierId] {
+        self.0.modifiers.as_slice()
     }
 
     pub(crate) fn get(&self, item: ItemId) -> Option<&ItemSpec> {
-        self.items.get(item.index())
+        self.0.specs.get(item.index())
     }
 }
 

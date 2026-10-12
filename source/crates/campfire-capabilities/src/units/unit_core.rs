@@ -1,5 +1,5 @@
 use bevy_ecs::bundle::Bundle;
-use bevy_ecs::world::{EntityWorldMut, Mut, World};
+use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_sim::{Position, StableId};
 
 use crate::units::body_unit::BodyUnit;
@@ -36,15 +36,14 @@ pub(crate) struct MadeCore {
 }
 
 impl UnitCore {
-    /// The core's parts: its script state at its type's defaults from `book`, but what a call
+    /// The core's parts: its script state at `initial`, its type's defaults, but what a call
     /// wrote to it, which `new_states` holds for a unit that spawns after the call that created
     /// it.
-    pub(crate) fn made(self, book: &UnitStateBook, new_states: &mut NewUnitStates) -> MadeCore {
-        let mut written = book.initial(self.unit_type);
-        new_states.take(self.id, &mut written);
+    pub(crate) fn made(self, mut initial: UnitStates, new_states: &mut NewUnitStates) -> MadeCore {
+        new_states.take(self.id, &mut initial);
         MadeCore {
             core: self,
-            states: written,
+            states: initial,
         }
     }
 
@@ -62,10 +61,8 @@ impl UnitCore {
         parts: impl Bundle,
     ) -> EntityWorldMut<'_> {
         let owned = self.owner.is_some();
-        let made = world.resource_scope(|world, mut new_states: Mut<'_, NewUnitStates>| {
-            let states = world.resource::<UnitStateBook>();
-            self.made(states, &mut new_states)
-        });
+        let initial = world.resource::<UnitStateBook>().initial(self.unit_type);
+        let made = self.made(initial, &mut world.resource_mut::<NewUnitStates>());
         let mut unit = world.spawn((kind, parts));
         debug_assert!(
             !(unit.contains::<StableId>()

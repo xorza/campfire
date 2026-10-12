@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::QueryState;
-use bevy_ecs::system::Local;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::query::{Has, QueryState};
+use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_sim::{Keyed, Ordered, SimTick, StableId};
 
@@ -64,23 +64,16 @@ impl Channels {
     /// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
     fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
         let unit = world.entity(entity);
+        let slots = unit
+            .get::<ActionSlots>()
+            .expect("a unit whose channel runs has slots");
         let forced = unit.contains::<ForcedMove>();
-        let slots = unit.get::<ActionSlots>();
-        let channel = slots.and_then(|slots| slots.slot(slots.channeling()?));
-        let kind = channel.map(|slot| slot.kind);
-        let blocked = Abilities::blocked(
-            unit.get::<UnitTags>(),
-            forced,
-            unit.get::<Inventory>(),
-            kind,
-        );
-        world.resource_scope(|world, book: Mut<'_, ActionBook>| {
-            let mut slots = world
-                .get_mut::<ActionSlots>(entity)
-                .expect("a unit whose channel runs has slots");
-            let tick = Self::channel_tick(&book, &slots);
-            slots.step_channel(now, blocked, tick)
-        })
+        let blocked = Self::blocked(slots, unit.get(), forced, unit.get());
+        let tick = Self::channel_tick(world.resource::<ActionBook>(), slots);
+        world
+            .get_mut::<ActionSlots>(entity)
+            .expect("a unit whose channel runs has slots")
+            .step_channel(now, blocked, tick)
     }
 
     /// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its
@@ -125,21 +118,41 @@ impl Channels {
     /// Runs each channel of a unit a client predicts as the server does, with no call: a cut one's
     /// record clears, and one at its end ends, as the hooks' effects come from the server.
     pub(super) fn predict_channels(
-        world: &mut World,
-        units: &mut QueryState<(Entity, &ActionSlots)>,
-        mut due: Local<'_, Vec<Entity>>,
+        tick: Res<'_, SimTick>,
+        book: Res<'_, ActionBook>,
+        mut units: Query<
+            '_,
+            '_,
+            (
+                &mut ActionSlots,
+                Option<&UnitTags>,
+                Has<ForcedMove>,
+                Option<&Inventory>,
+            ),
+        >,
     ) {
-        let now = world.resource::<SimTick>().start();
-        due.clear();
-        due.extend(
-            units
-                .iter(world)
-                .filter(|(_, slots)| slots.channel_due())
-                .map(|(entity, _)| entity),
-        );
-        for &entity in &*due {
-            Self::step_channel(world, now, entity);
+        let now = tick.start();
+        for (mut slots, tags, forced, inventory) in &mut units {
+            if !slots.channel_due() {
+                continue;
+            }
+            let blocked = Self::blocked(&slots, tags, forced, inventory);
+            let tick = Self::channel_tick(&book, &slots);
+            slots.step_channel(now, blocked, tick);
         }
+    }
+
+    /// Whether the tags of a unit that holds `slots` keep its channel from running, as its slot's
+    /// kind says, under a forced move when `forced`, and with `inventory`.
+    fn blocked(
+        slots: &ActionSlots,
+        tags: Option<&UnitTags>,
+        forced: bool,
+        inventory: Option<&Inventory>,
+    ) -> bool {
+        let channel = slots.channeling().and_then(|slot| slots.slot(slot));
+        let kind = channel.map(|slot| slot.kind);
+        Abilities::blocked(tags, forced, inventory, kind)
     }
 
     /// The time between the ticks of the channel `slots` runs, if one runs.

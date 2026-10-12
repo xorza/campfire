@@ -3,10 +3,10 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
-use campfire_sim::{EntityIndex, SimTick, SlotEventKind, TickInputs};
+use campfire_sim::{EntityIndex, SimTick, SlotEvent, SlotEventKind, TickInputs};
 
 use crate::combat::deaths::Deaths;
 use crate::combat::kept::Kept;
@@ -100,37 +100,43 @@ impl ModeHooks {
     /// for each who left one, after those that wait from earlier ticks, in the order the log took
     /// them, from the mode pool. One whose call finds the pool spent waits, with those after it,
     /// for a later tick.
-    pub(super) fn slot_events(world: &mut World) {
-        // A write marks the state changed, and taking the resource out to scope it is one, so a
-        // tick with no event to answer leaves it as it is.
+    pub(super) fn slot_events(world: &mut World, mut pending: Local<'_, PendingCalls<SlotEvent>>) {
+        // A write marks the state changed, and the swap below is one, so a tick with no event to
+        // answer leaves it as it is.
         let events = world.resource::<TickInputs>().slot_events().is_empty();
         if events && world.resource::<UnansweredSlotEvents>().0.is_empty() {
             return;
         }
-        world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredSlotEvents>| {
-            let events = world.resource::<TickInputs>().slot_events();
-            unanswered.0.extend(events.iter().copied());
-            let hooks = world.non_send::<MatchMode>().schema.hooks;
-            let now = world.resource::<SimTick>().end();
-            let answered = world.mode_calls(now, |call| {
-                let mut answered = 0;
-                for event in unanswered.0.iter() {
-                    let hook = match event.kind {
-                        SlotEventKind::Joined => Hook::OnPlayerJoin,
-                        SlotEventKind::Left => Hook::OnPlayerLeave,
-                    };
-                    if hooks.contains(hook) {
-                        let args = (call.ctx.clone(), INT::from(event.slot.get()));
-                        if call.answer(None, Pool::Mode, hook, args).is_break() {
-                            break;
-                        }
+        debug_assert!(pending.is_empty(), "the events go back after each run");
+        mem::swap(
+            &mut *pending,
+            &mut world.resource_mut::<UnansweredSlotEvents>().0,
+        );
+        pending.extend(world.resource::<TickInputs>().slot_events().iter().copied());
+        let hooks = world.non_send::<MatchMode>().schema.hooks;
+        let now = world.resource::<SimTick>().end();
+        let answered = world.mode_calls(now, |call| {
+            let mut answered = 0;
+            for event in pending.iter() {
+                let hook = match event.kind {
+                    SlotEventKind::Joined => Hook::OnPlayerJoin,
+                    SlotEventKind::Left => Hook::OnPlayerLeave,
+                };
+                if hooks.contains(hook) {
+                    let args = (call.ctx.clone(), INT::from(event.slot.get()));
+                    if call.answer(None, Pool::Mode, hook, args).is_break() {
+                        break;
                     }
-                    answered += 1;
                 }
-                answered
-            });
-            unanswered.0.answered(answered);
+                answered += 1;
+            }
+            answered
         });
+        pending.answered(answered);
+        mem::swap(
+            &mut *pending,
+            &mut world.resource_mut::<UnansweredSlotEvents>().0,
+        );
     }
 
     /// Runs `on_timer` for each timer due in this tick's Mode stage, earliest first, from the mode
@@ -167,58 +173,68 @@ impl ModeHooks {
     /// assisters; a killer gone by then is `()`, and an assister gone by then is left out. A death
     /// whose call finds the pool spent waits, with those after it, for a later tick, and its unit
     /// stays, dead, until then.
-    pub(super) fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
+    pub(super) fn unit_deaths(
+        world: &mut World,
+        (mut units, mut pending): (Local<'_, Vec<Option<Entity>>>, Local<'_, UnansweredDeaths>),
+    ) {
         let hooks = world.non_send::<MatchMode>().schema.hooks;
         if !hooks.contains(Hook::OnUnitDied) {
             return;
         }
-        // A write marks the state changed, and taking the resource out to scope it is one, so a
-        // tick with no death to answer leaves it as it is.
+        // A write marks the state changed, and the swap below is one, so a tick with no death to
+        // answer leaves it as it is.
         if world.resource::<Deaths>().is_empty() && world.resource::<UnansweredDeaths>().is_empty()
         {
             return;
         }
         let now = world.resource::<SimTick>().end();
-        world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredDeaths>| {
-            unanswered.extend(world.resource::<Deaths>().iter());
-            let answered = world.mode_calls(now, |call| {
-                let view = call.ctx.view().clone();
-                let mut answered = 0;
-                for death in unanswered.iter() {
-                    if let Some(unit) = view.unit(death.id) {
-                        let killer = death.killer.and_then(|id| view.unit(id));
-                        let killer = killer.map_or(Dynamic::UNIT, Dynamic::from);
-                        let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
-                        let assisters: Array = assisters.map(Dynamic::from).collect();
-                        let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
-                        let unit = Some(death.id);
-                        if call
-                            .answer(unit, Pool::Mode, Hook::OnUnitDied, args)
-                            .is_break()
-                        {
-                            break;
-                        }
+        debug_assert!(pending.is_empty(), "the deaths go back after each run");
+        mem::swap(
+            &mut *pending,
+            &mut *world.resource_mut::<UnansweredDeaths>(),
+        );
+        pending.extend(world.resource::<Deaths>().iter());
+        let answered = world.mode_calls(now, |call| {
+            let view = call.ctx.view().clone();
+            let mut answered = 0;
+            for death in pending.iter() {
+                if let Some(unit) = view.unit(death.id) {
+                    let killer = death.killer.and_then(|id| view.unit(id));
+                    let killer = killer.map_or(Dynamic::UNIT, Dynamic::from);
+                    let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
+                    let assisters: Array = assisters.map(Dynamic::from).collect();
+                    let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
+                    let unit = Some(death.id);
+                    if call
+                        .answer(unit, Pool::Mode, Hook::OnUnitDied, args)
+                        .is_break()
+                    {
+                        break;
                     }
-                    answered += 1;
                 }
-                answered
-            });
-            let index = world.resource::<EntityIndex>();
-            units.clear();
-            units.extend(unanswered.iter().map(|death| index.get(death.id)));
-            for (at, entity) in units.iter().enumerate() {
-                let Some(entity) = *entity else {
-                    continue;
-                };
-                let mut unit = world.entity_mut(entity);
-                if at < answered {
-                    unit.remove::<Kept>();
-                } else {
-                    unit.insert(Kept);
-                }
+                answered += 1;
             }
-            unanswered.answered(answered);
+            answered
         });
+        let index = world.resource::<EntityIndex>();
+        units.clear();
+        units.extend(pending.iter().map(|death| index.get(death.id)));
+        for (at, entity) in units.iter().enumerate() {
+            let Some(entity) = *entity else {
+                continue;
+            };
+            let mut unit = world.entity_mut(entity);
+            if at < answered {
+                unit.remove::<Kept>();
+            } else {
+                unit.insert(Kept);
+            }
+        }
+        pending.answered(answered);
+        mem::swap(
+            &mut *pending,
+            &mut *world.resource_mut::<UnansweredDeaths>(),
+        );
     }
 
     /// Runs `on_level_up` for each level a unit reached, in the order reached, from the mode pool:

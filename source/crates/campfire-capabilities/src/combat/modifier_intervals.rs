@@ -61,11 +61,7 @@ impl ModifierIntervals {
             return;
         }
         due.sort_unstable();
-        let hooks = world
-            .remove_non_send::<CombatHooks>()
-            .expect("combat installs its hooks");
-        let Some(events) = &hooks.events else {
-            world.insert_non_send(hooks);
+        let Some(events) = world.non_send::<CombatHooks>().events.clone() else {
             return;
         };
         world.script_batch(|batch| {
@@ -85,6 +81,5 @@ impl ModifierIntervals {
                 );
             }
         });
-        world.insert_non_send(hooks);
     }
 }

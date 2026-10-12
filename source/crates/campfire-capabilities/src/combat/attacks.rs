@@ -146,11 +146,7 @@ impl Attacks {
         attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
-        let hooks = world
-            .remove_non_send::<CombatHooks>()
-            .expect("combat installs its hooks");
-        let Some(events) = &hooks.events else {
-            world.insert_non_send(hooks);
+        let Some(events) = world.non_send::<CombatHooks>().events.clone() else {
             return;
         };
         let now = world.resource::<SimTick>().start();
@@ -173,7 +169,6 @@ impl Attacks {
                 }
             });
         }
-        world.insert_non_send(hooks);
     }
 
     /// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one
