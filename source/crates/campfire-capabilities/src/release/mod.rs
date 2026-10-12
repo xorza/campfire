@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_sim::{Capability, SimParts, SimWorldBuilder, StateRegistry};
+use campfire_sim::{Capability, SimParts, SimWorldBuilder, StateRegistry, Unpredicted};
 
 use crate::abilities::Abilities;
 use crate::actions::Actions;
@@ -199,6 +199,9 @@ impl Release {
     /// on, its declarations, then its install. A match that ended runs no stage. The world then
     /// holds the match whole: its schedule, its state registry, and its capabilities.
     pub fn build(world: &mut World, spec: MatchSpec) {
+        if spec.predicting {
+            Unpredicted::register(world);
+        }
         let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
         #[cfg(any(test, feature = "internals"))]
         if spec.without_sync_points {
@@ -229,6 +232,11 @@ impl Release {
                 Release::declare_capability(row.capability, &mut installer);
                 install(&mut cx);
             }
+        }
+        #[cfg(any(test, feature = "internals"))]
+        if spec.unbuilt {
+            sim.leave_unbuilt();
+            return;
         }
         sim.build();
     }

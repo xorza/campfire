@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
-use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, StableId, TickClock, Unpredicted};
+use bevy_ecs::query::{Allow, Has, With, Without};
+use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
+use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
 
 use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
@@ -22,6 +22,7 @@ use crate::units::body::Body;
 use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
+use crate::units::predicting::Predicting;
 use crate::units::relations::Relations;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_effect::TagEffect;
@@ -64,6 +65,15 @@ type HeldCarriers<'w, 's> = Query<
     (With<Unpredicted>, Without<Dead>),
 >;
 
+/// The sources whose auras a predicting client cannot see: the units whose modifiers it does not
+/// hold, as a mode hides them from it, and those it does not hold at all (design 14, D5).
+#[derive(SystemParam, Debug)]
+pub(crate) struct UnseenSources<'w, 's> {
+    predicting: Option<Res<'w, Predicting>>,
+    index: Res<'w, EntityIndex>,
+    modifiers: Query<'w, 's, Has<Modifiers>, Allow<Unpredicted>>,
+}
+
 /// The modifiers held on units each tick: by auras, by other capabilities, and by players.
 #[derive(Debug)]
 pub(crate) struct HeldPass;
@@ -76,7 +86,11 @@ impl HeldPass {
     /// Each one another capability holds this tick, as `HeldModifiers` lists it; and each player
     /// modifier on every living unit of its player that the modifier's `affects` selects, from no
     /// source. Each ends on a unit that left it. An aura's modifier resolves its numbers from the
-    /// ability that gave the aura, a player modifier's at rank 1; neither has a duration.
+    /// ability that gave the aura, a player modifier's at rank 1; neither has a duration. A
+    /// predicting client keeps a held instance from a source whose modifiers it does not hold, as
+    /// a mode that hides them from it, or that it does not hold at all, as the server sent it: it
+    /// cannot tell whether that source's aura still reaches, so the server's word corrects it once
+    /// as it comes and once as it goes (design 14, D5).
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -91,6 +105,7 @@ impl HeldPass {
         relations: OnMatch<'_, '_, Relations>,
         mut units: HeldUnits<'_, '_>,
         carriers: HeldCarriers<'_, '_>,
+        unseen: UnseenSources<'_, '_>,
         mut held: Local<'_, Vec<Held>>,
         mut grid: Local<'_, BodyGrid<Entity>>,
     ) {
@@ -162,8 +177,10 @@ impl HeldPass {
             let first = held.partition_point(|entry| entry.target < id);
             let mine = held[first..].iter().take_while(|entry| entry.target == id);
             let kept = |modifier, source| {
-                mine.clone()
-                    .any(|entry| entry.modifier == modifier && entry.source == source)
+                unseen.holds(source)
+                    || mine
+                        .clone()
+                        .any(|entry| entry.modifier == modifier && entry.source == source)
             };
             carried.release_held(kept);
             for entry in mine {
@@ -218,5 +235,17 @@ impl HeldPass {
                 }
             }
         }
+    }
+}
+
+impl UnseenSources<'_, '_> {
+    /// Whether an instance from `source` stays as the server sent it: on a predicting client, a
+    /// source it cannot see the aura of.
+    fn holds(&self, source: Option<StableId>) -> bool {
+        self.predicting.is_some()
+            && source.is_some_and(|source| {
+                let entity = self.index.get(source);
+                !entity.is_some_and(|entity| self.modifiers.get(entity).unwrap_or(false))
+            })
     }
 }

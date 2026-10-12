@@ -1,3 +1,4 @@
+mod auras;
 mod bots;
 mod checkpoints;
 mod fog;
@@ -11,4 +12,5 @@ mod rejoin;
 mod restore;
 mod saves;
 mod scenario;
+mod short_3v3;
 mod spectators;

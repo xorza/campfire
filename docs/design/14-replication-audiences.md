@@ -6,7 +6,7 @@ What the code still lacks of design 04:
 
 | Data | Design 04 | Code |
 | --- | --- | --- |
-| An aura's source stats | the client resolves each aura on its own units | the client derives `UnitStats` only for the units it predicts |
+| What a predicting client reads | only what it holds (D12) | 39 reads of a type its client does not hold, the server's or another player's, which `release::tests::prediction_reads` lists in `AWAITING` |
 
 Each mistake of this kind is impossible to write or fails at once: the compiler requires a kind on each state type, the load checks the mode's audiences, the server checks the host's settings as it starts, every consumer reads one list of state types, and tests compare what each client holds with what it may hold.
 
@@ -60,7 +60,7 @@ Each mistake of this kind is impossible to write or fails at once: the compiler 
   ```
 
   The load refuses an unknown name, a recipient the table does not let the mode set, a value a setting does not take, a setting named twice, and a name in `host` that is no setting the mode may set. A setting the mode does not name keeps its default. Design 04's "the owner, or the team as the mode sets" is the mode's choice of that kind's allies.
-- **D5. A mode's hidden data is not predicted.** Where a mode hides a unit's modifiers from enemies, an enemy's client cannot derive that unit's stats, so an aura of it on its own units comes from the server as a correction. Design 04's defaults hide nothing a prediction reads.
+- **D5. A mode's hidden data is not predicted.** Where a mode hides a unit's modifiers from enemies, an enemy's client cannot derive that unit's stats, so an aura of it on its own units comes from the server as a correction. Design 04's defaults hide nothing a prediction reads. A client keeps a held modifier from a source whose modifiers it does not hold, or that it does not hold at all, as the server sent it, as it cannot tell whether that source's aura still reaches: the server's word corrects it once as it comes, and once as it goes.
 
 ### What the host sets
 
@@ -86,8 +86,8 @@ Each mistake of this kind is impossible to write or fails at once: the compiler 
 
 ### What a client predicts
 
-- **D11. A client derives each derived component for every unit whose inputs it holds.** `UnitStats` derives from a unit's type, level and modifiers and its player's modifiers, which reach every client that holds the unit by default, so the client derives it for each such unit, and an aura's numbers resolve as the server's do; D5 holds for a mode that hides them.
-- **D12. Prediction reads only what its client holds.** A test walks the client's prediction schedule and checks that each component a system reads is derived on the client, or of a kind whose default audience holds every client that holds the entity (`unit`, `match`, `life`, `modifiers`, `player_modifiers`, `mode_state`, `unit_state_all`), or read on the client's predicted units alone, `Without<Unpredicted>`, whose owner holds every kind but `server`. It names the system and the type of each failure.
+- **D11. A client derives each derived component for every unit whose inputs it holds.** `UnitStats` derives from a unit's type, level and modifiers and its player's modifiers, which reach every client that holds the unit by default, so the client derives it for each such unit, and an aura's numbers resolve as the server's do; D5 holds for a mode that hides them. It derives a unit's stats and tags, and writes nothing else of a unit it holds as the server sent it; and a unit spawns with its type's stats at level 1, as its first refresh derives them, so a reader in the stage it spawns in finds them.
+- **D12. Prediction reads only what its client holds.** A test walks the client's prediction schedule and checks that each component a system reads is derived on the client, or of a kind whose default audience holds every client that holds the entity (`unit`, `match`, `life`, `modifiers`, `player_modifiers`, `mode_state`, `unit_state_all`), or read on the client's predicted units alone, `Without<Unpredicted>`, whose owner holds every kind but `server`. It names the system and the type of each failure. Its world is built as a client's, by the match spec's `predicting`, which puts `Unpredicted`'s filter in place before any system's query is made: a query takes the default filters as it is made, so one made before would read every unit a client holds.
 
 ### The checks
 

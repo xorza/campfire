@@ -8,8 +8,6 @@
 
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Write};
-use std::path::PathBuf;
-use std::sync::Arc;
 
 use bevy_ecs::component::{Component, ComponentId, Immutable, Mutable};
 use bevy_ecs::entity::Entity;
@@ -20,12 +18,14 @@ use campfire_capabilities::{
     PlayersWorld, Recipients, Release, Replication, SeenBy, SpectatorFog, StateTypes, Team,
     TeamSet, Visibility,
 };
-use campfire_common::{MapName, PlayerSlot};
+use campfire_common::PlayerSlot;
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_net::{JoinState, OrderScript, TickHashes, WatchRequest};
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use lightyear::prelude::{Replicate, Replicated, RollbackMode};
+
+use crate::short_3v3::{Edit, PICKS, short_3v3};
 
 /// The players with a client, in slots 0 to 3: three of the north and one of the south, so each
 /// unit of a player has an owner's, an ally's and an enemy's client; the bots take slots 4 and 5.
@@ -40,23 +40,6 @@ const MATCH_TICKS: u64 = 700;
 const CHOICE_FRAMES: usize = 3;
 /// The tick the north's first two heroes strike the south's.
 const STRIKE: u64 = 60;
-
-/// The pick of each slot, the players' then the bots': a hero each, none twice, in tick 1, and
-/// the spells `haste` and `mend` in tick 2.
-const PICKS: [&str; 6] = [
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-cinder\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-gale\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-husk\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-kensho\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-rime\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-    "[[input]]\ntick = 1\nname = \"hero\"\nvalue = \"hero-veil\"\n\
-     [[input]]\ntick = 2\nname = \"spells\"\nvalue = [\"haste\", \"mend\"]\n",
-];
 
 /// How a client views the match, as the test knows it, not as the server's links say.
 #[derive(Debug, Clone, Copy)]
@@ -219,54 +202,21 @@ struct LeakCheck {
     withheld: Vec<DataKind>,
 }
 
-/// The 3v3 with its pick and first wave a second each, and the heroes spawning 6 m apart in the
-/// jungle south of the north base, 20 m and more from every structure and camp: a fight of the
-/// heroes alone within the test's ticks; and `visibility` after its data, a `[visibility]` table
-/// or nothing.
-fn short_3v3(visibility: &str) -> ModePackages {
-    let mut files = PackageDir::workspace_tree("test/moba");
-    let edit = |files: &mut BTreeMap<PathBuf, Vec<u8>>, path: &str, from: &str, to: &str| {
-        let path = PathBuf::from(path);
-        let text = String::from_utf8(files[&path].clone()).unwrap();
-        assert!(text.contains(from), "{from}");
-        files.insert(path, text.replacen(from, to, 1).into_bytes());
-    };
-    let data = "modes/3v3/data/mode.toml";
-    edit(&mut files, data, "pick_ms = 60000", "pick_ms = 1000");
-    edit(
-        &mut files,
-        data,
-        "first_wave_ms = 60000",
-        "first_wave_ms = 1000",
-    );
-    // Gale's player, of the north, out of play for 3 s from the pick's end, alive.
-    let script = "modes/3v3/scripts/mode.rhai";
-    edit(
-        &mut files,
-        script,
-        "        ctx.state.phase = \"play\";\n",
-        "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
-         ctx.timer(\"back_in\", 3000, false, ());\n",
-    );
-    edit(
-        &mut files,
-        script,
-        "    } else if name == \"wave\" {",
-        "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
-         } else if name == \"wave\" {",
-    );
-    let map = "modes/3v3/map/two_lanes/map.toml";
-    for (team, from, to) in [("north", -60, -28), ("south", 60, -22)] {
-        let marker = |z| format!("team = \"{team}\"\npos = [0, {z}]");
-        edit(&mut files, map, &marker(from), &marker(to));
-    }
-    let path = PathBuf::from(data);
-    let mut text = String::from_utf8(files[&path].clone()).unwrap();
-    text.push_str(visibility);
-    files.insert(path, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/3v3");
-    ModePackages::from_package_dir(&dir, &MapName::new("two_lanes").unwrap()).unwrap()
-}
+/// Gale's player, of the north, out of play for 3 s from the pick's end, alive.
+const HELD_OUT: [Edit; 2] = [
+    Edit {
+        path: "modes/3v3/scripts/mode.rhai",
+        from: "        ctx.state.phase = \"play\";\n",
+        to: "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
+             ctx.timer(\"back_in\", 3000, false, ());\n",
+    },
+    Edit {
+        path: "modes/3v3/scripts/mode.rhai",
+        from: "    } else if name == \"wave\" {",
+        to: "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
+             } else if name == \"wave\" {",
+    },
+];
 
 /// A `[visibility]` that sets every kind a mode may set to its other extreme: each recipient the
 /// mode may set that the default lacks, and none it holds.
@@ -560,7 +510,7 @@ mod scripted_match {
     #[test]
     fn each_client_holds_exactly_what_each_kinds_audience_admits_with_either_extreme() {
         // The defaults: the spectators see every unit, through any fog.
-        let mut defaults = LeakCheck::start(short_3v3(""), &[], &[None]);
+        let mut defaults = LeakCheck::start(short_3v3(&HELD_OUT, ""), &[], &[None]);
         defaults.strike();
         let mut died = false;
         for _ in 0..MATCH_TICKS {
@@ -579,7 +529,7 @@ mod scripted_match {
         // `[visibility]` says.
         let south = TeamSet::from_iter([Team::new(1)]);
         let mut extreme = LeakCheck::start(
-            short_3v3(&other_extreme()),
+            short_3v3(&HELD_OUT, &other_extreme()),
             &["spectators=teams", "out=spectators"],
             &[None, Some(south)],
         );

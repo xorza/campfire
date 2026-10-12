@@ -23,12 +23,11 @@ The items below, in the order they are done; each line says why it stands where 
 
 The user sees their own gold, experience and cooldowns in the HUD, and another team's pools and cooldowns are on no client of theirs; a spectator watches the match, through all fog or one team's; a mode's `[visibility]` that shows every hero's items to all shows them; and a host that lets dead players watch the other team gives a dead hero's player that view until it respawns. The design is [Replication audiences](docs/design/14-replication-audiences.md); each step folds its rules into the design 04 file of each capability it changes, and into design 03's script state. The D numbers of this section are design 14's.
 
-1. **A6. Prediction** (`capabilities`, `net`; D5, D11, D12): `UnitStats` for every unit whose inputs a client holds; the prediction test. Check: a hero walks into an ally's aura, whose numbers come from its source's stats, with no correction; with `modifiers` hidden from enemies, an enemy aura corrects once.
+1. **A6. Prediction** (`capabilities`, `net`; D5, D11, D12): what a predicting client does with the state types the owner of the units it predicts does not hold, as D12's test, `release::tests::prediction_reads`, lists them in `AWAITING`. Waits on the question in [PLAN_NET_QUESTIONS.md](PLAN_NET_QUESTIONS.md), A6. Check: the test's `AWAITING` is empty.
 
 What its steps fix, with the work each step takes beside its own:
 
-- **A6.** A held modifier whose numbers come from its source, as an aura's from the unit that carries it, resolves on a predicting client by `ParamSources`, which sees no unit the client only holds as the server sent it, and knows no such unit's stats, as only a unit's type and level replicate: where the server reads the source's stats, the client resolves other numbers and mispredicts the units it predicts.
-- **A6, stats at the spawn.** A unit's stats derive in the first refresh after its spawn, not in the spawn, so a unit spawned in the middle of a stage has none until the stage's edge, and a client derives none.
+- **A6.** A predicting client's schedule reads 39 times a type its client does not hold, the server's or another player's: a client's own unit that holds one on the server is predicted as if it held none ([Replication audiences](docs/design/14-replication-audiences.md), D12).
 
 ## Decide
 

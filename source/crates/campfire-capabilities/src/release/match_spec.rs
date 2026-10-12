@@ -14,10 +14,17 @@ pub struct MatchSpec {
     pub(crate) set: CapabilitySet,
     /// `None` for a match that runs no scripts.
     pub(crate) budgets: Option<ScriptBudgets>,
+    /// Whether a client predicts the match: its sim's queries skip the units it holds as the
+    /// server sent them.
+    pub(crate) predicting: bool,
     /// Whether the tick's schedule leaves out Bevy's automatic sync points, for the ambiguity
     /// check that sees every pair only a sync point keeps in order.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) without_sync_points: bool,
+    /// Whether the build leaves the tick's schedule unbuilt, its systems in its graph, for a test
+    /// that reads what each one accesses.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) unbuilt: bool,
 }
 
 impl MatchSpec {
@@ -29,8 +36,11 @@ impl MatchSpec {
             rate,
             set: CapabilitySet::CORE,
             budgets: None,
+            predicting: false,
             #[cfg(any(test, feature = "internals"))]
             without_sync_points: false,
+            #[cfg(any(test, feature = "internals"))]
+            unbuilt: false,
         }
     }
 
@@ -48,6 +58,16 @@ impl MatchSpec {
             ..self
         }
     }
+
+    /// The match a client predicts: each of its sim's queries skips the units the client holds
+    /// as the server sent them, `Unpredicted`, unless it names them, as the marker's filter is in
+    /// place before any system's query is made.
+    pub fn predicting(self) -> MatchSpec {
+        MatchSpec {
+            predicting: true,
+            ..self
+        }
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -60,6 +80,15 @@ pub(crate) mod internals {
         pub fn without_sync_points(self) -> MatchSpec {
             MatchSpec {
                 without_sync_points: true,
+                ..self
+            }
+        }
+
+        /// The match with its tick's schedule left unbuilt in its world, each system in the
+        /// schedule's graph, so a test reads what each accesses; it runs no tick.
+        pub fn unbuilt(self) -> MatchSpec {
+            MatchSpec {
+                unbuilt: true,
                 ..self
             }
         }
