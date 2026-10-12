@@ -9,6 +9,8 @@ mod dependent;
 mod error;
 mod file_index;
 mod files;
+#[cfg(feature = "internals")]
+mod harness;
 mod language;
 mod load_check;
 mod locale_file;
@@ -72,3 +74,9 @@ pub use crate::zero_hour::terrain::{
     TerrainParts, TextureClass,
 };
 pub use crate::zero_hour::terrain_atlas::TerrainAtlas;
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::harness::package_tree::{Edit, PackageTree};
+    pub use crate::harness::test_mode::TestMode;
+}

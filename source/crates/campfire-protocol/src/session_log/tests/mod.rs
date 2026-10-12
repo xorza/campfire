@@ -56,11 +56,11 @@ fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Dele
         server_key: server_key(),
         session_id: session_id(),
         seed_contribution: SeedContribution::new(CONTRIBUTIONS[slot as usize]),
-        expiration: 1_700_086_400,
+        expiration: TestKey::NOW + 86_400,
     };
     change(&mut terms);
     let main_key = TestKey::of(u8::try_from(11 + slot).unwrap());
-    Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
+    Delegation::sign(&Secp256k1::new(), &main_key, &terms, TestKey::NOW, &AUX)
 }
 
 fn terms() -> SessionTerms {
@@ -1156,10 +1156,10 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
         server_key: server_key(),
         session_id: mixed_terms().session_id(),
         seed_contribution: SeedContribution::new([6; 32]),
-        expiration: 1_700_086_400,
+        expiration: TestKey::NOW + 86_400,
     };
     let main_key = TestKey::of(u8::try_from(11 + main).unwrap());
-    Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
+    Delegation::sign(&Secp256k1::new(), &main_key, &terms, TestKey::NOW, &AUX)
 }
 
 /// A log of `mixed_terms`: player 0 in slot 0, a bot in slot 1, slot 2 open.

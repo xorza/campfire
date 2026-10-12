@@ -32,16 +32,6 @@ fn view() -> App {
     app
 }
 
-/// A place on the ground, in whole meters.
-fn place(x: i64, z: i64) -> Position {
-    Position::new(campfire_math::Vec3::new(
-        Num::int(x),
-        Num::ZERO,
-        Num::int(z),
-    ))
-    .unwrap()
-}
-
 /// The root of `entity`'s drawing, its glide, and where it stands.
 fn root(world: &World, entity: Entity) -> (Entity, Glide, Vec3) {
     let root = world.get::<Drawing>(entity).unwrap().root();
@@ -70,11 +60,17 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let team = Team::new(0);
     let predicted = app
         .world_mut()
-        .spawn((ids.allocate(), UnitEntity, place(2, 3), team))
+        .spawn((ids.allocate(), UnitEntity, Position::from((2, 0, 3)), team))
         .id();
     let received = app
         .world_mut()
-        .spawn((ids.allocate(), UnitEntity, place(0, 0), team, Unpredicted))
+        .spawn((
+            ids.allocate(),
+            UnitEntity,
+            Position::from((0, 0, 0)),
+            team,
+            Unpredicted,
+        ))
         .id();
     app.update();
     let world = app.world();
@@ -97,9 +93,9 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     // The predicted unit moves to x = 4 in a tick; the received one's new place, x = 2, arrives.
     // Neither drawing moves in a frame with no time: the predicted one stands at its place
     // after the tick before last, the received one where it starts its glide.
-    *app.world_mut().get_mut::<Position>(predicted).unwrap() = place(4, 3);
+    *app.world_mut().get_mut::<Position>(predicted).unwrap() = Position::from((4, 0, 3));
     app.world_mut().run_schedule(FixedPostUpdate);
-    *app.world_mut().get_mut::<Position>(received).unwrap() = place(2, 0);
+    *app.world_mut().get_mut::<Position>(received).unwrap() = Position::from((2, 0, 0));
     app.update();
     let world = app.world();
     let ticked = Glide::Ticked {
@@ -146,7 +142,7 @@ fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
         .spawn((
             IdAllocator::default().allocate(),
             UnitEntity,
-            place(0, 0),
+            Position::from((0, 0, 0)),
             Team::new(1),
         ))
         .id();
@@ -242,12 +238,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     app.insert_resource(data);
     let (unit_type, _) = origins.iter().next().unwrap();
     // The tank stands 2 m above the ground at (3, 0), turned 90°.
-    let pos = Position::new(campfire_math::Vec3::new(
-        Num::int(3),
-        Num::int(2),
-        Num::ZERO,
-    ))
-    .unwrap();
+    let pos = Position::from((3, 2, 0));
     let unit = app
         .world_mut()
         .spawn((
@@ -300,7 +291,7 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
         .world_mut()
         .spawn((
             IdAllocator::default().allocate(),
-            place(3, -4),
+            Position::from((3, 0, -4)),
             Team::new(0),
             unit_type,
             area,

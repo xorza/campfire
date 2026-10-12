@@ -23,7 +23,7 @@ fn delegation() -> Delegation {
         &Secp256k1::new(),
         &TestKey::of(11),
         &terms,
-        1_700_000_000,
+        TestKey::NOW,
         &[0; 32],
     )
 }

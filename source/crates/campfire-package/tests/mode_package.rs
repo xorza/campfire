@@ -2,7 +2,6 @@
 
 use std::fmt::Write;
 use std::num::NonZeroU32;
-use std::path::Path;
 
 use campfire_capabilities::{
     ActionDataField, ActionField, ActionKind, AiError, DeclaredName, EffectData, EffectTo,
@@ -12,6 +11,7 @@ use campfire_capabilities::{
 };
 use campfire_codec::Toml;
 use campfire_common::MapName;
+use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
     EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
@@ -21,7 +21,7 @@ use campfire_script::ScriptError;
 use campfire_script::rhai::ParseErrorType;
 use campfire_sim::{Capability, TickRate};
 
-use crate::moba::{Edit, edited, load, moba, moba_files, two_lanes};
+use crate::moba::{edited, load, moba, two_lanes};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 #[derive(Debug)]
@@ -2867,7 +2867,9 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {
-        let text = String::from_utf8(moba_files()[Path::new(MODE_DATA)].clone()).unwrap();
+        let text = PackageTree::of(TestMode::Moba3v3)
+            .text(MODE_DATA)
+            .to_owned();
         let mut more = String::new();
         for at in 0..count {
             write!(more, ", \"k{at}\"").unwrap();
@@ -2985,10 +2987,10 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
 fn a_mode_loads_the_map_its_session_names() {
     // The 3v3 with a second map, its own raised to the spatial metric: each name loads its map,
     // and a third is no map of the mode.
-    let map = String::from_utf8(moba_files()[Path::new(MAP)].clone()).unwrap();
-    let raised: &'static str = Box::leak(raised(&map).into_boxed_str());
+    let map = PackageTree::of(TestMode::Moba3v3).text(MAP).to_owned();
+    let raised = raised(&map);
     let second = MapName::new("second").unwrap();
-    let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(raised))]);
+    let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric, Metric::Planar);
@@ -3018,7 +3020,7 @@ fn a_mode_loads_the_map_its_session_names() {
         "name one of the mode's maps: second, two_lanes"
     );
     // A directory under `map/` whose name no map can have fails the load.
-    let upper = edited([("modes/3v3/map/Upper/map.toml", Edit::Create(raised))]);
+    let upper = edited([("modes/3v3/map/Upper/map.toml", Edit::Create(&raised))]);
     assert!(matches!(
         &*load(&upper).unwrap_err().problem,
         LoadProblem::MapDirName(name) if name == "Upper"
@@ -3034,15 +3036,15 @@ fn a_box_lies_only_on_a_planar_map() {
         r#"collision = { box = ["1.8", "1.8"] }"#,
     );
     assert!(load(&edited([(UNITS, tower)])).is_ok());
-    let map = String::from_utf8(moba_files()[Path::new(MAP)].clone()).unwrap();
-    let raised: &'static str = Box::leak(raised(&map).into_boxed_str());
-    let spatial = [(MAP, Edit::Create(raised)), (UNITS, tower)];
+    let map = PackageTree::of(TestMode::Moba3v3).text(MAP).to_owned();
+    let raised = raised(&map);
+    let spatial = [(MAP, Edit::Create(&raised)), (UNITS, tower)];
     let error = load(&edited(spatial)).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Spatial } if name == "tower"),
         "{error:?}"
     );
     // The raised map alone loads: the points it raised are its only change.
-    let alone = load(&edited([(MAP, Edit::Create(raised))]));
+    let alone = load(&edited([(MAP, Edit::Create(&raised))]));
     assert!(alone.is_ok(), "{:?}", alone.err());
 }

@@ -25,9 +25,9 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let units = MatchUnits::of(world);
     let kensho = units.hero(3);
     let husk = units.hero(2);
-    let north_west_inhibitor = units.spawned_at(-11, -52);
-    let warden = units.spawned_at(0, 0);
-    let north_core = units.spawned_at(0, -54);
+    let north_west_inhibitor = units.spawned_at((-11, 0, -52));
+    let warden = units.spawned_at((0, 0, 0));
+    let north_core = units.spawned_at((0, 0, -54));
 
     // Kensho fells the north's west inhibitor in tick 1200: its 50 gold to player 3, and it
     // comes back 240 s, 4800 ticks, after the end of that tick, at the start of tick 6001.
@@ -76,7 +76,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
     run_to(&mut fixed, 2400);
     let world = fixed.game();
     let groups = [(-6, 50), (6, 50), (-6, -50), (6, -50)]
-        .map(|(x, z)| MatchUnits::of(world).standing_at(x, z));
+        .map(|(x, z)| MatchUnits::of(world).standing_at((x, 0, z)));
     assert_eq!(groups.each_ref().map(Vec::len), [7, 6, 6, 6]);
     let supers: Vec<_> = groups
         .iter()

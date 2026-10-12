@@ -11,7 +11,9 @@ use campfire_package::{
 };
 use campfire_sim::Capability;
 
-use crate::moba::{Edit, edited, load};
+use campfire_package::internals::Edit;
+
+use crate::moba::{edited, load};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";

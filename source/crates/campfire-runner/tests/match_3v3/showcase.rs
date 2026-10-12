@@ -12,7 +12,7 @@ use campfire_capabilities::{
 };
 use campfire_capabilities::{PoolMeters, Stats};
 use campfire_common::Tick;
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_runner::internals::{MatchUnits, Moba3v3, ScriptedMode};
 use campfire_sim::{Position, SimWorld, TickRate};
 
@@ -433,8 +433,8 @@ fn assert_consumables(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase, world: 
     let north = Team::new(0);
     let units = MatchUnits::of(world);
     let gale = units.hero(1);
-    let ward = |x: i64| {
-        let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-23))).unwrap();
+    let ward = |x: i16| {
+        let pos = Position::from((x, 0, -23));
         let found = units.all().find(|(id, unit)| {
             *id != gale && unit.get::<Position>() == Some(&pos) && MatchUnits::owned_by(unit, 1)
         });

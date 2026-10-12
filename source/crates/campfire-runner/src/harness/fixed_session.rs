@@ -4,7 +4,7 @@ use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, XOnlyPublicKey};
+use campfire_protocol::secp256k1::{Secp256k1, XOnlyPublicKey};
 use campfire_protocol::{
     Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, SeedContribution,
     ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult,
@@ -27,15 +27,14 @@ pub struct FixedSession {
 }
 
 /// The seed chain of every fixed session, of room for a few checkpoints.
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
+const SEED_CHAIN: SeedChain = TestKey::seed_chain(NonZeroU32::new(4).unwrap());
 fn server_key() -> XOnlyPublicKey {
     TestKey::server().x_only_public_key().0
 }
 
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
-/// The time every delegation is signed at, and how long after it expires.
-const NOW: u64 = 1_700_000_000;
+/// How long after `TestKey::NOW` every delegation expires.
 const LIFETIME: u64 = 86_400;
 
 impl FixedSession {
@@ -127,8 +126,12 @@ impl FixedSession {
         let chains = (0..self.slots())
             .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
+        let session_keys = TestKey::players()[..usize::try_from(self.slots()).unwrap()]
+            .iter()
+            .map(|keys| keys.session)
+            .collect();
         let game = Session::start_match(self.log(), FixedSession::seeds(), &self.packages).unwrap();
-        FixedMatch::new(game, chains, self.terms.clone(), log)
+        FixedMatch::new(game, chains, session_keys, self.terms.clone(), log)
     }
 
     /// The server's signature of `input` at `place` in the session of `session_id`.
@@ -162,28 +165,24 @@ impl FixedSession {
         InputChain::new(PlayerSlot::new(slot), root)
     }
 
-    /// Player `slot`'s session key.
-    pub(crate) fn session_key(slot: u32) -> Keypair {
-        TestKey::of(u8::try_from(20 + slot).unwrap())
-    }
-
     /// The signature of every player's input packets, with no auxiliary randomness.
     pub(crate) const AUX: [u8; 32] = AUX;
 
     /// Player `slot`'s delegation in a session of `terms`.
     pub(crate) fn delegation(terms: &SessionTerms, slot: u32) -> Delegation {
+        let keys = TestKey::player(slot);
         let delegated = DelegationTerms {
-            session_key: FixedSession::session_key(slot).x_only_public_key().0,
+            session_key: keys.session.x_only_public_key().0,
             server_key: server_key(),
             session_id: terms.session_id(),
             seed_contribution: SeedContribution::new([u8::try_from(slot).unwrap(); 32]),
-            expiration: NOW + LIFETIME,
+            expiration: TestKey::NOW + LIFETIME,
         };
         Delegation::sign(
             &Secp256k1::new(),
-            &TestKey::of(u8::try_from(10 + slot).unwrap()),
+            &keys.main,
             &delegated,
-            NOW,
+            TestKey::NOW,
             &AUX,
         )
     }

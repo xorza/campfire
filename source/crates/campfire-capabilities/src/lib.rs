@@ -295,10 +295,6 @@ pub mod internals {
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::players::Players;
     pub use crate::scripts::scripts_world::internals::ScriptsWorldInternals;
-    pub use crate::stats::life::internals::spent_life;
-    pub use crate::stats::pools::internals::spent;
-    pub use crate::units::body::internals::{reaches, reaches_bound, sinks_into};
-    pub use crate::vision::seen_by::internals::seen_by_all;
 }
 
 #[cfg(feature = "internals")]

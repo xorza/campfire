@@ -5,8 +5,6 @@ use nostr::error::ErrorKind;
 use super::*;
 use crate::harness::test_key::TestKey;
 
-const CREATED_AT: u64 = 1_700_000_000;
-
 fn main_key() -> Keypair {
     TestKey::of(11)
 }
@@ -26,7 +24,7 @@ fn signed() -> Delegation {
         &Secp256k1::new(),
         &main_key(),
         &terms(),
-        CREATED_AT,
+        TestKey::NOW,
         &[0; 32],
     )
 }
@@ -36,7 +34,7 @@ fn event(kind: u16, tags: Vec<Tag>) -> String {
     let keys = Keys::new(SecretKey::from(main_key().secret_key()));
     let unsigned = UnsignedEvent::new(
         keys.public_key(),
-        Timestamp::from_secs(CREATED_AT),
+        Timestamp::from_secs(TestKey::NOW),
         Kind::from_u16(kind),
         tags,
         "",
@@ -84,7 +82,7 @@ fn a_signed_delegation_reads_back_its_terms() {
     // chain root.
     let parsed = Event::from_json(delegation.json()).unwrap();
     assert_eq!(parsed.kind, Kind::from_u16(22_710));
-    assert_eq!(parsed.created_at.as_secs(), CREATED_AT);
+    assert_eq!(parsed.created_at.as_secs(), TestKey::NOW);
     let written: Vec<&[String]> = parsed.tags.iter().map(Tag::as_slice).collect();
     let expected = tags(|_| ());
     let expected: Vec<&[String]> = expected.iter().map(Tag::as_slice).collect();

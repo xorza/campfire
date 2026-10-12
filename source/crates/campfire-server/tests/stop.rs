@@ -11,7 +11,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_log::LogLine;
 use campfire_net::Listening;
-use campfire_package::PackageDir;
+use campfire_package::internals::TestMode;
 use campfire_quic::{LINK_MIN_MTU, LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
@@ -59,7 +59,7 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
         .arg("--data")
         .arg(scratch.path("data"))
         .arg("--no-port-map")
-        .arg(PackageDir::workspace("test/modes/lane"))
+        .arg(TestMode::Lane.dir())
         .arg("127.0.0.1:0");
     let mut server = ServerProcess(
         StopSignals::ignoring_terminal(&mut command)

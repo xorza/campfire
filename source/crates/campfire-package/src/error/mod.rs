@@ -3,12 +3,11 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use campfire_capabilities::PackagePath;
-use campfire_codec::BinaryError;
+use campfire_codec::{BinaryError, TomlError};
 use campfire_common::Fingerprint;
 use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use derive_more::Display;
 use thiserror::Error;
-use toml::de::Error as TomlError;
 
 use crate::error::load_problem::LoadProblem;
 use crate::files::package_name::PackageName;

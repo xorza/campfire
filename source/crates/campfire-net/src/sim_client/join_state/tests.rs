@@ -1,8 +1,8 @@
 use std::cell::Cell;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, TlsKey};
-use campfire_package::{ModePackages, PackageDir};
+use campfire_common::{Fingerprint, TlsKey};
+use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{ConnectChallenge, EngineRelease, InputHash, Receipt, SeedChain, SlotPlan};
@@ -11,11 +11,9 @@ use campfire_runner::{InputRules, TermsError};
 use super::*;
 use crate::match_start::ChainHead;
 
-const NOW: u64 = 1_700_000_000;
-
 thread_local! {
     /// The client's clock in this test, in Unix seconds.
-    static CLOCK: Cell<u64> = const { Cell::new(NOW) };
+    static CLOCK: Cell<u64> = const { Cell::new(TestKey::NOW) };
 }
 
 fn clock() -> u64 {
@@ -27,8 +25,7 @@ type Change = fn(&mut SessionTerms);
 
 /// The rules of the lane mode, which runs at 30 Hz only.
 fn lane_rules() -> SessionRules {
-    let dir = PackageDir::workspace("test/modes/lane");
-    SessionRules::of(&ModePackages::from_dir(&dir, &MapName::new("lane").unwrap()).unwrap())
+    SessionRules::of(&TestMode::Lane.packages())
 }
 
 /// The x-only key of `TestKey::of(secret)`.
@@ -169,7 +166,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),
-        (SeedContribution::new([6; 32]), NOW + 86_400)
+        (SeedContribution::new([6; 32]), TestKey::NOW + 86_400)
     );
     let check = |binding| {
         offer.challenge.check(
@@ -178,7 +175,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
             &binding,
             &delegation,
             &join.answer,
-            NOW,
+            TestKey::NOW,
         )
     };
     assert_eq!(check(BINDING), Ok(()));
@@ -301,7 +298,7 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     // A day after the join, its delegation expires within the margin: the client answers with a
     // new delegation, by its main key, of a new session key.
     let (mut state, mut signer, _, delegation) = played(&[b"a"]);
-    CLOCK.with(|clock| clock.set(NOW + 86_400 - 60));
+    CLOCK.with(|clock| clock.set(TestKey::NOW + 86_400 - 60));
     assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Rejoining);
     let join = state
         .answer(&offer(|_| {}), &BINDING, &mut signer)
@@ -311,8 +308,11 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     assert_eq!(renewed.main_key(), delegation.main_key());
     assert_ne!(renewed.terms().session_key, delegation.terms().session_key);
     assert_eq!(renewed.terms().session_key, signer.public_key());
-    assert_eq!(renewed.terms().expiration, NOW + 86_400 - 60 + 86_400);
-    CLOCK.with(|clock| clock.set(NOW));
+    assert_eq!(
+        renewed.terms().expiration,
+        TestKey::NOW + 86_400 - 60 + 86_400
+    );
+    CLOCK.with(|clock| clock.set(TestKey::NOW));
 
     // An offer of another session ends it.
     let (mut state, mut signer, _, _) = played(&[]);
@@ -530,12 +530,12 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     let failed = Duration::from_secs(10);
     assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
     assert_eq!(state.receipt(), Some(&signed(third)));
-    CLOCK.with(|clock| clock.set(NOW + 86_400 - 60));
+    CLOCK.with(|clock| clock.set(TestKey::NOW + 86_400 - 60));
     let join = state
         .answer(&offer(|_| {}), &BINDING, &mut signer)
         .unwrap()
         .unwrap();
-    CLOCK.with(|clock| clock.set(NOW));
+    CLOCK.with(|clock| clock.set(TestKey::NOW));
     let renewed = Delegation::parse(&join.delegation).unwrap();
     assert_ne!(delegation.id(), renewed.id());
     let resumed = MatchStart {

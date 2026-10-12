@@ -25,7 +25,9 @@ use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use lightyear::prelude::{Replicate, Replicated, RollbackMode};
 
-use crate::short_3v3::{Edit, PICKS, short_3v3};
+use campfire_package::internals::Edit;
+
+use crate::short_3v3::{PICKS, short_3v3};
 
 /// The players with a client, in slots 0 to 3: three of the north and one of the south, so each
 /// unit of a player has an owner's, an ally's and an enemy's client; the bots take slots 4 and 5.
@@ -203,19 +205,23 @@ struct LeakCheck {
 }
 
 /// Gale's player, of the north, out of play for 3 s from the pick's end, alive.
-const HELD_OUT: [Edit; 2] = [
-    Edit {
-        path: "modes/3v3/scripts/mode.rhai",
-        from: "        ctx.state.phase = \"play\";\n",
-        to: "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
+const HELD_OUT: [(&str, Edit<'_>); 2] = [
+    (
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(
+            "        ctx.state.phase = \"play\";\n",
+            "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
              ctx.timer(\"back_in\", 3000, false, ());\n",
-    },
-    Edit {
-        path: "modes/3v3/scripts/mode.rhai",
-        from: "    } else if name == \"wave\" {",
-        to: "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
+        ),
+    ),
+    (
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(
+            "    } else if name == \"wave\" {",
+            "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
              } else if name == \"wave\" {",
-    },
+        ),
+    ),
 ];
 
 /// A `[visibility]` that sets every kind a mode may set to its other extreme: each recipient the

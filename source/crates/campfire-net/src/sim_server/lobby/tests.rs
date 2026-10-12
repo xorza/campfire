@@ -3,8 +3,8 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_capabilities::{DataKind, OutView, Setting, SpectatorFog, VisibilityError};
-use campfire_common::{ChannelBinding, MapName};
-use campfire_package::PackageDir;
+use campfire_common::ChannelBinding;
+use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::secp256k1::{All, Secp256k1};
 use campfire_protocol::{
@@ -19,19 +19,11 @@ use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SlotBot;
 
-const NOW: u64 = 1_700_000_000;
-
 /// A session of the lane mode's 2 slots, with bots in slots `bots` and slots `open` open.
 fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
     let script = OrderScript::parse("end = 1").unwrap();
     LobbySetup {
-        packages: Arc::new(
-            ModePackages::from_dir(
-                &PackageDir::workspace("test/modes/lane"),
-                &MapName::new("lane").unwrap(),
-            )
-            .unwrap(),
-        ),
+        packages: Arc::new(TestMode::Lane.packages()),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
         rules: InputRules::LAN,
@@ -48,7 +40,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         server: ServerSetup {
             key: TestKey::server(),
             times: SessionTimes::DEFAULT,
-            clock: || NOW,
+            clock: || TestKey::NOW,
             entropy: |bytes| bytes.fill(5),
         },
     }
@@ -114,7 +106,7 @@ impl Joining {
             server_key: TestKey::server().x_only_public_key().0,
             session_id: lobby.terms().session_id(),
             seed_contribution: SeedContribution::new([6; 32]),
-            expiration: NOW + 60,
+            expiration: TestKey::NOW + 60,
         };
         Joining {
             secp: Secp256k1::new(),
@@ -134,7 +126,13 @@ impl Joining {
             session_key: TestKey::of(session).x_only_public_key().0,
             ..self.granted
         };
-        Delegation::sign(&self.secp, &TestKey::of(main), &terms, NOW, &[0; 32])
+        Delegation::sign(
+            &self.secp,
+            &TestKey::of(main),
+            &terms,
+            TestKey::NOW,
+            &[0; 32],
+        )
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the

@@ -3,18 +3,15 @@
 
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
-use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
     ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, ModeWorld,
     Modifiers, MoveStep, Owner, Projectile, Release, ScriptFailures, SeenBy, StateValue, Team,
     TeamSet, TrainQueue,
 };
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_runner::SessionWorld;
 use campfire_runner::internals::MatchBuild;
-use campfire_runner::internals::{
-    CopyCheck, FixedMatch, Golden, HarnessWorldInternals, MatchUnits, ProvingMatch,
-};
+use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, MatchUnits, ProvingMatch};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
@@ -175,7 +172,7 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     for (id, unit) in units() {
         let walks = unit.contains::<MoveStep>() && !unit.contains::<Dead>();
         if let (true, Some(walker)) = (walks, unit.get::<Body>())
-            && sinks_into(*unit.get::<Position>().unwrap(), walker, at, body)
+            && walker.sinks_into(*unit.get::<Position>().unwrap(), body, at)
         {
             seen.sunk.push((tick, id));
         }
@@ -185,8 +182,8 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
         return;
     }
     let (from, own) = (*lancer.get::<Position>().unwrap(), lancer.get::<Body>());
-    let box_reach = reaches(from, own, LANCER_RANGE, at, Some(body));
-    let bound_reach = reaches_bound(from, own, LANCER_RANGE, at, Some(body));
+    let box_reach = Body::reaches(from, own, LANCER_RANGE, at, Some(body));
+    let bound_reach = Body::reaches_bound(from, own, LANCER_RANGE, at, Some(body));
     seen.lancer_reach.push((tick, box_reach, bound_reach));
     let strikes = lancer.get::<ActionSlots>().and_then(ActionSlots::attacking) == Some(boulder);
     if strikes && seen.first_strike.is_none() {
@@ -283,7 +280,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // of north sees it otherwise.
     let ticks: Vec<u64> = seen.ward.iter().map(|&(tick, ..)| tick).collect();
     assert_eq!(ticks, (300..=338).collect::<Vec<_>>());
-    let pos = Position::new(Vec3::new(Num::int(12), Num::ZERO, Num::int(9))).unwrap();
+    let pos = Position::from((12, 0, 9));
     let north_alone =
         |teams: TeamSet| (0..3).all(|team| teams.contains(Team::new(team)) == (team == 0));
     assert!(
@@ -295,7 +292,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // A summon: the sage's wisp, a unit type its own package declares, posted at (2, 6) in tick
     // 100, its order's, stands its 3000 ms, 60 ticks, from 100 to 159, so the state after each
     // of ticks 100 to 158 holds it.
-    let pos = Position::new(Vec3::new(Num::int(2), Num::ZERO, Num::int(6))).unwrap();
+    let pos = Position::from((2, 0, 6));
     assert_eq!(
         seen.wisp,
         (100..=158).map(|tick| (tick, pos)).collect::<Vec<_>>()

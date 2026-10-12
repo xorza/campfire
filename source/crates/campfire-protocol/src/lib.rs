@@ -88,7 +88,7 @@ pub use secp256k1;
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::harness::test_key::TestKey;
+    pub use crate::harness::test_key::{PlayerKeys, TestKey};
 }
 
 #[cfg(feature = "internals")]

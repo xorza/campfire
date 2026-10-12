@@ -1,6 +1,3 @@
-use std::path::Path;
-use std::sync::Arc;
-
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
@@ -8,7 +5,8 @@ use campfire_capabilities::{
     Stats, Team, Units, Vision,
 };
 use campfire_common::PlayerSlot;
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package::internals::PackageTree;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 
@@ -25,22 +23,12 @@ pub struct Arena {
 }
 
 impl Arena {
-    /// The arena of the mode at `mode` within the workspace's package tree `tree`, on its only
-    /// map, with each of `additions`, text the arena adds to the end of a file of the mode, by
-    /// its path within the mode: the unit types of the units a test spawns, and their actions.
-    pub fn load(tree: &str, mode: &str, additions: &[(&str, &str)]) -> Arena {
-        let mut files = PackageDir::workspace_tree(tree);
-        for &(path, text) in additions {
-            let file = files
-                .get_mut(&Path::new(mode).join(path))
-                .unwrap_or_else(|| panic!("the mode has no {path}"));
-            file.push(b'\n');
-            file.extend_from_slice(text.as_bytes());
+    /// The arena of `tree`'s mode, the unit types of the units a test spawns and their actions
+    /// added to its files.
+    pub fn load(tree: &PackageTree) -> Arena {
+        Arena {
+            packages: tree.packages(),
         }
-        let mode = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), mode);
-        let map = ModePackages::choose_map(&mode, None).unwrap();
-        let packages = ModePackages::from_package_dir(&mode, &map).unwrap();
-        Arena { packages }
     }
 
     /// The arena's match at `rate`, for `players` players, which fails its test on any warning it

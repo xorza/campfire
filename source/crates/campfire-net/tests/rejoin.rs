@@ -12,6 +12,7 @@ use campfire_net::{
     CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
     PlayerLink, SessionTimes, TickHashes,
 };
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
@@ -220,7 +221,7 @@ fn an_expiring_delegation_is_renewed_as_the_client_comes_back() {
     let slot = slot_of(&local, 0);
     // A day on, the delegation expires: the client, its link cut and back, delegates a new
     // session key, and the server logs the renewal before the slot comes back.
-    local.set_clock(1_700_000_000 + 86_400 + 10);
+    local.set_clock(TestKey::NOW + 86_400 + 10);
     local.cut_link(0);
     local.step();
     local.mend_link(0);

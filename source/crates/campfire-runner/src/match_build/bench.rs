@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use campfire_capabilities::{Match, Release};
 use campfire_common::SegmentSeed;
 use campfire_package::ModePackages;
+use campfire_package::internals::TestMode;
 use campfire_script::ScriptHost;
 use campfire_sim::TickRate;
 use criterion::Criterion;
@@ -25,7 +26,7 @@ pub(crate) fn build(c: &mut Criterion) {
     let mut group = c.benchmark_group("integration/package_load");
     group.sample_size(20);
     group.bench_function("3v3", |b| {
-        let (dir, map) = (Moba3v3::dir(), Moba3v3::map());
+        let (dir, map) = (TestMode::Moba3v3.dir(), TestMode::Moba3v3.map());
         b.iter(|| black_box(ModePackages::from_dir(&dir, &map).expect("the 3v3 loads")));
     });
     group.finish();

@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
-use campfire_capabilities::internals;
+
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
     Life, Match, ModifierId, MoveStep, Navigation, Number, Order, Owner, PackagePath, Param, Pools,
@@ -19,6 +19,7 @@ use campfire_capabilities::{
 use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
+use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{AvatarData, PackageDir, PackageFiles};
 use campfire_runner::internals::Arena;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
@@ -150,24 +151,22 @@ impl Kit {
 /// The 3v3's books with no mode, and the actions and unit types of `ACTIONS` and `UNITS`: no
 /// `calc_damage` weighs a hit, so each one lands as its ability deals it.
 fn arena() -> Arena {
-    Arena::load(
-        "test/moba",
-        "modes/3v3",
-        &[("data/mode.toml", ACTIONS), ("data/units.toml", UNITS)],
-    )
+    let mut tree = PackageTree::of(TestMode::Moba3v3);
+    tree.edit("modes/3v3/data/mode.toml", Edit::Append(ACTIONS))
+        .edit("modes/3v3/data/units.toml", Edit::Append(UNITS));
+    Arena::load(&tree)
 }
 
 /// A unit of `kit` on `team` at `x` meters along x, with `parts`.
 fn spawn_with(
     arena: &Arena,
     game: &mut Match,
-    x: i64,
+    x: i16,
     team: Team,
     kit: Kit,
     parts: impl Bundle,
 ) -> StableId {
-    let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    spawn_at(arena, game, pos, team, kit, parts)
+    spawn_at(arena, game, (x, 0, 0), team, kit, parts)
 }
 
 /// A unit as `spawn_with` gives, at `pos`.
@@ -183,7 +182,7 @@ fn spawn_at(
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
-fn spawn(arena: &Arena, game: &mut Match, x: i64, team: Team, parts: impl Bundle) -> StableId {
+fn spawn(arena: &Arena, game: &mut Match, x: i16, team: Team, parts: impl Bundle) -> StableId {
     spawn_with(arena, game, x, team, Kit::Bare, parts)
 }
 
@@ -481,8 +480,7 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
     let kensho = caster(&arena, &mut game, still_mind, 1, Kit::Mana100, ());
     let entity = game.entity_of(kensho).unwrap();
     let life = *game.get::<Life>(entity).unwrap();
-    game.entity_mut(entity)
-        .insert(internals::spent_life(life, Num::int(300)));
+    game.entity_mut(entity).insert(life.spent(Num::int(300)));
     let guarded = |game: &Match| carried(game, kensho).contains(&(guard, Some(kensho)));
     // Cast in tick 0, for 50 mana. The channel runs from tick 1 for 5000 ms, 150 ticks, and
     // ticks each 500 ms, 15 ticks: in ticks 16 to 151, ten times, each 20 at rank 1 with no
@@ -535,7 +533,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let entity = game.entity_of(veil).unwrap();
     let pools = *game.get::<Pools>(entity).unwrap();
     game.entity_mut(entity)
-        .insert(internals::spent(pools, energy, Num::int(100)));
+        .insert(pools.spent(energy, Num::int(100)));
     let other = spawn_with(&arena, &mut game, 0, Team::new(0), Kit::Striker, player);
     let marked = spawn(&arena, &mut game, 1, Team::new(1), ());
     let marks = |game: &Match| !carried(game, marked).is_empty();
@@ -644,7 +642,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     // Aimed at a point 7 m out, within its 25 m range: it launches in tick 0, and flies 14/30 m
     // a tick, 7 829 367 bits rounded, from tick 1. Fifteen steps are 7 bits short of 7 m, and the
     // sixteenth ends it on the point, where its `on_end` runs.
-    let point = Position::new(Vec3::new(Num::int(7), Num::ZERO, Num::ZERO)).unwrap();
+    let point = Position::from((7, 0, 0));
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert!(!seen(&game));
     for _ in 1..=15 {
@@ -689,7 +687,7 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
         [0, 2].map(|team| teams.contains(Team::new(team)))
     };
     // It resolves at once, in tick 0, and reveals for 5000 ms, 150 ticks: ticks 0 to 149.
-    let point = Position::new(Vec3::new(Num::int(20), Num::ZERO, Num::ZERO)).unwrap();
+    let point = Position::from((20, 0, 0));
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert_eq!(
         [near, far].map(|unit| seen(&game, unit)),
@@ -786,8 +784,8 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     // Two enemies 4 m apart, within the 5 m of a bounce. The arena has no map, so its Vision
     // stage never runs: each is seen by every team, as a bounce picks among what its caster's
     // team sees.
-    let near = spawn(&arena, &mut game, 4, Team::new(1), internals::seen_by_all());
-    let far = spawn(&arena, &mut game, 8, Team::new(1), internals::seen_by_all());
+    let near = spawn(&arena, &mut game, 4, Team::new(1), SeenBy::all());
+    let far = spawn(&arena, &mut game, 8, Team::new(1), SeenBy::all());
     let projectiles = |game: &mut Match| -> Vec<u64> {
         let mut query = game.query::<(&Projectile, &StableId)>();
         query.iter(game).map(|(_, id)| id.get()).collect()
@@ -873,8 +871,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
         arena.step(&mut game);
     }
     let entity = game.entity_of(near).unwrap();
-    *game.get_mut::<Position>(entity).unwrap() =
-        Position::new(Vec3::new(Num::int(4), Num::ZERO, Num::ZERO)).unwrap();
+    *game.get_mut::<Position>(entity).unwrap() = Position::from((4, 0, 0));
     arena.step(&mut game);
     let mut left = inside.clone();
     left[1] = vec![];

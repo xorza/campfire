@@ -1,10 +1,10 @@
 use std::cell::Cell;
 use std::fmt::Write as _;
+use std::mem;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use std::{array, mem};
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::component::Component;
@@ -16,9 +16,10 @@ use campfire_capabilities::{
     Action, Body, CapabilitySet, HostVisibility, Leaver, MoveStep, Order, Owner, PlayersData,
     SaveBy, SavesData, Team,
 };
-use campfire_common::{ChannelBinding, MapName, PlayerSlot, TlsKey};
+use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{SeedChain, ServerInput, SessionPrivate};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
@@ -67,12 +68,10 @@ const CONNECT_FRAMES: usize = 300;
 const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
 /// In-process channels have no TLS session; both ends of a link take this binding.
 const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
-/// Unix seconds, on every end, until a test sets the clock.
-const NOW: u64 = 1_700_000_000;
-
 thread_local! {
-    /// The Unix time every end's clock reads: a match runs on the test's thread.
-    static UNIX_NOW: Cell<u64> = const { Cell::new(NOW) };
+    /// The Unix time every end's clock reads, `TestKey::NOW` until a test sets it: a match runs
+    /// on the test's thread, and a clock is a `fn` with no state of its own.
+    static UNIX_NOW: Cell<u64> = const { Cell::new(TestKey::NOW) };
 }
 
 fn unix_now() -> u64 {
@@ -245,7 +244,7 @@ pub struct InProcessMatch {
 
 impl InProcessMatch {
     /// The seed chain the tests' servers commit to.
-    pub const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
+    pub const SEED_CHAIN: SeedChain = TestKey::seed_chain(NonZeroU32::MIN);
 
     /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
@@ -452,9 +451,6 @@ impl InProcessMatch {
 
     /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
     pub(crate) fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
-        let mut files = PackageDir::workspace_tree("test");
-        let data = PathBuf::from("modes/lane/data/mode.toml");
-        let mut text = String::from_utf8(files[&data].clone()).expect("the mode's data is UTF-8");
         let leaver = match rules.leaver {
             Leaver::Reserve => "reserve",
             Leaver::Bot => "bot",
@@ -464,19 +460,16 @@ impl InProcessMatch {
             SaveBy::Player => "player",
             SaveBy::Mode => "mode",
         };
-        write!(
-            text,
-            "\n[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
+        let mut added = format!(
+            "[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
             rules.late_join, rules.bot_takeover
-        )
-        .expect("a String takes any text");
+        );
         if let Some(every) = saves.autosave_ms {
-            writeln!(text, "autosave_ms = {every}").expect("a String takes any text");
+            writeln!(added, "autosave_ms = {every}").expect("a String takes any text");
         }
-        files.insert(data, text.into_bytes());
-        let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
-        ModePackages::from_package_dir(&dir, &MapName::new("lane").expect("a map's name"))
-            .expect("the test mode loads")
+        PackageTree::of(TestMode::Lane)
+            .edit("modes/lane/data/mode.toml", Edit::Append(&added))
+            .packages()
     }
 
     /// What the server opens or restores its session with: its key, the setup's times, a fixed
@@ -908,15 +901,6 @@ enum Joiner {
 }
 
 impl ClientApp {
-    /// The secret of `player`'s main key, which sorts after every lower player's: the session
-    /// key's is the next byte, so the odd bytes are the main keys'.
-    fn main_secret(player: usize) -> u8 {
-        let mut secrets: [u8; MatchSetup::MAX_PLAYERS] =
-            array::from_fn(|player| u8::try_from(2 * player + 1).expect("a small player"));
-        secrets.sort_by_key(|&secret| TestKey::of(secret).x_only_public_key().0.serialize());
-        secrets[player]
-    }
-
     /// The app of `player`, following `pace`.
     fn new(
         setup: &MatchSetup,
@@ -925,22 +909,21 @@ impl ClientApp {
         tick_hz: NonZeroU32,
         pace: &Arc<Pace>,
     ) -> ClientApp {
-        let (secret, role, rollback) = match joiner {
+        let (keys, role, rollback) = match joiner {
             Joiner::Player(player) => (
-                ClientApp::main_secret(player),
+                TestKey::player(u32::try_from(player).unwrap()),
                 JoinRole::Play,
                 setup.rollbacks[player],
             ),
-            // Past every player's key, which take the odd bytes below 2 × `MAX_PLAYERS`.
             Joiner::Spectator(spectator) => (
-                u8::try_from(100 + 2 * spectator).expect("a few spectators"),
+                TestKey::spectator(u32::try_from(spectator).unwrap()),
                 JoinRole::Watch,
                 RollbackMode::Check,
             ),
         };
         let sim_client = SimClient {
-            main_key: TestKey::of(secret),
-            session_key: TestKey::of(secret + 1),
+            main_key: keys.main,
+            session_key: keys.session,
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,
                 tls_key: TLS_KEY,
@@ -1010,9 +993,8 @@ pub(crate) mod bench {
     use std::{env, process};
 
     use campfire_capabilities::Action;
-    use campfire_common::MapName;
     use campfire_math::{Num, Vec3};
-    use campfire_package::{ModePackages, PackageDir};
+    use campfire_package::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableFile;
     use lightyear::prelude::RollbackMode;
@@ -1103,11 +1085,7 @@ pub(crate) mod bench {
             setup.players = players;
             setup.rollbacks[..players].copy_from_slice(&ROLLBACKS_3V3);
             setup.bots = &PICKS_3V3[players..];
-            let packages = ModePackages::from_dir(
-                &PackageDir::workspace("test/moba/modes/3v3"),
-                &MapName::new("two_lanes").expect("a map's name"),
-            )
-            .expect("the MOBA 3v3 loads");
+            let packages = TestMode::Moba3v3.packages();
             let mut local = InProcessMatch::of_mode(setup, packages);
             local.open_match();
             for (client, pick) in PICKS_3V3[..players].iter().enumerate() {

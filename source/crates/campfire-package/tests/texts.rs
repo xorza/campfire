@@ -6,7 +6,9 @@ use campfire_package::{
     PackageRef, Texts,
 };
 
-use crate::moba::{Edit, edited, edited_at, load};
+use campfire_package::internals::Edit;
+
+use crate::moba::{edited, edited_at, load};
 
 fn language(text: &str) -> Language {
     Language::parse(text).unwrap()

@@ -1,6 +1,7 @@
 use std::io;
 use std::str::Utf8Error;
 
+use campfire_codec::JsonError;
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
 use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
@@ -67,7 +68,7 @@ pub(crate) enum CheckError {
         process: Process,
         line: usize,
         #[source]
-        error: serde_json::Error,
+        error: JsonError,
     },
     #[error("a bot's script")]
     Script(#[source] OrderScriptError),

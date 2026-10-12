@@ -95,13 +95,14 @@ pub(crate) mod internals {
     use crate::stats::pool_id::PoolId;
     use crate::stats::pools::Pools;
 
-    /// `pools` with `amount` of `pool`, which it has, spent.
-    pub fn spent(mut pools: Pools, pool: PoolId, amount: Num) -> Pools {
-        pools.take(pool, amount);
-        pools
-    }
-
     impl Pools {
+        /// The same pools with `amount` of `pool`, which they have, spent.
+        #[must_use]
+        pub fn spent(mut self, pool: PoolId, amount: Num) -> Pools {
+            self.take(pool, amount);
+            self
+        }
+
         /// Takes `amount`, which is not negative, from `pool`, which it has, down to 0.
         pub(crate) fn take(&mut self, pool: PoolId, amount: Num) {
             let meter = self.meter_mut(pool);

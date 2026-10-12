@@ -265,14 +265,8 @@ pub(crate) mod internals {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
-    use campfire_store::{DirEntries, EntryKind, InputFile};
-
     use crate::file_index::FileIndex;
     use crate::package_dir::PackageDir;
-
-    /// The most bytes a test reads of a workspace package's file: far past any the test
-    /// packages hold.
-    const TREE_FILE_LEN: usize = 64 << 20;
 
     impl PackageDir {
         /// `path` within the workspace's `packages` directory, where the tests and the checks
@@ -281,31 +275,16 @@ pub(crate) mod internals {
             Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
         }
 
-        /// Every file under `path` within the workspace's `packages` directory, by its path from
-        /// there, read from disk: a tree for `PackageDir::in_memory`.
-        pub fn workspace_tree(path: &str) -> BTreeMap<PathBuf, Vec<u8>> {
-            let mut files = BTreeMap::new();
-            PackageDir::read_tree(&PackageDir::workspace(path), Path::new(""), &mut files);
-            files
-        }
-
         /// `files` with the index of each package in it, each directory that holds a
         /// `manifest.toml`, written again from its files, as its builder would after an edit.
         pub fn reindexed(files: BTreeMap<PathBuf, Vec<u8>>) -> BTreeMap<PathBuf, Vec<u8>> {
-            let roots: Vec<PathBuf> = files
+            let tree = Arc::new(files);
+            let indexes: Vec<(PathBuf, Vec<u8>)> = tree
                 .keys()
                 .filter(|path| path.file_name() == Some(PackageDir::MANIFEST.as_ref()))
                 .map(|path| {
-                    path.parent()
-                        .expect("a manifest is in a directory")
-                        .to_owned()
-                })
-                .collect();
-            let tree = Arc::new(files);
-            let indexes: Vec<(PathBuf, Vec<u8>)> = roots
-                .into_iter()
-                .map(|root| {
-                    let index = PackageDir::in_memory(Arc::clone(&tree), &root)
+                    let root = path.parent().expect("a manifest is in a directory");
+                    let index = PackageDir::in_memory(Arc::clone(&tree), root)
                         .index_files()
                         .unwrap();
                     (root.join(FileIndex::PATH), index.bytes().to_vec())
@@ -314,17 +293,6 @@ pub(crate) mod internals {
             let mut files = Arc::into_inner(tree).expect("no package holds the tree");
             files.extend(indexes);
             files
-        }
-
-        fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
-            for entry in DirEntries::read(dir).unwrap() {
-                let (on_disk, path) = (dir.join(&entry.name), at.join(&entry.name));
-                if entry.kind == EntryKind::Dir {
-                    PackageDir::read_tree(&on_disk, &path, files);
-                } else {
-                    files.insert(path, InputFile::read(&on_disk, TREE_FILE_LEN).unwrap());
-                }
-            }
         }
     }
 }

@@ -13,8 +13,7 @@ use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
-const NOW: u64 = 1_700_000_000;
-const EXPIRATION: u64 = NOW + 60;
+const EXPIRATION: u64 = TestKey::NOW + 60;
 
 fn terms() -> SessionTerms {
     SessionTerms {
@@ -46,7 +45,13 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
         expiration: EXPIRATION,
     };
     change(&mut granted);
-    Delegation::sign(&Secp256k1::new(), &TestKey::of(1), &granted, NOW, &[0; 32])
+    Delegation::sign(
+        &Secp256k1::new(),
+        &TestKey::of(1),
+        &granted,
+        TestKey::NOW,
+        &[0; 32],
+    )
 }
 
 #[test]
@@ -62,7 +67,10 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
          delegation: &Delegation,
          answer: &Signature,
          now: u64| { challenge.check(&secp, &terms(), &binding, delegation, answer, now) };
-    assert_eq!(check(challenge, binding, &good, &answer, NOW), Ok(()));
+    assert_eq!(
+        check(challenge, binding, &good, &answer, TestKey::NOW),
+        Ok(())
+    );
     // One second before the expiration still holds; at it, the delegation has expired.
     assert_eq!(
         check(challenge, binding, &good, &answer, EXPIRATION - 1),
@@ -87,7 +95,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
         (&other_key, ConnectError::BadAnswer),
     ] {
         assert_eq!(
-            check(challenge, binding, delegation, &answer, NOW),
+            check(challenge, binding, delegation, &answer, TestKey::NOW),
             Err(error)
         );
     }
@@ -97,11 +105,11 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
         ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &binding, &[0; 32]);
     let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
-        check(challenge, binding, &good, &relayed, NOW),
+        check(challenge, binding, &good, &relayed, TestKey::NOW),
         Err(ConnectError::BadAnswer)
     );
     assert_eq!(
-        check(challenge, other_session, &good, &answer, NOW),
+        check(challenge, other_session, &good, &answer, TestKey::NOW),
         Err(ConnectError::BadAnswer)
     );
 

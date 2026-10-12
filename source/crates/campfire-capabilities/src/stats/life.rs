@@ -85,13 +85,14 @@ pub(crate) mod internals {
     use crate::stats::life::Life;
     use crate::stats::meter::Meter;
 
-    /// `life` with `amount` of it spent.
-    pub fn spent_life(mut life: Life, amount: Num) -> Life {
-        life.take(amount);
-        life
-    }
-
     impl Life {
+        /// The same life with `amount` of it spent.
+        #[must_use]
+        pub fn spent(mut self, amount: Num) -> Life {
+            self.take(amount);
+            self
+        }
+
         /// A full life of `max`, which is positive.
         pub fn full(max: Num) -> Life {
             Life(Meter::new(max).expect("a positive maximum"))

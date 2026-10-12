@@ -247,14 +247,14 @@ impl Seen {
             self.gale.push(world.part::<Life>(gale).current());
         }
         if (2190..2220).contains(&tick) {
-            let tower = units.spawned_at(-42, 16);
+            let tower = units.spawned_at((-42, 0, 16));
             self.tower
                 .push((target(tower), world.part::<Life>(kensho).current()));
         }
         if tick == 2312 {
             self.xp_after_skirmish = xp();
         }
-        let wolf = units.spawned_at(-18, 12);
+        let wolf = units.spawned_at((-18, 0, 12));
         let home = Position::from((-18, 0, 12)).get();
         match tick {
             2460 => self.wolf_answers = target(wolf),

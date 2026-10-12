@@ -1,6 +1,6 @@
 use campfire_capabilities::VisibilityDecodeError;
 use campfire_common::Ticks;
-use campfire_package::PackageDir;
+use campfire_package::internals::TestMode;
 use campfire_protocol::SeedChain;
 
 use super::*;
@@ -10,8 +10,7 @@ type Change = fn(&mut SessionTerms);
 #[test]
 fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // The 3v3 runs from 20 to 60 Hz.
-    let dir = PackageDir::workspace("test/moba/modes/3v3");
-    let packages = ModePackages::from_dir(&dir, &MapName::new("two_lanes").unwrap()).unwrap();
+    let packages = TestMode::Moba3v3.packages();
     let rules = SessionRules::of(&packages);
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
     let commitment = SeedChain::new([7; 32], NonZeroU32::MIN).commitment();
@@ -48,7 +47,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             seed_commitment: commitment,
             release: EngineRelease::CURRENT,
             mode: packages.fingerprint(),
-            map: MapName::new("two_lanes").unwrap(),
+            map: TestMode::Moba3v3.map(),
             dependencies,
             slots: plan.clone(),
             // The 3v3 sets no visibility: the defaults, which admit no spectator.

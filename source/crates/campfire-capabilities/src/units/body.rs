@@ -137,39 +137,41 @@ pub(crate) mod internals {
     use crate::geometry::shape::Shape;
     use crate::units::body::Body;
 
-    /// Whether `range` from the edge of `from_body` at `from` reaches the edge of `to_body` at
-    /// `to`, on a planar map, by the reach rule; a unit with no body is a point.
-    pub fn reaches(
-        from: Position,
-        from_body: Option<&Body>,
-        range: Num,
-        to: Position,
-        to_body: Option<&Body>,
-    ) -> bool {
-        let (from_shape, to_shape) = (Body::shape_of(from_body), Body::shape_of(to_body));
-        Metric::Planar.reaches(from, from_shape, range, to, to_shape)
-    }
+    impl Body {
+        /// Whether `range` from the edge of `from_body` at `from` reaches the edge of `to_body`
+        /// at `to`, on a planar map, by the reach rule; a unit with no body is a point.
+        pub fn reaches(
+            from: Position,
+            from_body: Option<&Body>,
+            range: Num,
+            to: Position,
+            to_body: Option<&Body>,
+        ) -> bool {
+            let (from_shape, to_shape) = (Body::shape_of(from_body), Body::shape_of(to_body));
+            Metric::Planar.reaches(from, from_shape, range, to, to_shape)
+        }
 
-    /// Whether `range` from the edge of `from_body` at `from` reaches the least circle round `to`
-    /// that holds `to_body`, as a body measured by its bound would be reached.
-    pub fn reaches_bound(
-        from: Position,
-        from_body: Option<&Body>,
-        range: Num,
-        to: Position,
-        to_body: Option<&Body>,
-    ) -> bool {
-        let bound = Shape::Circle(Body::shape_of(to_body).bound());
-        Metric::Planar.reaches(from, Body::shape_of(from_body), range, to, bound)
-    }
+        /// Whether `range` from the edge of `from_body` at `from` reaches the least circle round
+        /// `to` that holds `to_body`, as a body measured by its bound would be reached.
+        pub fn reaches_bound(
+            from: Position,
+            from_body: Option<&Body>,
+            range: Num,
+            to: Position,
+            to_body: Option<&Body>,
+        ) -> bool {
+            let bound = Shape::Circle(Body::shape_of(to_body).bound());
+            Metric::Planar.reaches(from, Body::shape_of(from_body), range, to, bound)
+        }
 
-    /// Whether the circle `walker` at `pos` overlaps the box `body` at `centre`: a body collision
-    /// left inside the box.
-    pub fn sinks_into(pos: Position, walker: &Body, centre: Position, body: &Body) -> bool {
-        let (Shape::Circle(radius), Shape::Box(boxed)) = (walker.shape(), body.shape()) else {
-            panic!("a circle and a box");
-        };
-        boxed.nearest(centre, pos, radius) == Ordering::Less
+        /// Whether this circle at `pos` overlaps the box `body` at `centre`: a body collision
+        /// left inside the box.
+        pub fn sinks_into(&self, pos: Position, body: &Body, centre: Position) -> bool {
+            let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
+                panic!("a circle and a box");
+            };
+            boxed.nearest(centre, pos, radius) == Ordering::Less
+        }
     }
 }
 

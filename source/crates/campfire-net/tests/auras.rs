@@ -11,7 +11,9 @@ use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_sim::{EntityIndex, StableId};
 use lightyear::prelude::RollbackMode;
 
-use crate::short_3v3::{Edit, PICKS, short_3v3};
+use campfire_package::internals::Edit;
+
+use crate::short_3v3::{PICKS, short_3v3};
 
 /// Frames for the avatars to spawn and reach their clients.
 const SPAWN_FRAMES: usize = 300;
@@ -20,26 +22,29 @@ const WALK_FRAMES: usize = 60;
 
 /// Gale's aura adds a hundredth of her attack damage to her allies' move speed, so its numbers
 /// come from her stats; Rime's cuts the move speed of each enemy within 3 m of her by 30 %.
-const AURAS: [Edit; 3] = [
-    Edit {
-        path: "heroes/gale/data/avatar.toml",
-        from: "[modifiers.fair_wind_speed]\nstats = { move_speed = { pct = \"0.03\" } }",
-        to: "[modifiers.fair_wind_speed]\nstats = { move_speed = { param = \"wind\" } }\n\n\
+const AURAS: [(&str, Edit<'_>); 3] = [
+    (
+        "heroes/gale/data/avatar.toml",
+        Edit::Replace(
+            "[modifiers.fair_wind_speed]\nstats = { move_speed = { pct = \"0.03\" } }",
+            "[modifiers.fair_wind_speed]\nstats = { move_speed = { param = \"wind\" } }\n\n\
              [modifiers.fair_wind_speed.params]\nwind = { base = 0, attack_damage = \"0.01\" }",
-    },
-    Edit {
-        path: "heroes/rime/data/avatar.toml",
-        from: "passive = \"stillness\"",
-        to: "passive = \"frost_field\"",
-    },
-    Edit {
-        path: "heroes/rime/data/avatar.toml",
-        from: "[modifiers.stillness]",
-        to: "[modifiers.frost_field]\n\
+        ),
+    ),
+    (
+        "heroes/rime/data/avatar.toml",
+        Edit::Replace("passive = \"stillness\"", "passive = \"frost_field\""),
+    ),
+    (
+        "heroes/rime/data/avatar.toml",
+        Edit::Replace(
+            "[modifiers.stillness]",
+            "[modifiers.frost_field]\n\
              aura = { radius = \"3.0\", affects = \"enemies\", modifier = \"frost_field_slow\" }\n\n\
              [modifiers.frost_field_slow]\nstats = { move_speed = { cut = \"0.3\" } }\n\n\
              [modifiers.stillness]",
-    },
+        ),
+    ),
 ];
 
 /// The unit `id` in `local`'s `end`.

@@ -102,11 +102,13 @@ pub(crate) mod internals {
     use campfire_common::{PlayerSlot, Tick};
     use campfire_schedule::StrictSchedule;
 
+    use crate::entity_index::EntityIndex;
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
     use crate::sim_world::SimWorld;
     use crate::stable_id::StableId;
     use crate::state_registry::StateRegistry;
+    use crate::state_registry::error::SnapshotError;
     use crate::state_registry::internals::{Draws, Mutation};
     use crate::tick_inputs::{TickInput, TickInputs};
 
@@ -165,6 +167,9 @@ pub(crate) mod internals {
 
         /// Inserts `parts` on unit `id`.
         fn insert_parts(&mut self, id: StableId, parts: impl Bundle);
+
+        /// Restores `snapshot` into a restore target, in place of what the last restore left.
+        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError>;
     }
 
     impl SimWorldInternals for World {
@@ -264,6 +269,18 @@ pub(crate) mod internals {
         fn insert_parts(&mut self, id: StableId, parts: impl Bundle) {
             let entity = self.unit_entity(id);
             self.entity_mut(entity).insert(parts);
+        }
+
+        fn restore_in_place(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError> {
+            let entities: Vec<Entity> = self
+                .resource::<EntityIndex>()
+                .iter()
+                .map(|(_, entity)| entity)
+                .collect();
+            for entity in entities {
+                self.despawn(entity);
+            }
+            self.restore(snapshot)
         }
     }
 }

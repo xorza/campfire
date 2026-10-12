@@ -8,7 +8,7 @@ use campfire_capabilities::{
     Action, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
 };
 use campfire_common::Tick;
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
@@ -50,7 +50,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
-    let east_tower = Position::new(Vec3::new(Num::int(8), Num::ZERO, Num::int(-3))).unwrap();
+    let east_tower = Position::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });
@@ -161,7 +161,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
-    let east_tower = Position::new(Vec3::new(Num::int(8), Num::ZERO, Num::int(-3))).unwrap();
+    let east_tower = Position::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });

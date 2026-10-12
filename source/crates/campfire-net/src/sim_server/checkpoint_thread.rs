@@ -181,7 +181,6 @@ impl CheckpointCopy {
 #[cfg(test)]
 mod tests {
     use campfire_common::Tick;
-    use campfire_math::{Num, Vec3};
     use campfire_protocol::LogCarry;
     use campfire_protocol::internals::TestKey;
     use campfire_sim::{IdAllocator, Position};
@@ -208,10 +207,7 @@ mod tests {
             CheckpointThread::start(registry.clone(), base, session_id, snapshots, signer);
         for x in 1..=2 {
             let id = world.resource_mut::<IdAllocator>().allocate();
-            world.spawn((
-                id,
-                Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap(),
-            ));
+            world.spawn((id, Position::from((x, 0, 0))));
             thread.send(None, |delta| registry.changes(&mut world, delta));
         }
         let begun = CheckpointBegun {

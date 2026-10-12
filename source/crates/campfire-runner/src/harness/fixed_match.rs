@@ -2,7 +2,7 @@ use campfire_capabilities::Match;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
-use campfire_protocol::secp256k1::Secp256k1;
+use campfire_protocol::secp256k1::{Keypair, Secp256k1};
 use campfire_protocol::{
     Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
 };
@@ -17,6 +17,8 @@ use crate::session::session_world::SessionWorld;
 pub struct FixedMatch {
     game: Match,
     chains: Vec<InputChain>,
+    /// Each slot's session key, which signs its chain.
+    session_keys: Vec<Keypair>,
     terms: SessionTerms,
     applied: Vec<Applied>,
     /// Last, so it drops after the match and sees what the match logs as it drops.
@@ -27,12 +29,14 @@ impl FixedMatch {
     pub(crate) const fn new(
         game: Match,
         chains: Vec<InputChain>,
+        session_keys: Vec<Keypair>,
         terms: SessionTerms,
         log: LogCheck,
     ) -> FixedMatch {
         FixedMatch {
             game,
             chains,
+            session_keys,
             terms,
             applied: Vec::new(),
             log,
@@ -42,11 +46,12 @@ impl FixedMatch {
     /// Sends player `slot`'s input of `payload` stamped for `stamp`, in a packet of its own; how
     /// it applies.
     pub fn send(&mut self, slot: u32, stamp: Tick, payload: &[u8]) -> Applied {
-        let chain = &mut self.chains[usize::try_from(slot).unwrap()];
+        let at = usize::try_from(slot).unwrap();
+        let chain = &mut self.chains[at];
         let input = chain.extend(stamp, payload);
         let signature = chain.sign(
             &Secp256k1::new(),
-            &FixedSession::session_key(slot),
+            &self.session_keys[at],
             self.terms.session_id(),
             &FixedSession::AUX,
         );

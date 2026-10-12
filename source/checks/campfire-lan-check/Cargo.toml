@@ -12,7 +12,6 @@ campfire-net.workspace = true
 campfire-quic.workspace = true
 campfire-protocol.workspace = true
 campfire-store.workspace = true
-campfire-sim.workspace = true
 campfire-verifier.workspace = true
 
 clap.workspace = true

@@ -2187,7 +2187,6 @@ dependencies = [
  "campfire-net",
  "campfire-protocol",
  "campfire-quic",
- "campfire-sim",
  "campfire-store",
  "campfire-verifier",
  "clap",
@@ -2254,7 +2253,6 @@ dependencies = [
  "lightyear_serde",
  "serde",
  "thiserror 2.0.21",
- "toml",
  "tracing",
 ]
 

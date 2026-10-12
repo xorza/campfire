@@ -5,17 +5,17 @@
 
 use std::num::NonZeroU32;
 use std::ops::Range;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::sync::Arc;
 
 use campfire_capabilities::{
     Action, ActionSlots, Destination, Life, Match, Order, Projectile, Rank,
 };
-use campfire_common::{Fingerprint, MapName, PlayerSlot, StateHash, Tick, Ticks};
+use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
+use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{
     AfterLeave, Applied, EngineRelease, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
@@ -79,11 +79,7 @@ const ORDERS: [Sent; 3] = [
 ];
 
 fn packages() -> ModePackages {
-    ModePackages::from_dir(
-        &PackageDir::workspace("test/modes/lane"),
-        &MapName::new("lane").unwrap(),
-    )
-    .unwrap()
+    TestMode::Lane.packages()
 }
 
 fn store() -> PackageStore {
@@ -313,7 +309,7 @@ fn run_and_replay_agree_on_every_tick() {
     let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
     let game = fixed.game();
     let arrived = Hero {
-        pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+        pos: Position::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(game, 0), arrived);
@@ -348,9 +344,9 @@ fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
 }
 
 /// The hero standing at (`x`, `z`), with nowhere to walk.
-fn standing(x: i64, z: i64) -> Hero {
+fn standing(x: i16, z: i16) -> Hero {
     Hero {
-        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        pos: Position::from((x, 0, z)),
         destination: Destination::default(),
     }
 }
@@ -767,20 +763,14 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     );
 
     // A lane mode whose `on_match_start` throws: the session does not start.
-    let mut files = PackageDir::workspace_tree("test");
-    let script = PathBuf::from("modes/lane/scripts/mode.rhai");
-    let text = String::from_utf8(files[&script].clone()).unwrap();
-    let start = "fn on_match_start(ctx) {\n";
-    assert!(text.contains(start));
-    let text = text.replacen(
-        start,
+    let start_throws = Edit::Replace(
+        "fn on_match_start(ctx) {\n",
         "fn on_match_start(ctx) {\n    throw \"no start\";\n",
-        1,
     );
-    files.insert(script, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let thrown = FixedSession::new(
-        ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap(),
+        PackageTree::of(TestMode::Lane)
+            .edit("modes/lane/scripts/mode.rhai", start_throws)
+            .packages(),
         NonZeroU32::new(30).unwrap(),
         1,
     );

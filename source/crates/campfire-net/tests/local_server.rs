@@ -10,12 +10,11 @@ use std::time::{Duration, Instant};
 use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_common::MapName;
 use campfire_net::{
     JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace,
     PendingSaves, SaveCommand, ServerDir, SessionDir, SimClient,
 };
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog};
 use campfire_store::internals::Scratch;
@@ -27,34 +26,29 @@ const DEADLINE: Duration = Duration::from_secs(10);
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let scratch = Scratch::new();
-    let packages = Arc::new(
-        ModePackages::from_dir(
-            &PackageDir::workspace("test/modes/lane"),
-            &MapName::new("lane").unwrap(),
-        )
-        .unwrap(),
-    );
+    let packages = Arc::new(TestMode::Lane.packages());
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
         data: scratch.path("data"),
         bots: Vec::new(),
         pace,
-        clock: || 1_700_000_000,
+        clock: || TestKey::NOW,
         entropy: |bytes| bytes.fill(7),
     })
     .unwrap();
 
+    let keys = TestKey::player(0);
     let mut client = App::new();
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
     client.add_plugins(SimClient {
-        main_key: TestKey::of(1),
-        session_key: TestKey::of(2),
+        main_key: keys.main,
+        session_key: keys.session,
         server: server.pin(),
         role: JoinRole::Play,
         local: true,
         packages,
-        clock: || 1_700_000_000,
+        clock: || TestKey::NOW,
         entropy: |bytes| bytes.fill(4),
         data: None,
     });

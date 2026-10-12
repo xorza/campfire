@@ -1,6 +1,5 @@
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::{Experience, Owner, SpawnPoint, Team};
-use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
 /// The units of a running match, as a scripted player or a test names them by role.
@@ -51,10 +50,9 @@ impl<'a> MatchUnits<'a> {
             .expect("a unit stands somewhere")
     }
 
-    /// The units that stand at `x`, `z` on the ground, by stable id.
-    pub fn standing_at(self, x: i64, z: i64) -> Vec<StableId> {
-        let at =
-            Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).expect("a map point");
+    /// The units that stand at `at`, by stable id.
+    pub fn standing_at(self, at: impl Into<Position>) -> Vec<StableId> {
+        let at = at.into();
         self.all()
             .filter(|(_, unit)| unit.get::<Position>() == Some(&at))
             .map(|(id, _)| id)
@@ -67,15 +65,14 @@ impl<'a> MatchUnits<'a> {
             .is_some_and(|owner| owner.slot().get() == slot)
     }
 
-    /// The unit that spawned at `x`, `z` on the ground, of a team: a camp's, or a structure.
-    pub fn spawned_at(self, x: i64, z: i64) -> StableId {
-        let at =
-            Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).expect("a map point");
+    /// The unit that spawned at `at`, of a team: a camp's, or a structure.
+    pub fn spawned_at(self, at: impl Into<Position>) -> StableId {
+        let at = at.into();
         self.all()
             .find(|(_, unit)| {
                 unit.contains::<Team>()
                     && unit.get::<SpawnPoint>().map(|point| point.get()) == Some(at)
             })
-            .map_or_else(|| panic!("a unit spawned at {x}, {z}"), |(id, _)| id)
+            .map_or_else(|| panic!("a unit spawned at {at:?}"), |(id, _)| id)
     }
 }

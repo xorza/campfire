@@ -2,15 +2,15 @@
 //! learns with its points, and fells creeps for their experience.
 
 use std::num::NonZeroU32;
-use std::sync::Arc;
 
 use campfire_capabilities::{
     Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points, Rank,
     ScriptFailures, Team, TrackId,
 };
-use campfire_common::{MapName, StateHash, Tick};
+use campfire_common::{StateHash, Tick};
 use campfire_math::Num;
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_runner::internals::MatchUnits;
 use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
@@ -57,12 +57,7 @@ mod scripted_match {
 
     #[test]
     fn the_lane_match_plays_to_its_golden_record() {
-        let packages = ModePackages::from_dir(
-            &PackageDir::workspace("test/modes/lane"),
-            &MapName::new("lane").unwrap(),
-        )
-        .unwrap();
-        let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
+        let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
         let mut golden = Golden::new(session.packages(), session.slots());
         let mut fixed = session.start();
         let mut copy = CopyCheck::new(fixed.game_mut());
@@ -147,19 +142,17 @@ mod scripted_match {
 fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     // Walker's name in other words, and in a second language: its package's fingerprint moves,
     // and no tick's hash does, as the sim reads no text.
-    let mut files = PackageDir::workspace_tree("test");
-    let plain = PackageDir::in_memory(Arc::new(files.clone()), "modes/lane");
-    files.insert(
-        "heroes/walker/locale/en.ftl".into(),
-        b"hero-name = Wanderer\n".to_vec(),
-    );
-    files.insert(
-        "heroes/walker/locale/de.ftl".into(),
-        b"hero-name = Wanderer\n".to_vec(),
-    );
-    let reworded = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
-    let [plain, reworded] = [plain, reworded]
-        .map(|dir| ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap());
+    let plain = TestMode::Lane.packages();
+    let reworded = PackageTree::of(TestMode::Lane)
+        .edit(
+            "heroes/walker/locale/en.ftl",
+            Edit::Create("hero-name = Wanderer\n"),
+        )
+        .edit(
+            "heroes/walker/locale/de.ftl",
+            Edit::Create("hero-name = Wanderer\n"),
+        )
+        .packages();
     let walker = |packages: &ModePackages| {
         let walker = packages
             .packages()
@@ -172,20 +165,14 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
 
 #[test]
 fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
-    let mut files = PackageDir::workspace_tree("test");
-    let script = "modes/lane/scripts/tower_ai.rhai".into();
-    let text = String::from_utf8(files[&script].clone()).unwrap();
-    let think = "fn on_think(ctx, tower) {\n";
-    assert!(text.contains(think));
-    let text = text.replacen(
-        think,
+    let throws = Edit::Replace(
+        "fn on_think(ctx, tower) {\n",
         "fn on_think(ctx, tower) {\n    throw \"no think\";\n",
-        1,
     );
-    files.insert(script, text.into_bytes());
-    let dir = PackageDir::in_memory(Arc::new(PackageDir::reindexed(files)), "modes/lane");
     let session = FixedSession::new(
-        ModePackages::from_package_dir(&dir, &MapName::new("lane").unwrap()).unwrap(),
+        PackageTree::of(TestMode::Lane)
+            .edit("modes/lane/scripts/tower_ai.rhai", throws)
+            .packages(),
         NonZeroU32::new(30).unwrap(),
         2,
     );
@@ -197,7 +184,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     // ticks whose remainder by 8 is its stable id: in ticks 0 to 9, 0 and 8 for the west's, id 0,
     // and 1 and 9 for the east's, id 1.
     let units = MatchUnits::of(fixed.game());
-    let [west, east] = [units.spawned_at(-8, -3), units.spawned_at(8, -3)];
+    let [west, east] = [units.spawned_at((-8, 0, -3)), units.spawned_at((8, 0, -3))];
     assert_eq!([west.get(), east.get()], [0, 1]);
     let failed = |tick, unit| ScriptCallFailed {
         tick: Tick::new(tick),

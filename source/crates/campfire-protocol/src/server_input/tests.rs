@@ -16,7 +16,7 @@ fn delegation(main: u8, byte: u8) -> Delegation {
         &Secp256k1::new(),
         &TestKey::of(main),
         &terms,
-        1_700_000_000,
+        TestKey::NOW,
         &[0; 32],
     )
 }

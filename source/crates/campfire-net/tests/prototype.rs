@@ -13,14 +13,14 @@ use campfire_capabilities::{
     SyncAll, SyncNone, Team, UnitsWorld,
 };
 use campfire_capabilities::{Stats, Units};
-use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
+use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
     PlayerLink, TickHashes,
 };
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::internals::TestMode;
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
@@ -107,7 +107,7 @@ fn server_and_replay_agree_on_every_tick() {
         }
 
         let arrived = Hero {
-            pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+            pos: Position::from((-2, 0, 5)),
             destination: Destination::default(),
         };
         assert_eq!(hero(local.server()), arrived, "{case}");
@@ -184,7 +184,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         frames += 1;
     }
     let arrived = Hero {
-        pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+        pos: Position::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), arrived);
@@ -292,8 +292,8 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     for _ in 0..=lead(&local) {
         local.step();
     }
-    let at = |x, z| Hero {
-        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+    let at = |x: i16, z: i16| Hero {
+        pos: Position::from((x, 0, z)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), at(4, 0));
@@ -554,9 +554,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // The proving mode for two players, with a server frame a tick: each holds its income of 100
     // gold from the start, and 100 more every 5 s, 100 ticks at its 20 Hz; its state's `joined`
     // goes to every client, and `left` to none.
-    let map = MapName::new("proving").unwrap();
-    let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/proving"), &map);
-    let packages = packages.unwrap();
+    let packages = TestMode::Proving.packages();
     let gold = ResourceId::named(&packages.data().resources, "gold").unwrap();
     let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.players = 2;
@@ -750,7 +748,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
         .world_mut()
         .resource_mut::<PendingOrders>()
         .push(Order::one(hero, move_to(3, -1)));
-    let end = Position::new(Vec3::new(Num::int(3), Num::ZERO, Num::int(-1))).unwrap();
+    let end = Position::from((3, 0, -1));
     game.step_until(|game| {
         [End::Server, End::Client(0), End::Client(1)]
             .into_iter()

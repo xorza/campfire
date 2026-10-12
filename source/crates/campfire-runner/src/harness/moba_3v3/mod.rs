@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use bevy_ecs::world::World;
 use campfire_capabilities::Mode;
 use campfire_capabilities::internals::{Density, KernelScene};
@@ -7,9 +5,9 @@ use campfire_capabilities::{
     Action, ActionSlots, Dead, InputValue, Inventory, ItemId, Life, ModeInput, Order, PathWalker,
     Team,
 };
-use campfire_common::{MapName, PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::Num;
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::internals::TestMode;
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 
@@ -39,9 +37,9 @@ const HEROES: [&str; 6] = [
 #[derive(Debug, Clone, Copy)]
 pub enum Moba3v3 {
     /// The hero walks to a point.
-    Move { x: i64, z: i64 },
+    Move { x: i16, z: i16 },
     /// The hero attacks the unit that spawned at a point: a camp's, or a structure.
-    AttackSpawnedAt { x: i64, z: i64 },
+    AttackSpawnedAt { x: i16, z: i16 },
     /// The hero attacks player `slot`'s hero.
     AttackHero { slot: u32 },
     /// The hero casts the action in `slot` at `aim`.
@@ -55,7 +53,7 @@ pub enum Moba3v3 {
     LearnBasic,
     /// The hero attacks the enemy creep of least life within `FARM_REACH` of it, by stable id on
     /// a tie; with none, it walks to its post at `x`, `z`.
-    Farm { x: i64, z: i64 },
+    Farm { x: i16, z: i16 },
     /// The hero buys one `item` at the shop.
     Buy { item: ItemId },
     /// The hero sells the stack in its inventory slot `slot`.
@@ -82,14 +80,14 @@ const MEND: u8 = 5;
 const INVENTORY: u8 = 7;
 
 /// The south camp's wolf, west of the middle, on its marker.
-const SOUTH_CAMP: (i64, i64) = (-18, 12);
+const SOUTH_CAMP: (i16, i16) = (-18, 12);
 
 /// Where each player's hero farms its lane: Cinder and Husk the west lane's north side, Kensho and
 /// Rime its south side; Gale and Veil the east lane's.
-const POSTS: [(i64, i64); 6] = [(-38, -8), (38, -8), (-36, -8), (-38, 8), (-36, 8), (38, 8)];
+const POSTS: [(i16, i16); 6] = [(-38, -8), (38, -8), (-36, -8), (-38, 8), (-36, 8), (38, 8)];
 /// Where each player's hero stands in the jungle south of the north base as the heroes cast:
 /// each north hero 6 m north of the south hero it faces.
-const ARENA: [(i64, i64); 6] = [(-2, -26), (0, -26), (2, -26), (-2, -20), (0, -20), (2, -20)];
+const ARENA: [(i16, i16); 6] = [(-2, -26), (0, -26), (2, -26), (-2, -20), (0, -20), (2, -20)];
 /// The ticks the heroes farm in, every `FARM_EVERY` ticks from `FARM`, and learn in, every
 /// `LEARN_EVERY` from `LEARN`: never in a farm's tick, as a player sends at most four inputs a
 /// tick.
@@ -160,15 +158,15 @@ const SKIRMISH: [Scripted<Moba3v3>; 45] = {
     script
 };
 
-const fn attack_at((x, z): (i64, i64)) -> Moba3v3 {
+const fn attack_at((x, z): (i16, i16)) -> Moba3v3 {
     Moba3v3::AttackSpawnedAt { x, z }
 }
 
-const fn walk_to((x, z): (i64, i64)) -> Moba3v3 {
+const fn walk_to((x, z): (i16, i16)) -> Moba3v3 {
     Moba3v3::Move { x, z }
 }
 
-const fn farm_at((x, z): (i64, i64)) -> Moba3v3 {
+const fn farm_at((x, z): (i16, i16)) -> Moba3v3 {
     Moba3v3::Farm { x, z }
 }
 
@@ -312,7 +310,7 @@ impl Moba3v3 {
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: Vec<SlotPlan>) -> ScriptedMode<Moba3v3> {
-        let packages = ModePackages::from_dir(&Moba3v3::dir(), &Moba3v3::map()).unwrap();
+        let packages = TestMode::Moba3v3.packages();
         let items = &packages.packages().next().expect("a mode").content.items;
         let item = |name: &str| ItemId::named(items, name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);
@@ -329,16 +327,6 @@ impl Moba3v3 {
             let team = Team::new(u8::from(unit % 4 >= 2));
             Mode::spawn_typed(world, CREEPS[unit % 2], team, pos);
         }
-    }
-
-    /// The directory of the 3v3's mode package.
-    pub fn dir() -> PathBuf {
-        PackageDir::workspace("test/moba/modes/3v3")
-    }
-
-    /// The map the 3v3 plays.
-    pub fn map() -> MapName {
-        MapName::new("two_lanes").unwrap()
     }
 
     /// Every segment's seed, as the server knows them.
@@ -383,11 +371,11 @@ impl Plan for Moba3v3 {
         let hero = units.hero(slot);
         let action = match self {
             Moba3v3::Move { x, z } => Action::Move {
-                x: Num::int(x),
-                z: Num::int(z),
+                x: Num::from(x),
+                z: Num::from(z),
             },
             Moba3v3::AttackSpawnedAt { x, z } => Action::Attack {
-                target: units.spawned_at(x, z),
+                target: units.spawned_at((x, 0, z)),
             },
             Moba3v3::AttackHero { slot } => Action::Attack {
                 target: units.hero(slot),
@@ -406,8 +394,8 @@ impl Plan for Moba3v3 {
             },
             Moba3v3::Farm { x, z } => weakest_creep(units, hero).map_or(
                 Action::Move {
-                    x: Num::int(x),
-                    z: Num::int(z),
+                    x: Num::from(x),
+                    z: Num::from(z),
                 },
                 |target| Action::Attack { target },
             ),

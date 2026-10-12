@@ -6,7 +6,6 @@ pub(crate) mod copy_check;
 pub(crate) mod fixed_match;
 pub(crate) mod fixed_session;
 pub(crate) mod golden;
-pub(crate) mod harness_world;
 pub(crate) mod hash_trail;
 pub(crate) mod match_units;
 pub(crate) mod moba_3v3;
