@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Res};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_capabilities::Mode;
+use campfire_capabilities::ModeWorld;
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Controller, Delegation, LeaveReason, ServerInput};
@@ -189,7 +189,7 @@ impl Door {
     /// stands in its team's room, so it receives every unit its team sees and no other.
     fn seat(world: &mut World, link: Entity, seat: SeatIn) {
         let SeatIn { slot, chain } = seat;
-        let team = Mode::team_of(world, slot).expect("every slot has a team");
+        let team = world.team_of(slot).expect("every slot has a team");
         world
             .entity_mut(link)
             .insert((Joined, PlayerLink::new(slot, team)));
@@ -310,7 +310,7 @@ impl Door {
 
     /// Whether every slot a player controlled has left, and no player holds a link: the session
     /// then ends.
-    pub(crate) fn empty(world: &World) -> bool {
+    pub(super) fn empty(world: &World) -> bool {
         let none_held = world
             .resource::<Session>()
             .log()

@@ -15,13 +15,13 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_call::{ActionCall, ResolvedCast};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::actions_world::ActionsWorldCrate;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::lists_of::ListsOf;
 use crate::actions::purse::Purse;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
-use crate::combat::Combat;
+use crate::combat::combat_world::CombatWorld;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
 use crate::items::inventory::Inventory;
@@ -29,12 +29,14 @@ use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRows;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::life_pool::LifePool;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::units::action_id::ActionId;
@@ -267,7 +269,7 @@ impl Casts {
         if due.is_empty() {
             return;
         }
-        ScriptBatch::run(world, |batch| {
+        world.script_batch(|batch| {
             for &Keyed { id: caster, entity } in &*due {
                 Self::resolve(batch, now, caster, entity);
             }
@@ -391,7 +393,7 @@ impl Casts {
         ctx.apply(world);
         // The player's resources were paid in the call's frame, before its script ran, so a failed
         // call pays nothing and the script cannot spend what the cost took.
-        let life = Combat::life(world);
+        let life = world.life_pool();
         let mut unit = world.entity_mut(entity);
         let pools = unit.get_components_mut::<UnitPools>();
         let mut pools = pools.expect("a caster's pools").of(life);
@@ -428,8 +430,8 @@ impl Casts {
         let book = world.resource::<ActionBook>();
         let owner = unit.get::<Owner>();
         let pools = unit.get_components::<UnitPoolsReadOnly>();
-        let pools = pools.expect("a caster's pools").of(Combat::life(world));
-        let purse = Purse::of(pools, PlayerResources::of(world, owner));
+        let pools = pools.expect("a caster's pools").of(world.life_pool());
+        let purse = Purse::of(pools, world.owner_resources(owner));
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
         let Some(checked) = book.check(now, (slots, times), purse, casting, relation, living)
@@ -488,8 +490,7 @@ impl Casts {
         ctx: &Ctx,
         prepared: &mut Prepared,
     ) -> Result<(), CallError> {
-        EffectLists::queue(
-            batch.world(),
+        batch.world().queue_effect_list(
             ListsOf::Action(prepared.action),
             Hook::OnResolve,
             &mut ctx.frame(),

@@ -15,6 +15,7 @@ use crate::scripts::call_start::CallStart;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::units::forced_move::ForcedMove;
 use crate::units::owner::Owner;
 use crate::units::unit_tags::UnitTags;
@@ -45,7 +46,7 @@ impl Channels {
         if due.is_empty() {
             return;
         }
-        ScriptBatch::run(world, |batch| {
+        world.script_batch(|batch| {
             for &Keyed { id, entity } in &*due {
                 let step = Self::step_channel(batch.world(), now, entity);
                 for (call, hook) in [

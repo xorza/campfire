@@ -2,9 +2,7 @@ use std::mem;
 
 use bevy_ecs::world::World;
 use campfire_common::{Bytes32, StateHash};
-use campfire_sim::TypeHash;
-
-use crate::session::Session;
+use campfire_sim::{SimWorld, TypeHash};
 
 /// The state hashes of a match after one tick: by state type, in the registry's order, and in
 /// total.
@@ -36,9 +34,8 @@ impl HashTrail {
 
     /// Records the state of `world`, where a session runs, after a tick.
     pub fn record(&mut self, world: &World) {
-        let session = world.resource::<Session>();
         let mut types = mem::take(&mut self.scratch);
-        let total = session.state_hash_by_type(world, &mut types);
+        let total = world.state_hash_by_type(&mut types);
         self.record_hashes(MatchHashes {
             types: &types,
             total,

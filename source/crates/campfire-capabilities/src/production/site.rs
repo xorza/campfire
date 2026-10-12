@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_amount::ResourceAmount;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -129,7 +129,7 @@ impl SimComponent for Site {
                         .windup_ticks(self.rank)
                         .is_some_and(|time| self.progress <= time)
             });
-        let resources = PlayerResources::declared(world);
+        let resources = world.declared_resources();
         let paid = self
             .paid
             .iter()

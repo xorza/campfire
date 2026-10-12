@@ -90,16 +90,16 @@ impl Targets<'_, '_> {
             .reaches(from, shape, range, target.pos, target.shape)
     }
 
-    /// Whether `range` from a unit at `from` of body `shape` reaches the point `at`, from the
+    /// Whether `range` from a unit at `from` of body `shape` reaches the point `pos`, from the
     /// edge of its body, exactly.
     pub(crate) fn reaches_point(
         &self,
         from: Position,
         shape: Shape,
         range: Num,
-        at: Position,
+        pos: Position,
     ) -> bool {
-        self.metric.reaches(from, shape, range, at, Shape::POINT)
+        self.metric.reaches(from, shape, range, pos, Shape::POINT)
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
@@ -133,7 +133,7 @@ impl Targets<'_, '_> {
                     tags: tags.map_or(TagSet::default(), |tags| tags.tags),
                     targetable: Targets::targetable(Some(life), tags),
                 },
-                at,
+                pos: at,
                 shape: Body::shape_of(body),
             })
     }
@@ -142,7 +142,7 @@ impl Targets<'_, '_> {
     pub(crate) const fn unit_of(body: &Placed<TargetKey>) -> LivingUnit {
         LivingUnit {
             id: body.id,
-            pos: body.at,
+            pos: body.pos,
             team: body.key.team,
             shape: body.shape,
             tags: body.key.tags,

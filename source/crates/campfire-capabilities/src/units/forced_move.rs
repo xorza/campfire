@@ -84,54 +84,54 @@ impl DashDelivery {
 /// unit's place, its body and the unit's apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Goal {
-    pub(crate) at: Vec3,
+    pub(crate) point: Vec3,
     pub(crate) reach: Num,
 }
 
 /// Where a tick of a forced move takes its unit, and whether the move ends there.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Advanced {
-    pub(crate) at: Vec3,
+    pub(crate) point: Vec3,
     pub(crate) ends: bool,
 }
 
 impl ForcedMove {
-    /// One tick of it from `at`, towards `goal`; none for a dash whose unit is gone or dead, which
+    /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead, which
     /// ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
     /// knock back goes its share of the way to its end, and ends on it in its last tick.
-    pub(crate) fn advance(&mut self, at: Vec3, goal: Option<Goal>) -> Advanced {
+    pub(crate) fn advance(&mut self, point: Vec3, goal: Option<Goal>) -> Advanced {
         let Some(goal) = goal else {
-            return Advanced { at, ends: true };
+            return Advanced { point, ends: true };
         };
         match self {
             ForcedMove::Dash { step, .. } => {
-                if at.within(goal.at, goal.reach + *step) {
-                    let gap = (at.distance(goal.at) - goal.reach).max(Num::ZERO);
+                if point.within(goal.point, goal.reach + *step) {
+                    let gap = (point.distance(goal.point) - goal.reach).max(Num::ZERO);
                     return Advanced {
-                        at: at.step_toward(goal.at, gap),
+                        point: point.step_toward(goal.point, gap),
                         ends: true,
                     };
                 }
                 Advanced {
-                    at: at.step_toward(goal.at, *step),
+                    point: point.step_toward(goal.point, *step),
                     ends: false,
                 }
             }
             ForcedMove::KnockBack { left, .. } => {
                 if *left <= 1 {
                     return Advanced {
-                        at: goal.at,
+                        point: goal.point,
                         ends: true,
                     };
                 }
                 let ticks = i64::try_from(*left).expect("a knock back's ticks fit i64");
-                let share = at
-                    .distance(goal.at)
+                let share = point
+                    .distance(goal.point)
                     .checked_div_int(ticks)
                     .expect("a share of a way within the bound fits");
                 *left -= 1;
                 Advanced {
-                    at: at.step_toward(goal.at, share),
+                    point: point.step_toward(goal.point, share),
                     ends: false,
                 }
             }

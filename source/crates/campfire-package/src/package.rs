@@ -47,7 +47,7 @@ impl Package {
     pub(crate) fn read(
         files: &PackageFiles,
         header: &PackageHeader,
-        parser: &ScriptHost,
+        host: &ScriptHost,
         api: &ScriptApi,
     ) -> Result<Package, LoadError> {
         let name = header.name.clone();
@@ -57,7 +57,7 @@ impl Package {
             let source = files
                 .read_text(path)
                 .map_err(|error| fail(LoadProblem::Content(error)))?;
-            let ast = parser.parse(source).map_err(|error| {
+            let ast = host.parse(source).map_err(|error| {
                 fail(LoadProblem::Script {
                     path: path.clone(),
                     problem: ScriptProblem::Compile(error),

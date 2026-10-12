@@ -11,9 +11,11 @@ use campfire_capabilities::{
 use campfire_common::{MapName, StateHash, Tick};
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
-use campfire_runner::ScriptCallFailed;
-use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden, MatchUnits};
-use campfire_sim::{EntityIndex, StableId};
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, FixedSession, Golden, HarnessWorldInternals,
+};
+use campfire_runner::{ScriptCallFailed, SessionWorld};
+use campfire_sim::{SimWorld, StableId};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.
@@ -27,8 +29,8 @@ struct Progress {
 
 impl Progress {
     fn of(fixed: &FixedMatch, hero: StableId) -> Progress {
-        let world = fixed.runner().world();
-        let unit = world.entity(world.resource::<EntityIndex>().get(hero).unwrap());
+        let world = fixed.game();
+        let unit = world.entity_ref_of(hero).unwrap();
         let slots = unit.get::<ActionSlots>().unwrap();
         let track = TrackId::new(0);
         Progress {
@@ -64,8 +66,8 @@ mod scripted_match {
         let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
         let mut golden = Golden::new(session.packages(), session.slots());
         let mut fixed = session.start();
-        let mut copy = CopyCheck::new(fixed.runner_mut());
-        let walker = MatchUnits::of(&fixed).hero(0);
+        let mut copy = CopyCheck::new(fixed.game_mut());
+        let walker = fixed.game().match_units().hero(0);
         // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
         // it as they meet; the west's strike the runner, so the walker alone fells these.
         let mut east = Vec::new();
@@ -88,11 +90,13 @@ mod scripted_match {
                 }
                 _ => {}
             }
-            fixed.runner_mut().run_tick();
-            let state = copy.check(fixed.runner_mut()).total;
-            golden.record(fixed.runner(), state);
+            fixed.game_mut().run_tick_alone();
+            let state = copy.check(fixed.game_mut()).total;
+            golden.record(fixed.game(), state);
             if tick == 0 {
-                east = MatchUnits::of(&fixed)
+                east = fixed
+                    .game()
+                    .match_units()
                     .all()
                     .filter(|(_, unit)| {
                         unit.contains::<PathWalker>() && unit.get::<Team>() == Some(&Team::new(1))
@@ -100,7 +104,7 @@ mod scripted_match {
                     .map(|(id, _)| id)
                     .collect();
             }
-            let world = fixed.runner().world();
+            let world = fixed.game();
             let failures = world.non_send::<ScriptFailures>();
             assert!(
                 failures.get().is_empty(),
@@ -108,7 +112,7 @@ mod scripted_match {
                 failures.get()
             );
             for death in world.resource::<Deaths>().iter() {
-                if east.contains(&death.fallen.unit) {
+                if east.contains(&death.fallen.id) {
                     assert_eq!(death.killer, Some(walker), "tick {tick}");
                     felled.push(tick);
                 }
@@ -190,12 +194,12 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     );
     let mut fixed = session.start();
     for _ in 0..10 {
-        fixed.runner_mut().run_tick();
+        fixed.game_mut().run_tick_alone();
     }
     // The towers, the map's first units, think every ⌈250 ms × 30 / 1000⌉ = 8 ticks, each in the
     // ticks whose remainder by 8 is its stable id: in ticks 0 to 9, 0 and 8 for the west's, id 0,
     // and 1 and 9 for the east's, id 1.
-    let units = MatchUnits::of_world(fixed.runner().world());
+    let units = fixed.game().match_units();
     let [west, east] = [units.spawned_at(-8, -3), units.spawned_at(8, -3)];
     assert_eq!([west.get(), east.get()], [0, 1]);
     let failed = |tick, unit| ScriptCallFailed {
@@ -221,8 +225,8 @@ fn hashes(packages: ModePackages) -> Vec<StateHash> {
     let mut fixed = session.start();
     (0..300)
         .map(|_| {
-            fixed.runner_mut().run_tick();
-            fixed.runner().state_hash()
+            fixed.game_mut().run_tick_alone();
+            fixed.game().state_hash()
         })
         .collect()
 }

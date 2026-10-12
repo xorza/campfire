@@ -52,13 +52,13 @@ impl Declares for Deliveries {
 
 impl Deliveries {
     /// Records the end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit
-    /// stands at `place` after a last step in `direction`: an end with no delivery unit, after
+    /// stands at `pos` after a last step in `direction`: an end with no delivery unit, after
     /// the meters the dash went, whose hooks are its action's.
     pub(crate) fn end_dash(
         &mut self,
         dash: DashDelivery,
         target: Option<StableId>,
-        place: Position,
+        pos: Position,
         direction: Option<Vec3>,
     ) {
         let by = Delivering {
@@ -71,7 +71,7 @@ impl Deliveries {
         let hit = Hit {
             delivery: None,
             target,
-            pos: place,
+            pos,
             distance: dash.dashed,
             direction,
         };

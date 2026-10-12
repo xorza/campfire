@@ -1,7 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{Mut, World};
-use campfire_common::PlayerSlot;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +8,7 @@ use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::stats::modifier_book::ModifierBook;
+use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::modifier_id::ModifierId;
 use crate::values::rank::Rank;
 
@@ -20,12 +19,6 @@ use crate::values::rank::Rank;
 pub(crate) struct PlayerModifiers(Vec<ModifierId>);
 
 impl PlayerModifiers {
-    /// The modifiers player `slot` holds in `world`, to change; none before its entity spawns.
-    pub(crate) fn of_mut(world: &mut World, slot: PlayerSlot) -> Option<Mut<'_, PlayerModifiers>> {
-        let entity = Player::entity(world, slot)?;
-        world.get_mut(entity)
-    }
-
     /// Adds `modifier`, unless it holds it already.
     pub(crate) fn add(&mut self, modifier: ModifierId) {
         if let Err(at) = self.0.binary_search(&modifier) {
@@ -56,7 +49,7 @@ impl SimComponent for PlayerModifiers {
             && self
                 .0
                 .iter()
-                .all(|&modifier| ModifierBook::has_way_in(world, modifier, None, Rank::FIRST))
+                .all(|&modifier| world.modifier_has_way(modifier, None, Rank::FIRST))
     }
 }
 

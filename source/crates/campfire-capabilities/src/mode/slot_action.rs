@@ -6,7 +6,7 @@ use crate::values::rank::Rank;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotAction {
     pub(crate) kind: SlotKind,
-    pub(crate) ability: ActionId,
+    pub(crate) action: ActionId,
     /// Its rank as its unit spawns: its kind's first.
     pub(crate) rank: Option<Rank>,
 }

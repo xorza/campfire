@@ -14,17 +14,19 @@ use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
+use crate::combat::ROLL_STREAM;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_hooks::CombatHooks;
+use crate::combat::combat_world::CombatWorld;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::going_off::GoingOff;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::shots::{Shot, Shots};
 use crate::combat::wielded::Wielded;
-use crate::combat::{Combat, ROLL_STREAM};
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
-use crate::scripts::script_batch::ScriptBatch;
+use crate::players::players_world::PlayersWorldCrate;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::life_pool::LifePool;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::stats::unit_stats::UnitStats;
@@ -156,10 +158,10 @@ impl Attacks {
         };
         let now = world.resource::<SimTick>().start();
         let book = world.resource::<ActionBook>();
-        let life = Combat::life(world);
+        let life = world.life_pool();
         going.clear();
         for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
-            let purse = Purse::of(pools.of(life), PlayerResources::of(world, owner));
+            let purse = Purse::of(pools.of(life), world.owner_resources(owner));
             if let Some(target) = Self::going_off(slots, now)
                 && Self::wielded(book, slots).strikes(tags, forced, purse)
             {
@@ -168,7 +170,7 @@ impl Attacks {
         }
         going.sort_unstable();
         if !going.is_empty() {
-            ScriptBatch::run(world, |batch| {
+            world.script_batch(|batch| {
                 for &GoingOff { attacker, target } in &*going {
                     events.call(batch, CombatEvent::Attack { attacker, target });
                 }
@@ -298,7 +300,7 @@ impl Attacks {
                     amount,
                     kind: weapon.kind,
                     cause: DamageCause::Attack { roll, rank },
-                    ability: Some(action),
+                    action: Some(action),
                     depth: 0,
                     hit: None,
                 }),

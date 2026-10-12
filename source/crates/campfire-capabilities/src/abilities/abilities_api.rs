@@ -3,23 +3,22 @@ use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::{Capability, Position};
 
 use crate::abilities::abilities_effect::AbilitiesEffect;
+use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_range::ActionRange;
 use crate::actions::actions_column::ActionsColumn;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
-use crate::units::action_id::ActionId;
-use crate::units::unit::Unit;
-
-use crate::actions::action_data_field::ActionDataField;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::tag_property::TagProperty;
+use crate::units::unit::Unit;
 
 /// The script API of `abilities`: the values of a cast that design 08 plans, and the
 /// bookkeeping of cooldowns and charges.
@@ -128,7 +127,7 @@ impl AbilitiesApi {
         let action = AbilitiesApi::held(ctx, unit, id)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
-            unit: unit.id,
+            id: unit.id,
             action,
             cut,
         })
@@ -164,7 +163,7 @@ impl AbilitiesApi {
             return Err(ApiError::NotAFraction.fail().into());
         }
         ctx.queue(AbilitiesEffect::ReduceCooldowns {
-            unit: unit.id,
+            id: unit.id,
             kind,
             fraction,
         })

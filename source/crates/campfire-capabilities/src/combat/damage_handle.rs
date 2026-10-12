@@ -73,7 +73,7 @@ impl DamageHandle {
                     "ability",
                     "the action that dealt it: an ability, or an attack's weapon; `()` for none",
                 ),
-                |d: &mut DamageHandle| d.view.ability_value(d.damage.ability),
+                |d: &mut DamageHandle| d.view.ability_value(d.damage.action),
             );
     }
 }

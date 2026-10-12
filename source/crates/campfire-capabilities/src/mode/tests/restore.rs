@@ -1,8 +1,11 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::world::Mut;
+use campfire_common::Tick;
 use campfire_sim::{HostRule, SnapshotError, StateDelta};
 
 use super::*;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
+use crate::navigation::on_path::OnPath;
 use crate::orders::next_think::NextThink;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::stats::instance::StackEnd;
@@ -13,65 +16,64 @@ use crate::units::unit_state::{SyncOwner, SyncTeam, UnitState};
 /// names what the match lacks or has another shape than the mode's.
 #[test]
 fn a_restore_check_refuses_what_the_match_lacks() {
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity(2);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let grunt = game.entity_by_id(2);
     // The grunt holds strike, as a unit holds the times of the slots it holds.
-    let strike = game.sim.world.resource::<ActionBook>().named(0, "strike");
+    let strike = game.resource::<ActionBook>().named(0, "strike");
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
-    game.sim.world.entity_mut(grunt).insert(strike.timed());
-    let world = &game.sim.world;
+    game.entity_mut(grunt).insert(strike.timed());
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
-    assert!(Team::new(2).check(world, grunt) && !Team::new(3).check(world, grunt));
+    assert!(Team::new(2).check(&game, grunt) && !Team::new(3).check(&game, grunt));
     let owner = |slot| Owner::new(PlayerSlot::new(slot));
-    assert!(owner(2).check(world, grunt) && !owner(3).check(world, grunt));
-    let own_type = *world.get::<UnitType>(grunt).unwrap();
-    assert!(own_type.check(world, grunt) && !UnitType::new(u16::MAX).check(world, grunt));
+    assert!(owner(2).check(&game, grunt) && !owner(3).check(&game, grunt));
+    let own_type = *game.get::<UnitType>(grunt).unwrap();
+    assert!(own_type.check(&game, grunt) && !UnitType::new(u16::MAX).check(&game, grunt));
     // The map has one path, 0.
     let on_path = |path| OnPath::new(PathId::new(path));
-    assert!(on_path(0).check(world, grunt) && !on_path(1).check(world, grunt));
+    assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
 
     // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
-    let choices = world.resource::<Choices>().clone();
-    assert!(choices.check(world));
-    assert!(!Choices(vec![None; 3]).check(world));
+    let choices = game.resource::<Choices>().clone();
+    assert!(choices.check(&game));
+    assert!(!Choices(vec![None; 3]).check(&game));
     let mut past = choices.clone();
     past.0[0] = Some(Offer::new(99));
-    assert!(!past.check(world));
+    assert!(!past.check(&game));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
-    let owner_state = world.get::<UnitState<SyncOwner>>(grunt).unwrap();
-    let all_state = world.get::<UnitState<SyncAll>>(grunt).unwrap();
-    assert!(owner_state.check(world, grunt) && all_state.check(world, grunt));
+    let owner_state = game.get::<UnitState<SyncOwner>>(grunt).unwrap();
+    let all_state = game.get::<UnitState<SyncAll>>(grunt).unwrap();
+    assert!(owner_state.check(&game, grunt) && all_state.check(&game, grunt));
     let int = || vec![StateValue::Int(0)];
     let text = || vec![StateValue::Text(String::new())];
-    assert!(!UnitState::<SyncOwner>::new(vec![]).check(world, grunt));
-    assert!(!UnitState::<SyncOwner>::new(text()).check(world, grunt));
-    assert!(!UnitState::<SyncOwner>::new([int(), text()].concat()).check(world, grunt));
-    assert!(!UnitState::<SyncAll>::new(int()).check(world, grunt));
-    assert!(!UnitState::<SyncTeam>::new(int()).check(world, grunt));
+    assert!(!UnitState::<SyncOwner>::new(vec![]).check(&game, grunt));
+    assert!(!UnitState::<SyncOwner>::new(text()).check(&game, grunt));
+    assert!(!UnitState::<SyncOwner>::new([int(), text()].concat()).check(&game, grunt));
+    assert!(!UnitState::<SyncAll>::new(int()).check(&game, grunt));
+    assert!(!UnitState::<SyncTeam>::new(int()).check(&game, grunt));
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
-    let book = world.resource::<ActionBook>();
+    let book = game.resource::<ActionBook>();
     let strike = book.named(0, "strike").unwrap();
     let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
-    assert!(slots(strike, 0).check(world, grunt) && slots(strike, 1).check(world, grunt));
-    assert!(!slots(strike, u8::MAX).check(world, grunt));
-    assert!(!slots(ActionId::new(u32::MAX), 1).check(world, grunt));
+    assert!(slots(strike, 0).check(&game, grunt) && slots(strike, 1).check(&game, grunt));
+    assert!(!slots(strike, u8::MAX).check(&game, grunt));
+    assert!(!slots(ActionId::new(u32::MAX), 1).check(&game, grunt));
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
-    assert!(!ordered.check(world, grunt));
+    assert!(!ordered.check(&game, grunt));
     // Times of each slot the grunt has, one; a charge only on an action with them, which strike
     // is not.
-    let times = world.get::<SlotTimes>(grunt).unwrap();
-    assert!(times.check(world, grunt));
+    let times = game.get::<SlotTimes>(grunt).unwrap();
+    assert!(times.check(&game, grunt));
     let mut charged = times.clone();
     let one = SlotCharges {
         count: 1,
         next: Tick::ZERO,
     };
     charged.set_charges(0, Some(one));
-    assert!(!charged.check(world, grunt));
+    assert!(!charged.check(&game, grunt));
     let none = SlotTimes::ready(&ActionSlots::new([]));
-    assert!(!none.check(world, grunt));
+    assert!(!none.check(&game, grunt));
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,
@@ -81,58 +83,57 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     };
     queue.push(queued, &[], Tick::new(0));
     assert!(
-        !queue.check(world, grunt),
+        !queue.check(&game, grunt),
         "a cast is no train, and a grunt trains none"
     );
 
     // Tracks: the mode has two, 0 and 1.
     let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track)]), None);
-    assert!(on_tracks(1).check(world, grunt) && !on_tracks(2).check(world, grunt));
+    assert!(on_tracks(1).check(&game, grunt) && !on_tracks(2).check(&game, grunt));
     // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
     // refused, one that holds none passes.
     let level_track = |own: bool| {
         let track = TrackId::new(0);
         Experience::new(TrackSet::of([track]), (!own).then_some(track))
     };
-    assert!(level_track(false).check(world, grunt) && !level_track(true).check(world, grunt));
-    let unit = *world.get::<StableId>(grunt).unwrap();
+    assert!(level_track(false).check(&game, grunt) && !level_track(true).check(&game, grunt));
+    let id = *game.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
-        unit,
+        id,
         track: TrackId::new(track),
         level: Level::new(2).unwrap(),
     };
-    assert!(LevelUps(vec![level_up(1)].into()).check(world));
-    assert!(!LevelUps(vec![level_up(2)].into()).check(world));
+    assert!(LevelUps(vec![level_up(1)].into()).check(&game));
+    assert!(!LevelUps(vec![level_up(2)].into()).check(&game));
 
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
-    let route = game.sim.world.get::<Route>(grunt).unwrap().clone();
-    assert!(route.check(&game.sim.world, grunt));
+    let route = game.get::<Route>(grunt).unwrap().clone();
+    assert!(route.check(&game, grunt));
     let wide = Body::new(Num::int(3)).unwrap();
-    game.sim.world.entity_mut(grunt).insert(wide);
-    assert!(!route.check(&game.sim.world, grunt));
-    assert!(!Destination::default().check(&game.sim.world, grunt));
+    game.entity_mut(grunt).insert(wide);
+    assert!(!route.check(&game, grunt));
+    assert!(!Destination::default().check(&game, grunt));
 }
 
 /// The match's and the players' entities stand at their named ids, and each state type on them
 /// keeps to its entity and to the mode's shape.
 #[test]
 fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
-    let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity(2);
-    let world = &game.sim.world;
+    let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let grunt = game.entity_by_id(2);
     // The match's entity and each player's stand at their named ids, of a player the session
     // has; a unit stands at an allocated id.
-    let match_entity = MatchEntity::entity(world).unwrap();
-    let first = Player::entity(world, PlayerSlot::new(0)).unwrap();
+    let match_entity = game.match_entity().unwrap();
+    let first = game.player_entity(PlayerSlot::new(0)).unwrap();
     let player = |slot| Player::new(PlayerSlot::new(slot));
-    assert!(MatchEntity.check(world, match_entity) && !MatchEntity.check(world, first));
-    assert!(player(0).check(world, first) && !player(1).check(world, first));
-    assert!(!player(0).check(world, grunt));
-    assert!(UnitEntity.check(world, grunt) && !UnitEntity.check(world, first));
+    assert!(MatchEntity.check(&game, match_entity) && !MatchEntity.check(&game, first));
+    assert!(player(0).check(&game, first) && !player(1).check(&game, first));
+    assert!(!player(0).check(&game, grunt));
+    assert!(UnitEntity.check(&game, grunt) && !UnitEntity.check(&game, first));
     // Each state type sits on its kind of entity: the match's parts on its entity, a player's on
     // a player's, a unit's on a unit, and a team on a unit or a player's entity.
     let on = |hosted: fn(&World, Entity) -> bool| {
-        [match_entity, first, grunt].map(|entity| hosted(world, entity))
+        [match_entity, first, grunt].map(|entity| hosted(&game, entity))
     };
     assert_eq!(on(hosts::<Relations>), [true, false, false]);
     assert_eq!(on(hosts::<MatchEnd>), [true, false, false]);
@@ -144,30 +145,30 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     // The relations and the match's end, on the match's entity, of the mode's teams.
     let mut relations = Relations::default();
     relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
-    assert!(relations.check(world, match_entity));
+    assert!(relations.check(&game, match_entity));
     relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
-    assert!(!relations.check(world, match_entity));
+    assert!(!relations.check(&game, match_entity));
     let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
-    assert!(ended(1).check(world, match_entity) && !ended(3).check(world, match_entity));
+    assert!(ended(1).check(&game, match_entity) && !ended(3).check(&game, match_entity));
     // The mode's state, on the match's entity, each class its fields of their types in the order
     // of their names: `kind`, a text, and `seen`, an integer, kept on the server; the rest sent
     // to all, `count`, an integer, first.
-    let none = world.get::<ModeState<SyncNone>>(match_entity).unwrap();
-    let all = world.get::<ModeState<SyncAll>>(match_entity).unwrap();
-    assert!(none.check(world, match_entity) && all.check(world, match_entity));
+    let none = game.get::<ModeState<SyncNone>>(match_entity).unwrap();
+    let all = game.get::<ModeState<SyncAll>>(match_entity).unwrap();
+    assert!(none.check(&game, match_entity) && all.check(&game, match_entity));
     let text = StateValue::Text(String::new());
     assert_eq!(none.values(), [text, StateValue::Int(0)]);
     let class = |values: &[StateValue]| {
-        ModeState::<SyncAll>::new(values.to_vec()).check(world, match_entity)
+        ModeState::<SyncAll>::new(values.to_vec()).check(&game, match_entity)
     };
     assert!(!class(&all.values()[1..]) && !class(none.values()));
     let mut retyped = all.values().to_vec();
     retyped[0] = StateValue::Bool(true);
     assert!(!class(&retyped));
     // A player's resources: one of each of the mode's resources, on the player's entity.
-    let held = world.get::<PlayerResources>(first).unwrap();
-    assert!(held.check(world, first));
-    assert!(!PlayerResources::new(RESOURCES.len() + 1).check(world, first));
+    let held = game.get::<PlayerResources>(first).unwrap();
+    assert!(held.check(&game, first));
+    assert!(!PlayerResources::new(RESOURCES.len() + 1).check(&game, first));
 }
 
 /// A snapshot of a match that lacks a part its start spawned fails its restore, by the type whose
@@ -175,18 +176,18 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
 #[test]
 fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
     assert_eq!(
-        refused_snapshot(&Game::new(SCRIPT, ScriptLimits::ROOMY)),
+        refused_snapshot(&mode_match(SCRIPT, ScriptLimits::ROOMY)),
         None
     );
     // Each case breaks the match and names the error that refuses it.
     let cases: [fn(&mut World) -> SnapshotError; 12] = [
         |world| {
-            let entity = MatchEntity::entity(world).unwrap();
+            let entity = world.match_entity().unwrap();
             world.entity_mut(entity).remove::<Relations>();
             lacks(MatchEntity::NAME, Relations::NAME, StableId::MATCH)
         },
         |world| {
-            let entity = MatchEntity::entity(world).unwrap();
+            let entity = world.match_entity().unwrap();
             world.entity_mut(entity).remove::<ModeState<SyncAll>>();
             lacks(
                 MatchEntity::NAME,
@@ -196,18 +197,18 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         },
         // A seat the session has with no player's entity is a breach of the whole match.
         |world| {
-            let entity = Player::entity(world, PlayerSlot::new(2)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(2)).unwrap();
             world.despawn(entity);
             invalid(Player::NAME, None)
         },
         |world| {
-            let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerResources>();
             let id = StableId::of_player(PlayerSlot::new(0));
             lacks(Player::NAME, PlayerResources::NAME, id)
         },
         |world| {
-            let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
             world.entity_mut(entity).remove::<PlayerModifiers>();
             let id = StableId::of_player(PlayerSlot::new(0));
             lacks(Player::NAME, PlayerModifiers::NAME, id)
@@ -238,7 +239,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         |world| {
             let unit = first::<Life>(world);
             let life = world.entity_mut(unit).take::<Life>().unwrap();
-            let entity = MatchEntity::entity(world).unwrap();
+            let entity = world.match_entity().unwrap();
             world.entity_mut(entity).insert(life);
             SnapshotError::WrongHost {
                 ty: Life::NAME,
@@ -254,16 +255,16 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         },
         // A player's entity takes a unit's kind and place.
         |world| {
-            let entity = Player::entity(world, PlayerSlot::new(0)).unwrap();
-            let place = Position::new(Vec3::ZERO).unwrap();
-            world.entity_mut(entity).insert((UnitEntity, place));
+            let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
+            let pos = Position::new(Vec3::ZERO).unwrap();
+            world.entity_mut(entity).insert((UnitEntity, pos));
             let id = StableId::of_player(PlayerSlot::new(0));
             invalid(UnitEntity::NAME, Some(id))
         },
     ];
     for strip in cases {
-        let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-        let expected = strip(&mut game.sim.world);
+        let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+        let expected = strip(&mut game);
         assert_eq!(refused_snapshot(&game), Some(expected));
     }
 }
@@ -273,25 +274,24 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
 /// tick past it.
 #[test]
 fn a_restore_keeps_each_time_within_the_limit() {
-    let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    let grunt = game.entity(2);
-    let world = &game.sim.world;
-    let unit = *world.get::<StableId>(grunt).unwrap();
+    let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let grunt = game.entity_by_id(2);
+    let unit = *game.get::<StableId>(grunt).unwrap();
     let past = Tick::new(Tick::LIMIT.get() + 1);
     for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
-        assert_eq!(TestMatch::decodes(&NextThink::new(at)), holds, "{at}");
-        assert_eq!(TestMatch::decodes(&Respawn { at }), holds, "{at}");
+        assert_eq!(Match::decodes(&NextThink::new(at)), holds, "{at}");
+        assert_eq!(Match::decodes(&Respawn { at }), holds, "{at}");
         assert_eq!(
-            TestMatch::decodes(&MatchEnd::new(at, MatchResult::Draw)),
+            Match::decodes(&MatchEnd::new(at, MatchResult::Draw)),
             holds,
             "{at}"
         );
         let mut attackers = RecentAttackers::default();
-        attackers.record(unit, at, world.resource::<EntityIndex>());
-        assert_eq!(TestMatch::decodes(&attackers), holds, "{at}");
-        let mut route = world.get::<Route>(grunt).unwrap().clone();
-        route.ask(*world.get::<Position>(grunt).unwrap(), at, None);
-        assert_eq!(TestMatch::decodes(&route), holds, "{at}");
+        attackers.record(unit, at, game.resource::<EntityIndex>());
+        assert_eq!(Match::decodes(&attackers), holds, "{at}");
+        let mut route = game.get::<Route>(grunt).unwrap().clone();
+        route.ask(*game.get::<Position>(grunt).unwrap(), at, None);
+        assert_eq!(Match::decodes(&route), holds, "{at}");
     }
 }
 
@@ -299,19 +299,17 @@ fn a_restore_keeps_each_time_within_the_limit() {
 /// match's own through, and refuse one the book lacks or of another shape.
 #[test]
 fn a_restore_check_refuses_modifiers_the_book_lacks() {
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
-    let fighter = game.fighter(0, &[("armor", Num::int(1))]);
-    let fighter = game.entity(fighter.get());
-    let world = &game.sim.world;
-    let modifiers = world.get::<Modifiers>(fighter).unwrap();
-    assert!(modifiers.check(world, fighter));
+    let fighter = game.stat_grunt(0, &[("armor", Num::int(1))]);
+    let fighter = game.entity_by_id(fighter.get());
+    let modifiers = game.get::<Modifiers>(fighter).unwrap();
+    assert!(modifiers.check(&game, fighter));
     assert!(
-        world
-            .get::<ModifierClocks>(fighter)
+        game.get::<ModifierClocks>(fighter)
             .unwrap()
-            .check(world, fighter)
+            .check(&game, fighter)
     );
     let modifier = modifiers.iter().next().unwrap().id;
     let one = StatShare {
@@ -338,14 +336,14 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         clocks
     };
     let unknown = ModifierId::new(u16::MAX);
-    assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(world, fighter));
+    assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(&game, fighter));
     // Rally reads its action's `ward`, which an instance of it from no action lacks; its next
     // application would fail.
-    let rally = Stats::modifier(world, 0, "rally").unwrap();
-    assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(world, fighter));
-    assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(world, fighter));
+    let rally = game.modifier_named(0, "rally").unwrap();
+    assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(&game, fighter));
+    assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(&game, fighter));
     let state = vec![StateValue::Bool(true)];
-    assert!(!clocks_of(applied(modifier, vec![one], state)).check(world, fighter));
+    assert!(!clocks_of(applied(modifier, vec![one], state)).check(&game, fighter));
     // Its end, and its stacks' life and end, are at most the limit, so no sum of two overflows:
     // each restores there, and fails to decode a tick past it.
     let past = Tick::new(Tick::LIMIT.get() + 1);
@@ -374,23 +372,25 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     for (case, (application, holds)) in cases.into_iter().enumerate() {
         let modifiers = modifiers_of(application);
         assert_eq!(
-            TestMatch::decodes(&modifiers) && modifiers.check(world, fighter),
+            Match::decodes(&modifiers) && modifiers.check(&game, fighter),
             holds,
             "case {case}"
         );
     }
     // A player's modifiers: on its entity, each of the book, and none that reads an action's
     // param.
-    let player = Player::entity(world, PlayerSlot::new(0)).unwrap();
+    let player = game.player_entity(PlayerSlot::new(0)).unwrap();
     let mut held = PlayerModifiers::default();
     held.add(ModifierId::new(0));
     let hosted = <PlayerModifiers as SimComponent>::Host::holds;
-    assert!(held.check(world, player) && hosted(world, player) && !hosted(world, game.entity(0)));
+    assert!(
+        held.check(&game, player) && hosted(&game, player) && !hosted(&game, game.entity_by_id(0))
+    );
     held.add(ModifierId::new(u16::MAX));
-    assert!(!held.check(world, player));
+    assert!(!held.check(&game, player));
     let mut rallied = PlayerModifiers::default();
     rallied.add(rally);
-    assert!(!rallied.check(world, player));
+    assert!(!rallied.check(&game, player));
 }
 
 #[test]
@@ -412,20 +412,18 @@ fn on_timer(ctx, name, data) {
 
 fn on_unit_died(ctx, unit, killer, assisters) {}
 "#;
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
-    game.tick(&[]);
-    game.tick(&[]);
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    game.tick_inputs(&[]);
+    game.tick_inputs(&[]);
     let mut delta = StateDelta::default();
-    let TestMatch {
-        world, registry, ..
-    } = &mut game.sim;
-    registry.track(world, &mut delta);
-    game.tick(&[]);
-    let TestMatch {
-        world, registry, ..
-    } = &mut game.sim;
-    registry.changes(world, &mut delta);
-    let changed = registry.changed_types(world, &delta);
+    game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+        registry.track(world, &mut delta);
+    });
+    game.tick_inputs(&[]);
+    let changed = game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+        registry.changes(world, &mut delta);
+        registry.changed_types(world, &delta)
+    });
     assert_eq!(changed, ["mode.timers", "sim.tick"]);
 }
 
@@ -441,19 +439,16 @@ fn first<C: Component>(world: &mut World) -> Entity {
 }
 
 /// How a fresh match of the script refuses the snapshot of `game`; none when it restores.
-fn refused_snapshot(game: &Game) -> Option<SnapshotError> {
+fn refused_snapshot(game: &Match) -> Option<SnapshotError> {
     let mut snapshot = Vec::new();
-    game.sim.registry.snapshot(&game.sim.world, &mut snapshot);
-    let mut fresh = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    let index = fresh.sim.world.resource::<EntityIndex>();
+    game.snapshot(&mut snapshot);
+    let mut fresh = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let index = fresh.resource::<EntityIndex>();
     let held: Vec<Entity> = index.iter().map(|(_, entity)| entity).collect();
     for entity in held {
-        fresh.sim.world.despawn(entity);
+        fresh.despawn(entity);
     }
-    game.sim
-        .registry
-        .restore(&snapshot, &mut fresh.sim.world)
-        .err()
+    fresh.restore(&snapshot).err()
 }
 
 /// The stable id of `entity`.

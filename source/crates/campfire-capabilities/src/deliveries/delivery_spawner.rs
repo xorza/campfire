@@ -36,7 +36,7 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 }
 
 impl DeliverySpawner<'_, '_> {
-    /// Spawns a unit of `unit_type` at `at` with what `make` gives for its stable id, `id`, which
+    /// Spawns a unit of `unit_type` at `pos` with what `make` gives for its stable id, `id`, which
     /// a script took for it, or else a new one, of `source`'s team and player, with its type's
     /// tags, its sight if its type has one, and its script state at their defaults but what the
     /// script wrote, and gives its id;
@@ -44,7 +44,7 @@ impl DeliverySpawner<'_, '_> {
     pub(crate) fn spawn<B: Bundle>(
         &mut self,
         source: StableId,
-        at: Position,
+        pos: Position,
         unit_type: UnitType,
         id: Option<StableId>,
         make: impl FnOnce(StableId) -> B,
@@ -56,7 +56,7 @@ impl DeliverySpawner<'_, '_> {
         let id = id.unwrap_or_else(|| self.ids.allocate());
         let core = UnitCore {
             id,
-            pos: at,
+            pos,
             unit_type,
             team,
             owner: owner.copied(),

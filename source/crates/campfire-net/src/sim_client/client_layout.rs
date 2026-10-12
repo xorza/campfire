@@ -20,9 +20,9 @@ impl ClientLayout {
         self.root.join("receipts")
     }
 
-    /// The newest receipt of the session `session`.
-    pub(crate) fn receipt_file(&self, session: SessionId) -> PathBuf {
-        self.receipts_dir().join(format!("{session}.receipt"))
+    /// The newest receipt of the session of `session_id`.
+    pub(crate) fn receipt_file(&self, session_id: SessionId) -> PathBuf {
+        self.receipts_dir().join(format!("{session_id}.receipt"))
     }
 
     /// The data directory of the client's local server.

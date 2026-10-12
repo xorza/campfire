@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use campfire_capabilities::Match;
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
@@ -13,7 +14,7 @@ use campfire_protocol::{
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::input_rules::InputRules;
-use crate::runner::Runner;
+use crate::session::session_match::SessionMatch;
 use crate::session_rules::SessionRules;
 
 /// A session of a mode's packages for tests and checks, whose server and players hold fixed keys:
@@ -114,12 +115,12 @@ impl FixedSession {
 
     /// A match at tick 0, its players joined, none of their inputs sent yet.
     pub fn start(&self) -> FixedMatch {
-        let check = LogCheck::start();
+        let log = LogCheck::start();
         let chains = (0..self.slots())
             .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
-        let runner = Runner::new(self.log(), FixedSession::seeds(), &self.packages).unwrap();
-        FixedMatch::new(runner, chains, self.terms.clone(), check)
+        let game = Match::start_session(self.log(), FixedSession::seeds(), &self.packages).unwrap();
+        FixedMatch::new(game, chains, self.terms.clone(), log)
     }
 
     /// The server's signature of `input` at `place` in the session of `session_id`.

@@ -50,9 +50,9 @@ fn units(app: &App, team: u8, walks: bool) -> Vec<Entity> {
         .collect()
 }
 
-/// The life of `unit`.
-fn health(app: &App, unit: Entity) -> Num {
-    app.world().get::<Life>(unit).unwrap().current()
+/// The life of `entity`.
+fn health(app: &App, entity: Entity) -> Num {
+    app.world().get::<Life>(entity).unwrap().current()
 }
 
 /// 30 s between waves at 30 ticks a second.

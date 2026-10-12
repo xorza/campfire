@@ -99,8 +99,8 @@ impl Broadphase {
                 let place = Place {
                     layer: collider.layer,
                     level,
-                    row: levels.index(level, collider.at.z.to_bits()),
-                    column: levels.index(level, collider.at.x.to_bits()),
+                    row: levels.index(level, collider.point.z.to_bits()),
+                    column: levels.index(level, collider.point.x.to_bits()),
                 };
                 Entry { place, index }
             }));
@@ -153,7 +153,7 @@ impl Broadphase {
             Broadphase::across(colliders, coarser, &self.entries, cell, &mut self.contacts);
         }
         for (index, collider) in walkers {
-            statics.near(collider.layer, collider.at, collider.radius(), |body| {
+            statics.near(collider.layer, collider.point, collider.radius(), |body| {
                 let other = colliders
                     .binary_search_by_key(&body.id, |collider| collider.id)
                     .expect("a static body of the index is among the colliders");
@@ -279,7 +279,7 @@ pub(crate) mod internals {
                 Collider {
                     id: ids.allocate(),
                     entity: world.spawn_empty().id(),
-                    at,
+                    point: at,
                     shape,
                     layer,
                     movable,
@@ -309,7 +309,7 @@ pub(crate) mod internals {
             .filter(|collider| !collider.movable)
             .map(|collider| IndexedBody {
                 id: collider.id,
-                at: Position::new(collider.at).unwrap(),
+                pos: Position::new(collider.point).unwrap(),
                 shape: collider.shape,
                 layer: collider.layer,
             })
@@ -425,7 +425,7 @@ mod tests {
             for collider in colliders.iter_mut().filter(|collider| collider.movable) {
                 collider.shape = Shape::Circle(walker);
             }
-            colliders[0].at = Vec3::ZERO;
+            colliders[0].point = Vec3::ZERO;
             colliders[0].shape = Shape::Circle(Num::from_int(64).unwrap());
             colliders[0].movable = false;
             colliders[0].walking = false;

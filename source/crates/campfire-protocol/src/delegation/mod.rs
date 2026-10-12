@@ -110,16 +110,16 @@ impl Delegation {
         if event.kind != Kind::from_u16(KIND) {
             return Err(DelegationError::WrongKind);
         }
-        let bytes = |name: DelegationTag| -> Result<[u8; 32], DelegationError> {
-            let parsed = tag(&event, name)?.parse::<Bytes32>().ok();
+        let bytes = |delegation_tag: DelegationTag| -> Result<[u8; 32], DelegationError> {
+            let parsed = tag(&event, delegation_tag)?.parse::<Bytes32>().ok();
             parsed
                 .map(Bytes32::get)
-                .ok_or(DelegationError::MalformedTag(name))
+                .ok_or(DelegationError::MalformedTag(delegation_tag))
         };
-        let key = |name: DelegationTag| {
-            XOnlyPublicKey::from_byte_array(&bytes(name)?)
+        let key = |delegation_tag: DelegationTag| {
+            XOnlyPublicKey::from_byte_array(&bytes(delegation_tag)?)
                 .ok()
-                .ok_or(DelegationError::MalformedTag(name))
+                .ok_or(DelegationError::MalformedTag(delegation_tag))
         };
         let session_key = key(DelegationTag::SessionKey)?;
         let server_key = key(DelegationTag::ServerKey)?;

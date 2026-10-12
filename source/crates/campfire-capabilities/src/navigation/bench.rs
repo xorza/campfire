@@ -54,7 +54,7 @@ pub(crate) fn collision(c: &mut Criterion) {
         if bridged {
             let sides = [Num::int(1117), Num::int(100)];
             let edge = Num::int(i64::try_from(span).unwrap() + 52);
-            bodies[0].at = Vec3::new(Num::ZERO, Num::ZERO, -edge);
+            bodies[0].point = Vec3::new(Num::ZERO, Num::ZERO, -edge);
             bodies[0].shape = Shape::Box(BodyBox::new(sides, Num::ZERO).unwrap());
             bodies[0].movable = false;
             bodies[0].walking = false;
@@ -226,7 +226,7 @@ impl GroupScene<'_> {
             .map(|&at| Member {
                 id: ids.allocate(),
                 entity: Entity::PLACEHOLDER,
-                at,
+                pos: at,
                 walker: self.walker,
                 goal,
             })
@@ -241,7 +241,7 @@ impl GroupScene<'_> {
                 while let [first, rest @ ..] = left {
                     planner.begin_tick();
                     if rest.is_empty() {
-                        planner.plan(walkable, first.at, first.goal, &mut waypoints);
+                        planner.plan(walkable, first.pos, first.goal, &mut waypoints);
                         black_box(&waypoints);
                         break;
                     }

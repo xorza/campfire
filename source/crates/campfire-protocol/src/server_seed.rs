@@ -22,14 +22,14 @@ impl ServerSeed {
         self.0.as_bytes()
     }
 
-    /// Whether this is segment `segment`'s seed of the chain `commitment` commits to: `segment + 1`
+    /// Whether this is segment `segment`'s seed of the chain `seed_commitment` commits to: `segment + 1`
     /// links lead from it to the commitment.
-    pub fn check(&self, segment: u32, commitment: &SeedCommitment) -> bool {
+    pub fn check(&self, segment: u32, seed_commitment: &SeedCommitment) -> bool {
         let mut seed = *self;
         for _ in 0..segment {
             seed = seed.earlier();
         }
-        seed.commitment() == *commitment
+        seed.commitment() == *seed_commitment
     }
 
     /// `C(s_k) = s_(k−1)`, where `C(x) = BLAKE3(domain ‖ x)`.

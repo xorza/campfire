@@ -24,6 +24,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_package::{
     ClassTexture, ContentError, GameData, ModePackages, PackageReader, Terrain, TerrainAtlas,
 };
+use campfire_runner::SessionWorld;
 use campfire_runner::internals::FixedSession;
 use campfire_store::DurableFile;
 use tracing::{error, info};
@@ -82,10 +83,10 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     let dir = root.join(format!("run-{}", since.as_millis()));
     DurableFile::create_new_dir(&dir).map_err(CheckError::RunDir)?;
     let out = dir.join("packages");
-    let game = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
-    let imported = game.write(&out).map_err(CheckError::Import)?;
+    let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
+    let imported = zero_hour.write(&out).map_err(CheckError::Import)?;
     info!(
-        version = game.version().name,
+        version = zero_hour.version().name,
         fingerprint = %imported.fingerprint,
         rules = %imported.rules,
         packages = %out.display(),
@@ -140,7 +141,7 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     // ends before the check logs again.
     let tick = {
         let mut fixed = FixedSession::new(packages, rate, 1).start();
-        fixed.runner_mut().run_tick();
+        fixed.game_mut().run_tick_alone();
         fixed.end().tick
     };
     info!(%tick, "Tournament Desert played a tick");
@@ -162,7 +163,7 @@ fn untextured(files: &PackageReader) -> Result<usize, CheckError> {
             error: error.utf8_error(),
         })
     })?;
-    let game = Toml::parse::<GameData>(&text)
+    let game_data = Toml::parse::<GameData>(&text)
         .map_err(|error| CheckError::Read(ContentError::Data { path, error }))?;
     let parts = terrain.parts();
     let mut textures = Vec::new();
@@ -188,7 +189,7 @@ fn untextured(files: &PackageReader) -> Result<usize, CheckError> {
     Ok(drawn
         .filter(|&at| {
             let cell = &parts.cells[at];
-            let extra = blend(cell.extra_blend).filter(|_| game.three_way_blends);
+            let extra = blend(cell.extra_blend).filter(|_| game_data.three_way_blends);
             [Some(cell.tile), blend(cell.blend), extra]
                 .into_iter()
                 .flatten()

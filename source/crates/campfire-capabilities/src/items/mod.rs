@@ -23,6 +23,7 @@ pub(crate) mod item_data;
 pub(crate) mod item_holds;
 pub(crate) mod item_id;
 pub(crate) mod items_api;
+pub(crate) mod items_world;
 pub(crate) mod shop;
 pub(crate) mod shop_data;
 

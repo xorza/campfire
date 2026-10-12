@@ -28,9 +28,9 @@ fn the_event_reads_back_what_it_logs() {
 #[test]
 fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
     let mut ids = IdAllocator::default();
-    let [killer, unit] = [ids.allocate(), ids.allocate()];
+    let [killer, id] = [ids.allocate(), ids.allocate()];
     let fallen = Fallen {
-        unit,
+        id,
         team: Some(Team::new(1)),
         owner: Some(PlayerSlot::new(0)),
     };
@@ -43,7 +43,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
         UnitDied::of(Tick::new(7), &death),
         UnitDied {
             tick: Tick::new(7),
-            unit,
+            unit: id,
             team: Some(Team::new(1)),
             owner: Some(PlayerSlot::new(0)),
             killer: Some(killer),

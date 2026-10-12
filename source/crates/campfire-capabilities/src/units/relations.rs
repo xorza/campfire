@@ -2,7 +2,7 @@ use std::array;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -36,25 +36,6 @@ struct RelationPair {
 }
 
 impl Relations {
-    /// The relations of the match in `world`, on its entity, which every match spawns as it
-    /// starts.
-    pub(crate) fn of(world: &World) -> &Relations {
-        Relations::held(world).expect("a match that started holds its relations")
-    }
-
-    /// The relations of the match in `world`, once its entity spawned, or reached a client.
-    pub fn held(world: &World) -> Option<&Relations> {
-        world.get(MatchEntity::entity(world)?)
-    }
-
-    /// The relations of the match in `world`, to change.
-    pub(crate) fn of_mut(world: &mut World) -> Mut<'_, Relations> {
-        let entity = MatchEntity::entity(world).expect("a match that started has its entity");
-        world
-            .get_mut(entity)
-            .expect("the match's entity holds the relations")
-    }
-
     /// How `of` regards `other`, and so `other` regards `of`.
     pub(crate) fn between(&self, of: Team, other: Team) -> Relation {
         if of == other {
@@ -183,21 +164,6 @@ impl<'de> Deserialize<'de> for Relations {
             ));
         }
         Ok(Relations { pairs })
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-
-    use crate::units::relations::Relations;
-    use crate::units::team::Team;
-    use crate::values::relation::Relation;
-
-    /// Sets how the two teams of the match in `world` regard each other, as `ctx.set_relation`
-    /// does, their vision as it was.
-    pub fn set_relation(world: &mut World, of: Team, other: Team, relation: Relation) {
-        Relations::of_mut(world).set_keeping_vision(of, other, relation);
     }
 }
 

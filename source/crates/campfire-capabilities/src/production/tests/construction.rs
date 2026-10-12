@@ -1,18 +1,17 @@
 use campfire_codec::Toml;
-use campfire_sim::{EntityIndex, TickInput, TickInputs};
+use campfire_sim::EntityIndex;
 use serde::Deserialize;
 
 use super::*;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
-use crate::navigation::Navigation;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
-use crate::orders::order::{Action, Order};
+use crate::orders::order::Action;
 use crate::production::build_specs::{BuildSpecs, NewBuild, PlacementCheck, Style};
 use crate::production::build_target::BuildTarget;
-use crate::production::builder::Builder;
 use crate::production::site::Site;
 use crate::stats::life::Life;
 use crate::units::body::Body;
@@ -20,13 +19,12 @@ use crate::units::body_form::BodyForm;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
-use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::team_set::TeamSet;
 use crate::values::relation_set::RelationSet;
 use crate::values::share::Share;
 use crate::vision::seen_by::SeenBy;
-use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_world::test_world::VisionWorldTest;
 
 /// The point at `x` and `z` half meters.
 fn half(x: i64, z: i64) -> Position {
@@ -62,18 +60,6 @@ fn share(text: &str) -> Share {
         .share
 }
 
-/// A match of production and its orders over 1 m cells from (−20, −20) to (20, 20), with its
-/// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
-/// within 1 m, takes 4 ticks and 15 gold, its site starting at 0.1 of its life, a cancel giving
-/// back 0.5. Player 0 holds 100 gold.
-#[derive(Debug)]
-struct Yard {
-    shop: Shop,
-    build: ActionId,
-    gold: ResourceId,
-    player: PlayerSlot,
-}
-
 /// How a yard's build grows and where it places.
 #[derive(Debug, Clone)]
 struct Rules<'a> {
@@ -94,148 +80,60 @@ impl<'a> Rules<'a> {
     }
 }
 
-impl Yard {
-    fn new(rules: Rules<'_>) -> Yard {
-        let mut shop = Shop::ordering();
-        let depot = shop.depot;
-        let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
-        let log = Rc::clone(&shop.spawned);
-        let world = &mut shop.sim.world;
-        world.insert_non_send(Spawner::new(move |world, at, owner| {
-            log.borrow_mut().push(Spawned { at, owner });
-            let mut unit = at.core(owner.map(Owner::new)).spawn(world, ());
-            let entity = unit.id();
-            if at.unit_type == depot {
-                unit.insert((form.at(at.angle), Life::full(Num::int(100))));
-                Navigation::make_room(world, entity);
-            }
-            entity
-        }));
-        let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        world.insert_resource(bounds);
-        let walker = Walker {
-            layer: Layer::FIRST,
-            radius: Num::HALF,
-        };
-        let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(world, grid, &rules.walls, vec![walker]);
-        let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-        let player = PlayerSlot::new(0);
-        MatchEntity::spawn_players(world, 1, 1);
-        PlayerResources::of_mut(world, player)
-            .unwrap()
-            .add(gold, 100)
-            .unwrap();
-        let cost = ResourceAmount {
-            resource: gold,
-            amount: 15,
-        };
-        let build = internals::build(world, depot, Num::ONE, Ticks::new(4), Some(cost));
-        let mut builds = BuildSpecs::default();
-        let new = NewBuild {
-            form,
-            style: rules.style,
-            start_life: Some(share("0.1")),
-            refund: share("0.5"),
-            near: rules.near,
-            away: rules.away,
-        };
-        builds.push(build, new);
-        world.insert_resource(builds);
-        Yard {
-            shop,
-            build,
-            gold,
-            player,
+/// A match of production and its orders over 1 m cells from (−20, −20) to (20, 20), with its
+/// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
+/// within 1 m, takes 4 ticks and 15 gold, its site starting at 0.1 of its life, a cancel giving
+/// back 0.5. Player 0 holds 100 gold.
+fn yard_match(rules: Rules<'_>) -> Match {
+    let mut game = ordering_match();
+    let depot = game.shop().depot;
+    let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
+    game.insert_non_send(Spawner::new(move |world, at, owner| {
+        world
+            .resource_mut::<SpawnLog>()
+            .0
+            .push(Spawned { at, owner });
+        let mut unit = at.core(owner.map(Owner::new)).spawn(world, ());
+        let entity = unit.id();
+        if at.unit_type == depot {
+            unit.insert((form.at(at.angle), Life::full(Num::int(100))));
+            world.make_room(entity);
         }
-    }
-
-    /// A builder of `team`, owned by player `owner`, at `at`, of a half meter, that walks a meter
-    /// a tick, with the build in its slot 0.
-    fn builder(&mut self, at: Position, team: u8, owner: u32) -> StableId {
-        let slots = ActionSlots::new([(self.build, SlotKind::new(0), Rank::new(1))]).timed();
-        let parts = (
-            Owner::new(PlayerSlot::new(owner)),
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            slots,
-            Builder::default(),
-        );
-        self.shop.sim.spawn(at, Team::new(team), parts)
-    }
-
-    /// A walker of `team` at `at`, of a half meter, seen by `seen`, by all when `None`.
-    fn walker(&mut self, at: Position, team: u8, seen: Option<TeamSet>) -> StableId {
-        let parts = (
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-        );
-        let id = self.shop.sim.spawn(at, Team::new(team), parts);
-        if let Some(teams) = seen {
-            self.shop.sim.insert(id, SeenBy::new(teams));
-        }
-        id
-    }
-
-    /// Runs a tick in which player `slot` orders `action` to `unit`.
-    fn order(&mut self, slot: u32, unit: StableId, action: Action) {
-        self.orders(slot, &[(unit, action)]);
-    }
-
-    /// Runs a tick in which player `slot` gives `orders`, each an action to a unit, in order.
-    fn orders(&mut self, slot: u32, orders: &[(StableId, Action)]) {
-        let orders: Vec<Order> = orders
-            .iter()
-            .map(|&(unit, action)| Order::one(unit, action))
-            .collect();
-        let payload = Order::payload(&orders);
-        self.shop
-            .sim
-            .world
-            .resource_mut::<TickInputs>()
-            .push(TickInput {
-                slot: PlayerSlot::new(slot),
-                payload: &payload,
-            });
-        self.shop.sim.step();
-    }
-
-    /// Runs a tick in which player 0 orders `builder` to build its depot at (`x`, `z`).
-    fn build_at(&mut self, builder: StableId, x: i64, z: i64) {
-        self.order(0, builder, at_point(x, z));
-    }
-
-    fn gold(&self) -> i64 {
-        PlayerResources::of_player(&self.shop.sim.world, self.player)
-            .unwrap()
-            .amount(self.gold)
-    }
-
-    /// The depots spawned so far, by stable id.
-    fn depots(&self) -> Vec<StableId> {
-        let spawned = self.shop.spawned.borrow();
-        spawned
-            .iter()
-            .filter(|spawn| spawn.at.unit_type == self.shop.depot)
-            .map(|spawn| spawn.at.id)
-            .collect()
-    }
-
-    /// The depot `id`'s life, and its progress while a site.
-    fn site(&self, id: StableId) -> (Num, Option<Num>) {
-        let sim = &self.shop.sim;
-        let life = sim.get::<Life>(id).current();
-        let progress = sim.try_get::<Site>(id).map(Site::progress);
-        (life, progress)
-    }
-
-    fn order_of(&self, builder: StableId) -> Option<BuildTarget> {
-        self.shop
-            .sim
-            .get::<Builder>(builder)
-            .order()
-            .map(|order| order.target)
-    }
+        entity
+    }));
+    let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
+    game.insert_resource(bounds);
+    let walker = Walker {
+        layer: Layer::FIRST,
+        radius: Num::HALF,
+    };
+    let grid = Grid::new(Num::ONE, bounds).unwrap();
+    game.load_pathing(grid, &rules.walls, vec![walker]);
+    let gold = game.shop().gold;
+    let player = PlayerSlot::new(0);
+    game.spawn_players(1, 1);
+    game.player_resources_mut(player)
+        .unwrap()
+        .add(gold, 100)
+        .unwrap();
+    let cost = ResourceAmount {
+        resource: gold,
+        amount: 15,
+    };
+    let build = game.add_build(depot, Num::ONE, Ticks::new(4), Some(cost));
+    let mut builds = BuildSpecs::default();
+    let new = NewBuild {
+        form,
+        style: rules.style,
+        start_life: Some(share("0.1")),
+        refund: share("0.5"),
+        near: rules.near,
+        away: rules.away,
+    };
+    builds.push(build, new);
+    game.insert_resource(builds);
+    game.insert_resource(Yard { build });
+    game
 }
 
 #[test]
@@ -246,32 +144,31 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     // site at 10 of its 100 life, and ends the order: an `alone` site grows by itself. Its gain
     // is 90 over 4 ticks: 22.5 in each Mode stage, 32.5, 55, 77.5 and 100, which completes it in
     // tick 10.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let builder = yard.builder(half(-20, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let builder = game.builder(half(-20, 0), 0, 0);
+    game.build_at(builder, 0, 0);
     for _ in 1..7 {
-        assert_eq!((yard.depots(), yard.gold()), (vec![], 100));
-        yard.shop.tick();
+        assert_eq!((game.depots(), game.gold()), (vec![], 100));
+        game.step();
     }
     let lives = [65, 110, 155, 200].map(|halves| Num::HALF * halves);
     for (tick, life) in (7..=10).zip(lives) {
-        yard.shop.tick();
-        let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
+        game.step();
+        let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
         if tick == 7 {
             // A restore checks a site's progress against its build's time, 4 ticks: a progress
             // of 4 passes, one a bit past it fails.
-            let site = yard.shop.sim.get::<Site>(depot);
+            let site = game.part::<Site>(depot);
             let mut restored = Site::new(site.action(), site.rank(), Num::ZERO, &[], None);
-            let world = &yard.shop.sim.world;
-            let entity = yard.shop.sim.entity(depot);
+            let entity = game.unit_entity(depot);
             restored.progress_by(Num::int(4), Num::int(8));
-            assert!(restored.check(world, entity));
+            assert!(restored.check(&game, entity));
             restored.progress_by(Num::EPSILON, Num::int(8));
-            assert!(!restored.check(world, entity));
+            assert!(!restored.check(&game, entity));
         }
         let progress = (tick < 10).then(|| Num::int(tick - 6));
-        assert_eq!(yard.site(depot), (life, progress), "tick {tick}");
-        let status = *yard.shop.sim.get::<StatusTags>(depot);
+        assert_eq!(game.site(depot), (life, progress), "tick {tick}");
+        let status = *game.part::<StatusTags>(depot);
         let constructing = StatusTags::of([EngineTag::Constructing]);
         assert_eq!(
             status,
@@ -282,9 +179,9 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
             }
         );
     }
-    assert_eq!(yard.gold(), 85);
-    assert_eq!(yard.order_of(builder), None);
-    assert_eq!(*yard.shop.sim.get::<Position>(builder), half(-6, 0));
+    assert_eq!(game.gold(), 85);
+    assert_eq!(game.order_of(builder), None);
+    assert_eq!(*game.part::<Position>(builder), half(-6, 0));
 }
 
 #[test]
@@ -312,18 +209,18 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
         ),
     ];
     for (style, progress) in cases {
-        let mut yard = Yard::new(Rules::of(style));
-        let first = yard.builder(half(-6, 0), 0, 0);
-        let second = yard.builder(half(6, 0), 0, 0);
-        yard.build_at(first, 0, 0);
-        let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
-        let mut seen = vec![yard.site(depot).1];
-        yard.order(0, second, at_site(depot));
-        seen.push(yard.site(depot).1);
-        let joined = yard.order_of(second);
+        let mut game = yard_match(Rules::of(style));
+        let first = game.builder(half(-6, 0), 0, 0);
+        let second = game.builder(half(6, 0), 0, 0);
+        game.build_at(first, 0, 0);
+        let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
+        let mut seen = vec![game.site(depot).1];
+        game.tick_ordering(0, second, at_site(depot));
+        seen.push(game.site(depot).1);
+        let joined = game.order_of(second);
         for _ in 2..4 {
-            yard.shop.tick();
-            seen.push(yard.site(depot).1);
+            game.step();
+            seen.push(game.site(depot).1);
         }
         assert_eq!(seen, progress, "{style:?}");
         let builds = matches!(style, Style::Builders(_));
@@ -332,8 +229,8 @@ fn each_style_grows_its_site_at_the_rate_of_its_builders_by_tick() {
             builds.then_some(BuildTarget::Site(depot)),
             "{style:?}"
         );
-        assert_eq!(yard.order_of(second), None, "{style:?}");
-        assert_eq!(yard.site(depot).0, Num::int(100), "{style:?}");
+        assert_eq!(game.order_of(second), None, "{style:?}");
+        assert_eq!(game.site(depot).0, Num::int(100), "{style:?}");
     }
 }
 
@@ -342,19 +239,19 @@ fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
     // With a vision grid, the second builder's order to the site the first placed in tick 0 is
     // ignored while no team sees the site, and joins it once team 0 does.
     let rates = [Num::ONE, Num::ONE];
-    let mut yard = Yard::new(Rules::of(Style::Builders(&rates)));
-    let first = yard.builder(half(-6, 0), 0, 0);
-    let second = yard.builder(half(6, 0), 0, 0);
-    yard.build_at(first, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
-    VisionGrid::fog(&mut yard.shop.sim.world, 1);
+    let mut game = yard_match(Rules::of(Style::Builders(&rates)));
+    let first = game.builder(half(-6, 0), 0, 0);
+    let second = game.builder(half(6, 0), 0, 0);
+    game.build_at(first, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
+    game.fog_grid(1);
     for (seers, joined) in [
         (TeamSet::NONE, None),
         (TeamSet::of(Team::new(0)), Some(BuildTarget::Site(depot))),
     ] {
-        yard.shop.sim.insert(depot, SeenBy::new(seers));
-        yard.order(0, second, at_site(depot));
-        assert_eq!(yard.order_of(second), joined, "{seers:?}");
+        game.insert_parts(depot, SeenBy::new(seers));
+        game.tick_ordering(0, second, at_site(depot));
+        assert_eq!(game.order_of(second), joined, "{seers:?}");
     }
 }
 
@@ -365,75 +262,75 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     // ordered back, toward the open cell (−2.5, −0.5) by the box's nearest point, which is on the
     // box; it comes into range as tick 4's move ends, so that tick's Mode stage counts it: 2, 3,
     // then 4, which completes the site in tick 6.
-    let mut yard = Yard::new(Rules::of(Style::Builder));
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
+    let mut game = yard_match(Rules::of(Style::Builder));
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
     let away = Action::Move {
         x: Num::int(-10),
         z: Num::ZERO,
     };
-    yard.order(0, builder, away);
-    assert_eq!(yard.order_of(builder), None);
-    yard.shop.tick();
-    assert_eq!(*yard.shop.sim.get::<Position>(builder), half(-10, 0));
-    yard.order(0, builder, at_site(depot));
+    game.tick_ordering(0, builder, away);
+    assert_eq!(game.order_of(builder), None);
+    game.step();
+    assert_eq!(*game.part::<Position>(builder), half(-10, 0));
+    game.tick_ordering(0, builder, at_site(depot));
     let mut seen = Vec::new();
     for _ in 4..=7 {
-        yard.shop.tick();
-        seen.push(yard.site(depot).1);
+        game.step();
+        seen.push(game.site(depot).1);
     }
     let one = Num::ONE;
     assert_eq!(seen, [Some(one * 2), Some(one * 3), None, None]);
-    assert_eq!(yard.order_of(builder), None);
+    assert_eq!(game.order_of(builder), None);
 }
 
 #[test]
 fn a_sites_life_ends_its_gain_above_its_start_less_the_damage_it_took() {
     // An `alone` site starts at 10 of 100 and gains 90 over 4 ticks: 32.5 after tick 0, 55 after
     // tick 1, when it takes 30, to 25; 47.5, then 70 as it completes in tick 3: 10 + 90 − 30.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
-    yard.shop.tick();
-    assert_eq!(yard.site(depot).0, Num::int(55));
-    yard.shop.sim.get_mut::<Life>(depot).take(Num::int(30));
-    yard.shop.tick();
-    assert_eq!(yard.site(depot), (Num::HALF * 95, Some(Num::int(3))));
-    yard.shop.tick();
-    assert_eq!(yard.site(depot), (Num::int(70), None));
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
+    game.step();
+    assert_eq!(game.site(depot).0, Num::int(55));
+    game.part_mut::<Life>(depot).take(Num::int(30));
+    game.step();
+    assert_eq!(game.site(depot), (Num::HALF * 95, Some(Num::int(3))));
+    game.step();
+    assert_eq!(game.site(depot), (Num::int(70), None));
 }
 
 #[test]
 fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing() {
     // The build paid 15 of 100 gold. Player 1's cancel does nothing; player 0's gives back 0.5 of
     // 15, 7.5 rounded down to 7, and despawns the site.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
-    assert_eq!(yard.gold(), 85);
-    yard.order(1, depot, Action::CancelBuild);
-    assert!(yard.shop.sim.try_get::<Site>(depot).is_some());
-    yard.order(0, depot, Action::CancelBuild);
-    assert_eq!(yard.gold(), 92);
-    let index = yard.shop.sim.world.resource::<EntityIndex>();
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
+    assert_eq!(game.gold(), 85);
+    game.tick_ordering(1, depot, Action::CancelBuild);
+    assert!(game.try_part::<Site>(depot).is_some());
+    game.tick_ordering(0, depot, Action::CancelBuild);
+    assert_eq!(game.gold(), 92);
+    let index = game.resource::<EntityIndex>();
     assert_eq!(index.get(depot), None);
 
     // A site that dies stops, gives nothing back, and takes no cancel: it stands, dead, with no
     // refund.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    let [depot] = <[StableId; 1]>::try_from(yard.depots()).unwrap();
-    yard.shop.sim.insert(depot, Dead);
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(game.depots()).unwrap();
+    game.insert_parts(depot, Dead);
     for _ in 0..4 {
-        yard.shop.tick();
+        game.step();
     }
-    assert_eq!((yard.gold(), yard.site(depot).1), (85, Some(Num::ONE)));
-    yard.order(0, depot, Action::CancelBuild);
-    assert_eq!((yard.gold(), yard.site(depot).1), (85, Some(Num::ONE)));
+    assert_eq!((game.gold(), game.site(depot).1), (85, Some(Num::ONE)));
+    game.tick_ordering(0, depot, Action::CancelBuild);
+    assert_eq!((game.gold(), game.site(depot).1), (85, Some(Num::ONE)));
 }
 
 #[test]
@@ -454,7 +351,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         filter: Filter::of_relations(relation),
         distance: Num::int(2),
     };
-    let cases: [(&str, Rules<'_>, Option<fn(&mut Yard)>, i64); 6] = [
+    let cases: [(&str, Rules<'_>, Option<fn(&mut Match)>, i64); 6] = [
         (
             "wall",
             Rules {
@@ -467,17 +364,17 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         (
             "static body",
             Rules::of(Style::Alone),
-            Some(|yard: &mut Yard| {
+            Some(|game: &mut Match| {
                 let body = Body::new(Num::ONE).unwrap();
-                yard.shop.sim.spawn(half(2, 0), Team::new(2), body);
+                game.spawn_unit(half(2, 0), Team::new(2), body);
             }),
             0,
         ),
         (
             "seen enemy",
             Rules::of(Style::Alone),
-            Some(|yard: &mut Yard| {
-                yard.walker(half(1, 1), 1, None);
+            Some(|game: &mut Match| {
+                game.yard_walker(half(1, 1), 1, None);
             }),
             0,
         ),
@@ -502,34 +399,32 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         ),
     ];
     for (case, rules, add, x) in cases {
-        let mut yard = Yard::new(rules);
+        let mut game = yard_match(rules);
         if let Some(add) = add {
-            add(&mut yard);
+            add(&mut game);
         }
-        let builder = yard.builder(
+        let builder = game.builder(
             Position::new(Vec3::new(Num::int(x - 3), Num::ZERO, Num::ZERO)).unwrap(),
             0,
             0,
         );
-        yard.build_at(builder, x, 0);
-        assert_eq!((yard.depots(), yard.gold()), (vec![], 100), "{case}");
-        assert_eq!(yard.order_of(builder), None, "{case}");
+        game.build_at(builder, x, 0);
+        assert_eq!((game.depots(), game.gold()), (vec![], 100), "{case}");
+        assert_eq!(game.order_of(builder), None, "{case}");
     }
     // The controls: the plain yard, and the near rule met by an enemy 1 m from the box's edge.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    assert_eq!((yard.depots().len(), yard.gold()), (1, 85));
-    let mut yard = Yard::new(Rules {
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    assert_eq!((game.depots().len(), game.gold()), (1, 85));
+    let mut game = yard_match(Rules {
         near: vec![rule(RelationSet::Enemies)],
         ..Rules::of(Style::Alone)
     });
-    yard.shop
-        .sim
-        .spawn(half(0, 6), Team::new(1), Body::new(Num::HALF).unwrap());
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    assert_eq!(yard.depots().len(), 1);
+    game.spawn_unit(half(0, 6), Team::new(1), Body::new(Num::HALF).unwrap());
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    assert_eq!(game.depots().len(), 1);
 }
 
 #[test]
@@ -538,13 +433,13 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     // (−0.5, −0.5), both in the box from (−2, −1) to (2, 1). The build passes, and each goes to
     // the nearest cell a walker of a half meter stands in, its center 0.5 m from the box: (0.5,
     // 1.5) and (−0.5, −1.5), a meter off each.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let hidden = yard.walker(half(1, 1), 1, Some(TeamSet::of(Team::new(1))));
-    let friend = yard.walker(half(-1, -1), 0, None);
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    assert_eq!(yard.depots().len(), 1);
-    let at = |id| *yard.shop.sim.get::<Position>(id);
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let hidden = game.yard_walker(half(1, 1), 1, Some(TeamSet::of(Team::new(1))));
+    let friend = game.yard_walker(half(-1, -1), 0, None);
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    assert_eq!(game.depots().len(), 1);
+    let at = |id| *game.part::<Position>(id);
     assert_eq!([at(hidden), at(friend)], [half(1, 3), half(-1, -3)]);
 
     // A wall over x −1 to 1 from z 1.25 to 3 holds the centers (±0.5, 1.5) and (±0.5, 2.5): a
@@ -559,27 +454,27 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
         )
         .unwrap(),
     };
-    let mut yard = Yard::new(Rules {
+    let mut game = yard_match(Rules {
         walls: vec![wall],
         ..Rules::of(Style::Alone)
     });
     let inside = Vec3::new(Num::HALF, Num::ZERO, Num::QUARTER * 3);
-    let pressed = yard.walker(Position::new(inside).unwrap(), 0, None);
-    let builder = yard.builder(half(-6, 0), 0, 0);
-    yard.build_at(builder, 0, 0);
-    assert_eq!(*yard.shop.sim.get::<Position>(pressed), half(3, 3));
+    let pressed = game.yard_walker(Position::new(inside).unwrap(), 0, None);
+    let builder = game.builder(half(-6, 0), 0, 0);
+    game.build_at(builder, 0, 0);
+    assert_eq!(*game.part::<Position>(pressed), half(3, 3));
 }
 
 #[test]
 fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
     // Both in range of the origin, ordered in one tick: the lower stable id's build starts, and
     // the other's placement meets its site, which ends its order with nothing paid.
-    let mut yard = Yard::new(Rules::of(Style::Alone));
-    let first = yard.builder(half(-6, 0), 0, 0);
-    let second = yard.builder(half(6, 0), 0, 0);
-    yard.orders(0, &[(second, at_point(0, 0)), (first, at_point(0, 0))]);
-    assert_eq!((yard.depots().len(), yard.gold()), (1, 85));
-    assert_eq!([yard.order_of(first), yard.order_of(second)], [None, None]);
-    let spawned = yard.shop.spawned.borrow();
+    let mut game = yard_match(Rules::of(Style::Alone));
+    let first = game.builder(half(-6, 0), 0, 0);
+    let second = game.builder(half(6, 0), 0, 0);
+    game.give_orders(0, &[(second, at_point(0, 0)), (first, at_point(0, 0))]);
+    assert_eq!((game.depots().len(), game.gold()), (1, 85));
+    assert_eq!([game.order_of(first), game.order_of(second)], [None, None]);
+    let spawned = game.spawned();
     assert_eq!(spawned[0].owner, Some(PlayerSlot::new(0)));
 }

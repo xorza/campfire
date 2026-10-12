@@ -15,7 +15,7 @@ The recommendations consolidate into five systems. Each is one declaration that 
 | --- | --- | --- |
 | 1. One declaration per capability (§1) | the registrations left in install bodies, restated orderings | the compiler (visitor with no defaults), the declaration audit test |
 | 2. One entity model (§2) | stats derived after the spawn, two sight books | required components, the compiler (`Host` with no default), one spawn core for every unit |
-| 3. Explicit dependencies (§3) | five match-world builders, the log in the core, layers with cycles | one builder, the layer test |
+| 3. Explicit dependencies (§3) | the log in the core, layers with cycles | the layer test |
 | 4. Restore as a checked boundary (§4) | value-only mutations, checks of the load copied in builders | the registry, a mutation fuzz test |
 | 5. One session host (§5) | three server compositions, two replay loops, two restore glues | one type |
 
@@ -46,10 +46,6 @@ Each kind of entity implements `EntityKind`: who receives it, whether its owner'
 
 ## 3. Explicit dependencies
 
-### 3.4 One match-world builder
-
-The prepare, schedule, registry and install sequence appears five times (`Session::build`, `Session::snapshot_hash`, `SimClient::build`, `TestMatch::unstarted`, the match build bench). `MatchWorld::new(seed, rate).install(set, budgets).finish()` holds it, built on §1's visitors.
-
 ### 3.5 The log stays out of the core
 
 `Session::run_tick` logs `ScriptCallFailed` (`runner/src/session/mod.rs:319`), while design 02 lets only the binaries, net and the verifier log. `run_tick` returns the failures, and its callers log them.
@@ -70,7 +66,6 @@ The layer test rejects imports from a higher layer only. Within a layer, modules
 - **Restore glue.** The server's `Restore` and net's `PendingRestore` have the same fields and body: one type in net.
 - **Replay.** The loop of "take the checkpoint again, stop at a tick, run alone" is in `SimServer::restore_match` (`sim_server/mod.rs:351`) and `SessionDir::abort` (`session_dir/mod.rs:232`): `Session::replay_to(world, tick, on_boundary)`.
 - **Tick input.** "Fill `TickInputs`, then run `SimUpdate`" is in `Session::run_tick` and `run_predicted_tick`: one function in `sim`.
-- **`Session` and `Runner`.** `Session` is a resource inside the world it runs, so its methods take `&self` and that world, and `Runner` is twenty forwarders. `Session` splits into a `SessionRecord` outside the world (log, seeds, segment) and match state inside it, or design 02 says why it is one.
 - **Crate split.** The server crate is a binary of 933 lines, while design 02 gives it the lifecycle, saves and the local server, which live in `net`: an item under Decide in the issue log.
 - **Client edge.** `client` depends on `runner` for one rate check, which moves into `SimClient`'s setup.
 
@@ -82,7 +77,7 @@ The layer test rejects imports from a higher layer only. Within a layer, modules
 
 ## Tests
 
-`TestMatch` is the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, 35 of `resource::<EntityIndex>().get(id).unwrap()`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` and `EntityIndex::entity_of(world, id)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `TestMatch::server_with(declared, players, kinds)`.
+`Match::test` and `ReleaseWorldTest` are the shared base; the duplication is in leaf helpers: about fifteen copies of `fn at(x, z) -> Position`, 22 of `NonZeroU32::new(30)`, three near-identical hero probes (`net/tests/scenario.rs:25`, `net/tests/prototype.rs:40`, `verifier/tests/headless.rs:99`), and one sequence of budgets, server, names and players in fourteen harness constructors. `Position::ground(x, z)` in `sim`'s internals; a `UnitProbe` beside `MatchUnits`; `Match::server_with(declared, players, kinds)`.
 
 ## Hot paths
 
@@ -92,4 +87,4 @@ The layer test rejects imports from a higher layer only. Within a layer, modules
 ## Order
 
 1. §2's stats at the spawn, within PLAN A6.
-2. §5, §3.4 to §3.6, §1.4 and the rest as slices touch them.
+2. §5, §3.5, §3.6, §1.4 and the rest as slices touch them.

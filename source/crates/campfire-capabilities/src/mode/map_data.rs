@@ -217,12 +217,12 @@ impl MapData {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use crate::geometry::bounds::Bounds;
-    use crate::mode::map_data::{MapData, MarkerData, PlacedUnitData};
-    use crate::mode::map_point::MapPoint;
     use campfire_math::Num;
 
+    use crate::geometry::bounds::Bounds;
     use crate::geometry::metric::Metric;
+    use crate::mode::map_data::{MapData, MarkerData, PlacedUnitData};
+    use crate::mode::map_point::MapPoint;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
 
@@ -237,12 +237,12 @@ pub(crate) mod internals {
     }
 
     impl MarkerData {
-        /// A marker `marker` with `tags` at `pos`, of no team, region or param.
-        pub(crate) fn tagged(marker: &str, tags: &[&str], pos: MapPoint) -> MarkerData {
+        /// A marker `marker` with `tags` at `point`, of no team, region or param.
+        pub(crate) fn tagged(marker: &str, tags: &[&str], point: MapPoint) -> MarkerData {
             MarkerData {
                 name: name(marker),
                 tags: tags.iter().map(|&tag| name(tag)).collect(),
-                pos: Some(pos),
+                pos: Some(point),
                 region: None,
                 team: None,
                 params: BTreeMap::new(),
@@ -252,12 +252,12 @@ pub(crate) mod internals {
     }
 
     impl PlacedUnitData {
-        /// A unit of `unit_type` and `team` at `pos`, on no path.
-        pub(crate) fn new(unit_type: &str, team: &str, pos: MapPoint) -> PlacedUnitData {
+        /// A unit of `unit_type` and `team` at `point`, on no path.
+        pub(crate) fn new(unit_type: &str, team: &str, point: MapPoint) -> PlacedUnitData {
             PlacedUnitData {
                 unit_type: name(unit_type),
                 team: name(team),
-                pos,
+                pos: point,
                 angle: Num::ZERO,
                 height: Num::ZERO,
                 path: None,

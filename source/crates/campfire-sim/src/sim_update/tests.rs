@@ -1,8 +1,8 @@
-use bevy_ecs::entity::Entity;
 use std::num::NonZeroU32;
 use std::panic;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{
     ApplyDeferred, ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs,
@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::host_rule::OnAny;
 use crate::sim_state::{SimComponent, SimResource};
+use crate::sim_world::internals::SimWorldInternals;
 use crate::stable_id::StableId;
 use crate::state_registry::StateRegistry;
 use crate::tick_inputs::TickInput;
@@ -311,7 +312,7 @@ fn redundant_set_membership_fails_the_build() {
         let mut world = new_world(SEED);
         world.add_schedule(with_inner(add));
         assert_eq!(
-            SimUpdate::build_without_sync_points(&mut world).is_err(),
+            world.build_without_sync_points().is_err(),
             !expected.is_empty(),
             "{name}: without sync points"
         );
@@ -377,11 +378,7 @@ fn a_system_in_no_stage_and_no_edge_is_found() {
         let mut schedule = SimUpdate::schedule();
         add(&mut schedule);
         world.add_schedule(schedule);
-        assert_eq!(
-            SimUpdate::systems_outside_stages(&mut world),
-            outside,
-            "{name}"
-        );
+        assert_eq!(world.systems_outside_stages(), outside, "{name}");
     }
 }
 

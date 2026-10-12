@@ -19,7 +19,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
     let mut ids = IdAllocator::default();
     let mut post = |x, z, layer| IndexedBody {
         id: ids.allocate(),
-        at: at(x, z),
+        pos: at(x, z),
         shape: Shape::Circle(Num::ONE),
         layer,
     };

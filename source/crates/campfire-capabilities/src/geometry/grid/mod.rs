@@ -90,8 +90,8 @@ impl Grid {
     /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
     /// halves of a bit, exactly.
     pub(crate) fn center_distance(&self, cell: usize, pos: Position) -> u128 {
-        let at = [cell % self.columns(), cell / self.columns()];
-        self.box_distance(at, at, pos)
+        let square = [cell % self.columns(), cell / self.columns()];
+        self.box_distance(square, square, pos)
     }
 
     /// The center of `cell` at height `y`, rounded down to a whole bit, or the point of the bounds
@@ -113,9 +113,9 @@ impl Grid {
         if !self.bounds.contains(pos) {
             return None;
         }
-        let at = pos.get();
-        let x = self.index(0, at.x);
-        let z = self.index(1, at.z);
+        let point = pos.get();
+        let x = self.index(0, point.x);
+        let z = self.index(1, point.z);
         Some(z * self.size[0] as usize + x)
     }
 
@@ -149,7 +149,7 @@ impl Grid {
         mut mark: impl FnMut(Range<usize>),
     ) {
         let centre = Halves::ground(pos);
-        let at = centre.to_array();
+        let point = centre.to_array();
         let extent = body.extent();
         let min = self.bounds.min();
         let cell = i128::from(self.cell.to_bits());
@@ -158,8 +158,8 @@ impl Grid {
         // `2 min + cell (2 i + 1)` halves.
         let span = |axis: usize| {
             let grow = Halves::of(extent[axis]) + Halves::of(reach);
-            let from = at[axis] - grow - Halves::of(min[axis]) - cell;
-            let to = at[axis] + grow - Halves::of(min[axis]) - cell;
+            let from = point[axis] - grow - Halves::of(min[axis]) - cell;
+            let to = point[axis] + grow - Halves::of(min[axis]) - cell;
             let first = Rounding::Ceiling.divide(from, 2 * cell).max(0);
             let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
             first..=end
@@ -182,15 +182,15 @@ impl Grid {
         mut mark: impl FnMut(Range<usize>),
     ) {
         let centre = Halves::ground(pos);
-        let at = centre.to_array();
+        let point = centre.to_array();
         let extent = body.extent();
         let min = self.bounds.min();
         let cell = i128::from(self.cell.to_bits());
         let last = |axis: usize| i128::from(self.size[axis]) - 1;
         // The cells whose squares, from `2 min + 2 cell i` to the next, the rectangle meets.
         let span = |axis: usize| {
-            let from = at[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
-            let to = at[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
+            let from = point[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
+            let to = point[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
             let first = Grid::floor_halves(from, 2 * cell).max(0);
             let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
             first..=end
@@ -245,7 +245,7 @@ impl Grid {
 
     /// The rows a disc of `radius` around `pos` may reach, in halves of a bit.
     fn disc_rows(&self, pos: Position, radius: Num, strict: bool) -> Rows {
-        let at = pos.get();
+        let point = pos.get();
         let cell = self.cell.to_bits();
         // In halves of a bit, so each cell's center, half a cell from its edge, is whole. A
         // position and `min` are within 2⁴⁴ bits of the origin and a center within 2⁴⁶, so every
@@ -256,7 +256,10 @@ impl Grid {
         };
         let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
         let min = self.bounds.min();
-        let from = [twice(at.x) - twice(min[0]), twice(at.z) - twice(min[1])];
+        let from = [
+            twice(point.x) - twice(min[0]),
+            twice(point.z) - twice(min[1]),
+        ];
         Rows {
             from,
             reach,
@@ -391,10 +394,10 @@ impl Grid {
     ) -> bool {
         let min = self.bounds.min().map(|axis| i128::from(axis.to_bits()));
         let ground = |pos: Position| {
-            let at = pos.get();
+            let point = pos.get();
             [
-                i128::from(at.x.to_bits()) - min[0],
-                i128::from(at.z.to_bits()) - min[1],
+                i128::from(point.x.to_bits()) - min[0],
+                i128::from(point.z.to_bits()) - min[1],
             ]
         };
         let (mut a, mut b) = (ground(from), ground(to));

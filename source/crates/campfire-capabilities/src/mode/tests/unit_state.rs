@@ -10,9 +10,9 @@ fn on_mode_input(ctx, player, name, value) {
         return;
     }
     if value == "spawn_marked" {
-        let unit = ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
-        unit.state.mark = "new";
-        if unit.state.mark != "new" || unit.state.hits != 2 {
+        let id = ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
+        id.state.mark = "new";
+        if id.state.mark != "new" || id.state.hits != 2 {
             throw "a new unit reads its defaults but what the call wrote";
         }
         return;
@@ -35,18 +35,17 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
-    game.tick(&[(1, input("probe", "spawn"))]);
-    let grunt = |game: &Game| {
-        let world = &game.sim.world;
-        let grunt_type = world.non_send::<View>().unit_type_named("grunt").unwrap();
-        let grunts = world
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    game.tick_inputs(&[(1, input("probe", "spawn"))]);
+    let grunt = |game: &Match| {
+        let grunt_type = game.non_send::<View>().unit_type_named("grunt").unwrap();
+        let grunts = game
             .resource::<EntityIndex>()
             .iter()
-            .filter(|&(_, entity)| world.get::<UnitType>(entity) == Some(&grunt_type));
+            .filter(|&(_, entity)| game.get::<UnitType>(entity) == Some(&grunt_type));
         let (_, entity) = grunts.last().unwrap();
-        let owner = world.get::<UnitState<SyncOwner>>(entity).unwrap().values();
-        let all = world.get::<UnitState<SyncAll>>(entity).unwrap().values();
+        let owner = game.get::<UnitState<SyncOwner>>(entity).unwrap().values();
+        let all = game.get::<UnitState<SyncAll>>(entity).unwrap().values();
         (owner.to_vec(), all.to_vec())
     };
     // It spawns at its type's defaults: 2, which its owner's class holds, and an empty text,
@@ -60,14 +59,14 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(grunt(&game), at(2));
     // In one tick, the first call reads 2, writes 5 and then 6, and reads 6 back; the second
     // reads 6, as the first call's writes applied when it ended.
-    game.tick(&[(1, input("probe", "write")), (1, input("probe", "read"))]);
+    game.tick_inputs(&[(1, input("probe", "write")), (1, input("probe", "read"))]);
     assert_eq!(game.failures(), []);
-    let [_, seen, count, inputs] = game.state();
+    let [_, seen, count, inputs] = game.tracked_state();
     assert_eq!([seen, count, inputs], [2, 6, 6].map(StateValue::Int));
     assert_eq!(grunt(&game), at(6));
     // A call that fails writes nothing; a field the type does not declare, and a value of
     // another type, fail the call.
-    game.tick(&[
+    game.tick_inputs(&[
         (1, input("probe", "fail")),
         (1, input("probe", "unknown")),
         (1, input("probe", "wrong")),
@@ -77,22 +76,20 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(matches!(game.failures()[0], FailureKind::Raised(None)));
     assert_eq!(grunt(&game), at(6));
     // A snapshot holds the values: a fresh match it restores into holds them too.
-    let mut fresh = Game::new(script, ScriptLimits::ROOMY);
+    let mut fresh = mode_match(script, ScriptLimits::ROOMY);
     let placed: Vec<Entity> = fresh
-        .sim
-        .world
         .resource::<EntityIndex>()
         .iter()
         .map(|(_, entity)| entity)
         .collect();
     for entity in placed {
-        fresh.sim.world.despawn(entity);
+        fresh.despawn(entity);
     }
-    game.sim.restore_into(&mut fresh.sim);
+    game.restore_into(&mut fresh);
     assert_eq!(grunt(&fresh), at(6));
     // A unit a call spawns is a handle whose state the call writes and reads back, at its type's
     // defaults but what it wrote; the unit spawns with what it wrote.
-    game.tick(&[(1, input("probe", "spawn_marked"))]);
+    game.tick_inputs(&[(1, input("probe", "spawn_marked"))]);
     assert_eq!(game.failures(), []);
     let marked = (
         vec![StateValue::Int(2)],

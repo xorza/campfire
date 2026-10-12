@@ -20,7 +20,7 @@ use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::UnitKit;
 use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
-use crate::navigation::Navigation;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
@@ -165,7 +165,7 @@ impl ModeBook {
         let actions = self
             .actions(unit_type)
             .iter()
-            .map(|action| (action.ability, action.kind, action.rank));
+            .map(|action| (action.action, action.kind, action.rank));
         let slots = ActionSlots::new(actions);
         Some(match inventory {
             Some(inventory) => slots.with_empty(inventory.kind, inventory.slots.get()),
@@ -265,7 +265,7 @@ impl ModeBook {
         if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {
             let applier = Applier {
                 source: Some(id),
-                ability: None,
+                action: None,
                 rank: Rank::FIRST,
                 hold: Some(Hold::Passive),
             };
@@ -277,7 +277,7 @@ impl ModeBook {
             add.apply_by(world, applier);
         }
         if boxed {
-            Navigation::make_room(world, entity);
+            world.make_room(entity);
         }
         entity
     }

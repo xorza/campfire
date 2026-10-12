@@ -66,10 +66,10 @@ impl Metric {
         to_shape: Shape,
     ) -> bool {
         debug_assert!(range >= Num::ZERO);
-        let within = |body: &BodyBox, at: Position, other: Position, radius: Num| {
+        let within = |body: &BodyBox, pos: Position, other: Position, radius: Num| {
             debug_assert!(self == Metric::Planar, "a box lies on a planar map");
             let reach = range.checked_add(radius);
-            reach.is_none_or(|reach| body.nearest(at, other, reach) != Ordering::Greater)
+            reach.is_none_or(|reach| body.nearest(pos, other, reach) != Ordering::Greater)
         };
         match (from_shape, to_shape) {
             (Shape::Circle(from_radius), Shape::Circle(to_radius)) => {
@@ -89,17 +89,17 @@ impl Metric {
     }
 
     /// Whether the straight path from `from` to `to` comes within `reach` of the body `shape` at
-    /// `at`, decided exactly and without a square root; and if it does, the share of the path at
+    /// `pos`, decided exactly and without a square root; and if it does, the share of the path at
     /// its point nearest the body, the first where it enters a box.
     pub(crate) fn meets(
         self,
         from: Position,
         to: Position,
-        at: Position,
+        pos: Position,
         shape: Shape,
         reach: Num,
     ) -> Option<Fraction> {
-        let approach = shape.approach(self, at, from, to, reach);
+        let approach = shape.approach(self, pos, from, to, reach);
         (approach.nearest != Ordering::Greater).then_some(approach.share)
     }
 }

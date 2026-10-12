@@ -15,7 +15,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
         .map(|&(x, z, movable)| Collider {
             id: ids.allocate(),
             entity: world.spawn_empty().id(),
-            at: Vec3::new(x, Num::int(2), z),
+            point: Vec3::new(x, Num::int(2), z),
             shape: Shape::Circle(Num::ONE),
             layer: Layer::FIRST,
             movable,
@@ -33,7 +33,7 @@ fn resolve(colliders: &mut [Collider]) {
 }
 
 fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {
-    colliders.iter().map(|c| (c.at.x, c.at.z)).collect()
+    colliders.iter().map(|c| (c.point.x, c.point.z)).collect()
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
             (Num::int(1) + half + quarter, Num::int(0))
         ]
     );
-    assert_eq!(two[0].at.y, Num::int(2));
+    assert_eq!(two[0].point.y, Num::int(2));
 
     // A unit that walks into one that stands takes the whole half meter, whichever id it has:
     // no unit shoves another aside.
@@ -163,10 +163,10 @@ fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
             collider.shape = Shape::Circle(Num::int(radius));
         }
         let before: [[i64; 2]; 2] =
-            array::from_fn(|i| [pair[i].at.x, pair[i].at.z].map(Num::to_bits));
+            array::from_fn(|i| [pair[i].point.x, pair[i].point.z].map(Num::to_bits));
         resolve(&mut pair);
         let moved: [[i128; 2]; 2] = array::from_fn(|i| {
-            let after = [pair[i].at.x, pair[i].at.z].map(Num::to_bits);
+            let after = [pair[i].point.x, pair[i].point.z].map(Num::to_bits);
             [0, 1].map(|axis| i128::from(after[axis] - before[i][axis]))
         });
         let reach = i128::from((radii[0] + radii[1]) << Num::FRAC_BITS);

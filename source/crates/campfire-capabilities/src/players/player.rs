@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_sim::{EntityIndex, HostRule, SimComponent, StableId};
+use campfire_sim::{HostRule, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::declare::parted_kind::PartedKind;
@@ -29,13 +29,6 @@ impl Player {
 
     pub const fn slot(self) -> PlayerSlot {
         self.0
-    }
-
-    /// The entity of player `slot` in `world`, once it spawned.
-    pub fn entity(world: &World, slot: PlayerSlot) -> Option<Entity> {
-        world
-            .resource::<EntityIndex>()
-            .get(StableId::of_player(slot))
     }
 }
 

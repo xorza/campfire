@@ -4,7 +4,7 @@ use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
+use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
@@ -14,8 +14,8 @@ use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
 use crate::actions::slot_times::SlotTimes;
 use crate::geometry::bounds::Bounds;
-use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
@@ -262,11 +262,11 @@ impl Trains {
         let RallyTarget::Unit(node) = world.get::<Rally>(entity)?.get() else {
             return None;
         };
-        let target = world.entity(world.resource::<EntityIndex>().get(node)?);
+        let target = world.entity_ref_of(node)?;
         let resource = world
             .resource::<NodeBook>()
             .resource(*target.get::<UnitType>()?)?;
-        let at = *target.get::<Position>()?;
+        let pos = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
         let book = world.resource::<ActionBook>();
         let slot = slots.indexed().find_map(|(slot, held)| {
@@ -278,7 +278,7 @@ impl Trains {
         })?;
         Some(GatherOrder {
             slot,
-            node: NodeAt { node, at },
+            node: NodeAt { node, pos },
             step: GatherStep::Ordered,
         })
     }
@@ -287,15 +287,15 @@ impl Trains {
     /// rallies to stands; `None` with none, or a unit gone or dead.
     fn rally_point(world: &World, entity: Entity) -> Option<Position> {
         let producer = world.entity(entity);
-        let at = *producer.get::<Position>().expect("a producer stands");
+        let pos = *producer.get::<Position>().expect("a producer stands");
         match producer.get::<Rally>()?.get() {
             RallyTarget::Point { x, z } => {
-                Some(world.resource::<Bounds>().ground_point([x, z], at))
+                Some(world.resource::<Bounds>().ground_point([x, z], pos))
             }
             RallyTarget::Unit(id) => {
-                let unit = world.entity(world.resource::<EntityIndex>().get(id)?);
-                let pos = *unit.get::<Position>()?;
-                (!unit.contains::<Dead>()).then_some(pos)
+                let unit = world.entity_ref_of(id)?;
+                let unit_pos = *unit.get::<Position>()?;
+                (!unit.contains::<Dead>()).then_some(unit_pos)
             }
         }
     }
@@ -312,14 +312,14 @@ impl Trains {
         rally: Option<Position>,
     ) -> Position {
         let producer = world.entity(entity);
-        let at = *producer.get::<Position>().expect("a producer stands");
+        let pos = *producer.get::<Position>().expect("a producer stands");
         let walker = world
             .get_resource::<ByType<Walker>>()
             .and_then(|walkers| walkers.get(unit_type).copied());
         let (Some(to), Some(walker)) = (rally, walker) else {
-            return at;
+            return pos;
         };
-        let near = Body::shape_of(producer.get::<Body>()).nearest_point(at, to);
-        Navigation::open_cell(world, walker, near).unwrap_or(at)
+        let near = Body::shape_of(producer.get::<Body>()).nearest_point(pos, to);
+        world.open_cell(walker, near).unwrap_or(pos)
     }
 }

@@ -29,32 +29,32 @@ pub(crate) struct TickClock {
 }
 
 impl Glide {
-    /// A predicted unit's drawing at rest `at`.
-    pub(crate) const fn ticked(at: Vec3) -> Glide {
+    /// A predicted unit's drawing at rest `point`.
+    pub(crate) const fn ticked(point: Vec3) -> Glide {
         Glide::Ticked {
-            before: at,
-            last: at,
+            before: point,
+            last: point,
         }
     }
 
-    /// A received unit's drawing at rest `at`, from `since` of app time.
-    pub(crate) const fn timed(at: Vec3, since: Duration) -> Glide {
+    /// A received unit's drawing at rest `point`, from `since` of app time.
+    pub(crate) const fn timed(point: Vec3, since: Duration) -> Glide {
         Glide::Timed {
-            from: at,
-            to: at,
+            from: point,
+            to: point,
             since,
         }
     }
 
-    /// Takes the predicted unit's place `at` after a tick. A drawing that glided as a received
-    /// unit's starts at `at`, as the unit became predicted.
-    pub(crate) const fn tick(&mut self, at: Vec3) {
+    /// Takes the predicted unit's place `point` after a tick. A drawing that glided as a received
+    /// unit's starts at `point`, as the unit became predicted.
+    pub(crate) const fn tick(&mut self, point: Vec3) {
         *self = match *self {
             Glide::Ticked { last, .. } => Glide::Ticked {
                 before: last,
-                last: at,
+                last: point,
             },
-            Glide::Timed { .. } => Glide::ticked(at),
+            Glide::Timed { .. } => Glide::ticked(point),
         };
     }
 

@@ -33,7 +33,7 @@ use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,
-    ServerDir, ServerExit, ServerSetup, SessionTimes, SimServer,
+    ServerDir, ServerSetup, SessionTimes, SimServer, SimServerWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::CertificateHash;
@@ -230,7 +230,7 @@ fn server_app(
     data: ServerDir,
     tick: Duration,
     listening: Listening,
-    capabilities: CapabilitySet,
+    set: CapabilitySet,
 ) -> App {
     let mut app = App::new();
     app.add_plugins((
@@ -239,7 +239,13 @@ fn server_app(
         StatesPlugin,
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins((SimServer { tick, capabilities }, WebTransportServerPlugin));
+    app.add_plugins((
+        SimServer {
+            tick,
+            capabilities: set,
+        },
+        WebTransportServerPlugin,
+    ));
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
@@ -297,9 +303,9 @@ fn announce(
     }
 }
 
-/// Exits as `ServerExit::due` says: the server stops only once its session ended.
+/// Exits as `SimServerWorld::exit_due` says: the server stops only once its session ended.
 fn exit_when_due(world: &mut World) {
-    if let Some(exit) = ServerExit::due(world, false) {
+    if let Some(exit) = world.exit_due(false) {
         world.write_message(exit);
     }
 }

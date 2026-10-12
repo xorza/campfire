@@ -180,8 +180,8 @@ impl<'a> BookBuilder<'a> {
                     let ranks = self.loadout_ranks;
                     let actions = self.actions(index, package, |_| Some(ranks))?;
                     self.package_units(index, units, &actions)?;
-                    for (id, ability) in actions {
-                        self.books.units.loadout.push(id, ability);
+                    for (id, action) in actions {
+                        self.books.units.loadout.push(id, action);
                     }
                 }
                 BookKind::Rules => {}
@@ -662,7 +662,7 @@ impl<'a> BookBuilder<'a> {
             let rank = slots.first_rank(kind);
             held.extend(ids.iter().map(|id| SlotAction {
                 kind,
-                ability: actions[id.as_str()],
+                action: actions[id.as_str()],
                 rank,
             }));
         }

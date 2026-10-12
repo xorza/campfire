@@ -13,27 +13,27 @@ fn probe(ctx, unit) {
     [ctx.teams, ctx.map.paths, ctx.avatars().len(), ctx.units_tagged("avatar").len()]
 }
 "#;
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x"))]);
-    let actor = game.fighter(0, &[]);
-    let target = game.fighter(1, &[]);
-    let entity = game.sim.entity(target);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
+    let actor = game.stat_grunt(0, &[]);
+    let target = game.stat_grunt(1, &[]);
+    let entity = game.unit_entity(target);
     let mut life = Life::full(Num::int(1000));
     life.take(Num::int(20));
     let mut pools = Pools::new([(MANA, Num::int(100))]).unwrap();
     pools.take(MANA, Num::int(50));
-    game.sim.insert(target, (life, pools));
+    game.insert_parts(target, (life, pools));
     // Each role in turn: 3 restored and 5 gold given as its effects apply, then 10 dealt and 4
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call.
-    let gold = |game: &Game| {
-        let resources = PlayerResources::of_player(&game.sim.world, PlayerSlot::new(0));
+    let gold = |game: &Match| {
+        let resources = game.player_resources(PlayerSlot::new(0));
         resources.unwrap().amount(resource("gold").unwrap())
     };
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
         let at = i64::try_from(at).unwrap();
         let before = gold(&game);
-        let read = game.probe(probe, role, actor, target).unwrap();
+        let read = game.probe_as(probe, role, actor, target).unwrap();
         assert_eq!(gold(&game), before + 5, "{role:?}");
         let read: Array = read.cast();
         let names = |value: &Dynamic| -> Vec<String> {
@@ -47,14 +47,10 @@ fn probe(ctx, unit) {
             (Ok(1), Ok(1)),
             "{role:?}"
         );
-        assert_eq!(game.sim.life(target), Num::int(980 - 6 * at), "{role:?}");
-        game.tick(&[]);
-        assert_eq!(
-            game.sim.life(target),
-            Num::int(980 - 6 * (at + 1)),
-            "{role:?}"
-        );
-        let pool = game.sim.world.get::<Pools>(entity).unwrap().current(MANA);
+        assert_eq!(game.life(target), Num::int(980 - 6 * at), "{role:?}");
+        game.tick_inputs(&[]);
+        assert_eq!(game.life(target), Num::int(980 - 6 * (at + 1)), "{role:?}");
+        let pool = game.get::<Pools>(entity).unwrap().current(MANA);
         assert_eq!(pool, Some(Num::int(50 + 3 * (at + 1))), "{role:?}");
     }
     // A call given to other roles fails in this one, when it runs, whether its body reads the role
@@ -74,7 +70,7 @@ fn probe(ctx, unit) {
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
-        let failed = game.probe(&source, role, actor, actor).unwrap_err();
+        let failed = game.probe_as(&source, role, actor, actor).unwrap_err();
         assert_eq!(
             failed.kind(),
             FailureKind::Api(ApiError::NotForRole),
@@ -87,17 +83,20 @@ fn probe(ctx, unit) {
 fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
     // Team a and the neutral team regard each other neutral, as the mode declares; b is hostile to
     // both. At the origin: a's and b's fighters, and the map's neutral grunt.
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    game.tick(&[]);
-    let a = game.fighter(0, &[]);
-    game.fighter(1, &[]);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    game.tick_inputs(&[]);
+    let a = game.stat_grunt(0, &[]);
+    game.stat_grunt(1, &[]);
     let counts = r#"
 fn probe(ctx, unit) {
     ["hostiles", "neutrals", "enemies"].map(|filter| ctx.find(unit, unit.pos, 1, filter).len())
 }
 "#;
-    let count = |game: &mut Game| -> Vec<INT> {
-        let counts: Array = game.probe(counts, ScriptRole::Mode, a, a).unwrap().cast();
+    let count = |game: &mut Match| -> Vec<INT> {
+        let counts: Array = game
+            .probe_as(counts, ScriptRole::Mode, a, a)
+            .unwrap()
+            .cast();
         counts
             .into_iter()
             .map(|count| count.as_int().unwrap())
@@ -107,7 +106,7 @@ fn probe(ctx, unit) {
     assert_eq!(count(&mut game), [1, 1, 2]);
     // A unit's script, as a modifier's, turns the pair hostile; the grunt is a hostile then.
     let turn = r#"fn probe(ctx, unit) { ctx.set_relation("neutral", "a", Relation::Hostile) }"#;
-    let turned = game.probe(turn, ScriptRole::Modifier, a, a).unwrap();
+    let turned = game.probe_as(turn, ScriptRole::Modifier, a, a).unwrap();
     assert!(turned.is_unit());
     assert_eq!(count(&mut game), [2, 0, 2]);
     // A member is its data name as text, the member `named` reads, and equal only to itself.
@@ -115,7 +114,10 @@ fn probe(ctx, unit) {
         [Relation::Hostile.to_string(), Relation::named("neutral") == Relation::Neutral,
          Relation::Hostile != Relation::Friendly, Relation::Hostile == Relation::Neutral]
     }"#;
-    let members: Array = game.probe(members, ScriptRole::Mode, a, a).unwrap().cast();
+    let members: Array = game
+        .probe_as(members, ScriptRole::Mode, a, a)
+        .unwrap()
+        .cast();
     assert_eq!(members[0].clone().into_string().unwrap(), "hostile");
     let compared = members[1..].iter().map(|member| member.as_bool().unwrap());
     assert_eq!(compared.collect::<Vec<_>>(), [true, true, false]);
@@ -136,7 +138,7 @@ fn probe(ctx, unit) {
         ),
     ] {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
-        let failed = game.probe(&source, ScriptRole::Mode, a, a).unwrap_err();
+        let failed = game.probe_as(&source, ScriptRole::Mode, a, a).unwrap_err();
         assert_eq!(failed.kind(), FailureKind::Api(refused), "{call}: {failed}");
     }
 }

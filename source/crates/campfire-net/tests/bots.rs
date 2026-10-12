@@ -5,13 +5,14 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_capabilities::{
-    Destination, Experience, Leaver, Mode, Owner, PlayersData, StateValue,
+    Destination, Experience, Leaver, Match, ModeWorld, Owner, PlayersData, StateValue,
 };
 use campfire_common::{PlayerSlot, StateHash};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
-use campfire_runner::{Runner, Session};
+use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_sim::SimWorld;
 use campfire_store::Scratch;
 
 /// Where the server's hero of `slot` walks to.
@@ -27,7 +28,7 @@ fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
 
 /// The lane mode's one state field, the word picked.
 fn picked(local: &InProcessMatch) -> StateValue {
-    Mode::state(local.server().world())[0].clone()
+    local.server().world().mode_state()[0].clone()
 }
 
 #[test]
@@ -81,10 +82,10 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     let live = world.resource::<TickHashes>().get().to_vec();
     let decoded = SessionLog::decode(&bytes).unwrap();
     let seeds = InProcessMatch::SEED_CHAIN.seeds();
-    let mut replay = Runner::new(decoded.rewound(), seeds, local.packages()).unwrap();
+    let mut replay = Match::start_session(decoded.rewound(), seeds, local.packages()).unwrap();
     let mut replayed = Vec::new();
     for _ in &live {
-        replay.run_tick();
+        replay.run_tick_alone();
         replayed.push(replay.state_hash());
     }
     assert_eq!(replayed, live);
@@ -160,11 +161,11 @@ struct Burst {
 /// The match of the bot of `BURST` up to tick `end`, its server stopped and restored from its
 /// journal after tick 10 when `stop`.
 fn burst(stop: bool, end: u64) -> Burst {
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let mut setup = MatchSetup::SOLO;
     setup.bots = &[BURST];
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     let bot = PlayerSlot::new(1);
     let (mut walks, mut restarted) = (Vec::new(), false);

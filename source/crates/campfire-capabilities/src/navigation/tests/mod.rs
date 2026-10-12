@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::Tick;
-use campfire_math::Vec3;
-use campfire_sim::Unpredicted;
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Position, SimWorld, StableId, Unpredicted};
 
 use super::*;
 use crate::geometry::bounds::Bounds;
@@ -16,11 +16,17 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::error::MapProblem;
 use crate::navigation::navigation_rules::NavigationRules;
+use crate::navigation::navigation_world::NavigationWorldCrate;
+use crate::navigation::navigation_world::test_world::NavigationWorldTest;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::wall::Wall;
-use crate::release::test_match::TestMatch;
+use crate::release::r#match::Match;
+use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::units::block::Block;
+use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
+use crate::units::dead::Dead;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
@@ -44,93 +50,23 @@ const fn ground(radius: Num) -> Walker {
     }
 }
 
-#[derive(Debug)]
-struct Walk {
-    sim: TestMatch,
-}
-
-impl Walk {
-    fn new() -> Walk {
-        let sim = TestMatch::client(&[Capability::Navigation]);
-        Walk { sim }
-    }
-
-    /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
-    fn load_pathing(&mut self, cell: Num, min: [i64; 2], max: [i64; 2], walkers: Vec<Walker>) {
-        self.load_walled(cell, min, max, walkers, &[]);
-    }
-
-    /// Loads a pathing grid as `load_pathing` does, with `walls`.
-    fn load_walled(
-        &mut self,
-        cell: Num,
-        min: [i64; 2],
-        max: [i64; 2],
-        walkers: Vec<Walker>,
-        walls: &[Wall],
-    ) {
-        let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
-        let grid = Grid::new(cell, bounds).unwrap();
-        Navigation::load_pathing(&mut self.sim.world, grid, walls, walkers);
-    }
-
-    /// A unit at `at` walking a meter a tick to `to`.
-    fn unit(&mut self, at: Position, to: Option<Position>) -> StableId {
-        let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
-        let id = self.sim.spawn(at, Team::new(0), walker);
-        *self.sim.get_mut::<Destination>(id) = Destination::to(to);
-        id
-    }
-
-    /// A unit at `at` with a body of `radius`, walking `step` a tick to `to`, or one that does not
-    /// walk when `step` is `None`.
-    fn body(
-        &mut self,
-        at: Position,
-        to: Option<Position>,
-        step: Option<Num>,
-        radius: Num,
-    ) -> StableId {
-        self.body_on(at, to, step, Body::new(radius).unwrap())
-    }
-
-    /// A unit at `at` with `body`, walking `step` a tick to `to`, or one that does not walk when
-    /// `step` is `None`.
-    fn body_on(
-        &mut self,
-        at: Position,
-        to: Option<Position>,
-        step: Option<Num>,
-        body: Body,
-    ) -> StableId {
-        let id = self.sim.spawn(at, Team::new(0), body);
-        if let Some(step) = step {
-            self.sim
-                .insert(id, Navigation::walker(MoveStep::new(step).unwrap()));
-            *self.sim.get_mut::<Destination>(id) = Destination::to(to);
-        }
-        id
-    }
-
-    fn get_route(&self, id: StableId) -> &Route {
-        let entity = self.sim.entity(id);
-        self.sim.world.get::<Route>(entity).unwrap()
-    }
+fn walk_match() -> Match {
+    Match::client(&[Capability::Navigation])
 }
 
 #[test]
 fn a_unit_walks_to_its_destination_exactly() {
-    let mut walk = Walk::new();
-    let straight = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
+    let mut game = walk_match();
+    let straight = game.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     // Offset (3, 0, 4), distance 5: the first meter is 3/5 and 4/5, each rounded once:
     // 10 066 329.6 → 10 066 330 and 13 421 772.8 → 13 421 773. The height stays at y = 2.
-    let slanted = walk.unit(at(4, 2, 0), Some(at(7, 2, 4)));
-    let still = walk.unit(at(9, 0, 9), None);
+    let slanted = game.unit(at(4, 2, 0), Some(at(7, 2, 4)));
+    let still = game.unit(at(9, 0, 9), None);
 
-    walk.sim.step();
-    assert_eq!(*walk.sim.get::<Position>(straight), at(0, 0, 1));
+    game.step();
+    assert_eq!(*game.part::<Position>(straight), at(0, 0, 1));
     assert_eq!(
-        *walk.sim.get::<Position>(slanted),
+        *game.part::<Position>(slanted),
         Position::new(Vec3::new(
             Num::from_bits(4 * ONE + 10_066_330),
             Num::int(2),
@@ -138,40 +74,40 @@ fn a_unit_walks_to_its_destination_exactly() {
         ))
         .unwrap()
     );
-    assert_eq!(*walk.sim.get::<Position>(still), at(9, 0, 9));
+    assert_eq!(*game.part::<Position>(still), at(9, 0, 9));
     // Straight along z, one meter a tick: done in the fifth tick, and the destination dropped.
     for z in 2..=5 {
-        walk.sim.step();
-        assert_eq!(*walk.sim.get::<Position>(straight), at(0, 0, z));
+        game.step();
+        assert_eq!(*game.part::<Position>(straight), at(0, 0, z));
     }
-    assert_eq!(walk.sim.get::<Destination>(straight).get(), None);
-    walk.sim.step();
-    assert_eq!(*walk.sim.get::<Position>(straight), at(0, 0, 5));
+    assert_eq!(game.part::<Destination>(straight).get(), None);
+    game.step();
+    assert_eq!(*game.part::<Position>(straight), at(0, 0, 5));
 }
 
 #[test]
 fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
-    let mut walk = Walk::new();
-    assert_eq!(*walk.sim.world.resource::<Bounds>(), Bounds::WORLD);
-    walk.sim.world.insert_resource(
+    let mut game = walk_match();
+    assert_eq!(*game.resource::<Bounds>(), Bounds::WORLD);
+    game.insert_resource(
         Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
     );
     // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
-    let outside = walk.unit(at(6, 1, 2), None);
+    let outside = game.unit(at(6, 1, 2), None);
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
-    let past = walk.unit(at(3, 0, 0), Some(at(5, 0, 0)));
-    let inside = walk.unit(at(1, 0, 1), None);
-    let id = walk.sim.spawn(at(9, 0, 9), Team::new(0), ());
+    let past = game.unit(at(3, 0, 0), Some(at(5, 0, 0)));
+    let inside = game.unit(at(1, 0, 1), None);
+    let id = game.spawn_unit(at(9, 0, 9), Team::new(0), ());
 
-    walk.sim.step();
-    assert_eq!(*walk.sim.get::<Position>(outside), at(4, 1, 2));
-    assert_eq!(*walk.sim.get::<Position>(past), at(4, 0, 0));
-    assert_eq!(*walk.sim.get::<Position>(inside), at(1, 0, 1));
-    walk.sim.step();
-    assert_eq!(*walk.sim.get::<Position>(past), at(4, 0, 0));
-    assert_eq!(walk.sim.get::<Destination>(past).get(), None);
+    game.step();
+    assert_eq!(*game.part::<Position>(outside), at(4, 1, 2));
+    assert_eq!(*game.part::<Position>(past), at(4, 0, 0));
+    assert_eq!(*game.part::<Position>(inside), at(1, 0, 1));
+    game.step();
+    assert_eq!(*game.part::<Position>(past), at(4, 0, 0));
+    assert_eq!(game.part::<Destination>(past).get(), None);
     // A unit that does not walk is not moved: the map's check keeps it within the bounds.
-    assert_eq!(*walk.sim.get::<Position>(id), at(9, 0, 9));
+    assert_eq!(*game.part::<Position>(id), at(9, 0, 9));
 }
 
 #[test]
@@ -182,55 +118,52 @@ fn bodies_part_and_block_the_way() {
     // radii. Every tick after, they walk in and part again, to the same places.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let mut walk = Walk::new();
-    let a = walk.body(at(0, 0, 0), Some(at(10, 0, 0)), Some(quarter), half);
-    let b = walk.body(at(3, 0, 0), Some(at(-10, 0, 0)), Some(quarter), half);
+    let mut game = walk_match();
+    let a = game.body(at(0, 0, 0), Some(at(10, 0, 0)), Some(quarter), half);
+    let b = game.body(at(3, 0, 0), Some(at(-10, 0, 0)), Some(quarter), half);
     // A tower of radius 1 at (−6, 4), which does not walk, and C walking at it along z from 0: C
     // touches it at z = 2.5, 1.5 m off, and in tick 11, at 2.75, is pushed back all the way.
-    let tower = walk.body(at(-6, 0, 4), None, None, Num::ONE);
-    let c = walk.body(at(-6, 0, 0), Some(at(-6, 0, 8)), Some(quarter), half);
+    let tower = game.body(at(-6, 0, 4), None, None, Num::ONE);
+    let c = game.body(at(-6, 0, 0), Some(at(-6, 0, 8)), Some(quarter), half);
     // D walks through a dead body on its way.
-    let dead = walk.body(at(20, 0, 0), None, Some(quarter), half);
-    walk.sim.insert(dead, Dead);
-    let d = walk.body(at(18, 0, 0), Some(at(22, 0, 0)), Some(quarter), half);
+    let dead = game.body(at(20, 0, 0), None, Some(quarter), half);
+    game.insert_parts(dead, Dead);
+    let d = game.body(at(18, 0, 0), Some(at(22, 0, 0)), Some(quarter), half);
     // A walker at a rooted unit on its way along z = 10, which so stands: the walker touches it
     // in tick 8, at x = 1, and from tick 9 takes the whole overlap, back to 1 each tick, as a
     // walker takes it from a unit that stands. The rooted unit keeps its place and destination.
-    let rooted = walk.body(at(0, 0, 10), Some(at(10, 0, 10)), Some(quarter), half);
-    walk.sim.set_blocks(rooted, &[Block::Move]);
-    let walker = walk.body(at(3, 0, 10), Some(at(-10, 0, 10)), Some(quarter), half);
+    let rooted = game.body(at(0, 0, 10), Some(at(10, 0, 10)), Some(quarter), half);
+    game.set_blocks(rooted, &[Block::Move]);
+    let walker = game.body(at(3, 0, 10), Some(at(-10, 0, 10)), Some(quarter), half);
     for _ in 0..5 {
-        walk.sim.step();
+        game.step();
     }
     assert_eq!(
-        [a, b].map(|unit| *walk.sim.get::<Position>(unit)),
+        [a, b].map(|id| *game.part::<Position>(id)),
         [at(1, 0, 0), at(2, 0, 0)]
     );
     for _ in 5..16 {
-        walk.sim.step();
+        game.step();
     }
     assert_eq!(
-        [a, b].map(|unit| *walk.sim.get::<Position>(unit)),
+        [a, b].map(|id| *game.part::<Position>(id)),
         [at(1, 0, 0), at(2, 0, 0)]
     );
     let c_at = Position::new(Vec3::new(Num::int(-6), Num::ZERO, Num::int(2) + half)).unwrap();
     assert_eq!(
-        [c, tower].map(|unit| *walk.sim.get::<Position>(unit)),
+        [c, tower].map(|id| *game.part::<Position>(id)),
         [c_at, at(-6, 0, 4)]
     );
     // D, 16 ticks on at a quarter meter, passed the dead body at 20 to reach 22.
     assert_eq!(
-        [d, dead].map(|unit| *walk.sim.get::<Position>(unit)),
+        [d, dead].map(|id| *game.part::<Position>(id)),
         [at(22, 0, 0), at(20, 0, 0)]
     );
     assert_eq!(
-        [rooted, walker].map(|unit| *walk.sim.get::<Position>(unit)),
+        [rooted, walker].map(|id| *game.part::<Position>(id)),
         [at(0, 0, 10), at(1, 0, 10)]
     );
-    assert_eq!(
-        walk.sim.get::<Destination>(rooted).get(),
-        Some(at(10, 0, 10))
-    );
+    assert_eq!(game.part::<Destination>(rooted).get(), Some(at(10, 0, 10)));
 }
 
 #[test]
@@ -243,20 +176,20 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     // started walking since, to x = 4. Neither held unit moves.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let mut walk = Walk::new();
-    let blocked = walk.body(at(0, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
-    let passing = walk.body(at(0, 0, 4), Some(at(4, 0, 4)), Some(quarter), half);
-    let fixed = walk.body(at(2, 0, 0), None, None, half);
-    let resting = walk.body(at(2, 0, 4), None, Some(quarter), half);
+    let mut game = walk_match();
+    let blocked = game.body(at(0, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+    let passing = game.body(at(0, 0, 4), Some(at(4, 0, 4)), Some(quarter), half);
+    let fixed = game.body(at(2, 0, 0), None, None, half);
+    let resting = game.body(at(2, 0, 4), None, Some(quarter), half);
     // As on a client: the sim runs on no held unit, and collision names them.
-    Unpredicted::register(&mut walk.sim.world);
+    game.register_unpredicted();
     for held in [fixed, resting] {
-        walk.sim.insert(held, Unpredicted);
+        game.insert_parts(held, Unpredicted);
     }
     for _ in 0..16 {
-        walk.sim.step();
+        game.step();
     }
-    let places = [blocked, passing, fixed, resting].map(|unit| *walk.sim.get::<Position>(unit));
+    let places = [blocked, passing, fixed, resting].map(|id| *game.part::<Position>(id));
     assert_eq!(places, [at(1, 0, 0), at(4, 0, 4), at(2, 0, 0), at(2, 0, 4)]);
 }
 
@@ -266,44 +199,44 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     // blocks its own cell, 0, whose center is on it; one the client only holds, at (1.5, 1.5),
     // blocks cell 15. A walker never marks the grid.
     let half = Num::HALF;
-    let mut walk = Walk::new();
-    walk.load_pathing(Num::ONE, [-2, -2], [2, 2], vec![ground(half)]);
+    let mut game = walk_match();
+    game.load_open_pathing(Num::ONE, [-2, -2], [2, 2], vec![ground(half)]);
     let quarter = |value: i64| Num::from_bits(value << 22);
     let place =
         |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
-    let blocked = |walk: &Walk| {
-        let grid = walk.sim.world.resource::<PathingGrid>();
+    let blocked = |game: &Match| {
+        let grid = game.resource::<PathingGrid>();
         (0..16)
             .filter(|&cell| !grid.clearance(ground(half)).open(cell))
             .collect::<Vec<_>>()
     };
-    let tower = walk.body(place(-6, -6), None, None, half);
-    let held = walk.body(place(6, 6), None, None, half);
-    walk.body(place(0, 0), Some(at(0, 0, 1)), Some(Num::ONE), half);
-    Unpredicted::register(&mut walk.sim.world);
-    walk.sim.insert(held, Unpredicted);
-    assert_eq!(blocked(&walk), Vec::<usize>::new());
-    walk.sim.step();
-    assert_eq!(blocked(&walk), [0, 15]);
+    let tower = game.body(place(-6, -6), None, None, half);
+    let held = game.body(place(6, 6), None, None, half);
+    game.body(place(0, 0), Some(at(0, 0, 1)), Some(Num::ONE), half);
+    game.register_unpredicted();
+    game.insert_parts(held, Unpredicted);
+    assert_eq!(blocked(&game), Vec::<usize>::new());
+    game.step();
+    assert_eq!(blocked(&game), [0, 15]);
     // A tower that died stands no more in the way, from the next tick.
-    walk.sim.insert(tower, Dead);
-    walk.sim.step();
-    assert_eq!(blocked(&walk), [15]);
+    game.insert_parts(tower, Dead);
+    game.step();
+    assert_eq!(blocked(&game), [15]);
     // In one tick the tower lives again and the held one dies: as many static bodies, none of
     // them moved, and the grid follows.
-    let held_entity = walk.sim.entity(held);
-    walk.sim.world.entity_mut(held_entity).insert(Dead);
-    let tower_entity = walk.sim.entity(tower);
-    walk.sim.world.entity_mut(tower_entity).remove::<Dead>();
-    walk.sim.step();
-    assert_eq!(blocked(&walk), [0]);
+    let held_entity = game.unit_entity(held);
+    game.entity_mut(held_entity).insert(Dead);
+    let tower_entity = game.unit_entity(tower);
+    game.entity_mut(tower_entity).remove::<Dead>();
+    game.step();
+    assert_eq!(blocked(&game), [0]);
     // The tower moves to (−0.5, 1.5): column 1 of row 3, cell 13. Then it goes.
-    *walk.sim.get_mut::<Position>(tower) = place(-2, 6);
-    walk.sim.step();
-    assert_eq!(blocked(&walk), [13]);
-    walk.sim.world.entity_mut(tower_entity).despawn();
-    walk.sim.step();
-    assert_eq!(blocked(&walk), Vec::<usize>::new());
+    *game.part_mut::<Position>(tower) = place(-2, 6);
+    game.step();
+    assert_eq!(blocked(&game), [13]);
+    game.entity_mut(tower_entity).despawn();
+    game.step();
+    assert_eq!(blocked(&game), Vec::<usize>::new());
 }
 
 #[test]
@@ -317,19 +250,19 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
     let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
     let reach = u128::from((tower_radius + half).to_bits().unsigned_abs());
     for planned in [true, false] {
-        let mut walk = Walk::new();
+        let mut game = walk_match();
         if planned {
-            walk.load_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
+            game.load_open_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
         }
-        walk.body(at(0, 0, 0), None, None, tower_radius);
-        let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        game.body(at(0, 0, 0), None, None, tower_radius);
+        let walker = game.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let mut closest = u128::MAX;
         let mut arrived = None;
         for tick in 0..80 {
-            walk.sim.step();
-            let offset = walk.sim.get::<Position>(walker).get();
+            game.step();
+            let offset = game.part::<Position>(walker).get();
             closest = closest.min(offset.length_squared_bits());
-            if arrived.is_none() && walk.sim.get::<Destination>(walker).get().is_none() {
+            if arrived.is_none() && game.part::<Destination>(walker).get().is_none() {
                 arrived = Some(tick);
             }
         }
@@ -341,12 +274,12 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
             );
             // Three ticks more than the 32 a straight 8 m takes, a quarter meter a tick.
             assert_eq!(arrived, Some(34));
-            assert_eq!(*walk.sim.get::<Position>(walker), at(4, 0, 0));
+            assert_eq!(*game.part::<Position>(walker), at(4, 0, 0));
         } else {
             // It stops against the tower, the two radii from its centre, pressed there.
             assert_eq!(arrived, None);
             let stop = Position::new(Vec3::new(-(tower_radius + half), Num::ZERO, Num::ZERO));
-            assert_eq!(*walk.sim.get::<Position>(walker), stop.unwrap());
+            assert_eq!(*game.part::<Position>(walker), stop.unwrap());
         }
     }
 }
@@ -357,7 +290,7 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
     // centers it holds, columns 4 and 5 of rows 0 to 3, to a walker of no body. One at (2, 1)
     // walks half a meter a tick to (8, 1).
     let half = Num::HALF;
-    let mut walk = Walk::new();
+    let mut game = walk_match();
     let box_of = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
         let area = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
         Polygon::new(area.to_vec()).unwrap()
@@ -366,35 +299,35 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
         layer: Layer::FIRST,
         area: box_of([4, 0], [6, 4]),
     };
-    walk.load_walled(
+    game.load_walled(
         Num::ONE,
         [0, 0],
         [10, 6],
         vec![ground(Num::ZERO)],
         &[barrier],
     );
-    let walker = walk.unit(at(2, 0, 1), Some(at(8, 0, 1)));
+    let walker = game.unit(at(2, 0, 1), Some(at(8, 0, 1)));
     // Its route goes over the wall's top, row 4, and keeps a waypoint only where the line on would
     // touch a blocked cell: from (2, 1) to the next cell, (4.5, 4.5), it is at z = 3.8 at x = 4,
     // on cell (4, 3); from (3.5, 4.5) to the cell after (6.5, 4.5), (7.5, 3.5), at z = 3.875 at
     // x = 6, on cell (5, 3). From (6.5, 4.5) it goes straight to its goal.
     let point = |x: i64, z: i64| Position::new(Vec3::new(half * x, Num::ZERO, half * z)).unwrap();
-    walk.sim.step();
+    game.step();
     let corners = [point(7, 9), point(13, 9), point(16, 2)];
-    assert_eq!(walk.get_route(walker).ahead(), corners);
+    assert_eq!(game.get_route(walker).ahead(), corners);
     // It walks √14.5 ≈ 3.81 m, 3 m and √14.5 m, a meter a tick, never into the wall's square,
     // and arrives in its eleventh tick.
     let mut steps = 1;
-    while walk.sim.get::<Destination>(walker).get().is_some() {
-        let pos = walk.sim.get::<Position>(walker).get();
+    while game.part::<Destination>(walker).get().is_some() {
+        let pos = game.part::<Position>(walker).get();
         let inside =
             |value: Num, low: i64, high: i64| Num::int(low) <= value && value <= Num::int(high);
         assert!(!(inside(pos.x, 4, 6) && inside(pos.z, 0, 4)), "{pos:?}");
-        walk.sim.step();
+        game.step();
         steps += 1;
     }
     assert_eq!(steps, 11);
-    assert_eq!(*walk.sim.get::<Position>(walker), at(8, 0, 1));
+    assert_eq!(*game.part::<Position>(walker), at(8, 0, 1));
 }
 
 /// Whether the bodies of radii `a` and `b` at `first` and `second` overlap on the ground plane,
@@ -415,43 +348,40 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
     let creep_radius = Num::from_bits((35 << Num::FRAC_BITS) / 100);
     let creep_at = Position::new(Vec3::new(Num::int(2), Num::ZERO, half)).unwrap();
     for planned in [true, false] {
-        let mut walk = Walk::new();
+        let mut game = walk_match();
         if planned {
-            walk.load_pathing(
+            game.load_open_pathing(
                 half,
                 [-8, -8],
                 [8, 8],
                 vec![ground(creep_radius), ground(half)],
             );
         }
-        let hero = walk.body(at(0, 0, 0), None, Some(quarter), half);
-        let creep = walk.body(creep_at, None, Some(quarter), creep_radius);
-        let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        let hero = game.body(at(0, 0, 0), None, Some(quarter), half);
+        let creep = game.body(creep_at, None, Some(quarter), creep_radius);
+        let walker = game.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let mut touched = false;
         let mut arrived = None;
         for tick in 0..80 {
-            walk.sim.step();
-            let pos = *walk.sim.get::<Position>(walker);
+            game.step();
+            let pos = *game.part::<Position>(walker);
             touched |= overlap(pos, half, at(0, 0, 0), half);
             touched |= overlap(pos, half, creep_at, creep_radius);
-            if arrived.is_none() && walk.sim.get::<Destination>(walker).get().is_none() {
+            if arrived.is_none() && game.part::<Destination>(walker).get().is_none() {
                 arrived = Some(tick);
             }
         }
-        let still = [
-            *walk.sim.get::<Position>(hero),
-            *walk.sim.get::<Position>(creep),
-        ];
+        let still = [*game.part::<Position>(hero), *game.part::<Position>(creep)];
         if planned {
             assert!(!touched);
             // Seven ticks more than the 32 a straight 8 m takes, round both.
             assert_eq!(arrived, Some(38));
-            assert_eq!(*walk.sim.get::<Position>(walker), at(4, 0, 0));
+            assert_eq!(*game.part::<Position>(walker), at(4, 0, 0));
             assert_eq!(still, [at(0, 0, 0), creep_at]);
         } else {
             // Against the hero, the two radii, 1 m, from its centre.
             assert_eq!(arrived, None);
-            assert_eq!(*walk.sim.get::<Position>(walker), at(-1, 0, 0));
+            assert_eq!(*game.part::<Position>(walker), at(-1, 0, 0));
         }
     }
 }
@@ -465,24 +395,24 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
     let half = Num::HALF;
     let quarter = Num::QUARTER;
     for planned in [true, false] {
-        let mut walk = Walk::new();
+        let mut game = walk_match();
         if planned {
-            walk.load_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
+            game.load_open_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
         }
-        let east = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
-        let west = walk.body(at(4, 0, 0), Some(at(-4, 0, 0)), Some(quarter), half);
+        let east = game.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        let west = game.body(at(4, 0, 0), Some(at(-4, 0, 0)), Some(quarter), half);
         let mut sides = [Num::ZERO; 2];
         let mut arrived = [None; 2];
         for tick in 0..120 {
-            walk.sim.step();
-            for (side, unit) in sides.iter_mut().zip([east, west]) {
-                let z = walk.sim.get::<Position>(unit).get().z;
+            game.step();
+            for (side, id) in sides.iter_mut().zip([east, west]) {
+                let z = game.part::<Position>(id).get().z;
                 if z.to_bits().abs() > side.to_bits().abs() {
                     *side = z;
                 }
             }
-            for (at, unit) in arrived.iter_mut().zip([east, west]) {
-                if at.is_none() && walk.sim.get::<Destination>(unit).get().is_none() {
+            for (at, id) in arrived.iter_mut().zip([east, west]) {
+                if at.is_none() && game.part::<Destination>(id).get().is_none() {
                     *at = Some(tick);
                 }
             }
@@ -490,14 +420,14 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         if planned {
             // Seven ticks more each than the 32 a straight 8 m takes, round the other.
             assert_eq!(arrived, [Some(38); 2]);
-            assert_eq!(*walk.sim.get::<Position>(east), at(4, 0, 0));
-            assert_eq!(*walk.sim.get::<Position>(west), at(-4, 0, 0));
+            assert_eq!(*game.part::<Position>(east), at(4, 0, 0));
+            assert_eq!(*game.part::<Position>(west), at(-4, 0, 0));
             assert!(sides[0] < Num::ZERO && sides[1] > Num::ZERO, "{sides:?}");
         } else {
             // Pressed together, each half a metre from where they met, at x = 0.
             assert_eq!(arrived, [None; 2]);
             let half_x = |x: Num| Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-            let pressed = [east, west].map(|unit| *walk.sim.get::<Position>(unit));
+            let pressed = [east, west].map(|id| *game.part::<Position>(id));
             assert_eq!(pressed, [half_x(-half), half_x(half)]);
         }
     }
@@ -510,35 +440,35 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     // columns 5 and 6 is 0.71 m from a tower, closer than 1.5. A ground unit of 0.5 m stands at
     // (3, 3).
     let half = Num::HALF;
-    let mut walk = Walk::new();
+    let mut game = walk_match();
     let flyer = Walker {
         layer: AIR,
         radius: half,
     };
-    walk.load_pathing(Num::ONE, [0, 0], [12, 6], vec![ground(half), flyer]);
+    game.load_open_pathing(Num::ONE, [0, 0], [12, 6], vec![ground(half), flyer]);
     for z in [1, 3, 5] {
-        walk.body(at(6, 0, z), None, None, Num::ONE);
+        game.body(at(6, 0, z), None, None, Num::ONE);
     }
-    let standing = walk.body(at(3, 0, 3), None, Some(Num::ONE), half);
+    let standing = game.body(at(3, 0, 3), None, Some(Num::ONE), half);
     // An air unit of 0.5 m from (1, 3) to (11, 3), a meter a tick, flies straight over both: in
     // tick 2 it is on the ground unit, which does not move, and in tick 10 at its goal.
     let body = Body::new(half).unwrap().on(AIR);
-    let flying = walk.body_on(at(1, 0, 3), Some(at(11, 0, 3)), Some(Num::ONE), body);
+    let flying = game.body_on(at(1, 0, 3), Some(at(11, 0, 3)), Some(Num::ONE), body);
     // A ground unit of 0.5 m from (1, 1) to (11, 1) stops short of the wall, at the cell center
     // nearest its goal that it reaches: (4.5, 0.5) and (4.5, 1.5) tie at √42.5 ≈ 6.52 m, each
     // √2.5 ≈ 1.58 m from the tower at (6, 1), and the lower cell number wins. It walks straight
     // there, √12.5 ≈ 3.54 m, so it arrives in tick 4.
-    let walking = walk.body(at(1, 0, 1), Some(at(11, 0, 1)), Some(Num::ONE), half);
+    let walking = game.body(at(1, 0, 1), Some(at(11, 0, 1)), Some(Num::ONE), half);
     let short = Position::new(Vec3::new(Num::int(4) + half, Num::ZERO, half)).unwrap();
     let mut flown = Vec::new();
     for _ in 0..12 {
-        walk.sim.step();
-        flown.push(*walk.sim.get::<Position>(flying));
-        assert_eq!(*walk.sim.get::<Position>(standing), at(3, 0, 3));
+        game.step();
+        flown.push(*game.part::<Position>(flying));
+        assert_eq!(*game.part::<Position>(standing), at(3, 0, 3));
     }
     let line: Vec<Position> = (2..=11).chain([11; 2]).map(|x| at(x, 0, 3)).collect();
     assert_eq!(flown, line);
-    assert_eq!(*walk.sim.get::<Position>(walking), short);
+    assert_eq!(*game.part::<Position>(walking), short);
 }
 
 #[test]
@@ -547,42 +477,37 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // to the goal once, and tests the line from the start to each cell but the two nearest it:
     // 1 + 16 + 14 = 31 to the far end, 1 + 4 + 2 = 7 to x = 3.5, 1 + 15 + 13 = 29 to x = 14.5.
     // A tick does up to the grid's 16.
-    let mut walk = Walk::new();
-    walk.load_pathing(Num::ONE, [0, 0], [16, 1], vec![ground(Num::ZERO)]);
+    let mut game = walk_match();
+    game.load_open_pathing(Num::ONE, [0, 0], [16, 1], vec![ground(Num::ZERO)]);
     let half = Num::HALF;
     let place = |x: i64| Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, half)).unwrap();
     let (start, far, near) = (place(0), place(15), place(3));
-    let units = [None, Some(far), Some(near), Some(far)].map(|goal| walk.unit(start, goal));
-    let waiting = |walk: &Walk| {
-        units.map(|unit| {
-            let entity = walk.sim.entity(unit);
-            walk.sim
-                .world
-                .get::<Route>(entity)
-                .unwrap()
-                .asked()
-                .is_some()
+    let units = [None, Some(far), Some(near), Some(far)].map(|goal| game.unit(start, goal));
+    let waiting = |game: &Match| {
+        units.map(|id| {
+            let entity = game.unit_entity(id);
+            game.get::<Route>(entity).unwrap().asked().is_some()
         })
     };
     // The last three ask in tick 0; the second does 31 and meets the limit.
-    walk.sim.step();
-    assert_eq!(waiting(&walk), [false, false, true, true]);
-    let second = walk.sim.entity(units[1]);
-    assert_eq!(walk.sim.world.get::<Route>(second).unwrap().ahead(), [far]);
+    game.step();
+    assert_eq!(waiting(&game), [false, false, true, true]);
+    let second = game.unit_entity(units[1]);
+    assert_eq!(game.get::<Route>(second).unwrap().ahead(), [far]);
     // The first, of the lowest id, asks in tick 1, after the rest. The last asks again in tick
     // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 7 and
     // 29, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
     // first and the third would go before it, 7 each, and none would wait.
-    let first = walk.sim.entity(units[0]);
-    let mut destination = walk.sim.world.get_mut::<Destination>(first).unwrap();
+    let first = game.unit_entity(units[0]);
+    let mut destination = game.get_mut::<Destination>(first).unwrap();
     *destination = Destination::to(Some(near));
-    let last = walk.sim.entity(units[3]);
-    let mut destination = walk.sim.world.get_mut::<Destination>(last).unwrap();
+    let last = game.unit_entity(units[3]);
+    let mut destination = game.get_mut::<Destination>(last).unwrap();
     *destination = Destination::to(Some(place(14)));
-    walk.sim.step();
-    assert_eq!(waiting(&walk), [true, false, false, false]);
-    walk.sim.step();
-    assert_eq!(waiting(&walk), [false; 4]);
+    game.step();
+    assert_eq!(waiting(&game), [true, false, false, false]);
+    game.step();
+    assert_eq!(waiting(&game), [false; 4]);
 }
 
 #[test]
@@ -599,23 +524,23 @@ fn a_walker_steers_with_the_work_the_routes_left() {
     };
     let goal = place(11, 1).unwrap();
     for (askers, steered) in [(0, [true, true]), (1, [true, true]), (2, [false, true])] {
-        let mut walk = Walk::new();
-        walk.load_pathing(
+        let mut game = walk_match();
+        game.load_open_pathing(
             Num::ONE,
             [0, 0],
             [12, 3],
             vec![ground(Num::ZERO), ground(quarter)],
         );
-        let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(quarter), quarter);
-        walk.sim.step();
-        assert_eq!(walk.get_route(walker).ahead(), [goal]);
-        walk.body(place(3, 1).unwrap(), None, Some(quarter), quarter);
+        let walker = game.body(place(0, 1).unwrap(), Some(goal), Some(quarter), quarter);
+        game.step();
+        assert_eq!(game.get_route(walker).ahead(), [goal]);
+        game.body(place(3, 1).unwrap(), None, Some(quarter), quarter);
         for _ in 0..askers {
-            walk.unit(place(0, 0).unwrap(), Some(place(11, 0).unwrap()));
+            game.unit(place(0, 0).unwrap(), Some(place(11, 0).unwrap()));
         }
         let ticks = [(); 2].map(|()| {
-            walk.sim.step();
-            walk.get_route(walker).ahead() != [goal]
+            game.step();
+            game.get_route(walker).ahead() != [goal]
         });
         assert_eq!(ticks, steered, "{askers}");
     }
@@ -632,29 +557,27 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     let place = |x: i64, z: i64| {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
-    let mut walk = Walk::new();
-    walk.load_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
+    let mut game = walk_match();
+    game.load_open_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
     let goal = place(7, 1).unwrap();
-    let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
-    walk.sim.step();
-    let entity = walk.sim.entity(walker);
-    let changed = |walk: &Walk| {
-        walk.sim
-            .world
-            .entity(entity)
+    let walker = game.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
+    game.step();
+    let entity = game.unit_entity(walker);
+    let changed = |game: &Match| {
+        game.entity(entity)
             .get_ref::<Route>()
             .unwrap()
             .last_changed()
     };
-    let planned = changed(&walk);
-    walk.body(place(5, 0).unwrap(), None, None, half);
-    walk.sim.step();
-    assert_eq!(changed(&walk), planned);
-    assert_eq!(walk.get_route(walker).ahead(), [goal]);
-    walk.body(place(5, 1).unwrap(), None, None, half);
-    walk.sim.step();
-    assert_ne!(walk.get_route(walker).ahead(), [goal]);
-    assert!(walk.get_route(walker).reached());
+    let planned = changed(&game);
+    game.body(place(5, 0).unwrap(), None, None, half);
+    game.step();
+    assert_eq!(changed(&game), planned);
+    assert_eq!(game.get_route(walker).ahead(), [goal]);
+    game.body(place(5, 1).unwrap(), None, None, half);
+    game.step();
+    assert_ne!(game.get_route(walker).ahead(), [goal]);
+    assert!(game.get_route(walker).reached());
 }
 
 #[test]
@@ -670,62 +593,60 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     };
     let goal = place(6, 1).unwrap();
     let walled = || {
-        let mut walk = Walk::new();
-        walk.load_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
-        let towers = [0, 1, 2].map(|z| walk.body(place(4, z).unwrap(), None, None, half));
-        let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
-        let middle = walk.sim.entity(towers[1]);
-        (walk, middle, walker)
+        let mut game = walk_match();
+        game.load_open_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
+        let towers = [0, 1, 2].map(|z| game.body(place(4, z).unwrap(), None, None, half));
+        let walker = game.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
+        let middle = game.unit_entity(towers[1]);
+        (game, middle, walker)
     };
     // The middle tower dies while the walker is on its way, at (1.5, 1.5) after tick 0: its route
     // ends short, so it asks again in tick 1, and walks on straight to the goal, 6 m in 6 ticks.
-    let (mut walk, middle, walker) = walled();
-    walk.sim.step();
-    walk.sim.world.entity_mut(middle).insert(Dead);
-    walk.sim.step();
-    assert!(walk.get_route(walker).reached());
+    let (mut game, middle, walker) = walled();
+    game.step();
+    game.entity_mut(middle).insert(Dead);
+    game.step();
+    assert!(game.get_route(walker).reached());
     for _ in 0..4 {
-        walk.sim.step();
+        game.step();
     }
-    assert_eq!(*walk.sim.get::<Position>(walker), goal);
+    assert_eq!(*game.part::<Position>(walker), goal);
     // The middle tower stands, and the walker arrives short.
-    let (mut walk, middle, walker) = walled();
+    let (mut game, middle, walker) = walled();
     for _ in 0..3 {
-        walk.sim.step();
+        game.step();
     }
     let short = place(3, 1).unwrap();
-    assert_eq!(*walk.sim.get::<Position>(walker), short);
-    assert_eq!(walk.sim.get::<Destination>(walker).get(), None);
-    assert!(walk.get_route(walker).arrived_short_of(goal));
+    assert_eq!(*game.part::<Position>(walker), short);
+    assert_eq!(game.part::<Destination>(walker).get(), None);
+    assert!(game.get_route(walker).arrived_short_of(goal));
     // Sent there again, as an order would, it plans nothing, and stays with no destination.
-    let entity = walk.sim.entity(walker);
-    let changed = |walk: &Walk| {
-        walk.sim
-            .world
-            .entity(entity)
+    let entity = game.unit_entity(walker);
+    let changed = |game: &Match| {
+        game.entity(entity)
             .get_ref::<Route>()
             .unwrap()
             .last_changed()
     };
-    let before = changed(&walk);
-    *walk.sim.world.get_mut::<Destination>(entity).unwrap() = Destination::to(Some(goal));
-    walk.sim.step();
-    assert_eq!(changed(&walk), before);
-    assert_eq!(walk.sim.get::<Destination>(walker).get(), None);
-    assert_eq!(*walk.sim.get::<Position>(walker), short);
+    let before = changed(&game);
+    *game.get_mut::<Destination>(entity).unwrap() = Destination::to(Some(goal));
+    game.step();
+    assert_eq!(changed(&game), before);
+    assert_eq!(game.part::<Destination>(walker).get(), None);
+    assert_eq!(*game.part::<Position>(walker), short);
     // The middle tower dies, and the walker goes on through its cell from the next tick: 3 m to
     // the gap, (4.5, 1.5), then 2 m on, in 3 ticks. Its route reached the goal, so it forgets the
     // route, and its progress.
-    walk.sim.world.entity_mut(middle).insert(Dead);
-    walk.sim.step();
-    assert_eq!(walk.sim.get::<Destination>(walker).get(), Some(goal));
+    game.entity_mut(middle).insert(Dead);
+    game.step();
+    assert_eq!(game.part::<Destination>(walker).get(), Some(goal));
     for _ in 0..2 {
-        walk.sim.step();
+        game.step();
     }
-    assert_eq!(*walk.sim.get::<Position>(walker), goal);
-    assert_eq!(walk.sim.get::<Destination>(walker).get(), None);
-    assert_eq!(walk.get_route(walker).goal(), None);
-    assert_eq!(*walk.sim.get::<Progress>(walker), Progress::default());
+    assert_eq!(*game.part::<Position>(walker), goal);
+    assert_eq!(game.part::<Destination>(walker).get(), None);
+    assert_eq!(game.get_route(walker).goal(), None);
+    assert_eq!(*game.part::<Progress>(walker), Progress::default());
 }
 
 /// A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2), towers
@@ -938,9 +859,9 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
 
 #[test]
 fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
-    let mut walk = Walk::new();
-    let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
-    walk.sim.insert(unit, Dead);
+    let mut game = walk_match();
+    let unit = game.unit(at(0, 0, 0), Some(at(0, 0, 5)));
+    game.insert_parts(unit, Dead);
     // Tags that block moving hold their unit where it stands, its destination kept, until they
     // end; tags that block anything else let it walk.
     let cases = [
@@ -952,52 +873,52 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
         .step_by(2)
         .zip(cases)
         .map(|(x, (blocks, _))| {
-            let id = walk.unit(at(x, 0, 0), Some(at(x, 0, 5)));
-            walk.sim.set_blocks(id, blocks);
+            let id = game.unit(at(x, 0, 0), Some(at(x, 0, 5)));
+            game.set_blocks(id, blocks);
             (id, x)
         })
         .collect();
-    walk.sim.step();
-    assert_eq!(*walk.sim.get::<Position>(unit), at(0, 0, 0));
-    assert_eq!(walk.sim.get::<Destination>(unit).get(), None);
+    game.step();
+    assert_eq!(*game.part::<Position>(unit), at(0, 0, 0));
+    assert_eq!(game.part::<Destination>(unit).get(), None);
     for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i64::from(walks);
-        assert_eq!(*walk.sim.get::<Position>(id), at(x, 0, z), "{blocks:?}");
+        assert_eq!(*game.part::<Position>(id), at(x, 0, z), "{blocks:?}");
         assert_eq!(
-            walk.sim.get::<Destination>(id).get(),
+            game.part::<Destination>(id).get(),
             Some(at(x, 0, 5)),
             "{blocks:?}"
         );
-        walk.sim.set_blocks(id, &[]);
+        game.set_blocks(id, &[]);
     }
     // The blocks end: each walks on a meter from where it stood.
-    walk.sim.step();
+    game.step();
     for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i64::from(walks) + 1;
-        assert_eq!(*walk.sim.get::<Position>(id), at(x, 0, z), "{blocks:?}");
+        assert_eq!(*game.part::<Position>(id), at(x, 0, z), "{blocks:?}");
     }
 }
 
 #[test]
 fn every_navigation_type_is_state() {
-    let mut walk = Walk::new();
-    let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
-    let entity = walk.sim.entity(unit);
-    walk.sim.insert(
-        unit,
+    let mut game = walk_match();
+    let id = game.unit(at(0, 0, 0), Some(at(0, 0, 5)));
+    let entity = game.unit_entity(id);
+    game.insert_parts(
+        id,
         (
-            PathWalker::start(PathEnd::Start, unit),
+            PathWalker::start(PathEnd::Start, id),
             OnPath::new(PathId::new(0)),
         ),
     );
-    let mut route = walk.sim.world.get_mut::<Route>(entity).unwrap();
+    let mut route = game.get_mut::<Route>(entity).unwrap();
     route.ask(at(3, 0, 4), Tick::new(2), None);
     let lane = || Paths::new([("lane", &[at(0, 0, 0), at(0, 0, 5)][..])]);
-    walk.sim.world.insert_resource(lane());
+    game.insert_resource(lane());
     // A restore loads the map first, as the packages give it.
-    let mut restored = Walk::new();
-    restored.sim.world.insert_resource(lane());
-    walk.sim.restore_into(&mut restored.sim);
+    let mut restored = walk_match();
+    restored.insert_resource(lane());
+    game.restore_into(&mut restored);
 }
 
 mod boxes;

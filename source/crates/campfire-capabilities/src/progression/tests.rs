@@ -7,7 +7,8 @@ use super::*;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
-use crate::release::test_match::TestMatch;
+use crate::release::r#match::Match;
+use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::stats::level::Level;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
@@ -138,14 +139,14 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
 #[test]
 fn experience_is_state_and_restores() {
     // A match of stats and progression with the tracks of `book`, the same in both.
-    let tracks = |sim: &mut TestMatch| {
+    let tracks = |game: &mut Match| {
         let book = book();
-        ProgressionColumn::share(sim.world.non_send::<View>(), book.clone());
-        sim.world.insert_resource(book);
+        ProgressionColumn::share(game.non_send::<View>(), book.clone());
+        game.insert_resource(book);
     };
     let declared = [Capability::Stats, Capability::Progression];
-    let mut sim = TestMatch::client(&declared);
-    tracks(&mut sim);
+    let mut game = Match::client(&declared);
+    tracks(&mut game);
     // A unit 150 into `level`, at level 2 with a point more than at its spawn, and 10 into
     // `valor`, still at level 1.
     let book = book();
@@ -156,25 +157,22 @@ fn experience_is_state_and_restores() {
     experience.add(track(0), Num::int(150), &book, Some(&mut level));
     experience.add(track(1), Num::int(10), &book, None);
     points.gain(1);
-    let unit = sim.spawn(Position::ORIGIN, Team::new(0), (level, experience, points));
-    let mut restored = TestMatch::client(&declared);
+    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), (level, experience, points));
+    let mut restored = Match::client(&declared);
     tracks(&mut restored);
-    sim.restore_into(&mut restored);
-    assert_eq!(
-        restored.get::<Experience>(unit),
-        sim.get::<Experience>(unit)
-    );
-    assert_eq!(restored.get::<Level>(unit).get(), 2);
-    assert_eq!(restored.get::<Points>(unit).get(), 2);
+    game.restore_into(&mut restored);
+    assert_eq!(restored.part::<Experience>(id), game.part::<Experience>(id));
+    assert_eq!(restored.part::<Level>(id).get(), 2);
+    assert_eq!(restored.part::<Points>(id).get(), 2);
     // Only a unit with the `level` track has points: one with `valor` alone has none at its
     // spawn, and points on it fail the check.
     let valor = TrackSet::of([track(1)]);
     assert_eq!(Points::at_spawn(valor, book.level_track()), None);
-    let held = sim.spawn(
+    let held = game.spawn_unit(
         Position::ORIGIN,
         Team::new(0),
         (Experience::new(valor, book.level_track()), points),
     );
-    assert!(!points.check(&sim.world, sim.entity(held)));
-    assert!(points.check(&sim.world, sim.entity(unit)));
+    assert!(!points.check(&game, game.unit_entity(held)));
+    assert!(points.check(&game, game.unit_entity(id)));
 }

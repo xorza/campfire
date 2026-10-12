@@ -32,5 +32,5 @@ The engine's capabilities and the core under them. The design is `docs/design/04
 
 - A new rule of a mode's match joins that mode's scripted match, its event asserted in its own tick: `docs/design/02-engine-core.md`, Testing and diagnostics.
 - A change that moves a golden says why in its commit, with the number that moved. A refactor moves neither column; a layout change moves only the state column.
-- A test that runs a match holds a `LogCheck` through its fixture (`TestMatch` here); a warning no test takes fails it.
+- A test that runs a match holds a `LogCheck` through its fixture (here a `Match` from `Match::test`); a warning no test takes fails it.
 - Benches live in `bench.rs` beside what they measure, behind the `bench` feature.

@@ -6,8 +6,8 @@ use campfire_capabilities::SaveBy;
 use campfire_common::{Tick, Ticks};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
-use campfire_runner::{CheckpointBeginError, Session};
-use campfire_sim::StateDelta;
+use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
+use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 use campfire_store::{DurableError, PathError};
 use lightyear::prelude::MessageReceiver;
 
@@ -18,12 +18,12 @@ use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::local::local_session::LocalSession;
 use crate::save_command::SaveCommand;
-use crate::sim_server::SimServer;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
 use crate::sim_server::checkpoints::error::SaveRefusal;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
+use crate::sim_server::sim_server_world::SimServerWorld;
 
 pub(crate) mod error;
 
@@ -49,12 +49,12 @@ impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
     /// copy of the state starts as a full copy of the state now, and the snapshots go to
     /// `snapshots`.
-    pub(crate) fn start(world: &mut World, snapshots: SnapshotDir, signer: ServerSigner) {
+    pub(super) fn start(world: &mut World, snapshots: SnapshotDir, signer: ServerSigner) {
         let mut base = StateDelta::default();
-        Session::track(world, &mut base);
+        world.track(&mut base);
         let session = world.resource::<Session>();
         let thread = CheckpointThread::start(
-            session.registry().clone(),
+            world.resource::<StateRegistry>().clone(),
             base,
             session.log().session_id(),
             snapshots,
@@ -81,9 +81,8 @@ impl Checkpoints {
     /// whenever the thread is free, so each delta holds the ticks since the last, few unless a
     /// snapshot kept the thread.
     pub(crate) fn begin(world: &mut World) {
-        let session = world.resource::<Session>();
-        let next = session.log().next_tick();
-        let saved = session.save_due(world);
+        let next = world.session().log().next_tick();
+        let saved = world.save_due();
         let mut checkpoints = world.resource_mut::<Checkpoints>();
         let due = saved || checkpoints.plan.first() == Some(&next);
         checkpoints.plan.retain(|&tick| tick > next);
@@ -108,7 +107,8 @@ impl Checkpoints {
             Ok(begun) => Checkpoints::send(world, Some(begun)),
             Err(CheckpointBeginError::PastSeeds) => {
                 SeedsRanOut { tick: next }.log();
-                SimServer::end_session(world, Outcome::Aborted)
+                world
+                    .end_session(Outcome::Aborted)
                     .expect("no checkpoint is on the thread");
             }
             // A checkpoint begun at this boundary already, as a restore takes one again.
@@ -130,7 +130,7 @@ impl Checkpoints {
 
     /// Waits for every delta on the thread and queued for it, and logs the record of each
     /// checkpoint among them; an error when a snapshot was not written.
-    pub(crate) fn settle(world: &mut World) -> Result<(), PathError<DurableError>> {
+    pub(super) fn settle(world: &mut World) -> Result<(), PathError<DurableError>> {
         loop {
             let returned = world.resource_mut::<Checkpoints>().thread.wait();
             if returned.is_none() {
@@ -190,7 +190,9 @@ impl Checkpoints {
                 }
                 let latest = world.resource::<Session>().log().checkpoints().last();
                 let segment = latest.ok_or(SaveRefusal::NoSave)?.segment;
-                SimServer::load(world, segment).expect("no checkpoint is on the thread");
+                world
+                    .load_session_save(segment)
+                    .expect("no checkpoint is on the thread");
             }
         }
         Ok(())
@@ -199,7 +201,7 @@ impl Checkpoints {
     /// Takes the checkpoint begun at the boundary before the next tick again, on the main thread,
     /// as a restore does once its replay reaches it: writes its snapshot into `snapshots`, and
     /// logs its record, which `signer` signs. Nothing when no checkpoint begun starts there.
-    pub(crate) fn take_again(
+    pub(super) fn take_again(
         world: &mut World,
         snapshots: &SnapshotDir,
         signer: &ServerSigner,
@@ -214,9 +216,7 @@ impl Checkpoints {
             return Ok(());
         }
         let mut snapshot = Vec::new();
-        let record = session
-            .checkpoint(world, &mut snapshot)
-            .expect("a checkpoint begun");
+        let record = world.checkpoint(&mut snapshot).expect("a checkpoint begun");
         snapshots.write(&snapshot)?;
         let signature = signer.sign_checkpoint(&record, session.log().session_id());
         Checkpoints::log(world, SignedCheckpoint { record, signature });
@@ -227,9 +227,7 @@ impl Checkpoints {
     /// the boundary before the next tick, when one is.
     fn send(world: &mut World, begun: Option<CheckpointBegun>) {
         world.resource_scope(|world, mut checkpoints: Mut<'_, Checkpoints>| {
-            checkpoints
-                .thread
-                .send(begun, |delta| Session::changes(world, delta));
+            checkpoints.thread.send(begun, |delta| world.changes(delta));
         });
     }
 

@@ -1,5 +1,4 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use bevy_ecs::world::World;
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 
@@ -28,8 +27,6 @@ use crate::declare::install_cx::InstallCx;
 use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
-use crate::stats::pool_id::PoolId;
 use crate::units::dead::Dead;
 use crate::units::spawn_point::SpawnPoint;
 
@@ -43,6 +40,7 @@ pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_hooks;
 pub(crate) mod combat_rules;
+pub(crate) mod combat_world;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_pass;
@@ -173,77 +171,34 @@ impl Combat {
             Dying::despawn_dead.in_set(SimSet::Vision),
         ));
     }
-
-    /// The match's life pool; `None` when its mode names none.
-    pub fn life(world: &World) -> Option<PoolId> {
-        Some(world.get_resource::<LifePool>()?.0)
-    }
 }
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
     use campfire_math::{Num, Rounding};
     use campfire_sim::TickRate;
 
+    use crate::actions::action_book::internals::TestWeapon;
+    use crate::actions::action_range::ActionRange;
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
+    use crate::actions::slot_kind::SlotKind;
+    use crate::actions::slot_times::TimedSlots;
     #[cfg(test)]
     use crate::combat::on_death::OnDeath;
     #[cfg(test)]
     use crate::combat::recent_attackers::RecentAttackers;
     #[cfg(test)]
     use crate::stats::life::Life;
-    use crate::values::rank::Rank;
-
-    use campfire_sim::StableId;
-
-    use crate::actions::action_book::internals::{self, TestWeapon};
-    use crate::actions::action_range::ActionRange;
-    use crate::actions::action_slots::ActionSlots;
-    use crate::actions::slot_kind::SlotKind;
-    use crate::actions::slot_times::TimedSlots;
-    #[cfg(test)]
-    use crate::combat::combat_bindings::CombatBindings;
-    use crate::combat::damage::{Damage, DamageCause};
-    use crate::combat::pass_queue::PassQueue;
-    #[cfg(test)]
-    use crate::stats::life_pool::LifePool;
-    use crate::units::view::View;
-
-    #[cfg(test)]
-    use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
+    use crate::values::rank::Rank;
     use crate::values::relation_set::RelationSet;
-
-    /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
-    /// pass, as an effect of no action deals it: for a test that deals what no input can.
-    pub fn queue_damage(
-        world: &mut World,
-        source: Option<StableId>,
-        target: StableId,
-        amount: Num,
-        kind: &str,
-    ) {
-        let kind = world
-            .non_send::<View>()
-            .damage_kind_named(kind)
-            .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
-        world.resource_mut::<PassQueue>().push_damage(Damage {
-            source,
-            target,
-            amount,
-            kind,
-            cause: DamageCause::Effect,
-            ability: None,
-            depth: 0,
-            hit: None,
-        });
-    }
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
@@ -308,7 +263,7 @@ pub(crate) mod internals {
                     self.windup,
                 )
             };
-            let id = internals::weapon(world, weapon);
+            let id = world.add_weapon(weapon);
             // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
             let period = Num::from_int(i64::try_from(self.period.get()).unwrap()).unwrap();
@@ -328,13 +283,6 @@ pub(crate) mod internals {
                 stats,
             }
         }
-    }
-
-    /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
-    #[cfg(test)]
-    pub(crate) fn bind_life(world: &mut World, life: PoolId) {
-        world.insert_resource(LifePool(life));
-        world.insert_resource(CombatBindings::UNBOUND);
     }
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,

@@ -93,7 +93,7 @@ impl Walking {
             .map(|(&id, &at, body, ..)| Placed {
                 id,
                 key: body.layer(),
-                at,
+                pos: at,
                 shape: body.shape(),
             });
         let gatherers = bodies
@@ -117,7 +117,7 @@ impl Walking {
             }
             let steered = Steered {
                 id,
-                at,
+                pos: at,
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
@@ -246,7 +246,7 @@ impl Walking {
                     |(entity, &id, body, position, movable, destination, tags, ..)| Collider {
                         id,
                         entity,
-                        at: position.get(),
+                        point: position.get(),
                         shape: body.shape(),
                         layer: body.layer(),
                         movable,
@@ -270,7 +270,7 @@ impl Walking {
             let (_, _, _, mut position, ..) = units
                 .get_mut(collider.entity)
                 .expect("a body read this tick");
-            let parted = Position::new(collider.at).expect("a push stays near the bounds");
+            let parted = Position::new(collider.point).expect("a push stays near the bounds");
             position.set_if_neq(parted);
         }
     }

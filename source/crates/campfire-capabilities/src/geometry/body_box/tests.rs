@@ -4,9 +4,9 @@ use campfire_math::internals::SplitMix64;
 use super::*;
 
 impl BodyBox {
-    /// Whether `at` lies inside the box at `centre` or on its edge.
-    fn holds(&self, centre: Position, at: Position) -> bool {
-        self.frame().holds(flat(at) - flat(centre))
+    /// Whether `pos` lies inside the box at `centre` or on its edge.
+    fn holds(&self, centre: Position, pos: Position) -> bool {
+        self.frame().holds(flat(pos) - flat(centre))
     }
 }
 
@@ -37,9 +37,9 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
     Polygon::new(points.to_vec()).unwrap()
 }
 
-/// The squared distance from `at` to the nearest point of `body` at `centre`; 0 inside.
-fn distance(body: &BodyBox, centre: Position, at: Position) -> SquaredDistance {
-    body.frame().nearest_to(flat(at) - flat(centre)).distance
+/// The squared distance from `pos` to the nearest point of `body` at `centre`; 0 inside.
+fn distance(body: &BodyBox, centre: Position, pos: Position) -> SquaredDistance {
+    body.frame().nearest_to(flat(pos) - flat(centre)).distance
 }
 
 fn flat_vec3(off: Flat) -> Vec3 {
@@ -656,15 +656,24 @@ fn check_push(body: &BodyBox, centre: Position, probe: Position, radius: Num) {
 /// Two boxes' overlap agrees both ways round and with one box and the other's polygon, and
 /// their distance against a reach with each corner's approaches to the other's edges. Whether
 /// they overlap.
-fn check_pair(body: &BodyBox, centre: Position, other: &BodyBox, at: Position, reach: Num) -> bool {
-    let overlaps = body.overlaps(centre, other, at);
-    assert_eq!(overlaps, other.overlaps(at, body, centre));
-    let by_polygon = body.overlaps_polygon(centre, &polygon(other, at));
-    assert_eq!(overlaps, by_polygon, "{body:?} {centre:?} {other:?} {at:?}");
+fn check_pair(
+    body: &BodyBox,
+    centre: Position,
+    other: &BodyBox,
+    pos: Position,
+    reach: Num,
+) -> bool {
+    let overlaps = body.overlaps(centre, other, pos);
+    assert_eq!(overlaps, other.overlaps(pos, body, centre));
+    let by_polygon = body.overlaps_polygon(centre, &polygon(other, pos));
+    assert_eq!(
+        overlaps, by_polygon,
+        "{body:?} {centre:?} {other:?} {pos:?}"
+    );
     let expected = if overlaps {
         Num::ZERO.cmp(&reach)
     } else {
-        let apart = flat(at) - flat(centre);
+        let apart = flat(pos) - flat(centre);
         let ours = body
             .frame()
             .corners()
@@ -677,7 +686,7 @@ fn check_pair(body: &BodyBox, centre: Position, other: &BodyBox, at: Position, r
             .flat_map(|corner| to_edges(body, corner + apart));
         by_approaches(ours.chain(theirs), reach)
     };
-    assert_eq!(body.nearest_box(centre, other, at, reach), expected);
+    assert_eq!(body.nearest_box(centre, other, pos, reach), expected);
     overlaps
 }
 

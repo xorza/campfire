@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -6,8 +8,6 @@ use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
-
-use std::any::TypeId;
 
 use super::*;
 use crate::host_rule::{Either, OnAny};
@@ -694,14 +694,14 @@ impl Following {
 }
 
 fn entity(world: &World, id: StableId) -> Entity {
-    world.resource::<EntityIndex>().get(id).unwrap()
+    world.entity_of(id).unwrap()
 }
 
 #[test]
 fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     // A world whose queries skip the unpredicted, as a predicting client's do.
     let mut world = plain_world();
-    Unpredicted::register(&mut world);
+    world.register_unpredicted();
     let mut following = Following::new(registry(), world);
     let (first, second) = (StableId::new(0), StableId::new(1));
     assert_eq!(by_type(&following.copy), by_type(&following.world));

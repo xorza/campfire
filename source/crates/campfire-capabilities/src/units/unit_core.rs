@@ -35,15 +35,15 @@ pub(crate) struct MadeCore {
 
 impl UnitCore {
     /// The core's parts: its tags from `tags`, none in a match with no tag book, and its script
-    /// state at its type's defaults from `states`, but what a call wrote to it, which
+    /// state at its type's defaults from `book`, but what a call wrote to it, which
     /// `new_states` holds for a unit that spawns after the call that created it.
     pub(crate) fn made(
         self,
         tags: Option<&TagBook>,
-        states: &UnitStateBook,
+        book: &UnitStateBook,
         new_states: &mut NewUnitStates,
     ) -> MadeCore {
-        let mut written = states.initial(self.unit_type);
+        let mut written = book.initial(self.unit_type);
         new_states.take(self.id, &mut written);
         MadeCore {
             core: self,

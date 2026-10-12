@@ -194,31 +194,3 @@ impl StatBook {
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
     }
 }
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use std::collections::BTreeMap;
-
-    use bevy_ecs::world::World;
-
-    use crate::stats::stat_book::StatBook;
-    use crate::stats::stat_id::StatId;
-    use crate::values::stat::Stat;
-
-    impl StatBook {
-        /// The place of each of `stats` in `world`'s book, which a world that names no stat
-        /// need not have.
-        pub(crate) fn places<'s>(
-            world: &World,
-            stats: impl IntoIterator<Item = &'s Stat>,
-        ) -> BTreeMap<&'s Stat, StatId> {
-            stats
-                .into_iter()
-                .map(|stat| {
-                    let book = world.resource::<StatBook>();
-                    (stat, book.named(stat).expect("the load checked the stats"))
-                })
-                .collect()
-        }
-    }
-}

@@ -39,9 +39,9 @@ use crate::sim_server::key_file::KeyFile;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_exit::ServerExit;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{RestoredSession, SessionDir};
+use crate::sim_server::sim_server_world::SimServerWorld;
 
 pub(crate) mod error;
 
@@ -160,7 +160,7 @@ impl LocalServer {
             packages: Arc::clone(&packages),
             seed_chain,
             tick_hz,
-            inputs: InputRules::LAN,
+            rules: InputRules::LAN,
             slots: usize::try_from(slots).expect("slots fit usize"),
             bots: bots.clone(),
             open,
@@ -246,22 +246,22 @@ impl LocalServer {
         } = world
             .remove_resource::<PendingRestore>()
             .expect("a restore runs while one waits");
-        if let Err(error) = SimServer::restore_match(world, session, &packages, &server, bots) {
+        if let Err(error) = world.restore_match(session, &packages, &server, bots) {
             error!(error = %ErrorReport::of(&error), "the local session does not restore after its load");
             world.write_message(AppExit::error());
         }
     }
 
     /// Ends once the session went back to a save, for its thread to start a new app; else exits
-    /// as `ServerExit::due` says, the client asking the server to stop.
+    /// as `SimServerWorld::exit_due` says, the client asking the server to stop.
     fn watch(world: &mut World) {
-        if SimServer::reload_wanted(world) {
+        if world.reload_wanted() {
             world.resource::<Restart>().0.store(true, Ordering::Relaxed);
             world.write_message(AppExit::Success);
             return;
         }
         let stop = world.resource::<Stop>().0.load(Ordering::Relaxed);
-        if let Some(exit) = ServerExit::due(world, stop) {
+        if let Some(exit) = world.exit_due(stop) {
             world.write_message(exit);
         }
     }

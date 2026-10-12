@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::{SimWorld, StableId};
 
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
@@ -24,7 +24,7 @@ pub(crate) struct UnitsCall {
 /// A call's write of `value` to the field at `at` of unit `unit`, held at `place`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct StateWrite {
-    pub(crate) unit: StableId,
+    pub(crate) id: StableId,
     pub(crate) at: usize,
     pub(crate) place: StatePlace,
     pub(crate) value: StateValue,
@@ -45,10 +45,10 @@ impl CallPart for UnitsCall {
     fn apply(&mut self, world: &mut World) {
         let view = world.non_send::<View>().clone();
         for write in self.writes.drain(..) {
-            if let Some(row) = view.row_index(write.unit) {
+            if let Some(row) = view.row_index(write.id) {
                 UnitsColumn::write(&view, row, write.at, write.value.clone());
             }
-            match world.resource::<EntityIndex>().get(write.unit) {
+            match world.entity_of(write.id) {
                 Some(entity) => UnitStates::write(world, entity, write.place, write.value),
                 None => world.resource_mut::<NewUnitStates>().push(write),
             }
@@ -71,17 +71,17 @@ impl UnitsCall {
             .expect("a match that runs scripts has the core's part")
     }
 
-    /// The last value the call wrote at `at` of `unit`, if it wrote one.
-    pub(crate) fn written(&self, unit: StableId, at: usize) -> Option<&StateValue> {
+    /// The last value the call wrote at `at` of `id`, if it wrote one.
+    pub(crate) fn written(&self, id: StableId, at: usize) -> Option<&StateValue> {
         let writes = self.writes.iter().rev();
-        let mut found = writes.filter(|write| write.unit == unit && write.at == at);
+        let mut found = writes.filter(|write| write.id == id && write.at == at);
         found.next().map(|write| &write.value)
     }
 
-    /// Records the call's write of `value` to `field` of `unit`.
-    pub(crate) fn write(&mut self, unit: StableId, field: StateField, value: StateValue) {
+    /// Records the call's write of `value` to `field` of `id`.
+    pub(crate) fn write(&mut self, id: StableId, field: StateField, value: StateValue) {
         self.writes.push(StateWrite {
-            unit,
+            id,
             at: field.at,
             place: field.place,
             value,

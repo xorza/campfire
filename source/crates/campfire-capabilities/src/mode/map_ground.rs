@@ -3,7 +3,7 @@ use bevy_ecs::world::World;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::metric::Metric;
-use crate::navigation::Navigation;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::navigation::wall::Wall;
 
@@ -30,7 +30,7 @@ impl MapGround {
         world.insert_resource(metric);
         world.insert_resource(bounds);
         if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, &walls, walkers);
+            world.load_pathing(pathing, &walls, walkers);
         }
     }
 }

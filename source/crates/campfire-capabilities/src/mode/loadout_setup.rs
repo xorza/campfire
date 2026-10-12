@@ -9,10 +9,10 @@ pub(crate) struct LoadoutSetup {
 }
 
 impl LoadoutSetup {
-    /// Adds the entry `id` of `ability` after the others.
-    pub(crate) fn push(&mut self, id: &str, ability: ActionId) {
+    /// Adds the entry `id` of `action` after the others.
+    pub(crate) fn push(&mut self, id: &str, action: ActionId) {
         self.ids.push(id);
-        self.abilities.push(ability);
+        self.abilities.push(action);
     }
 
     /// The same entries, sorted by id.

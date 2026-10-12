@@ -4,7 +4,7 @@ use std::mem;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimTick, StableId};
+use campfire_sim::{SimTick, SimWorld, StableId};
 
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::damage::Damage;
@@ -23,7 +23,7 @@ use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
-use crate::units::tag_book::TagBook;
+use crate::units::units_world::UnitsWorldCrate;
 
 /// Runs modifier scripts' hooks for the combat events.
 #[derive(Debug)]
@@ -95,7 +95,7 @@ impl ModifierHooks {
                 depth,
             } => self.run(batch, killer, Hook::OnKill, next(depth), || unit(victim)),
             CombatEvent::Takedown {
-                unit: taker,
+                id: taker,
                 victim,
                 depth,
             } => self.run(batch, taker, Hook::OnTakedown, next(depth), || unit(victim)),
@@ -116,17 +116,19 @@ impl ModifierHooks {
         let mut heard = mem::take(&mut *self.heard.borrow_mut());
         heard.clear();
         let world = batch.world();
-        let entity = world.resource::<EntityIndex>().get(carrier);
+        let entity = world.entity_of(carrier);
         if let Some(entity) = entity
             && let Some(modifiers) = world.get::<Modifiers>(entity)
         {
             let book = world.resource::<ModifierBook>();
             let defines = |id| book.get(id).hooks.contains(hook);
-            let takes_effect = TagBook::effective(world, entity);
+            let takes_effect = world.tag_effect(entity);
             heard.extend(
                 modifiers
                     .iter()
-                    .filter(|instance| defines(instance.id) && takes_effect(book.tags(instance.id)))
+                    .filter(|instance| {
+                        defines(instance.id) && takes_effect.takes(book.tags(instance.id))
+                    })
                     .map(|instance| Heard {
                         id: instance.id,
                         source: instance.source,
@@ -155,7 +157,7 @@ impl ModifierHooks {
         arg: Option<Dynamic>,
     ) {
         let world = batch.world();
-        let entity = world.resource::<EntityIndex>().get(carrier);
+        let entity = world.entity_of(carrier);
         let found = entity.and_then(|entity| {
             let modifiers = world.get::<Modifiers>(entity)?;
             world.get::<ModifierClocks>(entity)?;
@@ -182,12 +184,12 @@ impl ModifierHooks {
         let script = entry
             .script
             .expect("a modifier whose script defines a hook has one");
-        let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
+        let (action, rank, package) = (instance.action, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);
         let now = world.resource::<SimTick>().start();
         let start = CallStart {
             acting: heard.source,
-            action: ability,
+            action,
             rank,
             ..CallStart::hook(heard.id, package, depth, now)
         };
@@ -224,7 +226,7 @@ impl ModifierHooks {
         let Some(source) = source else {
             return Pool::Mode;
         };
-        let entity = world.resource::<EntityIndex>().get(source);
+        let entity = world.entity_of(source);
         let owner = entity.and_then(|entity| world.get::<Owner>(entity));
         Pool::of(owner.map(|owner| owner.slot()))
     }

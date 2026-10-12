@@ -49,30 +49,30 @@ impl Supply {
         }
     }
 
-    /// What `player` uses.
-    pub(crate) fn used(&self, player: PlayerSlot) -> u64 {
-        self.players.get(player.index()).map_or(0, |held| held.used)
+    /// What `slot` uses.
+    pub(crate) fn used(&self, slot: PlayerSlot) -> u64 {
+        self.players.get(slot.index()).map_or(0, |held| held.used)
     }
 
-    /// What `player`'s units give, at most the mode's `max`.
-    pub(crate) fn cap(&self, player: PlayerSlot) -> u64 {
-        let held = self.players.get(player.index()).copied();
+    /// What `slot`'s units give, at most the mode's `max`.
+    pub(crate) fn cap(&self, slot: PlayerSlot) -> u64 {
+        let held = self.players.get(slot.index()).copied();
         held.unwrap_or_default().cap(self.max)
     }
 
-    /// Whether `player` has room for `cost` more under its cap.
-    pub(crate) fn has_room(&self, player: PlayerSlot, cost: u32) -> bool {
-        self.used(player) + u64::from(cost) <= self.cap(player)
+    /// Whether `slot` has room for `cost` more under its cap.
+    pub(crate) fn has_room(&self, slot: PlayerSlot, cost: u32) -> bool {
+        self.used(slot) + u64::from(cost) <= self.cap(slot)
     }
 
-    /// Counts `cost` more used by `player`, as a train joins its queue.
-    pub(crate) fn reserve(&mut self, player: PlayerSlot, cost: u32) {
-        self.entry_mut(player).used += u64::from(cost);
+    /// Counts `cost` more used by `slot`, as a train joins its queue.
+    pub(crate) fn reserve(&mut self, slot: PlayerSlot, cost: u32) {
+        self.entry_mut(slot).used += u64::from(cost);
     }
 
-    /// `player`'s supply, to change, the players grown to hold it.
-    fn entry_mut(&mut self, player: PlayerSlot) -> &mut PlayerSupply {
-        let at = player.index();
+    /// `slot`'s supply, to change, the players grown to hold it.
+    fn entry_mut(&mut self, slot: PlayerSlot) -> &mut PlayerSupply {
+        let at = slot.index();
         if self.players.len() <= at {
             self.players.resize(at + 1, PlayerSupply::default());
         }

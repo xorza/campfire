@@ -30,7 +30,7 @@ pub struct Route {
 /// Where a route goes, and its ask while it waits for one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Goal {
-    at: Position,
+    pos: Position,
     asked: Option<Ask>,
 }
 
@@ -44,7 +44,7 @@ struct Ask {
 
 impl Route {
     pub(crate) fn goal(&self) -> Option<Position> {
-        self.goal.map(|goal| goal.at)
+        self.goal.map(|goal| goal.pos)
     }
 
     pub(crate) fn asked(&self) -> Option<Tick> {
@@ -82,7 +82,7 @@ impl Route {
     pub(crate) fn ask(&mut self, goal: Position, tick: Tick, party: Option<Party>) {
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
-            at: goal,
+            pos: goal,
             asked: Some(Ask { tick, party }),
         });
     }
@@ -123,7 +123,7 @@ impl Route {
             .expect("a route that reaches its goal");
         *last = goal;
         self.goal = Some(Goal {
-            at: goal,
+            pos: goal,
             asked: None,
         });
     }

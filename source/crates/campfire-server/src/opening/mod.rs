@@ -9,7 +9,7 @@ use campfire_common::MapName;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_net::{
     Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
-    SessionRestored, SimServer,
+    SessionRestored, SimServerWorld,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::Keypair;
@@ -141,7 +141,7 @@ impl Opening {
             packages: Arc::new(setup.packages),
             seed_chain,
             tick_hz,
-            inputs: InputRules::LAN,
+            rules: InputRules::LAN,
             slots,
             bots: setup.bots,
             open: Vec::new(),
@@ -172,7 +172,7 @@ impl Restore {
             .remove_resource::<Restore>()
             .expect("a restore runs while one waits");
         let id = session.log.session_id();
-        match SimServer::restore_match(world, session, &packages, &server, bots) {
+        match world.restore_match(session, &packages, &server, bots) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();

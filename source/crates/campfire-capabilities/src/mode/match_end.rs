@@ -43,11 +43,6 @@ impl MatchEnd {
         MatchEnd { tick, result }
     }
 
-    /// The end of the match in `world`, once it ended.
-    pub fn of(world: &World) -> Option<MatchEnd> {
-        world.get(MatchEntity::entity(world)?).copied()
-    }
-
     pub const fn tick(self) -> Tick {
         self.tick
     }

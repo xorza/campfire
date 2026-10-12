@@ -102,7 +102,7 @@ pub(super) struct Building<'a> {
 /// turned by the order's angle, or the site's.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Placed {
-    pub(super) at: Position,
+    pub(super) pos: Position,
     pub(super) body: Body,
 }
 
@@ -147,7 +147,7 @@ impl BuildView<'_, '_> {
             BuildTarget::Point { x, z, angle } => {
                 let at = Vec3::new(x, from.get().y, z);
                 Some(Placed {
-                    at: Position::new(at).expect("a point within the bounds"),
+                    pos: Position::new(at).expect("a point within the bounds"),
                     body: building.spec.form.at(angle),
                 })
             }
@@ -155,7 +155,7 @@ impl BuildView<'_, '_> {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
                 let same = unit_type == building.unit_type && site_owner == owner;
-                same.then_some(Placed { at, body })
+                same.then_some(Placed { pos: at, body })
             }
         }
     }
@@ -176,7 +176,7 @@ impl BuildView<'_, '_> {
         let owner = owner.map(|owner| owner.slot());
         let aim = SlotAim {
             slot: order.slot,
-            target: ActionTarget::Point(placed.at),
+            target: ActionTarget::Point(placed.pos),
         };
         let no_target = |_| Relation::Friendly;
         let checked = self.book.check(
@@ -191,10 +191,10 @@ impl BuildView<'_, '_> {
         let met = holdings.meet(owner, modifiers, self.requirements.of(checked.id));
         let room = self
             .placement
-            .passes(team, placed.at, placed.body, building.spec);
+            .passes(team, placed.pos, placed.body, building.spec);
         (met && room).then_some(Start {
             unit_type: building.unit_type,
-            at: placed.at,
+            pos: placed.pos,
             angle,
             cost: checked.values.cost,
             cooldown: checked.values.cooldown,
@@ -270,7 +270,7 @@ impl BuildView<'_, '_> {
             let Shape::Box(boxed) = placed.body.shape() else {
                 panic!("a building's body is a box");
             };
-            let to = boxed.nearest_point(placed.at, from);
+            let to = boxed.nearest_point(placed.pos, from);
             return if Destination::gives_up(destination, route, to) {
                 Step::End
             } else {

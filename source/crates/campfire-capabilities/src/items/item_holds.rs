@@ -73,7 +73,7 @@ impl ItemHolds {
                 } else if holds && !holding {
                     let applier = Applier {
                         source: Some(id),
-                        ability: None,
+                        action: None,
                         rank: Rank::FIRST,
                         hold: Some(Hold::Passive),
                     };

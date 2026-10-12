@@ -16,9 +16,9 @@ impl NewUnitStates {
         self.0.push(write);
     }
 
-    /// Writes to `states` what the calls wrote to `unit`, in order, as it spawns.
-    pub(crate) fn take(&mut self, unit: StableId, states: &mut UnitStates) {
-        for write in self.0.extract_if(.., |write| write.unit == unit) {
+    /// Writes to `states` what the calls wrote to `id`, in order, as it spawns.
+    pub(crate) fn take(&mut self, id: StableId, states: &mut UnitStates) {
+        for write in self.0.extract_if(.., |write| write.id == id) {
             states.set(write.place, write.value);
         }
     }

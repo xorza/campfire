@@ -7,12 +7,12 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-use bevy_ecs::entity::Entity;
 use std::fmt::Write;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
@@ -20,8 +20,8 @@ use campfire_common::SegmentSeed;
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, RngSource, RngStream, Vec3};
 use campfire_sim::{
-    EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
-    StateRegistry, TickRate,
+    EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, SimWorld,
+    StableId, StateRegistry, TickRate,
 };
 use serde::{Deserialize, Serialize};
 
@@ -271,19 +271,21 @@ fn tick_section(hasher: &mut Hasher) {
         *chunk = inputs.next().to_le_bytes();
     }
     let mut world = World::new();
-    SimUpdate::prepare(&mut world, SegmentSeed::new(seed), RATE);
-    let mut schedule = SimUpdate::schedule();
-    schedule.add_systems((
-        arrive.in_set(SimSet::Inputs),
-        drift.in_set(SimSet::Act),
-        wear.in_set(SimSet::Resolve),
-    ));
-    let mut state = StateRegistry::new();
-    state.register_component::<Place>();
-    state.register_component::<Life>();
+    world.sim_builder(SegmentSeed::new(seed), RATE).build();
+    world.resource_mut::<Schedules>().add_systems(
+        SimUpdate,
+        (
+            arrive.in_set(SimSet::Inputs),
+            drift.in_set(SimSet::Act),
+            wear.in_set(SimSet::Resolve),
+        ),
+    );
+    let mut registry = world.resource_mut::<StateRegistry>();
+    registry.register_component::<Place>();
+    registry.register_component::<Life>();
     for _ in 0..TICKS {
-        schedule.run(&mut world);
-        hasher.update(state.hash(&world).as_bytes());
+        world.run_schedule(SimUpdate);
+        hasher.update(world.state_hash().as_bytes());
     }
 }
 
@@ -322,7 +324,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "0dd4d60c102c6da40c8d4c0bd1832f2b3997ec83b8a7fbb9ff45c79c56735b6b",
+            digest: "f411764690a11ba6f581299563d65c61ecac08645061d8c8c0d777864e4a792f",
         },
         Section {
             name: "tick",

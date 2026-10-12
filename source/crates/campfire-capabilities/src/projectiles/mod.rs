@@ -38,6 +38,7 @@ pub(crate) mod projectile_data;
 pub(crate) mod projectile_spec;
 pub(crate) mod projectiles_api;
 pub(crate) mod projectiles_effect;
+pub(crate) mod projectiles_world;
 pub(crate) mod struck_units;
 
 /// The `projectiles` capability: projectile units, which ranged attacks fire and actions
@@ -129,11 +130,11 @@ impl Projectiles {
         Projectiles::push(world, by, unit_type, from, None, flights);
     }
 
-    /// The range of a line projectile of `spec`: its type's, or else `action`'s, its action's at
+    /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at
     /// its rank; `None` for a global range.
-    fn range(spec: &ProjectileSpec, action: ActionRange) -> Option<Num> {
-        match (spec.range, action) {
-            (Some(range), _) | (None, ActionRange::Meters(range)) => Some(range),
+    fn range(spec: &ProjectileSpec, range: ActionRange) -> Option<Num> {
+        match (spec.range, range) {
+            (Some(meters), _) | (None, ActionRange::Meters(meters)) => Some(meters),
             (None, ActionRange::Global) => None,
         }
     }
@@ -188,37 +189,6 @@ impl Projectiles {
             id.is_none() || launches.len() == before + 1,
             "a script's id is one flight's"
         );
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::projectiles::Projectiles;
-    use crate::projectiles::projectile_data::ProjectileData;
-    use crate::projectiles::projectile_spec::ProjectileSpec;
-    use crate::units::by_type::ByType;
-    use crate::units::engine_tag::EngineTag;
-    use crate::units::unit_type::UnitType;
-    use crate::units::view::View;
-    use bevy_ecs::world::World;
-    use campfire_sim::TickRate;
-
-    impl Projectiles {
-        /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
-        /// the match's rate, which the package load checked: its `hits` filter names tags of the
-        /// match's.
-        pub(crate) fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
-            let rate = *world.resource::<TickRate>();
-            let view = world.non_send::<View>().clone();
-            let spec = {
-                let mut types = view.types_mut();
-                types.give_tag(unit_type, EngineTag::Projectile.tag());
-                ProjectileSpec::of(data, &types, rate)
-            };
-            world
-                .resource_mut::<ByType<ProjectileSpec>>()
-                .set(unit_type, spec);
-        }
     }
 }
 

@@ -3,17 +3,18 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, SimTick, StableId};
+use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_world::ActionsWorldCrate;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::lists_of::ListsOf;
-use crate::combat::Combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_event::{CombatEvent, CombatEvents};
 use crate::combat::combat_hooks::CombatHooks;
+use crate::combat::combat_world::CombatWorld;
 use crate::combat::damage::Damage;
 use crate::combat::deaths::{Deaths, Fallen};
 use crate::combat::heal::{Heal, HealCause};
@@ -24,17 +25,18 @@ use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::carried_mut::CarriedMut;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::life::Life;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_id::StatId;
+use crate::stats::stats_world::StatsWorldCrate;
 use crate::stats::unit_pools::UnitPools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
-use crate::units::tag_book::TagBook;
 use crate::units::unit_tags::UnitTags;
+use crate::units::units_world::UnitsWorldCrate;
 
 /// The tick's damage pass: the queue of damage and heals, dealt in order, with the combat events
 /// they cause.
@@ -91,7 +93,7 @@ impl DamagePass {
         if !hooks.scripted() {
             DamagePass::drain(&mut PassRun::Plain(world), &hooks, now, &mut assisters);
         } else if !world.resource::<PassQueue>().is_empty() {
-            ScriptBatch::run(world, |batch| {
+            world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
                 DamagePass::drain(run, &hooks, now, &mut assisters);
             });
@@ -157,16 +159,16 @@ impl DamagePass {
         }
     }
 
-    /// The entity of `unit`, when it exists and its life pool is above zero: one that damage,
+    /// The entity of `id`, when it exists and its life pool is above zero: one that damage,
     /// heals and restores reach.
-    fn living(world: &World, unit: StableId) -> Option<Entity> {
-        let entity = world.resource::<EntityIndex>().get(unit)?;
+    pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
+        let entity = world.entity_of(id)?;
         world.get::<Life>(entity)?.above_zero().then_some(entity)
     }
 
-    /// The entity of `unit`, when it is living and its tags let damage reach it.
-    fn damageable(world: &World, unit: StableId) -> Option<Entity> {
-        DamagePass::living(world, unit)
+    /// The entity of `id`, when it is living and its tags let damage reach it.
+    fn damageable(world: &World, id: StableId) -> Option<Entity> {
+        DamagePass::living(world, id)
             .filter(|&entity| !UnitTags::properties_of(world.get(entity)).blocks(Block::Damage))
     }
 
@@ -176,7 +178,7 @@ impl DamagePass {
     /// a hook's do. A call at `ScriptLimits::CHAIN_DEPTH`, or one that fails, applies nothing and
     /// is recorded. Any other damage has no list.
     fn run_weapon_list(batch: &mut ScriptBatch<'_>, ctx: &Ctx, damage: Damage, now: Tick) {
-        let (Some(rank), Some(weapon)) = (damage.cause.weapon_rank(), damage.ability) else {
+        let (Some(rank), Some(weapon)) = (damage.cause.weapon_rank(), damage.action) else {
             return;
         };
         let world = batch.world();
@@ -204,7 +206,9 @@ impl DamagePass {
             let target = ActionTarget::Unit(damage.target);
             let lists = ListsOf::Action(weapon);
             let frame = &mut ctx.frame();
-            EffectLists::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
+            batch
+                .world()
+                .queue_effect_list(lists, Hook::OnHit, frame, ctx.view(), target)
         });
     }
 
@@ -243,15 +247,8 @@ impl DamagePass {
                 },
             );
         }
-        for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.call(
-                batch,
-                CombatEvent::Takedown {
-                    unit,
-                    victim,
-                    depth,
-                },
-            );
+        for id in killer.into_iter().chain(assisters.iter().copied()) {
+            events.call(batch, CombatEvent::Takedown { id, victim, depth });
         }
     }
 
@@ -269,10 +266,10 @@ impl DamagePass {
         let mut left = amount.max(Num::ZERO);
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
-            let takes_effect = TagBook::effective(world, entity);
+            let takes_effect = world.tag_effect(entity);
             let book = world.resource::<ModifierBook>().clone();
-            if let Some(mut carried) = CarriedMut::of(world, entity) {
-                left = carried.absorb(left, |id| takes_effect(book.tags(id)));
+            if let Some(mut carried) = world.carried_mut(entity) {
+                left = carried.absorb(left, |id| takes_effect.takes(book.tags(id)));
             }
         }
         let living = |world: &World| {
@@ -332,7 +329,7 @@ impl DamagePass {
                     target: id,
                     amount,
                     cause: HealCause::Leech,
-                    ability: damage.ability,
+                    action: damage.action,
                     depth: damage.depth,
                 });
             }
@@ -342,7 +339,7 @@ impl DamagePass {
 
     /// Heals the life pool of `entity`, a living unit, by `amount` times one plus its
     /// `heal_scale` stat.
-    fn heal(world: &mut World, entity: Entity, amount: Num) {
+    pub(super) fn heal(world: &mut World, entity: Entity, amount: Num) {
         let bindings = *world.resource::<CombatBindings>();
         let scale = DamagePass::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
@@ -353,16 +350,16 @@ impl DamagePass {
         }
     }
 
-    /// Restores `amount` of `unit`'s `pool`, unscaled, when the unit exists, its life is above
+    /// Restores `amount` of `id`'s `pool`, unscaled, when the unit exists, its life is above
     /// zero, and it has the pool.
-    pub(super) fn restore(world: &mut World, unit: StableId, pool: PoolId, amount: Num) {
-        let Some(entity) = DamagePass::living(world, unit) else {
+    pub(super) fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
+        let Some(entity) = DamagePass::living(world, id) else {
             return;
         };
         if amount > Num::ZERO {
-            let life = Combat::life(world);
-            let mut unit = world.entity_mut(entity);
-            let pools = unit.get_components_mut::<UnitPools>();
+            let life = world.life_pool();
+            let mut id = world.entity_mut(entity);
+            let pools = id.get_components_mut::<UnitPools>();
             pools.expect("a unit's pools").of(life).add(pool, amount);
         }
     }
@@ -385,22 +382,4 @@ fn scaled(amount: Num, ratio: Num) -> Num {
             Num::MIN
         }
     })
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::StableId;
-
-    use crate::combat::damage_pass::DamagePass;
-
-    impl DamagePass {
-        /// Heals `unit` at once, as the pass heals it, when it exists and its life is above zero.
-        pub(crate) fn heal_unit(world: &mut World, unit: StableId, amount: Num) {
-            if let Some(entity) = DamagePass::living(world, unit) {
-                DamagePass::heal(world, entity, amount);
-            }
-        }
-    }
 }

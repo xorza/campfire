@@ -17,6 +17,8 @@ mod sim_rng;
 mod sim_state;
 mod sim_tick;
 mod sim_update;
+mod sim_world;
+mod sim_world_builder;
 mod slot_event;
 mod stable_id;
 mod state_changes;
@@ -38,6 +40,8 @@ pub use crate::sim_rng::SimRng;
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
 pub use crate::sim_update::{SimEdge, SimSet, SimUpdate};
+pub use crate::sim_world::SimWorld;
+pub use crate::sim_world_builder::{SimParts, SimWorldBuilder};
 pub use crate::slot_event::{SlotEvent, SlotEventKind};
 pub use crate::stable_id::StableId;
 pub use crate::state_copy::StateCopy;
@@ -53,6 +57,7 @@ pub use crate::unpredicted::Unpredicted;
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::sim_update::stage_clock::StageClock;
+    pub use crate::sim_world::internals::SimWorldInternals;
     pub use crate::state_registry::internals::{Draws, Mutation};
 }
 

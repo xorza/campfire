@@ -11,10 +11,10 @@ fn at(x: Num, z: Num) -> Position {
 fn touched_by_division(grid: &Grid, from: Position, to: Position) -> Vec<usize> {
     let min = grid.bounds.min().map(|axis| i128::from(axis.to_bits()));
     let ground = |pos: Position| {
-        let at = pos.get();
+        let point = pos.get();
         [
-            i128::from(at.x.to_bits()) - min[0],
-            i128::from(at.z.to_bits()) - min[1],
+            i128::from(point.x.to_bits()) - min[0],
+            i128::from(point.z.to_bits()) - min[1],
         ]
     };
     let (mut a, mut b) = (ground(from), ground(to));

@@ -1,11 +1,10 @@
-use std::array;
 use std::cell::Cell;
 use std::fmt::Write as _;
-use std::mem;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{array, mem};
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::component::Component;
@@ -23,7 +22,7 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{CertificateHash, SeedChain, ServerInput, SessionPrivate};
 use campfire_runner::{InputRules, Session};
-use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
+use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
@@ -47,6 +46,7 @@ use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::server_pin::ServerPin;
+use crate::sim_client::sim_client_world::SimClientWorld;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::SimServer;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
@@ -56,6 +56,7 @@ use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionDir;
+use crate::sim_server::sim_server_world::SimServerWorld;
 use crate::sim_server::tick_hashes::TickHashes;
 
 pub(crate) mod delay_line;
@@ -322,15 +323,13 @@ impl InProcessMatch {
     }
 
     /// The server's app, its frames `setup.server_frames` a tick of `tick`, before any link.
-    fn server_app(
-        setup: &MatchSetup,
-        capabilities: CapabilitySet,
-        tick: Duration,
-        pace: &Arc<Pace>,
-    ) -> App {
+    fn server_app(setup: &MatchSetup, set: CapabilitySet, tick: Duration, pace: &Arc<Pace>) -> App {
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        server.add_plugins(SimServer { tick, capabilities });
+        server.add_plugins(SimServer {
+            tick,
+            capabilities: set,
+        });
         assert!(
             !server.is_plugin_added::<WebTransportServerPlugin>(),
             "an in-process server links by channels: WebTransport's plugin leaves a tokio runtime for each app"
@@ -538,14 +537,15 @@ impl InProcessMatch {
         server.cleanup();
         run_in_order(&mut server);
         server.update();
-        SimServer::restore_match(
-            server.world_mut(),
-            session,
-            &self.packages,
-            &self.server_setup(),
-            self.server_bots(),
-        )
-        .unwrap();
+        server
+            .world_mut()
+            .restore_match(
+                session,
+                &self.packages,
+                &self.server_setup(),
+                self.server_bots(),
+            )
+            .unwrap();
         server.world_mut().insert_resource(data);
         self.server = server;
         for client in 0..self.clients.len() {
@@ -570,7 +570,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
             seed_chain: self.setup.seed_chain,
-            inputs: InputRules::LAN,
+            rules: InputRules::LAN,
             slots: self.setup.players + self.setup.bots.len(),
             bots: self.server_bots(),
             open: Vec::new(),
@@ -615,7 +615,7 @@ impl InProcessMatch {
     fn holds_avatar(&self, client: usize) -> bool {
         let world = self.clients[client].world();
         self.spawned_avatar(client)
-            .is_some_and(|avatar| world.resource::<EntityIndex>().get(avatar).is_some())
+            .is_some_and(|avatar| world.entity_of(avatar).is_some())
     }
 
     /// Loses every packet the server sends `client` while `lost`, as a link that drops one way
@@ -677,7 +677,7 @@ impl InProcessMatch {
             self.server_frame();
             self.step_cost.server = self.step_cost.server.max(start.elapsed());
         }
-        if SimServer::reload_wanted(self.server.world()) {
+        if self.server.world().reload_wanted() {
             self.restart_server();
         }
     }
@@ -766,7 +766,7 @@ impl InProcessMatch {
     /// The team of `client`'s player's avatar.
     pub fn team(&self, client: usize) -> Team {
         let world = self.server.world();
-        let avatar = world.resource::<EntityIndex>().get(self.avatar(client));
+        let avatar = world.entity_of(self.avatar(client));
         *world
             .get::<Team>(avatar.expect("the avatar exists"))
             .expect("an avatar has a team")
@@ -922,7 +922,7 @@ impl ClientApp {
             .rollback_policy
             .state = setup.rollbacks[player];
         pass_through_delay_lines(&mut client);
-        let entity = SimClient::spawn_client(client.world_mut());
+        let entity = client.world_mut().spawn_client();
         ClientApp {
             app: client,
             entity,
@@ -959,16 +959,15 @@ fn pass_through_delay_lines(app: &mut App) {
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench {
-    use std::env;
-    use std::process;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;
+    use std::{env, process};
 
     use campfire_capabilities::Action;
     use campfire_common::MapName;
     use campfire_math::{Num, Vec3};
     use campfire_package::{ModePackages, PackageDir};
-    use campfire_sim::{EntityIndex, Position};
+    use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableFile;
     use lightyear::prelude::RollbackMode;
 
@@ -1080,9 +1079,9 @@ pub(crate) mod bench {
             places.clear();
             let world = self.server.world();
             for client in 0..self.clients.len() {
-                let avatar = world.resource::<EntityIndex>().get(self.avatar(client));
-                let at = world.get::<Position>(avatar.expect("the avatar exists"));
-                places.push(at.expect("an avatar has a place").get());
+                let avatar = world.entity_of(self.avatar(client));
+                let pos = world.get::<Position>(avatar.expect("the avatar exists"));
+                places.push(pos.expect("an avatar has a place").get());
             }
         }
 

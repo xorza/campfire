@@ -2,15 +2,17 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{Action, Body, Dead, Life, PoolId, Pools, SeenBy, SlotTimes, Team};
+use campfire_capabilities::{
+    Action, Body, Dead, Life, Match, PoolId, Pools, SeenBy, SlotTimes, Team,
+};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_sim::{Position, SimWorld, StableId};
 
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
@@ -23,15 +25,15 @@ const fn at(x: i64, z: i64) -> Position {
 /// Where a hero stands in an app, and whether it is dead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Hero {
-    position: Position,
+    pos: Position,
     dead: bool,
 }
 
 fn hero(app: &App, id: StableId) -> Hero {
     let world = app.world();
-    let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+    let unit = world.entity_ref_of(id).unwrap();
     Hero {
-        position: *unit.get::<Position>().unwrap(),
+        pos: *unit.get::<Position>().unwrap(),
         dead: unit.contains::<Dead>(),
     }
 }
@@ -120,7 +122,7 @@ fn play(link: LinkModel) -> [u32; 2] {
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = [at(-3, -2), at(3, 4)][team];
         let end = Hero {
-            position: end,
+            pos: end,
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -162,14 +164,14 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
         "{applied:?}"
     );
     let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
+    let mut replay = Match::start_session(decoded.rewound(), seed, local.packages()).unwrap();
     let mut replayed = HashTrail::default();
     for _ in live.totals() {
-        replay.run_tick();
-        replayed.record(replay.world());
+        replay.run_tick_alone();
+        replayed.record(&replay);
     }
     live.assert_same(&replayed);
-    assert_eq!(replay.log().next_tick(), ticks);
+    assert_eq!(replay.session().log().next_tick(), ticks);
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:
@@ -217,7 +219,7 @@ struct Caster {
 
 fn caster(app: &App, id: StableId) -> Caster {
     let world = app.world();
-    let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+    let unit = world.entity_ref_of(id).unwrap();
     let mana = PoolId::new(1).unwrap();
     Caster {
         pos: *unit.get::<Position>().unwrap(),
@@ -310,7 +312,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // On the edge, in the grid's last row, each is seen by both teams.
     for id in [walker, runner] {
         let world = local.server().world();
-        let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+        let unit = world.entity_ref_of(id).unwrap();
         let seen = unit.get::<SeenBy>().unwrap().get();
         let teams = [0, 1].map(|team| seen.contains(Team::new(team)));
         assert_eq!(teams, [true, true], "{id:?}");
@@ -336,21 +338,16 @@ fn route(link: LinkModel) -> [u32; 2] {
     let client = local.client_of(Team::new(0));
     let walker = local.avatar(client);
     let world = local.server().world();
-    let tower = world.entity(
-        world
-            .resource::<EntityIndex>()
-            .get(local.tower(Team::new(0)))
-            .unwrap(),
-    );
+    let tower = world.entity(world.entity_of(local.tower(Team::new(0))).unwrap());
     let tower_at = tower.get::<Position>().unwrap().get();
-    let walker_body = world.entity(world.resource::<EntityIndex>().get(walker).unwrap());
+    let walker_body = world.entity_ref_of(walker).unwrap();
     let reach = tower.get::<Body>().unwrap().radius().unwrap()
         + walker_body.get::<Body>().unwrap().radius().unwrap();
     let reach = u128::from(reach.to_bits().unsigned_abs());
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUTE_TICKS {
         local.step();
-        let offset = hero(local.server(), walker).position.get() - tower_at;
+        let offset = hero(local.server(), walker).pos.get() - tower_at;
         closest = closest.min(offset.length_squared_bits());
     }
     check_log(&mut local, scripts);
@@ -363,7 +360,7 @@ fn route(link: LinkModel) -> [u32; 2] {
         reach * reach
     );
     let end = Hero {
-        position: at(-12, -4),
+        pos: at(-12, -4),
         dead: false,
     };
     assert_eq!(hero(local.server(), walker), end);
@@ -387,7 +384,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     let [walker, stander] = clients.map(|client| local.avatar(client));
     let world = local.server().world();
     let radius = |id| {
-        let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+        let unit = world.entity_ref_of(id).unwrap();
         unit.get::<Body>().unwrap().radius().unwrap()
     };
     let reach = radius(walker) + radius(stander);
@@ -395,7 +392,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUND_TICKS {
         local.step();
-        let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
+        let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).pos);
         closest = closest.min(walking.ground_offset(standing).length_squared_bits());
     }
     check_log(&mut local, scripts);
@@ -409,7 +406,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     );
     for (id, end) in [(walker, at(0, 5)), (stander, at(0, 2))] {
         let end = Hero {
-            position: end,
+            pos: end,
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "{id:?} on the server");
@@ -467,7 +464,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // Each hero ends where its last order sent it, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = Hero {
-            position: [at(-3, -2), at(3, 4)][team],
+            pos: [at(-3, -2), at(3, 4)][team],
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -512,7 +509,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         assert_eq!([local.rollbacks(0), local.rollbacks(1)], settled);
         for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
             let end = Hero {
-                position: targets[team],
+                pos: targets[team],
                 dead: false,
             };
             assert_eq!(hero(local.server(), id), end, "hero {index} on the server");

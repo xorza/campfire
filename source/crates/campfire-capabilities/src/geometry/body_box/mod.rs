@@ -188,11 +188,11 @@ impl BodyBox {
         [0, 1].map(|axis| Num::from_bits(a[axis].to_bits().abs() + b[axis].to_bits().abs()))
     }
 
-    /// How the distance from `at` to the box at `centre` lies against `reach`: past it when `at`
+    /// How the distance from `pos` to the box at `centre` lies against `reach`: past it when `pos`
     /// lies past the box's extent and the reach along an axis, as the distance is at least that
     /// gap; else as the nearest of the box's features lies against it.
-    pub(crate) fn nearest(&self, centre: Position, at: Position, reach: Num) -> Ordering {
-        let off = flat(at) - flat(centre);
+    pub(crate) fn nearest(&self, centre: Position, pos: Position, reach: Num) -> Ordering {
+        let off = flat(pos) - flat(centre);
         let extent = self.extent();
         let reach_bits = reach.to_bits();
         if (0..2).any(|axis| off[axis].abs() > extent[axis].to_bits().saturating_add(reach_bits)) {
@@ -201,11 +201,11 @@ impl BodyBox {
         Closer::new(self.frame(), SquaredDistance::bits(reach)).against(off)
     }
 
-    /// The point of the box at `centre` nearest `at`, each coordinate rounded to the nearest bit:
-    /// `at` itself inside.
-    pub(crate) fn nearest_point(&self, centre: Position, at: Position) -> Position {
+    /// The point of the box at `centre` nearest `pos`, each coordinate rounded to the nearest bit:
+    /// `pos` itself inside.
+    pub(crate) fn nearest_point(&self, centre: Position, pos: Position) -> Position {
         let frame = self.frame();
-        let off = flat(at) - flat(centre);
+        let off = flat(pos) - flat(centre);
         let corners = frame.corners();
         let point = match frame.nearest_to(off).feature {
             Feature::Inside => off,
@@ -219,12 +219,12 @@ impl BodyBox {
             }
         };
         let ground = point + flat(centre);
-        let at = Vec3::new(
+        let pos = Vec3::new(
             Num::from_bits(ground[0]),
-            at.get().y,
+            pos.get().y,
             Num::from_bits(ground[1]),
         );
-        Position::new(at).expect("a point of a box within the bound")
+        Position::new(pos).expect("a point of a box within the bound")
     }
 
     /// How the straight path from `from` to `to` comes to the box at `centre`, against `reach`:
@@ -307,15 +307,15 @@ impl BodyBox {
         })
     }
 
-    /// `at` moved out of the box at `centre` when a body of `radius` there overlaps it, as a box
+    /// `point` moved out of the box at `centre` when a body of `radius` there overlaps it, as a box
     /// leaves all of an overlap to the body: from the box's nearest point straight away until
     /// the body's edge touches the box, or, from inside, out through the nearest edge, the first
     /// edge on a tie; each coordinate of the move rounded away from the box to a whole bit, so
     /// the body ends touching or apart. `None` when it does not overlap: touching is not
     /// overlap.
-    pub(crate) fn push_out(&self, centre: Position, at: Vec3, radius: Num) -> Option<Vec3> {
+    pub(crate) fn push_out(&self, centre: Position, point: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
-        let off = Flat::ground(at) - flat(centre);
+        let off = Flat::ground(point) - flat(centre);
         let Nearest { distance, feature } = frame.nearest_to(off);
         let moved = match feature {
             Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
@@ -331,7 +331,7 @@ impl BodyBox {
         let ground = moved + flat(centre);
         Some(Vec3::new(
             Num::from_bits(ground[0]),
-            at.y,
+            point.y,
             Num::from_bits(ground[1]),
         ))
     }
@@ -740,9 +740,9 @@ fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
     }
 }
 
-/// Where `at` stands on the ground plane, in a `Num`'s bits.
-fn flat(at: Position) -> Flat {
-    Flat::ground(at.get())
+/// Where `pos` stands on the ground plane, in a `Num`'s bits.
+fn flat(pos: Position) -> Flat {
+    Flat::ground(pos.get())
 }
 
 fn square(off: Flat) -> SquaredDistance {

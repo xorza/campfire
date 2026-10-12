@@ -171,7 +171,7 @@ impl Flights<'_> {
                 }
                 let unit = Targets::unit_of(body);
                 let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
-                if !selects || struck.contains(Struck { by, unit: unit.id }) {
+                if !selects || struck.contains(Struck { by, id: unit.id }) {
                     return;
                 }
                 if let Some(share) = metric.meets(from, to, unit.pos, unit.shape, half) {
@@ -182,7 +182,7 @@ impl Flights<'_> {
         // The shares of the step order where it meets each unit exactly, then the unit's id.
         self.met.sort_unstable();
         for at in 0..self.met.len() {
-            let (share, unit) = self.met[at];
+            let (share, struck) = self.met[at];
             let travelled = share.of(step);
             let pos = from
                 .get()
@@ -190,8 +190,8 @@ impl Flights<'_> {
                 .and_then(Position::new)
                 .expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);
-            self.struck.insert(Struck { by, unit });
-            self.strike(projectile, unit, hit);
+            self.struck.insert(Struck { by, id: struck });
+            self.strike(projectile, struck, hit);
             if spec.stop_on_hit {
                 self.end(projectile, hit);
                 return true;
@@ -222,7 +222,7 @@ impl Flights<'_> {
                 amount,
                 kind,
                 cause: DamageCause::Attack { roll, rank },
-                ability: Some(action),
+                action: Some(action),
                 depth: 0,
                 hit: Some(hit),
             }),

@@ -38,6 +38,7 @@ pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod order_inputs;
 pub(crate) mod orders_api;
+pub(crate) mod orders_world;
 pub(crate) mod production_orders;
 pub(crate) mod resetting;
 pub(crate) mod seen_targets;
@@ -138,7 +139,7 @@ impl Orders {
 
     /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
     /// order applies; a unit that resets takes none.
-    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
+    pub(super) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
         let bounds = *world.resource::<Bounds>();
         let mut unit = world.entity_mut(entity);
         if unit.contains::<Resetting>() {
@@ -149,36 +150,6 @@ impl Orders {
             .expect("an ordered unit stands");
         if order.apply(parts, &bounds, now) {
             unit.insert(Resetting);
-        }
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use crate::orders::Orders;
-    use crate::orders::ai::Ai;
-    use crate::orders::ai_data::AiData;
-    use crate::orders::error::AiError;
-    use crate::scripts::script_book::ScriptBook;
-    use crate::units::by_type::ByType;
-    use crate::units::unit_type::UnitType;
-    use bevy_ecs::world::World;
-    use campfire_script::ScriptId;
-    use campfire_sim::TickRate;
-
-    impl Orders {
-        /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
-        /// becomes whole ticks at the match's rate, rounded up, and at least one.
-        pub fn load_ai(
-            world: &mut World,
-            unit_type: UnitType,
-            data: &AiData,
-            script: ScriptId,
-        ) -> Result<(), AiError> {
-            let rate = *world.resource::<TickRate>();
-            let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
-            world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
-            Ok(())
         }
     }
 }

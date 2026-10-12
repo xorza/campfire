@@ -36,17 +36,17 @@ impl ServerLayout {
         self.root.join("sessions")
     }
 
-    /// The directory of the session `session`.
-    pub(crate) fn session_dir(&self, session: SessionId) -> PathBuf {
-        self.sessions_dir().join(session.to_string())
+    /// The directory of the session of `session_id`.
+    pub(crate) fn session_dir(&self, session_id: SessionId) -> PathBuf {
+        self.sessions_dir().join(session_id.to_string())
     }
 
     pub(crate) fn logs_dir(&self) -> PathBuf {
         self.root.join("logs")
     }
 
-    /// Where the log of the session `session` is published once it ends.
-    pub fn published_log(&self, session: SessionId) -> PathBuf {
-        self.logs_dir().join(format!("{session}.campfire-log"))
+    /// Where the log of the session of `session_id` is published once it ends.
+    pub fn published_log(&self, session_id: SessionId) -> PathBuf {
+        self.logs_dir().join(format!("{session_id}.campfire-log"))
     }
 }

@@ -1,3 +1,5 @@
+use campfire_common::Tick;
+
 use super::*;
 use crate::actions::slot_times::SlotTimes;
 
@@ -25,28 +27,26 @@ fn on_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::picking(cutter, ScriptLimits::ROOMY);
+    let mut game = picking_match(cutter, ScriptLimits::ROOMY);
     // Hero X holds `strike` in its basic slot 0; hero Y does not hold it.
     let x = game.pick(0, "hero-x");
     game.pick(2, "hero-y");
-    let ready = |game: &Game| {
-        let times = game.sim.world.get::<SlotTimes>(x).unwrap();
+    let ready = |game: &Match| {
+        let times = game.get::<SlotTimes>(x).unwrap();
         times.slot(0).unwrap().ready_at.get()
     };
     // Ready 50 ticks from the call's tick; 1000 ms is 10 ticks at 10 a second: 40 from then.
-    let start = game.sim.now().get();
-    game.sim
-        .world
-        .get_mut::<SlotTimes>(x)
+    let start = game.now().get();
+    game.get_mut::<SlotTimes>(x)
         .unwrap()
         .cool_down(0, Tick::new(start + 50));
-    game.tick(&[(0, input("probe", "cut"))]);
+    game.tick_inputs(&[(0, input("probe", "cut"))]);
     assert_eq!(ready(&game), start + 40);
     // A tick later 39 are left; half of them is 19.5, which rounds up to 20 kept.
-    game.tick(&[(0, input("probe", "half"))]);
+    game.tick_inputs(&[(0, input("probe", "half"))]);
     assert_eq!(ready(&game), start + 1 + 20);
     // A cut past what is left makes it ready in the call's tick, no earlier.
-    game.tick(&[(0, input("probe", "all"))]);
+    game.tick_inputs(&[(0, input("probe", "all"))]);
     assert_eq!(ready(&game), start + 2);
     assert_eq!(game.failures(), []);
     let refused = [
@@ -57,7 +57,7 @@ fn on_input(ctx, player, name, value) {
         ("share", ApiError::NotAFraction),
     ];
     for (value, error) in refused {
-        game.tick(&[(0, input("probe", value))]);
+        game.tick_inputs(&[(0, input("probe", value))]);
         assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
     }
 }

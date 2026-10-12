@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{Position, SimWorld, StableId};
 use serde::{Deserialize, Serialize};
 
 /// What an action is aimed at: nothing, a unit, or a point, which an action that aims at a
@@ -17,8 +17,8 @@ impl ActionTarget {
         match self {
             ActionTarget::None => None,
             ActionTarget::Point(at) => Some(at),
-            ActionTarget::Unit(unit) => {
-                let entity = world.resource::<EntityIndex>().get(unit)?;
+            ActionTarget::Unit(id) => {
+                let entity = world.entity_of(id)?;
                 world.get::<Position>(entity).copied()
             }
         }

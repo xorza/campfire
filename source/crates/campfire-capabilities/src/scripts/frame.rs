@@ -3,8 +3,8 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{IdAllocator, StableId};
 
-use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::effects::Effects;
@@ -107,10 +107,10 @@ impl Frame {
         self.parts.get_mut()
     }
 
-    /// Starts `on_think` for `unit` in `world`, in tick `now`.
-    pub(crate) fn begin_think(&mut self, world: &World, unit: StableId, now: Tick) {
+    /// Starts `on_think` for `id` in `world`, in tick `now`.
+    pub(crate) fn begin_think(&mut self, world: &World, id: StableId, now: Tick) {
         let start = CallStart {
-            acting: Some(unit),
+            acting: Some(id),
             ..CallStart::mode(ScriptRole::Ai, now)
         };
         self.begin(world, start)
@@ -130,7 +130,7 @@ impl Frame {
     fn read_resources(&mut self, world: &World) {
         self.resources_written = false;
         let held = (0..).map_while(|slot| {
-            let entity = Player::entity(world, PlayerSlot::new(slot))?;
+            let entity = world.player_entity(PlayerSlot::new(slot))?;
             world.get::<PlayerResources>(entity)
         });
         let mut players = 0;
@@ -192,7 +192,9 @@ impl Frame {
             return;
         }
         for (slot, resources) in (0..).map(PlayerSlot::new).zip(&self.resources) {
-            let mut held = PlayerResources::of_mut(world, slot).expect("a player the call read");
+            let mut held = world
+                .player_resources_mut(slot)
+                .expect("a player the call read");
             if *held != *resources {
                 held.clone_from(resources);
             }

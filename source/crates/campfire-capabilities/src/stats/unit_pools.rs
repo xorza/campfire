@@ -1,11 +1,8 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
-use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::world::World;
 use campfire_math::Num;
 
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
@@ -68,12 +65,6 @@ impl<'w> UnitPoolsReadOnlyItem<'w, '_> {
 }
 
 impl<'a> PoolMeters<'a> {
-    /// The pools of the unit of `entity` in `world`, the life pool the match's.
-    pub fn of(world: &'a World, entity: Entity) -> PoolMeters<'a> {
-        let life_pool = world.get_resource::<LifePool>().map(|life| life.0);
-        PoolMeters::new(life_pool, world.get(entity), world.get(entity))
-    }
-
     pub(crate) const fn new(
         life_pool: Option<PoolId>,
         life: Option<&'a Life>,

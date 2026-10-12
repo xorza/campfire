@@ -76,13 +76,13 @@ impl ForcedMoves {
                 (at, forced, body.copied())
             };
             let walker = Walker::walking(body.as_ref());
-            let ground = |place: Vec3| Vec3::new(place.x, at.get().y, place.z);
+            let ground = |point: Vec3| Vec3::new(point.x, at.get().y, point.z);
             let goal = match forced {
                 ForcedMove::Dash {
                     to: DashTo::Point(point),
                     ..
                 } => Some(Goal {
-                    at: ground(point.get()),
+                    point: ground(point.get()),
                     reach: Num::ZERO,
                 }),
                 ForcedMove::Dash {
@@ -94,23 +94,23 @@ impl ForcedMoves {
                     // A dash at a box makes for its nearest point, as at a point it must touch.
                     found.map(|(&place, body)| match Body::shape_of(body) {
                         Shape::Circle(radius) => Goal {
-                            at: ground(place.get()),
+                            point: ground(place.get()),
                             reach: walker.radius + radius,
                         },
                         Shape::Box(body) => Goal {
-                            at: ground(body.nearest_point(place, at).get()),
+                            point: ground(body.nearest_point(place, at).get()),
                             reach: walker.radius,
                         },
                     })
                 }
                 ForcedMove::KnockBack { to, .. } => Some(Goal {
-                    at: to,
+                    point: to,
                     reach: Num::ZERO,
                 }),
             };
             let advanced = forced.advance(at.get(), goal);
-            let to = bounds.ground_point([advanced.at.x, advanced.at.z], at);
-            let past = to.get() != advanced.at;
+            let to = bounds.ground_point([advanced.point.x, advanced.point.z], at);
+            let past = to.get() != advanced.point;
             let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
             let step = Segment::new(at, to);
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });

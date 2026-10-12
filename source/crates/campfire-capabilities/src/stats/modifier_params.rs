@@ -33,25 +33,25 @@ pub(crate) struct ModifierParams<'w, 's> {
 }
 
 impl ModifierParams<'_, '_> {
-    /// `unit` as a source; `None` when it is gone, or the match has no stat book.
-    pub(crate) fn source(&self, unit: StableId) -> Option<ParamSource<'_>> {
-        let (&unit_type, level, stats) = self.units.get(self.index.get(unit)?).ok()?;
+    /// `id` as a source; `None` when it is gone, or the match has no stat book.
+    pub(crate) fn source(&self, id: StableId) -> Option<ParamSource<'_>> {
+        let (&unit_type, level, stats) = self.units.get(self.index.get(id)?).ok()?;
         let book = self.stats.as_deref()?;
         Some(ParamSource::of_parts(book, unit_type, level, stats))
     }
 
-    /// The param at `place` of `modifier`, held by `ability` at `rank`, from `source`, as
+    /// The param at `place` of `modifier`, held by `action` at `rank`, from `source`, as
     /// `ParamBook::modifier_param` reads it.
     pub(crate) fn modifier_param(
         &self,
         modifier: ModifierId,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
         place: &ParamPlace,
         source: Option<&ParamSource<'_>>,
     ) -> ParamRead {
         self.params
-            .modifier_param(modifier, ability, rank, place, source)
+            .modifier_param(modifier, action, rank, place, source)
     }
 
     /// Whether the param book changed since the system last ran.

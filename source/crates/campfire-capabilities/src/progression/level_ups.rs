@@ -17,7 +17,7 @@ pub(crate) struct LevelUps(pub(crate) PendingCalls<LevelUp>);
 /// A level a unit reached on a track.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct LevelUp {
-    pub(crate) unit: StableId,
+    pub(crate) id: StableId,
     pub(crate) track: TrackId,
     pub(crate) level: Level,
 }

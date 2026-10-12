@@ -416,35 +416,35 @@ impl<'a> LoadCheck<'a> {
         ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
-        for (id, ability) in actions {
+        for (id, action) in actions {
             let at = Place::Action(id.clone());
-            self.kind(id, ability, units)?;
-            requires(id, ability, units, names.modifiers)?;
-            self.ranked(id, ability, ranks(id.as_str()))?;
+            self.kind(id, action, units)?;
+            requires(id, action, units, names.modifiers)?;
+            self.ranked(id, action, ranks(id.as_str()))?;
             let scope = EffectScope { units };
-            self.effects(id, ability, scope)?;
-            if let Some(delivery) = &ability.delivery {
+            self.effects(id, action, scope)?;
+            if let Some(delivery) = &action.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
                     DeliveryData::Area { .. } => Capability::Areas,
                 };
                 self.require(capability, &at)?;
-                let hooks_hit = ability
+                let hooks_hit = action
                     .script
                     .as_ref()
                     .and_then(|path| names.package.script(path))
                     .is_some_and(|script| script.defines(Hook::OnHit));
-                delivery_holds(id, ability, delivery, units, hooks_hit)?;
+                delivery_holds(id, action, delivery, units, hooks_hit)?;
             }
-            for modifier in ability.modifiers() {
+            for modifier in action.modifiers() {
                 modifier_exists(names.modifiers, modifier.as_str(), &at)?;
             }
-            for filter in ability.filters() {
+            for filter in action.filters() {
                 self.filter_data(filter, &at)?;
             }
-            self.stats_declared(ability.params.values().flat_map(Param::stats), &at)?;
-            for name in ability.param_refs() {
-                if !ability.params.contains_key(name) {
+            self.stats_declared(action.params.values().flat_map(Param::stats), &at)?;
+            for name in action.param_refs() {
+                if !action.params.contains_key(name) {
                     return Err(LoadProblem::Unknown {
                         of: NameKind::Param,
                         at,
@@ -452,11 +452,11 @@ impl<'a> LoadCheck<'a> {
                     });
                 }
             }
-            if let Some(script) = &ability.script {
+            if let Some(script) = &action.script {
                 names.serve(
                     script,
                     ScriptRole::Action,
-                    ability.params.keys().map(DeclaredName::as_str),
+                    action.params.keys().map(DeclaredName::as_str),
                 );
             }
         }
@@ -541,7 +541,7 @@ impl<'a> LoadCheck<'a> {
             let readable: BTreeSet<&str> = modifier
                 .params
                 .keys()
-                .chain(by.iter().flat_map(|ability| ability.params.keys()))
+                .chain(by.iter().flat_map(|action| action.params.keys()))
                 .map(DeclaredName::as_str)
                 .collect();
             if negative_radius_or_shield(modifier, &by) {
@@ -571,13 +571,13 @@ impl<'a> LoadCheck<'a> {
         actions: &BTreeMap<DeclaredName, ActionData>,
     ) -> Result<(), (Option<&'w Way>, ParamProblem)> {
         let time = modifier.times().any(|number| number.param() == Some(param));
-        let holds = |value: &Param| {
+        let holds = |param: &Param| {
             if !number {
                 return Ok(());
             }
-            let numbers: Option<Vec<Num>> = param_numbers(value).collect();
+            let numbers: Option<Vec<Num>> = param_numbers(param).collect();
             let numbers = numbers.ok_or(ParamProblem::Overflow)?;
-            if time && matches!(value, Param::Scaling(_)) {
+            if time && matches!(param, Param::Scaling(_)) {
                 return Err(ParamProblem::ScalingTime);
             }
             let counts = |&ms: &Num| ModifierData::ticks(ms, self.rate).is_some();
@@ -1874,16 +1874,11 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Every per-rank array of `ability` has `ranks` entries, each pool its cost names is one
+    /// Every per-rank array of `action` has `ranks` entries, each pool its cost names is one
     /// the mode declares, and each capability field holds at every rank.
-    fn ranked(
-        &self,
-        id: &DeclaredName,
-        ability: &ActionData,
-        ranks: u8,
-    ) -> Result<(), LoadProblem> {
+    fn ranked(&self, id: &DeclaredName, action: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        if let Some(name) = ability
+        if let Some(name) = action
             .cost_names()
             .find(|name| data.cost_target_named(name).is_none())
         {
@@ -1893,14 +1888,14 @@ impl<'a> LoadCheck<'a> {
                 name: name.to_string(),
             });
         }
-        if !ability.check_ranks(usize::from(ranks)) {
+        if !action.check_ranks(usize::from(ranks)) {
             return Err(LoadProblem::RankCount {
                 action: id.clone(),
                 ranks,
             });
         }
         for rank in (1..=ranks).filter_map(Rank::new) {
-            ability
+            action
                 .fields_at(rank, |name| data.cost_target_named(name))
                 .map_err(|field| LoadProblem::ActionField {
                     action: id.clone(),
@@ -2224,7 +2219,6 @@ fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -
     names.any(|declared| declared.as_str() == name)
 }
 
-/// The problem of `name`, of `of`, unknown at `at`.
 /// The `requires` of `action`, `id`: unit types of its package, `units`, that stand, and modifiers
 /// of its package, `modifiers`.
 fn requires(

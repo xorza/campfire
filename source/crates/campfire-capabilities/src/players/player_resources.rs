@@ -1,7 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{Mut, World};
-use campfire_common::PlayerSlot;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +10,6 @@ use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::units::owner::Owner;
 use crate::units::view::View;
 
 /// A player's resources, such as gold, on its entity: an amount for each resource the mode
@@ -24,31 +22,6 @@ impl PlayerResources {
     /// None of each of `resources` resources.
     pub(crate) fn new(resources: usize) -> PlayerResources {
         PlayerResources(vec![0; resources])
-    }
-
-    /// The resources of the player that owns a unit of `owner` in `world`: none for a unit no
-    /// player owns, or in a match that keeps no players' resources.
-    pub(crate) fn of<'w>(world: &'w World, owner: Option<&Owner>) -> Option<&'w PlayerResources> {
-        PlayerResources::of_player(world, owner?.slot())
-    }
-
-    /// The resources of player `slot` in `world`: none for a player the session lacks, or in a
-    /// match that keeps no players' resources.
-    pub fn of_player(world: &World, slot: PlayerSlot) -> Option<&PlayerResources> {
-        world.get(Player::entity(world, slot)?)
-    }
-
-    /// The resources of player `slot` in `world`, to change; none in a match that keeps no
-    /// players' resources.
-    pub(crate) fn of_mut(world: &mut World, slot: PlayerSlot) -> Option<Mut<'_, PlayerResources>> {
-        let entity = Player::entity(world, slot)?;
-        world.get_mut(entity)
-    }
-
-    /// How many resources each player of the match in `world` holds an amount of: those its
-    /// mode declares, none before a mode.
-    pub(crate) fn declared(world: &World) -> usize {
-        world.non_send::<View>().resource_count()
     }
 
     /// Whether adding each of `amounts` keeps every amount within an `i64`.

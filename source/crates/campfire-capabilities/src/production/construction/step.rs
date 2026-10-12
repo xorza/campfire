@@ -26,7 +26,7 @@ pub(super) enum Step {
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Start {
     pub(super) unit_type: UnitType,
-    pub(super) at: Position,
+    pub(super) pos: Position,
     pub(super) angle: Num,
     pub(super) cost: PoolCost,
     pub(super) cooldown: Ticks,

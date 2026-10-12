@@ -177,8 +177,8 @@ impl DrivenBot {
 mod tests {
     use campfire_capabilities::{Leaver, PlayersData, SaveBy, SavesData};
     use campfire_protocol::{AfterLeave, LeaveReason, SlotPlan};
-    use campfire_runner::InputRules;
     use campfire_runner::internals::FixedSession;
+    use campfire_runner::{InputRules, SessionWorld};
 
     use super::*;
     use crate::harness::in_process_match::InProcessMatch;
@@ -209,7 +209,7 @@ mod tests {
                 .map(|driven| driven.slot.get())
                 .collect::<Vec<_>>()
         };
-        assert_eq!(planned(fixed.runner().log()), [1]);
+        assert_eq!(planned(fixed.game().session().log()), [1]);
         fixed.join(1).unwrap();
         let slot = PlayerSlot::new(1);
         fixed
@@ -219,8 +219,11 @@ mod tests {
                 becomes: AfterLeave::Bot,
             })
             .unwrap();
-        assert_eq!(fixed.runner().log().controller(slot), Some(Controller::Bot));
-        assert_eq!(planned(fixed.runner().log()), [] as [u32; 0]);
+        assert_eq!(
+            fixed.game().session().log().controller(slot),
+            Some(Controller::Bot)
+        );
+        assert_eq!(planned(fixed.game().session().log()), [] as [u32; 0]);
     }
 
     #[test]

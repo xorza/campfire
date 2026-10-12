@@ -4,15 +4,14 @@
 
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{Dead, Deaths};
+use campfire_capabilities::{Dead, Deaths, Match};
 use campfire_common::{MapName, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::internals::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
-use campfire_runner::{ResumeError, Runner};
-use campfire_sim::SnapshotError;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_runner::{ResumeError, SessionMatch, SessionWorld};
+use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 
 /// A run of a match with a checkpoint before each of three ticks: its log, the snapshot of each
 /// checkpoint, the state hash after each tick, and the ticks a unit died and came back in.
@@ -45,8 +44,8 @@ impl Checkpointed {
                 snapshots.push(snapshot);
             }
             play(&mut fixed, tick);
-            let world = fixed.runner().world();
-            hashes.push(fixed.runner().state_hash());
+            let world = fixed.game();
+            hashes.push(fixed.game().state_hash());
             if world
                 .get_resource::<Deaths>()
                 .is_some_and(|deaths| deaths.tick().get() == tick && deaths.iter().next().is_some())
@@ -69,7 +68,7 @@ impl Checkpointed {
             dead = now;
         }
         let mut log = Vec::new();
-        fixed.runner().log().encode(&mut log);
+        fixed.game().session().log().encode(&mut log);
         Checkpointed {
             log,
             snapshots,
@@ -94,17 +93,17 @@ impl Checkpointed {
         for (checkpoint, snapshot) in (0..).zip(&self.snapshots) {
             let log = SessionLog::decode(&self.log).unwrap().rewound();
             let segment = checkpoint + 1;
-            let mut runner =
-                Runner::resume(log, FixedSession::seeds(), packages, segment, snapshot)
+            let mut game =
+                Match::resume_session(log, FixedSession::seeds(), packages, segment, snapshot)
                     .unwrap_or_else(|error| {
                         panic!("segment {segment}: {}", ErrorReport::of(&error))
                     });
             let start = at[checkpoint as usize];
             let end = at.get(checkpoint as usize + 1).copied().unwrap_or(ticks);
             for tick in start..end {
-                runner.run_tick();
+                game.run_tick_alone();
                 assert_eq!(
-                    runner.state_hash(),
+                    game.state_hash(),
                     self.hashes[usize::try_from(tick).unwrap()],
                     "resumed before tick {start}, tick {tick}"
                 );
@@ -136,7 +135,7 @@ fn the_lane_match_resumes_from_each_checkpoint_to_the_same_hashes() {
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let at = [100, 300, 600];
     let run = Checkpointed::run(session.start(), at, 900, |fixed, _| {
-        fixed.runner_mut().run_tick();
+        fixed.game_mut().run_tick_alone();
     });
     run.check(session.packages(), at);
 }
@@ -158,15 +157,16 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     // no snapshot.
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    let session_id = fixed.runner().log().session_id();
+    let session_id = fixed.game().session().log().session_id();
     let checkpoint = |fixed: &mut FixedMatch, flaw: fn(&mut Checkpoint, &mut Vec<u8>)| {
         let mut snapshot = Vec::new();
-        fixed.runner_mut().begin_checkpoint().unwrap();
-        let mut record = fixed.runner().checkpoint(&mut snapshot).unwrap();
+        fixed.game_mut().session_mut().begin_checkpoint().unwrap();
+        let mut record = fixed.game().checkpoint(&mut snapshot).unwrap();
         flaw(&mut record, &mut snapshot);
         let signature = FixedSession::checkpoint_signature(&record, session_id);
         fixed
-            .runner_mut()
+            .game_mut()
+            .session_mut()
             .record_checkpoint(record, &signature)
             .unwrap();
         snapshot
@@ -185,10 +185,10 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         record.snapshot = SnapshotFingerprint::of(snapshot);
     });
     let mut bytes = Vec::new();
-    fixed.runner().log().encode(&mut bytes);
+    fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
         let log = SessionLog::decode(&bytes).unwrap().rewound();
-        Runner::resume(
+        Match::resume_session(
             log,
             FixedSession::seeds(),
             proving.packages(),
@@ -214,7 +214,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     // A save before tick 100, segment 1, and a checkpoint before tick 150, segment 2.
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    let id = fixed.runner().log().session_id();
+    let id = fixed.game().session().log().session_id();
     let mut hashes = Vec::new();
     let mut save = Vec::new();
     for tick in 0..200 {
@@ -225,10 +225,11 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
             fixed.checkpoint(&mut Vec::new());
         }
         ProvingMatch::play_tick(&mut fixed, tick);
-        hashes.push(fixed.runner().state_hash());
+        hashes.push(fixed.game().state_hash());
     }
     let record = fixed
-        .runner()
+        .game()
+        .session()
         .log()
         .checkpoint_at(Tick::new(100))
         .unwrap()
@@ -236,22 +237,24 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
 
     // The load of the save: the match stands before tick 100 again, and plays 50 ticks with no
     // order, unlike the ticks the load dropped.
-    let mut runner = fixed
-        .into_runner()
-        .load(1, &save, proving.packages())
+    let mut game = fixed
+        .into_game()
+        .load_save(1, &save, proving.packages())
         .unwrap();
-    assert_eq!(runner.log().next_tick(), Tick::new(100));
-    assert_eq!(runner.state_hash(), hashes[99]);
+    assert_eq!(game.session().log().next_tick(), Tick::new(100));
+    assert_eq!(game.state_hash(), hashes[99]);
     for _ in 100..150 {
-        runner.run_tick();
+        game.run_tick_alone();
     }
-    assert_ne!(runner.state_hash(), hashes[149]);
-    let result = runner.result_as(Outcome::Aborted);
+    assert_ne!(game.state_hash(), hashes[149]);
+    let result = game.session_result_as(Outcome::Aborted);
     let signature = FixedSession::result_signature(&result, id);
-    runner.record_result(result, &signature).unwrap();
-    runner.reveal_seed();
+    game.session_mut()
+        .record_result(result, &signature)
+        .unwrap();
+    game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
-    runner.log().encode(&mut bytes);
+    game.session().log().encode(&mut bytes);
 
     // The published log holds the segments up to the save, and the one the load started: its
     // replay meets the save's hash and the result.
@@ -259,12 +262,12 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     assert_eq!(published.next_tick(), Tick::new(150));
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&record]);
     let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Runner::new(published.rewound(), seeds, proving.packages()).unwrap();
-    while replay.log().next_tick() < Tick::new(150) {
-        if replay.log().next_tick() == Tick::new(100) {
+    let mut replay = Match::start_session(published.rewound(), seeds, proving.packages()).unwrap();
+    while replay.session().log().next_tick() < Tick::new(150) {
+        if replay.session().log().next_tick() == Tick::new(100) {
             assert_eq!(replay.state_hash(), record.state_hash);
         }
-        replay.run_tick();
+        replay.run_tick_alone();
     }
     assert_eq!(replay.check_result(), Ok(()));
 }

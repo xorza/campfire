@@ -1,8 +1,10 @@
+use campfire_sim::IdAllocator;
+
 use super::*;
 
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -15,7 +17,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         name: "hero",
         value: InputValue::StringList(vec!["hero-x"]),
     };
-    game.tick(&[
+    game.tick_inputs(&[
         (0, spells),
         (0, input("hero", "hero-x")),
         // Taken by player 0.
@@ -45,7 +47,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
     // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
     let offer = |index| Some(Offer::new(index));
-    let chosen = &game.sim.world.resource::<Choices>().0;
+    let chosen = &game.resource::<Choices>().0;
     let rows: Vec<_> = chosen.chunks(4).collect();
     assert_eq!(
         rows,
@@ -55,33 +57,36 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
             [None, None, offer(1), None],
         ]
     );
-    let next = game.sim.world.resource_mut::<IdAllocator>().allocate();
+    let next = game.resource_mut::<IdAllocator>().allocate();
     assert_eq!(next.get(), 7);
     // The heroes, 5 and 6, at their teams' spawns under their players' control: player 0's
     // with its own ability unlearned, then its spell learned.
-    let heroes: Vec<_> = game.units()[5..].to_vec();
+    let heroes: Vec<_> = game.placed_units()[5..].to_vec();
     assert_eq!(heroes, [(5, at(0, -5), 0, None), (6, at(0, 5), 1, None)]);
-    let hero = game.entity(5);
-    assert_eq!(
-        game.sim.world.get::<Owner>(hero).unwrap().slot(),
-        PlayerSlot::new(0)
-    );
-    let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
+    let hero = game.entity_by_id(5);
+    assert_eq!(game.get::<Owner>(hero).unwrap().slot(), PlayerSlot::new(0));
+    let slots = game.get::<ActionSlots>(hero).unwrap();
     let slots: Vec<_> = slots
         .iter()
         .map(|slot| (slot.action.unwrap(), Rank::count(slot.rank)))
         .collect();
-    assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
+    assert_eq!(
+        slots,
+        [
+            (game.mode_abilities().strike, 0),
+            (game.mode_abilities().blink, 1)
+        ]
+    );
 }
 
 #[test]
 fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    game.tick_inputs(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     // Hero Y carries its passive, the blessing, from itself, with no end.
-    let mut owned = game.sim.world.query::<(&StableId, &Owner, &Modifiers)>();
+    let mut owned = game.query::<(&StableId, &Owner, &Modifiers)>();
     let (&hero_y, _, modifiers) = owned
-        .iter(&game.sim.world)
+        .iter(&game)
         .find(|(_, owner, _)| owner.slot() == PlayerSlot::new(2))
         .unwrap();
     let held: Vec<_> = modifiers
@@ -97,9 +102,9 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         .collect();
     assert_eq!(held, [(Some(hero_y), true, None, 1)]);
     // A dead grunt is still one the mode sees.
-    let grunt = game.entity(3);
-    game.sim.world.entity_mut(grunt).insert(Dead);
-    game.tick(&[
+    let grunt = game.entity_by_id(3);
+    game.entity_mut(grunt).insert(Dead);
+    game.tick_inputs(&[
         (1, input("gold", "gold")),
         (1, input("rich", "gems")),
         (1, input("rich", "gems")),
@@ -109,7 +114,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
     // not declare fails, as a sum past what an integer holds does.
     let amount = |slot, name| {
-        let resources = PlayerResources::of_player(&game.sim.world, PlayerSlot::new(slot));
+        let resources = game.player_resources(PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(
@@ -192,32 +197,32 @@ fn on_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::picking(script, ScriptLimits::ROOMY);
+    let mut game = picking_match(script, ScriptLimits::ROOMY);
     let probe = |value| input("probe", value);
-    let read = |game: &Game| ["kind", "seen", "team"].map(|name| game.field(name));
+    let read = |game: &Match| ["kind", "seen", "team"].map(|name| game.field(name));
     let text = |text: &str| StateValue::Text(text.to_owned());
     // Before any choice: no duo, hero X free to player 0, who is on team a.
-    game.tick(&[(0, probe("read"))]);
+    game.tick_inputs(&[(0, probe("read"))]);
     assert_eq!(read(&game), [text("none"), StateValue::Int(1), text("a")]);
     // Player 0 takes hero X, and spawns it with no spells, as it chose none: player 2, of team
     // b, may not take it, as the hero choice is unique.
-    game.tick(&[(0, input("hero", "hero-x")), (2, probe("read"))]);
+    game.tick_inputs(&[(0, input("hero", "hero-x")), (2, probe("read"))]);
     assert_eq!(read(&game), [text("none"), StateValue::Int(0), text("b")]);
     // Unit 1, after the map's tower.
-    let hero = game.entity(1);
-    let slots = |game: &Game| {
-        let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
+    let hero = game.entity_by_id(1);
+    let slots = |game: &Match| {
+        let slots = game.get::<ActionSlots>(hero).unwrap();
         let slots = slots
             .iter()
             .map(|slot| (slot.action.unwrap(), slot.kind, slot.rank));
         slots.collect::<Vec<_>>()
     };
     let [basic, spell] = [0, 1].map(SlotKind::new);
-    assert_eq!(slots(&game), [(game.strike, basic, None)]);
+    assert_eq!(slots(&game), [(game.mode_abilities().strike, basic, None)]);
     // A choice not unique: players 1 and 2 both take both heroes, in their own order; then
     // player 1 chooses again, which replaces its values. Too few values, one twice, one the
     // choice does not offer and a choice the mode does not declare fail, and change nothing.
-    game.tick(&[
+    game.tick_inputs(&[
         (1, probe("duo")),
         (2, probe("duo")),
         (1, probe("swap")),
@@ -235,12 +240,12 @@ fn on_input(ctx, player, name, value) {
     ];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
     assert_eq!(game.field("kind"), text("hero-x,hero-y"));
-    game.tick(&[(2, probe("read"))]);
+    game.tick_inputs(&[(2, probe("read"))]);
     assert_eq!(game.field("kind"), text("hero-y,hero-x"));
     // A grant puts the spell after the hero's basic ability, learned as its kind has no ranks;
     // a kind of other ranks, a kind the mode does not declare and an action that is no loadout
     // entry fail.
-    game.tick(&[
+    game.tick_inputs(&[
         (0, probe("grant")),
         (0, probe("grant_basic")),
         (0, probe("grant_ultimate")),
@@ -255,8 +260,8 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(
         slots(&game),
         [
-            (game.strike, basic, None),
-            (game.blink, spell, Some(Rank::FIRST))
+            (game.mode_abilities().strike, basic, None),
+            (game.mode_abilities().blink, spell, Some(Rank::FIRST))
         ]
     );
 }
@@ -268,8 +273,8 @@ fn a_grant_to_a_fresh_unit_counts_its_inventory_slots() {
     // spawn with it. Granted one, it holds 256, the spell after the inventory's slots.
     let script = r#"
 fn on_input(ctx, player, name, value) {
-    let unit = ctx.spawn_unit("hero-y", "a", ctx.map.markers("camp")[0].pos, player);
-    ctx.grant(unit, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
+    let id = ctx.spawn_unit("hero-y", "a", ctx.map.markers("camp")[0].pos, player);
+    ctx.grant(id, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
 }
 "#;
     let spell = SlotKind::new(1);
@@ -280,23 +285,23 @@ fn on_input(ctx, player, name, value) {
         });
     };
     let script = format!("{script}{PICKING}");
-    let mut game = Game::start_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();
-    let owned = |game: &mut Game| {
-        let mut owned = game.sim.world.query::<(&Owner, &ActionSlots)>();
-        let slots = owned.iter(&game.sim.world).map(|(_, slots)| slots.clone());
+    let mut game = start_match_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();
+    let owned = |game: &mut Match| {
+        let mut owned = game.query::<(&Owner, &ActionSlots)>();
+        let slots = owned.iter(game).map(|(_, slots)| slots.clone());
         slots.collect::<Vec<_>>()
     };
-    game.tick(&[(0, input("probe", "two"))]);
+    game.tick_inputs(&[(0, input("probe", "two"))]);
     assert_eq!(game.failures(), [FailureKind::Api(ApiError::TooManySlots)]);
     assert!(owned(&mut game).is_empty());
-    game.tick(&[(0, input("probe", "one"))]);
+    game.tick_inputs(&[(0, input("probe", "one"))]);
     assert_eq!(game.failures(), []);
     let [slots] = owned(&mut game).try_into().unwrap();
     assert_eq!(slots.len(), ActionSlots::LIMIT);
     let last = slots.slot(255).unwrap();
     assert_eq!(
         (last.action, last.kind, last.rank),
-        (Some(game.blink), spell, Some(Rank::FIRST))
+        (Some(game.mode_abilities().blink), spell, Some(Rank::FIRST))
     );
     assert!(
         slots
@@ -310,20 +315,19 @@ fn on_input(ctx, player, name, value) {
 fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     // Player 0 picks hero X, of an avatar's type, and owns a grunt besides; player 1 owns only a
     // grunt, and player 2 nothing. A second hero of player 0 of a higher id is not its avatar.
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let hero = game.pick(0, "hero-x");
-    let grunt = *game.sim.world.get::<UnitType>(game.entity(1)).unwrap();
-    let hero_type = *game.sim.world.get::<UnitType>(hero).unwrap();
-    let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+    let grunt = *game.get::<UnitType>(game.entity_by_id(1)).unwrap();
+    let hero_type = *game.get::<UnitType>(hero).unwrap();
+    let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
     for (slot, unit_type) in [(0, grunt), (1, grunt), (0, hero_type)] {
         let owner = Owner::new(PlayerSlot::new(slot));
-        game.sim.spawn_of(unit_type, at, Team::new(0), owner);
+        game.spawn_unit_of(unit_type, pos, Team::new(0), owner);
     }
-    let world = &mut game.sim.world;
-    let mut players = HeldPlayerUnits::new(world);
+    let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {
         players
-            .avatar(world, PlayerSlot::new(slot))
+            .avatar(&game, PlayerSlot::new(slot))
             .map(|avatar| avatar.entity)
     };
     assert_eq!(avatar(&mut players, 0), Some(hero));

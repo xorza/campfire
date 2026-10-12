@@ -3,18 +3,19 @@
 
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Dead, Experience, Life, PlayerResources, ResourceId, Respawn, ScriptFailures, TrackId,
+    Dead, Experience, Life, PlayersWorld, ResourceId, Respawn, ScriptFailures, TrackId,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
+use campfire_runner::SessionWorld;
 use campfire_runner::internals::{FixedMatch, Moba3v3};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId};
+use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId};
 
 /// Runs `fixed` until tick `end` starts, checking that no script call fails.
 pub(crate) fn run_to(fixed: &mut FixedMatch, end: u64) {
-    while now(fixed.runner().world()) < end {
-        fixed.runner_mut().run_tick();
-        let failures = fixed.runner().world().non_send::<ScriptFailures>();
+    while now(fixed.game()) < end {
+        fixed.game_mut().run_tick_alone();
+        let failures = fixed.game().non_send::<ScriptFailures>();
         assert!(failures.get().is_empty(), "{:?}", failures.get());
     }
 }
@@ -23,51 +24,71 @@ fn now(world: &World) -> u64 {
     world.resource::<SimTick>().start().get()
 }
 
-/// The units that stand at `x`, `z`, by stable id.
-pub(crate) fn units_at(world: &World, x: i64, z: i64) -> Vec<StableId> {
-    let at = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
-    let index = world.resource::<EntityIndex>();
-    index
-        .iter()
-        .filter(|&(_, entity)| world.get::<Position>(entity) == Some(&at))
-        .map(|(id, _)| id)
-        .collect()
+/// What the MOBA 3v3's tests read of a running match.
+pub(crate) trait MobaWorldTest {
+    /// The units that stand at `x`, `z`, by stable id.
+    fn units_at(&self, x: i64, z: i64) -> Vec<StableId>;
+
+    /// The gold player `slot` holds.
+    fn gold(&self, moba: &Moba3v3, slot: u32) -> i64;
+
+    /// The tick `id` comes back in, while it waits to.
+    fn respawn_at(&self, id: StableId) -> Option<Tick>;
+
+    /// Whether `id` is dead.
+    fn dead(&self, id: StableId) -> bool;
+
+    /// The life `id` has.
+    fn life_of(&self, id: StableId) -> Num;
+
+    /// The experience `id` has on the mode's `level` track.
+    fn level_xp(&self, moba: &Moba3v3, id: StableId) -> Num;
 }
 
-pub(crate) fn gold(world: &World, moba: &Moba3v3, slot: u32) -> i64 {
-    let gold = ResourceId::named(&moba.packages().data().resources, "gold").unwrap();
-    let held = PlayerResources::of_player(world, PlayerSlot::new(slot));
-    held.expect("a player of the 3v3 holds its resources")
-        .amount(gold)
-}
+impl MobaWorldTest for World {
+    fn units_at(&self, x: i64, z: i64) -> Vec<StableId> {
+        let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+        let index = self.resource::<EntityIndex>();
+        index
+            .iter()
+            .filter(|&(_, entity)| self.get::<Position>(entity) == Some(&pos))
+            .map(|(id, _)| id)
+            .collect()
+    }
 
-pub(crate) fn respawn_at(world: &World, unit: StableId) -> Option<Tick> {
-    let entity = world.resource::<EntityIndex>().get(unit)?;
-    world.get::<Respawn>(entity).map(|respawn| respawn.at)
-}
+    fn gold(&self, moba: &Moba3v3, slot: u32) -> i64 {
+        let gold = ResourceId::named(&moba.packages().data().resources, "gold").unwrap();
+        let held = self.player_resources(PlayerSlot::new(slot));
+        held.expect("a player of the 3v3 holds its resources")
+            .amount(gold)
+    }
 
-pub(crate) fn dead(world: &World, unit: StableId) -> bool {
-    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    world.entity(entity).contains::<Dead>()
-}
+    fn respawn_at(&self, id: StableId) -> Option<Tick> {
+        let entity = self.entity_of(id)?;
+        self.get::<Respawn>(entity).map(|respawn| respawn.at)
+    }
 
-/// The life `unit` has.
-pub(crate) fn life(world: &World, unit: StableId) -> Num {
-    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    world.get::<Life>(entity).unwrap().current()
-}
+    fn dead(&self, id: StableId) -> bool {
+        let entity = self.entity_of(id).unwrap();
+        self.entity(entity).contains::<Dead>()
+    }
 
-/// The experience `unit` has on the mode's `level` track.
-pub(crate) fn level_xp(world: &World, moba: &Moba3v3, unit: StableId) -> Num {
-    let tracks = &moba.packages().data().tracks;
-    let at = tracks
-        .keys()
-        .position(|name| name.as_str() == "level")
-        .unwrap();
-    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    let experience = world.get::<Experience>(entity).unwrap();
-    experience
-        .get(TrackId::new(u8::try_from(at).unwrap()))
-        .unwrap()
-        .xp
+    fn life_of(&self, id: StableId) -> Num {
+        let entity = self.entity_of(id).unwrap();
+        self.get::<Life>(entity).unwrap().current()
+    }
+
+    fn level_xp(&self, moba: &Moba3v3, id: StableId) -> Num {
+        let tracks = &moba.packages().data().tracks;
+        let at = tracks
+            .keys()
+            .position(|name| name.as_str() == "level")
+            .unwrap();
+        let entity = self.entity_of(id).unwrap();
+        let experience = self.get::<Experience>(entity).unwrap();
+        experience
+            .get(TrackId::new(u8::try_from(at).unwrap()))
+            .unwrap()
+            .xp
+    }
 }

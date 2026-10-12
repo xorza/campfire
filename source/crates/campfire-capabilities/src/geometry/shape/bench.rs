@@ -13,7 +13,7 @@ use crate::geometry::shape::Shape;
 #[derive(Debug, Clone, Copy)]
 struct Beside {
     shape: Shape,
-    at: Position,
+    pos: Position,
     from: Position,
     to: Position,
 }
@@ -36,12 +36,12 @@ fn beside(seed: u64, boxes: bool) -> Vec<Beside> {
             } else {
                 Shape::Circle(length(20, 500))
             };
-            let at = Position::new(scene.point(20)).unwrap();
+            let pos = Position::new(scene.point(20)).unwrap();
             let from = scene.point(20);
             let to = from + scene.point(5);
             Beside {
                 shape,
-                at,
+                pos,
                 from: Position::new(from).unwrap(),
                 to: Position::new(to).unwrap(),
             }
@@ -64,7 +64,7 @@ pub(crate) fn shape(c: &mut Criterion) {
                     let near =
                         input
                             .shape
-                            .comes_within(input.at, black_box(input.from), input.to, reach);
+                            .comes_within(input.pos, black_box(input.from), input.to, reach);
                     black_box(near);
                 }
             });

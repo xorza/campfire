@@ -1,13 +1,11 @@
-use bevy_ecs::change_detection::DetectChangesMut;
-use bevy_ecs::change_detection::Mut;
+use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{Position, SimWorld, StableId};
 
 use crate::actions::action_slots::ActionSlots;
-
 use crate::actions::action_target::ActionTarget;
 use crate::geometry::bounds::Bounds;
 use crate::navigation::destination::Destination;
@@ -58,7 +56,7 @@ pub(crate) enum UnitOrder {
 #[derive(Debug, QueryData)]
 #[query_data(mutable, derive(Debug))]
 pub(crate) struct OrderedUnit {
-    pub(crate) at: &'static Position,
+    pub(crate) pos: &'static Position,
     pub(crate) spawn: Option<&'static SpawnPoint>,
     pub(crate) slots: Option<&'static mut ActionSlots>,
     pub(crate) walker: Option<&'static mut PathWalker>,
@@ -74,13 +72,10 @@ pub(crate) struct OrderedUnit {
 impl Effect for UnitOrder {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let unit = frame
+        let id = frame
             .acting()
             .expect("an order comes from the unit that thinks");
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(unit)
-            .expect("a unit that thinks lives");
+        let entity = world.entity_of(id).expect("a unit that thinks lives");
         Orders::apply_order(world, entity, self, now);
     }
 }
@@ -100,7 +95,7 @@ impl UnitOrder {
     /// Whether the unit now resets, and takes no order until it is home.
     pub(crate) fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) -> bool {
         let OrderedUnitItem {
-            at: &at,
+            pos: &at,
             spawn,
             mut slots,
             walker,
@@ -181,14 +176,14 @@ impl UnitOrder {
     }
 
     /// Sets the unit's build order and gather loop: a build's, its point taken into the bounds,
-    /// or a gather's, aimed at the node as the unit stands at `at`; any other order ends both.
+    /// or a gather's, aimed at the node as the unit stands at `pos`; any other order ends both.
     /// A unit with neither keeps its parts untouched.
     fn set_loops(
         self,
         builder: Option<&mut Mut<'_, Builder>>,
         gatherer: Option<&mut Mut<'_, Gatherer>>,
         bounds: &Bounds,
-        at: Position,
+        pos: Position,
     ) {
         let build = match self {
             UnitOrder::Build { slot, target } => {
@@ -211,7 +206,7 @@ impl UnitOrder {
         let gather = match self {
             UnitOrder::Gather { slot, target } => Some(GatherOrder {
                 slot,
-                node: NodeAt { node: target, at },
+                node: NodeAt { node: target, pos },
                 step: GatherStep::Ordered,
             }),
             _ => None,

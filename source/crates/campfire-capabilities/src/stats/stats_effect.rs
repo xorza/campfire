@@ -6,7 +6,7 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::applier::Applier;
-use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
 
@@ -45,7 +45,8 @@ impl StatsEffect {
                 duration,
             } => Stats::add_modifier(world, target, id, applier, duration),
             StatsEffect::AddPlayer { player, id } => {
-                PlayerModifiers::of_mut(world, player)
+                world
+                    .player_modifiers_mut(player)
                     .expect("a player of the session holds its modifiers")
                     .add(id);
             }
@@ -63,7 +64,7 @@ impl Effect for StatsEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let applier = Applier {
             source: frame.acting(),
-            ability: frame.action(),
+            action: frame.action(),
             rank: frame.rank(),
             hold: None,
         };

@@ -1,7 +1,5 @@
 use std::num::NonZeroU64;
 
-use bevy_ecs::schedule::Schedule;
-use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
 use campfire_sim::{Capability, StateRegistry};
 
@@ -17,9 +15,6 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
-use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_books::ModeBooks;
-use crate::mode::mode_setup::ModeSetup;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::production::Production;
@@ -30,7 +25,6 @@ use crate::release::installer::Installer;
 use crate::release::state_only::StateOnly;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::ScriptApi;
-use crate::scripts::script_budgets::ScriptBudgets;
 use crate::state_types::StateTypes;
 use crate::stats::Stats;
 use crate::units::Units;
@@ -38,6 +32,9 @@ use crate::vision::Vision;
 
 mod api_binder;
 mod installer;
+pub(crate) mod r#match;
+pub(crate) mod match_spec;
+pub(crate) mod release_world;
 mod state_only;
 
 /// The engine's modules as the release runs them: the core, each capability in the order they
@@ -137,53 +134,6 @@ impl Release {
     /// Visits, with `v`, each kind of entity of a match, whatever its capabilities.
     pub fn kinds<V: KindVisitor>(v: &mut V) {
         Units::kinds(v);
-    }
-
-    /// Installs into a match the core, then each capability of `set` the release runs, each
-    /// after the ones it builds on: its declarations, then its install. A match that ended runs
-    /// no stage. With no script `budgets`, as on a client, which runs no scripts, the core has
-    /// no script host, and each capability leaves out what runs scripts.
-    pub fn install(
-        set: CapabilitySet,
-        world: &mut World,
-        schedule: &mut Schedule,
-        registry: &mut StateRegistry,
-        budgets: Option<ScriptBudgets>,
-    ) {
-        let scripts = budgets.is_some();
-        Units::open(world, budgets);
-        if scripts {
-            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
-        }
-        MatchEnd::stop_stages(schedule);
-        let mut cx = InstallCx::new(world, schedule, set, scripts);
-        Release::install_module::<Units>(&mut cx, registry, Units::install);
-        Release::install_module::<Actions>(&mut cx, registry, Actions::install);
-        Release::install_module::<Deliveries>(&mut cx, registry, Deliveries::install);
-        for row in CAPABILITIES {
-            if let Some(install) = row.install
-                && set.contains(row.capability)
-            {
-                let mut installer = Installer::new(cx.world, registry, set, scripts);
-                Release::declare_capability(row.capability, &mut installer);
-                install(&mut cx);
-            }
-        }
-    }
-
-    /// Installs the mode of `setup` into a match of the capabilities `set`, which `install`
-    /// installed, and whose
-    /// books are in place but the mode's own, `books`: its declarations, then its install.
-    pub fn install_mode(
-        set: CapabilitySet,
-        world: &mut World,
-        schedule: &mut Schedule,
-        registry: &mut StateRegistry,
-        setup: ModeSetup<'_>,
-        books: ModeBooks,
-    ) {
-        Release::module::<Mode, _>(&mut Installer::new(world, registry, set, true));
-        Mode::install(world, schedule, registry, setup, books);
     }
 
     /// Binds into `builder` the script API of every module the release runs.
@@ -328,9 +278,6 @@ pub(crate) mod internals {
         }
     }
 }
-
-#[cfg(test)]
-pub(crate) mod test_match;
 
 #[cfg(test)]
 mod tests;

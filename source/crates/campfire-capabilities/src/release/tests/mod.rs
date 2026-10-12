@@ -2,6 +2,7 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::path::Path;
 
+use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 use bevy_ecs::component::Component;
 use campfire_sim::Position;
 use campfire_store::{InputFile, SourceFiles};
@@ -10,13 +11,13 @@ use super::*;
 use crate::actions::action_book::ActionBook;
 use crate::declare::error::CapabilityError;
 use crate::orders::ai::Ai;
-use crate::release::test_match::TestMatch;
+use crate::release::r#match::Match;
+use crate::release::release_world::test_world::ReleaseWorldTest;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::view::View;
-
-use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -71,8 +72,8 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 }
 
 /// Installs `declared` into a fresh match that runs `scripts`.
-fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> World {
-    TestMatch::new(declared, TestMatch::RATE, budgets).world
+fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> Match {
+    Match::test(declared, Match::TEST_RATE, budgets)
 }
 
 #[test]
@@ -536,15 +537,15 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     struct Unlisted;
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
-    let mut sim = TestMatch::client(&declared);
-    let unit = sim.spawn(Position::ORIGIN, Team::new(0), ());
+    let mut game = Match::client(&declared);
+    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), ());
     assert_eq!(
-        Release::unlisted_components(set, &sim.world),
+        Release::unlisted_components(set, &game),
         Vec::<String>::new()
     );
-    sim.insert(unit, Unlisted);
+    game.insert_parts(id, Unlisted);
     assert_eq!(
-        Release::unlisted_components(set, &sim.world),
+        Release::unlisted_components(set, &game),
         [type_name::<Unlisted>()]
     );
 }

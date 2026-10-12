@@ -41,7 +41,7 @@ type Commanded = (
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Mover {
     entity: Entity,
-    at: Position,
+    pos: Position,
 }
 
 /// The orders of the tick's inputs: read once, and the units' orders checked and applied.
@@ -93,9 +93,9 @@ impl OrderInputs {
                 movers.extend(
                     controlled
                         .filter(|(_, (.., walks, _))| *walks)
-                        .map(|(entity, (_, _, &at, ..))| Mover { entity, at }),
+                        .map(|(entity, (_, _, &at, ..))| Mover { entity, pos: at }),
                 );
-                let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.at)) else {
+                let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.pos)) else {
                     continue;
                 };
                 if let &[Mover { entity, .. }] = movers.as_slice() {
@@ -110,7 +110,7 @@ impl OrderInputs {
                     slot: order.slot,
                     number: order.number,
                 };
-                for &Mover { entity, at } in &*movers {
+                for &Mover { entity, pos: at } in &*movers {
                     let [x, z] = group.goal_of(at, goal, *bounds);
                     let party = Party {
                         key,

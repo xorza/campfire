@@ -9,11 +9,11 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::payer::Payer;
 use crate::actions::slot_times::SlotTimes;
-use crate::combat::Combat;
+use crate::combat::combat_world::CombatWorld;
 use crate::geometry::metric::Metric;
-use crate::navigation::destination::Destination;
-use crate::players::player::Player;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorld;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::build_specs::{BuildSpecs, Style};
 use crate::production::build_target::BuildTarget;
@@ -59,7 +59,7 @@ impl Construction {
             from,
             Body::shape_of(body),
             range,
-            placed.at,
+            placed.pos,
             placed.body.shape(),
         )
     }
@@ -135,10 +135,10 @@ impl Construction {
                 .expect("a build view is always valid")
                 .step(entity, &held);
             match step {
-                Step::Walk(to) => Destination::go(world, entity, Some(to)),
-                Step::Build => Destination::go(world, entity, None),
+                Step::Walk(to) => world.go_to(entity, Some(to)),
+                Step::Build => world.go_to(entity, None),
                 Step::Take(site) => {
-                    Destination::go(world, entity, None);
+                    world.go_to(entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut held = world.get_mut::<Site>(site).expect("a site to take");
                     held.hold(id);
@@ -148,7 +148,7 @@ impl Construction {
                     builder.set(None);
                 }
                 Step::Start(start) => {
-                    Destination::go(world, entity, None);
+                    world.go_to(entity, None);
                     Construction::spawn_site(world, entity, start, &mut paid);
                 }
             }
@@ -175,13 +175,13 @@ impl Construction {
         let book = world.resource::<ActionBook>();
         let cost = book.get(action).expect("a build in the book");
         paid.extend_from_slice(cost.resource_cost(start.rank));
-        let life = Combat::life(world);
+        let life = world.life_pool();
         let pay = |unit: &mut EntityMut<'_>, resources: Option<&mut PlayerResources>| {
             let pools = unit.get_components_mut::<UnitPools>();
             let pools = pools.expect("a builder's pools").of(life);
             Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        if let Some(player) = owner.and_then(|owner| Player::entity(world, owner.slot())) {
+        if let Some(player) = owner.and_then(|owner| world.player_entity(owner.slot())) {
             let [mut unit, mut held] = world.entity_mut([entity, player]);
             let mut resources = held.get_mut::<PlayerResources>();
             pay(&mut unit, resources.as_deref_mut());
@@ -198,7 +198,7 @@ impl Construction {
             id,
             unit_type: start.unit_type,
             team,
-            pos: start.at,
+            pos: start.pos,
             angle: start.angle,
         };
         let spawner = world.non_send::<Spawner>().clone();
@@ -297,7 +297,7 @@ impl Construction {
             };
             let range = book.meters(slots, slot);
             let placed = Placed {
-                at,
+                pos: at,
                 body: *site_body,
             };
             let reaches = Construction::in_range(*metric, from, body, range, placed);

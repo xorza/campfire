@@ -5,8 +5,7 @@ use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::scripts::state_value::StateValue;
-use crate::stats::instance::StackEnd;
-use crate::stats::instance::StatShare;
+use crate::stats::instance::{StackEnd, StatShare};
 use crate::stats::lifetime::Lifetime;
 use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::Reapply;
@@ -28,7 +27,7 @@ pub(crate) struct Application {
 pub(crate) struct NewInstance {
     pub(crate) id: ModifierId,
     pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) rank: Rank,
     pub(crate) lifetime: Lifetime,
     pub(crate) aura_radius: Option<Num>,
@@ -58,7 +57,7 @@ pub(crate) mod internals {
             NewInstance {
                 id,
                 source,
-                ability: None,
+                action: None,
                 rank: Rank::FIRST,
                 lifetime: Lifetime::new(None, Ends::Never),
                 aura_radius: None,

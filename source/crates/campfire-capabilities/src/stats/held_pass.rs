@@ -24,6 +24,7 @@ use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::tag_book::TagBook;
+use crate::units::tag_effect::TagEffect;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
@@ -116,21 +117,21 @@ impl HeldPass {
             .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
         for (&source, &at, &team, carrier, modifiers) in written.chain(&carriers) {
             let immune = carrier.map_or(TagSet::default(), |tags| tags.immune);
-            let takes_effect = TagBook::effect_test(granting, immune);
+            let takes_effect = TagEffect::new(granting, immune);
             for instance in modifiers.iter() {
                 let (Some(aura), Some(radius)) =
                     (&book.get(instance.id).spec.aura, instance.aura_radius)
                 else {
                     continue;
                 };
-                if instance.stacks == 0 || !takes_effect(book.tags(instance.id)) {
+                if instance.stacks == 0 || !takes_effect.takes(book.tags(instance.id)) {
                     continue;
                 }
                 if !indexed {
                     let placed = units.iter().map(|(&id, &at, .., body, entity)| Placed {
                         id,
                         key: entity,
-                        at,
+                        pos: at,
                         shape: Body::shape_of(body),
                     });
                     grid.rebuild(placed);
@@ -142,13 +143,13 @@ impl HeldPass {
                         units.get(body.key).expect("an indexed unit");
                     let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                     let relation = relations.between(team, other);
-                    let reaches = metric.reaches(at, Shape::POINT, radius, body.at, body.shape);
+                    let reaches = metric.reaches(at, Shape::POINT, radius, body.pos, body.shape);
                     if reaches && filter.selects(relation, tags) {
                         held.push(Held {
                             target,
                             modifier,
                             source: Some(source),
-                            ability: instance.ability,
+                            action: instance.action,
                             rank: instance.rank,
                         });
                     }
@@ -176,14 +177,14 @@ impl HeldPass {
                 }
                 let applier = Applier {
                     source: entry.source,
-                    ability: entry.ability,
+                    action: entry.action,
                     rank: entry.rank,
                     hold: Some(Hold::Held),
                 };
                 let source = entry.source.and_then(|source| params.source(source));
                 let param = |place: &ParamPlace| {
-                    let (ability, rank) = (entry.ability, entry.rank);
-                    params.modifier_param(entry.modifier, ability, rank, place, source.as_ref())
+                    let (action, rank) = (entry.action, entry.rank);
+                    params.modifier_param(entry.modifier, action, rank, place, source.as_ref())
                 };
                 let start = clock.start();
                 carried.apply(book.application(entry.modifier, applier, None, start, rate, param));
@@ -211,7 +212,7 @@ impl HeldPass {
                         target,
                         modifier,
                         source: None,
-                        ability: None,
+                        action: None,
                         rank: Rank::FIRST,
                     });
                 }

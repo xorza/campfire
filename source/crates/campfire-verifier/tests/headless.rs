@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
-use campfire_capabilities::{Action, ActionSlots, Destination, Life, Order, Projectile, Rank};
+use campfire_capabilities::{
+    Action, ActionSlots, Destination, Life, Match, Order, Projectile, Rank,
+};
 use campfire_common::{Fingerprint, MapName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
 use campfire_log::{ErrorReport, LogEvent};
@@ -20,11 +22,14 @@ use campfire_protocol::{
     ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
     SlotPlan, SnapshotFingerprint, Taken,
 };
-use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
-use campfire_runner::{
-    InputRules, ResultMismatch, Runner, ServerInputRefused, SlotRuleError, StartError, TermsError,
+use campfire_runner::internals::{
+    FixedMatch, FixedSession, HarnessWorldInternals, HashTrail, Moba3v3,
 };
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_runner::{
+    InputRules, ResultMismatch, ServerInputRefused, SessionMatch, SessionWorld, SlotRuleError,
+    StartError, TermsError,
+};
+use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_store::{AppendWriter, PathError, ReadError, Scratch};
 use campfire_verifier::{
     Replay, ReplayError, SnapshotCheckError, Verification, Verified, VerifyError,
@@ -97,18 +102,17 @@ fn session() -> FixedSession {
 }
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    position: Position,
+    pos: Position,
     destination: Destination,
 }
 
 /// Where player `slot`'s hero stands and walks to.
-fn hero(runner: &Runner, slot: u32) -> Hero {
-    let world = runner.world();
-    let id = MatchUnits::of_world(world).hero(slot);
-    let entity = world.resource::<EntityIndex>().get(id).unwrap();
-    let hero = world.entity(entity);
+fn hero(game: &Match, slot: u32) -> Hero {
+    let id = game.match_units().hero(slot);
+    let entity = game.entity_of(id).unwrap();
+    let hero = game.entity(entity);
     Hero {
-        position: *hero.get::<Position>().unwrap(),
+        pos: *hero.get::<Position>().unwrap(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -125,7 +129,7 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut fixed = session().start();
     let mut trail = HashTrail::default();
     play(&mut fixed, orders, 0..ticks, &mut trail);
-    fixed.runner_mut().reveal_seed();
+    fixed.game_mut().session_mut().reveal_seed();
     Run { fixed, trail }
 }
 
@@ -141,8 +145,8 @@ fn play(fixed: &mut FixedMatch, orders: &[&Sent], ticks: Range<u64>, trail: &mut
                 "{sent:?}"
             );
         }
-        fixed.runner_mut().run_tick();
-        trail.record(fixed.runner().world());
+        fixed.game_mut().run_tick_alone();
+        trail.record(fixed.game());
     }
 }
 
@@ -154,32 +158,38 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
     play(&mut fixed, &orders, 0..40, &mut trail);
-    fixed.runner_mut().begin_checkpoint().unwrap();
-    let mut record = fixed.runner().checkpoint(snapshot).unwrap();
+    fixed.game_mut().session_mut().begin_checkpoint().unwrap();
+    let mut record = fixed.game().checkpoint(snapshot).unwrap();
     record.state_hash = hash.unwrap_or(record.state_hash);
-    let id = fixed.runner().log().session_id();
+    let id = fixed.game().session().log().session_id();
     let signature = FixedSession::checkpoint_signature(&record, id);
     fixed
-        .runner_mut()
+        .game_mut()
+        .session_mut()
         .record_checkpoint(record, &signature)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
-    let runner = fixed.runner_mut();
-    let result = outcome.map_or_else(|| runner.result(), |outcome| runner.result_as(outcome));
+    let game = fixed.game_mut();
+    let result = outcome.map_or_else(
+        || game.session_result(),
+        |outcome| game.session_result_as(outcome),
+    );
     let signature = FixedSession::result_signature(&result, id);
-    runner.record_result(result, &signature).unwrap();
-    runner.reveal_seed();
+    game.session_mut()
+        .record_result(result, &signature)
+        .unwrap();
+    game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
 
 /// The replay of `fixed`'s log file, its state after each tick, and how it ended.
 fn replayed(fixed: &FixedMatch) -> (Replay, HashTrail, Result<(), ReplayError>) {
-    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
+    let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut trail = HashTrail::default();
     let end = loop {
         match replay.run_tick() {
-            Ok(true) => trail.record(replay.runner().world()),
+            Ok(true) => trail.record(replay.game()),
             Ok(false) => break Ok(()),
             Err(error) => break Err(error),
         }
@@ -205,16 +215,19 @@ fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
     let path = scratch.path("journal");
     let mut fixed = session().start();
-    fixed.runner_mut().keep_journal(Box::new(FileJournal(
-        AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
-    )));
+    fixed
+        .game_mut()
+        .session_mut()
+        .keep_journal(Box::new(FileJournal(
+            AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
+        )));
     let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
     play(&mut fixed, &orders, 0..40, &mut trail);
     fixed.checkpoint(&mut Vec::new());
     play(&mut fixed, &orders, 40..72, &mut trail);
     fixed.end();
-    let bytes = encoded(fixed.runner().log());
+    let bytes = encoded(fixed.game().session().log());
     drop(fixed);
     let file = scratch.read(&path);
     let mut rebuilt = SessionLog::from_journal(JournalFrames::new(&file).unwrap()).unwrap();
@@ -229,14 +242,14 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // so the session aborts.
     let mut snapshot = Vec::new();
     let Run { fixed, trail: live } = checkpointed(&mut snapshot, None, None);
-    let log = fixed.runner().log();
+    let log = fixed.game().session().log();
     let record = log.checkpoint_at(Tick::new(40)).unwrap().clone();
     assert_eq!(log.segment(), 1);
     assert_eq!(record.snapshot, SnapshotFingerprint::of(&snapshot));
     let ended = SessionResult {
         tick: Tick::new(72),
         outcome: Outcome::Aborted,
-        state_hash: fixed.runner().state_hash(),
+        state_hash: fixed.game().state_hash(),
     };
     assert_eq!(log.result(), Some(&ended));
     let (replay, trail, end) = replayed(&fixed);
@@ -245,7 +258,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // Seeds that reach segment 0 alone do not start the log of two.
     let first = ServerSeeds::new(0, FixedSession::seed(0));
     assert!(matches!(
-        Runner::new(
+        Match::start_session(
             SessionLog::decode(&encoded(log)).unwrap().rewound(),
             first,
             &packages()
@@ -276,7 +289,12 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
         logged: forged,
         restored: record.state_hash,
     };
-    let record = fixed.runner().log().checkpoint_at(Tick::new(40)).unwrap();
+    let record = fixed
+        .game()
+        .session()
+        .log()
+        .checkpoint_at(Tick::new(40))
+        .unwrap();
     assert_eq!(replay.check_snapshot(record, &snapshot), Err(restored));
 
     // A result that names a winner of a match that has none.
@@ -292,21 +310,21 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
 #[test]
 fn run_and_replay_agree_on_every_tick() {
     let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
-    let runner = fixed.runner();
+    let game = fixed.game();
     let arrived = Hero {
-        position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+        pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
-    assert_eq!(hero(runner, 0), arrived);
+    assert_eq!(hero(game, 0), arrived);
 
-    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    let decoded = SessionLog::decode(&encoded(game.session().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     while replay.run_tick().unwrap() {
-        replayed.record(replay.runner().world());
+        replayed.record(replay.game());
     }
     live.assert_same(&replayed);
-    assert_eq!(hero(replay.runner(), 0), arrived);
+    assert_eq!(hero(replay.game(), 0), arrived);
 
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
@@ -320,7 +338,7 @@ fn run_and_replay_agree_on_every_tick() {
 /// The order that moves player `slot`'s hero to (`x`, `z`).
 fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
-        MatchUnits::of(fixed).hero(slot),
+        fixed.game().match_units().hero(slot),
         Action::Move {
             x: Num::int(x),
             z: Num::int(z),
@@ -331,7 +349,7 @@ fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
 /// The hero standing at (`x`, `z`), with nowhere to walk.
 fn standing(x: i64, z: i64) -> Hero {
     Hero {
-        position: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
         destination: Destination::default(),
     }
 }
@@ -375,7 +393,7 @@ fn bot_and_returning_player(fixed: &mut FixedMatch, tick: u64) {
                 fixed.join(1),
                 Err(ServerInputRefused::Rule(SlotRuleError::BotTakeover))
             ));
-            assert_eq!(fixed.runner().log().next_place().index, 0);
+            assert_eq!(fixed.game().session().log().next_place().index, 0);
             fixed.serve(leave(AfterLeave::Reserve)).unwrap();
         }
         // They come back, and turn their hero, at (0, 3.5) after 22 ticks, to (−2, 5): 2.5 m in
@@ -401,13 +419,13 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let mut live = HashTrail::default();
     for tick in 0..TICKS {
         bot_and_returning_player(&mut fixed, tick);
-        fixed.runner_mut().run_tick();
-        live.record(fixed.runner().world());
+        fixed.game_mut().run_tick_alone();
+        live.record(fixed.game());
     }
-    fixed.runner_mut().reveal_seed();
-    let runner = fixed.runner();
+    fixed.game_mut().session_mut().reveal_seed();
+    let game = fixed.game();
     assert_eq!(
-        [hero(runner, 0), hero(runner, 1)],
+        [hero(game, 0), hero(game, 1)],
         [standing(-2, 5), standing(3, 2)]
     );
     let slot = PlayerSlot::new(0);
@@ -425,19 +443,19 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
             kind: SlotChangeKind::Joined { from: Taken::Own },
         },
     ];
-    assert_eq!(runner.log().changes(), changes);
+    assert_eq!(game.session().log().changes(), changes);
 
     // The file decodes to a log that encodes to the same bytes, and replays to the same hashes.
-    let bytes = encoded(runner.log());
+    let bytes = encoded(game.session().log());
     let decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(encoded(&decoded), bytes);
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     while replay.run_tick().unwrap() {
-        replayed.record(replay.runner().world());
+        replayed.record(replay.game());
     }
     live.assert_same(&replayed);
-    assert_eq!(replay.runner().log().changes(), changes);
+    assert_eq!(replay.game().session().log().changes(), changes);
 
     // A log whose server sent the leaver's slot to a bot breaks the mode's rules: the verifier
     // does not start it.
@@ -473,19 +491,24 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
                 fixed.checkpoint(snapshot);
             }
             moba.play_tick(&mut fixed, tick);
-            trail.record(fixed.runner().world());
+            trail.record(fixed.game());
         }
         fixed.end();
         (fixed, trail)
     };
     let (fixed, live) = play(true, &mut snapshot);
-    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
+    let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
-    let record = replay.runner().log().checkpoint_at(Tick::new(40)).unwrap();
+    let record = replay
+        .game()
+        .session()
+        .log()
+        .checkpoint_at(Tick::new(40))
+        .unwrap();
     assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
     let mut replayed = HashTrail::default();
     while replay.run_tick().unwrap() {
-        replayed.record(replay.runner().world());
+        replayed.record(replay.game());
     }
     live.assert_same(&replayed);
     // From tick 40 the match draws from segment 1's seed: its crits land otherwise than the
@@ -499,15 +522,12 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     );
     // The replay learned what the match did: Cinder's and Veil's first basic ability, and Rime's
     // second.
-    let world = replay.runner().world();
-    let units = MatchUnits::of_world(world);
-    let ranks = [(0, 0), (5, 0), (4, 1)].map(|(slot, ability)| {
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(units.hero(slot))
-            .unwrap();
+    let world = replay.game();
+    let units = world.match_units();
+    let ranks = [(0, 0), (5, 0), (4, 1)].map(|(slot, action)| {
+        let entity = world.entity_of(units.hero(slot)).unwrap();
         let slots = world.get::<ActionSlots>(entity).unwrap();
-        Rank::count(slots.slot(ability).unwrap().rank)
+        Rank::count(slots.slot(action).unwrap().rank)
     });
     assert_eq!(ranks, [1, 1, 1]);
 }
@@ -531,18 +551,17 @@ struct Seen {
 }
 
 impl Seen {
-    fn of(runner: &Runner) -> Seen {
-        let world = runner.world();
-        let index = world.resource::<EntityIndex>();
+    fn of(game: &Match) -> Seen {
+        let index = game.resource::<EntityIndex>();
         let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
         let targets = [0, 1, 3, 4, 5, 6].map(|id| {
-            let slots = world.entity(entity(id)).get::<ActionSlots>().unwrap();
+            let slots = game.entity(entity(id)).get::<ActionSlots>().unwrap();
             slots.attack_target().map(StableId::get)
         });
-        let hero = world.entity(entity(2)).get::<Life>().unwrap();
+        let hero = game.entity(entity(2)).get::<Life>().unwrap();
         let projectiles = index
             .iter()
-            .filter(|&(_, entity)| world.entity(entity).contains::<Projectile>())
+            .filter(|&(_, entity)| game.entity(entity).contains::<Projectile>())
             .count();
         Seen {
             targets,
@@ -555,13 +574,13 @@ impl Seen {
 #[test]
 fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     let Run { fixed, trail } = run(&[&INTO_REACH], 72);
-    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
+    let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     let mut seen = Vec::new();
     while replay.run_tick().unwrap() {
-        replayed.record(replay.runner().world());
-        seen.push(Seen::of(replay.runner()));
+        replayed.record(replay.game());
+        seen.push(Seen::of(replay.game()));
     }
     trail.assert_same(&replayed);
 
@@ -619,12 +638,12 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 fn the_binary_logs_the_last_state_hash() {
     let mut snapshot = Vec::new();
     let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
-    let runner = fixed.runner();
+    let game = fixed.game();
     // A directory of this run's own, which goes when the test ends, passed or failed.
     let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
     let dir = scratch.root().to_str().unwrap();
     let path = format!("{dir}/headless.log");
-    scratch.write(&path, encoded(runner.log()));
+    scratch.write(&path, encoded(game.session().log()));
     // Logged without color, as standard error is not a terminal here, at `info`, and to no file,
     // whatever the environment says.
     let verifier = |args: &[&str]| {
@@ -666,7 +685,7 @@ fn the_binary_logs_the_last_state_hash() {
     assert!(logged.ends_with(&refused), "{logged}");
 
     let corrupt = format!("{dir}/headless-truncated.log");
-    let bytes = encoded(runner.log());
+    let bytes = encoded(game.session().log());
     scratch.write(&corrupt, &bytes[..bytes.len() - 1]);
     let output = verifier(&[packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
@@ -689,7 +708,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert!(matches!(
-        Runner::new(
+        Match::start_session(
             session.log(),
             ServerSeeds::new(0, ServerSeed::new([8; 32])),
             &packages()
@@ -764,7 +783,8 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         NonZeroU32::new(30).unwrap(),
         1,
     );
-    let refused = Runner::new(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
+    let refused =
+        Match::start_session(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");
     };
@@ -779,7 +799,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     let mut snapshot = Vec::new();
     let Run { fixed, trail } = checkpointed(&mut snapshot, None, None);
     let scratch = Scratch::new();
-    scratch.write("match.log", encoded(fixed.runner().log()));
+    scratch.write("match.log", encoded(fixed.game().session().log()));
     let packages = PackageDir::workspace("");
     let verify = |packages: &Path, log: &str, snapshots: Option<&str>| {
         let snapshots = snapshots.map(|dir| scratch.path(dir));
@@ -827,7 +847,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);
     let Run { fixed: forged, .. } = checkpointed(&mut Vec::new(), Some(forged), None);
-    scratch.write("forged.log", encoded(forged.runner().log()));
+    scratch.write("forged.log", encoded(forged.game().session().log()));
     assert!(matches!(
         verify(&packages, "forged.log", None),
         Err(VerifyError::Replay(ReplayError::Checkpoint { .. }))

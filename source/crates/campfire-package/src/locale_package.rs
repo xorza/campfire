@@ -66,11 +66,8 @@ impl LocalePackage {
         Ok(LocalePackage { name, translations })
     }
 
-    /// Its translations of the package `package`, by language.
-    pub(crate) fn of(
-        &self,
-        package: &PackageName,
-    ) -> impl Iterator<Item = (&Language, &LocaleFile)> {
-        self.translations.get(package).into_iter().flatten()
+    /// Its translations of the package `name`, by language.
+    pub(crate) fn of(&self, name: &PackageName) -> impl Iterator<Item = (&Language, &LocaleFile)> {
+        self.translations.get(name).into_iter().flatten()
     }
 }

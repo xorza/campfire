@@ -19,7 +19,7 @@ pub(crate) struct UnansweredDeaths {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct Unanswered {
-    unit: StableId,
+    id: StableId,
     killer: Option<StableId>,
     /// The length of its run of assisters.
     assisters: u32,
@@ -28,7 +28,7 @@ struct Unanswered {
 /// A death as `UnansweredDeaths` gives it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DeathCall<'a> {
-    pub(crate) unit: StableId,
+    pub(crate) id: StableId,
     pub(crate) killer: Option<StableId>,
     pub(crate) assisters: &'a [StableId],
 }
@@ -43,7 +43,7 @@ impl UnansweredDeaths {
         for death in deaths {
             self.assisters.extend_from_slice(death.assisters);
             self.deaths.extend([Unanswered {
-                unit: death.fallen.unit,
+                id: death.fallen.id,
                 killer: death.killer,
                 assisters: u32::try_from(death.assisters.len()).expect("assisters fit in u32"),
             }]);
@@ -58,7 +58,7 @@ impl UnansweredDeaths {
             let assisters = &self.assisters[start..end];
             start = end;
             DeathCall {
-                unit: death.unit,
+                id: death.id,
                 killer: death.killer,
                 assisters,
             }

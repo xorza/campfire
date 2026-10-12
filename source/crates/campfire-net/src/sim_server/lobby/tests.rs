@@ -32,7 +32,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         ),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
-        inputs: InputRules::LAN,
+        rules: InputRules::LAN,
         slots: 2,
         bots: ServerBots {
             slots: bots

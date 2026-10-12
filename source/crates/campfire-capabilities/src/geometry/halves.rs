@@ -15,7 +15,7 @@ impl Halves {
 
     /// Where `pos` stands on the ground plane, in halves of a bit.
     pub(crate) const fn ground(pos: Position) -> Flat {
-        let at = pos.get();
-        Flat::new(Halves::of(at.x), Halves::of(at.z))
+        let point = pos.get();
+        Flat::new(Halves::of(point.x), Halves::of(point.z))
     }
 }

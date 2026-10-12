@@ -6,13 +6,13 @@ use crate::server_seed::ServerSeed;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServerSeeds {
     last: u32,
-    seed: ServerSeed,
+    server_seed: ServerSeed,
 }
 
 impl ServerSeeds {
-    /// The seeds up to segment `last`, whose seed is `seed`.
-    pub const fn new(last: u32, seed: ServerSeed) -> ServerSeeds {
-        ServerSeeds { last, seed }
+    /// The seeds up to segment `last`, whose seed is `server_seed`.
+    pub const fn new(last: u32, server_seed: ServerSeed) -> ServerSeeds {
+        ServerSeeds { last, server_seed }
     }
 
     /// The last segment whose seed is known.
@@ -25,7 +25,7 @@ impl ServerSeeds {
         if segment > self.last {
             return None;
         }
-        let mut seed = self.seed;
+        let mut seed = self.server_seed;
         for _ in segment..self.last {
             seed = seed.earlier();
         }

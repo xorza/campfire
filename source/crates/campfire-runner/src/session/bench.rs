@@ -3,16 +3,16 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
-use campfire_capabilities::{Life, Pools};
+use campfire_capabilities::{Life, Match, Pools};
 use campfire_protocol::SessionLog;
-use campfire_sim::internals::StageClock;
-use campfire_sim::{SimSet, StateDelta};
+use campfire_sim::internals::{SimWorldInternals, StageClock};
+use campfire_sim::{SimSet, SimWorld, StateDelta};
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
-use crate::harness::moba_3v3::{self, Moba3v3};
-use crate::runner::Runner;
-use crate::session::Session;
+use crate::harness::harness_world::HarnessWorldInternals;
+use crate::harness::moba_3v3::Moba3v3;
+use crate::session::session_world::SessionWorld;
 
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
 /// tick 2399, which fight their lanes' towers.
@@ -42,7 +42,7 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     group.bench_function("first_3v3", |b| {
         b.iter_custom(|matches| {
             (0..matches)
-                .map(|_| timed_tick(moba.start().runner_mut()))
+                .map(|_| timed_tick(moba.start().game_mut()))
                 .sum()
         });
     });
@@ -59,11 +59,11 @@ fn server_tick(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {
                 let mut fixed = moba.start();
-                Session::track(fixed.runner_mut().world_mut(), &mut delta);
-                let cost = MatchCost::of_match(&mut fixed, |runner| {
+                fixed.game_mut().track(&mut delta);
+                let cost = MatchCost::of_match(&mut fixed, |game| {
                     let start = Instant::now();
-                    runner.run_tick();
-                    Session::changes(runner.world_mut(), &mut delta);
+                    game.run_tick_alone();
+                    game.changes(&mut delta);
                     let spent = start.elapsed();
                     black_box(&delta);
                     spent
@@ -96,7 +96,7 @@ fn server_stage(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
     let mut group = c.benchmark_group("integration/server_stage");
     group.sample_size(10);
     let stage_match =
-        |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |runner| stage_tick(runner, stage));
+        |stage: SimSet| MatchCost::of_match(&mut clocked(moba), |game| stage_tick(game, stage));
     for stage in SimSet::ALL {
         group.bench_function(id("worst", stage), |b| {
             b.iter_custom(|matches| {
@@ -131,11 +131,11 @@ fn battle(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
                 (0..battles)
                     .map(|_| {
                         let mut fixed = clocked(moba);
-                        moba_3v3::bench::crowd(fixed.runner_mut().world_mut());
+                        fixed.game_mut().crowd_creeps();
                         let spent = (0..BATTLE_TICKS)
-                            .map(|_| stage_tick(fixed.runner_mut(), stage))
+                            .map(|_| stage_tick(fixed.game_mut(), stage))
                             .sum::<Duration>();
-                        assert!(hurt(fixed.runner_mut().world_mut()), "the creeps fight");
+                        assert!(hurt(fixed.game_mut()), "the creeps fight");
                         spent
                     })
                     .sum()
@@ -160,7 +160,7 @@ impl PlayedLog {
             moba.play_tick(&mut fixed, tick);
         }
         let mut file = Vec::new();
-        fixed.runner().log().encode(&mut file);
+        fixed.game().session().log().encode(&mut file);
         PlayedLog { fixed, file }
     }
 }
@@ -177,7 +177,7 @@ fn session_log(c: &mut Criterion, moba: &LazyCell<Moba3v3>) {
         let PlayedLog { fixed, .. } = played.get_or_insert_with(|| PlayedLog::new(moba));
         b.iter(|| {
             out.clear();
-            fixed.runner().log().encode(&mut out);
+            fixed.game().session().log().encode(&mut out);
             black_box(&out);
         });
     });
@@ -212,11 +212,8 @@ struct MatchCost {
 
 impl MatchCost {
     /// Plays `fixed` for `TICKS` ticks, each by `tick`, which runs it and gives its time.
-    fn of_match(
-        fixed: &mut FixedMatch,
-        mut tick: impl FnMut(&mut Runner) -> Duration,
-    ) -> MatchCost {
-        MatchCost::of(|| tick(fixed.runner_mut()))
+    fn of_match(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Match) -> Duration) -> MatchCost {
+        MatchCost::of(|| tick(fixed.game_mut()))
     }
 
     /// The cost of `TICKS` ticks, each the time `tick` gives.
@@ -244,24 +241,24 @@ impl MatchCost {
 /// A new match of `moba`, with `StageClock`'s probes in its schedule.
 fn clocked(moba: &Moba3v3) -> FixedMatch {
     let mut fixed = moba.start();
-    StageClock::install(fixed.runner_mut().world_mut());
+    fixed.game_mut().install_stage_clock();
     fixed
 }
 
-/// Runs a tick of `runner`, whose schedule holds `StageClock`'s probes, and gives `stage`'s time
+/// Runs a tick of `game`, whose schedule holds `StageClock`'s probes, and gives `stage`'s time
 /// in it.
-fn stage_tick(runner: &mut Runner, stage: SimSet) -> Duration {
-    runner.run_tick();
-    let spent = runner.world().resource::<StageClock>().stage(stage);
-    black_box(&runner);
+fn stage_tick(game: &mut Match, stage: SimSet) -> Duration {
+    game.run_tick_alone();
+    let spent = game.resource::<StageClock>().stage(stage);
+    black_box(&game);
     spent
 }
 
-fn timed_tick(runner: &mut Runner) -> Duration {
+fn timed_tick(game: &mut Match) -> Duration {
     let start = Instant::now();
-    runner.run_tick();
+    game.run_tick_alone();
     let spent = start.elapsed();
-    black_box(&runner);
+    black_box(&game);
     spent
 }
 

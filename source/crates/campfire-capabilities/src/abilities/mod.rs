@@ -23,6 +23,7 @@ use crate::units::view::View;
 
 pub(crate) mod abilities_api;
 pub(crate) mod abilities_effect;
+pub(crate) mod abilities_world;
 pub(crate) mod cast_spends;
 pub(crate) mod casts;
 pub(crate) mod channels;

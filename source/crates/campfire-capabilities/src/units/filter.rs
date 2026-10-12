@@ -26,10 +26,13 @@ impl Filter {
         Filter::of(syntax.relations, terms, types)
     }
 
-    /// The run-time form of `data`, with its tags among the match's.
-    pub(crate) fn resolve(data: &FilterData, types: &UnitTypes) -> Result<Filter, ApiError> {
-        let terms = data.tags.iter().map(|tag| (tag.name.as_str(), tag.negated));
-        Filter::of(data.relations, terms, types)
+    /// The run-time form of `filter`, with its tags among the match's.
+    pub(crate) fn resolve(filter: &FilterData, types: &UnitTypes) -> Result<Filter, ApiError> {
+        let terms = filter
+            .tags
+            .iter()
+            .map(|tag| (tag.name.as_str(), tag.negated));
+        Filter::of(filter.relations, terms, types)
     }
 
     /// The run-time form of `data`, as `resolve` gives it, or with none, the filter of enemies

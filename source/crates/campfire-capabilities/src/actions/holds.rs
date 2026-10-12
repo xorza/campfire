@@ -90,11 +90,11 @@ impl Holds {
             let mut waits = false;
             let mut carried = CarriedMut::new(modifiers, clocks);
             for ((index, slot), time) in slots.indexed().zip(times.iter()) {
-                let Some(ability) = slot.action else {
+                let Some(action_id) = slot.action else {
                     continue;
                 };
                 let action = actions
-                    .get(ability)
+                    .get(action_id)
                     .expect("a slot's action is in the book");
                 // The modifier is held at `holds`, its action's rank, or released with none.
                 let mut keep = |modifier, hold, holds: Option<Rank>| {
@@ -114,14 +114,19 @@ impl Holds {
                     }
                     let applier = Applier {
                         source: Some(id),
-                        ability: Some(ability),
+                        action: Some(action_id),
                         rank,
                         hold: Some(hold),
                     };
                     let source = params.source(id);
                     let param = |place: &ParamPlace| {
-                        let ability = Some(ability);
-                        params.modifier_param(modifier, ability, rank, place, source.as_ref())
+                        params.modifier_param(
+                            modifier,
+                            Some(action_id),
+                            rank,
+                            place,
+                            source.as_ref(),
+                        )
                     };
                     carried.apply(book.application(
                         modifier,

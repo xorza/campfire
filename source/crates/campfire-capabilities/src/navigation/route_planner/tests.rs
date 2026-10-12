@@ -1,11 +1,9 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
-use campfire_math::{Num, Vec3};
-use campfire_sim::IdAllocator;
-
 use campfire_common::SegmentSeed;
-use campfire_math::{RngSource, RngStream};
+use campfire_math::{Num, RngSource, RngStream, Vec3};
+use campfire_sim::IdAllocator;
 
 use super::*;
 use crate::geometry::bounds::Bounds;
@@ -56,7 +54,7 @@ fn walled(rows: &[&str]) -> Walled {
                 let center = |index: usize| i64::try_from(4 * index + 2).unwrap();
                 posts.push(IndexedBody {
                     id: ids.allocate(),
-                    at: at(center(column), center(row)),
+                    pos: at(center(column), center(row)),
                     shape: Shape::Circle(quarter),
                     layer: Layer::FIRST,
                 });
@@ -201,8 +199,8 @@ fn scattered() -> Walled {
     ])
 }
 
-fn windows(cells: &Grid) -> [Window; 7] {
-    [0, 4, 8, 31, 54, 58, 62].map(|cell| Window::around(cells, cell, 2))
+fn windows(grid: &Grid) -> [Window; 7] {
+    [0, 4, 8, 31, 54, 58, 62].map(|cell| Window::around(grid, cell, 2))
 }
 
 #[test]
@@ -292,7 +290,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         [(0, 0, 1), (6, 14, 4), (17, 9, 10), (30, 26, 3), (40, 30, 6)].map(|(x, z, quarters)| {
             IndexedBody {
                 id: ids.allocate(),
-                at: at(x, z),
+                pos: at(x, z),
                 shape: Shape::Circle(Num::from_bits(quarters << (Num::FRAC_BITS - 2))),
                 layer: Layer::FIRST,
             }
@@ -310,7 +308,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         planner.mark_blockers(walkable);
         let mut spanned = vec![false; window.cells()];
         for body in &blockers {
-            cells.spans_closer(body.at, radius + body.shape.bound(), |run| {
+            cells.spans_closer(body.pos, radius + body.shape.bound(), |run| {
                 for cell in run {
                     let (x, z) = (cell % columns, cell / columns);
                     if window.contains(x, z) {

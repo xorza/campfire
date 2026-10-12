@@ -1,3 +1,4 @@
+use bevy_ecs::resource::Resource;
 use campfire_sim::Capability;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -6,7 +7,7 @@ use crate::declare::error::CapabilityError;
 
 /// A mode's declared capabilities: none twice, not `mode`, which every match has, and each with
 /// the ones it builds on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CapabilitySet(u32);
 
 const _: () = assert!(

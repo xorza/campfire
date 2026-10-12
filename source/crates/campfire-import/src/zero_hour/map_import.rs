@@ -70,14 +70,14 @@ struct MarkerParams {
 
 impl MapImport {
     /// The files of `file`: its heights on the engine's axes, its terrain in the same order, lit
-    /// by its first `lights` terrain lights, its objects as units of the types `unit_types`
+    /// by its first `lights` terrain lights, its objects as units of the types `types`
     /// names, its waypoints as markers, bounds that hold its heights and every point it places,
     /// and its first `lights` object lights, as the game draws `NumberGlobalLights` of each. The
     /// terrain's ambient color is its first light's, and the objects' theirs, as the game takes
     /// them.
     pub(crate) fn new(
         file: &MapFile,
-        unit_types: &mut UnitTypes,
+        types: &mut UnitTypes,
         lights: usize,
     ) -> Result<MapImport, MapError> {
         let heights = MapImport::heights(&file.heights)?;
@@ -156,7 +156,7 @@ impl MapImport {
                     degrees,
                 } = object.placement().ok_or(MapError::Placement(at))?;
                 units.push(UnitToml {
-                    unit_type: unit_types.name(&object.template)?.as_str().to_owned(),
+                    unit_type: types.name(&object.template)?.as_str().to_owned(),
                     team: NEUTRAL,
                     pos: take(ground),
                     angle: degrees.to_string(),

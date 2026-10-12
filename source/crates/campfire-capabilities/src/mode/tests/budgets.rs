@@ -1,11 +1,13 @@
 use std::num::NonZeroU64;
 
 use campfire_codec::Binary;
+use campfire_common::Tick;
 use campfire_script::ScriptError;
 
 use super::*;
 use crate::combat::kept::Kept;
 use crate::progression::level_ups::LevelUps;
+use crate::scripts::pool::Pool;
 
 #[test]
 fn a_player_spends_only_their_own_pool() {
@@ -25,14 +27,14 @@ fn on_mode_input(ctx, player, name, value) {
         player: 1000,
         ..ScriptLimits::ROOMY
     };
-    let mut game = Game::new(spin, limits);
-    let inputs = |game: &Game| game.field("inputs");
-    game.tick(&[
+    let mut game = mode_match(spin, limits);
+    let inputs = |game: &Match| game.field("inputs");
+    game.tick_inputs(&[
         (0, input("fail", "")),
         (0, input("phase", "")),
         (1, input("phase", "")),
     ]);
-    let failures = game.sim.world.non_send::<ScriptFailures>();
+    let failures = game.non_send::<ScriptFailures>();
     let errors: Vec<_> = failures
         .get()
         .iter()
@@ -50,7 +52,7 @@ fn on_mode_input(ctx, player, name, value) {
     );
     assert_eq!(inputs(&game), StateValue::Int(1));
     // Every pool starts full in the next tick.
-    game.tick(&[(0, input("phase", ""))]);
+    game.tick_inputs(&[(0, input("phase", ""))]);
     assert_eq!(inputs(&game), StateValue::Int(2));
 }
 
@@ -74,9 +76,9 @@ fn on_timer(ctx, name, data) {
         mode: 1500,
         ..ScriptLimits::ROOMY
     };
-    let mut game = Game::new(spin, limits);
-    let due = |game: &Game| {
-        let timers = game.sim.world.resource::<Timers>();
+    let mut game = mode_match(spin, limits);
+    let due = |game: &Match| {
+        let timers = game.resource::<Timers>();
         (
             timers
                 .due(Tick::new(u64::MAX))
@@ -84,9 +86,9 @@ fn on_timer(ctx, name, data) {
             timers.due(Tick::ZERO).is_some(),
         )
     };
-    game.tick(&[]);
+    game.tick_inputs(&[]);
     assert_eq!(due(&game), (Some("b".to_owned()), false));
-    game.tick(&[]);
+    game.tick_inputs(&[]);
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
     assert_eq!(game.field("count"), StateValue::Int(0));
@@ -123,38 +125,35 @@ fn on_level_up(ctx, unit, track, level) {
         mode: 500,
         ..ScriptLimits::ROOMY
     };
-    let mut game = Game::new(script, limits);
-    game.tick(&[(0, input("hero", "hero-x"))]);
+    let mut game = mode_match(script, limits);
+    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
     // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
     // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
-    let grunts = [1, 2, 3].map(|at| game.entity(at));
-    let tower = game.sim.world.get::<StableId>(game.entity(0)).copied();
+    let grunts = [1, 2, 3].map(|at| game.entity_by_id(at));
+    let tower = game.get::<StableId>(game.entity_by_id(0)).copied();
     for grunt in grunts {
-        game.sim.world.entity_mut(grunt).insert(OnDeath::Despawn);
-        let target = *game.sim.world.get::<StableId>(grunt).unwrap();
-        game.sim
-            .world
-            .resource_mut::<PassQueue>()
-            .push_damage(Damage {
-                source: tower,
-                target,
-                amount: Num::int(10),
-                kind: DamageKind::new(0),
-                cause: DamageCause::Effect,
-                ability: None,
-                depth: 0,
-                hit: None,
-            });
+        game.entity_mut(grunt).insert(OnDeath::Despawn);
+        let target = *game.get::<StableId>(grunt).unwrap();
+        game.resource_mut::<PassQueue>().push_damage(Damage {
+            source: tower,
+            target,
+            amount: Num::int(10),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            action: None,
+            depth: 0,
+            hit: None,
+        });
     }
-    let waiting = |game: &Game| {
-        let deaths = game.sim.world.resource::<UnansweredDeaths>().iter().count();
-        (deaths, game.sim.world.resource::<LevelUps>().0.len())
+    let waiting = |game: &Match| {
+        let deaths = game.resource::<UnansweredDeaths>().iter().count();
+        (deaths, game.resource::<LevelUps>().0.len())
     };
-    let stands = |game: &Game, grunt: Entity| {
-        let unit = game.sim.world.get_entity(grunt).ok()?;
+    let stands = |game: &Match, grunt: Entity| {
+        let unit = game.get_entity(grunt).ok()?;
         Some((unit.contains::<Dead>(), unit.contains::<Kept>()))
     };
-    game.tick(&[(0, input("probe", "xp"))]);
+    game.tick_inputs(&[(0, input("probe", "xp"))]);
     // Two deaths ran; the third waits, and so does the level-up behind it. The first two grunts
     // despawned; the third stays, dead and kept, for its call.
     assert_eq!(
@@ -164,7 +163,7 @@ fn on_level_up(ctx, unit, track, level) {
     assert_eq!(waiting(&game), (1, 1));
     // The waiting death is state: it decodes to itself, and an assister its runs do not cover
     // fails to decode. Its assisters come last, none: their length is the last byte.
-    let unanswered = game.sim.world.resource::<UnansweredDeaths>();
+    let unanswered = game.resource::<UnansweredDeaths>();
     let mut bytes = Binary::encode(unanswered);
     let decoded = Binary::decode::<UnansweredDeaths>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(unanswered));
@@ -175,7 +174,7 @@ fn on_level_up(ctx, unit, track, level) {
         grunts.map(|grunt| stands(&game, grunt)),
         [None, None, Some((true, true))]
     );
-    game.tick(&[]);
+    game.tick_inputs(&[]);
     // Both run first in the next tick, with the third grunt and its killer as handles; then it
     // despawns.
     let all = "b by a;b by a;b by a;level 2;";
@@ -205,7 +204,7 @@ fn on_player_leave(ctx, player) {
         mode: 500,
         ..ScriptLimits::ROOMY
     };
-    let mut game = Game::new(script, limits);
+    let mut game = mode_match(script, limits);
     // Player 2 leaves, and players 1 and 2 join, in one tick: the first two calls run, in that
     // order, and player 2's join waits.
     let (joined, left) = (SlotEventKind::Joined, SlotEventKind::Left);
@@ -214,7 +213,7 @@ fn on_player_leave(ctx, player) {
         game.field("kind"),
         StateValue::Text("leave 2;join 1;".to_owned())
     );
-    let waiting = game.sim.world.resource::<UnansweredSlotEvents>();
+    let waiting = game.resource::<UnansweredSlotEvents>();
     let join = SlotEvent {
         slot: PlayerSlot::new(2),
         kind: joined,
@@ -228,13 +227,7 @@ fn on_player_leave(ctx, player) {
     game.tick_slots(&[(1, left)]);
     let all = "leave 2;join 1;join 2;leave 1;";
     assert_eq!(game.field("kind"), StateValue::Text(all.to_owned()));
-    assert!(
-        game.sim
-            .world
-            .resource::<UnansweredSlotEvents>()
-            .0
-            .is_empty()
-    );
+    assert!(game.resource::<UnansweredSlotEvents>().0.is_empty());
 }
 
 #[test]
@@ -254,10 +247,10 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
     let mut spent = |name: &str| {
-        game.tick(&[(0, input(name, ""))]);
-        let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
+        game.tick_inputs(&[(0, input(name, ""))]);
+        let mut budgets = game.resource_mut::<ScriptBudgets>();
         ScriptLimits::ROOMY.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left()
     };
     let (once, twice) = (spent("phase"), spent("rich"));

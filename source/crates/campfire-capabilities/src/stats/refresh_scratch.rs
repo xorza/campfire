@@ -170,12 +170,12 @@ impl RefreshScratch {
         &self.values[unit * count..(unit + 1) * count]
     }
 
-    /// The place of `unit` among the refreshing units.
-    fn find(&self, unit: StableId) -> Option<usize> {
+    /// The place of `id` among the refreshing units.
+    fn find(&self, id: StableId) -> Option<usize> {
         let units = &self.units;
         let found = self
             .by_id
-            .binary_search_by_key(&unit, |&at| units[at as usize].id);
+            .binary_search_by_key(&id, |&at| units[at as usize].id);
         found.ok().map(|at| self.by_id[at] as usize)
     }
 }

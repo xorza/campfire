@@ -8,7 +8,7 @@ use crate::units::body::Body;
 /// A unit the loop goes to: where it stands, and its body.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Place {
-    pub(super) at: Position,
+    pub(super) pos: Position,
     pub(super) body: Option<Body>,
 }
 
@@ -16,7 +16,7 @@ impl Place {
     /// The squared distance on the ground plane from `from` to the point of the place's body
     /// nearest it, as `Shape::nearest_point` rounds it, in squared bits.
     pub(super) fn distance_from(self, from: Position) -> u128 {
-        let near = Body::shape_of(self.body.as_ref()).nearest_point(self.at, from);
+        let near = Body::shape_of(self.body.as_ref()).nearest_point(self.pos, from);
         from.ground_offset(near).length_squared_bits()
     }
 
@@ -28,7 +28,7 @@ impl Place {
         destination: Option<&Destination>,
         route: Option<&Route>,
     ) -> Step {
-        let to = Body::shape_of(self.body.as_ref()).nearest_point(self.at, from);
+        let to = Body::shape_of(self.body.as_ref()).nearest_point(self.pos, from);
         if Destination::gives_up(destination, route, to) {
             Step::Stop
         } else {

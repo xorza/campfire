@@ -29,9 +29,9 @@ impl Flat {
         Flat([nums[0].to_bits(), nums[1].to_bits()])
     }
 
-    /// Where `at` stands on the ground plane, in a `Num`'s bits.
-    pub const fn ground(at: Vec3) -> Flat {
-        Flat::from_nums([at.x, at.z])
+    /// Where `point` stands on the ground plane, in a `Num`'s bits.
+    pub const fn ground(point: Vec3) -> Flat {
+        Flat::from_nums([point.x, point.z])
     }
 
     pub const fn dot(self, rhs: Flat) -> i128 {

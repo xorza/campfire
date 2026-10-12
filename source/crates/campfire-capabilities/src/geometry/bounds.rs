@@ -46,11 +46,11 @@ impl Bounds {
 
     /// Whether `pos` is within the bounds on the ground plane, edges included.
     pub(crate) const fn contains(self, pos: Position) -> bool {
-        let at = pos.get();
-        self.min[0].to_bits() <= at.x.to_bits()
-            && at.x.to_bits() <= self.max[0].to_bits()
-            && self.min[1].to_bits() <= at.z.to_bits()
-            && at.z.to_bits() <= self.max[1].to_bits()
+        let point = pos.get();
+        self.min[0].to_bits() <= point.x.to_bits()
+            && point.x.to_bits() <= self.max[0].to_bits()
+            && self.min[1].to_bits() <= point.z.to_bits()
+            && point.z.to_bits() <= self.max[1].to_bits()
     }
 
     /// How far a straight path from `from` along the unit vector `direction` stays within the
@@ -85,15 +85,15 @@ impl Bounds {
 
     /// The point of the bounds nearest `pos` on the ground plane, at its height.
     pub(crate) fn clamp(self, pos: Position) -> Position {
-        let at = pos.get();
-        self.ground_point([at.x, at.z], pos)
+        let point = pos.get();
+        self.ground_point([point.x, point.z], pos)
     }
 
-    /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `at`: a
+    /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `pos`: a
     /// unit ordered to a point on the ground keeps its height.
-    pub(crate) fn ground_point(self, ground: [Num; 2], at: Position) -> Position {
+    pub(crate) fn ground_point(self, ground: [Num; 2], pos: Position) -> Position {
         let [x, z] = self.clamp_ground(ground);
-        Position::new(Vec3::new(x, at.get().y, z)).expect("bounds are within the world's bound")
+        Position::new(Vec3::new(x, pos.get().y, z)).expect("bounds are within the world's bound")
     }
 }
 

@@ -3,13 +3,15 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
-use campfire_capabilities::internals::set_relation;
-use campfire_capabilities::{Action, Owner, Progress, Relation, Relations, Route, SeenBy, Team};
+use campfire_capabilities::internals::UnitsWorldInternals;
+use campfire_capabilities::{
+    Action, Owner, Progress, Relation, Relations, Route, SeenBy, Team, UnitsWorld,
+};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{InProcessMatch, MatchSetup};
 use campfire_net::{JoinRefused, JoinState, LinkLost, MatchClock, TickHashes};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
+use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
 /// Frames of match: one tick each.
@@ -77,7 +79,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
             }));
         }
         let client = local.client(0).world();
-        let held = client.resource::<EntityIndex>().get(tower);
+        let held = client.entity_of(tower);
         if let (Some(entity), None) = (held, arrived_in) {
             assert!(client.entity(entity).contains::<Unpredicted>());
             arrived_in = Some(sent_in(&local, entity));
@@ -122,7 +124,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let (hero_id, _) = unit(local.server(), |app, entity| {
         app.world().get::<Owner>(entity).is_some()
     });
-    let on_client = |id| client.resource::<EntityIndex>().get(id).unwrap();
+    let on_client = |id| client.entity_of(id).unwrap();
     let hero_on_client = client.entity(on_client(hero_id));
     assert!(hero_on_client.contains::<Route>() && hero_on_client.contains::<Progress>());
     let (creep, creep_entity) = unit(local.server(), |app, entity| {
@@ -163,12 +165,10 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     });
     let hero = local.avatar(0);
     let (west, east) = (Team::new(0), Team::new(1));
-    set_relation(
-        local.server_mut().world_mut(),
-        west,
-        east,
-        Relation::Neutral,
-    );
+    local
+        .server_mut()
+        .world_mut()
+        .set_relation(west, east, Relation::Neutral);
     for _ in 0..10 {
         local.step();
     }
@@ -197,7 +197,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     let units = held(&mut local, second);
     assert!(units.contains(&hero), "{units:?}");
     assert!(!units.contains(&tower), "{units:?}");
-    let relations = |app: &App| Relations::held(app.world()).cloned();
+    let relations = |app: &App| app.world().held_relations().cloned();
     assert_ne!(relations(local.server()), Some(Relations::default()));
     assert_eq!(relations(local.client(second)), relations(local.server()));
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
@@ -219,10 +219,10 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     assert_eq!(local.log().take::<JoinRefused>().len(), 1);
 }
 
-/// The sim tick of the server message that last updated `unit` on the client.
-fn sent_in(local: &InProcessMatch, unit: Entity) -> Tick {
+/// The sim tick of the server message that last updated `entity` on the client.
+fn sent_in(local: &InProcessMatch, entity: Entity) -> Tick {
     let client = local.client(0).world();
-    let history = client.get::<ConfirmHistory>(unit).unwrap();
+    let history = client.get::<ConfirmHistory>(entity).unwrap();
     let net_tick = client
         .resource::<ReplicationCheckpointMap>()
         .get(history.last_tick())

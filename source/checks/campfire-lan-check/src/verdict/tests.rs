@@ -72,18 +72,18 @@ fn hash(byte: &str) -> StateHash {
     byte.repeat(32).parse().unwrap()
 }
 
-fn written(hash: StateHash) -> SessionWritten {
+fn written(state_hash: StateHash) -> SessionWritten {
     SessionWritten {
         session: SessionId::new([1; 32]),
         file: PathBuf::from("s.campfire-log"),
-        hash,
+        hash: state_hash,
     }
 }
 
-fn verified(hash: StateHash) -> Verified {
+fn verified(state_hash: StateHash) -> Verified {
     Verified {
         file: PathBuf::from("s.campfire-log"),
-        hash,
+        hash: state_hash,
     }
 }
 

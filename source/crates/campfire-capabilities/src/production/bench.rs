@@ -5,25 +5,24 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{
-    Capability, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickRate,
-};
+use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
 use criterion::{Criterion, Throughput};
 
-use crate::actions::action_book::internals;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::slot_kind::SlotKind;
 use crate::declare::capability_set::CapabilitySet;
 use crate::navigation::destination::Destination;
-use crate::players::match_entity::MatchEntity;
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorld;
+use crate::players::players_world::internals::PlayersWorldInternals;
 use crate::players::resource_id::ResourceId;
 use crate::production::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
 use crate::production::resource_set::ResourceSet;
-use crate::release::Release;
+use crate::release::r#match::Match;
+use crate::release::match_spec::MatchSpec;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
@@ -63,24 +62,14 @@ pub(crate) fn gather(c: &mut Criterion) {
 }
 
 /// The two fields of `gather`, past the 30 ticks that bring the loop to its steady state.
-fn two_fields() -> World {
-    let mut world = World::new();
+fn two_fields() -> Match {
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-    SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
     // A match without navigation runs no gather, as only navigation tests a box for room.
-    let mut schedule = SimUpdate::schedule();
     let set = CapabilitySet::new(&[Capability::Production, Capability::Navigation]).unwrap();
-    Release::install(
-        set,
-        &mut world,
-        &mut schedule,
-        &mut StateRegistry::new(),
-        None,
-    );
-    world.add_schedule(schedule);
+    let mut world = Match::new(MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set));
 
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-    MatchEntity::spawn_player(&mut world, PlayerSlot::new(0), Team::new(0), 1);
+    world.start_without_mode([Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypes::default();
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"]
@@ -98,7 +87,7 @@ fn two_fields() -> World {
         bounce: Num::int(4),
     };
     let all = Filter::of_relations(RelationSet::All);
-    let action = internals::gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
+    let action = world.add_gather(spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));
     let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
@@ -126,7 +115,7 @@ fn two_fields() -> World {
                 };
                 let parts = (body.at(Num::ZERO), Node::new(u32::MAX));
                 let node = spawn(&mut world, core, pos, parts);
-                NodeAt { node, at: pos }
+                NodeAt { node, pos }
             })
             .collect();
         for nth in 0..WORKERS {
@@ -163,7 +152,8 @@ fn two_fields() -> World {
     for _ in 0..30 {
         world.run_schedule(SimUpdate);
     }
-    let gold_in = PlayerResources::of_player(&world, PlayerSlot::new(0))
+    let gold_in = world
+        .player_resources(PlayerSlot::new(0))
         .unwrap()
         .amount(gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");

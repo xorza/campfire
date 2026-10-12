@@ -114,7 +114,7 @@ impl AreaLife {
         for &AreaLaunch {
             id,
             by,
-            at,
+            pos: at,
             unit_type,
             aimed,
         } in &launches.0

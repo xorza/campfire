@@ -20,15 +20,15 @@ impl Position {
     pub const ORIGIN: Position = Position(Vec3::ZERO);
 
     /// `None` when a coordinate is beyond `BOUND`.
-    pub const fn new(at: Vec3) -> Option<Position> {
+    pub const fn new(point: Vec3) -> Option<Position> {
         let bound = Position::BOUND.to_bits().unsigned_abs();
-        if at.x.to_bits().unsigned_abs() > bound
-            || at.y.to_bits().unsigned_abs() > bound
-            || at.z.to_bits().unsigned_abs() > bound
+        if point.x.to_bits().unsigned_abs() > bound
+            || point.y.to_bits().unsigned_abs() > bound
+            || point.z.to_bits().unsigned_abs() > bound
         {
             return None;
         }
-        Some(Position(at))
+        Some(Position(point))
     }
 
     pub const fn get(self) -> Vec3 {

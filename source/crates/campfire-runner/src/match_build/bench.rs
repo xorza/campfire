@@ -2,12 +2,11 @@ use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use bevy_ecs::world::World;
-use campfire_capabilities::Release;
+use campfire_capabilities::{Match, Release};
 use campfire_common::SegmentSeed;
 use campfire_package::ModePackages;
 use campfire_script::ScriptHost;
-use campfire_sim::{SimUpdate, StateRegistry, TickRate};
+use campfire_sim::TickRate;
 use criterion::Criterion;
 
 use crate::harness::moba_3v3::Moba3v3;
@@ -38,20 +37,13 @@ pub(crate) fn build(c: &mut Criterion) {
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
-                let mut world = World::new();
-                SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
-                let mut schedule = SimUpdate::schedule();
-                let mut registry = StateRegistry::new();
+                let seed = SegmentSeed::new([0; 32]);
+                let players = Moba3v3::PLAYERS;
                 let start = Instant::now();
-                MatchBuild::run(
-                    packages,
-                    &mut world,
-                    &mut schedule,
-                    &mut registry,
-                    Moba3v3::PLAYERS,
-                );
+                let mut game = Match::new(MatchBuild::spec(packages, seed, rate, players));
+                MatchBuild::install_mode(packages, &mut game, players);
                 spent += start.elapsed();
-                black_box((world, schedule, registry));
+                black_box(game);
             }
             spent
         });

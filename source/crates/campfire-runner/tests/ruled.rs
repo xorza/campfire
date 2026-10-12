@@ -2,10 +2,13 @@
 
 use std::num::NonZeroU32;
 
+use campfire_capabilities::Match;
 use campfire_common::MapName;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::Outcome;
-use campfire_runner::internals::{FixedSession, RestoreTarget};
+use campfire_runner::SessionWorld;
+use campfire_runner::internals::{FixedSession, HarnessMatchInternals, HarnessWorldInternals};
+use campfire_sim::SimWorld;
 
 #[test]
 fn a_mode_runs_the_script_its_rules_package_holds() {
@@ -15,12 +18,12 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
     )
     .unwrap();
     // The rules package's script ends the match as it starts, its first team the winner.
-    let mut target = RestoreTarget::new(&packages, 1);
+    let mut target = Match::restore_target(&packages, 1);
     let mut fixed = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 1).start();
-    fixed.runner_mut().run_tick();
+    fixed.game_mut().run_tick_alone();
     assert_eq!(fixed.end().outcome, Outcome::Won { team: 0 });
     // A match of no capability restores, its checks reading no book of one.
     let mut snapshot = Vec::new();
-    target.snapshot(fixed.runner().world(), &mut snapshot);
-    target.restore(&snapshot).unwrap();
+    fixed.game().snapshot(&mut snapshot);
+    target.restore_in_place(&snapshot).unwrap();
 }

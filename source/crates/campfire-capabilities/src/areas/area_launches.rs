@@ -15,7 +15,7 @@ pub(crate) struct AreaLaunches(pub(crate) Vec<AreaLaunch>);
 pub(crate) struct AreaLaunch {
     pub(crate) id: Option<StableId>,
     pub(crate) by: Delivering,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
     pub(crate) unit_type: UnitType,
     pub(crate) aimed: Option<StableId>,
 }

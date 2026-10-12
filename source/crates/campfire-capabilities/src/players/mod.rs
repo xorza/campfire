@@ -7,5 +7,6 @@ pub(crate) mod on_match;
 pub(crate) mod player;
 pub(crate) mod player_resources;
 pub(crate) mod player_rows;
+pub(crate) mod players_world;
 pub(crate) mod resource_amount;
 pub(crate) mod resource_id;

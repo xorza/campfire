@@ -5,14 +5,17 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::internals::{reaches, reaches_bound, sinks_into};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, Mode, Modifiers,
-    MoveStep, Owner, Projectile, Release, ScriptFailures, SeenBy, StateValue, Team, TeamSet,
-    TrainQueue,
+    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, Match, ModeWorld,
+    Modifiers, MoveStep, Owner, Projectile, Release, ScriptFailures, SeenBy, StateValue, Team,
+    TeamSet, TrainQueue,
 };
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, ProvingMatch, RestoreTarget};
-use campfire_sim::internals::{Draws, Mutation, StageClock};
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_runner::SessionWorld;
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, Golden, HarnessMatchInternals, HarnessWorldInternals, ProvingMatch,
+};
+use campfire_sim::internals::{Draws, Mutation, SimWorldInternals};
+use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -83,23 +86,23 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
         .unwrap()
 }
 
-/// Asserts that tick `tick` of `fixed`, a match of `capabilities`, failed no script call, and
+/// Asserts that tick `tick` of `fixed`, a match of `set`, failed no script call, and
 /// that each part a unit holds is state or derived, as a list declares it: a part none declares
 /// would be held by no hash, snapshot or client.
-fn assert_sound(fixed: &FixedMatch, tick: u64, capabilities: CapabilitySet) {
-    let world = fixed.runner().world();
+fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
+    let world = fixed.game();
     let failures = world.non_send::<ScriptFailures>();
     assert!(
         failures.get().is_empty(),
         "tick {tick}: {:?}",
         failures.get()
     );
-    let unlisted = Release::unlisted_components(capabilities, world);
+    let unlisted = Release::unlisted_components(set, world);
     assert!(unlisted.is_empty(), "tick {tick}: {unlisted:?}");
 }
 
 fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
-    let world = fixed.runner().world();
+    let world = fixed.game();
     look_at_boulder(fixed, tick, seen);
     if matches!(tick, 4 | 5 | 28 | 29) {
         let ((_, lancer), (sage, sage_unit)) = (hero(world, 0), hero(world, 1));
@@ -111,7 +114,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             north_sees.contains(Team::new(0)),
         ));
     }
-    let state = Mode::state(world);
+    let state = world.mode_state();
     let state = state.as_slice();
     if seen.states.last().is_none_or(|(_, last)| last != state) {
         seen.states.push((tick, state.to_vec()));
@@ -129,15 +132,15 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             seen.modified_heroes += 1;
         }
         if unit.contains::<Lifespan>() {
-            let place = *unit.get::<Position>().unwrap();
+            let pos = *unit.get::<Position>().unwrap();
             if unit
                 .get::<Owner>()
                 .is_some_and(|owner| owner.slot().get() == 1)
             {
-                seen.wisp.push((tick, place));
+                seen.wisp.push((tick, pos));
             } else {
                 seen.ward
-                    .push((tick, place, unit.get::<SeenBy>().unwrap().get()));
+                    .push((tick, pos, unit.get::<SeenBy>().unwrap().get()));
             }
         }
         let north = Team::new(0);
@@ -161,7 +164,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
 
 /// What the boulder, a box of 2.4 by 1.2 m turned 30°, saw of the units round it after `tick`.
 fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
-    let world = fixed.runner().world();
+    let world = fixed.game();
     let units = || {
         world
             .resource::<EntityIndex>()
@@ -205,30 +208,30 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let mut fixed = proving.start();
     let mut seen = Seen::default();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
-    let mut copy = CopyCheck::new(fixed.runner_mut());
+    let mut copy = CopyCheck::new(fixed.game_mut());
     let capabilities = proving.packages().manifest().capabilities;
     // The match's setup clears none, so the first tick's messages hold its removals too.
-    let start = Removals::of(fixed.runner().world());
+    let start = Removals::of(fixed.game());
     let (mut written, mut removed) = (start.written - start.held, false);
     for tick in 0..ProvingMatch::TICKS {
         ProvingMatch::play_tick(&mut fixed, tick);
         // The removed-component messages hold this tick's removals alone, as an `App`'s update
         // keeps them: every one written before the tick is gone.
-        let removals = Removals::of(fixed.runner().world());
+        let removals = Removals::of(fixed.game());
         assert_eq!(removals.written - removals.held, written, "tick {tick}");
         removed |= removals.held > 0;
         written = removals.written;
-        let state = copy.check(fixed.runner_mut()).total;
-        golden.record(fixed.runner(), state);
+        let state = copy.check(fixed.game_mut()).total;
+        golden.record(fixed.game(), state);
         assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
-        if fixed.runner().save_due() {
+        if fixed.game().save_due() {
             seen.saves.push(tick + 1);
         }
     }
     golden.check("proving");
     assert!(removed, "no tick removed a component");
-    let world = fixed.runner().world();
+    let world = fixed.game();
     // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by
     // name, are `joined` and `left`.
     let state = |joined, left| vec![StateValue::Int(joined), StateValue::Int(left)];
@@ -288,22 +291,22 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // of north sees it otherwise.
     let ticks: Vec<u64> = seen.ward.iter().map(|&(tick, ..)| tick).collect();
     assert_eq!(ticks, (300..=338).collect::<Vec<_>>());
-    let at = Position::new(Vec3::new(Num::int(12), Num::ZERO, Num::int(9))).unwrap();
+    let pos = Position::new(Vec3::new(Num::int(12), Num::ZERO, Num::int(9))).unwrap();
     let north_alone =
         |teams: TeamSet| (0..3).all(|team| teams.contains(Team::new(team)) == (team == 0));
     assert!(
         seen.ward
             .iter()
-            .all(|&(_, place, teams)| place == at && north_alone(teams))
+            .all(|&(_, place, teams)| place == pos && north_alone(teams))
     );
     assert_eq!(seen.barracks_watched, (300..=339).collect::<Vec<_>>());
     // A summon: the sage's wisp, a unit type its own package declares, posted at (2, 6) in tick
     // 100, its order's, stands its 3000 ms, 60 ticks, from 100 to 159, so the state after each
     // of ticks 100 to 158 holds it.
-    let at = Position::new(Vec3::new(Num::int(2), Num::ZERO, Num::int(6))).unwrap();
+    let pos = Position::new(Vec3::new(Num::int(2), Num::ZERO, Num::int(6))).unwrap();
     assert_eq!(
         seen.wisp,
-        (100..=158).map(|tick| (tick, at)).collect::<Vec<_>>()
+        (100..=158).map(|tick| (tick, pos)).collect::<Vec<_>>()
     );
     // A save is due after tick 0, whose first wave asked for one, and at each 12 s of 20 Hz,
     // every 240 ticks, from the start.
@@ -340,12 +343,12 @@ struct Inert;
 fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    StageClock::install(fixed.runner_mut().world_mut());
+    fixed.game_mut().install_stage_clock();
     let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
-    let mut copy = CopyCheck::new(fixed.runner_mut());
+    let mut copy = CopyCheck::new(fixed.game_mut());
     let mut units = Vec::new();
     for tick in 0..ProvingMatch::TICKS {
-        let world = fixed.runner_mut().world_mut();
+        let world = fixed.game_mut();
         units.clear();
         units.extend(
             world
@@ -357,8 +360,8 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
             world.entity_mut(entity).remove::<Inert>().insert(Inert);
         }
         ProvingMatch::play_tick(&mut fixed, tick);
-        let state = copy.check(fixed.runner_mut()).total;
-        golden.record(fixed.runner(), state);
+        let state = copy.check(fixed.game_mut()).total;
+        golden.record(fixed.game(), state);
     }
     golden.check("proving");
 }
@@ -374,11 +377,11 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
     for tick in 0..60 {
         ProvingMatch::play_tick(&mut fixed, tick);
     }
-    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = Match::restore_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut bytes = Vec::new();
-    target.snapshot(fixed.runner().world(), &mut bytes);
-    target.restore(&bytes).unwrap();
-    assert_eq!(target.hash(), fixed.runner().state_hash());
+    fixed.game().snapshot(&mut bytes);
+    target.restore_in_place(&bytes).unwrap();
+    assert_eq!(target.state_hash(), fixed.game().state_hash());
 
     // Every byte, its low bit flipped, which keeps the most values decodable, so the most restore
     // and play on: a flip of the high bit or of every bit restores in few of the types the low
@@ -387,13 +390,13 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
     for at in 0..bytes.len() {
         let mut flawed = bytes.clone();
         flawed[at] ^= 0x01;
-        if target.restore(&flawed).is_ok() {
+        if target.restore_in_place(&flawed).is_ok() {
             again.clear();
-            target.snapshot_own(&mut again);
+            target.snapshot(&mut again);
             assert_eq!(again, flawed, "byte {at} flipped");
             // A value its checks let through still plays: no system panics on it.
             for _ in 0..5 {
-                target.run_tick();
+                target.step();
             }
         }
     }
@@ -414,24 +417,24 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
     for tick in 0..60 {
         ProvingMatch::play_tick(&mut fixed, tick);
     }
-    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = Match::restore_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut base = Vec::new();
-    target.snapshot(fixed.runner().world(), &mut base);
+    fixed.game().snapshot(&mut base);
     let mut draws = Draws::new(7);
     let (mut restored, mut refused) = (0, 0);
     let mut flawed = Vec::new();
     for name in target.state_names() {
         for _ in 0..DRAWS {
-            target.restore(&base).unwrap();
-            if !target.scramble(name, &mut draws) {
+            target.restore_in_place(&base).unwrap();
+            if !target.scramble_state(name, &mut draws) {
                 continue;
             }
             flawed.clear();
-            target.snapshot_own(&mut flawed);
-            if target.restore(&flawed).is_ok() {
+            target.snapshot(&mut flawed);
+            if target.restore_in_place(&flawed).is_ok() {
                 restored += 1;
                 for _ in 0..5 {
-                    target.run_tick();
+                    target.step();
                 }
             } else {
                 refused += 1;
@@ -460,9 +463,9 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
     for tick in 0..60 {
         ProvingMatch::play_tick(&mut fixed, tick);
     }
-    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = Match::restore_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut base = Vec::new();
-    target.snapshot(fixed.runner().world(), &mut base);
+    fixed.game().snapshot(&mut base);
     let mut draws = Draws::new(11);
     let (mut restored, mut refused) = (0, 0);
     let mut made = [0; Mutation::ALL.len()];
@@ -473,17 +476,17 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
         .flat_map(|kind| [kind; MUTATIONS]);
     for name in target.state_names() {
         for (kind, mutation) in draws_of.clone() {
-            target.restore(&base).unwrap();
-            if !target.mutate(name, &mut draws, mutation) {
+            target.restore_in_place(&base).unwrap();
+            if !target.mutate_state(name, &mut draws, mutation) {
                 continue;
             }
             made[kind] += 1;
             flawed.clear();
-            target.snapshot_own(&mut flawed);
-            if target.restore(&flawed).is_ok() {
+            target.snapshot(&mut flawed);
+            if target.restore_in_place(&flawed).is_ok() {
                 restored += 1;
                 for _ in 0..5 {
-                    target.run_tick();
+                    target.step();
                 }
             } else {
                 refused += 1;
@@ -503,10 +506,8 @@ fn every_order_the_proving_match_relies_on_is_stated() {
     // Bevy's sync points order the systems they lie between, so a pair that only one of them
     // keeps apart passes the ambiguity check until the systems around it change.
     let proving = ProvingMatch::load();
-    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
-    if let Err(ambiguity) = target.build_without_sync_points() {
-        panic!("{ambiguity}");
-    }
+    let mut target =
+        Match::restore_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
     // A system ordered between two stages in no edge set runs before or after the probe there,
     // as Bevy picks, so a stage's time holds it or not.
     assert_eq!(target.systems_outside_stages(), Vec::<String>::new());

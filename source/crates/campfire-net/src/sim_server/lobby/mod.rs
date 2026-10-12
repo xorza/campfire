@@ -41,7 +41,7 @@ pub struct Lobby {
     /// How many slots players take: every slot but the bots'.
     players: usize,
     bots: ServerBots,
-    setup: ServerSetup,
+    server: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
     /// Where the session's log and snapshots go as the server writes them, once it keeps them.
@@ -55,7 +55,7 @@ pub struct LobbySetup {
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
-    pub inputs: InputRules,
+    pub rules: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
     /// The bots the server plays: their slots are the bots'.
@@ -76,7 +76,7 @@ impl Lobby {
             packages,
             seed_chain,
             tick_hz,
-            inputs,
+            rules,
             slots,
             bots,
             open,
@@ -106,7 +106,7 @@ impl Lobby {
                 server.key.x_only_public_key().0,
                 seed_chain.commitment(),
                 tick_hz,
-                inputs,
+                rules,
                 plan,
             )
             .map_err(LobbyError::Terms)?;
@@ -116,7 +116,7 @@ impl Lobby {
             packages,
             players,
             bots,
-            setup: server,
+            server,
             joined: Vec::with_capacity(players),
             files: None,
         })
@@ -230,7 +230,7 @@ impl Lobby {
             seeds,
             packages: &lobby.packages,
             files: lobby.files,
-            server: &lobby.setup,
+            server: &lobby.server,
             bots: lobby.bots,
         };
         SimServer::start_match(world, start, &links)

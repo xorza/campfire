@@ -106,13 +106,13 @@ impl ProductionColumn {
         &self.costs
     }
 
-    /// `player`'s supply as `view` read the match; `None` in a mode with no supply.
-    pub(crate) fn supply(view: &View, player: PlayerSlot) -> Option<ReadSupply> {
+    /// `slot`'s supply as `view` read the match; `None` in a mode with no supply.
+    pub(crate) fn supply(view: &View, slot: PlayerSlot) -> Option<ReadSupply> {
         view.column(|column: &ProductionColumn| {
             let rules = column.rules?;
             let mut total = PlayerSupply::default();
             let rows = column.rows.now().iter();
-            for row in rows.filter(|row| row.owner == Some(player)) {
+            for row in rows.filter(|row| row.owner == Some(slot)) {
                 total.add(row.counted);
             }
             Some(ReadSupply {

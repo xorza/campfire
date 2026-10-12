@@ -5,13 +5,13 @@
 //! golden and no replay. The test pins the content's values, so a change to the content changes
 //! it, by design.
 
-use campfire_capabilities::internals::{self, queue_damage};
-use campfire_capabilities::{MatchEnd, MatchResult, Stats, Team};
+use campfire_capabilities::internals::{CombatWorldInternals, StatsWorldInternals};
+use campfire_capabilities::{MatchResult, ModeWorld, Team};
 use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_runner::internals::{MatchUnits, Moba3v3};
+use campfire_runner::internals::{HarnessWorldInternals, Moba3v3};
 
-use crate::moba::{dead, gold, life, respawn_at, run_to, units_at};
+use crate::moba::{MobaWorldTest, run_to};
 
 #[test]
 fn the_3v3s_late_rules_follow_each_fall() {
@@ -21,8 +21,8 @@ fn the_3v3s_late_rules_follow_each_fall() {
     let moba = Moba3v3::load();
     let mut fixed = moba.start();
     run_to(&mut fixed, 1200);
-    let world = fixed.runner().world();
-    let units = MatchUnits::of_world(world);
+    let world = fixed.game();
+    let units = world.match_units();
     let kensho = units.hero(3);
     let husk = units.hero(2);
     let north_west_inhibitor = units.spawned_at(-11, -52);
@@ -31,41 +31,34 @@ fn the_3v3s_late_rules_follow_each_fall() {
 
     // Kensho fells the north's west inhibitor in tick 1200: its 50 gold to player 3, and it
     // comes back 240 s, 4800 ticks, after the end of that tick, at the start of tick 6001.
-    queue_damage(
-        fixed.runner_mut().world_mut(),
-        Some(kensho),
-        north_west_inhibitor,
-        Num::int(4000),
-        "true",
-    );
+    fixed
+        .game_mut()
+        .queue_damage(Some(kensho), north_west_inhibitor, Num::int(4000), "true");
     run_to(&mut fixed, 1201);
-    let world = fixed.runner().world();
-    assert!(dead(world, north_west_inhibitor));
+    let world = fixed.game();
+    assert!(world.dead(north_west_inhibitor));
     assert_eq!(
-        respawn_at(world, north_west_inhibitor),
+        world.respawn_at(north_west_inhibitor),
         Some(Tick::new(6001))
     );
-    assert_eq!(gold(world, &moba, 3), 50);
+    assert_eq!(world.gold(&moba, 3), 50);
 
     // Husk fells the warden in tick 1201: its 150 gold to player 2; each north hero takes the
     // blessing, no south hero does; it comes back 360 s, 7200 ticks, after the end of that
     // tick, at tick 8402.
-    queue_damage(
-        fixed.runner_mut().world_mut(),
-        Some(husk),
-        warden,
-        Num::int(5000),
-        "true",
-    );
+    fixed
+        .game_mut()
+        .queue_damage(Some(husk), warden, Num::int(5000), "true");
     run_to(&mut fixed, 1202);
-    let world = fixed.runner().world();
-    assert!(dead(world, warden));
-    assert_eq!(respawn_at(world, warden), Some(Tick::new(8402)));
-    assert_eq!(gold(world, &moba, 2), 150);
-    let blessing = Stats::modifier(world, 0, "warden_blessing").unwrap();
+    let world = fixed.game();
+    assert!(world.dead(warden));
+    assert_eq!(world.respawn_at(warden), Some(Tick::new(8402)));
+    assert_eq!(world.gold(&moba, 2), 150);
+    let blessing = world.modifier_named(0, "warden_blessing").unwrap();
     let blessed: Vec<bool> = (0..Moba3v3::PLAYERS)
         .map(|slot| {
-            internals::carried(world, MatchUnits::of_world(world).hero(slot))
+            world
+                .carried_modifiers(world.match_units().hero(slot))
                 .contains(&(blessing, None))
         })
         .collect();
@@ -75,30 +68,26 @@ fn the_3v3s_late_rules_follow_each_fall() {
     // the fallen inhibitor's lane and takes a super creep of 1500 life after its six; every
     // other group has its six. Income: 8 gold in each of ticks 1299 to 2399, 12 times.
     run_to(&mut fixed, 2400);
-    let world = fixed.runner().world();
-    let groups = [(-6, 50), (6, 50), (-6, -50), (6, -50)].map(|(x, z)| units_at(world, x, z));
+    let world = fixed.game();
+    let groups = [(-6, 50), (6, 50), (-6, -50), (6, -50)].map(|(x, z)| world.units_at(x, z));
     assert_eq!(groups.each_ref().map(Vec::len), [7, 6, 6, 6]);
     let supers: Vec<_> = groups
         .iter()
         .flatten()
-        .filter(|&&unit| life(world, unit) == Num::int(1500))
+        .filter(|&&unit| world.life_of(unit) == Num::int(1500))
         .collect();
     assert_eq!(supers, [&groups[0][6]]);
     assert_eq!(
-        (gold(world, &moba, 2), gold(world, &moba, 3)),
+        (world.gold(&moba, 2), world.gold(&moba, 3)),
         (96 + 150, 96 + 50)
     );
 
     // Kensho fells the north core in tick 2400: the match ends then, won by the south.
-    queue_damage(
-        fixed.runner_mut().world_mut(),
-        Some(kensho),
-        north_core,
-        Num::int(5500),
-        "true",
-    );
+    fixed
+        .game_mut()
+        .queue_damage(Some(kensho), north_core, Num::int(5500), "true");
     run_to(&mut fixed, 2401);
-    let end = MatchEnd::of(fixed.runner().world()).expect("the match ended");
+    let end = fixed.game().match_end().expect("the match ended");
     assert_eq!(
         (end.tick(), end.result()),
         (Tick::new(2400), MatchResult::Won(Team::new(1)))

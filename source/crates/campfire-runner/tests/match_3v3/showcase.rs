@@ -5,18 +5,18 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_capabilities::internals;
+use campfire_capabilities::internals::StatsWorldInternals;
 use campfire_capabilities::{
     ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
-    Lifespan, ModifierId, Number, Points, PoolId, PoolMeters, Rank, Ranked, Scalar, SlotTime,
-    SlotTimes, Stats, Team, Toggle,
+    Lifespan, ModifierId, Number, Points, PoolId, Rank, Ranked, Scalar, SlotTime, SlotTimes,
+    StatsWorld, Team, Toggle,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_runner::internals::{MatchUnits, Moba3v3};
-use campfire_sim::{EntityIndex, Position, TickRate};
+use campfire_runner::internals::{HarnessWorldInternals, MatchUnits, Moba3v3};
+use campfire_sim::{Position, SimWorld, TickRate};
 
-use crate::moba::gold;
+use crate::moba::MobaWorldTest;
 
 /// Each player's hero's package and its abilities, slot by slot: Cinder, Gale and Husk north;
 /// Kensho, Rime and Veil south.
@@ -66,7 +66,7 @@ struct HeroState {
 
 /// The current amount of each pool of the unit of `entity`, by pool id, its life among them.
 fn pools_of(world: &World, entity: Entity) -> [Option<Num>; PoolId::LIMIT] {
-    let meters = PoolMeters::of(world, entity);
+    let meters = world.pool_meters(entity);
     let mut held = [None; PoolId::LIMIT];
     for pool in (0..).map_while(PoolId::new) {
         held[pool.index()] = meters.current(pool);
@@ -89,10 +89,10 @@ impl Showcase {
         if tick < Showcase::FIRST {
             return;
         }
-        let units = MatchUnits::of_world(world);
+        let units = world.match_units();
         let heroes = [0, 1, 2, 3, 4, 5].map(|slot| {
             let hero = units.hero(slot);
-            let entity = world.resource::<EntityIndex>().get(hero).unwrap();
+            let entity = world.entity_of(hero).unwrap();
             let unit = world.entity(entity);
             HeroState {
                 level: unit.get::<Level>().unwrap().get(),
@@ -101,11 +101,12 @@ impl Showcase {
                 times: unit.get::<SlotTimes>().unwrap().iter().collect(),
                 pools: pools_of(world, entity),
                 carried: unit.get::<Inventory>().unwrap().slots().to_vec(),
-                modifiers: internals::carried(world, hero)
+                modifiers: world
+                    .carried_modifiers(hero)
                     .into_iter()
                     .map(|(id, _)| id)
                     .collect(),
-                gold: gold(world, moba, slot),
+                gold: world.gold(moba, slot),
             }
         });
         self.ticks.push(heroes);
@@ -399,7 +400,7 @@ pub(crate) fn assert_casts(moba: &Moba3v3, showcase: &Showcase, world: &World, e
 /// Gale's wards 3 m and a little more from her, which spend her two slots: the sight ward lives
 /// 90 s, 1800 ticks, and the vision ward with no end.
 fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
-    let modifier = |name| Stats::modifier(world, 0, name).unwrap();
+    let modifier = |name| world.modifier_named(0, name).unwrap();
     let drinks = [
         (1, 4, 0, "health_potion"),
         (2, 5, 0, "health_potion"),
@@ -426,12 +427,12 @@ fn assert_consumables(moba: &Moba3v3, showcase: &Showcase, world: &World) {
     // Gale's ward at `x`: the unit there she owns, other than herself, as any hero may walk onto
     // the spot.
     let north = Team::new(0);
-    let units = MatchUnits::of_world(world);
+    let units = world.match_units();
     let gale = units.hero(1);
     let ward = |x: i64| {
-        let at = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-23))).unwrap();
+        let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-23))).unwrap();
         let found = units.all().find(|(id, unit)| {
-            *id != gale && unit.get::<Position>() == Some(&at) && MatchUnits::owned_by(unit, 1)
+            *id != gale && unit.get::<Position>() == Some(&pos) && MatchUnits::owned_by(unit, 1)
         });
         let (_, unit) = found.expect("a ward");
         let team = *unit.get::<Team>().unwrap();

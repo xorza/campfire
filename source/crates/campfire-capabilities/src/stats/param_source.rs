@@ -1,6 +1,4 @@
-use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId};
 
 use crate::stats::level::Level;
 use crate::stats::stat_book::StatBook;
@@ -33,19 +31,6 @@ impl<'a> ParamSource<'a> {
             level,
             values,
         }
-    }
-
-    /// `unit` in `world` as a source; `None` when it is gone, or the match has no stat book.
-    pub(crate) fn of(world: &'a World, unit: StableId) -> Option<ParamSource<'a>> {
-        let book = world.get_resource::<StatBook>()?;
-        let entity = world.resource::<EntityIndex>().get(unit)?;
-        let unit = world.entity(entity);
-        Some(ParamSource::of_parts(
-            book,
-            *unit.get::<UnitType>()?,
-            unit.get::<Level>(),
-            unit.get::<UnitStats>(),
-        ))
     }
 
     /// A unit of `unit_type` as a source, of its `level`, 1 with none, and its `stats`, each 0

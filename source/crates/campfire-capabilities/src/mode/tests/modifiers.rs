@@ -1,3 +1,5 @@
+use campfire_common::Tick;
+
 use super::*;
 
 #[test]
@@ -31,11 +33,11 @@ fn on_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::picking(blesser, ScriptLimits::ROOMY);
+    let mut game = picking_match(blesser, ScriptLimits::ROOMY);
     let hero = game.pick(0, "hero-x");
-    let held = |game: &Game| {
-        let modifiers = game.sim.world.get::<Modifiers>(hero).unwrap();
-        let clocks = game.sim.world.get::<ModifierClocks>(hero).unwrap();
+    let held = |game: &Match| {
+        let modifiers = game.get::<Modifiers>(hero).unwrap();
+        let clocks = game.get::<ModifierClocks>(hero).unwrap();
         modifiers
             .iter()
             .enumerate()
@@ -51,38 +53,38 @@ fn on_input(ctx, player, name, value) {
     // In tick t a new one, 1 stack as the call sees it, written to 3 and its count from 0 to 5;
     // 100 ms at 10 ticks a second is 1 tick, so it holds through t + 1 and ends as t + 2
     // starts.
-    let t = game.sim.now().get();
-    game.tick(&[(0, input("probe", "bless"))]);
+    let t = game.now().get();
+    game.tick_inputs(&[(0, input("probe", "bless"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     assert_eq!(held(&game), [(3, Some(t + 2), vec![StateValue::Int(5)])]);
     // Again in t + 1 with its own 200 ms, 2 ticks: a fourth stack, the limit, and the end
     // t + 1 + 2 + 1; the count stays.
-    game.tick(&[(0, input("probe", "again"))]);
+    game.tick_inputs(&[(0, input("probe", "again"))]);
     assert_eq!(game.field("seen"), StateValue::Int(4));
     assert_eq!(held(&game), [(4, Some(t + 4), vec![StateValue::Int(5)])]);
-    game.tick(&[(0, input("probe", "check"))]);
+    game.tick_inputs(&[(0, input("probe", "check"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     // Through t + 3, then gone as t + 4 starts: once that tick has run.
-    while game.sim.now().get() <= t + 4 {
-        game.tick(&[]);
+    while game.now().get() <= t + 4 {
+        game.tick_inputs(&[]);
     }
     assert_eq!(held(&game), []);
-    game.tick(&[(0, input("probe", "check"))]);
+    game.tick_inputs(&[(0, input("probe", "check"))]);
     assert_eq!(game.field("seen"), StateValue::Int(0));
     // Two applications in one call in tick u: one handle, which sees both, 2 stacks; 200 ms, so
     // it ends as u + 3 starts.
-    let u = game.sim.now().get();
-    game.tick(&[(0, input("probe", "twice"))]);
+    let u = game.now().get();
+    game.tick_inputs(&[(0, input("probe", "twice"))]);
     assert_eq!(game.field("seen"), StateValue::Int(22));
     assert_eq!(held(&game), [(2, Some(u + 3), vec![StateValue::Int(0)])]);
     // In u + 1, a third stack written, removed, and applied again: a new one, 1 stack and its
     // count 0, which ends as u + 4 starts.
-    game.tick(&[(0, input("probe", "renew"))]);
+    game.tick_inputs(&[(0, input("probe", "renew"))]);
     assert_eq!(game.field("seen"), StateValue::Int(10));
     assert_eq!(held(&game), [(1, Some(u + 4), vec![StateValue::Int(0)])]);
     // A name the package does not declare fails; so does one the script computes, of a modifier
     // that reads a param of its applier's action, which the mode does not have.
-    game.tick(&[(0, input("probe", "unknown")), (0, input("probe", "rally"))]);
+    game.tick_inputs(&[(0, input("probe", "unknown")), (0, input("probe", "rally"))]);
     let missing = ApiError::ModifierParam(ParamProblem::Missing);
     let refused = [ApiError::UnknownModifier, missing];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
@@ -112,15 +114,15 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
-    let drill = Stats::modifier(&game.sim.world, 0, "drill").unwrap();
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    let drill = game.modifier_named(0, "drill").unwrap();
     // Units 1 to 3, after the map's tower: a grunt and a tower of player 1, and a grunt of
     // player 0.
-    game.tick(&[(1, input("probe", "units"))]);
-    let drilled = |game: &Game| {
+    game.tick_inputs(&[(1, input("probe", "units"))]);
+    let drilled = |game: &Match| {
         let mut held = Vec::new();
-        for (id, entity) in game.sim.world.resource::<EntityIndex>().iter() {
-            let Some(modifiers) = game.sim.world.get::<Modifiers>(entity) else {
+        for (id, entity) in game.resource::<EntityIndex>().iter() {
+            let Some(modifiers) = game.get::<Modifiers>(entity) else {
                 continue;
             };
             if let Some(instance) = modifiers.get(drill, None) {
@@ -135,16 +137,14 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(drilled(&game).is_empty());
     // From the tick player 1 holds the drill, its grunt holds it, from no source, with no end;
     // its tower is no grunt, and player 0's grunt is not its.
-    game.tick(&[(1, input("probe", "drill"))]);
+    game.tick_inputs(&[(1, input("probe", "drill"))]);
     assert_eq!(drilled(&game), [1]);
     // A grunt of player 1 spawned later holds it from its first Resolve.
-    game.tick(&[(1, input("probe", "another"))]);
+    game.tick_inputs(&[(1, input("probe", "another"))]);
     assert_eq!(drilled(&game), [1, 4]);
     let held = |slot| {
-        let world = &game.sim.world;
-        let entity = Player::entity(world, PlayerSlot::new(slot)).unwrap();
-        world
-            .get::<PlayerModifiers>(entity)
+        let entity = game.player_entity(PlayerSlot::new(slot)).unwrap();
+        game.get::<PlayerModifiers>(entity)
             .unwrap()
             .iter()
             .collect::<Vec<_>>()
@@ -153,7 +153,7 @@ fn on_mode_input(ctx, player, name, value) {
     // A modifier the package does not declare, a player the session does not have, a modifier
     // that reads a param of an action, which a player's never has, and a unit of player 2, of
     // team `b`, on team `a`, fail, and the last spawns nothing.
-    game.tick(&[
+    game.tick_inputs(&[
         (1, input("probe", "stranger")),
         (1, input("probe", "nobody")),
         (1, input("probe", "rally")),
@@ -168,8 +168,5 @@ fn on_mode_input(ctx, player, name, value) {
     ];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
     // The five units, then the match's entity and the three players'.
-    assert_eq!(
-        game.sim.world.resource::<EntityIndex>().iter().count(),
-        5 + 4
-    );
+    assert_eq!(game.resource::<EntityIndex>().iter().count(), 5 + 4);
 }

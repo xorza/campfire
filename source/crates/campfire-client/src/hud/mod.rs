@@ -617,7 +617,7 @@ mod tests {
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
     use campfire_capabilities::UnitEntity;
     use campfire_math::Num;
-    use campfire_sim::{IdAllocator, Position};
+    use campfire_sim::{IdAllocator, Position, SimWorld};
 
     use super::*;
     use crate::view::View;
@@ -631,7 +631,7 @@ mod tests {
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-        Unpredicted::register(app.world_mut());
+        app.world_mut().register_unpredicted();
         app.add_plugins((View, Hud));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
@@ -642,7 +642,7 @@ mod tests {
 
         // A unit of 600 life at (3, 0, −2), whose life gauge showed it full.
         let life = |max| Life::full(Num::int(max));
-        let at = Position::new(campfire_math::Vec3::new(
+        let pos = Position::new(campfire_math::Vec3::new(
             Num::int(3),
             Num::ZERO,
             Num::int(-2),
@@ -652,7 +652,7 @@ mod tests {
             .spawn((
                 IdAllocator::default().allocate(),
                 UnitEntity,
-                at.unwrap(),
+                pos.unwrap(),
                 Team::new(0),
                 life(600),
             ))

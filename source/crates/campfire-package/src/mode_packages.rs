@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
-use std::iter;
 use std::path::Path;
+use std::{fmt, iter};
 
 use campfire_capabilities::{
     ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EngineTag, MapData,
@@ -12,8 +11,7 @@ use campfire_common::{Fingerprint, MapName};
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
 
-use crate::dependent::Dependent;
-use crate::dependent::DependentKind;
+use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, PackageRef, StoreError};
@@ -31,8 +29,7 @@ use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
 use crate::package_index::PackageIndex;
 use crate::package_store::PackageStore;
-use crate::package_view::PackageView;
-use crate::package_view::ViewKind;
+use crate::package_view::{PackageView, ViewKind};
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
@@ -340,7 +337,7 @@ impl ModePackages {
                     };
                     let own = modifier.params.get(name);
                     let applied = by.iter().filter(|_| own.is_none());
-                    let applied = applied.filter_map(|ability| ability.params.get(name));
+                    let applied = applied.filter_map(|action| action.params.get(name));
                     for read in own.into_iter().chain(applied).flat_map(Param::stats) {
                         graph.add(read, changed);
                     }

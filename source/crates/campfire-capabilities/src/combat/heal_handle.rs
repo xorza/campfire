@@ -38,7 +38,7 @@ impl HealHandle {
             )
             .bind(
                 field("ability", "the ability that gave it, `()` for none"),
-                |h: &mut HealHandle| h.view.ability_value(h.heal.ability),
+                |h: &mut HealHandle| h.view.ability_value(h.heal.action),
             );
     }
 }

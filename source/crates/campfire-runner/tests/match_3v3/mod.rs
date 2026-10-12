@@ -10,21 +10,23 @@
 mod showcase;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::internals;
+use campfire_capabilities::internals::StatsWorldInternals;
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, Dead, Deaths, Level, Mode, ModeParam, Owner, PathWalker, Points, Rank,
-    Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
+    ActionSlot, ActionSlots, Dead, Deaths, Level, Match, ModeParam, ModeWorld, Owner, PathWalker,
+    Points, Rank, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
-use campfire_runner::Runner;
-use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, HashTrail, MatchUnits, Moba3v3};
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, Golden, HarnessWorldInternals, HashTrail, Moba3v3,
+};
+use campfire_runner::{SessionMatch, SessionWorld};
 use campfire_script::ScriptHost;
-use campfire_sim::{EntityIndex, Position, StableId, TickRate};
+use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 
 use crate::match_3v3::showcase::Showcase;
-use crate::moba::{gold, level_xp, life, respawn_at};
+use crate::moba::MobaWorldTest;
 
 /// The ticks of the skirmish: the pick, the skirmish, the camp, and the first 400 ticks of the
 /// first waves' fight, which begins in tick 2803.
@@ -51,7 +53,7 @@ struct Run {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Death {
     tick: u64,
-    unit: StableId,
+    id: StableId,
     killer: Option<StableId>,
     assisters: Vec<StableId>,
     respawn: Option<Tick>,
@@ -93,7 +95,7 @@ struct Learning {
 
 impl Learning {
     fn of(world: &World, hero: StableId) -> Learning {
-        let entity = world.resource::<EntityIndex>().get(hero).unwrap();
+        let entity = world.entity_of(hero).unwrap();
         let unit = world.entity(entity);
         let slots = unit.get::<ActionSlots>().unwrap();
         Learning {
@@ -134,13 +136,11 @@ fn param_ms(moba: &Moba3v3, name: &str) -> u64 {
     u64::try_from(ms).unwrap()
 }
 
-fn units(runner: &Runner) -> Vec<Unit> {
-    let world = runner.world();
-    world
-        .resource::<EntityIndex>()
+fn units(game: &Match) -> Vec<Unit> {
+    game.resource::<EntityIndex>()
         .iter()
         .filter_map(|(id, entity)| {
-            let unit = world.entity(entity);
+            let unit = game.entity(entity);
             Some(Unit {
                 id,
                 team: *unit.get::<Team>()?,
@@ -160,11 +160,11 @@ fn units(runner: &Runner) -> Vec<Unit> {
 /// then plays as the MOBA's script says.
 fn run(moba: &Moba3v3) -> Run {
     let mut fixed = moba.start();
-    let mut copy = CopyCheck::new(fixed.runner_mut());
-    let runner = fixed.runner();
+    let mut copy = CopyCheck::new(fixed.game_mut());
+    let game = fixed.game();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
     // before its count of ticks; the first wave's, set then, its own count later.
-    let rate = *runner.world().resource::<TickRate>();
+    let rate = *game.resource::<TickRate>();
     let timer = |name| rate.ticks(param_ms(moba, name)).unwrap().get();
     let pick_end = timer("pick_ms") - 1;
     let first_wave = pick_end + timer("first_wave_ms");
@@ -176,35 +176,34 @@ fn run(moba: &Moba3v3) -> Run {
     let mut showcase = Showcase::default();
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
-        let hashes = copy.check(fixed.runner_mut());
+        let hashes = copy.check(fixed.game_mut());
         trail.record_hashes(hashes);
-        golden.record(fixed.runner(), hashes.total);
-        let runner = fixed.runner();
-        let world = runner.world();
-        let failures = world.non_send::<ScriptFailures>();
+        golden.record(fixed.game(), hashes.total);
+        let game = fixed.game();
+        let failures = game.non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",
             failures.get()
         );
-        deaths.extend(world.resource::<Deaths>().iter().map(|death| Death {
+        deaths.extend(game.resource::<Deaths>().iter().map(|death| Death {
             tick,
-            unit: death.fallen.unit,
+            id: death.fallen.id,
             killer: death.killer,
             assisters: death.assisters.to_vec(),
-            respawn: respawn_at(world, death.fallen.unit),
+            respawn: game.respawn_at(death.fallen.id),
         }));
         if tick == pick_end {
-            at_pick_end = units(runner);
+            at_pick_end = units(game);
         } else if tick == first_wave {
-            at_first_wave = units(runner);
+            at_first_wave = units(game);
         }
         if (pick_end..SKIRMISH).contains(&tick) {
-            seen.read(world, moba, tick);
+            seen.read(game, moba, tick);
         }
-        showcase.read(world, moba, tick);
+        showcase.read(game, moba, tick);
     }
-    fixed.runner_mut().reveal_seed();
+    fixed.game_mut().session_mut().reveal_seed();
     Run {
         fixed,
         trail,
@@ -221,30 +220,30 @@ impl Seen {
     /// Reads what tick `tick` of the 3v3 of `moba`, which `world` just ran, shows of the
     /// rules the script plays out.
     fn read(&mut self, world: &World, moba: &Moba3v3, tick: u64) {
-        let units = MatchUnits::of_world(world);
+        let units = world.match_units();
         let heroes = [0, 1, 2, 3, 4, 5].map(|slot| units.hero(slot));
         let [_, gale, husk, kensho, ..] = heroes;
         let target = |unit| {
-            let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+            let entity = world.entity_of(unit).unwrap();
             world.get::<ActionSlots>(entity).unwrap().attack_target()
         };
-        let xp = || heroes.map(|hero| level_xp(world, moba, hero)).to_vec();
+        let xp = || heroes.map(|hero| world.level_xp(moba, hero)).to_vec();
         if [1400, 1401].contains(&tick) {
             let spells = moba
                 .packages()
                 .packages()
                 .position(|view| view.package.header.name == "player-spells");
             let spells = u16::try_from(spells.unwrap()).unwrap();
-            let haste = Stats::modifier(world, spells, "haste").unwrap();
-            let carried = internals::carried(world, husk);
+            let haste = world.modifier_named(spells, "haste").unwrap();
+            let carried = world.carried_modifiers(husk);
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));
         }
         if (1878..=1880).contains(&tick) {
-            self.gale.push(life(world, gale));
+            self.gale.push(world.life_of(gale));
         }
         if (2190..2220).contains(&tick) {
             let tower = units.spawned_at(-42, 16);
-            self.tower.push((target(tower), life(world, kensho)));
+            self.tower.push((target(tower), world.life_of(kensho)));
         }
         if tick == 2312 {
             self.xp_after_skirmish = xp();
@@ -268,7 +267,7 @@ impl Seen {
         }
         if tick == SKIRMISH - 1 {
             self.gold = (0..Moba3v3::PLAYERS)
-                .map(|slot| gold(world, moba, slot))
+                .map(|slot| world.gold(moba, slot))
                 .collect();
         }
     }
@@ -281,8 +280,8 @@ fn ground(x: i64, z: i64) -> Position {
 
 /// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
 fn placed(run: &Run, x: i64, z: i64) -> StableId {
-    let at = ground(x, z);
-    let unit = run.at_pick_end.iter().find(|unit| unit.pos == at);
+    let pos = ground(x, z);
+    let unit = run.at_pick_end.iter().find(|unit| unit.pos == pos);
     unit.expect("a placed unit").id
 }
 
@@ -302,16 +301,16 @@ mod scripted_match {
         assert_learning(&run);
         showcase::assert_farm(&run.showcase);
         showcase::assert_shop(&moba, &run.showcase);
-        let world = run.fixed.runner().world();
+        let world = run.fixed.game();
         showcase::assert_casts(&moba, &run.showcase, world, TICKS);
-        assert_replays(&moba, run.fixed.runner(), &run.trail);
+        assert_replays(&moba, run.fixed.game(), &run.trail);
     }
 }
 
 /// The match's state at its end, its scripts, and its units at the pick's end and as the first
 /// wave spawns; the unit type of the first wave's melee creeps.
 fn assert_start(moba: &Moba3v3, run: &Run) -> UnitType {
-    let world = run.fixed.runner().world();
+    let world = run.fixed.game();
     // State in the order of its fields' names.
     let packages = moba.packages();
     let at = packages
@@ -319,7 +318,7 @@ fn assert_start(moba: &Moba3v3, run: &Run) -> UnitType {
         .state
         .keys()
         .position(|name| name.as_str() == "phase");
-    let phase = &Mode::state(world)[at.unwrap()];
+    let phase = &world.mode_state()[at.unwrap()];
     assert_eq!(phase, &StateValue::Text("play".to_owned()));
     // Each script file compiles once, however many abilities or unit types run it.
     let scripts = packages.packages().map(|view| view.package.scripts.len());
@@ -414,18 +413,18 @@ fn assert_skirmish(run: &Run) {
     let fallen: Vec<&Death> = run
         .deaths
         .iter()
-        .filter(|death| death.tick < SKIRMISH && heroes.contains(&death.unit))
+        .filter(|death| death.tick < SKIRMISH && heroes.contains(&death.id))
         .collect();
     let rime_fell = Death {
         tick: 1840,
-        unit: rime,
+        id: rime,
         killer: Some(cinder),
         assisters: vec![gale],
         respawn: Some(Tick::new(1840 + 1 + 150)),
     };
     let husk_fell = Death {
         tick: 2311,
-        unit: husk,
+        id: husk,
         killer: Some(tower),
         assisters: Vec::new(),
         respawn: Some(Tick::new(2311 + 1 + 150)),
@@ -470,10 +469,10 @@ fn assert_camp(run: &Run) {
     assert_eq!(run.seen.wolf_home, Some((None, ground(-18, 12))));
     // It falls in tick 2994 and comes back 60 s, 1200 ticks, after the end of that tick; its 90
     // experience is split between the two heroes within 16 m, 45 each, in that tick alone.
-    let fell = run.deaths.iter().find(|death| death.unit == wolf);
+    let fell = run.deaths.iter().find(|death| death.id == wolf);
     let expected = Death {
         tick: 2994,
-        unit: wolf,
+        id: wolf,
         killer: Some(kensho),
         assisters: vec![rime],
         respawn: Some(Tick::new(2994 + 1 + 1200)),
@@ -504,7 +503,7 @@ fn assert_gold(run: &Run, melee: UnitType) {
                 let creep = run
                     .at_first_wave
                     .iter()
-                    .find(|unit| unit.id == death.unit && unit.walks)?;
+                    .find(|unit| unit.id == death.id && unit.walks)?;
                 Some(if creep.kind == melee { 20 } else { 15 })
             })
             .sum()
@@ -547,29 +546,33 @@ fn assert_learning(run: &Run) {
     ];
     assert_eq!(run.seen.learning, expected);
     // At the end, a hero's points are its levels less the ranks it learned.
-    let world = run.fixed.runner().world();
+    let world = run.fixed.game();
     for slot in 0..Moba3v3::PLAYERS {
         let hero = hero_of(run, slot);
         let learned = Learning::of(world, hero);
-        let entity = world.resource::<EntityIndex>().get(hero).unwrap();
+        let entity = world.entity_of(hero).unwrap();
         let level = world.get::<Level>(entity).unwrap().get();
         let ranks: u32 = learned.ranks.iter().map(|&rank| u32::from(rank)).sum();
         assert_eq!(learned.points, level - ranks, "slot {slot}");
     }
 }
 
-/// The match of `runner`, which recorded `trail`, its log replayed from its file, gives its hash
+/// The match `game`, which recorded `trail`, its log replayed from its file, gives its hash
 /// after every tick and ends where it ended.
-pub(crate) fn assert_replays(moba: &Moba3v3, runner: &Runner, trail: &HashTrail) {
+pub(crate) fn assert_replays(moba: &Moba3v3, game: &Match, trail: &HashTrail) {
     let mut file = Vec::new();
-    runner.log().encode(&mut file);
+    game.session().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Runner::new(decoded.rewound(), Moba3v3::seeds(), moba.packages()).unwrap();
+    let mut replay =
+        Match::start_session(decoded.rewound(), Moba3v3::seeds(), moba.packages()).unwrap();
     let mut replayed = HashTrail::default();
     for _ in trail.totals() {
-        replay.run_tick();
-        replayed.record(replay.world());
+        replay.run_tick_alone();
+        replayed.record(&replay);
     }
     trail.assert_same(&replayed);
-    assert_eq!(replay.log().next_tick(), runner.log().next_tick());
+    assert_eq!(
+        replay.session().log().next_tick(),
+        game.session().log().next_tick()
+    );
 }

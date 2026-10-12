@@ -29,5 +29,6 @@ pub(crate) mod script_limits;
 pub(crate) mod script_names;
 pub(crate) mod script_role;
 pub(crate) mod scripts_call;
+pub(crate) mod scripts_world;
 pub(crate) mod state_decl;
 pub(crate) mod state_value;

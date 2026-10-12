@@ -17,9 +17,9 @@ impl LiveCarriers {
         self.0.clear();
     }
 
-    /// Adds `unit`, which comes after every unit on the list.
-    pub(crate) fn push(&mut self, unit: Entity) {
-        debug_assert!(self.0.last().is_none_or(|&last| last < unit));
-        self.0.push(unit);
+    /// Adds `entity`, which comes after every unit on the list.
+    pub(crate) fn push(&mut self, entity: Entity) {
+        debug_assert!(self.0.last().is_none_or(|&last| last < entity));
+        self.0.push(entity);
     }
 }

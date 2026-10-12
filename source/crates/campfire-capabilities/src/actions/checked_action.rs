@@ -40,20 +40,19 @@ impl CheckedAction<'_> {
     }
 
     /// Moves a point it aims at beyond its range in to the range, along the line from the unit
-    /// at `position` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
+    /// at `from` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
     /// farthest point along the line that it reaches.
-    pub(crate) fn clamp(&mut self, position: Position, shape: Shape, targets: &Targets<'_, '_>) {
+    pub(crate) fn clamp(&mut self, from: Position, shape: Shape, targets: &Targets<'_, '_>) {
         let (Aim::Point { clamp: true }, ActionRange::Meters(range), ActionTarget::Point(at)) =
             (self.action.aim, self.values.range, self.target)
         else {
             return;
         };
-        if targets.reaches_point(position, shape, range, at) {
+        if targets.reaches_point(from, shape, range, at) {
             return;
         }
-        let reaches = |step: Num| {
-            targets.reaches_point(position, shape, range, targets.toward(position, at, step))
-        };
+        let reaches =
+            |step: Num| targets.reaches_point(from, shape, range, targets.toward(from, at, step));
         let most = range
             .checked_add(shape.bound())
             .expect("a reach past every number reaches every point");
@@ -83,7 +82,7 @@ impl CheckedAction<'_> {
                 reaching
             }
         };
-        self.target = ActionTarget::Point(targets.toward(position, at, step));
+        self.target = ActionTarget::Point(targets.toward(from, at, step));
     }
 
     /// Where a unit walks to come in range of its target: the living unit's place, or the point;
@@ -98,25 +97,20 @@ impl CheckedAction<'_> {
         }
     }
 
-    /// Whether its target is within its range of a unit at `position` with a body of `shape`,
+    /// Whether its target is within its range of a unit at `from` with a body of `shape`,
     /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
     /// reach, one that aims at a direction, or one with no target always is. The range counts
     /// only when an action starts.
-    pub(crate) fn in_range(
-        &self,
-        position: Position,
-        shape: Shape,
-        targets: &Targets<'_, '_>,
-    ) -> bool {
+    pub(crate) fn in_range(&self, from: Position, shape: Shape, targets: &Targets<'_, '_>) -> bool {
         let ActionRange::Meters(range) = self.values.range else {
             return true;
         };
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets
                 .living(target)
-                .is_some_and(|unit| targets.reaches(position, shape, range, &unit)),
+                .is_some_and(|unit| targets.reaches(from, shape, range, &unit)),
             (Aim::Point { .. }, ActionTarget::Point(at)) => {
-                targets.reaches_point(position, shape, range, at)
+                targets.reaches_point(from, shape, range, at)
             }
             _ => true,
         }

@@ -6,13 +6,14 @@ use campfire_sim::{SimTick, StableId};
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::interval_due::IntervalDue;
-use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifiers::Modifiers;
 use crate::units::dead::Dead;
 use crate::units::tag_book::TagBook;
+use crate::units::tag_effect::TagEffect;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
 
@@ -44,7 +45,7 @@ impl ModifierIntervals {
         due.clear();
         for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {
             let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
-            let takes_effect = TagBook::effect_test(granting, immune);
+            let takes_effect = TagEffect::new(granting, immune);
             let push = |id, source| {
                 due.push(IntervalDue {
                     carrier,
@@ -54,7 +55,7 @@ impl ModifierIntervals {
             };
             CarriedMut::new(modifiers, clocks).advance_intervals(
                 now,
-                |id| takes_effect(book.tags(id)),
+                |id| takes_effect.takes(book.tags(id)),
                 push,
             );
         }
@@ -69,7 +70,7 @@ impl ModifierIntervals {
             world.insert_non_send(hooks);
             return;
         };
-        ScriptBatch::run(world, |batch| {
+        world.script_batch(|batch| {
             for &IntervalDue {
                 carrier,
                 id,

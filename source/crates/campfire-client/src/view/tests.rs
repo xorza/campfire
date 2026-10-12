@@ -7,13 +7,13 @@ use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
-use campfire_capabilities::internals::standing_area;
+use campfire_capabilities::internals::AreasWorldInternals;
 use campfire_capabilities::{
     DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOrigins, UnitEntity,
 };
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
-use campfire_sim::IdAllocator;
+use campfire_sim::{IdAllocator, SimWorld};
 
 use super::*;
 use crate::view::unit_looks::ModelParts;
@@ -26,7 +26,7 @@ fn view() -> App {
     app.init_asset::<StandardMaterial>();
     app.init_resource::<EntityIndex>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-    Unpredicted::register(app.world_mut());
+    app.world_mut().register_unpredicted();
     app.add_plugins(View);
     app.update();
     app
@@ -42,9 +42,9 @@ fn place(x: i64, z: i64) -> Position {
     .unwrap()
 }
 
-/// The root of `unit`'s drawing, its glide, and where it stands.
-fn root(world: &World, unit: Entity) -> (Entity, Glide, Vec3) {
-    let root = world.get::<Drawing>(unit).unwrap().root();
+/// The root of `entity`'s drawing, its glide, and where it stands.
+fn root(world: &World, entity: Entity) -> (Entity, Glide, Vec3) {
+    let root = world.get::<Drawing>(entity).unwrap().root();
     let glide = *world.get::<Glide>(root).unwrap();
     (
         root,
@@ -53,9 +53,9 @@ fn root(world: &World, unit: Entity) -> (Entity, Glide, Vec3) {
     )
 }
 
-/// The figure of `unit`'s drawing: its material, and its pose over the root.
-fn figure(world: &World, unit: Entity) -> (Handle<StandardMaterial>, Transform) {
-    let root = world.get::<Drawing>(unit).unwrap().root();
+/// The figure of `entity`'s drawing: its material, and its pose over the root.
+fn figure(world: &World, entity: Entity) -> (Handle<StandardMaterial>, Transform) {
+    let root = world.get::<Drawing>(entity).unwrap().root();
     let figure = world.get::<Look>(root).unwrap().figure;
     let material = world
         .get::<MeshMaterial3d<StandardMaterial>>(figure)
@@ -242,7 +242,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     app.insert_resource(data);
     let (unit_type, _) = origins.iter().next().unwrap();
     // The tank stands 2 m above the ground at (3, 0), turned 90°.
-    let at = Position::new(campfire_math::Vec3::new(
+    let pos = Position::new(campfire_math::Vec3::new(
         Num::int(3),
         Num::int(2),
         Num::ZERO,
@@ -252,7 +252,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         .world_mut()
         .spawn((
             IdAllocator::default().allocate(),
-            at,
+            pos,
             Team::new(0),
             unit_type,
             Facing::of(Num::int(90)),
@@ -291,11 +291,9 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     .collect();
     let (unit_type, _) = origins.iter().next().unwrap();
     // An area 2.5 m wide at (3, −4).
-    let area = standing_area(
-        app.world_mut(),
-        unit_type,
-        Num::from_bits(5 << (Num::FRAC_BITS - 1)),
-    );
+    let area = app
+        .world_mut()
+        .standing_area(unit_type, Num::from_bits(5 << (Num::FRAC_BITS - 1)));
     let lies = app
         .world_mut()
         .spawn((

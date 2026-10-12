@@ -173,9 +173,9 @@ impl StatsApi {
     ) -> Checked<ModifierHandle> {
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
-        let (source, ability, rank) = (frame.acting(), frame.action(), frame.rank());
+        let (source, action, rank) = (frame.acting(), frame.action(), frame.rank());
         let call = StatsCall::of_mut(&mut frame);
-        StatsColumn::check_way(ctx.view(), call, id, ability, rank)?;
+        StatsColumn::check_way(ctx.view(), call, id, action, rank)?;
         let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
         frame.effects.push(StatsEffect::Add {
             target: target.id,

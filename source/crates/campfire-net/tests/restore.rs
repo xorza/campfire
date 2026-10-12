@@ -2,22 +2,24 @@
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
 //! its log; and it refuses a session of another release, naming it.
 
+use campfire_capabilities::Match;
 use campfire_common::{StateHash, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
-use campfire_runner::{Runner, Session};
+use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_sim::SimWorld;
 use campfire_store::Scratch;
 
-/// The scenario's match, its server's data in `data`, after 90 steps; with the state hash after
+/// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
 /// each tick the server ran.
-fn played(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
+fn played(scratch: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     for _ in 0..90 {
@@ -34,8 +36,8 @@ fn played(data: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
 
 #[test]
 fn a_restarted_server_replays_its_log_and_plays_on() {
-    let data = Scratch::new();
-    let (mut local, before) = played(&data);
+    let scratch = Scratch::new();
+    let (mut local, before) = played(&scratch);
     let cut = local.next_tick(End::Server);
     assert_eq!(before.len(), usize::try_from(cut).unwrap());
     local.restart_server();
@@ -55,8 +57,8 @@ fn a_restarted_server_replays_its_log_and_plays_on() {
 
 #[test]
 fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused() {
-    let data = Scratch::new();
-    let (mut local, before) = played(&data);
+    let scratch = Scratch::new();
+    let (mut local, before) = played(&scratch);
     let cut = local.next_tick(End::Server);
     let id = local
         .server()
@@ -68,17 +70,17 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // The private record, at the path Stage 6 names, names another release: the restore refuses
     // it, naming the release.
-    let stopped = ServerDir::open(&data.path("data")).unwrap();
-    let path = data
+    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
+    let path = scratch
         .path("data/sessions")
         .join(id.to_string())
         .join("private");
-    let ours = data.read(&path);
+    let ours = scratch.read(&path);
     let mut private = SessionPrivate::decode(&ours).unwrap();
     private.terms.release = "0.0.9".to_owned();
     let mut bytes = Vec::new();
     private.encode(&mut bytes);
-    data.write(&path, bytes);
+    scratch.write(&path, bytes);
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
@@ -88,24 +90,24 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
 
     // Its own release: past the window, the session ends aborted before the tick it stopped
     // at, in the state the server left, and its log, published, replays to every hash.
-    data.write(&path, ours);
+    scratch.write(&path, ours);
     let session = dir.restore().unwrap().unwrap();
     let key = TestKey::server();
     let file = session
         .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
-    let log = SessionLog::decode(&data.read(&file)).unwrap();
+    let log = SessionLog::decode(&scratch.read(&file)).unwrap();
     let result = *log.result().unwrap();
     assert_eq!(
         (result.tick, result.outcome, result.state_hash),
         (Tick::new(cut), Outcome::Aborted, *before.last().unwrap())
     );
     let seeds = log.revealed_seeds().unwrap();
-    let mut replay = Runner::new(log.rewound(), seeds, local.packages()).unwrap();
+    let mut replay = Match::start_session(log.rewound(), seeds, local.packages()).unwrap();
     let mut replayed = Vec::new();
-    while replay.log().next_tick() < Tick::new(cut) {
-        replay.run_tick();
+    while replay.session().log().next_tick() < Tick::new(cut) {
+        replay.run_tick_alone();
         replayed.push(replay.state_hash());
     }
     assert_eq!(replayed, before);

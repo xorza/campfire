@@ -469,13 +469,13 @@ impl View {
         }
     }
 
-    /// A drawing at rest `at`: one that follows the ticks the client runs, or one that glides to
+    /// A drawing at rest `point`: one that follows the ticks the client runs, or one that glides to
     /// each place the client receives, if `received`.
-    fn rest(at: Vec3, received: bool, time: &Time) -> Glide {
+    fn rest(point: Vec3, received: bool, time: &Time) -> Glide {
         if received {
-            Glide::timed(at, time.elapsed())
+            Glide::timed(point, time.elapsed())
         } else {
-            Glide::ticked(at)
+            Glide::ticked(point)
         }
     }
 
@@ -587,10 +587,10 @@ fn lean_toward(from: Vec3, to: Vec3) -> Quat {
 /// A sim place in the renderer's floats: its height above the ground, which `heights` gives
 /// beneath it, or 0 on a map with none.
 fn ground(pos: Position, heights: Option<&GroundHeights>) -> Vec3 {
-    let at = pos.get();
-    let (x, z) = (at.x.float(), at.z.float());
+    let point = pos.get();
+    let (x, z) = (point.x.float(), point.z.float());
     let beneath = heights.map_or(0.0, |heights| heights.at(x, z));
-    Vec3::new(x, beneath + at.y.float(), z)
+    Vec3::new(x, beneath + point.y.float(), z)
 }
 
 #[cfg(test)]

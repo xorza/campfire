@@ -1,13 +1,14 @@
-use crate::state_types::data_kind::DataKind;
-use crate::state_types::replication::Replication;
-use crate::state_types::sending::SentPredicted;
-use crate::units::unit_entity::UnitEntity;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent};
 use serde::{Deserialize, Serialize};
+
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
+use crate::units::unit_entity::UnitEntity;
 
 /// How a walker has been getting on: where it stood as the tick before steered, and for how many
 /// ticks in a row it has moved less than half a step a tick. Apart from its route, as it changes
@@ -19,15 +20,15 @@ pub struct Progress {
 }
 
 impl Progress {
-    /// Notes that the walker stands at `at` as this tick steers, with a step of `step`; the ticks
+    /// Notes that the walker stands at `pos` as this tick steers, with a step of `step`; the ticks
     /// in a row it has moved less than half a step.
-    pub(crate) fn track(&mut self, at: Position, step: Num) -> u32 {
+    pub(crate) fn track(&mut self, pos: Position, step: Num) -> u32 {
         let half = step / 2;
         self.stuck = match self.last_at {
-            Some(last) if last.within_ground(at, half) => self.stuck.saturating_add(1),
+            Some(last) if last.within_ground(pos, half) => self.stuck.saturating_add(1),
             _ => 0,
         };
-        self.last_at = Some(at);
+        self.last_at = Some(pos);
         self.stuck
     }
 

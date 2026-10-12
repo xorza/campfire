@@ -19,7 +19,7 @@ pub(crate) struct Damage {
     pub(crate) amount: Num,
     pub(crate) kind: DamageKind,
     pub(crate) cause: DamageCause,
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) depth: u8,
     pub(crate) hit: Option<Hit>,
 }

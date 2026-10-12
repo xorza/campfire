@@ -35,15 +35,6 @@ type BodyParts<'w, 's> = Query<
 >;
 
 impl StaticsDirty {
-    /// Gives `world` the mark, set, so the first tracking takes every static body, and the
-    /// observers that set it.
-    pub(crate) fn install(world: &mut World) {
-        world.insert_resource(StaticsDirty(true));
-        world.add_observer(StaticsDirty::part_removed);
-        world.add_observer(StaticsDirty::state_inserted);
-        world.add_observer(StaticsDirty::state_removed);
-    }
-
     /// Sets the mark, as the static bodies need taking again.
     pub(crate) const fn set(&mut self) {
         self.0 = true;
@@ -100,5 +91,14 @@ impl StaticsDirty {
         {
             dirty.set();
         }
+    }
+
+    /// Gives `world` the mark, set, so the first tracking takes every static body, and the
+    /// observers that set it.
+    pub(super) fn install(world: &mut World) {
+        world.insert_resource(StaticsDirty(true));
+        world.add_observer(StaticsDirty::part_removed);
+        world.add_observer(StaticsDirty::state_inserted);
+        world.add_observer(StaticsDirty::state_removed);
     }
 }

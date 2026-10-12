@@ -47,23 +47,24 @@ impl GroupBox {
         self.low[0] <= x && x <= self.high[0] && self.low[1] <= z && z <= self.high[1]
     }
 
-    /// The goal of the unit at `at` of a group ordered to `goal`, a point within `bounds`: outside
+    /// The goal of the unit at `pos` of a group ordered to `goal`, a point within `bounds`: outside
     /// the box, `goal` plus the unit's offset from the centre, taken into the bounds; inside the
     /// box or on its edge, `goal` itself.
-    pub(crate) fn goal_of(self, at: Position, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
+    pub(crate) fn goal_of(self, pos: Position, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
         if self.holds(goal) {
             return goal;
         }
         let [cx, cz] = self.centre();
-        let at = at.get();
-        bounds.clamp_ground([goal[0] + (at.x - cx), goal[1] + (at.z - cz)])
+        let pos = pos.get();
+        bounds.clamp_ground([goal[0] + (pos.x - cx), goal[1] + (pos.z - cz)])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use campfire_math::Vec3;
+
+    use super::*;
 
     fn at(x: Num, z: Num) -> Position {
         Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()

@@ -24,7 +24,7 @@ impl UnitDied {
     pub(crate) const fn of(tick: Tick, death: &DeathView<'_>) -> UnitDied {
         UnitDied {
             tick,
-            unit: death.fallen.unit,
+            unit: death.fallen.id,
             team: death.fallen.team,
             owner: death.fallen.owner,
             killer: death.killer,

@@ -10,7 +10,7 @@ use crate::values::rank::Rank;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Applier {
     pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) rank: Rank,
     pub(crate) hold: Option<Hold>,
 }

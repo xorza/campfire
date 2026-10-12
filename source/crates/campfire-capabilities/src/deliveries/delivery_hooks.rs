@@ -2,17 +2,18 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimTick};
+use campfire_sim::{SimTick, SimWorld};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_world::ActionsWorldCrate;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::lists_of::ListsOf;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::pool::Pool;
-use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
 
@@ -61,7 +62,7 @@ impl DeliveryHooks {
             return;
         }
         let now = world.resource::<SimTick>().start();
-        ScriptBatch::run(world, |batch| {
+        world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
             for delivered in due {
                 let Delivered { by, reach, hit } = *delivered;
@@ -84,8 +85,7 @@ impl DeliveryHooks {
                 let target = view.unit_value(reach.unit());
                 let owner = batch
                     .world()
-                    .resource::<EntityIndex>()
-                    .get(by.source)
+                    .entity_of(by.source)
                     .and_then(|entity| batch.world().get::<Owner>(entity))
                     .map(|owner| owner.slot());
                 let start = CallStart {
@@ -95,8 +95,7 @@ impl DeliveryHooks {
                 };
                 let pool = Pool::of(owner);
                 batch.hook_call(start, hook, Some(by.source), |batch| {
-                    EffectLists::queue(
-                        batch.world(),
+                    batch.world().queue_effect_list(
                         of,
                         hook,
                         &mut ctx.frame(),

@@ -475,15 +475,15 @@ impl RoutePlanner {
         best.map(|(_, at)| at)
     }
 
-    /// Where a walker of `walkable` stands for `place`: `place` itself when nothing blocks it
-    /// there, else the center of the nearest cell it may stand in, at `place`'s height, as a
+    /// Where a walker of `walkable` stands for `pos`: `pos` itself when nothing blocks it
+    /// there, else the center of the nearest cell it may stand in, at `pos`'s height, as a
     /// route's goal gives way; `None` on a grid with no such cell.
-    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, place: Position) -> Option<Position> {
-        if !walkable.blocks(Segment::new(place, place)) {
-            return Some(place);
+    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, pos: Position) -> Option<Position> {
+        if !walkable.blocks(Segment::new(pos, pos)) {
+            return Some(pos);
         }
-        let cell = self.nearest_open(walkable, place, &mut 0)?;
-        Some(walkable.clearance.grid().center(cell, place.get().y))
+        let cell = self.nearest_open(walkable, pos, &mut 0)?;
+        Some(walkable.clearance.grid().center(cell, pos.get().y))
     }
 
     /// Reaches the cells around `at` a walker may stand in, and the search's target whether it

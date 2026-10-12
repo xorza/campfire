@@ -44,6 +44,7 @@ pub(crate) mod production_api;
 pub(crate) mod production_books;
 pub(crate) mod production_column;
 pub(crate) mod production_data;
+pub(crate) mod production_world;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
 pub(crate) mod requirements;

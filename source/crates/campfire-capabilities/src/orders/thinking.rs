@@ -13,7 +13,7 @@ use crate::orders::resetting::Resetting;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
-use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::unit_pools::UnitPools;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
@@ -108,7 +108,7 @@ impl Thinking {
             return;
         }
         due.sort_unstable_by_key(|due| (due.since, due.id));
-        ScriptBatch::run(world, |batch| {
+        world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
             for &Due {
                 since,

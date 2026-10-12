@@ -59,21 +59,21 @@ impl UnitStates {
         }
     }
 
+    fn write_class<S: StateSync>(world: &mut World, entity: Entity, at: usize, value: StateValue) {
+        let mut state = world
+            .get_mut::<UnitState<S>>(entity)
+            .expect("a unit holds the class of each field its type declares");
+        state.set(at, value);
+    }
+
     /// Writes `value` to the field at `place` of the unit of `entity`, which holds the field's
     /// class, as a unit holds each class its type declares a field of.
-    pub(crate) fn write(world: &mut World, entity: Entity, place: StatePlace, value: StateValue) {
+    pub(super) fn write(world: &mut World, entity: Entity, place: StatePlace, value: StateValue) {
         match place.sync {
             SyncTo::None => UnitStates::write_class::<SyncNone>(world, entity, place.at, value),
             SyncTo::Owner => UnitStates::write_class::<SyncOwner>(world, entity, place.at, value),
             SyncTo::Team => UnitStates::write_class::<SyncTeam>(world, entity, place.at, value),
             SyncTo::All => UnitStates::write_class::<SyncAll>(world, entity, place.at, value),
         }
-    }
-
-    fn write_class<S: StateSync>(world: &mut World, entity: Entity, at: usize, value: StateValue) {
-        let mut state = world
-            .get_mut::<UnitState<S>>(entity)
-            .expect("a unit holds the class of each field its type declares");
-        state.set(at, value);
     }
 }

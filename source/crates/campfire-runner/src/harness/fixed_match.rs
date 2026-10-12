@@ -1,3 +1,4 @@
+use campfire_capabilities::Match;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
@@ -7,30 +8,30 @@ use campfire_protocol::{
 };
 
 use crate::harness::fixed_session::FixedSession;
-use crate::runner::Runner;
 use crate::session::error::ServerInputRefused;
+use crate::session::session_world::SessionWorld;
 
 /// A match of a `FixedSession`, and the input chain of each slot's player, so a test sends inputs
 /// as a player's client would, and server inputs as its server would.
 #[derive(Debug)]
 pub struct FixedMatch {
-    runner: Runner,
+    game: Match,
     chains: Vec<InputChain>,
     terms: SessionTerms,
     applied: Vec<Applied>,
-    /// Last, so it drops after the runner and sees what the match logs as it drops.
+    /// Last, so it drops after the match and sees what the match logs as it drops.
     log: LogCheck,
 }
 
 impl FixedMatch {
     pub(crate) const fn new(
-        runner: Runner,
+        game: Match,
         chains: Vec<InputChain>,
         terms: SessionTerms,
         log: LogCheck,
     ) -> FixedMatch {
         FixedMatch {
-            runner,
+            game,
             chains,
             terms,
             applied: Vec::new(),
@@ -49,7 +50,8 @@ impl FixedMatch {
             self.terms.session_id(),
             &FixedSession::AUX,
         );
-        self.runner
+        self.game
+            .session_mut()
             .record([input], &signature, &mut self.applied)
             .unwrap_or_else(|error| {
                 panic!(
@@ -65,9 +67,9 @@ impl FixedMatch {
 
     /// Logs `input` before the next tick, signed by the server at the place it takes.
     pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
-        let place = self.runner.log().next_place();
+        let place = self.game.session().log().next_place();
         let signature = FixedSession::server_signature(&input, self.terms.session_id(), place);
-        self.runner.record_server(input, &signature)
+        self.game.session_mut().record_server(input, &signature)
     }
 
     /// Logs player `slot`'s join of their slot, with the delegation the session would start them
@@ -85,15 +87,17 @@ impl FixedMatch {
     /// Checkpoints the match at the boundary before the next tick, as its server would, its
     /// snapshot written into `snapshot`; the record, signed and logged.
     pub fn checkpoint(&mut self, snapshot: &mut Vec<u8>) -> Checkpoint {
-        self.runner
+        self.game
+            .session_mut()
             .begin_checkpoint()
             .expect("the match's own checkpoint");
         let record = self
-            .runner
+            .game
             .checkpoint(snapshot)
             .expect("a fixed session's chain holds the segment");
         let signature = FixedSession::checkpoint_signature(&record, self.terms.session_id());
-        self.runner
+        self.game
+            .session_mut()
             .record_checkpoint(record.clone(), &signature)
             .expect("the match's own checkpoint");
         record
@@ -102,26 +106,27 @@ impl FixedMatch {
     /// Ends the session before the next tick, as the mode ended the match or aborted when it did
     /// not, and publishes its log; the result, signed and logged.
     pub fn end(&mut self) -> SessionResult {
-        let result = self.runner.result();
+        let result = self.game.session_result();
         let signature = FixedSession::result_signature(&result, self.terms.session_id());
-        self.runner
+        self.game
+            .session_mut()
             .record_result(result, &signature)
             .expect("the match's own result");
-        self.runner.reveal_seed();
+        self.game.session_mut().reveal_seed();
         result
     }
 
-    /// The match's runner, its keys and chains dropped, as a load leaves them behind.
-    pub fn into_runner(self) -> Runner {
-        self.runner
+    /// The match, its keys and chains dropped, as a load leaves them behind.
+    pub fn into_game(self) -> Match {
+        self.game
     }
 
-    pub const fn runner(&self) -> &Runner {
-        &self.runner
+    pub const fn game(&self) -> &Match {
+        &self.game
     }
 
-    pub const fn runner_mut(&mut self) -> &mut Runner {
-        &mut self.runner
+    pub const fn game_mut(&mut self) -> &mut Match {
+        &mut self.game
     }
 
     /// The events at Warn and Error that the match logged and no test took yet.

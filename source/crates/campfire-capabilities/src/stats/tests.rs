@@ -8,7 +8,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
 
 use super::*;
-use crate::release::test_match::TestMatch;
+use crate::release::r#match::Match;
+use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::application::{Application, NewInstance};
@@ -19,13 +20,15 @@ use crate::stats::life_pool::LifePool;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::Clock;
 use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
-use crate::units::Units;
+use crate::stats::stats_world::internals::StatsWorldInternals;
+use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::delivery_entity::DeliveryEntity;
@@ -38,6 +41,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
@@ -124,57 +128,57 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 
 /// A match with the stats capability, a unit type for each of `types`, and a book of their
 /// stats, with a move speed cap of 6.
-fn stat_match(types: &[StatsData]) -> TestMatch {
-    let mut game = TestMatch::client(&[Capability::Stats]);
+fn stat_match(types: &[StatsData]) -> Match {
+    let mut game = Match::client(&[Capability::Stats]);
     let types: Vec<_> = types
         .iter()
         .map(|data| {
-            let unit_type = Units::load_next_type(&mut game.world, &UnitTypeData::default());
+            let unit_type = game.load_next_unit_type(&UnitTypeData::default());
             (unit_type, data)
         })
         .collect();
     let book = StatBook::new(&rules(), types, Num::int(6));
     let pools = PoolBook::new(&pools(), &book);
-    Stats::load(&mut game.world, book, pools);
+    game.load_stat_books(book, pools);
     game
 }
 
 /// A unit of `unit_type` at level 1 that walks and has a pool of health and of mana, its values
 /// before the stats derive them: health its life when the match's life pool is health.
-fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
-    let bound = game.world.get_resource::<LifePool>() == Some(&LifePool(HEALTH));
+fn unit(game: &mut Match, unit_type: u16) -> Entity {
+    let bound = game.get_resource::<LifePool>() == Some(&LifePool(HEALTH));
     let parts = (
         Level::default(),
         UnitStats::default(),
         MoveStep::new(Num::ZERO).unwrap(),
     );
-    let id = game.spawn_of(
+    let id = game.spawn_unit_of(
         UnitType::new(unit_type),
         Position::new(Vec3::ZERO).unwrap(),
         Team::new(0),
         parts,
     );
-    let unit = game.entity(id);
+    let unit = game.unit_entity(id);
     if bound {
-        game.world.entity_mut(unit).insert((
+        game.entity_mut(unit).insert((
             Life::full(Num::ONE),
             Pools::new([(MANA, Num::ONE)]).unwrap(),
         ));
     } else {
         let pools = Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap();
-        game.world.entity_mut(unit).insert(pools);
+        game.entity_mut(unit).insert(pools);
     }
     unit
 }
 
-/// The current amount and the maximum of `pool` of `unit`: its life's when the match's life pool
+/// The current amount and the maximum of `pool` of `entity`: its life's when the match's life pool
 /// is `pool`.
-fn amounts(world: &World, unit: Entity, pool: PoolId) -> (Num, Num) {
+fn amounts(world: &World, entity: Entity, pool: PoolId) -> (Num, Num) {
     if world.get_resource::<LifePool>() == Some(&LifePool(pool)) {
-        let life = world.get::<Life>(unit).unwrap();
+        let life = world.get::<Life>(entity).unwrap();
         return (life.current(), life.max());
     }
-    let pools = world.get::<Pools>(unit).unwrap();
+    let pools = world.get::<Pools>(entity).unwrap();
     (pools.current(pool).unwrap(), pools.max(pool).unwrap())
 }
 
@@ -207,22 +211,21 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     for bound in [false, true] {
         let mut game = stat_match(slice::from_ref(&hero));
         if bound {
-            game.world.insert_resource(LifePool(HEALTH));
+            game.insert_resource(LifePool(HEALTH));
         }
         let unit = unit(&mut game, 0);
         game.step();
-        let get = |game: &TestMatch| {
-            let world = &game.world;
-            let book = world.resource::<StatBook>();
-            let values = world.get::<UnitStats>(unit).unwrap().values();
+        let get = |game: &Match| {
+            let book = game.resource::<StatBook>();
+            let values = game.get::<UnitStats>(unit).unwrap().values();
             let value = |name| values[book.named(&stat(name)).unwrap().index()];
             (
-                world.get::<MoveStep>(unit).unwrap().get(),
+                game.get::<MoveStep>(unit).unwrap().get(),
                 value("attack_speed"),
                 value("attack_damage"),
             )
         };
-        let pools = |game: &TestMatch| [HEALTH, MANA].map(|pool| amounts(&game.world, unit, pool));
+        let pools = |game: &Match| [HEALTH, MANA].map(|pool| amounts(game, unit, pool));
         // At level 1: 4 m/s, 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 0.625
         // attacks a second; damage 51; full health of 380 and mana of 250.
         let (step, rate, damage) = get(&game);
@@ -238,12 +241,12 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         // the limit of 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203. Mana, full and with no
         // regen, rises with its maximum, to 250 + 45 × 17 = 1015.
         if bound {
-            game.world.get_mut::<Life>(unit).unwrap().take(Num::int(80));
+            game.get_mut::<Life>(unit).unwrap().take(Num::int(80));
         } else {
-            let mut held = game.world.get_mut::<Pools>(unit).unwrap();
+            let mut held = game.get_mut::<Pools>(unit).unwrap();
             held.take(HEALTH, Num::int(80));
         }
-        *game.world.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
+        *game.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
         game.step();
         let (step, rate, damage) = get(&game);
         assert_eq!(step, Num::from_bits(2_796_203));
@@ -261,7 +264,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         assert_eq!(pools(&game)[0], health, "{bound}");
 
         // Back to level 1: the maximum falls to 380, and the current amount to it.
-        *game.world.get_mut::<Level>(unit).unwrap() = Level::default();
+        *game.get_mut::<Level>(unit).unwrap() = Level::default();
         game.step();
         assert_eq!(pools(&game)[0], full(380), "{bound}");
     }
@@ -296,24 +299,20 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
     let tenths = |tenths: i64| Num::int(tenths) / 10;
     let value = |changes: &[(StatOp, Num, u32)]| {
         let mut game = stat_match(slice::from_ref(&armored));
-        let armor = game
-            .world
-            .resource::<StatBook>()
-            .named(&armor_stat())
-            .unwrap();
+        let armor = game.resource::<StatBook>().named(&armor_stat()).unwrap();
         let mut applications = Vec::new();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
-            ModifierBook::push_changes(&mut game.world, &[(armor, op)], TagSet::default());
+            game.push_modifier_changes(&[(armor, op)], TagSet::default());
             let id = u16::try_from(at).unwrap();
             for _ in 0..stacks {
                 applications.push(share(id, None, value, Reapply::Stack));
             }
         }
         let armored_unit = unit(&mut game, 0);
-        let mut entity = game.world.entity_mut(armored_unit);
+        let mut entity = game.entity_mut(armored_unit);
         entity.insert((Level::new(3).unwrap(), Modifiers::bundle(applications)));
         game.step();
-        let stats = game.world.get::<UnitStats>(armored_unit).unwrap();
+        let stats = game.get::<UnitStats>(armored_unit).unwrap();
         stats.values()[armor.index()]
     };
     assert_eq!(value(&[]), Num::int(14));
@@ -361,11 +360,10 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (TagProperties::default(), TagSet::of([slowed])),
     ];
     let own = TagSet::of([sight]);
-    game.world
-        .insert_resource(TagBook::new(effects, [(UnitType::new(0), own)]));
+    game.insert_resource(TagBook::new(effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
-    game.world.entity_mut(unit).insert(Modifiers::default());
-    let book = game.world.resource::<StatBook>();
+    game.entity_mut(unit).insert(Modifiers::default());
+    let book = game.resource::<StatBook>();
     let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
@@ -380,12 +378,12 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (StatOp::Cut, TagSet::of([slowed, slow_immune])),
     ];
     for (op, tags) in modifiers {
-        ModifierBook::push_changes(&mut game.world, &[(speed, op)], tags);
+        game.push_modifier_changes(&[(speed, op)], tags);
     }
     let slowing = |source, value| share(0, source, value, Reapply::Refresh);
     // Cuts of 0.25 and 0.5 from two sources, each `slowed`: only the larger counts. An add of
     // 0.5 that stacks, twice: +1.
-    let mut carried = CarriedMut::of(&mut game.world, unit).unwrap();
+    let mut carried = game.carried_mut(unit).unwrap();
     carried.apply(slowing(first, sixteenths(4)));
     carried.apply(slowing(second, sixteenths(8)));
     for _ in 0..2 {
@@ -394,19 +392,19 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     }
     game.step();
     // (4 + 1) × (1 − 0.5) = 2.5 m/s, 2.5 × 2²⁴ ÷ 30 = 1 398 101.33 bits a tick, to 1 398 101.
-    let step = |game: &TestMatch| game.world.get::<MoveStep>(unit).unwrap().get();
+    let step = |game: &Match| game.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step(&game), Num::from_bits(1_398_101));
-    let tags = |game: &TestMatch| *game.world.get::<UnitTags>(unit).unwrap();
+    let tags = |game: &Match| *game.get::<UnitTags>(unit).unwrap();
     assert_eq!(tags(&game).tags, TagSet::of([sight, slowed]));
     assert!(tags(&game).properties.detects());
 
     // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
     // 1 747 627. An untagged cut of 1.5 counts as 1: no step at all.
-    let mut carried = CarriedMut::of(&mut game.world, unit).unwrap();
+    let mut carried = game.carried_mut(unit).unwrap();
     carried.apply(share(2, first, sixteenths(4), Reapply::Refresh));
     game.step();
     assert_eq!(step(&game), Num::from_bits(1_747_627));
-    let mut carried = CarriedMut::of(&mut game.world, unit).unwrap();
+    let mut carried = game.carried_mut(unit).unwrap();
     carried.apply(share(3, first, sixteenths(24), Reapply::Refresh));
     game.step();
     assert_eq!(step(&game), Num::ZERO);
@@ -415,7 +413,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // every `slowed` modifier without effect, so no cut counts: 5 × 1.25 = 6.25, past the limit
     // of 5: 5 × 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203. `slowed` leaves the unit's tags, and
     // the immunity joins them.
-    let mut carried = CarriedMut::of(&mut game.world, unit).unwrap();
+    let mut carried = game.carried_mut(unit).unwrap();
     carried.remove(ModifierId::new(3), first);
     let immune = share(4, first, Num::ZERO, Reapply::Stack);
     carried.apply(immune.clone());
@@ -429,13 +427,13 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // cut of 0.25 counts, whatever order the modifiers are in. 6.25 × 0.75 = 4.6875 m/s, 4.6875
     // × 2²⁴ ÷ 30 = 2 621 440 bits exactly.
     let both = share(5, second, sixteenths(4), Reapply::Refresh);
-    CarriedMut::of(&mut game.world, unit).unwrap().apply(both);
+    game.carried_mut(unit).unwrap().apply(both);
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_621_440));
     assert_eq!(tags(&game).tags, TagSet::of([sight, slowed, slow_immune]));
 
     // The immunity ends: the held cuts act again, the larger 0.5: 3.125 m/s.
-    let mut carried = CarriedMut::of(&mut game.world, unit).unwrap();
+    let mut carried = game.carried_mut(unit).unwrap();
     carried.remove(ModifierId::new(4), first);
     carried.remove(ModifierId::new(5), second);
     game.step();
@@ -443,7 +441,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     assert_eq!(tags(&game).immune, TagSet::default());
 
     // Removing every modifier: back to 4 m/s, and to the type's tag alone.
-    *game.world.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
+    *game.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_236_962));
     assert_eq!(tags(&game).tags, own);
@@ -457,7 +455,7 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let unit = unit(&mut game, 0);
-    game.world.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit).insert(Modifiers::default());
     let half = Param::Ranked(Ranked::One(Scalar::Decimal(sixteenths(8))));
     let cut = StatChange {
         op: StatOp::Cut,
@@ -470,12 +468,12 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
         params: BTreeMap::from([(DeclaredName::new("slow").unwrap(), half)]),
         ..modifier_data(None)
     };
-    Stats::load_modifier(&mut game.world, 0, "slow", &data, None);
-    let slow = Stats::modifier(&game.world, 0, "slow").unwrap();
-    let target = *game.world.get::<StableId>(unit).unwrap();
-    internals::give_modifier(&mut game.world, target, slow, None, false);
+    game.load_modifier(0, "slow", &data, None);
+    let slow = game.modifier_named(0, "slow").unwrap();
+    let target = *game.get::<StableId>(unit).unwrap();
+    game.give_modifier(target, slow, None, false);
     game.step();
-    let step = game.world.get::<MoveStep>(unit).unwrap().get();
+    let step = game.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step, Num::from_bits(1_118_481));
 }
 
@@ -494,16 +492,11 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
 /// A match of a unit type of armor 10, and the modifier `warding`, whose aura's radius and
 /// shield read the own params `reach` and `ward`: 0 and −1 per point of its source's armor, and
 /// 0 and −2 per point; and which runs an interval each second.
-fn warding_match() -> (TestMatch, ModifierId) {
+fn warding_match() -> (Match, ModifierId) {
     let armored = stats(&[(armor_stat(), Num::int(10), Num::ZERO)]);
     let mut game = stat_match(&[armored]);
-    Units::load_type(
-        &mut game.world,
-        TypeScope::Mode,
-        "armored",
-        &UnitTypeData::default(),
-    );
-    Stats::load_modifier(&mut game.world, 0, "heartened", &modifier_data(None), None);
+    game.load_unit_type(TypeScope::Mode, "armored", &UnitTypeData::default());
+    game.load_modifier(0, "heartened", &modifier_data(None), None);
     let param = |name: &str| {
         Number::Param(ParamRef {
             param: DeclaredName::new(name).unwrap(),
@@ -530,8 +523,8 @@ fn warding_match() -> (TestMatch, ModifierId) {
             modifier: DeclaredName::new("heartened").unwrap(),
         }))
     };
-    Stats::load_modifier(&mut game.world, 0, "warding", &data, None);
-    let warding = Stats::modifier(&game.world, 0, "warding").unwrap();
+    game.load_modifier(0, "warding", &data, None);
+    let warding = game.modifier_named(0, "warding").unwrap();
     (game, warding)
 }
 
@@ -542,13 +535,13 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
     // the decode of an instance refuses one below zero, so the snapshot restores.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.world.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit).insert(Modifiers::default());
     game.step();
-    let id = *game.world.get::<StableId>(unit).unwrap();
-    internals::give_modifier(&mut game.world, id, warding, Some((id, None, 1)), false);
-    let modifiers = game.world.get::<Modifiers>(unit).unwrap();
+    let id = *game.get::<StableId>(unit).unwrap();
+    game.give_modifier(id, warding, Some((id, None, 1)), false);
+    let modifiers = game.get::<Modifiers>(unit).unwrap();
     let carried = modifiers.get(warding, Some(id)).unwrap();
-    let clocks = game.world.get::<ModifierClocks>(unit).unwrap();
+    let clocks = game.get::<ModifierClocks>(unit).unwrap();
     let shield = clocks.shield_of(modifiers, warding, Some(id));
     assert_eq!(
         (carried.instance.aura_radius, shield),
@@ -565,15 +558,15 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     // interval past the limit, whose next tick would overflow, fails to decode.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.world.entity_mut(unit).insert(Modifiers::default());
+    game.entity_mut(unit).insert(Modifiers::default());
     game.step();
-    let id = *game.world.get::<StableId>(unit).unwrap();
-    internals::give_modifier(&mut game.world, id, warding, Some((id, None, 1)), false);
-    let made = game.world.get::<ModifierClocks>(unit).unwrap().clone();
+    let id = *game.get::<StableId>(unit).unwrap();
+    game.give_modifier(id, warding, Some((id, None, 1)), false);
+    let made = game.get::<ModifierClocks>(unit).unwrap().clone();
     let check = |change: fn(&mut Clock)| {
         let mut clocks = made.clone();
         change(clocks.clock_mut(0));
-        TestMatch::decodes(&clocks) && clocks.check(&game.world, unit)
+        Match::decodes(&clocks) && clocks.check(&game, unit)
     };
     let limit = |clock: &mut Clock| {
         let interval = clock.interval.as_mut().unwrap();
@@ -596,42 +589,37 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let data = modifier_data;
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::server(&[Capability::Stats], scripts);
+    let mut game = Match::server(&[Capability::Stats], scripts);
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
-    Unpredicted::register(&mut game.world);
+    game.register_unpredicted();
     let book = StatBook::new(&rules(), [], Num::int(6));
-    Stats::load(&mut game.world, book, PoolBook::default());
+    game.load_stat_books(book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
         radius: Number::Value(Scalar::Int(2)),
         affects: FilterData::parse("allies").unwrap(),
         modifier: DeclaredName::new("inspired").unwrap(),
     };
-    Stats::load_modifier(&mut game.world, 0, "inspired", &data(None), None);
-    Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);
+    game.load_modifier(0, "inspired", &data(None), None);
+    game.load_modifier(0, "presence", &data(Some(presence)), None);
     let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    let spawn = |game: &mut TestMatch, x: i64, team: u8| {
-        game.spawn(at(x), Team::new(team), Modifiers::default())
+    let spawn = |game: &mut Match, x: i64, team: u8| {
+        game.spawn_unit(at(x), Team::new(team), Modifiers::default())
     };
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
     let near = spawn(&mut game, 2, 0);
     let far = spawn(&mut game, 3, 0);
     let enemy = spawn(&mut game, 1, 1);
-    let entity =
-        |game: &TestMatch, id: StableId| game.world.resource::<EntityIndex>().get(id).unwrap();
-    let [inspired, presence] = ["inspired", "presence"].map(|name| {
-        game.world
-            .resource::<ModifierBook>()
-            .named(0, name)
-            .unwrap()
-    });
+    let entity = |game: &Match, id: StableId| game.entity_of(id).unwrap();
+    let [inspired, presence] = ["inspired", "presence"]
+        .map(|name| game.resource::<ModifierBook>().named(0, name).unwrap());
     let holder = entity(&game, carrier);
-    let mut presence_carrier = CarriedMut::of(&mut game.world, holder).unwrap();
+    let mut presence_carrier = game.carried_mut(holder).unwrap();
     presence_carrier.apply(aura(presence, carrier, Num::int(2)));
-    let holds = |game: &TestMatch, id: StableId| {
-        let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
+    let holds = |game: &Match, id: StableId| {
+        let modifiers = game.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
             .get(inspired, Some(carrier))
             .is_some_and(|instance| {
@@ -646,16 +634,18 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     );
     // The near ally leaves, and the far one comes to 3 m with a body of 1 m: its edge is within
     // 2 m, as an area's radius reaches it.
-    *game.world.get_mut::<Position>(entity(&game, near)).unwrap() = at(5);
+    let near_entity = entity(&game, near);
+    *game.get_mut::<Position>(near_entity).unwrap() = at(5);
     let moved = (at(-3), Body::new(Num::int(1)).unwrap());
-    game.world.entity_mut(entity(&game, far)).insert(moved);
+    let far_entity = entity(&game, far);
+    game.entity_mut(far_entity).insert(moved);
     game.step();
     assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
     // An aura's instance of no stack projects nothing, nor does one its carrier's immunity
     // suppresses: the aura grants tag 0, to which the carrier is immune.
-    let stacks = |game: &mut TestMatch, stacks| {
+    let stacks = |game: &mut Match, stacks| {
         let holder = entity(game, carrier);
-        let mut modifiers = game.world.get_mut::<Modifiers>(holder).unwrap();
+        let mut modifiers = game.get_mut::<Modifiers>(holder).unwrap();
         modifiers.set_stacks(presence, Some(carrier), stacks, Tick::new(0));
     };
     stacks(&mut game, 0);
@@ -664,31 +654,30 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     stacks(&mut game, 1);
     game.step();
     assert!(holds(&game, far));
-    let mut book = game.world.resource_mut::<ModifierBook>();
+    let mut book = game.resource_mut::<ModifierBook>();
     book.grant_tags(presence, TagSet::of([Tag::new(0)]));
     let immune = UnitTags {
         immune: TagSet::of([Tag::new(0)]),
         ..UnitTags::default()
     };
-    game.world.entity_mut(entity(&game, carrier)).insert(immune);
+    let carrier_entity = entity(&game, carrier);
+    game.entity_mut(carrier_entity).insert(immune);
     game.step();
     assert!(!holds(&game, far));
-    game.world
-        .entity_mut(entity(&game, carrier))
-        .remove::<UnitTags>();
+    game.entity_mut(carrier_entity).remove::<UnitTags>();
     // As on a predicting client, whose sim runs only on the units it predicts: a carrier it only
     // holds, as the server sent it, carries its aura still to the ally it predicts, and the pass
     // writes none of the held carrier's own modifiers.
     let held = entity(&game, carrier);
-    game.world.entity_mut(held).insert(Unpredicted);
-    let as_sent = game.world.get::<Modifiers>(held).unwrap().clone();
+    game.entity_mut(held).insert(Unpredicted);
+    let as_sent = game.get::<Modifiers>(held).unwrap().clone();
     game.step();
     assert!(holds(&game, far));
-    assert_eq!(game.world.get::<Modifiers>(held), Some(&as_sent));
-    game.world.entity_mut(held).remove::<Unpredicted>();
+    assert_eq!(game.get::<Modifiers>(held), Some(&as_sent));
+    game.entity_mut(held).remove::<Unpredicted>();
     // The carrier dies: its aura goes, with its own modifiers.
     let dead = entity(&game, carrier);
-    game.world.entity_mut(dead).insert(Dead);
+    game.entity_mut(dead).insert(Dead);
     game.step();
     assert_eq!([carrier, far].map(|id| holds(&game, id)), [false, false]);
 }
@@ -697,14 +686,13 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::server(&[Capability::Stats], scripts);
+    let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), [], Num::int(6));
-    Stats::load(&mut game.world, book, PoolBook::default());
-    Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);
-    let id = game.spawn(Position::ORIGIN, Team::new(0), Modifiers::default());
-    let unit = game.entity(id);
+    game.load_stat_books(book, PoolBook::default());
+    game.load_modifier(0, "inspired", &modifier_data(None), None);
+    let id = game.spawn_unit(Position::ORIGIN, Team::new(0), Modifiers::default());
+    let unit = game.unit_entity(id);
     let inspired = game
-        .world
         .resource::<ModifierBook>()
         .named(0, "inspired")
         .unwrap();
@@ -714,17 +702,17 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         target: id,
         modifier: inspired,
         source: None,
-        ability: None,
+        action: None,
         rank: Rank::FIRST,
     };
-    game.world.resource_mut::<HeldModifiers>().0.push(held);
+    game.resource_mut::<HeldModifiers>().0.push(held);
     game.step();
-    let holds = |game: &TestMatch| {
-        let modifiers = game.world.get::<Modifiers>(unit).unwrap();
+    let holds = |game: &Match| {
+        let modifiers = game.get::<Modifiers>(unit).unwrap();
         modifiers.get(inspired, None).is_some()
     };
     assert!(holds(&game));
-    assert!(game.world.resource::<HeldModifiers>().0.is_empty());
+    assert!(game.resource::<HeldModifiers>().0.is_empty());
     game.step();
     assert!(!holds(&game));
 }
@@ -746,74 +734,69 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             (UnitType::new(1), TagSet::of([stunned])),
         ];
         let book = TagBook::new(effects, own);
-        game.world.insert_resource(book);
+        game.insert_resource(book);
         // The modifiers the shares below are instances of, 0 and 1.
-        let speed = game.world.resource::<StatBook>();
+        let speed = game.resource::<StatBook>();
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
         let stunning = TagSet::of([stunned]);
-        ModifierBook::push_changes(&mut game.world, &[(speed, StatOp::Add)], stunning);
-        ModifierBook::push_changes(&mut game.world, &[(speed, StatOp::Cut)], TagSet::default());
+        game.push_modifier_changes(&[(speed, StatOp::Add)], stunning);
+        game.push_modifier_changes(&[(speed, StatOp::Cut)], TagSet::default());
         game
     };
     let mut game = start();
     let walker = unit(&mut game, 0);
-    let speed = game.world.resource::<StatBook>();
+    let speed = game.resource::<StatBook>();
     let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let modifiers = Modifiers::bundle([
         share(0, None, Num::ZERO, Reapply::Refresh),
         share(1, None, sixteenths(8), Reapply::Refresh),
     ]);
-    game.world.entity_mut(walker).insert(modifiers);
+    game.entity_mut(walker).insert(modifiers);
     game.step();
 
     // Restored into a fresh match, the unit comes back with its state alone; after a tick on
     // both, its stats and tags are derived again as the original's are, and the hashes agree.
     let mut snapshot = Vec::new();
-    game.registry.snapshot(&game.world, &mut snapshot);
+    game.snapshot(&mut snapshot);
     let mut restored = start();
     restored.clear();
-    game.registry
-        .restore(&snapshot, &mut restored.world)
-        .unwrap();
-    let id = *game.world.get::<StableId>(walker).unwrap();
-    let copy = restored.world.resource::<EntityIndex>().get(id).unwrap();
-    assert!(restored.world.get::<UnitStats>(copy).is_none());
+    restored.restore(&snapshot).unwrap();
+    let id = *game.get::<StableId>(walker).unwrap();
+    let copy = restored.entity_of(id).unwrap();
+    assert!(restored.get::<UnitStats>(copy).is_none());
     game.step();
-    restored.world.run_schedule(SimUpdate);
-    for (world, entity) in [(&game.world, walker), (&restored.world, copy)] {
+    restored.run_schedule(SimUpdate);
+    for (world, entity) in [(&game, walker), (&restored, copy)] {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));
         let tags = world.get::<UnitTags>(entity);
         assert!(UnitTags::properties_of(tags).blocks(Block::Move));
     }
-    assert_eq!(
-        game.registry.hash(&game.world),
-        game.registry.hash(&restored.world)
-    );
+    assert_eq!(game.state_hash(), restored.state_hash());
 
     // A delivery, of type 1 whose own tag is the stun's, keeps the tags it spawned with, as it
     // has no level to derive them from; one that lost them, as a restore leaves it, takes its
     // type's again as the next tick starts.
-    let id = game.world.resource_mut::<IdAllocator>().allocate();
+    let id = game.resource_mut::<IdAllocator>().allocate();
     let spawned = UnitTags {
         tags: TagSet::of([stunned]),
         ..UnitTags::default()
     };
-    let at = Position::new(Vec3::ZERO).unwrap();
+    let pos = Position::new(Vec3::ZERO).unwrap();
     let delivery = (
         id,
         UnitType::new(1),
-        at,
+        pos,
         Team::new(0),
         DeliveryEntity,
         spawned,
     );
-    let bolt = game.world.spawn(delivery).id();
+    let bolt = game.spawn(delivery).id();
     game.step();
-    let tags = |game: &TestMatch| game.world.get::<UnitTags>(bolt).map(|tags| tags.tags);
+    let tags = |game: &Match| game.get::<UnitTags>(bolt).map(|tags| tags.tags);
     assert_eq!(tags(&game), Some(TagSet::of([stunned])));
-    assert!(game.world.get::<UnitStats>(bolt).is_none());
-    game.world.entity_mut(bolt).remove::<UnitTags>();
+    assert!(game.get::<UnitStats>(bolt).is_none());
+    game.entity_mut(bolt).remove::<UnitTags>();
     game.step();
     assert_eq!(tags(&game), Some(TagSet::of([stunned])));
 }

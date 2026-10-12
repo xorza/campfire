@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use campfire_sim::Capability;
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::kind_spec::KindSpec;
@@ -8,7 +9,6 @@ use crate::production::train_queue::TrainQueue;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
-use campfire_sim::Capability;
 
 /// What each unit type uses and gives of supply, and what the unit each train makes uses, by
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
@@ -29,10 +29,10 @@ pub(crate) struct UnitSupply {
 }
 
 impl SupplyCosts {
-    /// The costs of `types`, and of the trains of `actions`.
-    pub(crate) fn new(types: ByType<SupplyData>, actions: &ActionBook) -> SupplyCosts {
+    /// The costs of `types`, and of the trains of `book`.
+    pub(crate) fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCosts {
         let trains = (0..)
-            .map_while(|at| actions.get(ActionId::new(at)))
+            .map_while(|at| book.get(ActionId::new(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
                 KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) | KindSpec::Gather(_) => {

@@ -46,7 +46,7 @@ impl TargetIndex {
         self.bodies.rebuild(targets.map(|(at, row)| Placed {
             id: row.id,
             key: at,
-            at: row.pos,
+            pos: row.pos,
             shape: row.shape,
         }));
         self.indexed = true;
@@ -101,7 +101,7 @@ impl TargetIndex {
         bodies.visit_near(from, reach, |body| {
             let row = &rows.units()[body.key];
             let relation = rows.relations().between(team, row.team);
-            if metric.reaches(from, shape, radius, body.at, body.shape)
+            if metric.reaches(from, shape, radius, body.pos, body.shape)
                 && filter.selects(relation, row.tags.tags)
                 && seen(rows.columns(), body.key)
             {

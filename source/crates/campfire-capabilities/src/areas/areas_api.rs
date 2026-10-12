@@ -23,19 +23,21 @@ impl AreasApi {
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
-        api.bind_for(area, |ctx: &mut Ctx, at: Position| AreasApi::land(ctx, at))
-            .data(DataTable::Delivery, &["area"], &[])
-            .data(
-                DataTable::Area,
-                &["radius", "delay_ms", "duration_ms", "affects", "inside"],
-                &[],
-            )
-            .data(DataTable::AreaInside, &["self", "allies", "enemies"], &[]);
+        api.bind_for(area, |ctx: &mut Ctx, pos: Position| {
+            AreasApi::land(ctx, pos)
+        })
+        .data(DataTable::Delivery, &["area"], &[])
+        .data(
+            DataTable::Area,
+            &["radius", "delay_ms", "duration_ms", "affects", "inside"],
+            &[],
+        )
+        .data(DataTable::AreaInside, &["self", "allies", "enemies"], &[]);
     }
 
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new
     /// area, with the id the call takes for it.
-    fn land(ctx: &Ctx, at: Position) -> Checked<NewUnit> {
+    fn land(ctx: &Ctx, pos: Position) -> Checked<NewUnit> {
         let launcher = Delivering::of(ctx, |shape| shape == DeliveryShape::Area)?;
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
@@ -44,7 +46,7 @@ impl AreasApi {
             id: Some(id),
             by: launcher.by,
             unit_type,
-            at,
+            pos,
         });
         Ok(NewUnit { id, unit_type })
     }

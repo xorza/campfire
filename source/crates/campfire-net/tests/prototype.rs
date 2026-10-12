@@ -5,31 +5,28 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use campfire_capabilities::Order;
-use campfire_capabilities::internals::{give_modifier, set_relation};
+use campfire_capabilities::internals::{StatsWorldInternals, UnitsWorldInternals};
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, Life, MatchEnd,
-    MatchEntity, MatchResult, Metric, ModeState, Modifiers, MoveStep, Owner, Player,
-    PlayerResources, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
-    Stats, SyncAll, SyncNone, Team,
+    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life, Match,
+    MatchResult, Metric, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
+    PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
+    SyncAll, SyncNone, Team, UnitsWorld,
 };
 use campfire_common::{MapName, PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_net::PendingOrders;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, LinkLost, PlayerLink, TickHashes,
+    InputChannel, InputMessage, InputMessageRefused, LinkLost, PendingOrders, PlayerLink,
+    TickHashes,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Runner, Session};
-use campfire_sim::StableId;
-use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
-use lightyear::prelude::PredictionTarget;
-use lightyear::prelude::Replicate;
+use campfire_runner::{Session, SessionMatch, SessionWorld};
+use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use lightyear::prelude::{
-    Client, Connected, MessageSender, Predicted, PredictionManager, RollbackMode,
+    Client, Connected, MessageSender, Predicted, PredictionManager, PredictionTarget, Replicate,
+    RollbackMode,
 };
 
 /// Frames of match: one tick each.
@@ -43,7 +40,7 @@ const fn move_to(x: i64, z: i64) -> Action {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    position: Position,
+    pos: Position,
     destination: Destination,
 }
 
@@ -60,7 +57,7 @@ fn hero_entity(app: &App) -> Entity {
 fn hero(app: &App) -> Hero {
     let hero = app.world().entity(hero_entity(app));
     Hero {
-        position: *hero.get::<Position>().unwrap(),
+        pos: *hero.get::<Position>().unwrap(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -108,7 +105,7 @@ fn server_and_replay_agree_on_every_tick() {
         }
 
         let arrived = Hero {
-            position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+            pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
             destination: Destination::default(),
         };
         assert_eq!(hero(local.server()), arrived, "{case}");
@@ -149,14 +146,18 @@ fn server_and_replay_agree_on_every_tick() {
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
         let seed = decoded.revealed_seeds().unwrap();
-        let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
+        let mut replay = Match::start_session(decoded.rewound(), seed, local.packages()).unwrap();
         let mut replayed = HashTrail::default();
         for _ in live.totals() {
-            replay.run_tick();
-            replayed.record(replay.world());
+            replay.run_tick_alone();
+            replayed.record(&replay);
         }
         assert_eq!(live.difference(&replayed), None, "{case}");
-        assert_eq!(replay.log().next_tick(), Tick::new(ticks), "{case}");
+        assert_eq!(
+            replay.session().log().next_tick(),
+            Tick::new(ticks),
+            "{case}"
+        );
     }
 }
 
@@ -181,7 +182,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         frames += 1;
     }
     let arrived = Hero {
-        position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
+        pos: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), arrived);
@@ -234,8 +235,8 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     let (server, client) = (local.server().world(), local.client(0).world());
     assert_eq!(client.resource::<Metric>(), server.resource::<Metric>());
     assert_eq!(client.resource::<Bounds>(), server.resource::<Bounds>());
-    assert_eq!(Combat::life(client), Some(PoolId::FIRST));
-    assert_eq!(Combat::life(server), Some(PoolId::FIRST));
+    assert_eq!(client.life_pool(), Some(PoolId::FIRST));
+    assert_eq!(server.life_pool(), Some(PoolId::FIRST));
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 6.25 m from its
     // edge and hits for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));
@@ -278,7 +279,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         local.step();
     }
     let at = |x, z| Hero {
-        position: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), at(4, 0));
@@ -319,7 +320,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     // falls to one strike: the walker's attack on it ends the match, and the west, team 0, wins.
     let world = local.server().world();
     let tower = local.tower(Team::new(1));
-    let tower_entity = world.resource::<EntityIndex>().get(tower).unwrap();
+    let tower_entity = world.entity_of(tower).unwrap();
     let frail = Life::full(Num::EPSILON);
     local
         .server_mut()
@@ -355,7 +356,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     // the same target, start and cooldowns.
     let mut windups = [None, None];
     let mut frames = 0;
-    while MatchEnd::of(local.server().world()).is_none() {
+    while local.server().world().match_end().is_none() {
         assert!(frames < 400, "the walker fells the tower");
         local.step();
         frames += 1;
@@ -368,10 +369,10 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     let [server, client] = windups;
     assert!(server.is_some());
     assert_eq!(client, server);
-    let end = MatchEnd::of(local.server().world()).unwrap();
+    let end = local.server().world().match_end().unwrap();
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     local.step();
-    assert_eq!(MatchEnd::of(local.client(0).world()), Some(end));
+    assert_eq!(local.client(0).world().match_end(), Some(end));
 
     // After the end neither end moves the hero, and the server's tick still counts on.
     let still = hero(local.server());
@@ -382,14 +383,14 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
         local.step();
     }
     assert_eq!(hero(local.server()), still);
-    assert_eq!(hero(local.client(0)).position, still.position);
+    assert_eq!(hero(local.client(0)).pos, still.pos);
     // A step runs one tick of the server's.
     let after = local.server().world().resource::<SimTick>().start();
     assert_eq!(after, tick.after(Ticks::new(steps)));
 
     // A second login of the player, which sits after the end, learns it as it sits.
     let second = local.add_client(0);
-    let ended = |local: &InProcessMatch| MatchEnd::of(local.client(second).world());
+    let ended = |local: &InProcessMatch| local.client(second).world().match_end();
     for _ in 0..300 {
         if ended(&local).is_some() {
             break;
@@ -423,8 +424,8 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     let avatar = local.avatar(0);
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
-        let modifier = Stats::modifier(world, 0, name).unwrap();
-        give_modifier(world, avatar, modifier, None, false);
+        let modifier = world.modifier_named(0, name).unwrap();
+        world.give_modifier(avatar, modifier, None, false);
         let mut frames = 0;
         while !carries(local.client(0)) {
             local.step();
@@ -463,8 +464,8 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     let dashing = |app: &App| app.world().get::<ForcedMove>(hero_entity(app)).is_some();
     let entity = hero_entity(local.server());
     let world = local.server_mut().world_mut();
-    let at = world.get::<Position>(entity).unwrap().get();
-    let to = Position::new(Vec3::new(at.x - Num::int(6), at.y, at.z)).unwrap();
+    let pos = world.get::<Position>(entity).unwrap().get();
+    let to = Position::new(Vec3::new(pos.x - Num::int(6), pos.y, pos.z)).unwrap();
     let step = Num::ONE.checked_div_int(5).unwrap();
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
@@ -495,18 +496,16 @@ fn the_client_takes_the_relations_a_script_sets() {
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The client holds the relations from its first replication, on the match's entity.
-    let relations = |app: &App| Relations::held(app.world()).cloned();
+    let relations = |app: &App| app.world().held_relations().cloned();
     while relations(local.client(0)).is_none() {
         local.step();
     }
     assert_eq!(relations(local.client(0)), Some(Relations::default()));
     let (west, east) = (Team::new(0), Team::new(1));
-    set_relation(
-        local.server_mut().world_mut(),
-        west,
-        east,
-        Relation::Neutral,
-    );
+    local
+        .server_mut()
+        .world_mut()
+        .set_relation(west, east, Relation::Neutral);
     // The server sends them in its frame of the next step, and the client takes them in the step
     // after.
     local.step();
@@ -533,7 +532,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // one whose resources it lacks.
     let gold_of = |app: &App, slot| {
         let world = app.world();
-        let entity = Player::entity(world, PlayerSlot::new(slot))?;
+        let entity = world.player_entity(PlayerSlot::new(slot))?;
         Some(
             world
                 .get::<PlayerResources>(entity)
@@ -567,7 +566,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // The mode's state that syncs to all reaches each client, and the rest none.
     for app in [local.server(), local.client(0), local.client(1)] {
         let world = app.world();
-        let entity = MatchEntity::entity(world).unwrap();
+        let entity = world.match_entity().unwrap();
         let all = world
             .get::<ModeState<SyncAll>>(entity)
             .map(ModeState::values);
@@ -576,7 +575,7 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     let none = |app: &App| {
         let world = app.world();
         world
-            .get::<ModeState<SyncNone>>(MatchEntity::entity(world).unwrap())
+            .get::<ModeState<SyncNone>>(world.match_entity().unwrap())
             .is_some()
     };
     assert!(none(local.server()) && !none(local.client(0)) && !none(local.client(1)));
@@ -619,10 +618,7 @@ impl Handoff {
     const FRAMES: usize = 60;
 
     fn entity_in(&self, app: &App) -> Entity {
-        app.world()
-            .resource::<EntityIndex>()
-            .get(self.hero)
-            .unwrap()
+        app.world().entity_of(self.hero).unwrap()
     }
 
     fn held(&self, client: usize) -> Held {
@@ -694,7 +690,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     local.start_match();
     let hero = local.avatar(0);
     let mut game = Handoff { local, hero };
-    let held_in = |app: &App| app.world().resource::<EntityIndex>().get(hero).is_some();
+    let held_in = |app: &App| app.world().entity_of(hero).is_some();
     game.step_until(|game| held_in(game.local.client(0)) && held_in(game.local.client(1)));
     assert_eq!(
         (game.held(0), game.held(1)),

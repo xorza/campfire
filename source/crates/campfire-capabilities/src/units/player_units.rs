@@ -55,14 +55,14 @@ impl PlayerUnits<'_, '_> {
 }
 
 impl HeldPlayerUnits {
-    pub fn new(world: &mut World) -> HeldPlayerUnits {
-        HeldPlayerUnits(SystemState::new(world))
-    }
-
     /// See `PlayerUnits::avatar`, of `world`, the world it was made of.
     pub fn avatar(&mut self, world: &World, slot: PlayerSlot) -> Option<Commanded> {
         let units = self.0.get(world).expect("its params are always valid");
         units.avatar(slot)
+    }
+
+    pub fn new(world: &mut World) -> HeldPlayerUnits {
+        HeldPlayerUnits(SystemState::new(world))
     }
 }
 

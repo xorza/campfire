@@ -1,6 +1,7 @@
-use bevy_ecs::world::World;
+use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::world::{Mut, World};
 use campfire_math::Num;
-use campfire_sim::StableId;
+use campfire_sim::{SimWorld, StableId};
 
 use crate::actions::capability_does::CapabilityDoes;
 use crate::progression::experience::Experience;
@@ -14,27 +15,24 @@ use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 use crate::units::view::View;
-use bevy_ecs::change_detection::DetectChangesMut;
-use bevy_ecs::world::Mut;
-use campfire_sim::EntityIndex;
 
 /// A change to units' progress that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ProgressionEffect {
     /// Experience, not negative, on a track the unit has.
     AddXp {
-        unit: StableId,
+        id: StableId,
         track: TrackId,
         amount: Num,
     },
 }
 
 impl ProgressionEffect {
-    /// Queues the listed `does`, experience, to `unit` in `frame`; a unit `view` does not hold,
+    /// Queues the listed `does`, experience, to `id` in `frame`; a unit `view` does not hold,
     /// or that does not have the track, fails the call, as `ctx.add_xp` does.
     pub(crate) fn queue_listed(
         does: CapabilityDoes,
-        unit: StableId,
+        id: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
@@ -42,11 +40,11 @@ impl ProgressionEffect {
         let CapabilityDoes::Xp { track, amount } = does else {
             unreachable!("progression queues only its own listed effects")
         };
-        if !ProgressionColumn::has(view, unit, track) {
+        if !ProgressionColumn::has(view, id, track) {
             return Err(CallError::Api(ApiError::NoTrack));
         }
         frame.effects.push(ProgressionEffect::AddXp {
-            unit,
+            id,
             track,
             amount: amount.number(frame),
         });
@@ -60,15 +58,8 @@ impl Effect for ProgressionEffect {
     /// gives it a point.
     fn apply(self, world: &mut World, _: &mut Frame) {
         match self {
-            ProgressionEffect::AddXp {
-                unit,
-                track,
-                amount,
-            } => {
-                let entity = world
-                    .resource::<EntityIndex>()
-                    .get(unit)
-                    .expect("a unit given experience exists");
+            ProgressionEffect::AddXp { id, track, amount } => {
+                let entity = world.entity_of(id).expect("a unit given experience exists");
                 world.resource_scope(|world, book: Mut<'_, TrackBook>| {
                     let mut carrier = world.entity_mut(entity);
                     let (mut experience, mut level, points) = carrier
@@ -98,7 +89,7 @@ impl Effect for ProgressionEffect {
                     let mut level_ups = world.resource_mut::<LevelUps>();
                     level_ups
                         .0
-                        .extend(reached.map(|level| LevelUp { unit, track, level }));
+                        .extend(reached.map(|level| LevelUp { id, track, level }));
                 });
             }
         }

@@ -1,8 +1,7 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
 
 use crate::units::tag::Tag;
+use crate::units::tag_effect::TagEffect;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
@@ -73,9 +72,9 @@ impl TagBook {
             .iter()
             .filter_map(|tag| self.immune.get(tag.index()))
             .fold(TagSet::default(), |immune, &of| immune.union(of));
-        let takes_effect = TagBook::effect_test(self.granting, immune);
+        let takes_effect = TagEffect::new(self.granting, immune);
         let tags = granted
-            .filter(|&tags| takes_effect(tags))
+            .filter(|&tags| takes_effect.takes(tags))
             .fold(own, TagSet::union);
         let properties = tags
             .iter()
@@ -93,25 +92,6 @@ impl TagBook {
     /// The tags that make their unit immune to some.
     pub(crate) const fn granting(&self) -> TagSet {
         self.granting
-    }
-
-    /// Whether a modifier that grants a set of tags takes effect on a unit immune to `immune`,
-    /// where `granting` makes immune: unless it grants a tag the unit is immune to, and none
-    /// that makes immune.
-    pub(crate) const fn effect_test(granting: TagSet, immune: TagSet) -> impl Fn(TagSet) -> bool {
-        move |tags| !tags.meets(immune) || tags.meets(granting)
-    }
-
-    /// Whether a modifier that grants a set of tags takes effect on `entity`; every one does in
-    /// a match with no tag book, or on a unit with no tags.
-    pub(crate) fn effective(world: &World, entity: Entity) -> impl Fn(TagSet) -> bool + use<> {
-        let granting = world
-            .get_resource::<TagBook>()
-            .map_or(TagSet::default(), TagBook::granting);
-        let immune = world
-            .get::<UnitTags>(entity)
-            .map_or(TagSet::default(), |tags| tags.immune);
-        TagBook::effect_test(granting, immune)
     }
 }
 

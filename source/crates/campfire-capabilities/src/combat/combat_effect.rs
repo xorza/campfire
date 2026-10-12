@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::StableId;
+use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -16,7 +16,6 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::view::View;
 use crate::values::damage_kind::DamageKind;
-use campfire_sim::EntityIndex;
 
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,7 +30,7 @@ pub(crate) enum CombatEffect {
     Heal { unit: StableId, amount: Num },
     /// `amount` of `unit`'s `pool` back.
     Restore {
-        unit: StableId,
+        id: StableId,
         pool: PoolId,
         amount: Num,
     },
@@ -47,23 +46,23 @@ impl CombatEffect {
     )]
     pub(crate) fn queue_listed(
         does: CapabilityDoes,
-        unit: StableId,
+        id: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         _: &View,
     ) -> Result<(), CallError> {
         let effect = match does {
             CapabilityDoes::Damage { amount, kind } => CombatEffect::Damage {
-                target: unit,
+                target: id,
                 amount: amount.number(frame),
                 kind,
             },
             CapabilityDoes::Heal { amount } => CombatEffect::Heal {
-                unit,
+                unit: id,
                 amount: amount.number(frame),
             },
             CapabilityDoes::Restore { pool, amount } => CombatEffect::Restore {
-                unit,
+                id,
                 pool,
                 amount: amount.number(frame),
             },
@@ -81,14 +80,14 @@ impl Effect for CombatEffect {
     /// restore applies at once, and an extra attack queues the source's attack damage, when it
     /// still has an attack.
     fn apply(self, world: &mut World, frame: &mut Frame) {
-        let (source, ability, depth) = (frame.acting(), frame.action(), frame.depth());
+        let (source, action, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
             source,
             target,
             amount,
             kind,
             cause,
-            ability,
+            action,
             depth,
             hit: frame.hit(),
         };
@@ -107,12 +106,12 @@ impl Effect for CombatEffect {
                     target: unit,
                     amount,
                     cause: HealCause::Effect,
-                    ability,
+                    action,
                     depth,
                 });
             }
-            CombatEffect::Restore { unit, pool, amount } => {
-                DamagePass::restore(world, unit, pool, amount);
+            CombatEffect::Restore { id, pool, amount } => {
+                DamagePass::restore(world, id, pool, amount);
             }
             CombatEffect::AttackHit { target } => {
                 let index = world.resource::<EntityIndex>();
@@ -131,7 +130,7 @@ impl Effect for CombatEffect {
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
                 let hit = Damage {
-                    ability: slot.action,
+                    action: slot.action,
                     ..damage(
                         target,
                         weapon.damage(stats),

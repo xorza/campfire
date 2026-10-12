@@ -314,12 +314,12 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
 
 #[test]
 fn every_client_rejoins_a_restored_server() {
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     for _ in 0..30 {
         local.step();
@@ -365,5 +365,5 @@ fn every_client_rejoins_a_restored_server() {
     }
     assert_eq!(walking(&mut local), [true; 2]);
     drop(local);
-    drop(data);
+    drop(scratch);
 }

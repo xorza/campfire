@@ -18,7 +18,7 @@ impl CastSpends {
     }
 
     /// Spends what the cast of the unit of `entity`, from `slot`, spends beside its slot.
-    pub(crate) fn spend(world: &mut World, entity: Entity, slot: u8) {
+    pub(super) fn spend(world: &mut World, entity: Entity, slot: u8) {
         if let Some(spend) = world
             .get_resource::<CastSpends>()
             .and_then(|spends| spends.0)

@@ -58,33 +58,15 @@ impl<S: ModeSync> ModeState<S> {
         self.values.as_slice()
     }
 
+    pub(crate) const fn values_mut(&mut self) -> &mut [StateValue] {
+        self.values.as_mut_slice()
+    }
+
     /// The fields of the class `data` declares, each at its first value, in the order of their
     /// names.
     pub(crate) fn initial(data: &ModeData) -> ModeState<S> {
         let fields = data.state.values().filter(|field| field.sync == S::SYNC);
         ModeState::new(fields.map(|field| field.decl.initial().clone()).collect())
-    }
-
-    /// The class's fields in `world`, on the match's entity, which every match with a mode spawns
-    /// with them.
-    pub(crate) fn of(world: &World) -> &[StateValue] {
-        let entity = MatchEntity::entity(world).expect("a match that started has its entity");
-        let state = world.get::<ModeState<S>>(entity);
-        &state
-            .expect("the match's entity holds the mode's state")
-            .values
-    }
-
-    /// Writes `values`, the class's fields as a call left them, in `world`, unless they are what
-    /// it holds, so a call that changed none marks nothing changed.
-    pub(crate) fn commit(world: &mut World, values: &[StateValue]) {
-        let entity = MatchEntity::entity(world).expect("a match that started has its entity");
-        let mut state = world
-            .get_mut::<ModeState<S>>(entity)
-            .expect("the match's entity holds the mode's state");
-        if state.values != values {
-            state.values.clone_from_slice(values);
-        }
     }
 }
 

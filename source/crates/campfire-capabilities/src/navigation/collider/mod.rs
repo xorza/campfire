@@ -15,7 +15,7 @@ use crate::units::layer::Layer;
 pub(crate) struct Collider {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
-    pub(crate) at: Vec3,
+    pub(crate) point: Vec3,
     pub(crate) shape: Shape,
     pub(crate) layer: Layer,
     pub(crate) movable: bool,
@@ -60,7 +60,7 @@ impl Collider {
             return false;
         }
         match Collider::boxed(self, other) {
-            Some((body, at, mover)) => body.push_out(at, mover.at, mover.radius()).is_some(),
+            Some((body, at, mover)) => body.push_out(at, mover.point, mover.radius()).is_some(),
             None => self.overlap(other).is_some(),
         }
     }
@@ -85,12 +85,12 @@ impl Collider {
     /// neither is a box. Only a body that may not be pushed is one.
     fn boxed<'a>(a: &'a Collider, b: &'a Collider) -> Option<(BodyBox, Position, &'a Collider)> {
         let (body, at, mover) = match (a.shape, b.shape) {
-            (Shape::Box(body), _) => (body, a.at, b),
-            (_, Shape::Box(body)) => (body, b.at, a),
+            (Shape::Box(body), _) => (body, a.point, b),
+            (_, Shape::Box(body)) => (body, b.point, a),
             _ => return None,
         };
-        let at = Position::new(at).expect("a static body stands within the bound");
-        Some((body, at, mover))
+        let pos = Position::new(at).expect("a static body stands within the bound");
+        Some((body, pos, mover))
     }
 
     /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a
@@ -99,8 +99,8 @@ impl Collider {
         if !self.may_part(other) {
             return None;
         }
-        let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
-        let dz = i128::from(other.at.z.to_bits() - self.at.z.to_bits());
+        let dx = i128::from(other.point.x.to_bits() - self.point.x.to_bits());
+        let dz = i128::from(other.point.z.to_bits() - self.point.z.to_bits());
         let reach = i128::from(self.shape.bound().to_bits() + other.shape.bound().to_bits());
         let square = dx * dx + dz * dz;
         (square < reach * reach).then_some(Overlap {
@@ -117,8 +117,8 @@ impl Collider {
         }
         if let Some((body, at, _)) = Collider::boxed(a, b) {
             let mover = if b.movable { b } else { a };
-            if let Some(moved) = body.push_out(at, mover.at, mover.radius()) {
-                mover.at = moved;
+            if let Some(moved) = body.push_out(at, mover.point, mover.radius()) {
+                mover.point = moved;
             }
             return;
         }
@@ -145,8 +145,8 @@ impl Collider {
             (true, false) => along,
             _ => 0,
         });
-        a.at = Collider::moved(a.at, back.map(|along| -along));
-        b.at = Collider::moved(b.at, [0, 1].map(|axis| change[axis] - back[axis]));
+        a.point = Collider::moved(a.point, back.map(|along| -along));
+        b.point = Collider::moved(b.point, [0, 1].map(|axis| change[axis] - back[axis]));
     }
 
     /// `along`, one component of an offset whose length is `√square` bits, on the offset that
@@ -165,13 +165,13 @@ impl Collider {
         least.ceil_root().cast_signed() * along.signum()
     }
 
-    /// `at` moved by `by` bits along x and z; its height stays.
-    fn moved(at: Vec3, by: [i128; 2]) -> Vec3 {
+    /// `point` moved by `by` bits along x and z; its height stays.
+    fn moved(point: Vec3, by: [i128; 2]) -> Vec3 {
         let bits = |along: i128| i64::try_from(along).expect("a push is shorter than two radii");
         Vec3::new(
-            Num::from_bits(at.x.to_bits() + bits(by[0])),
-            at.y,
-            Num::from_bits(at.z.to_bits() + bits(by[1])),
+            Num::from_bits(point.x.to_bits() + bits(by[0])),
+            point.y,
+            Num::from_bits(point.z.to_bits() + bits(by[1])),
         )
     }
 }

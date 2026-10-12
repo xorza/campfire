@@ -114,9 +114,9 @@ impl Projectile {
         self.payload
     }
 
-    /// Whether it homes on `unit`.
-    pub(crate) const fn homes_on(&self, unit: StableId) -> bool {
-        matches!(self.flight, Flight::Homing { target } if target.get() == unit.get())
+    /// Whether it homes on `id`.
+    pub(crate) const fn homes_on(&self, id: StableId) -> bool {
+        matches!(self.flight, Flight::Homing { target } if target.get() == id.get())
     }
 }
 

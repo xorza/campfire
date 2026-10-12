@@ -15,21 +15,21 @@ use crate::units::units_column::UnitsColumn;
 /// row until it spawns.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct UnitStateAccess {
-    unit: StableId,
+    id: StableId,
     unit_type: Option<UnitType>,
     /// Its row in the view; none for a unit the call creates.
     row: Option<usize>,
 }
 
 impl UnitStateAccess {
-    /// The state of the unit `unit` of `unit_type` in row `row` of the view.
+    /// The state of the unit `id` of `unit_type` in row `row` of the view.
     pub(crate) const fn of_row(
-        unit: StableId,
+        id: StableId,
         unit_type: Option<UnitType>,
         row: usize,
     ) -> UnitStateAccess {
         UnitStateAccess {
-            unit,
+            id,
             unit_type,
             row: Some(row),
         }
@@ -38,7 +38,7 @@ impl UnitStateAccess {
     /// The state of `unit`, which the call creates.
     pub(crate) const fn of_new(unit: NewUnit) -> UnitStateAccess {
         UnitStateAccess {
-            unit: unit.id,
+            id: unit.id,
             unit_type: Some(unit.unit_type),
             row: None,
         }
@@ -59,7 +59,7 @@ impl UnitStateAccess {
     fn get(&self, ctx: &Ctx, name: &str) -> Checked<Dynamic> {
         let view = ctx.view();
         let field = UnitsColumn::field(view, self.unit_type, name)?;
-        if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.unit, field.at) {
+        if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.id, field.at) {
             return Ok(value.to_dynamic(view));
         }
         if let Some(row) = self.row {
@@ -79,7 +79,7 @@ impl UnitStateAccess {
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         let mut frame = ctx.write()?;
-        UnitsCall::of_mut(&mut frame).write(self.unit, field, value);
+        UnitsCall::of_mut(&mut frame).write(self.id, field, value);
         Ok(())
     }
 }

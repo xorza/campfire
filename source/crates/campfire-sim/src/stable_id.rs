@@ -71,6 +71,7 @@ mod tests {
 
     use super::*;
     use crate::id_allocator::IdAllocator;
+    use crate::sim_world::SimWorld;
 
     #[test]
     fn index_follows_spawn_despawn_and_replace() {
@@ -80,11 +81,11 @@ mod tests {
         let first = world.resource_mut::<IdAllocator>().allocate();
         let second = world.resource_mut::<IdAllocator>().allocate();
         let entity = world.spawn(first).id();
-        assert_eq!(world.resource::<EntityIndex>().get(first), Some(entity));
+        assert_eq!(world.entity_of(first), Some(entity));
 
         world.entity_mut(entity).insert(second);
-        assert_eq!(world.resource::<EntityIndex>().get(first), None);
-        assert_eq!(world.resource::<EntityIndex>().get(second), Some(entity));
+        assert_eq!(world.entity_of(first), None);
+        assert_eq!(world.entity_of(second), Some(entity));
 
         world.despawn(entity);
         assert_eq!(world.resource::<EntityIndex>().iter().count(), 0);
@@ -101,7 +102,7 @@ mod tests {
         assert!(third.is_allocated() && !StableId::MATCH.is_allocated() && !player.is_allocated());
         let named = world.spawn(player).id();
         world.spawn(third);
-        assert_eq!(world.resource::<EntityIndex>().get(player), Some(named));
+        assert_eq!(world.entity_of(player), Some(named));
         assert_eq!(
             world.resource::<EntityIndex>().last_allocated(),
             Some(third)

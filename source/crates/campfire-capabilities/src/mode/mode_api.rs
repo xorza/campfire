@@ -622,20 +622,20 @@ impl ModeApi {
             let spawning = IndexedBody::of(id, pos, &body);
             ModeCall::of_mut(&mut *ctx.write()?).boxes.push(spawning);
         }
-        let at = SpawnAt {
+        let spawn = SpawnAt {
             id,
             unit_type,
             team,
             pos,
             angle: Num::ZERO,
         };
-        ctx.queue(ModeEffect::SpawnUnit { at, owner })?;
+        ctx.queue(ModeEffect::SpawnUnit { at: spawn, owner })?;
         Ok(NewUnit { id, unit_type })
     }
 
-    /// Queues the actions `ids` into the slot kind `kind` of `unit`, which has `slots` slots
+    /// Queues the actions `ids` into the slot kind `kind` of `id`, which has `slots` slots
     /// before the grants this call queued.
-    fn grant(ctx: &Ctx, unit: StableId, slots: usize, kind: &str, ids: &Array) -> Checked<()> {
+    fn grant(ctx: &Ctx, id: StableId, slots: usize, kind: &str, ids: &Array) -> Checked<()> {
         let book = ModeBook::of_or_fail(ctx)?;
         let view = ctx.view();
         let kind = ActionsColumn::kind_named(view, kind)?;
@@ -645,9 +645,9 @@ impl ModeApi {
         let rank = ActionsColumn::first_rank(view, kind);
         let abilities = ids
             .iter()
-            .map(|id| {
-                let id = id.clone().into_immutable_string().ok();
-                id.and_then(|id| book.roster.loadout_ability(&id))
+            .map(|name| {
+                let name = name.clone().into_immutable_string().ok();
+                name.and_then(|name| book.roster.loadout_ability(&name))
                     .ok_or_else(|| ApiError::UnknownAction.fail().into())
             })
             .collect::<Checked<Vec<_>>>()?;
@@ -657,10 +657,10 @@ impl ModeApi {
             .queued::<ModeEffect>()
             .filter_map(|effect| match effect {
                 ModeEffect::Grant {
-                    unit: granted,
+                    id: granted,
                     abilities,
                     ..
-                } if *granted == unit => Some(abilities.len()),
+                } if *granted == id => Some(abilities.len()),
                 _ => None,
             })
             .sum();
@@ -668,7 +668,7 @@ impl ModeApi {
             return Err(ApiError::TooManySlots.fail().into());
         }
         frame.effects.push(ModeEffect::Grant {
-            unit,
+            id,
             kind,
             rank,
             abilities,
@@ -732,10 +732,7 @@ impl ModeApi {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
         let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-        ctx.queue(ModeEffect::Respawn {
-            unit: unit.id,
-            ticks,
-        })
+        ctx.queue(ModeEffect::Respawn { id: unit.id, ticks })
     }
 
     /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
@@ -746,10 +743,7 @@ impl ModeApi {
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
         let slot_row = ActionsColumn::slot(ctx.view(), unit.row_index(), slot)
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
-        let effect = ModeEffect::Learn {
-            unit: unit.id,
-            slot,
-        };
+        let effect = ModeEffect::Learn { id: unit.id, slot };
         let mut frame = ctx.write()?;
         let queued = frame
             .effects

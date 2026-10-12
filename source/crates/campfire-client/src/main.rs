@@ -34,7 +34,7 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
+    ClientDir, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient, SimClientWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
@@ -138,7 +138,7 @@ fn main() -> ExitCode {
         },
         LinkWatch,
     ));
-    let client = SimClient::spawn_client(app.world_mut());
+    let client = app.world_mut().spawn_client();
     connection.link(&mut app, client, &pace, tick);
     app.world_mut().trigger(Connect { entity: client });
     let exit = app.run();

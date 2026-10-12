@@ -33,7 +33,7 @@ struct Death {
 /// A unit that died, as it was when it died: its team, and the player who owned it, if any.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fallen {
-    pub unit: StableId,
+    pub id: StableId,
     pub team: Option<Team>,
     pub owner: Option<PlayerSlot>,
 }
@@ -47,10 +47,10 @@ pub struct DeathView<'a> {
 }
 
 impl Fallen {
-    /// `unit` as it dies: of `team`, and owned by `owner`, if it has them.
-    pub(crate) fn of(unit: StableId, team: Option<&Team>, owner: Option<&Owner>) -> Fallen {
+    /// `id` as it dies: of `team`, and owned by `owner`, if it has them.
+    pub(crate) fn of(id: StableId, team: Option<&Team>, owner: Option<&Owner>) -> Fallen {
         Fallen {
-            unit,
+            id,
             team: team.copied(),
             owner: owner.map(|owner| owner.slot()),
         }
@@ -99,13 +99,13 @@ impl Deaths {
     pub(crate) fn index_killed(&mut self) {
         debug_assert!(self.killed.is_empty(), "the kills are indexed once a tick");
         self.killed
-            .extend(self.entries.iter().map(|death| death.fallen.unit));
+            .extend(self.entries.iter().map(|death| death.fallen.id));
         self.killed.sort_unstable();
     }
 
-    /// Whether the damage pass killed `unit` this tick, as `index_killed` sorted the kills.
-    pub(crate) fn killed(&self, unit: StableId) -> bool {
-        self.killed.binary_search(&unit).is_ok()
+    /// Whether the damage pass killed `id` this tick, as `index_killed` sorted the kills.
+    pub(crate) fn killed(&self, id: StableId) -> bool {
+        self.killed.binary_search(&id).is_ok()
     }
 
     /// The tick whose deaths the record holds.

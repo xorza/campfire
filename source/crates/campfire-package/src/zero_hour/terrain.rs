@@ -119,10 +119,10 @@ impl TerrainLighting {
 }
 
 impl Terrain {
-    /// The terrain of `parts` in `lighting`; an error unless its cells fill whole rows, every
+    /// The terrain of `terrain` in `lighting`; an error unless its cells fill whole rows, every
     /// index each cell, blend and cliff names is in its list, each class's tiles are within its
     /// count, and its lighting has at most three lights and finite numbers.
-    pub fn new(parts: TerrainParts, lighting: TerrainLighting) -> Result<Terrain, TerrainError> {
+    pub fn new(terrain: TerrainParts, lighting: TerrainLighting) -> Result<Terrain, TerrainError> {
         let numbers = lighting
             .lights
             .iter()
@@ -132,14 +132,14 @@ impl Terrain {
         {
             return Err(TerrainError::Lighting);
         }
-        let columns = usize::try_from(parts.columns)
+        let columns = usize::try_from(terrain.columns)
             .ok()
             .ok_or(TerrainError::Shape)?;
-        if columns == 0 || !parts.cells.len().is_multiple_of(columns) {
+        if columns == 0 || !terrain.cells.len().is_multiple_of(columns) {
             return Err(TerrainError::Shape);
         }
         let tile = |tile: u16| {
-            if u32::from(tile >> 2) < parts.tiles {
+            if u32::from(tile >> 2) < terrain.tiles {
                 Ok(())
             } else {
                 Err(TerrainError::Tile(tile))
@@ -149,21 +149,21 @@ impl Terrain {
             Some(index) if usize::from(index) >= len => Err(error(index)),
             _ => Ok(()),
         };
-        for cell in &parts.cells {
+        for cell in &terrain.cells {
             tile(cell.tile)?;
-            within(cell.blend, parts.blends.len(), TerrainError::Blend)?;
-            within(cell.extra_blend, parts.blends.len(), TerrainError::Blend)?;
-            within(cell.cliff_uv, parts.cliffs.len(), TerrainError::CliffUv)?;
+            within(cell.blend, terrain.blends.len(), TerrainError::Blend)?;
+            within(cell.extra_blend, terrain.blends.len(), TerrainError::Blend)?;
+            within(cell.cliff_uv, terrain.cliffs.len(), TerrainError::CliffUv)?;
         }
-        for blend in &parts.blends {
+        for blend in &terrain.blends {
             tile(blend.tile)?;
             within(
                 blend.custom_edge,
-                parts.edge_classes.len(),
+                terrain.edge_classes.len(),
                 TerrainError::EdgeClass,
             )?;
         }
-        for cliff in &parts.cliffs {
+        for cliff in &terrain.cliffs {
             tile(cliff.tile)?;
         }
         let within = |classes: &[TextureClass], tiles: u32, error: fn(usize) -> TerrainError| {
@@ -174,13 +174,16 @@ impl Terrain {
                 }
             })
         };
-        within(&parts.classes, parts.tiles, TerrainError::Class)?;
+        within(&terrain.classes, terrain.tiles, TerrainError::Class)?;
         within(
-            &parts.edge_classes,
-            parts.edge_tiles,
+            &terrain.edge_classes,
+            terrain.edge_tiles,
             TerrainError::EdgeClassTiles,
         )?;
-        Ok(Terrain { parts, lighting })
+        Ok(Terrain {
+            parts: terrain,
+            lighting,
+        })
     }
 
     pub const fn parts(&self) -> &TerrainParts {

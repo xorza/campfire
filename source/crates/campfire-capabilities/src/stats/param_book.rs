@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
-use campfire_sim::TickRate;
+use campfire_sim::{Capability, TickRate};
 
 use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
@@ -20,7 +20,6 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
-use campfire_sim::Capability;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
@@ -57,13 +56,13 @@ impl ParamBook {
         &self.0.modifiers
     }
 
-    /// The param at `place` a modifier's number reads: `modifier`'s own, or that of `ability`,
+    /// The param at `place` a modifier's number reads: `modifier`'s own, or that of `action`,
     /// which applied it, at `rank`, of `source`, as its way checked it holds. A scaling table's
     /// is live, read again as its source changes.
     pub(crate) fn modifier_param(
         &self,
         modifier: ModifierId,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
         place: &ParamPlace,
         source: Option<&ParamSource<'_>>,
@@ -72,9 +71,9 @@ impl ParamBook {
         let (owner, at) = match place {
             ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(*at)),
             ParamPlace::Applier(name) => {
-                let ability = ability.expect(CHECKED);
-                let at = self.actions().named(ability.index(), name.as_str());
-                (ParamOwner::Action(ability), at.expect(CHECKED))
+                let action = action.expect(CHECKED);
+                let at = self.actions().named(action.index(), name.as_str());
+                (ParamOwner::Action(action), at.expect(CHECKED))
             }
         };
         let TableRun { table, run } = self.table(owner);
@@ -86,19 +85,19 @@ impl ParamBook {
         ParamRead { value, live }
     }
 
-    /// Whether `ability` at `rank`, or no ability, gives the param `name` a modifier reads where
+    /// Whether `action` at `rank`, or no ability, gives the param `name` a modifier reads where
     /// it declares none: a value at `rank` that is a number, or with a `rate` a time in ticks at
     /// it, which no scaling table gives, as its source's stats are known only as the modifier
     /// applies.
     pub(crate) fn gives(
         &self,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
         name: &DeclaredName,
         rate: Option<TickRate>,
     ) -> Result<(), ParamProblem> {
-        let ability = ability.ok_or(ParamProblem::Missing)?;
-        let (table, run) = (self.actions(), ability.index());
+        let action = action.ok_or(ParamProblem::Missing)?;
+        let (table, run) = (self.actions(), action.index());
         let at = table
             .named(run, name.as_str())
             .ok_or(ParamProblem::Missing)?;
@@ -119,9 +118,9 @@ impl ParamBook {
         }
     }
 
-    /// Whether it holds the params of `ability`.
-    pub(crate) fn has_action(&self, ability: ActionId) -> bool {
-        self.actions().has_run(ability.index())
+    /// Whether it holds the params of `action`.
+    pub(crate) fn has_action(&self, action: ActionId) -> bool {
+        self.actions().has_run(action.index())
     }
 
     /// Whether `live` names a scaling param it holds, with a value at `rank`.
@@ -150,9 +149,9 @@ impl ParamBook {
                 table: self.modifiers(),
                 run: modifier.index(),
             },
-            ParamOwner::Action(ability) => TableRun {
+            ParamOwner::Action(action) => TableRun {
                 table: self.actions(),
-                run: ability.index(),
+                run: action.index(),
             },
         }
     }
@@ -185,56 +184,32 @@ impl Book for ParamBook {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::stats::stats_call::StatsCall;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    use bevy_ecs::world::World;
-
-    use crate::scripts::ctx::Ctx;
     use crate::stats::param_book::ParamBook;
     use crate::stats::stat_id::StatId;
-    use crate::units::action_id::ActionId;
-    use crate::units::modifier_id::ModifierId;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
     use crate::values::stat::Stat;
 
     impl ParamBook {
-        /// Adds the params of `action`, the one `world`'s action book loaded last, each stat at
-        /// its place `stat` gives.
-        pub(crate) fn load_action(
-            world: &mut World,
-            action: ActionId,
+        /// Adds the params of the next action, each stat at its id `stat` gives; its run.
+        pub(crate) fn push_action(
+            &mut self,
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
-        ) {
-            let mut book = world.resource_mut::<ParamBook>();
-            let run = Arc::make_mut(&mut book.0).push_action(params, stat);
-            assert_eq!(run, action.index(), "one run of params per action");
-            ParamBook::share(world);
+        ) -> usize {
+            Arc::make_mut(&mut self.0).push_action(params, stat)
         }
 
-        /// Adds the params of `modifier`, the one `world`'s modifier book loaded last, each stat
-        /// at its place `stat` gives.
-        pub(crate) fn load_modifier(
-            world: &mut World,
-            modifier: ModifierId,
+        /// Adds the params of the next modifier, each stat at its id `stat` gives; its run.
+        pub(crate) fn push_modifier(
+            &mut self,
             params: &BTreeMap<DeclaredName, Param>,
             stat: impl Fn(&Stat) -> StatId,
-        ) {
-            let mut book = world.resource_mut::<ParamBook>();
-            let run = Arc::make_mut(&mut book.0).push_modifier(params, stat);
-            assert_eq!(run, modifier.index(), "one run of params per modifier");
-            ParamBook::share(world);
-        }
-
-        /// Gives `world`'s script frame, when it has one, the book as it is now.
-        fn share(world: &World) {
-            if let Some(ctx) = world.get_non_send::<Ctx>() {
-                let params = world.resource::<ParamBook>().clone();
-                StatsCall::share_params(&mut ctx.frame(), params);
-            }
+        ) -> usize {
+            Arc::make_mut(&mut self.0).push_modifier(params, stat)
         }
     }
 }

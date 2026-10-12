@@ -1,7 +1,6 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Or, QueryState, Without};
-
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::World;
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId};
@@ -10,8 +9,9 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
 use crate::navigation::destination::Destination;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::route::Route;
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::production::gather_loop::checked_gather::CheckedGather;
 use crate::production::gather_loop::gather_view::{GatherView, HeldNode};
 use crate::production::gather_loop::step::Step;
@@ -220,10 +220,10 @@ impl GatherLoop {
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => Destination::go(world, entity, Some(to)),
-            Step::Stand => Destination::go(world, entity, None),
+            Step::Walk(to) => world.go_to(entity, Some(to)),
+            Step::Stand => world.go_to(entity, None),
             Step::Stop => {
-                Destination::go(world, entity, None);
+                world.go_to(entity, None);
                 set(world, None);
             }
             Step::Interrupt(node) => {
@@ -240,11 +240,11 @@ impl GatherLoop {
                 }),
             ),
             Step::Wait => {
-                Destination::go(world, entity, None);
+                world.go_to(entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                Destination::go(world, entity, None);
+                world.go_to(entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 world
                     .get_mut::<Node>(node)
@@ -298,13 +298,14 @@ impl GatherLoop {
     /// Joins the load of the worker of `entity`, which its player's resources take, to them, and
     /// sends it `back` to a node, or ends its loop with none.
     fn deliver(world: &mut World, entity: Entity, order: GatherOrder, back: Option<NodeAt>) {
-        Destination::go(world, entity, None);
+        world.go_to(entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load() {
             let owner = *world
                 .get::<Owner>(entity)
                 .expect("a load joins its owner's");
-            PlayerResources::of_mut(world, owner.slot())
+            world
+                .player_resources_mut(owner.slot())
                 .expect("a player of the session holds its resources")
                 .add(load.resource, i64::from(load.amount))
                 .expect("the step checked the player's resources take the load");

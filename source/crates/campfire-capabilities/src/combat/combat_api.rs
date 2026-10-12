@@ -166,7 +166,7 @@ impl CombatApi {
     fn restore(ctx: &Ctx, unit: &Unit, name: &str, amount: Num) -> Checked<()> {
         let pool = StatsColumn::pool_named(ctx.view(), name)?;
         CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-            unit: unit.id,
+            id: unit.id,
             pool,
             amount,
         })

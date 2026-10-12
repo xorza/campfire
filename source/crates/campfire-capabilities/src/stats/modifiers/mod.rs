@@ -12,11 +12,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
-use crate::stats::application::Application;
-use crate::stats::application::NewInstance;
-use crate::stats::instance::Instance;
-use crate::stats::instance::StackEnd;
-use crate::stats::instance::StatShare;
+use crate::stats::application::{Application, NewInstance};
+use crate::stats::instance::{Instance, StackEnd, StatShare};
 use crate::stats::lifetime::{Ends, Hold};
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
@@ -405,7 +402,7 @@ impl Modifiers {
         let instance = Instance {
             id: new.id,
             source: new.source,
-            ability: new.ability,
+            action: new.action,
             rank: new.rank,
             lifetime: new.lifetime,
             aura_radius: new.aura_radius,
@@ -435,22 +432,22 @@ impl Modifiers {
         clocks.remove(at);
     }
 
-    /// Takes the numbers of `new`, an application of the same modifier from the same source, to
+    /// Takes the numbers of `instance`, an application of the same modifier from the same source, to
     /// the instance at `at`, and joins its lifetime, keeping the stacks, when they end, and the
     /// script state. Its interval takes the new length from the next on, and the next keeps its
     /// tick, so no refresh puts it off.
-    fn renew(&mut self, clocks: &mut ModifierClocks, at: usize, new: NewInstance) {
+    fn renew(&mut self, clocks: &mut ModifierClocks, at: usize, instance: NewInstance) {
         let starts = self.starts(at);
         let held = &mut self.instances[at];
-        held.ability = new.ability;
-        held.rank = new.rank;
-        held.lifetime = held.lifetime.joined(new.lifetime);
-        held.stack_life = new.stack_life;
-        held.aura_radius = new.aura_radius;
+        held.action = instance.action;
+        held.rank = instance.rank;
+        held.lifetime = held.lifetime.joined(instance.lifetime);
+        held.stack_life = instance.stack_life;
+        held.aura_radius = instance.aura_radius;
         let shares = starts.shares..starts.shares + usize::from(held.shares);
-        held.shares = u16::try_from(new.stats.len()).expect("an instance's run fits u16");
-        self.shares.splice(shares, new.stats);
-        clocks.renew(at, new.interval, new.shield);
+        held.shares = u16::try_from(instance.stats.len()).expect("an instance's run fits u16");
+        self.shares.splice(shares, instance.stats);
+        clocks.renew(at, instance.interval, instance.shield);
     }
 
     /// Takes away the ends of the `count` stacks that end soonest of the instance at `at`.
@@ -504,19 +501,14 @@ impl Carried<'_> {
     /// Whether its modifier, its ability's params and each live param it reads are ones the books
     /// hold, its way gives every param its modifier and its aura's read, as an application
     /// checks at `rate`, and it has a value for each of its modifier's stat changes.
-    pub(crate) fn fits(
-        &self,
-        modifiers: &ModifierBook,
-        params: &ParamBook,
-        rate: TickRate,
-    ) -> bool {
+    pub(crate) fn fits(&self, book: &ModifierBook, params: &ParamBook, rate: TickRate) -> bool {
         let Instance {
-            id, ability, rank, ..
+            id, action, rank, ..
         } = *self.instance;
-        let Some(entry) = modifiers.entry(id) else {
+        let Some(entry) = book.entry(id) else {
             return false;
         };
-        let way = |id| modifiers.has_way(id, ability, rank, params, rate);
+        let way = |id| book.has_way(id, action, rank, params, rate);
         let applies = way(id)
             && entry
                 .spec

@@ -23,12 +23,12 @@ use campfire_store::{EntryKind, InputFile, Scratch};
 const RECEIPT_LEN: usize = 4096;
 #[test]
 fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // 150 steps of 1/60 s: two and a half seconds of the server's clock, which gives receipts
@@ -62,7 +62,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
                 .receipt
                 .signed_by(&secp, &server, &receipt.signature)
         );
-        let file = data
+        let file = scratch
             .path("data")
             .join(format!("client-{client}"))
             .join("receipts")
@@ -86,7 +86,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
     // chain past the seq its receipt names, under the delegation it names.
     local.stop_server();
-    let stopped = ServerDir::open(&data.path("data")).unwrap();
+    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
     let restored = SessionDir::find(&stopped)
         .unwrap()
         .unwrap()
@@ -112,14 +112,14 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
 fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // A file holds the place of client 0's receipts' directory, so its receipts are not written,
     // on every OS; client 1's are.
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path("data"));
-    let place = data.path("data").join("client-0").join("receipts");
-    data.write(&place, b"");
+    local.keep_data(scratch.path("data"));
+    let place = scratch.path("data").join("client-0").join("receipts");
+    scratch.write(&place, b"");
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     // The writer fails in its own time, after a receipt came; the client's `Faults` logs it.
@@ -137,7 +137,7 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     let state = local.client(0).world().resource::<JoinState>();
     assert!(state.receipt().is_some());
     assert!(state.clock().is_some());
-    assert_eq!(data.kind(&place), Some(EntryKind::File));
+    assert_eq!(scratch.kind(&place), Some(EntryKind::File));
 }
 
 #[test]
@@ -146,12 +146,12 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     // journal syncs; then, in one step, it leaves and the server gives receipts. The receipt of
     // the move crosses the leave on the way: the client keeps it, as the newest, and refuses
     // none, until the server ends the link, after which it takes no receipt.
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::DELAYED,
         InProcessMatch::SEED_CHAIN,
     ));
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     local.hold_receipts();
     let watch = local.server().world().resource::<JournalWatch>().0.clone();

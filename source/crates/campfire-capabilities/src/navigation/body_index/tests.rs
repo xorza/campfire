@@ -4,15 +4,15 @@ use super::*;
 fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
-        at: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
         shape: Shape::Circle(radius),
         layer: Layer::FIRST,
     }
 }
 
-fn near_on(index: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<StableId> {
+fn near_on(statics: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<StableId> {
     let mut found = Vec::new();
-    index.near(
+    statics.near(
         layer,
         Vec3::new(Num::int(x), Num::ZERO, Num::int(z)),
         reach,
@@ -23,8 +23,8 @@ fn near_on(index: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<S
     found
 }
 
-fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
-    near_on(index, Layer::FIRST, x, z, reach)
+fn near(statics: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
+    near_on(statics, Layer::FIRST, x, z, reach)
 }
 
 #[test]
@@ -190,7 +190,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         let expected: Vec<StableId> = bodies
             .iter()
             .filter(|body| {
-                let (at, bound) = (body.at.get(), body.shape.bound());
+                let (at, bound) = (body.pos.get(), body.shape.bound());
                 let cell = index.levels.cell(index.levels.level(bound));
                 let rows = Buckets::covering(cell, Num::int(z), reach);
                 let columns = Buckets::covering(cell, Num::int(x), reach);
@@ -221,7 +221,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.at, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "({x}, {z})");
     }
 }
@@ -265,7 +265,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         let at = Vec3::new(along(), Num::ZERO, along());
         scattered.push(IndexedBody {
             id: ids.allocate(),
-            at: Position::new(at).unwrap(),
+            pos: Position::new(at).unwrap(),
             shape: Shape::Circle(Num::from_bits(next(3).cast_signed() * quarter)),
             layer: Layer::FIRST,
         });
@@ -292,7 +292,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.at, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }

@@ -77,7 +77,7 @@ impl SimUpdate {
     /// only as a log line of a running match. It runs on one thread whatever features the build turns on: a tick's systems are too small
     /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
     /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
-    pub fn schedule() -> Schedule {
+    pub(crate) fn schedule() -> Schedule {
         let mut schedule = StrictSchedule::of(SimUpdate);
         schedule.set_executor(SingleThreadedExecutor::new());
         schedule.configure_sets(SimEdge::Start.before(SimSet::Inputs));
@@ -98,7 +98,7 @@ impl SimUpdate {
     /// Inserts what the schedule needs into a new world: the tick at 0, the tick `rate`, the
     /// random sequences of `seed`, the id allocator, the entity index and empty tick inputs. A
     /// restore then replaces the state among them.
-    pub fn prepare(world: &mut World, seed: SegmentSeed, rate: TickRate) {
+    pub(crate) fn prepare(world: &mut World, seed: SegmentSeed, rate: TickRate) {
         world.insert_resource(SimTick::default());
         world.insert_resource(rate);
         world.insert_resource(SimRng::new(seed));
@@ -108,77 +108,17 @@ impl SimUpdate {
     }
 }
 
-fn start_tick(tick: Res<'_, SimTick>, mut rng: ResMut<'_, SimRng>) {
+pub(crate) fn start_tick(tick: Res<'_, SimTick>, mut rng: ResMut<'_, SimRng>) {
     rng.begin_tick(*tick);
 }
 
-fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, TickInputs>) {
+pub(crate) fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, TickInputs>) {
     tick.advance();
     inputs.clear();
 }
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod stage_clock;
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use std::collections::BTreeSet;
-
-    use bevy_ecs::schedule::{IntoSystemSet, SystemSet};
-    use bevy_ecs::world::World;
-    use campfire_schedule::StrictSchedule;
-
-    use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
-
-    impl SimUpdate {
-        /// Builds `world`'s sim schedule again with no automatic sync points, and the build's
-        /// other settings kept: one of them orders the systems it lies between, so the ambiguity
-        /// check then sees every pair of systems that only a sync point keeps in order. The error
-        /// names its systems.
-        pub fn build_without_sync_points(world: &mut World) -> Result<(), String> {
-            world.schedule_scope(SimUpdate, |world, schedule| {
-                StrictSchedule::without_sync_points(schedule);
-                let built = schedule.initialize(world).map(drop);
-                built.map_err(|error| error.to_string(schedule.graph(), world))
-            })
-        }
-
-        /// The name of each system of `world`'s sim schedule that sits in no stage and no
-        /// `SimEdge`, but the tick's own start and end. Such a system runs in a gap between two
-        /// stages, in an order Bevy picks, so a bench's probes time it with either stage. It
-        /// builds the schedule as `build_without_sync_points` does, so a sync point it finds is
-        /// one the code added.
-        pub fn systems_outside_stages(world: &mut World) -> Vec<String> {
-            if let Err(error) = SimUpdate::build_without_sync_points(world) {
-                panic!("{error}");
-            }
-            world.schedule_scope(SimUpdate, |_, schedule| {
-                let graph = schedule.graph();
-                let sets = SimSet::ALL
-                    .into_iter()
-                    .flat_map(|stage| [stage.intern(), SimEdge::After(stage).intern()])
-                    .chain([
-                        SimEdge::Start.intern(),
-                        start_tick.into_system_set().intern(),
-                        end_tick.into_system_set().intern(),
-                    ]);
-                let mut placed = BTreeSet::new();
-                for set in sets {
-                    let systems = graph
-                        .systems_in_set(set)
-                        .expect("a set of the built sim schedule");
-                    placed.extend(systems.iter().copied());
-                }
-                schedule
-                    .systems()
-                    .expect("the schedule is built")
-                    .filter(|&(key, _)| !placed.contains(&key))
-                    .map(|(_, system)| system.name().shortname().to_string())
-                    .collect()
-            })
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests;

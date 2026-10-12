@@ -24,19 +24,19 @@ impl Walls {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    /// Whether `body`, a box on `layer` at `at`, has room there among `walls`, none in a match
+    /// Whether `body`, a box on `layer` at `pos`, has room there among `walls`, none in a match
     /// with none: it lies within `bounds`, and its inside shares no point with a wall of its
     /// layer. The bodies that stand there are the caller's to test.
     pub(crate) fn room_for(
         walls: Option<&Walls>,
         bounds: Bounds,
-        at: Position,
+        pos: Position,
         body: &BodyBox,
         layer: Layer,
     ) -> bool {
         let (min, max) = (bounds.min(), bounds.max());
         let extent = body.extent();
-        let ground = [at.get().x, at.get().z];
+        let ground = [pos.get().x, pos.get().z];
         let within = (0..2).all(|axis| {
             ground[axis]
                 .checked_sub(extent[axis])
@@ -49,6 +49,6 @@ impl Walls {
         within
             && !walls
                 .iter()
-                .any(|wall| wall.layer == layer && body.overlaps_polygon(at, &wall.area))
+                .any(|wall| wall.layer == layer && body.overlaps_polygon(pos, &wall.area))
     }
 }

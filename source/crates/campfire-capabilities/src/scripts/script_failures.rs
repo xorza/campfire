@@ -14,7 +14,7 @@ pub struct ScriptFailures(Vec<ScriptFailure>);
 /// A call that failed: the unit it ran for, if any, its hook, and why.
 #[derive(Debug)]
 pub struct ScriptFailure {
-    pub unit: Option<StableId>,
+    pub id: Option<StableId>,
     pub hook: Hook,
     pub error: CallError,
 }
@@ -29,8 +29,8 @@ impl ScriptFailures {
         self.0.drain(..)
     }
 
-    pub(crate) fn record(&mut self, unit: Option<StableId>, hook: Hook, error: CallError) {
-        self.0.push(ScriptFailure { unit, hook, error });
+    pub(crate) fn record(&mut self, id: Option<StableId>, hook: Hook, error: CallError) {
+        self.0.push(ScriptFailure { id, hook, error });
     }
 
     /// Forgets the failures of the tick before, as a tick begins.
@@ -50,7 +50,7 @@ pub(crate) mod internals {
     /// A failed call as a test compares it: its unit, its hook and what its error is.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct FailedCall {
-        pub(crate) unit: Option<StableId>,
+        pub(crate) id: Option<StableId>,
         pub(crate) hook: Hook,
         pub(crate) kind: FailureKind,
     }
@@ -60,7 +60,7 @@ pub(crate) mod internals {
             self.0
                 .iter()
                 .map(|failure| FailedCall {
-                    unit: failure.unit,
+                    id: failure.id,
                     hook: failure.hook,
                     kind: failure.error.kind(),
                 })

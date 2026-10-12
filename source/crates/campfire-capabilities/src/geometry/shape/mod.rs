@@ -43,28 +43,28 @@ impl Shape {
         }
     }
 
-    /// The point of the shape at `at` nearest `to` on the ground plane, at `at`'s height: `to`
+    /// The point of the shape at `pos` nearest `to` on the ground plane, at `pos`'s height: `to`
     /// itself inside; a box's nearest point, each coordinate rounded to the nearest bit; a
     /// circle's, a step of its radius from its centre toward `to`, as a walker steps.
-    pub(crate) fn nearest_point(&self, at: Position, to: Position) -> Position {
-        let ground = Position::new(Vec3::new(to.get().x, at.get().y, to.get().z))
+    pub(crate) fn nearest_point(&self, pos: Position, to: Position) -> Position {
+        let ground = Position::new(Vec3::new(to.get().x, pos.get().y, to.get().z))
             .expect("a point within the bound");
         match self {
-            Shape::Box(body) => body.nearest_point(at, ground),
-            Shape::Circle(radius) if at.within_ground(ground, *radius) => ground,
+            Shape::Box(body) => body.nearest_point(pos, ground),
+            Shape::Circle(radius) if pos.within_ground(ground, *radius) => ground,
             Shape::Circle(radius) => {
-                let step = at.get().step_toward(ground.get(), *radius);
+                let step = pos.get().step_toward(ground.get(), *radius);
                 Position::new(step).expect("a step within a body's radius stays within the bound")
             }
         }
     }
 
     /// Whether the straight path from `from` to `to` on the ground plane comes closer than
-    /// `reach` to the shape at `at`, exactly: closer than `reach` and its radius to a circle's
+    /// `reach` to the shape at `pos`, exactly: closer than `reach` and its radius to a circle's
     /// centre, or than `reach` to a box. Touching at `reach` is not closer.
     pub(crate) fn comes_within(
         &self,
-        at: Position,
+        pos: Position,
         from: Position,
         to: Position,
         reach: Num,
@@ -72,7 +72,7 @@ impl Shape {
         // A path whose span along an axis lies at least `reach` beyond the shape's comes no
         // closer: most shapes a search of buckets finds lie so, and take no exact test. A reach
         // past every number saturates, and no span lies beyond it.
-        let (centre, ends) = (at.get(), [from.get(), to.get()]);
+        let (centre, ends) = (pos.get(), [from.get(), to.get()]);
         let extent = self.extent();
         let reach_bits = reach.to_bits();
         let clear = |centre: Num, ends: [Num; 2], extent: Num| {
@@ -93,19 +93,19 @@ impl Shape {
         }
         match self {
             Shape::Circle(_) => {
-                self.approach(Metric::Planar, at, from, to, reach).nearest == Ordering::Less
+                self.approach(Metric::Planar, pos, from, to, reach).nearest == Ordering::Less
             }
-            Shape::Box(body) => body.comes_within(at, from, to, reach),
+            Shape::Box(body) => body.comes_within(pos, from, to, reach),
         }
     }
 
-    /// How the straight path from `from` to `to` comes to the shape at `at` in `metric`, against
+    /// How the straight path from `from` to `to` comes to the shape at `pos` in `metric`, against
     /// `reach`: to a circle's centre against `reach` and its radius, a sum past every number
     /// reaching every distance, as `Metric::reaches` counts it; to a box against `reach`.
     pub(crate) fn approach(
         self,
         metric: Metric,
-        at: Position,
+        pos: Position,
         from: Position,
         to: Position,
         reach: Num,
@@ -113,11 +113,11 @@ impl Shape {
         match self {
             Shape::Circle(radius) => {
                 let reach = reach.checked_add(radius).unwrap_or(Num::MAX);
-                Approach::of(metric.offset(from, to), metric.offset(from, at), reach)
+                Approach::of(metric.offset(from, to), metric.offset(from, pos), reach)
             }
             Shape::Box(body) => {
                 debug_assert!(metric == Metric::Planar, "a box lies on a planar map");
-                body.approach(at, from, to, reach)
+                body.approach(pos, from, to, reach)
             }
         }
     }

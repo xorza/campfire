@@ -4,9 +4,8 @@ use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 
 use crate::mode::choices::Choices;
-use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
-use crate::mode::mode_state::ModeState;
+use crate::mode::mode_world::{ModeWorld, ModeWorldCrate};
 use crate::navigation::body_index::IndexedBody;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
@@ -41,12 +40,12 @@ impl CallPart for ModeCall {
             return Ok(());
         }
         let (none, all) = (
-            ModeState::<SyncNone>::of(world),
-            ModeState::<SyncAll>::of(world),
+            world.mode_fields::<SyncNone>(),
+            world.mode_fields::<SyncAll>(),
         );
         self.book.schema.merge_state(none, all, &mut self.state);
         self.choices.clone_from(world.resource::<Choices>());
-        self.ended = MatchEnd::of(world).is_some();
+        self.ended = world.match_end().is_some();
         self.boxes.clear();
         Ok(())
     }
@@ -80,8 +79,8 @@ impl ModeCall {
     pub(crate) fn commit_state(&mut self, world: &mut World) {
         let (none, all) = (&mut self.none, &mut self.all);
         self.book.schema.split_state(&self.state, none, all);
-        ModeState::<SyncNone>::commit(world, none);
-        ModeState::<SyncAll>::commit(world, all);
+        world.commit_mode_fields::<SyncNone>(none);
+        world.commit_mode_fields::<SyncAll>(all);
     }
 
     /// The mode's part of `frame`, which the mode added as it installed.

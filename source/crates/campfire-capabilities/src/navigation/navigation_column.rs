@@ -76,13 +76,13 @@ impl NavigationColumn {
             .push(NavigationRow { path, walks, layer });
     }
 
-    /// Whether `body`, a box that would spawn at `at`, has room there, as `view` read the match:
+    /// Whether `body`, a box that would spawn at `pos`, has room there, as `view` read the match:
     /// within the bounds, clear of the walls of its layer, of the living units of its layer that
     /// stand, and of `spawning`, the boxes the call already spawns; with no navigation, of the
     /// bounds and `spawning` alone.
     pub(crate) fn room_for(
         view: &View,
-        at: Position,
+        pos: Position,
         body: Body,
         spawning: &[IndexedBody],
     ) -> bool {
@@ -93,25 +93,25 @@ impl NavigationColumn {
         let clear_of_spawning = spawning
             .iter()
             .filter(|other| other.layer == layer)
-            .all(|other| !other.overlaps_box(at, &boxed));
+            .all(|other| !other.overlaps_box(pos, &boxed));
         let room = view.column(|column: &NavigationColumn| {
             let rows = column.rows.now();
-            let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), at, &boxed, layer);
+            let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), pos, &boxed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
                 if clear && stands && row.alive && row.shape != Shape::POINT {
                     let other = IndexedBody {
                         id: row.id,
-                        at: row.pos,
+                        pos: row.pos,
                         shape: row.shape,
                         layer,
                     };
-                    clear = !other.overlaps_box(at, &boxed);
+                    clear = !other.overlaps_box(pos, &boxed);
                 }
             });
             clear
         });
-        let room = room.unwrap_or_else(|| Walls::room_for(None, view.bounds(), at, &boxed, layer));
+        let room = room.unwrap_or_else(|| Walls::room_for(None, view.bounds(), pos, &boxed, layer));
         room && clear_of_spawning
     }
 

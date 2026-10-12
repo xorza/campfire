@@ -241,9 +241,9 @@ pub(crate) struct KindFilters;
 
 impl KindFilters {
     /// Registers the filter of every kind that not every client that sees an entity receives,
-    /// and, from the lists of `capabilities`, the observers that put a kind's filter on each
+    /// and, from the lists of `set`, the observers that put a kind's filter on each
     /// entity that gains one of its types: no system adds a filter, so none can forget one.
-    pub(crate) fn register(app: &mut App, capabilities: CapabilitySet) {
+    pub(crate) fn register(app: &mut App, set: CapabilitySet) {
         KindFilter::<PredictionKind>::register_kind(app);
         KindFilter::<PoolsKind>::register_kind(app);
         KindFilter::<CooldownsKind>::register_kind(app);
@@ -252,7 +252,7 @@ impl KindFilters {
         KindFilter::<ResourcesKind>::register_kind(app);
         KindFilter::<UnitStateOwnerKind>::register_kind(app);
         KindFilter::<UnitStateTeamKind>::register_kind(app);
-        Release::state_types(capabilities, &mut FilterObservers(app));
+        Release::state_types(set, &mut FilterObservers(app));
     }
 }
 

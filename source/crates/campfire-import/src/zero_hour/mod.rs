@@ -348,6 +348,7 @@ impl ZeroHour<'_> {
 
 #[cfg(test)]
 mod tests {
+    use campfire_capabilities::DeclaredName;
     use campfire_package::{ModePackages, PackageDir};
     use campfire_store::Scratch;
     use sha2::{Digest, Sha256};
@@ -359,7 +360,6 @@ mod tests {
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
     use crate::zero_hour::map_file::internals::map;
-    use campfire_capabilities::DeclaredName;
 
     /// The fixture install's version, as its archives hold their bytes now.
     fn version_of(scratch: &Scratch) -> [GameVersion; 1] {
@@ -379,12 +379,12 @@ mod tests {
         let scratch = Scratch::new();
         fixture(&scratch);
         let known = version_of(&scratch);
-        let game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
-        assert_eq!(game.version().name, "fixture");
+        let zero_hour = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        assert_eq!(zero_hour.version().name, "fixture");
 
         // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
         // its import gives, and its two unit types the package's.
-        let imported = game.write(&scratch.path("one")).unwrap();
+        let imported = zero_hour.write(&scratch.path("one")).unwrap();
         let fingerprint = imported.fingerprint;
         // Beside it, the rules package as the workspace holds it, which the imported mode, of
         // its manifest and mode data, depends on and loads with.
@@ -461,7 +461,7 @@ mod tests {
         );
         // Two imports write the same bytes, and the package reads as the fingerprint names it.
         assert_eq!(
-            game.write(&scratch.path("two")).unwrap().fingerprint,
+            zero_hour.write(&scratch.path("two")).unwrap().fingerprint,
             fingerprint
         );
         assert_eq!(
@@ -519,8 +519,8 @@ mod tests {
         let scratch = Scratch::new();
         fixture(&scratch);
         let known = version_of(&scratch);
-        let game = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
-        let imported = game.write(&scratch.path("one")).unwrap();
+        let zero_hour = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+        let imported = zero_hour.write(&scratch.path("one")).unwrap();
         // Each model the objects name once, as its conversion gives it; its material file; and
         // each object's models with the nodes its default look hides. The tank's turret is hidden
         // with the flash on the bone below it, which its muzzle flash hides as well; the crate's

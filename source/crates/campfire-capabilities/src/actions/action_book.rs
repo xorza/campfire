@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptId;
-use campfire_sim::StableId;
+use campfire_sim::{Capability, StableId};
 
 use crate::actions::action::{Action, Aim};
 use crate::actions::action_data::ActionData;
@@ -25,7 +25,6 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::values::relation::Relation;
-use campfire_sim::Capability;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the actions, as the
@@ -39,7 +38,7 @@ pub(crate) struct ActionBook {
 
 impl ActionBook {
     /// Loads `data` as the action `name` of `package`, with `parts` resolved against the match;
-    /// see `Actions::load`.
+    /// see `ActionsWorldTest::load_action`.
     pub(crate) fn load(
         &mut self,
         scripts: &ScriptBook,
@@ -199,33 +198,19 @@ impl Book for ActionBook {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::num::NonZeroU8;
     use std::sync::Arc;
 
-    use bevy_ecs::world::World;
     use campfire_common::Ticks;
-    use campfire_math::Num;
 
-    use crate::actions::action::{Action, Aim};
+    use crate::actions::action::Action;
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_range::ActionRange;
-    use crate::actions::actions_column::ActionsColumn;
-    use crate::actions::delivery::{Delivery, DeliveryShape};
-    use crate::actions::fan::Fan;
-    #[cfg(any(test, feature = "bench"))]
-    use crate::actions::gather_spec::GatherSpec;
-    use crate::actions::kind_spec::KindSpec;
-    use crate::actions::rank_values::RankValues;
-    use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
-    use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
-    use crate::units::view::View;
-    use crate::values::damage_kind::DamageKind;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, the places among its unit's stats of its
@@ -259,166 +244,12 @@ pub(crate) mod internals {
         }
     }
 
-    /// Adds `weapon` to the action book of `world`, which deals damage of the first kind.
-    pub(crate) fn weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
-        let delivery = weapon.projectile.map(|unit_type| Delivery {
-            unit_type,
-            shape: DeliveryShape::Projectile {
-                fan: Fan {
-                    count: NonZeroU8::MIN,
-                    spread_deg: Num::ZERO,
-                },
-                homes: true,
-            },
-        });
-        push(
-            world,
-            Action {
-                package: 0,
-                name: "weapon".into(),
-                kind: KindSpec::Attack(Weapon {
-                    rate: weapon.rate,
-                    damage: weapon.damage,
-                    kind: DamageKind::new(0),
-                }),
-                passive: None,
-                hold: None,
-                aim: Aim::Unit(weapon.aim),
-                ranks: vec![RankValues {
-                    range: weapon.range,
-                    cooldown: Ticks::ZERO,
-                    cost: weapon.cost,
-                    windup: weapon.windup,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: weapon.resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery,
-            },
-        )
-    }
-
-    /// Adds a train of `unit` that takes `time` and costs `resource_cost`, no pool and no
-    /// cooldown, to the action book of `world`.
-    #[cfg(test)]
-    pub(crate) fn train(
-        world: &mut World,
-        unit: UnitType,
-        time: Ticks,
-        resource_cost: Option<ResourceAmount>,
-    ) -> ActionId {
-        push(
-            world,
-            Action {
-                package: 0,
-                name: "train".into(),
-                kind: KindSpec::Train(unit),
-                passive: None,
-                hold: None,
-                aim: Aim::None,
-                ranks: vec![RankValues {
-                    range: ActionRange::Global,
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            },
-        )
-    }
-
-    /// Adds a build of `unit` within `range` meters, aimed at a point, that takes `time` and costs
-    /// `resource_cost`, no pool and no cooldown, to the action book of `world`.
-    #[cfg(test)]
-    pub(crate) fn build(
-        world: &mut World,
-        unit: UnitType,
-        range: Num,
-        time: Ticks,
-        resource_cost: Option<ResourceAmount>,
-    ) -> ActionId {
-        push(
-            world,
-            Action {
-                package: 0,
-                name: "build".into(),
-                kind: KindSpec::Build(unit),
-                passive: None,
-                hold: None,
-                aim: Aim::Point { clamp: false },
-                ranks: vec![RankValues {
-                    range: ActionRange::Meters(range),
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: resource_cost.into_iter().collect(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            },
-        )
-    }
-
-    /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
-    /// `time`, to the action book of `world`.
-    #[cfg(any(test, feature = "bench"))]
-    pub(crate) fn gather(
-        world: &mut World,
-        spec: GatherSpec,
-        aim: Filter,
-        range: Num,
-        time: Ticks,
-    ) -> ActionId {
-        push(
-            world,
-            Action {
-                package: 0,
-                name: "gather".into(),
-                kind: KindSpec::Gather(spec),
-                passive: None,
-                hold: None,
-                aim: Aim::Unit(aim),
-                ranks: vec![RankValues {
-                    range: ActionRange::Meters(range),
-                    cooldown: Ticks::ZERO,
-                    cost: PoolCost::default(),
-                    windup: time,
-                    charges: None,
-                    toggle: None,
-                    channel: None,
-                    charge: None,
-                }],
-                resource_costs: Box::default(),
-                script: None,
-                hooks: HookSet::default(),
-                delivery: None,
-            },
-        )
-    }
-
-    /// Adds `action` to the action book of `world`, and shares the book with the script view.
-    fn push(world: &mut World, action: Action) -> ActionId {
-        let mut book = world.resource_mut::<ActionBook>();
-        let id = ActionId::new(u32::try_from(book.actions.len()).unwrap());
-        Arc::make_mut(&mut book.actions).push(action);
-        let book = book.clone();
-        ActionsColumn::share(world.non_send::<View>(), book);
-        id
+    impl ActionBook {
+        /// Adds `action`; its id.
+        pub(crate) fn push(&mut self, action: Action) -> ActionId {
+            let id = ActionId::new(u32::try_from(self.actions.len()).unwrap());
+            Arc::make_mut(&mut self.actions).push(action);
+            id
+        }
     }
 }

@@ -9,8 +9,8 @@ use crate::scripts::script_role::ScriptRole;
 use crate::stats::Stats;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
-use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
+use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::scalar::Scalar;
@@ -22,7 +22,7 @@ use crate::values::scalar::Scalar;
 #[derive(Debug, Default)]
 pub(crate) struct StatsCall {
     params: ParamBook,
-    ability: Option<ActionId>,
+    action: Option<ActionId>,
     modifier: Option<ModifierId>,
     values: Vec<Scalar>,
     modifier_values: Vec<Scalar>,
@@ -33,15 +33,15 @@ pub(crate) struct StatsCall {
 
 impl CallPart for StatsCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
-        self.ability = start.action;
+        self.action = start.action;
         self.modifier = start.modifier;
         let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);
         self.spare.extend(unshared);
-        let reads = self.ability.is_some() || self.modifier.is_some();
+        let reads = self.action.is_some() || self.modifier.is_some();
         let source = start
             .acting
             .filter(|_| reads)
-            .and_then(|acting| ParamSource::of(world, acting));
+            .and_then(|acting| world.param_source(acting));
         let rank = start.rank;
         let fill = |values: &mut Vec<Scalar>, table: &ParamTable, run: Option<usize>| {
             values.clear();
@@ -55,7 +55,7 @@ impl CallPart for StatsCall {
         fill(
             &mut self.values,
             self.params.actions(),
-            self.ability.map(ActionId::index),
+            self.action.map(ActionId::index),
         );
         fill(
             &mut self.modifier_values,
@@ -75,7 +75,7 @@ impl CallPart for StatsCall {
             Some(self.modifier_values[at])
         });
         let value = own.or_else(|| {
-            let at = self.params.actions().named(self.ability?.index(), name)?;
+            let at = self.params.actions().named(self.action?.index(), name)?;
             Some(self.values[at])
         });
         value.map(Scalar::to_dynamic)
@@ -133,19 +133,18 @@ mod tests {
     use std::ptr;
     use std::sync::Arc;
 
+    use campfire_common::Tick;
     use campfire_sim::IdAllocator;
 
-    use campfire_common::Tick;
-
     use super::*;
-    use crate::release::test_match::TestMatch;
+    use crate::release::r#match::Match;
     use crate::scripts::state_value::StateValue;
     use crate::stats::modifier_handle::HandleOf;
     use crate::units::view::View;
 
     #[test]
     fn a_handle_no_script_holds_serves_the_next_call_again() {
-        let view = View::new(TestMatch::RATE);
+        let view = View::new(Match::TEST_RATE);
         let carrier = IdAllocator::default().allocate();
         let of = |stacks| HandleOf {
             carrier,

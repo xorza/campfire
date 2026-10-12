@@ -313,20 +313,20 @@ impl StatsColumn {
         })
     }
 
-    /// Whether `ability` at `rank`, or no ability at rank 1, applies modifier `id` with every
+    /// Whether `action` at `rank`, or no ability at rank 1, applies modifier `id` with every
     /// param it reads, of `call`'s params; an error with the param's problem when not.
     pub(crate) fn check_way(
         view: &View,
         call: &StatsCall,
         id: ModifierId,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
     ) -> Checked<()> {
         let rate = view.rate();
         StatsColumn::read(view, |column| {
             let checked = column
                 .modifier_book
-                .check_way(id, ability, rank, call.params(), rate);
+                .check_way(id, action, rank, call.params(), rate);
             Ok(checked.map_err(|problem| ApiError::ModifierParam(problem).fail())?)
         })
     }

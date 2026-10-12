@@ -14,7 +14,7 @@ pub(crate) struct StruckUnits(Vec<Struck>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub(crate) struct Struck {
     pub(crate) by: StableId,
-    pub(crate) unit: StableId,
+    pub(crate) id: StableId,
 }
 
 impl StruckUnits {
@@ -70,15 +70,15 @@ mod tests {
     #[test]
     fn struck_units_keep_only_the_flying() {
         let mut ids = IdAllocator::default();
-        let [a, b, c, unit] = [(); 4].map(|()| ids.allocate());
+        let [a, b, c, id] = [(); 4].map(|()| ids.allocate());
         let mut struck = StruckUnits::default();
         for by in [c, a, b, a] {
-            struck.insert(Struck { by, unit });
+            struck.insert(Struck { by, id });
         }
-        assert!(struck.contains(Struck { by: a, unit }));
-        assert!(!struck.contains(Struck { by: unit, unit }));
+        assert!(struck.contains(Struck { by: a, id }));
+        assert!(!struck.contains(Struck { by: id, id }));
         // Of a, b and c, each struck once, a and c fly on.
-        struck.keep(&[a, c, unit]);
+        struck.keep(&[a, c, id]);
         let kept: Vec<_> = struck.0.iter().map(|struck| struck.by).collect();
         assert_eq!(kept, [a, c]);
         struck.keep(&[]);

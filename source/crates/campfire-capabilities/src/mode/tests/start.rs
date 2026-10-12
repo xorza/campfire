@@ -1,13 +1,14 @@
 use super::*;
+use crate::navigation::on_path::OnPath;
 
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
-    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     // Before tick 0: the map's tower, 0, then the match start's spawns in order: the camp's
     // grunt, 1, at its marker; team a's spawn group of two, 2 and 3, at the path's start; team
     // b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
     assert_eq!(
-        game.units(),
+        game.placed_units(),
         [
             (0, at(-8, 0), 0, None),
             (1, at(0, 0), 2, None),
@@ -16,23 +17,22 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             (4, at(10, 0), 1, Some(PathEnd::End)),
         ]
     );
-    let tower = game.entity(0);
+    let tower = game.entity_by_id(0);
     assert_eq!(
-        game.sim.world.get::<OnPath>(tower).map(|path| path.get()),
+        game.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
     );
     // Beside them, the match's entity and each player's, of their named ids: players 0 and 1 of
     // team a, player 2 of b.
-    let world = &game.sim.world;
-    let named: Vec<_> = world
+    let named: Vec<_> = game
         .resource::<EntityIndex>()
         .iter()
         .filter(|(id, _)| !id.is_allocated())
         .map(|(id, entity)| {
             (
                 id,
-                world.get::<Player>(entity).copied(),
-                world.get::<Team>(entity),
+                game.get::<Player>(entity).copied(),
+                game.get::<Team>(entity),
             )
         })
         .collect();
@@ -53,43 +53,29 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         ]
     );
     assert!(
-        world
-            .entity(MatchEntity::entity(world).unwrap())
+        game.entity(game.match_entity().unwrap())
             .contains::<MatchEntity>()
     );
-    assert_eq!(Player::entity(world, PlayerSlot::new(3)), None);
+    assert_eq!(game.player_entity(PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
-    let vision = game.sim.world.resource::<VisionGrid>();
+    let vision = game.resource::<VisionGrid>();
     let grid = Grid::new(Num::int(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
-    assert_eq!(*game.sim.world.resource::<Bounds>(), map().bounds);
+    assert_eq!(*game.resource::<Bounds>(), map().bounds);
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
-    let tags = |id| {
-        game.sim
-            .world
-            .get::<UnitTags>(game.entity(id))
-            .unwrap()
-            .tags
-    };
-    let tag = |name| {
-        game.sim
-            .world
-            .non_send::<View>()
-            .types_mut()
-            .tag_named(name)
-            .unwrap()
-    };
+    let tags = |id| game.get::<UnitTags>(game.entity_by_id(id)).unwrap().tags;
+    let tag = |name| game.non_send::<View>().types_mut().tag_named(name).unwrap();
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
-    assert_eq!(game.state(), state("start", 0, 0, 0));
+    assert_eq!(game.tracked_state(), state("start", 0, 0, 0));
 
     // Set at the start, time 0: "every" is due at 1, the end of tick 0, and every tick after;
     // "once", 250 ms, 2.5 ticks rounded up to 3, at the end of tick 2, with its data.
     let mut seen = Vec::new();
     for _ in 0..4 {
-        game.tick(&[]);
-        seen.push(game.state());
+        game.tick_inputs(&[]);
+        seen.push(game.tracked_state());
     }
     assert_eq!(
         seen,
@@ -109,7 +95,7 @@ fn a_mode_whose_start_fails_starts_no_match() {
         let failing = format!(
             "fn on_match_start(ctx) {{ ctx.spawn_unit(\"{unit_type}\", \"a\", ctx.map.markers(\"camp\")[0].pos); }}"
         );
-        let failed = Game::start(&failing, ScriptLimits::ROOMY, mode_files()).err();
+        let failed = start_match(&failing, ScriptLimits::ROOMY, mode_files()).err();
         assert_eq!(
             failed.as_ref().map(CallError::kind),
             Some(FailureKind::Api(ApiError::UnknownUnitType)),
@@ -140,10 +126,10 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     let mut files = mode_files();
     files.map = raised(files.map, 3);
-    let mut game = Game::start(script, ScriptLimits::ROOMY, files).unwrap();
-    assert_eq!(*game.sim.world.resource::<Metric>(), Metric::Spatial);
+    let mut game = start_match(script, ScriptLimits::ROOMY, files).unwrap();
+    assert_eq!(*game.resource::<Metric>(), Metric::Spatial);
     let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
-    let walkers = |game: &Game| <[_; 3]>::try_from(&game.units()[1..]).unwrap();
+    let walkers = |game: &Match| <[_; 3]>::try_from(&game.placed_units()[1..]).unwrap();
     assert_eq!(
         walkers(&game),
         [
@@ -154,12 +140,12 @@ fn on_mode_input(ctx, player, name, value) {
     );
     // Each walks to the last waypoint from its end: a and the neutral team to (10, 3, 0), b to
     // (−10, 3, 0).
-    let paths = game.sim.world.resource::<Paths>();
+    let paths = game.resource::<Paths>();
     let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
     // A text that names no end fails the call of `named`, and a string in place of a member
     // fails the call of `spawn_group`, as no form of it takes one.
-    game.tick(&[(0, input("phase", "named")), (0, input("phase", "text"))]);
+    game.tick_inputs(&[(0, input("phase", "named")), (0, input("phase", "text"))]);
     assert_eq!(
         game.failures(),
         [
@@ -223,13 +209,12 @@ fn on_input(ctx, player, name, value) {
             .markers
             .push(MarkerData::tagged(name, &[name], MapPoint::ground(x, z)));
     }
-    let mut game = Game::start(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, files).unwrap();
-    let crates = |game: &Game| {
-        let world = &game.sim.world;
-        let mut at: Vec<Position> = world
+    let mut game = start_match(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, files).unwrap();
+    let crates = |game: &Match| {
+        let mut at: Vec<Position> = game
             .resource::<EntityIndex>()
             .iter()
-            .map(|(_, entity)| world.entity(entity))
+            .map(|(_, entity)| game.entity(entity))
             .filter(|unit| {
                 unit.get::<Body>()
                     .is_some_and(|body| body.half_edges().is_some())
@@ -243,7 +228,7 @@ fn on_input(ctx, player, name, value) {
         |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
     assert_eq!(crates(&game), [ground(0, 2)]);
     for value in ["c1", "twice", "c10"] {
-        game.tick(&[(0, input("phase", value))]);
+        game.tick_inputs(&[(0, input("phase", value))]);
         assert_eq!(crates(&game), [ground(0, 2)], "{value}");
         assert_eq!(
             game.failures().last(),
@@ -251,7 +236,7 @@ fn on_input(ctx, player, name, value) {
             "{value}"
         );
     }
-    game.tick(&[(0, input("phase", "c2"))]);
+    game.tick_inputs(&[(0, input("phase", "c2"))]);
     assert_eq!(crates(&game), [ground(0, 2), ground(2, 2)]);
     assert!(game.failures().is_empty());
 }
@@ -263,15 +248,15 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     let mut files = mode_files();
     files.map.units[0].height = Num::int(3);
     files.map.units[0].angle = Num::int(-90);
-    let game = Game::start(SCRIPT, ScriptLimits::ROOMY, files).unwrap();
-    let tower = game.sim.world.entity(game.entity(0));
+    let game = start_match(SCRIPT, ScriptLimits::ROOMY, files).unwrap();
+    let tower = game.entity(game.entity_by_id(0));
     let raised = Position::new(Vec3::new(Num::int(-8), Num::int(3), Num::ZERO)).unwrap();
     assert_eq!(tower.get::<Position>(), Some(&raised));
     assert_eq!(
         tower.get::<Facing>().map(|facing| facing.degrees()),
         Some(Num::int(270))
     );
-    let grunt = game.sim.world.entity(game.entity(1));
+    let grunt = game.entity(game.entity_by_id(1));
     assert_eq!(
         grunt.get::<Facing>().map(|facing| facing.degrees()),
         Some(Num::ZERO)

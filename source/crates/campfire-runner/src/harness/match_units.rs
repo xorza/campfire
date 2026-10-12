@@ -1,25 +1,15 @@
 use bevy_ecs::world::{EntityRef, World};
 use campfire_capabilities::{Experience, Owner, SpawnPoint, Team};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{EntityIndex, Position, StableId};
-
-use crate::harness::fixed_match::FixedMatch;
+use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
 /// The units of a running match, as a scripted player or a test names them by role.
 #[derive(Debug, Clone, Copy)]
 pub struct MatchUnits<'a> {
-    world: &'a World,
+    pub(super) world: &'a World,
 }
 
 impl<'a> MatchUnits<'a> {
-    pub const fn of(fixed: &'a FixedMatch) -> MatchUnits<'a> {
-        MatchUnits::of_world(fixed.runner().world())
-    }
-
-    pub const fn of_world(world: &'a World) -> MatchUnits<'a> {
-        MatchUnits { world }
-    }
-
     pub const fn world(self) -> &'a World {
         self.world
     }
@@ -49,11 +39,7 @@ impl<'a> MatchUnits<'a> {
     }
 
     pub fn position(self, id: StableId) -> Position {
-        let entity = self
-            .world
-            .resource::<EntityIndex>()
-            .get(id)
-            .expect("a unit of the match");
+        let entity = self.world.entity_of(id).expect("a unit of the match");
         *self
             .world
             .get::<Position>(entity)

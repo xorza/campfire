@@ -4,7 +4,8 @@ use campfire_common::StateHash;
 use campfire_log::ErrorReport;
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
-use campfire_sim::StateRegistry;
+use campfire_runner::SessionWorld;
+use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::InputFile;
 use tracing::warn;
 
@@ -37,7 +38,7 @@ impl Verification {
         let decoded = SessionLog::decode(&bytes).map_err(VerifyError::Decode)?;
         let mut replay = Replay::new(decoded, &store).map_err(VerifyError::Start)?;
         if let Some(dir) = snapshots {
-            for record in replay.runner().log().checkpoints() {
+            for record in replay.game().session().log().checkpoints() {
                 let file = dir.join(record.snapshot.to_string());
                 let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN)
                     .map_err(VerifyError::ReadSnapshot)?;
@@ -47,6 +48,6 @@ impl Verification {
             }
         }
         while replay.run_tick().map_err(VerifyError::Replay)? {}
-        Ok(replay.runner().state_hash())
+        Ok(replay.game().state_hash())
     }
 }

@@ -1,3 +1,5 @@
+use campfire_common::Tick;
+
 use super::*;
 
 #[test]
@@ -21,16 +23,16 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(learner, ScriptLimits::ROOMY);
+    let mut game = mode_match(learner, ScriptLimits::ROOMY);
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
     };
-    game.tick(&[(0, spells), (0, input("hero", "hero-x"))]);
-    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.sim.world).unwrap();
-    let ranks = |game: &Game| {
-        let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
+    game.tick_inputs(&[(0, spells), (0, input("hero", "hero-x"))]);
+    let mut owned = game.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game).unwrap();
+    let ranks = |game: &Match| {
+        let slots = game.get::<ActionSlots>(hero).unwrap();
         slots
             .iter()
             .map(|slot| Rank::count(slot.rank))
@@ -56,16 +58,10 @@ fn on_mode_input(ctx, player, name, value) {
         ),
     ];
     for (value, expected, failure) in steps {
-        game.tick(&[(0, input("probe", value))]);
+        game.tick_inputs(&[(0, input("probe", value))]);
         assert_eq!(ranks(&game), expected, "{value}");
         // The mode grants ranks with no point: the one the spawn gave stays.
-        assert_eq!(
-            game.sim
-                .world
-                .get::<Points>(hero)
-                .map(|points| points.get()),
-            Some(1)
-        );
+        assert_eq!(game.get::<Points>(hero).map(|points| points.get()), Some(1));
         let failures: Vec<_> = failure.into_iter().collect();
         assert_eq!(game.failures(), failures, "{value}");
     }
@@ -106,16 +102,16 @@ fn on_level_up(ctx, unit, track, level) {
     }
 }
 "#;
-    let mut game = Game::picking(leveler, ScriptLimits::ROOMY);
+    let mut game = picking_match(leveler, ScriptLimits::ROOMY);
     let hero = game.pick(0, "hero-x");
     // The `level` track's level is the unit's own; valor keeps its own. A point comes with each
     // level of the `level` track, the first at the spawn, and none with valor's.
-    let progress = |game: &Game| {
-        let experience = game.sim.world.get::<Experience>(hero).unwrap();
+    let progress = |game: &Match| {
+        let experience = game.get::<Experience>(hero).unwrap();
         let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at)).unwrap());
         assert_eq!(level.level, None);
-        let unit_level = game.sim.world.get::<Level>(hero).unwrap().get();
-        let points = game.sim.world.get::<Points>(hero).unwrap().get();
+        let unit_level = game.get::<Level>(hero).unwrap().get();
+        let points = game.get::<Points>(hero).unwrap().get();
         (
             level.xp,
             unit_level,
@@ -143,7 +139,7 @@ fn on_level_up(ctx, unit, track, level) {
         ),
     ];
     for (value, expected, reached) in steps {
-        game.tick(&[(0, input("probe", value))]);
+        game.tick_inputs(&[(0, input("probe", value))]);
         assert_eq!(progress(&game), expected, "{value}");
         assert_eq!(
             game.field("kind"),
@@ -160,7 +156,7 @@ fn on_level_up(ctx, unit, track, level) {
         ("negative", ApiError::NegativeXp),
     ];
     for (value, error) in refused {
-        game.tick(&[(0, input("probe", value))]);
+        game.tick_inputs(&[(0, input("probe", value))]);
         assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
         assert_eq!(
             progress(&game),
@@ -171,7 +167,7 @@ fn on_level_up(ctx, unit, track, level) {
     // A script reads the points, the experience and each track's level, the `level` track's
     // the unit's; a unit without the `level` track has no points, and a track the unit lacks,
     // or the mode, has no level.
-    game.tick(&[(0, input("probe", "read"))]);
+    game.tick_inputs(&[(0, input("probe", "read"))]);
     assert_eq!(game.failures(), []);
     assert_eq!(game.field("kind"), StateValue::Text("3 50 3 2".into()));
     let unread = [
@@ -180,7 +176,7 @@ fn on_level_up(ctx, unit, track, level) {
         ("fame level", ApiError::UnknownTrack),
     ];
     for (value, error) in unread {
-        game.tick(&[(0, input("probe", value))]);
+        game.tick_inputs(&[(0, input("probe", value))]);
         assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
     }
 }
@@ -196,38 +192,35 @@ fn on_input(ctx, player, name, value) {
 }
 "#;
     let script = format!("{killer}{DEATHS_3V3}");
-    let mut game = Game::picking(&script, ScriptLimits::ROOMY);
+    let mut game = picking_match(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    Units::declare_tags(&mut game.sim.world, ["core"]);
-    game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
-    let hero = |game: &mut Game, slot| {
-        let mut owned = game.sim.world.query::<(Entity, &Owner)>();
+    game.declare_tags(["core"]);
+    game.tick_inputs(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
+    let hero = |game: &mut Match, slot| {
+        let mut owned = game.query::<(Entity, &Owner)>();
         let (entity, _) = owned
-            .iter(&game.sim.world)
+            .iter(game)
             .find(|(_, owner)| owner.slot() == PlayerSlot::new(slot))
             .unwrap();
         entity
     };
     let (x, y) = (hero(&mut game, 0), hero(&mut game, 2));
-    game.tick(&[(0, input("probe", "kill"))]);
+    game.tick_inputs(&[(0, input("probe", "kill"))]);
     assert_eq!(game.failures(), []);
-    assert!(game.sim.world.get::<Dead>(y).is_some());
-    let xp = |game: &Game| {
-        let experience = game.sim.world.get::<Experience>(x).unwrap();
+    assert!(game.get::<Dead>(y).is_some());
+    let xp = |game: &Match| {
+        let experience = game.get::<Experience>(x).unwrap();
         experience.get(TrackId::new(0)).unwrap().xp
     };
     assert_eq!(xp(&game), Num::int(175));
-    assert_eq!(game.sim.world.get::<Level>(x).unwrap().get(), 2);
+    assert_eq!(game.get::<Level>(x).unwrap().get(), 2);
     // Y died in tick 1, and the mode set its respawn from the end of tick 1, the start of tick
     // 2: 1500 ms is 15 ticks at 10 a second, so Y is dead through tick 16 and back in tick 17.
-    assert_eq!(
-        game.sim.world.get::<Respawn>(y),
-        Some(&Respawn { at: Tick::new(17) })
-    );
+    assert_eq!(game.get::<Respawn>(y), Some(&Respawn { at: Tick::new(17) }));
     for _ in 2..=16 {
-        game.tick(&[]);
-        assert!(game.sim.world.get::<Dead>(y).is_some());
+        game.tick_inputs(&[]);
+        assert!(game.get::<Dead>(y).is_some());
     }
-    game.tick(&[]);
-    assert!(game.sim.world.get::<Dead>(y).is_none());
+    game.tick_inputs(&[]);
+    assert!(game.get::<Dead>(y).is_none());
 }

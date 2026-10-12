@@ -45,37 +45,45 @@ pub(crate) struct Placement<'w, 's> {
 }
 
 impl Placement<'_, '_> {
-    /// Whether `body`, the box of `spec`'s building, may stand at `at` for a builder of `team`:
+    /// Whether `body`, the box of `spec`'s building, may stand at `pos` for a builder of `team`:
     /// it lies within the bounds, and its inside shares no point with a wall of its layer, a
     /// static body of its layer, or the body on its layer of a walker that is not of a team
     /// friendly to `team` and that `team` sees, all of a match with no vision; and it meets its
     /// placement's rules. Touching is not overlap.
-    pub(crate) fn passes(&self, team: Team, at: Position, body: Body, spec: BuildSpec<'_>) -> bool {
+    pub(crate) fn passes(
+        &self,
+        team: Team,
+        pos: Position,
+        body: Body,
+        spec: BuildSpec<'_>,
+    ) -> bool {
         let Shape::Box(boxed) = body.shape() else {
             panic!("a building's body is a box");
         };
         let layer = body.layer();
         let walls = self.walls.as_deref();
-        if !Walls::room_for(walls, *self.bounds, at, &boxed, layer) {
+        if !Walls::room_for(walls, *self.bounds, pos, &boxed, layer) {
             return false;
         }
-        let overlaps = |other: &IndexedBody| other.overlaps_box(at, &boxed);
+        let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);
         if self
             .statics
-            .any_near(layer, at.get(), boxed.bound(), overlaps)
+            .any_near(layer, pos.get(), boxed.bound(), overlaps)
         {
             return false;
         }
         let blocked = self
             .units
             .iter()
-            .any(|(&pos, other, &other_team, _, walks, seen)| {
+            .any(|(&other_pos, other, &other_team, _, walks, seen)| {
                 let Some(other) = other.filter(|other| walks && other.layer() == layer) else {
                     return false;
                 };
                 let inside = match other.shape() {
-                    Shape::Circle(radius) => boxed.nearest(at, pos, radius) == Ordering::Less,
-                    Shape::Box(other) => boxed.overlaps(at, &other, pos),
+                    Shape::Circle(radius) => {
+                        boxed.nearest(pos, other_pos, radius) == Ordering::Less
+                    }
+                    Shape::Box(other) => boxed.overlaps(pos, &other, other_pos),
                 };
                 let friendly = self.relations.get().between(team, other_team) == Relation::Friendly;
                 let sees = seen.is_none_or(|seen| seen.get().contains(team));
@@ -85,27 +93,27 @@ impl Placement<'_, '_> {
             && spec
                 .near
                 .iter()
-                .all(|&rule| self.meets(team, at, body, rule))
+                .all(|&rule| self.meets(team, pos, body, rule))
             && !spec
                 .away
                 .iter()
-                .any(|&rule| self.meets(team, at, body, rule))
+                .any(|&rule| self.meets(team, pos, body, rule))
     }
 
     /// Whether a living unit that `rule`'s filter selects for a builder of `team` comes within
-    /// its distance of `body` at `at`, by the reach rule.
-    fn meets(&self, team: Team, at: Position, body: Body, rule: PlacementCheck) -> bool {
+    /// its distance of `body` at `pos`, by the reach rule.
+    fn meets(&self, team: Team, pos: Position, body: Body, rule: PlacementCheck) -> bool {
         self.units
             .iter()
-            .any(|(&pos, other, &other_team, tags, ..)| {
+            .any(|(&other_pos, other, &other_team, tags, ..)| {
                 let relation = self.relations.get().between(team, other_team);
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
                 rule.filter.selects(relation, tags)
                     && self.metric.reaches(
-                        at,
+                        pos,
                         body.shape(),
                         rule.distance,
-                        pos,
+                        other_pos,
                         Body::shape_of(other),
                     )
             })

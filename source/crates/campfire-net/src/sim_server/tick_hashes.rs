@@ -12,7 +12,7 @@ impl TickHashes {
         &self.0
     }
 
-    pub(crate) fn push(&mut self, hash: StateHash) {
-        self.0.push(hash);
+    pub(crate) fn push(&mut self, state_hash: StateHash) {
+        self.0.push(state_hash);
     }
 }

@@ -24,6 +24,7 @@ use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
+use crate::units::tag_effect::TagEffect;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
@@ -148,14 +149,16 @@ impl Refresh {
                 tags.set_if_neq(derived);
             }
             let immune = derived.map_or(TagSet::default(), |derived| derived.immune);
-            let takes_effect = TagBook::effect_test(granting, immune);
+            let takes_effect = TagEffect::new(granting, immune);
             let unit = Refreshing {
                 id,
                 entity,
                 unit_type,
                 level: level.get(),
             };
-            if scratch.add(&book, &modifier_book, unit, modifiers, takes_effect) {
+            if scratch.add(&book, &modifier_book, unit, modifiers, |tags| {
+                takes_effect.takes(tags)
+            }) {
                 carriers.push(entity);
             }
         }

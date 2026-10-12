@@ -2,11 +2,10 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::ScriptId;
-use campfire_sim::TickRate;
+use campfire_sim::{Capability, TickRate};
 
 use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
@@ -31,7 +30,6 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 use crate::values::stat::Stat;
-use campfire_sim::Capability;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -174,14 +172,14 @@ impl ModifierBook {
         &self.entries[id.index()]
     }
 
-    /// Whether `ability` at `rank`, or no ability at rank 1, applies `id` with every param its
-    /// numbers read: each of its own params has a value at `rank`, and `ability` gives each it
+    /// Whether `action` at `rank`, or no ability at rank 1, applies `id` with every param its
+    /// numbers read: each of its own params has a value at `rank`, and `action` gives each it
     /// does not declare, as a time in ticks at `rate` where a time reads it. The load checks the
     /// ways its packages name; a call checks the way of a name it computes.
     pub(crate) fn check_way(
         &self,
         id: ModifierId,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
         params: &ParamBook,
         rate: TickRate,
@@ -191,41 +189,27 @@ impl ModifierBook {
         }
         let spec = &self.get(id).spec;
         for name in spec.number_params().filter_map(ParamPlace::applier) {
-            params.gives(ability, rank, name, None)?;
+            params.gives(action, rank, name, None)?;
         }
         for name in spec.time_params().filter_map(ParamPlace::applier) {
-            params.gives(ability, rank, name, Some(rate))?;
+            params.gives(action, rank, name, Some(rate))?;
         }
         Ok(())
     }
 
-    /// Whether `id` and `ability`, when one, are a modifier and an action the books hold, and
-    /// `ability` at `rank`, or no ability, applies `id` as `check_way` asks at `rate`.
+    /// Whether `id` and `action`, when one, are a modifier and an action the books hold, and
+    /// `action` at `rank`, or no ability, applies `id` as `check_way` asks at `rate`.
     pub(crate) fn has_way(
         &self,
         id: ModifierId,
-        ability: Option<ActionId>,
+        action: Option<ActionId>,
         rank: Rank,
         params: &ParamBook,
         rate: TickRate,
     ) -> bool {
         self.entry(id).is_some()
-            && ability.is_none_or(|ability| params.has_action(ability))
-            && self.check_way(id, ability, rank, params, rate).is_ok()
-    }
-
-    /// `has_way` of `world`'s books at its rate.
-    pub(crate) fn has_way_in(
-        world: &World,
-        id: ModifierId,
-        ability: Option<ActionId>,
-        rank: Rank,
-    ) -> bool {
-        let (book, params) = (
-            world.resource::<ModifierBook>(),
-            world.resource::<ParamBook>(),
-        );
-        book.has_way(id, ability, rank, params, *world.resource::<TickRate>())
+            && action.is_none_or(|action| params.has_action(action))
+            && self.check_way(id, action, rank, params, rate).is_ok()
     }
 
     /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none, a way
@@ -284,7 +268,7 @@ impl ModifierBook {
         let instance = NewInstance {
             id,
             source: from.source,
-            ability: from.ability,
+            action: from.action,
             rank: from.rank,
             lifetime: Lifetime::new(
                 from.hold,
@@ -329,32 +313,26 @@ impl Book for ModifierBook {
 pub(crate) mod internals {
     use std::sync::Arc;
 
+    use campfire_math::Num;
+
     use crate::scripts::hook_set::HookSet;
     use crate::stats::modifier_book::{ModifierBook, ModifierEntry};
     use crate::stats::modifier_data::Reapply;
     use crate::stats::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
-    use std::collections::BTreeMap;
-
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-
-    use crate::stats::param_book::ParamBook;
     use crate::stats::stat_id::StatId;
     use crate::stats::stat_op::StatOp;
     use crate::units::modifier_id::ModifierId;
     use crate::units::tag_set::TagSet;
 
     impl ModifierBook {
-        /// Adds to `world`'s books a modifier of no params, script, times or state that changes
-        /// each stat of `changes` by its op, by a value its instances hold, and grants `tags`:
-        /// what a test's instances are instances of. Its id, after every modifier before it.
+        /// Adds a modifier of no package that makes `changes`, each by a value of zero, and
+        /// grants `tags`; its id. Its name is its place in the book.
         pub(crate) fn push_changes(
-            world: &mut World,
+            &mut self,
             changes: &[(StatId, StatOp)],
             tags: TagSet,
         ) -> ModifierId {
-            let mut modifiers = world.resource_mut::<ModifierBook>();
-            let book = Arc::make_mut(&mut modifiers.entries);
+            let book = Arc::make_mut(&mut self.entries);
             let at = book.len();
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
@@ -381,9 +359,7 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
-            let id = ModifierBook::id_at(at);
-            ParamBook::load_modifier(world, id, &BTreeMap::new(), |_| StatId::new(0));
-            id
+            ModifierBook::id_at(at)
         }
 
         /// Makes modifier `id` grant `tags`, as a test's data would.
@@ -399,7 +375,7 @@ mod tests {
 
     use campfire_math::Num;
 
-    use crate::release::test_match::TestMatch;
+    use crate::release::r#match::Match;
     use crate::scripts::error::ParamProblem;
     use crate::scripts::error::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
     use crate::scripts::script_book::ScriptBook;
@@ -409,7 +385,6 @@ mod tests {
     use crate::stats::param_book::{ParamBook, ParamTables};
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
-
     use crate::units::unit_types::UnitTypes;
     use crate::values::declared_name::DeclaredName;
     use crate::values::number::{Number, ParamRef};
@@ -471,7 +446,7 @@ mod tests {
             ("scaled", shield("power")),
         ]
         .map(|(id, data)| (name(id), data));
-        let rate = TestMatch::RATE;
+        let rate = Match::TEST_RATE;
         let mut book = ModifierBook::default();
         let load = ModifierLoad {
             scripts: &ScriptBook::default(),
@@ -491,9 +466,9 @@ mod tests {
             tables.push_modifier(&data.params, |_| StatId::new(0));
         }
         let params = ParamBook::new(tables);
-        let ways = |ability, rank| -> Vec<Option<ParamProblem>> {
+        let ways = |action, rank| -> Vec<Option<ParamProblem>> {
             let rank = Rank::new(rank).unwrap();
-            let check = |at| book.check_way(ModifierBook::id_at(at), ability, rank, &params, rate);
+            let check = |at| book.check_way(ModifierBook::id_at(at), action, rank, &params, rate);
             (0..data.len()).map(|at| check(at).err()).collect()
         };
         // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no

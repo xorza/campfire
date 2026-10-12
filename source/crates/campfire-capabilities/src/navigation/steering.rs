@@ -39,7 +39,7 @@ pub(crate) struct Steering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub(crate) id: StableId,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
@@ -112,7 +112,7 @@ impl Steering {
     ) -> Option<Detour> {
         let Steered {
             id,
-            at,
+            pos: at,
             step,
             walker,
             stuck,
@@ -160,16 +160,16 @@ impl Steering {
             let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
                 let reach = walker.radius + other.shape.bound();
-                let touching = other.at.within_ground(at, reach + step);
+                let touching = other.pos.within_ground(at, reach + step);
                 let passes = gathering && gatherers.binary_search(&other.id).is_ok();
                 if other.id == id || !touching || other.key != walker.layer || passes {
                     return;
                 }
                 let shift = left * (reach / 2);
-                let moved = Position::new(other.at.get() + shift);
+                let moved = Position::new(other.pos.get() + shift);
                 self.blockers.push(IndexedBody {
                     id: other.id,
-                    at: moved.expect("a shift of a body's reach stays within the bound"),
+                    pos: moved.expect("a shift of a body's reach stays within the bound"),
                     shape: other.shape,
                     layer: other.key,
                 });
@@ -239,10 +239,10 @@ mod tests {
         let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
         let statics = BodyIndex::new(wide);
         let mut ids = IdAllocator::default();
-        let (id, unit) = (ids.allocate(), ids.allocate());
+        let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
-            id: unit,
-            at: at(43, 0),
+            id: blocker,
+            pos: at(43, 0),
             shape: Shape::Circle(quarter),
             layer: Layer::FIRST,
         };
@@ -254,7 +254,7 @@ mod tests {
         route.answer(&[goal], true);
         let steered = Steered {
             id,
-            at: at(7, 0),
+            pos: at(7, 0),
             step: quarter,
             walker,
             stuck: false,
@@ -280,10 +280,10 @@ mod tests {
         let grid = PathingGrid::new(cells, vec![walker], &Terrain::default());
         let statics = BodyIndex::new(quarter);
         let mut ids = IdAllocator::default();
-        let (id, unit) = (ids.allocate(), ids.allocate());
+        let (id, blocker) = (ids.allocate(), ids.allocate());
         let standing = IndexedBody {
-            id: unit,
-            at: at(8, 0),
+            id: blocker,
+            pos: at(8, 0),
             shape: Shape::Circle(quarter),
             layer: Layer::FIRST,
         };
@@ -294,10 +294,10 @@ mod tests {
         let detours = [true, false].map(|gathering| {
             let mut planner = RoutePlanner::new(&cells);
             let mut steering = Steering::default();
-            steering.read(&statics, [standing], [], [unit]);
+            steering.read(&statics, [standing], [], [blocker]);
             let steered = Steered {
                 id,
-                at: at(0, 0),
+                pos: at(0, 0),
                 step: quarter,
                 walker,
                 stuck: false,

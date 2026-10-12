@@ -5,6 +5,7 @@ use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Allow, QueryState};
+use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
 use blake3::Hasher;
@@ -19,6 +20,7 @@ use crate::id_allocator::IdAllocator;
 use crate::position::Position;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
+use crate::sim_world::SimWorld;
 use crate::stable_id::StableId;
 use crate::state_changes::{Removal, StateChanges};
 use crate::state_registry::breach::Breach;
@@ -53,7 +55,7 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 /// restore, and copy what changed to another world. Each type walks entities in stable-id order,
 /// and a snapshot's section for a type holds exactly the bytes its hash consumes, so a snapshot
 /// and its hash cannot disagree.
-#[derive(Debug, Clone)]
+#[derive(Resource, Debug, Clone)]
 pub struct StateRegistry {
     entries: Vec<Entry>,
     foreign: Vec<ForeignCheck>,
@@ -159,7 +161,7 @@ impl StateRegistry {
     /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
     /// a snapshot of another is refused, naming both, and the converter from the version before,
     /// which design 02's Saves plans, comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 6;
+    pub const DATA_VERSION: u32 = 7;
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
@@ -483,8 +485,7 @@ impl StateRegistry {
         );
         for &id in &delta.lost {
             let entity = world
-                .resource::<EntityIndex>()
-                .get(id)
+                .entity_of(id)
                 .expect("a copy holds each id its world lost");
             world.despawn(entity);
         }
@@ -636,10 +637,7 @@ fn decode_component<C: SimComponent>(
         if previous.is_some_and(|previous| previous >= id) {
             return Err(SnapshotError::NotCanonical);
         }
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(id)
-            .ok_or(SnapshotError::UnknownEntity)?;
+        let entity = world.entity_of(id).ok_or(SnapshotError::UnknownEntity)?;
         world.entity_mut(entity).insert(component);
         previous = Some(id);
         body = rest;
@@ -699,8 +697,7 @@ fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pa
         } = take::<(StableId, Option<C>)>(body).expect("a delta decodes");
         body = rest;
         let entity = world
-            .resource::<EntityIndex>()
-            .get(id)
+            .entity_of(id)
             .expect("a copy holds each id a delta names");
         match (pass, value) {
             // An insert over a held value puts back each component it requires that is gone,

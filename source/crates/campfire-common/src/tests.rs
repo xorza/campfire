@@ -704,3 +704,240 @@ fn the_dependency_and_name_checks_fail_on_what_breaks_them() {
         Vec::<&str>::new()
     );
 }
+
+/// The functions visible past their module that take a world first and are no system: install
+/// machinery, which takes the world, the schedule and the registry together, and constructors
+/// of types that keep queries over the world, as Bevy's `SystemState::new` is (design 02, the
+/// world rule), by their file and their owner's and their own name.
+const WORLD_FIRST: [(&str, &str); 7] = [
+    (
+        "crates/campfire-capabilities/src/declare/install_cx.rs",
+        "InstallCx::new",
+    ),
+    (
+        "crates/campfire-capabilities/src/mode/mod.rs",
+        "Mode::install",
+    ),
+    (
+        "crates/campfire-capabilities/src/units/player_units.rs",
+        "HeldPlayerUnits::new",
+    ),
+    (
+        "crates/campfire-capabilities/src/units/row_fill.rs",
+        "RowSource::new",
+    ),
+    (
+        "crates/campfire-sim/src/sim_update/mod.rs",
+        "SimUpdate::prepare",
+    ),
+    (
+        "crates/campfire-sim/src/sim_world_builder.rs",
+        "SimWorldBuilder::new",
+    ),
+    (
+        "crates/campfire-sim/src/sim_world_builder.rs",
+        "SimWorldBuilder::reopen",
+    ),
+];
+
+/// A function whose first parameter is a world: its line, its name with its owner's, as
+/// `Owner::name`, or alone for a free function, and whether code past its module may call it.
+#[derive(Debug, PartialEq, Eq)]
+struct WorldFirst {
+    line: usize,
+    name: String,
+    visible: bool,
+}
+
+/// The end of the bracketed run that opens at `text[at]`, past its closing bracket.
+fn bracket_end(text: &str, at: usize, open: char, close: char) -> usize {
+    let mut depth = 0;
+    for (offset, c) in text[at..].char_indices() {
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            depth -= 1;
+            if depth == 0 {
+                return at + offset + 1;
+            }
+        }
+    }
+    text.len()
+}
+
+/// The type an `impl` line of `line` gives methods to, none for a trait's impl.
+fn impl_owner(line: &str) -> Option<&str> {
+    let mut rest = line.trim_start().strip_prefix("impl")?;
+    if rest.starts_with('<') {
+        rest = &rest[bracket_end(rest, 0, '<', '>')..];
+    }
+    let rest = rest.trim_start();
+    if rest.contains(" for ") {
+        return None;
+    }
+    let end = rest
+        .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+        .unwrap_or(rest.len());
+    Some(&rest[..end])
+}
+
+/// Each function of `text` whose first parameter is a world, a reference to a `World`.
+fn world_first(text: &str) -> Vec<WorldFirst> {
+    let lines: Vec<&str> = text.lines().collect();
+    let mut found = Vec::new();
+    for (at, _) in text.match_indices("fn ") {
+        let line_start = text[..at].rfind('\n').map_or(0, |end| end + 1);
+        let head = &text[line_start..at];
+        let modifiers = head.trim_start();
+        let words = modifiers
+            .split_whitespace()
+            .all(|word| word.starts_with("pub") || word == "const");
+        if !words || text[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+            continue;
+        }
+        let rest = &text[at + 3..];
+        let name_end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        let name = &rest[..name_end];
+        let mut params = at + 3 + name_end;
+        if text[params..].starts_with('<') {
+            params = bracket_end(text, params, '<', '>');
+        }
+        if !text[params..].starts_with('(') {
+            continue;
+        }
+        let close = bracket_end(text, params, '(', ')') - 1;
+        let list = &text[params + 1..close];
+        let first = list.split(',').next().unwrap_or("");
+        let Some((_, kind)) = first.split_once(':') else {
+            continue;
+        };
+        let Some(referent) = kind.trim().strip_prefix('&') else {
+            continue;
+        };
+        let referent = referent.trim_start();
+        let referent = referent.strip_prefix('\'').map_or(referent, |lifetime| {
+            lifetime
+                .trim_start_matches(|c: char| c.is_alphanumeric() || c == '_')
+                .trim_start()
+        });
+        let referent = referent
+            .strip_prefix("mut ")
+            .map_or(referent, str::trim_start);
+        if referent != "World" {
+            continue;
+        }
+        let line = text[..at].matches('\n').count();
+        let indent = head.len() - modifiers.len();
+        let owner = lines[..line].iter().rev().find_map(|above| {
+            let code = above.trim_start();
+            let at_impl = indent >= 4 && above.len() - code.len() == indent - 4;
+            (at_impl && code.starts_with("impl")).then(|| impl_owner(above))
+        });
+        let name = match owner {
+            Some(None) => continue,
+            Some(Some(owner)) => format!("{owner}::{name}"),
+            None => name.to_owned(),
+        };
+        let visible = modifiers.starts_with("pub") && !modifiers.starts_with("pub(super)");
+        found.push(WorldFirst {
+            line: line + 1,
+            name,
+            visible,
+        });
+    }
+    found
+}
+
+/// Whether `text` names the function `name`, as `Owner::name` or alone, as a value: Bevy
+/// registers a system, an observer, a hook or a run condition by value, and a table holds a
+/// function so.
+fn named_as_value(text: &str, name: &str) -> bool {
+    text.match_indices(name).any(|(at, _)| {
+        let before = text[..at].trim_end();
+        let after = text[at + name.len()..].trim_start();
+        let whole = !text[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == ':')
+            && !text[at + name.len()..].starts_with(|c: char| c.is_alphanumeric() || c == '_');
+        let called = after.starts_with(['(', ':', '<']);
+        let listed = before.ends_with(['(', ',', '[']) || name.contains("::");
+        let line = &text[text[..at].rfind('\n').map_or(0, |end| end + 1)..at];
+        let comment = line.trim_start().starts_with("//");
+        whole && !called && listed && !comment
+    })
+}
+
+#[test]
+fn a_function_that_takes_a_world_first_is_a_system_or_a_step_of_its_module() {
+    // Design 02's world rule: what acts on a match is a method of a world trait. A function
+    // past its module that takes the world first is a system or a function a table holds, named
+    // as a value, or one `WORLD_FIRST` lists.
+    let sources = sources();
+    let production: Vec<(&str, &str)> = sources
+        .iter()
+        .filter_map(|file| Some((file.path.as_str(), file.production()?)))
+        .collect();
+    let mut found = Vec::new();
+    for &(path, code) in &production {
+        for function in world_first(code).into_iter().filter(|f| f.visible) {
+            let listed = WORLD_FIRST.contains(&(path, function.name.as_str()));
+            let valued = production
+                .iter()
+                .any(|&(_, text)| named_as_value(text, &function.name));
+            if !listed && !valued {
+                found.push(format!("{path}:{} {}", function.line, function.name));
+            }
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+    for (path, name) in WORLD_FIRST {
+        let (_, code) = production
+            .iter()
+            .find(|&&(file, _)| file == path)
+            .unwrap_or_else(|| panic!("{path}"));
+        assert!(
+            world_first(code).iter().any(|f| f.name == name),
+            "{path}: {name}"
+        );
+    }
+}
+
+#[test]
+fn the_world_rule_finds_each_function_that_takes_a_world_first() {
+    // A free function and methods, of each form of a reference to a world, their visibility
+    // read from their modifiers; a method of a trait's impl, one that takes the world later,
+    // and one that takes a world by value are none.
+    let text = "pub fn a(world: &World) {}\n\
+        impl<'w> Owner<'w> {\n    pub(crate) const fn b<T>(\n        w: &'w mut World,\n    ) {}\n\
+        \x20   pub(super) fn c(world: &mut World, x: u8) {}\n    fn d(x: u8, world: &World) {}\n}\n\
+        impl Trait for Owner {\n    fn e(world: &World) {}\n}\n\
+        fn f(world: World) {}\nfn g(world: &'a World) {}\n";
+    let found = world_first(text);
+    let expected = [
+        (1, "a", true),
+        (3, "Owner::b", true),
+        (6, "Owner::c", false),
+        (13, "g", false),
+    ];
+    let expected: Vec<WorldFirst> = expected
+        .into_iter()
+        .map(|(line, name, visible)| WorldFirst {
+            line,
+            name: name.to_owned(),
+            visible,
+        })
+        .collect();
+    assert_eq!(found, expected);
+    // A name passed or listed as a value counts; a call, a path through it, a longer name and a
+    // comment's mention do not.
+    assert!(named_as_value(".add_systems(Owner::run)", "Owner::run"));
+    assert!(named_as_value("[a, run, b]", "run"));
+    assert!(!named_as_value("Owner::run(world)", "Owner::run"));
+    assert!(!named_as_value("Owner::run::<T>(world)", "Owner::run"));
+    assert!(!named_as_value(
+        ".add_systems(Owner::running)",
+        "Owner::run"
+    ));
+    assert!(!named_as_value("let x = run;", "run"));
+    assert!(!named_as_value("/// As `Owner::run` does.", "Owner::run"));
+}

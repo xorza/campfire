@@ -13,7 +13,7 @@ use bevy_time::TimePlugin;
 use campfire_common::MapName;
 use campfire_net::{
     JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace, PendingSaves,
-    SaveCommand, ServerDir, SessionDir, SimClient,
+    SaveCommand, ServerDir, SessionDir, SimClient, SimClientWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::internals::TestKey;
@@ -26,7 +26,7 @@ const DEADLINE: Duration = Duration::from_secs(10);
 
 #[test]
 fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let packages = Arc::new(
         ModePackages::from_dir(
             &PackageDir::workspace("test/modes/lane"),
@@ -37,7 +37,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let pace = Arc::new(Pace::default());
     let mut server = LocalServer::start(LocalServerSetup {
         packages: Arc::clone(&packages),
-        data: data.path("data"),
+        data: scratch.path("data"),
         bots: Vec::new(),
         pace,
         clock: || 1_700_000_000,
@@ -62,7 +62,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     });
     client.finish();
     client.cleanup();
-    let entity = SimClient::spawn_client(client.world_mut());
+    let entity = client.world_mut().spawn_client();
     client
         .world_mut()
         .entity_mut(entity)
@@ -106,11 +106,11 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     // Dropped, the server ends the session, aborted as the mode did not end the match, and
     // publishes its log.
     drop(server);
-    let stopped = ServerDir::open(&data.path("data")).unwrap();
+    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
-    let logs = data.names("data/logs");
+    let logs = scratch.names("data/logs");
     assert_eq!(logs.len(), 1);
-    let log = SessionLog::decode(&data.read(format!("data/logs/{}", logs[0]))).unwrap();
+    let log = SessionLog::decode(&scratch.read(format!("data/logs/{}", logs[0]))).unwrap();
     assert_eq!(
         log.result().map(|result| result.outcome),
         Some(Outcome::Aborted)

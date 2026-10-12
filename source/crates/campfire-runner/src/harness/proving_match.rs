@@ -88,9 +88,16 @@ const SCRIPT: [Scripted<ProvingPlan>; 22] = [
     ),
 ];
 
-/// A cast by the player `slot`'s hero of its ability slot `ability` at `at`.
-const fn cast(stamp: u64, slot: u32, ability: u8, at: Aim) -> Scripted<ProvingPlan> {
-    Scripted::new(stamp, slot, ProvingPlan::Cast { slot: ability, at })
+/// A cast by the player `slot`'s hero of its ability slot `action` at `aim`.
+const fn cast(stamp: u64, slot: u32, action: u8, aim: Aim) -> Scripted<ProvingPlan> {
+    Scripted::new(
+        stamp,
+        slot,
+        ProvingPlan::Cast {
+            slot: action,
+            at: aim,
+        },
+    )
 }
 
 impl ProvingMatch {

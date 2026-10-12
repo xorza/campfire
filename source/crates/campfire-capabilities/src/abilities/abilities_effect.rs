@@ -1,7 +1,7 @@
 use bevy_ecs::world::{Mut, World};
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::{SimWorld, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -16,14 +16,14 @@ use crate::units::action_id::ActionId;
 pub(crate) enum AbilitiesEffect {
     /// `cut` off the cooldown of the unit's action `action`, which it holds.
     ReduceCooldown {
-        unit: StableId,
+        id: StableId,
         action: ActionId,
         cut: Ticks,
     },
     /// `fraction`, from 0 to 1, of what is left of the cooldown of each of the unit's actions in
     /// `kind`.
     ReduceCooldowns {
-        unit: StableId,
+        id: StableId,
         kind: SlotKind,
         fraction: Num,
     },
@@ -34,17 +34,17 @@ pub(crate) enum AbilitiesEffect {
 impl Effect for AbilitiesEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let unit = match self {
-            AbilitiesEffect::ReduceCooldown { unit, .. }
-            | AbilitiesEffect::ReduceCooldowns { unit, .. }
-            | AbilitiesEffect::AddCharge { unit, .. } => unit,
+        let id = match self {
+            AbilitiesEffect::ReduceCooldown { id, .. }
+            | AbilitiesEffect::ReduceCooldowns { id, .. }
+            | AbilitiesEffect::AddCharge { unit: id, .. } => id,
         };
-        let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
+        let Some(entity) = world.entity_of(id) else {
             return;
         };
         world.resource_scope(|world, book: Mut<'_, ActionBook>| {
-            let mut unit = world.entity_mut(entity);
-            let (slots, mut times) = unit
+            let mut id = world.entity_mut(entity);
+            let (slots, mut times) = id
                 .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
                 .expect("a unit the view held with the ability has slots");
             match self {

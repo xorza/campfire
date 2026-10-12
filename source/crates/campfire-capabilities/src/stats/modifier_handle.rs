@@ -128,28 +128,30 @@ impl ModifierHandle {
         api.ty::<ModifierHandle>("Modifier")
             .bind(
                 field("carrier", "the unit that carries it"),
-                |m: &mut ModifierHandle| {
-                    let data = m.data();
+                |handle: &mut ModifierHandle| {
+                    let data = handle.data();
                     data.view.unit_value(Some(data.carrier))
                 },
             )
             .bind(
                 field("source", "the unit that applied it, `()` when gone or none"),
-                |m: &mut ModifierHandle| {
-                    let data = m.data();
+                |handle: &mut ModifierHandle| {
+                    let data = handle.data();
                     data.source
                         .and_then(|source| data.view.unit(source))
                         .map_or(Dynamic::UNIT, Dynamic::from)
                 },
             )
-            .bind(stacks, |m: &mut ModifierHandle| INT::from(m.data().stacks))
+            .bind(stacks, |handle: &mut ModifierHandle| {
+                INT::from(handle.data().stacks)
+            })
             .bind_set(
                 stacks,
-                |m: &mut ModifierHandle, stacks: INT| -> Checked<()> {
+                |handle: &mut ModifierHandle, stacks: INT| -> Checked<()> {
                     let stacks = u32::try_from(stacks)
                         .ok()
                         .ok_or_else(|| ApiError::NegativeStacks.fail())?;
-                    let mut data = m.data();
+                    let mut data = handle.data();
                     data.stacks = stacks;
                     data.written = true;
                     Ok(())
@@ -160,7 +162,7 @@ impl ModifierHandle {
                     "state",
                     "its script state, by name, which a call may write and read back",
                 ),
-                |m: &mut ModifierHandle| ModifierState(m.clone()),
+                |handle: &mut ModifierHandle| ModifierState(handle.clone()),
             );
         api.ty::<ModifierState>("ModifierState")
             .index(|_, state: &mut ModifierState, name: &str| {

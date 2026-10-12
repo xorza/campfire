@@ -75,9 +75,9 @@ struct Flaw {
 
 const MODE: &str = "moba-3v3";
 
-/// Whether `problem` is `name` of `of` unknown at `place`.
-fn unknown(problem: &LoadProblem, place: &Place, of: NameKind, name: &str) -> bool {
-    matches!(problem, LoadProblem::Unknown { at, name: found, of: kind } if at == place && *kind == of && found == name)
+/// Whether `problem` is `name` of `of` unknown at `at`.
+fn unknown(problem: &LoadProblem, at: &Place, of: NameKind, name: &str) -> bool {
+    matches!(problem, LoadProblem::Unknown { at: found_at, name: found, of: kind } if found_at == at && *kind == of && found == name)
 }
 
 /// Whether `problem` is `file` failing to read with a message that has `message`.

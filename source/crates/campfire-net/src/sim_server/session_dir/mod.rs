@@ -3,12 +3,12 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
-use campfire_runner::Session;
+use campfire_runner::{Session, SessionWorld};
 use campfire_store::{
     AppendOpenError, DirEntries, DurableError, DurableFile, InputFile, PathError, ReadError,
     Stamped,
@@ -224,30 +224,30 @@ impl RestoredSession {
         let ticks = self.log.next_tick();
         let seeds = self.private.seed_chain.seeds();
         let mut world = World::new();
-        Session::start(&mut world, self.log.rewound(), seeds, packages)
+        world
+            .start_session(self.log.rewound(), seeds, packages)
             .map_err(AbortError::Start)?;
         world
-            .resource_mut::<Session>()
+            .session_mut()
             .resume_journal(Box::new(self.files.journal));
         let signer = ServerSigner::new(server_key, entropy);
         loop {
             Checkpoints::take_again(&mut world, &self.files.snapshots, &signer)
                 .map_err(AbortError::Snapshot)?;
-            if world.resource::<Session>().log().next_tick() >= ticks {
+            if world.session().log().next_tick() >= ticks {
                 break;
             }
-            Session::run_tick_alone(&mut world);
+            world.run_tick_alone();
         }
-        world.resource_scope(|world, mut session: Mut<'_, Session>| {
-            if session.log().result().is_none() {
-                let result = session.result(world, Outcome::Aborted);
-                let signature = signer.sign_result(&result, session.log().session_id());
-                session
-                    .record_result(result, &signature)
-                    .expect("the server's own result holds");
-            }
-            session.reveal_seed();
-        });
+        if world.session().log().result().is_none() {
+            let result = world.session_result_as(Outcome::Aborted);
+            let mut session = world.session_mut();
+            let signature = signer.sign_result(&result, session.log().session_id());
+            session
+                .record_result(result, &signature)
+                .expect("the server's own result holds");
+        }
+        world.session_mut().reveal_seed();
         let log = world.resource::<Session>().log();
         let file = SessionDir::publish(data, log).map_err(AbortError::Publish)?;
         SessionAborted {

@@ -98,7 +98,7 @@ impl SimResource for Timers {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::release::test_match::TestMatch;
+    use crate::release::r#match::Match;
 
     #[test]
     fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
@@ -129,7 +129,7 @@ mod tests {
         let changed = |change: fn(&mut Timers)| {
             let mut timers = last.clone();
             change(&mut timers);
-            TestMatch::decodes(&timers) && timers.check(&world)
+            Match::decodes(&timers) && timers.check(&world)
         };
         assert!(!changed(|timers| timers.next_seq += 1));
         assert!(!changed(

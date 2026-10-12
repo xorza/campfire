@@ -68,10 +68,10 @@ impl Order {
     /// The capability that orders go to.
     pub const CAPABILITY: Capability = Capability::Orders;
 
-    /// The order of `action` to `unit` alone.
-    pub const fn one(unit: StableId, action: Action) -> Order {
+    /// The order of `action` to `id` alone.
+    pub const fn one(id: StableId, action: Action) -> Order {
         Order {
-            units: OrderUnits::one(unit),
+            units: OrderUnits::one(id),
             action,
         }
     }

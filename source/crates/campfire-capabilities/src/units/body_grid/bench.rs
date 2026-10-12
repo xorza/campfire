@@ -20,16 +20,16 @@ pub(crate) fn body_grid(c: &mut Criterion) {
         .map(|body| Placed {
             id: body.id,
             key: (),
-            at: Position::new(body.at).unwrap(),
+            pos: Position::new(body.point).unwrap(),
             shape: body.shape,
         })
         .collect();
     let mut points = KernelScene::new(21);
     let near: Vec<(Position, Num)> = (0..COUNT)
         .map(|_| {
-            let at = Position::new(points.point(span)).unwrap();
+            let pos = Position::new(points.point(span)).unwrap();
             let reach = Num::from_int(1 + points.below(8).cast_signed()).unwrap();
-            (at, reach)
+            (pos, reach)
         })
         .collect();
     let mut grid = BodyGrid::default();

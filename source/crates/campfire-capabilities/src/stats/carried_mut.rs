@@ -1,6 +1,4 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -26,16 +24,6 @@ impl<'w> CarriedMut<'w> {
         clocks: Mut<'w, ModifierClocks>,
     ) -> CarriedMut<'w> {
         CarriedMut { modifiers, clocks }
-    }
-
-    /// The modifiers and clocks of `entity` in `world`; none when it carries none.
-    pub(crate) fn of(world: &'w mut World, entity: Entity) -> Option<CarriedMut<'w>> {
-        let (modifiers, clocks) = world
-            .get_entity_mut(entity)
-            .ok()?
-            .into_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
-            .ok()?;
-        Some(CarriedMut { modifiers, clocks })
     }
 
     pub(crate) fn modifiers(&self) -> &Modifiers {
@@ -188,6 +176,7 @@ struct Parts<'a> {
 #[cfg(test)]
 mod tests {
     use bevy_ecs::change_detection::DetectChanges;
+    use bevy_ecs::world::World;
     use campfire_common::Ticks;
 
     use super::*;
@@ -195,6 +184,7 @@ mod tests {
     use crate::stats::lifetime::{Ends, Lifetime};
     use crate::stats::modifier_clocks::Interval;
     use crate::stats::modifier_data::Reapply;
+    use crate::stats::stats_world::StatsWorldCrate;
     use crate::values::rank::Rank;
 
     #[test]
@@ -204,7 +194,7 @@ mod tests {
             instance: NewInstance {
                 id: ModifierId::new(0),
                 source: None,
-                ability: None,
+                action: None,
                 rank: Rank::FIRST,
                 lifetime: Lifetime::new(None, Ends::Never),
                 aura_radius: None,
@@ -271,7 +261,7 @@ mod tests {
         ];
         for (operation, expected) in cases {
             world.clear_trackers();
-            operation(&mut CarriedMut::of(&mut world, unit).unwrap());
+            operation(&mut world.carried_mut(unit).unwrap());
             assert_eq!(changed(&world), expected);
         }
         assert_eq!(world.get::<Modifiers>(unit).unwrap().len(), 0);

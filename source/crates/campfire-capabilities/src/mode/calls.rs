@@ -1,6 +1,5 @@
 use std::ops::ControlFlow;
 
-use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptError;
@@ -25,22 +24,10 @@ use crate::scripts::script_batch::ScriptBatch;
 pub(crate) struct Calls<'a, 'w> {
     pub(crate) batch: &'a mut ScriptBatch<'w>,
     pub(crate) ctx: Ctx,
-    now: Tick,
+    pub(super) now: Tick,
 }
 
 impl Calls<'_, '_> {
-    /// Runs `calls` in one script batch at the time `now`, and gives what `calls` gave.
-    pub(crate) fn batch<T>(
-        world: &mut World,
-        now: Tick,
-        calls: impl FnOnce(&mut Calls<'_, '_>) -> T,
-    ) -> T {
-        ScriptBatch::run(world, |batch| {
-            let ctx = batch.ctx().clone();
-            calls(&mut Calls { batch, ctx, now })
-        })
-    }
-
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeBook {
         ModeBook::of_match(&self.ctx)
@@ -61,12 +48,12 @@ impl Calls<'_, '_> {
         Ok(())
     }
 
-    /// Runs `hook` with `args` from `pool` as `run` does, and records a failure, for `unit` if
+    /// Runs `hook` with `args` from `pool` as `run` does, and records a failure, for `id` if
     /// any. `Break`, with the error unrecorded, when the call found the pool spent: what the
     /// caller answers in a later tick waits, from this call on.
     pub(crate) fn answer(
         &mut self,
-        unit: Option<StableId>,
+        id: Option<StableId>,
         pool: Pool,
         hook: Hook,
         args: impl FuncArgs,
@@ -77,7 +64,7 @@ impl Calls<'_, '_> {
                 ControlFlow::Break(CallError::from_script(ScriptError::TickBudget))
             }
             Err(error) => {
-                self.batch.record(unit, hook, CallError::from_script(error));
+                self.batch.record(id, hook, CallError::from_script(error));
                 ControlFlow::Continue(())
             }
         }

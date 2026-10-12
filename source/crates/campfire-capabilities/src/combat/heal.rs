@@ -14,7 +14,7 @@ pub(crate) struct Heal {
     pub(crate) target: StableId,
     pub(crate) amount: Num,
     pub(crate) cause: HealCause,
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) depth: u8,
 }
 

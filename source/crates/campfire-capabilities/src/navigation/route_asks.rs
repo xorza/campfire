@@ -61,7 +61,7 @@ struct Waiting {
 pub(crate) struct Member {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
     pub(crate) walker: Walker,
     pub(crate) goal: Position,
 }
@@ -200,7 +200,7 @@ impl RouteAsks {
             self.members.push(Member {
                 id,
                 entity,
-                at,
+                pos: at,
                 walker: Walker::walking(body),
                 goal: route.goal().expect("a unit that asked a route has a goal"),
             });
@@ -231,7 +231,7 @@ impl RouteAsks {
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
-        let centre = GroupBox::of(self.members.iter().map(|member| member.at))
+        let centre = GroupBox::of(self.members.iter().map(|member| member.pos))
             .expect("a party has members")
             .centre();
         self.shared.clear();
@@ -274,16 +274,16 @@ impl RouteAsks {
             .max()
             .expect("a layer of a member");
         let squared = |value: Num| u128::from(value.to_bits().unsigned_abs()).pow(2);
-        let distance = |at: Position| {
-            let at = at.get();
-            squared(at.x - centre[0]) + squared(at.z - centre[1])
+        let distance = |pos: Position| {
+            let pos = pos.get();
+            squared(pos.x - centre[0]) + squared(pos.z - centre[1])
         };
         let leader = on_layer
             .filter(|member| member.walker == widest)
-            .min_by_key(|member| (distance(member.at), member.id))
+            .min_by_key(|member| (distance(member.pos), member.id))
             .expect("the widest walker is a member's");
         let walkable = Walkable::of(grid.clearance(widest), statics);
-        let outcome = planner.plan(walkable, leader.at, party.goal, &mut self.waypoints);
+        let outcome = planner.plan(walkable, leader.pos, party.goal, &mut self.waypoints);
         let start = self.shared.len();
         self.shared.extend_from_slice(&self.waypoints);
         self.layers.push(SharedRoute {
@@ -316,9 +316,9 @@ impl RouteAsks {
         let walkable = Walkable::of(grid.clearance(member.walker), statics);
         let seen = (0..route.len())
             .rev()
-            .find(|&at| planner.sees(walkable, Segment::new(member.at, route[at])));
+            .find(|&at| planner.sees(walkable, Segment::new(member.pos, route[at])));
         let Some(first) = seen else {
-            let outcome = planner.plan(walkable, member.at, member.goal, &mut self.waypoints);
+            let outcome = planner.plan(walkable, member.pos, member.goal, &mut self.waypoints);
             answer(member.entity, &self.waypoints, outcome.reached);
             return;
         };
@@ -327,7 +327,7 @@ impl RouteAsks {
         let mut reached = shared.reached && member.goal == party.goal;
         if shared.reached && member.goal != party.goal {
             let before = match route.len() - first {
-                1 => member.at,
+                1 => member.pos,
                 _ => route[route.len() - 2],
             };
             if planner.sees(walkable, Segment::new(before, member.goal)) {

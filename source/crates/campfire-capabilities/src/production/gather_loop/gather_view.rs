@@ -115,7 +115,7 @@ impl GatherView<'_, '_> {
         ours.then_some(FoundNode {
             entity,
             place: Place {
-                at,
+                pos: at,
                 body: body.copied(),
             },
         })
@@ -140,11 +140,11 @@ impl GatherView<'_, '_> {
                 let shape = Body::shape_of(place.body.as_ref());
                 let within =
                     self.metric
-                        .reaches(near.at, near_shape, gather.spec.bounce, place.at, shape);
-                within.then_some((place.distance_from(from), id, place.at))
+                        .reaches(near.pos, near_shape, gather.spec.bounce, place.pos, shape);
+                within.then_some((place.distance_from(from), id, place.pos))
             })
             .min_by_key(|&(distance, id, _)| (distance, id))
-            .map(|(_, node, at)| NodeAt { node, at })
+            .map(|(_, node, at)| NodeAt { node, pos: at })
     }
 
     /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `resource` from a worker
@@ -171,7 +171,7 @@ impl GatherView<'_, '_> {
             self.drop_offs.get(self.index.get(id)?).ok()?;
         self.takes(*drop_owner, unit_type, owner, resource)
             .then_some(Place {
-                at,
+                pos: at,
                 body: body.copied(),
             })
     }
@@ -191,7 +191,7 @@ impl GatherView<'_, '_> {
             })
             .map(|(&id, &at, body, ..)| {
                 let place = Place {
-                    at,
+                    pos: at,
                     body: body.copied(),
                 };
                 (place.distance_from(from), id)
@@ -212,17 +212,17 @@ impl GatherView<'_, '_> {
             .is_some_and(|resources| resources.takes(slice::from_ref(&amount)))
     }
 
-    /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `place`.
+    /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `at`.
     pub(super) fn reaches(
         &self,
         from: Position,
         body: Option<&Body>,
         gather: Gather,
-        place: Place,
+        at: Place,
     ) -> bool {
         let shape = Body::shape_of(body);
-        let to = Body::shape_of(place.body.as_ref());
-        self.metric.reaches(from, shape, gather.range, place.at, to)
+        let to = Body::shape_of(at.body.as_ref());
+        self.metric.reaches(from, shape, gather.range, at.pos, to)
     }
 
     /// What the worker of `entity` does in its loop this tick.
@@ -246,7 +246,7 @@ impl GatherView<'_, '_> {
             };
         }
         let gone = Place {
-            at: order.node.at,
+            pos: order.node.pos,
             body: None,
         };
         let search = || match self.free_node_near(from, team, gather, gone) {
@@ -336,7 +336,7 @@ impl GatherView<'_, '_> {
         if let Some(found) = self.node(target, gather, team) {
             let node = NodeAt {
                 node: target,
-                at: found.place.at,
+                pos: found.place.pos,
             };
             let load = gatherer
                 .load()

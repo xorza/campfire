@@ -1,5 +1,4 @@
-use std::fmt;
-use std::mem;
+use std::{fmt, mem};
 
 use bevy_ecs::archetype::ArchetypeId;
 use bevy_ecs::entity::Entity;
@@ -23,6 +22,7 @@ use crate::units::team::Team;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::units::units_world::UnitsWorldCrate;
 use crate::units::view_column::{ViewColumn, ViewColumns};
 
 /// The units scripts see, those with a position and a team, as the running phase of the tick
@@ -112,7 +112,7 @@ impl UnitRows {
     /// rows each source must fill again. Whether every row must be filled.
     fn begin_read(&mut self, world: &World, full: bool) -> bool {
         let now = world.resource::<SimTick>().start();
-        let relations = Relations::of(world);
+        let relations = world.relations();
         let refill = mem::take(&mut self.refill) || full || *relations != self.relations;
         self.now = now;
         self.relations.clone_from(relations);

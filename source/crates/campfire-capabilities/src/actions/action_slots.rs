@@ -8,10 +8,6 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
-use crate::state_types::data_kind::DataKind;
-use crate::state_types::replication::Replication;
-use crate::state_types::sending::SentPredicted;
-
 use crate::actions::action_call::{ActionCall, ResolvedCast, Started};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
@@ -23,6 +19,9 @@ use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_times::{SlotTimes, TimedSlots};
+use crate::state_types::data_kind::DataKind;
+use crate::state_types::replication::Replication;
+use crate::state_types::sending::SentPredicted;
 use crate::units::action_id::ActionId;
 use crate::units::unit_entity::UnitEntity;
 use crate::values::action_start::ActionStart;
@@ -284,15 +283,15 @@ impl ActionSlots {
         )
     }
 
-    /// Starts the ordered cast that passed its checks as `checked`, from `position` at `now`: a
+    /// Starts the ordered cast that passed its checks as `checked`, from `pos` at `now`: a
     /// charged action charges until its most; any other winds up, to resolve as its windup ends.
-    pub(crate) fn begin(&mut self, checked: &CheckedAction<'_>, position: Position, now: Tick) {
+    pub(crate) fn begin(&mut self, checked: &CheckedAction<'_>, pos: Position, now: Tick) {
         let values = checked.values;
         if let Some(most) = values.charge {
-            self.charge(checked.target, position, now, now.after(most));
+            self.charge(checked.target, pos, now, now.after(most));
         } else {
             let start = ActionStart {
-                origin: position,
+                origin: pos,
                 charge: None,
             };
             self.start(now.after(values.windup), checked.target, start);

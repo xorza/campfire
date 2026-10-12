@@ -36,7 +36,7 @@ impl SessionRules {
     }
 
     /// The terms of a session by these rules on the server `server_key`, whose seed chain
-    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `inputs`, its slots opened
+    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `rules`, its slots opened
     /// as `slots` plans them; an error when the mode does not run at `tick_hz`, or when `slots`
     /// plans none or more than the mode's teams have.
     pub fn terms(
@@ -44,16 +44,16 @@ impl SessionRules {
         server_key: XOnlyPublicKey,
         seed_commitment: SeedCommitment,
         tick_hz: NonZeroU32,
-        inputs: InputRules,
+        rules: InputRules,
         slots: Vec<SlotPlan>,
     ) -> Result<SessionTerms, TermsError> {
         let terms = SessionTerms {
             server_key,
             tick_hz,
-            max_input_delay: inputs.max_input_delay,
-            max_input_lead: inputs.max_input_lead,
-            max_payload_len: inputs.max_payload_len,
-            max_inputs_per_tick: inputs.max_inputs_per_tick,
+            max_input_delay: rules.max_input_delay,
+            max_input_lead: rules.max_input_lead,
+            max_payload_len: rules.max_payload_len,
+            max_inputs_per_tick: rules.max_inputs_per_tick,
             seed_commitment,
             release: RELEASE.to_owned(),
             mode: self.mode,

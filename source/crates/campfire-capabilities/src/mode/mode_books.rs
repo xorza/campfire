@@ -10,11 +10,11 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::walker::Walker;
-use crate::stats::Stats;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stats_world::StatsWorldCrate;
 use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::layer::Layer;
@@ -95,7 +95,7 @@ impl ModeBooks {
         if let Some(bindings) = bindings {
             world.insert_resource(bindings);
         }
-        Stats::load(world, stats, pools);
+        world.load_stat_books(stats, pools);
         world.insert_resource(tags);
         ActionsColumn::share_kinds(world.non_send::<View>(), slot_kinds.clone());
         world.insert_resource(slot_kinds);

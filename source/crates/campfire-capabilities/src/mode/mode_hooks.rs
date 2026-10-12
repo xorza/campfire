@@ -10,9 +10,9 @@ use campfire_sim::{EntityIndex, SimTick, SlotEventKind, TickInputs};
 
 use crate::combat::deaths::Deaths;
 use crate::combat::kept::Kept;
-use crate::mode::calls::Calls;
 use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_input::{InputValue, ModeInput};
+use crate::mode::mode_world::ModeWorldCrate;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
@@ -68,7 +68,7 @@ impl ModeHooks {
         }
         let now = world.resource::<SimTick>().start();
         let bodies = &*bodies;
-        Calls::batch(world, now, |call| {
+        world.mode_calls(now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
                     call.book().schema.input_type_named(name)
@@ -112,7 +112,7 @@ impl ModeHooks {
             unanswered.0.extend(events.iter().copied());
             let hooks = world.non_send::<MatchMode>().schema.hooks;
             let now = world.resource::<SimTick>().end();
-            let answered = Calls::batch(world, now, |call| {
+            let answered = world.mode_calls(now, |call| {
                 let mut answered = 0;
                 for event in unanswered.0.iter() {
                     let hook = match event.kind {
@@ -140,7 +140,7 @@ impl ModeHooks {
         if world.resource::<Timers>().due(now).is_none() {
             return;
         }
-        Calls::batch(world, now, |call| {
+        world.mode_calls(now, |call| {
             let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
             while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
                 let name = ImmutableString::from(timer.name.as_str());
@@ -181,17 +181,17 @@ impl ModeHooks {
         let now = world.resource::<SimTick>().end();
         world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredDeaths>| {
             unanswered.extend(world.resource::<Deaths>().iter());
-            let answered = Calls::batch(world, now, |call| {
+            let answered = world.mode_calls(now, |call| {
                 let view = call.ctx.view().clone();
                 let mut answered = 0;
                 for death in unanswered.iter() {
-                    if let Some(unit) = view.unit(death.unit) {
+                    if let Some(unit) = view.unit(death.id) {
                         let killer = death.killer.and_then(|id| view.unit(id));
                         let killer = killer.map_or(Dynamic::UNIT, Dynamic::from);
                         let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
                         let assisters: Array = assisters.map(Dynamic::from).collect();
                         let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
-                        let unit = Some(death.unit);
+                        let unit = Some(death.id);
                         if call
                             .answer(unit, Pool::Mode, Hook::OnUnitDied, args)
                             .is_break()
@@ -205,7 +205,7 @@ impl ModeHooks {
             });
             let index = world.resource::<EntityIndex>();
             units.clear();
-            units.extend(unanswered.iter().map(|death| index.get(death.unit)));
+            units.extend(unanswered.iter().map(|death| index.get(death.id)));
             for (at, entity) in units.iter().enumerate() {
                 let Some(entity) = *entity else {
                     continue;
@@ -246,18 +246,18 @@ impl ModeHooks {
             }
             due.clear();
             mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
-            let answered = Calls::batch(world, now, |call| {
+            let answered = world.mode_calls(now, |call| {
                 let view = call.ctx.view().clone();
                 let mut answered = 0;
-                for &LevelUp { unit, track, level } in due.iter() {
-                    if let Some(handle) = view.unit(unit) {
+                for &LevelUp { id, track, level } in due.iter() {
+                    if let Some(handle) = view.unit(id) {
                         let level = INT::from(level.get());
                         let name = view
                             .track_name(track)
                             .expect("a track of the match is named");
                         let args = (call.ctx.clone(), handle, name, level);
                         if call
-                            .answer(Some(unit), Pool::Mode, Hook::OnLevelUp, args)
+                            .answer(Some(id), Pool::Mode, Hook::OnLevelUp, args)
                             .is_break()
                         {
                             break;

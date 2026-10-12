@@ -1,30 +1,28 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_sim::StableId;
+use campfire_sim::{SimTick, SimWorld, StableId};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
 use crate::combat::respawn::Respawn;
 use crate::mode::group_unit::GroupUnit;
-use crate::mode::match_end::MatchEnd;
-use crate::mode::match_end::MatchResult;
+use crate::mode::match_end::{MatchEnd, MatchResult};
 use crate::mode::match_mode::MatchMode;
 use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::navigation::path_walker::PathEnd;
-use crate::players::match_entity::MatchEntity;
+use crate::players::players_world::PlayersWorld;
 use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::scripts::state_value::StateValue;
 use crate::units::action_id::ActionId;
 use crate::units::path_id::PathId;
-use crate::units::relations::Relations;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::team::Team;
+use crate::units::units_world::UnitsWorldCrate;
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;
-use campfire_sim::{EntityIndex, SimTick};
 
 /// A change to the match that a mode call queued.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,18 +46,18 @@ pub(crate) enum ModeEffect {
         units: Vec<GroupUnit>,
     },
     Grant {
-        unit: StableId,
+        id: StableId,
         kind: SlotKind,
         /// The kind's first rank, which the actions take.
         rank: Option<Rank>,
         abilities: Vec<ActionId>,
     },
     Respawn {
-        unit: StableId,
+        id: StableId,
         ticks: Ticks,
     },
     Learn {
-        unit: StableId,
+        id: StableId,
         slot: u8,
     },
     SetRelation {
@@ -89,7 +87,9 @@ impl Effect for ModeEffect {
                 .set(now, name, ticks, repeat, data),
             ModeEffect::End(result) => {
                 let tick = world.resource::<SimTick>().start();
-                let entity = MatchEntity::entity(world).expect("a match that runs has its entity");
+                let entity = world
+                    .match_entity()
+                    .expect("a match that runs has its entity");
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
             ModeEffect::SpawnUnit { at, owner } => {
@@ -102,12 +102,12 @@ impl Effect for ModeEffect {
                 units,
             } => book.spawn_group(world, team, path, from, &units),
             ModeEffect::Grant {
-                unit,
+                id,
                 kind,
                 rank,
                 abilities,
             } => {
-                let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
+                let Some(entity) = world.entity_of(id) else {
                     return;
                 };
                 let mut unit = world.entity_mut(entity);
@@ -116,24 +116,24 @@ impl Effect for ModeEffect {
                 {
                     slots.grant(&mut times, kind, &abilities, rank);
                 } else {
-                    let slots = abilities.iter().map(|&ability| (ability, kind, rank));
+                    let slots = abilities.iter().map(|&action| (action, kind, rank));
                     unit.insert(ActionSlots::new(slots).timed());
                 }
             }
-            ModeEffect::Respawn { unit, ticks } => {
-                let entity = world.resource::<EntityIndex>().get(unit);
+            ModeEffect::Respawn { id, ticks } => {
+                let entity = world.entity_of(id);
                 let entity = entity.expect("a dead unit that stays is in the world");
                 let at = now.after(ticks);
                 world.entity_mut(entity).insert(Respawn { at });
             }
-            ModeEffect::Learn { unit, slot } => {
-                let entity = world.resource::<EntityIndex>().get(unit);
+            ModeEffect::Learn { id, slot } => {
+                let entity = world.entity_of(id);
                 let entity = entity.expect("a unit the view read is in the world");
                 let slots = world.get_mut::<ActionSlots>(entity);
                 slots.expect("a unit with ability slots").learn(slot);
             }
             ModeEffect::SetRelation { a, b, relation } => {
-                Relations::of_mut(world).set_keeping_vision(a, b, relation);
+                world.relations_mut().set_keeping_vision(a, b, relation);
             }
             // A call's `now` is the end of its tick.
             ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),

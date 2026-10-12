@@ -18,7 +18,7 @@ pub(crate) struct AreasEffect {
     pub(crate) id: Option<StableId>,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
 }
 
 impl AreasEffect {
@@ -31,7 +31,7 @@ impl AreasEffect {
     )]
     pub(crate) fn queue_listed(
         does: CapabilityDoes,
-        unit: StableId,
+        id: StableId,
         _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
@@ -44,10 +44,10 @@ impl AreasEffect {
         };
         // A unit gone, as a source despawned while its delivery flew, has no place: its area
         // lands nothing, as one whose source is gone does.
-        let Some(row) = view.row(unit) else {
+        let Some(row) = view.row(id) else {
             return Ok(());
         };
-        let at = row.pos;
+        let pos = row.pos;
         let by = Delivering {
             source,
             action,
@@ -59,7 +59,7 @@ impl AreasEffect {
             id: None,
             by,
             unit_type: area,
-            at,
+            pos,
         });
         Ok(())
     }
@@ -69,7 +69,7 @@ impl Effect for AreasEffect {
     /// Applies the effect: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
     fn apply(self, world: &mut World, _: &mut Frame) {
-        let at = world.resource::<Bounds>().clamp(self.at);
-        Areas::push(world, self.by, self.unit_type, at, None, self.id);
+        let pos = world.resource::<Bounds>().clamp(self.pos);
+        Areas::push(world, self.by, self.unit_type, pos, None, self.id);
     }
 }

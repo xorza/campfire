@@ -48,7 +48,7 @@ struct LevelWidest {
 pub(crate) struct Placed<K> {
     pub(crate) id: StableId,
     pub(crate) key: K,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
     pub(crate) shape: Shape,
 }
 
@@ -136,7 +136,7 @@ impl<K: Copy> BodyGrid<K> {
         self.order.clear();
         self.order
             .extend(self.placed.iter().enumerate().map(|(placed, body)| {
-                let at = body.at.get();
+                let at = body.pos.get();
                 let level = levels.level(body.shape.bound());
                 let (row, column) = (at.z.to_bits(), at.x.to_bits());
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
@@ -215,12 +215,12 @@ impl<K: Copy> BodyGrid<K> {
         }
     }
 
-    /// Calls `visit` with each body whose bound's disc may come within `reach` of `at` on the
+    /// Calls `visit` with each body whose bound's disc may come within `reach` of `pos` on the
     /// ground plane, as `visit` does.
-    pub(crate) fn visit_near(&self, at: Position, reach: Num, visit: impl FnMut(&Placed<K>)) {
-        let at = at.get();
-        let low = [at.x, at.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
-        let high = [at.x, at.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
+    pub(crate) fn visit_near(&self, pos: Position, reach: Num, visit: impl FnMut(&Placed<K>)) {
+        let pos = pos.get();
+        let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
+        let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
         self.visit(low, high, visit);
     }
 }

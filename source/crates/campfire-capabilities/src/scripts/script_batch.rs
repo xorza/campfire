@@ -15,29 +15,12 @@ use crate::scripts::script_failures::ScriptFailures;
 /// their calls, and the host, out of the world while they run.
 #[derive(Debug)]
 pub(crate) struct ScriptBatch<'a> {
-    world: &'a mut World,
-    host: &'a mut ScriptHost,
-    ctx: Ctx,
+    pub(super) world: &'a mut World,
+    pub(super) host: &'a mut ScriptHost,
+    pub(super) ctx: Ctx,
 }
 
 impl ScriptBatch<'_> {
-    /// Reads the view of `world`'s `ctx`, takes the host out of `world`, runs `calls`, puts the
-    /// host back, and gives what `calls` gave.
-    pub(crate) fn run<T>(world: &mut World, calls: impl FnOnce(&mut ScriptBatch<'_>) -> T) -> T {
-        let ctx = world.non_send::<Ctx>().clone();
-        ctx.view().read(world);
-        let mut host = world
-            .remove_non_send::<ScriptHost>()
-            .expect("the core runs scripts");
-        let given = calls(&mut ScriptBatch {
-            world,
-            host: &mut host,
-            ctx,
-        });
-        world.insert_non_send(host);
-        given
-    }
-
     /// The `ctx` of the batch's calls.
     pub(crate) const fn ctx(&self) -> &Ctx {
         &self.ctx
@@ -71,12 +54,12 @@ impl ScriptBatch<'_> {
 
     /// Runs one call of `hook` in the batch's frame: begins `start`, then runs `body`, which queues
     /// what the call does and calls its script; applies the frame in the call's tick when both
-    /// succeed, and otherwise records the failure, for `unit` if any, and applies nothing.
+    /// succeed, and otherwise records the failure, for `id` if any, and applies nothing.
     pub(crate) fn hook_call(
         &mut self,
         start: CallStart,
         hook: Hook,
-        unit: Option<StableId>,
+        id: Option<StableId>,
         body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<(), CallError>,
     ) {
         let ctx = self.ctx.clone();
@@ -84,7 +67,7 @@ impl ScriptBatch<'_> {
         let begun = ctx.frame().begin(self.world, start);
         match begun.and_then(|()| body(self)) {
             Ok(()) => ctx.apply(self.world),
-            Err(error) => self.record(unit, hook, error),
+            Err(error) => self.record(id, hook, error),
         }
     }
 
@@ -99,27 +82,14 @@ impl ScriptBatch<'_> {
             .call(&mut Budget::new(u64::MAX), script, hook.name(), args)
     }
 
-    /// Records that a call of `hook`, for `unit` if any, failed with `error`.
-    pub(crate) fn record(&mut self, unit: Option<StableId>, hook: Hook, error: CallError) {
+    /// Records that a call of `hook`, for `id` if any, failed with `error`.
+    pub(crate) fn record(&mut self, id: Option<StableId>, hook: Hook, error: CallError) {
         self.world
             .non_send_mut::<ScriptFailures>()
-            .record(unit, hook, error);
+            .record(id, hook, error);
     }
 
     pub(crate) const fn world(&mut self) -> &mut World {
         self.world
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-
-    use crate::units::view::View;
-
-    /// Reads the units of `world` into its script view, as each batch of script calls does.
-    pub fn read_view(world: &mut World) {
-        let view = world.non_send::<View>().clone();
-        view.read(world);
     }
 }

@@ -51,7 +51,7 @@ pub(crate) struct BodyIndex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct IndexedBody {
     pub(crate) id: StableId,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
     pub(crate) shape: Shape,
     pub(crate) layer: Layer,
 }
@@ -137,11 +137,11 @@ impl BucketKey {
 }
 
 impl IndexedBody {
-    /// The body `body` of unit `id`, standing at `at`.
-    pub(crate) const fn of(id: StableId, at: Position, body: &Body) -> IndexedBody {
+    /// The body `body` of unit `id`, standing at `pos`.
+    pub(crate) const fn of(id: StableId, pos: Position, body: &Body) -> IndexedBody {
         IndexedBody {
             id,
-            at,
+            pos,
             shape: body.shape(),
             layer: body.layer(),
         }
@@ -151,15 +151,15 @@ impl IndexedBody {
     /// it would overlap it. Touching is not closer.
     pub(crate) fn comes_within(&self, segment: Segment, reach: Num) -> bool {
         self.shape
-            .comes_within(self.at, segment.start(), segment.end(), reach)
+            .comes_within(self.pos, segment.start(), segment.end(), reach)
     }
 
-    /// Whether the insides of the body and of `body`, a box at `at`, share a point: touching is
+    /// Whether the insides of the body and of `body`, a box at `pos`, share a point: touching is
     /// not overlap.
-    pub(crate) fn overlaps_box(&self, at: Position, body: &BodyBox) -> bool {
+    pub(crate) fn overlaps_box(&self, pos: Position, body: &BodyBox) -> bool {
         match &self.shape {
-            Shape::Circle(radius) => body.nearest(at, self.at, *radius) == Ordering::Less,
-            Shape::Box(other) => body.overlaps(at, other, self.at),
+            Shape::Circle(radius) => body.nearest(pos, self.pos, *radius) == Ordering::Less,
+            Shape::Box(other) => body.overlaps(pos, other, self.pos),
         }
     }
 
@@ -167,8 +167,8 @@ impl IndexedBody {
     /// `reach` to the body, as a walker of that radius may not stand in them. Rows in order.
     pub(crate) fn spans_closer(&self, grid: &Grid, reach: Num, mark: impl FnMut(Range<usize>)) {
         match &self.shape {
-            Shape::Circle(radius) => grid.spans_closer(self.at, reach + *radius, mark),
-            Shape::Box(body) => grid.box_spans_closer(self.at, body, reach, mark),
+            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + *radius, mark),
+            Shape::Box(body) => grid.box_spans_closer(self.pos, body, reach, mark),
         }
     }
 }
@@ -258,8 +258,8 @@ impl BodyIndex {
                 level: self.levels.level(extent[0].max(extent[1])),
             };
             let cell = self.levels.cell(at.level);
-            let rows = Buckets::covering(cell, body.at.get().z, extent[1]);
-            let columns = Buckets::covering(cell, body.at.get().x, extent[0]);
+            let rows = Buckets::covering(cell, body.pos.get().z, extent[1]);
+            let columns = Buckets::covering(cell, body.pos.get().x, extent[0]);
             for row in rows.low..=rows.high {
                 debug_assert!(row.abs() < BucketKey::ROWS, "a body's rows fit a key");
                 self.fresh
@@ -309,16 +309,16 @@ impl BodyIndex {
     }
 
     /// Calls `visit` once with each body of `layer` whose bounding box meets the square `reach`
-    /// from `at` on each side, on the ground plane: every body of the layer that comes within
-    /// `reach` of `at`, and some that do not. In order of the buckets, row by row.
+    /// from `point` on each side, on the ground plane: every body of the layer that comes within
+    /// `reach` of `point`, and some that do not. In order of the buckets, row by row.
     pub(crate) fn near(
         &self,
         layer: Layer,
-        at: Vec3,
+        point: Vec3,
         reach: Num,
         mut visit: impl FnMut(&IndexedBody),
     ) {
-        let all = self.meeting(layer, Square::around(at, reach), |body| {
+        let all = self.meeting(layer, Square::around(point, reach), |body| {
             visit(body);
             ControlFlow::Continue(())
         });
@@ -329,15 +329,15 @@ impl BodyIndex {
     }
 
     /// Whether `hit` holds of a body of `layer` whose bounding box meets the square `reach` from
-    /// `at` on each side, as `near` visits them, stopping at the first.
+    /// `point` on each side, as `near` visits them, stopping at the first.
     pub(crate) fn any_near(
         &self,
         layer: Layer,
-        at: Vec3,
+        point: Vec3,
         reach: Num,
         mut hit: impl FnMut(&IndexedBody) -> bool,
     ) -> bool {
-        let met = self.meeting(layer, Square::around(at, reach), |body| {
+        let met = self.meeting(layer, Square::around(point, reach), |body| {
             if hit(body) {
                 ControlFlow::Break(())
             } else {
@@ -418,9 +418,9 @@ impl BodyIndex {
 }
 
 impl Square {
-    /// The square `reach` from `at` on each side.
-    const fn around(at: Vec3, reach: Num) -> Square {
-        let (x, z, reach) = (at.x.to_bits(), at.z.to_bits(), reach.to_bits());
+    /// The square `reach` from `point` on each side.
+    const fn around(point: Vec3, reach: Num) -> Square {
+        let (x, z, reach) = (point.x.to_bits(), point.z.to_bits(), reach.to_bits());
         Square {
             low: [x - reach, z - reach],
             high: [x + reach, z + reach],

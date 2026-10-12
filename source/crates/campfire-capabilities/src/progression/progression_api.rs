@@ -108,7 +108,7 @@ impl ProgressionApi {
             return Err(ApiError::NoTrack.fail().into());
         }
         ctx.queue(ProgressionEffect::AddXp {
-            unit: unit.id,
+            id: unit.id,
             track,
             amount,
         })

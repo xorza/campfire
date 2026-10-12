@@ -8,7 +8,6 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use campfire_log::ErrorReport;
-use campfire_runner::Session;
 use campfire_runner::internals::ProvingMatch;
 use campfire_sim::StateRegistry;
 use campfire_store::{DurableFile, InputFile};
@@ -41,7 +40,7 @@ fn a_state_types_layout_changes_only_with_the_snapshot_version() {
     // The proving match holds every type of every capability the release runs, and the mode's.
     let proving = ProvingMatch::load();
     let fixed = proving.start();
-    let registry = fixed.runner().world().resource::<Session>().registry();
+    let registry = fixed.game().resource::<StateRegistry>();
     let mut now = format!("data_version {}\n", StateRegistry::DATA_VERSION);
     for (name, fingerprint) in registry.layout() {
         writeln!(now, "{name} {}", &fingerprint.to_string()[..DIGITS])

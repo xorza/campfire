@@ -28,9 +28,9 @@ pub(crate) fn fog(c: &mut Criterion) {
     let mut scene = KernelScene::new(11);
     let units: Vec<(Position, Team)> = (0..KernelScene::UNITS)
         .map(|_| {
-            let at = Position::new(scene.point(span)).unwrap();
+            let pos = Position::new(scene.point(span)).unwrap();
             let team = Team::new(u8::try_from(scene.below(2)).unwrap());
-            (at, team)
+            (pos, team)
         })
         .collect();
     let edge = Num::from_int(span.cast_signed() + SIGHT).unwrap();

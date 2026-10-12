@@ -18,6 +18,6 @@ pub(crate) struct Held {
     pub(crate) target: StableId,
     pub(crate) modifier: ModifierId,
     pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) rank: Rank,
 }

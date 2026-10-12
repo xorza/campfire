@@ -57,15 +57,15 @@ fn grid() -> PathingGrid {
     )
 }
 
-/// Marks `grid` for `statics`, which `index` held the bodies before, and checks it against a
+/// Marks `grid` for `bodies`, which `statics` held the bodies before, and checks it against a
 /// grid marked for them alone.
-fn follow(grid: &mut PathingGrid, index: &mut BodyIndex, statics: &[IndexedBody]) {
-    index.update(statics);
-    grid.update(index);
+fn follow(grid: &mut PathingGrid, statics: &mut BodyIndex, bodies: &[IndexedBody]) {
+    statics.update(bodies);
+    grid.update(statics);
     let (mut alone, mut fresh) = (BodyIndex::new(Num::ONE), self::grid());
-    alone.update(statics);
+    alone.update(bodies);
     fresh.update(&alone);
-    assert_eq!(grid.blocked, fresh.blocked, "{statics:?}");
+    assert_eq!(grid.blocked, fresh.blocked, "{bodies:?}");
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // eight too, but not the corners (1.5, 1.5) at √4.5 ≈ 2.12 m.
     let tower = IndexedBody {
         id: ids.allocate(),
-        at: at(Num::ZERO, Num::ZERO),
+        pos: at(Num::ZERO, Num::ZERO),
         shape: Shape::Circle(Num::ONE),
         layer: Layer::FIRST,
     };
@@ -96,13 +96,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // exactly 1 m off, on the edge, and open.
     let post = IndexedBody {
         id: ids.allocate(),
-        at: at(Num::int(2), -(Num::int(1) + Num::HALF)),
+        pos: at(Num::int(2), -(Num::int(1) + Num::HALF)),
         shape: Shape::Circle(Num::HALF),
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
-        at: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
+        pos: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
         shape: Shape::Circle(Num::HALF),
         layer: Layer::FIRST,
     };
@@ -140,7 +140,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
 
     // The post moves a meter along z, to (2, −0.5).
     let moved = IndexedBody {
-        at: at(Num::int(2), -Num::HALF),
+        pos: at(Num::int(2), -Num::HALF),
         ..post
     };
     follow(&mut grid, &mut index, &[tower, moved, corner]);
@@ -197,7 +197,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let mut index = BodyIndex::new(Num::ONE);
     let tower = IndexedBody {
         id: IdAllocator::default().allocate(),
-        at: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
+        pos: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
         shape: Shape::Circle(Num::ONE),
         layer: Layer::FIRST,
     };

@@ -34,6 +34,7 @@ pub(crate) mod area_spec;
 pub(crate) mod area_trigger;
 pub(crate) mod areas_api;
 pub(crate) mod areas_effect;
+pub(crate) mod areas_world;
 
 /// The `areas` capability: area units, which actions deliver. It builds on combat, which a match
 /// installs too.
@@ -102,100 +103,23 @@ impl Areas {
         Areas::push(world, by, unit_type, at, target.unit(), None);
     }
 
-    /// Queues an area of `unit_type` of `by` to land at `at`, aimed at `aimed`; with `id`, the id
+    /// Queues an area of `unit_type` of `by` to land at `pos`, aimed at `aimed`; with `id`, the id
     /// the script that placed it took for it.
     fn push(
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
-        at: Position,
+        pos: Position,
         aimed: Option<StableId>,
         id: Option<StableId>,
     ) {
         world.resource_mut::<AreaLaunches>().0.push(AreaLaunch {
             id,
             by,
-            at,
+            pos,
             unit_type,
             aimed,
         });
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use bevy_ecs::world::World;
-    use campfire_common::{Tick, Ticks};
-    use campfire_math::Num;
-    use campfire_sim::IdAllocator;
-
-    use crate::areas::area::Area;
-    use crate::areas::area_spec::{AreaSpec, Inside};
-    use crate::deliveries::delivering::Delivering;
-    use crate::units::action_id::ActionId;
-    use crate::units::by_type::ByType;
-    use crate::units::filter::Filter;
-    use crate::units::unit_type::UnitType;
-    use crate::values::rank::Rank;
-    use crate::values::relation_set::RelationSet;
-
-    /// An area unit of `unit_type`, a type that reaches `radius`, as a client draws it: the type's
-    /// spec in `world`'s book of them, and the area, from tick 0 to tick 1.
-    pub fn standing_area(world: &mut World, unit_type: UnitType, radius: Num) -> Area {
-        let spec = AreaSpec {
-            radius,
-            delay: Ticks::new(0),
-            duration: Ticks::new(1),
-            affects: Filter::of_relations(RelationSet::All),
-            inside: Inside::default(),
-        };
-        world
-            .get_resource_or_init::<ByType<AreaSpec>>()
-            .set(unit_type, spec);
-        let by = Delivering {
-            source: IdAllocator::default().allocate(),
-            action: ActionId::new(0),
-            rank: Rank::FIRST,
-            start: None,
-            launch: None,
-        };
-        Area::new(by, None, Tick::new(1))
-    }
-
-    #[cfg(test)]
-    use crate::{
-        areas::Areas, areas::area_data::AreaData, stats::Stats, units::engine_tag::EngineTag,
-        units::view::View, values::declared_name::DeclaredName,
-    };
-    #[cfg(test)]
-    use campfire_sim::TickRate;
-
-    #[cfg(test)]
-    impl Areas {
-        /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
-        /// at the match's rate, rounded up, which the package load checked: its `affects` filter
-        /// names tags of the match's, and its `inside` modifiers of the package.
-        pub(crate) fn load_type(
-            world: &mut World,
-            unit_type: UnitType,
-            package: u16,
-            data: &AreaData,
-        ) {
-            let rate = *world.resource::<TickRate>();
-            let view = world.non_send::<View>().clone();
-            let modifier = |name: &DeclaredName| {
-                Stats::modifier(world, package, name.as_str())
-                    .expect("the load checked an area's modifiers")
-            };
-            let spec = {
-                let mut types = view.types_mut();
-                types.give_tag(unit_type, EngineTag::Area.tag());
-                AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
-            };
-            world
-                .resource_mut::<ByType<AreaSpec>>()
-                .set(unit_type, spec);
-        }
     }
 }
 

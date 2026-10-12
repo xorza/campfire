@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_amount::ResourceAmount;
 use crate::production::production_data::ProductionData;
 use crate::state_types::data_kind::DataKind;
@@ -117,7 +117,7 @@ impl SimComponent for TrainQueue {
             .get::<UnitType>(entity)
             .and_then(|&unit_type| producers.get(unit_type))
             .map(|production| usize::from(production.queue.get()));
-        let resources = PlayerResources::declared(world);
+        let resources = world.declared_resources();
         let paid = self
             .paid
             .iter()

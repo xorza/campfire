@@ -6,20 +6,20 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
+use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_script::{Budget, ScriptHost, ScriptId};
 use campfire_sim::{
-    EntityIndex, Position, SimComponent, SimResource, SlotEvent, SlotEventKind, StableId,
-    TickInput, TickInputs,
+    EntityIndex, Position, SimComponent, SimResource, SimTick, SlotEvent, SlotEventKind, StableId,
 };
 
 use super::*;
-use crate::actions::Actions;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_world::internals::ActionsWorldInternals;
+use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
@@ -46,6 +46,8 @@ use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_units::ModeUnits;
+use crate::mode::mode_world::ModeWorld;
+use crate::mode::mode_world::test_world::{ModeAbilities, ModeWorldTest};
 use crate::mode::offer::Offer;
 use crate::mode::players_data::PlayersData;
 use crate::mode::relation_data::RelationData;
@@ -65,15 +67,16 @@ use crate::players::player::Player;
 use crate::players::resource_id::ResourceId;
 use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
-use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::points::Points;
+use crate::progression::progression_world::test_world::ProgressionWorldTest;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
-use crate::release::test_match::TestMatch;
-use crate::scripts::call_start::CallStart;
+use crate::release::r#match::Match;
+use crate::release::release_world::ReleaseWorld;
+use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::scripts::error::internals::FailureKind;
-use crate::scripts::error::{ApiError, ParamProblem};
+use crate::scripts::error::{ApiError, CallError, ParamProblem};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
@@ -81,14 +84,11 @@ use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
-use crate::stats;
-use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::instance::StatShare;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
-use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
@@ -96,10 +96,10 @@ use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
-use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
+use crate::stats::stats_world::internals::StatsWorldInternals;
+use crate::stats::stats_world::test_world::StatsWorldTest;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
@@ -113,12 +113,13 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::player_units::HeldPlayerUnits;
 use crate::units::relations::Relations;
-use crate::units::tag_set::TagSet;
+use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::engine_enum::EngineEnum;
@@ -217,8 +218,8 @@ fn pick(ctx, player, hero) {
     let team = ctx.team_of(player);
     for marker in ctx.map.markers("spawn") {
         if marker.team == team {
-            let unit = ctx.spawn_unit(hero, team, marker.pos, player);
-            ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
+            let id = ctx.spawn_unit(hero, team, marker.pos, player);
+            ctx.grant(id, "spell", ctx.chosen(player, "spells"));
         }
     }
 }
@@ -667,7 +668,7 @@ fn setup(
                 UnitTypeSetup {
                     actions: vec![SlotAction {
                         kind: SlotKind::new(0),
-                        ability: strike,
+                        action: strike,
                         rank: None,
                     }],
                     ..unit(x, hero)
@@ -699,210 +700,115 @@ fn setup(
     }
 }
 
-#[derive(Debug)]
-struct Game {
-    sim: TestMatch,
-    /// The one spell's ability.
-    blink: ActionId,
-    /// Hero X's ability, of 2 ranks.
-    strike: ActionId,
+/// A match of the test mode for 3 players, two on team `a` and one on `b`, with `limits`.
+fn mode_match(script: &str, limits: ScriptLimits) -> Match {
+    start_match(script, limits, mode_files()).unwrap()
 }
 
-impl Game {
-    /// A match of the test mode for 3 players, two on team `a` and one on `b`, with `limits`.
-    fn new(script: &str, limits: ScriptLimits) -> Game {
-        Game::start(script, limits, mode_files()).unwrap()
-    }
+/// A match of `script`, whose `on_input` takes every mode input but a pick of a hero.
+fn picking_match(script: &str, limits: ScriptLimits) -> Match {
+    mode_match(&format!("{script}{PICKING}"), limits)
+}
 
-    /// A match of `script`, whose `on_input` takes every mode input but a pick of a hero.
-    fn picking(script: &str, limits: ScriptLimits) -> Game {
-        Game::new(&format!("{script}{PICKING}"), limits)
-    }
+/// The match `mode_match` gives, of the mode `files`; an error when the mode's start fails.
+fn start_match(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Match, CallError> {
+    start_match_setup(script, limits, files, |_| {})
+}
 
-    /// Player `slot` picks `hero` in a tick: the hero it then owns.
-    fn pick(&mut self, slot: u32, hero: &str) -> Entity {
-        self.tick(&[(slot, input("hero", hero))]);
-        let player = PlayerSlot::new(slot);
-        let mut owned = self.sim.world.query::<(Entity, &Owner)>();
-        let mut heroes = owned
-            .iter(&self.sim.world)
-            .filter(|(_, owner)| owner.slot() == player);
-        let (hero, _) = heroes.next().expect("the player picked a hero");
-        assert!(heroes.next().is_none(), "the player owns one hero");
-        hero
+/// The match `start` gives, its setup changed by `adjust` before the mode installs.
+fn start_match_setup(
+    script: &str,
+    limits: ScriptLimits,
+    files: ModeFiles,
+    adjust: impl FnOnce(&mut ModeSetup<'_>),
+) -> Result<Match, CallError> {
+    let scripts = ScriptBudgets::new(limits, 3);
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Vision,
+        Capability::Abilities,
+        Capability::Progression,
+        Capability::Production,
+    ];
+    let mut game = Match::test_unstarted(&declared, RATE, Some(scripts));
+    let resources: Vec<&str> = files
+        .data
+        .resources
+        .iter()
+        .map(DeclaredName::as_str)
+        .collect();
+    game.name_kinds(&DAMAGE_KINDS, &POOLS, &resources);
+    let layers = files.data.navigation.layers.iter();
+    game.declare_tags(layers.map(DeclaredName::as_str));
+    let grunt_type = game.load_unit_type(TypeScope::Mode, "grunt", &grunt_data());
+    let mut load = |name: &str, tag: &str| {
+        let data = UnitTypeData::tagged(&[tag]);
+        game.load_unit_type(TypeScope::Mode, name, &data)
+    };
+    let tower_type = load("tower", "tower");
+    let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
+    let crate_type = load("crate", "crate");
+    // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
+    // not.
+    load("bolt", "projectile");
+    // The stats first, as a match's books know them before any action or modifier; the mode's
+    // books give the full book at install.
+    game.load_stat_rules(&files.data.stats);
+    let blink = blink_data();
+    // A spell has one rank; hero X's ability, 2.
+    let strike = game.load_action(0, "strike", &blink, None, 2).unwrap();
+    let blink = game.load_action(0, "blink", &blink, None, 1).unwrap();
+    // Loaded out of name order, each is found by its name, and only in its package.
+    let named = ["blink", "strike", "dash"].map(|name| game.action_named(0, name));
+    assert_eq!(named, [Some(blink), Some(strike), None]);
+    assert_eq!(game.action_named(1, "blink"), None);
+    let mut spell = LoadoutSetup::default();
+    spell.push("blink", blink);
+    let types = [grunt_type, tower_type, x, y, crate_type];
+    game.load_tracks(&files.data.tracks);
+    for (name, data) in &files.modifiers {
+        game.load_modifier(0, name, data, None);
     }
-
-    /// The match `new` gives, of the mode `files`; an error when the mode's start fails.
-    fn start(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Game, CallError> {
-        Game::start_setup(script, limits, files, |_| {})
-    }
-
-    /// The match `start` gives, its setup changed by `adjust` before the mode installs.
-    fn start_setup(
-        script: &str,
-        limits: ScriptLimits,
-        files: ModeFiles,
-        adjust: impl FnOnce(&mut ModeSetup<'_>),
-    ) -> Result<Game, CallError> {
-        let scripts = ScriptBudgets::new(limits, 3);
-        let declared = [
-            Capability::Stats,
-            Capability::Combat,
-            Capability::Navigation,
-            Capability::Vision,
-            Capability::Abilities,
-            Capability::Progression,
-            Capability::Production,
-        ];
-        let mut sim = TestMatch::unstarted(&declared, RATE, Some(scripts));
-        let world = &mut sim.world;
-        let resources: Vec<&str> = files
-            .data
-            .resources
-            .iter()
-            .map(DeclaredName::as_str)
-            .collect();
-        Units::name_kinds(world, &DAMAGE_KINDS, &POOLS, &resources);
-        let layers = files.data.navigation.layers.iter();
-        Units::declare_tags(world, layers.map(DeclaredName::as_str));
-        let grunt_type = Units::load_type(world, TypeScope::Mode, "grunt", &grunt_data());
-        let mut load = |name: &str, tag: &str| {
-            let data = UnitTypeData::tagged(&[tag]);
-            Units::load_type(world, TypeScope::Mode, name, &data)
-        };
-        let tower_type = load("tower", "tower");
-        let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
-        let crate_type = load("crate", "crate");
-        // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
-        // not.
-        load("bolt", "projectile");
-        // The stats first, as a match's books know them before any action or modifier; the mode's
-        // books give the full book at install.
-        stats::loads::load_stats(world, &files.data.stats);
-        let blink = blink_data();
-        // A spell has one rank; hero X's ability, 2.
-        let strike = Actions::load(world, 0, "strike", &blink, None, 2).unwrap();
-        let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
-        // Loaded out of name order, each is found by its name, and only in its package.
-        let named = ["blink", "strike", "dash"].map(|name| Actions::action(world, 0, name));
-        assert_eq!(named, [Some(blink), Some(strike), None]);
-        assert_eq!(Actions::action(world, 1, "blink"), None);
-        let mut spell = LoadoutSetup::default();
-        spell.push("blink", blink);
-        let types = [grunt_type, tower_type, x, y, crate_type];
-        Progression::load(world, &files.data.tracks);
-        for (name, data) in &files.modifiers {
-            Stats::load_modifier(world, 0, name, data, None);
+    let script = game.compile_hooked(&format!("{script}{PICK}")).unwrap();
+    let blessing = game.modifier_named(0, "blessing").unwrap();
+    let mut setup = setup(&files, script, types, spell, strike, blessing);
+    adjust(&mut setup);
+    // The grunt and both heroes walk with the grunt's body: one kind.
+    let mut walkers = ByType::default();
+    for setup in &setup.units.unit_types {
+        if setup.kit.step.is_some() {
+            walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
         }
-        let script = Units::compile_hooked(world, &format!("{script}{PICK}")).unwrap();
-        let blessing = Stats::modifier(world, 0, "blessing").unwrap();
-        let mut setup = setup(&files, script, types, spell, strike, blessing);
-        adjust(&mut setup);
-        // The grunt and both heroes walk with the grunt's body: one kind.
-        let mut walkers = ByType::default();
-        for setup in &setup.units.unit_types {
-            if setup.kit.step.is_some() {
-                walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
-            }
-        }
-        let books = {
-            let view = world.non_send::<View>();
-            let stats = StatBook::new(&files.data.stats, [], Num::int(10));
-            let relations = &files.data.relations;
-            let unit_type = |name: &str| view.unit_type_named(name);
-            let rules = &files.data.navigation;
-            let map =
-                ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
-            let data = &files.data;
-            ModeBooks::build(ModeBooksInput {
-                data,
-                unit_types: &setup.units.unit_types,
-                types: &mut view.types_mut(),
-                walkers: &walkers,
-                stats,
-                life: data.combat.life_pool(&data.pools),
-                loadout_ranks: data.loadout_ranks(),
-                map,
-                shop: None,
-            })
-        };
-        assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
-        sim.install_mode(setup, books);
-        // The scripts name pools the data does not declare, whose maxima no stat sets.
-        Units::name_kinds(&sim.world, &DAMAGE_KINDS, &POOLS, &RESOURCES);
-        Mode::start(&mut sim.world)?;
-        Ok(Game { sim, blink, strike })
     }
-
-    /// Runs a tick with `inputs`, each a player's slot and a mode input.
-    fn tick(&mut self, inputs: &[(u32, ModeInput<'_>)]) {
-        for (slot, input) in inputs {
-            let payload = ModeInput::payload(slice::from_ref(input));
-            self.sim.world.resource_mut::<TickInputs>().push(TickInput {
-                slot: PlayerSlot::new(*slot),
-                payload: &payload,
-            });
-        }
-        self.sim.step();
-    }
-
-    /// Runs a tick in which the session logged `events`, each a player's join or leave.
-    fn tick_slots(&mut self, events: &[(u32, SlotEventKind)]) {
-        for &(slot, kind) in events {
-            let slot = PlayerSlot::new(slot);
-            let mut inputs = self.sim.world.resource_mut::<TickInputs>();
-            inputs.push_slot_event(SlotEvent { slot, kind });
-        }
-        self.sim.step();
-    }
-
-    /// Unit `id`.
-    fn entity(&self, id: u64) -> Entity {
-        let mut units = self.sim.world.resource::<EntityIndex>().iter();
-        units.find(|(unit, _)| unit.get() == id).unwrap().1
-    }
-
-    /// The state fields `phase`, `seen`, `count` and `inputs`.
-    fn state(&self) -> [StateValue; 4] {
-        ["phase", "seen", "count", "inputs"].map(|name| self.field(name))
-    }
-
-    /// The state field `name`: the state holds the fields in the order of their names.
-    fn field(&self, name: &str) -> StateValue {
-        let ctx = self.sim.world.non_send::<Ctx>();
-        let at = ModeBook::of(ctx)
-            .unwrap()
-            .schema
-            .state_field_named(name)
-            .unwrap()
-            .index;
-        Mode::state(&self.sim.world)[at].clone()
-    }
-
-    /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
-    fn units(&self) -> Vec<(u64, Position, usize, Option<PathEnd>)> {
-        let world = &self.sim.world;
-        world
-            .resource::<EntityIndex>()
-            .iter()
-            .filter(|&(_, entity)| world.entity(entity).contains::<UnitType>())
-            .map(|(id, entity)| {
-                let unit = world.entity(entity);
-                (
-                    id.get(),
-                    *unit.get::<Position>().unwrap(),
-                    unit.get::<Team>().unwrap().index(),
-                    unit.get::<PathWalker>().map(|walker| walker.walks_from()),
-                )
-            })
-            .collect()
-    }
-
-    /// The kind of each of the tick's failed calls.
-    fn failures(&self) -> Vec<FailureKind> {
-        let failures = self.sim.world.non_send::<ScriptFailures>().calls();
-        failures.into_iter().map(|failure| failure.kind).collect()
-    }
+    let books = {
+        let view = game.non_send::<View>();
+        let stats = StatBook::new(&files.data.stats, [], Num::int(10));
+        let relations = &files.data.relations;
+        let unit_type = |name: &str| view.unit_type_named(name);
+        let rules = &files.data.navigation;
+        let map = ModeMap::resolve(&files.map, &files.teams, relations, rules, unit_type).unwrap();
+        let data = &files.data;
+        ModeBooks::build(ModeBooksInput {
+            data,
+            unit_types: &setup.units.unit_types,
+            types: &mut view.types_mut(),
+            walkers: &walkers,
+            stats,
+            life: data.combat.life_pool(&data.pools),
+            loadout_ranks: data.loadout_ranks(),
+            map,
+            shop: None,
+        })
+    };
+    assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
+    game.install_mode(setup, books);
+    // The scripts name pools the data does not declare, whose maxima no stat sets.
+    game.name_kinds(&DAMAGE_KINDS, &POOLS, &RESOURCES);
+    game.start_mode()?;
+    game.insert_resource(ModeAbilities { blink, strike });
+    Ok(game)
 }
 
 fn input<'a>(name: &'a str, value: &'a str) -> ModeInput<'a> {
@@ -953,114 +859,6 @@ fn calc_damage(ctx, d) {
     amount
 }
 "#;
-
-impl Game {
-    /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
-    fn fighter(&mut self, team: u8, stats: &[(&str, Num)]) -> StableId {
-        let book = self.sim.world.resource::<StatBook>();
-        let changes: Vec<_> = stats
-            .iter()
-            .map(|&(name, _)| {
-                (
-                    book.named(&Stat::named(name).unwrap()).unwrap(),
-                    StatOp::Add,
-                )
-            })
-            .collect();
-        let id = ModifierBook::push_changes(&mut self.sim.world, &changes, TagSet::default());
-        let shares = stats
-            .iter()
-            .map(|&(_, value)| StatShare { value, live: None });
-        let instance = NewInstance {
-            stats: shares.collect(),
-            ..NewInstance::bare(id, None)
-        };
-        let modifiers = Modifiers::bundle([Application::refresh(instance)]);
-        let grunt = self
-            .sim
-            .world
-            .non_send::<View>()
-            .unit_type_named("grunt")
-            .unwrap();
-        let parts = (
-            Life::full(Num::int(1000)),
-            Level::default(),
-            UnitStats::default(),
-            modifiers,
-        );
-        self.sim.spawn_of(grunt, at(0, 0), Team::new(team), parts)
-    }
-
-    /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by `cause`.
-    fn damage(
-        &mut self,
-        source: Option<StableId>,
-        target: StableId,
-        amount: i64,
-        kind: &str,
-        cause: DamageCause,
-    ) {
-        let kind = DAMAGE_KINDS.iter().position(|&name| name == kind).unwrap();
-        self.sim
-            .world
-            .resource_mut::<PassQueue>()
-            .push_damage(Damage {
-                source,
-                target,
-                amount: Num::int(amount),
-                kind: DamageKind::new(u8::try_from(kind).unwrap()),
-                cause,
-                ability: None,
-                depth: 0,
-                hit: None,
-            });
-    }
-}
-
-impl Game {
-    /// Runs `probe(ctx, unit)` of `source` as a call of `role`, acting as `actor` but in the
-    /// mode's, then applies its effects: what it returned, or why it failed.
-    fn probe(
-        &mut self,
-        source: &str,
-        role: ScriptRole,
-        actor: StableId,
-        unit: StableId,
-    ) -> Result<Dynamic, CallError> {
-        let ctx = self.sim.world.non_send::<Ctx>().clone();
-        ctx.view().read(&mut self.sim.world);
-        let now = self.sim.world.resource::<SimTick>().start();
-        match role {
-            ScriptRole::Mode => ctx.frame().begin_mode(&self.sim.world, false, now),
-            ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor, now),
-            ScriptRole::Action => ctx
-                .frame()
-                .begin(
-                    &self.sim.world,
-                    CallStart::cast(self.strike, Rank::FIRST, actor, 0, now),
-                )
-                .unwrap(),
-            ScriptRole::Modifier => {
-                let blessing = Stats::modifier(&self.sim.world, 0, "blessing").unwrap();
-                let start = CallStart {
-                    acting: Some(actor),
-                    ..CallStart::hook(blessing, 0, 1, now)
-                };
-                ctx.frame().begin(&self.sim.world, start).unwrap();
-            }
-        }
-        let handle = ctx.view().unit(unit).unwrap();
-        let returned = {
-            let mut host = self.sim.world.non_send_mut::<ScriptHost>();
-            let script = host.compile(source).unwrap();
-            let mut budget = Budget::new(u64::MAX);
-            host.call(&mut budget, script, "probe", (ctx.clone(), handle))
-        };
-        let returned = returned.map_err(CallError::from_script)?;
-        ctx.apply(&mut self.sim.world);
-        Ok(returned)
-    }
-}
 
 mod budgets;
 mod cooldowns;

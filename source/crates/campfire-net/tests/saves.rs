@@ -7,16 +7,16 @@
 use std::num::NonZeroU32;
 
 use bevy_time::{Time, Virtual};
-use campfire_capabilities::{SaveBy, SavesData};
+use campfire_capabilities::{Match, SaveBy, SavesData};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,
-    SessionDir, SimServer,
+    SessionDir, SimServerWorld,
 };
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
-use campfire_runner::{InputRules, Runner, Session};
-use campfire_sim::TickRate;
+use campfire_runner::{InputRules, Session, SessionMatch, SessionWorld};
+use campfire_sim::{SimWorld, TickRate};
 use campfire_store::{InputFile, Scratch};
 use lightyear::core::tick::TickDuration;
 
@@ -24,28 +24,28 @@ use lightyear::core::tick::TickDuration;
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
 
 /// The scenario's match, its mode's `[saves] by` `save_by`, its server keeping its data in
-/// `data`, after 30 steps.
-fn playing(data: &Scratch, save_by: SaveBy) -> InProcessMatch {
+/// `scratch`, after 30 steps.
+fn playing(scratch: &Scratch, save_by: SaveBy) -> InProcessMatch {
     let saves = SavesData {
         by: save_by,
         autosave_ms: None,
     };
-    let mut local = started(data, saves);
+    let mut local = started(scratch, saves);
     for _ in 0..30 {
         local.step();
     }
     local
 }
 
-/// The scenario's match, its mode's `[saves]` `saves`, its server keeping its data in `data`, as
+/// The scenario's match, its mode's `[saves]` `saves`, its server keeping its data in `scratch`, as
 /// it starts.
-fn started(data: &Scratch, saves: SavesData) -> InProcessMatch {
+fn started(scratch: &Scratch, saves: SavesData) -> InProcessMatch {
     let setup = MatchSetup {
         saves,
         ..MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN)
     };
     let mut local = InProcessMatch::new(setup);
-    local.keep_data(data.path("data"));
+    local.keep_data(scratch.path("data"));
     local.start_match();
     local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
     local
@@ -69,8 +69,8 @@ fn playing_on(local: &InProcessMatch) -> bool {
 
 #[test]
 fn a_players_save_is_refused_when_the_mode_alone_saves() {
-    let data = Scratch::new();
-    let mut local = playing(&data, SaveBy::Mode);
+    let scratch = Scratch::new();
+    let mut local = playing(&scratch, SaveBy::Mode);
     command(&mut local, SaveCommand::Save);
     for _ in 0..10 {
         local.step();
@@ -86,15 +86,15 @@ fn a_players_save_is_refused_when_the_mode_alone_saves() {
 
 #[test]
 fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
-    let data = Scratch::new();
-    let mut local = playing(&data, SaveBy::Player);
+    let scratch = Scratch::new();
+    let mut local = playing(&scratch, SaveBy::Player);
 
     // The save: a checkpoint at the boundary after the tick that runs next, segment 1.
     command(&mut local, SaveCommand::Save);
     for _ in 0..10 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut());
+    local.server_mut().world_mut().settle_checkpoint();
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!(save.segment, 1);
     for _ in 0..30 {
@@ -114,10 +114,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     }
     let world = local.server().world();
     assert_eq!(log(&local).next_tick(), save.tick);
-    assert_eq!(
-        world.resource::<Session>().state_hash(world),
-        save.state_hash
-    );
+    assert_eq!(world.state_hash(), save.state_hash);
     // At speed 2 a tick lasts half the session's, and a frame runs the LAN's max input delay of
     // 10 ticks less one at most.
     let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
@@ -145,7 +142,11 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     );
 
     // The published log holds the segment before the save and the one after it, and verifies.
-    SimServer::end_session(local.server_mut().world_mut(), Outcome::Aborted).unwrap();
+    local
+        .server_mut()
+        .world_mut()
+        .end_session(Outcome::Aborted)
+        .unwrap();
     let file =
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(&local)).unwrap();
     let published =
@@ -153,12 +154,12 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let ticks = published.next_tick();
     let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Runner::new(published.rewound(), seeds, local.packages()).unwrap();
-    while replay.log().next_tick() < ticks {
-        if replay.log().next_tick() == save.tick {
+    let mut replay = Match::start_session(published.rewound(), seeds, local.packages()).unwrap();
+    while replay.session().log().next_tick() < ticks {
+        if replay.session().log().next_tick() == save.tick {
             assert_eq!(replay.state_hash(), save.state_hash);
         }
-        replay.run_tick();
+        replay.run_tick_alone();
     }
     assert_eq!(replay.check_result(), Ok(()));
 }
@@ -166,16 +167,16 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 #[test]
 fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary() {
     // An autosave every second, every 30 ticks of the lane mode.
-    let data = Scratch::new();
+    let scratch = Scratch::new();
     let saves = SavesData {
         by: SaveBy::Player,
         autosave_ms: NonZeroU32::new(1000),
     };
-    let mut local = started(&data, saves);
+    let mut local = started(&scratch, saves);
     for _ in 0..40 {
         local.step();
     }
-    SimServer::settle_checkpoint(local.server_mut().world_mut());
+    local.server_mut().world_mut().settle_checkpoint();
     let save = log(&local).checkpoints().next().unwrap().clone();
     assert_eq!((save.segment, save.tick), (1, Tick::new(30)));
     let id = log(&local).session_id();
@@ -183,9 +184,9 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
 
     // A stop after tick 29, before the save began: the journal ends before its begin, and its
     // snapshot is gone.
-    let session = data.path("data").join("sessions").join(id.to_string());
+    let session = scratch.path("data").join("sessions").join(id.to_string());
     let journal = session.join("journal");
-    let bytes = data.read(&journal);
+    let bytes = scratch.read(&journal);
     let mut frames = JournalFrames::new(&bytes).unwrap();
     let begun = loop {
         let start = frames.whole();
@@ -194,15 +195,15 @@ fn a_save_due_as_the_server_stopped_begins_as_its_restore_reaches_the_boundary()
             break start;
         }
     };
-    data.write(&journal, &bytes[..begun]);
+    scratch.write(&journal, &bytes[..begun]);
     let snapshot = session.join("snapshots").join(save.snapshot.to_string());
-    data.remove(&snapshot);
+    scratch.remove(&snapshot);
 
     // The restore replays to tick 30 and begins the save there: the same record, its snapshot
     // written again.
     local.restart_server();
     assert_eq!(local.next_tick(End::Server), 30);
-    SimServer::settle_checkpoint(local.server_mut().world_mut());
+    local.server_mut().world_mut().settle_checkpoint();
     assert_eq!(log(&local).checkpoint_at(save.tick), Some(&save));
-    assert!(data.exists(&snapshot));
+    assert!(scratch.exists(&snapshot));
 }

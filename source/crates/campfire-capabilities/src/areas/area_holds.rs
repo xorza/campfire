@@ -59,7 +59,7 @@ impl AreaHolds {
                         target: unit.id,
                         modifier,
                         source: Some(by.source),
-                        ability: Some(by.action),
+                        action: Some(by.action),
                         rank: by.rank,
                     });
                 }

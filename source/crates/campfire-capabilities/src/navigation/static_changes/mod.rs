@@ -16,10 +16,10 @@ pub(crate) struct StaticChanges {
 }
 
 impl StaticChanges {
-    /// Notes the last update of `index`.
-    pub(crate) fn note(&mut self, index: &BodyIndex) {
-        self.added.extend_from_slice(index.added());
-        self.removed |= !index.removed().is_empty();
+    /// Notes the last update of `statics`.
+    pub(crate) fn note(&mut self, statics: &BodyIndex) {
+        self.added.extend_from_slice(statics.added());
+        self.removed |= !statics.removed().is_empty();
     }
 
     pub(crate) const fn removed(&self) -> bool {

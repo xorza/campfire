@@ -1,41 +1,37 @@
-use std::cell::RefCell;
 use std::num::NonZeroU8;
-use std::rc::Rc;
 
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, Position, SimComponent, StableId};
+use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use serde::Serialize;
 
-use crate::actions::action_book::ActionBook;
-use crate::actions::action_book::internals;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_world::test_world::ActionsWorldTest;
 use crate::actions::slot_kind::SlotKind;
 use crate::navigation::destination::Destination;
-use crate::players::match_entity::MatchEntity;
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::internals::PlayersWorldInternals;
+use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
 use crate::production::production_data::ProductionData;
+use crate::production::production_world::test_world::{
+    Mine, ProductionWorldTest, Shop, SpawnLog, Spawned, Yard,
+};
 use crate::production::supply_costs::SupplyCosts;
 use crate::production::supply_data::SupplyData;
-use crate::production::supply_rules::SupplyRules;
 use crate::production::train_queue::{Queued, TrainQueue};
-use crate::release::test_match::TestMatch;
-use crate::units::Units;
+use crate::release::r#match::Match;
+use crate::release::release_world::test_world::ReleaseWorldTest;
 use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
-use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
-use crate::units::unit_core::UnitCore;
-use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::units::units_world::test_world::UnitsWorldTest;
 use crate::values::declared_name::DeclaredName;
 use crate::values::rank::Rank;
 
@@ -43,142 +39,56 @@ fn at(x: i64) -> Position {
     Position::new(Vec3::new(Num::from_int(x).unwrap(), Num::ZERO, Num::ZERO)).unwrap()
 }
 
-/// A spawn production asked for: what and where, and the player that owns it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Spawned {
-    at: SpawnAt,
-    owner: Option<PlayerSlot>,
-}
-
-/// A match of production, whose spawner records each spawn and gives it its owner and a
+/// A match of production alone, whose spawner records each spawn and gives it its owner and a
 /// destination, with a grunt type to train, a producer type of a queue of 3, and a depot and a
 /// forge type for supply and requirements to count.
-#[derive(Debug)]
-struct Shop {
-    sim: TestMatch,
-    spawned: Rc<RefCell<Vec<Spawned>>>,
-    grunt: UnitType,
-    barracks: UnitType,
-    depot: UnitType,
-    forge: UnitType,
+fn shop_match() -> Match {
+    shop_match_of(&[Capability::Production])
 }
 
-impl Shop {
-    /// A match of production alone.
-    fn new() -> Shop {
-        Shop::with(&[Capability::Production])
-    }
+/// A shop's match with the orders that cancel its trains and set its rally points, and the
+/// capabilities they build on.
+fn ordering_match() -> Match {
+    shop_match_of(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Orders,
+        Capability::Production,
+    ])
+}
 
-    /// A match of production with the orders that cancel its trains and set its rally points,
-    /// and the capabilities they build on.
-    fn ordering() -> Shop {
-        Shop::with(&[
-            Capability::Stats,
-            Capability::Combat,
-            Capability::Navigation,
-            Capability::Orders,
-            Capability::Production,
-        ])
-    }
-
-    fn with(declared: &[Capability]) -> Shop {
-        let mut sim = TestMatch::client(declared);
-        let world = &mut sim.world;
-        let spawned = Rc::new(RefCell::new(Vec::new()));
-        let log = Rc::clone(&spawned);
-        world.insert_non_send(Spawner::new(move |world, at, owner| {
-            log.borrow_mut().push(Spawned { at, owner });
-            let core = at.core(owner.map(Owner::new));
-            core.spawn(world, Destination::default()).id()
-        }));
-        let data = UnitTypeData::default();
-        let grunt = Units::load_type(world, TypeScope::Mode, "grunt", &data);
-        let barracks = Units::load_type(world, TypeScope::Mode, "barracks", &data);
-        let depot = Units::load_type(world, TypeScope::Mode, "depot", &data);
-        let forge = Units::load_type(world, TypeScope::Mode, "forge", &data);
-        let production = ProductionData {
-            queue: NonZeroU8::new(3).unwrap(),
-        };
-        let mut producers = world.resource_mut::<ByType<ProductionData>>();
-        producers.set(barracks, production);
-        Shop {
-            sim,
-            spawned,
-            grunt,
-            barracks,
-            depot,
-            forge,
-        }
-    }
-
-    /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
-    fn count_supply(&mut self, max: u32, supplies: &[(UnitType, SupplyData)]) {
-        let world = &mut self.sim.world;
-        let mut types = ByType::default();
-        for &(unit_type, supply) in supplies {
-            types.set(unit_type, supply);
-        }
-        let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
-        world.insert_resource(costs);
-        world.insert_resource(SupplyRules { max });
-    }
-
-    /// A unit of `unit_type` owned by `owner`, at the origin.
-    fn owned(&mut self, unit_type: UnitType, owner: PlayerSlot) -> StableId {
-        self.sim
-            .spawn_of(unit_type, at(0), Team::new(1), Owner::new(owner))
-    }
-
-    /// The trains in `producer`'s queue.
-    fn queued(&self, producer: StableId) -> usize {
-        self.sim.get::<TrainQueue>(producer).entries().len()
-    }
-
-    /// A producer `id` of `team` at `x` meters, owned by `owner`, with `train` in its slot 0
-    /// and `queue`.
-    fn producer(
-        &mut self,
-        id: StableId,
-        team: u8,
-        x: i64,
-        owner: Option<PlayerSlot>,
-        train: ActionId,
-        queue: TrainQueue,
-    ) {
-        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
-        let core = UnitCore {
-            id,
-            pos: at(x),
-            unit_type: self.barracks,
-            team: Team::new(team),
-            owner: owner.map(Owner::new),
-        };
-        self.sim.spawn_core(core, (slots, queue));
-    }
-
-    fn id(&mut self) -> StableId {
-        self.sim.world.resource_mut::<IdAllocator>().allocate()
-    }
-
-    fn order(&mut self, producer: StableId) {
-        let mut slots = self.sim.get_mut::<ActionSlots>(producer);
-        slots.order(0, ActionTarget::None);
-    }
-
-    fn tick(&mut self) {
-        self.sim.step();
-    }
-
-    /// Each spawn so far, by producer: the team and position of the producer it came from, and
-    /// its owner.
-    fn spawns(&self) -> Vec<(Team, Position, Option<PlayerSlot>)> {
-        let spawned = self.spawned.borrow();
-        assert!(spawned.iter().all(|spawn| spawn.at.unit_type == self.grunt));
-        spawned
-            .iter()
-            .map(|spawn| (spawn.at.team, spawn.at.pos, spawn.owner))
-            .collect()
-    }
+/// A shop's match of `declared`.
+fn shop_match_of(declared: &[Capability]) -> Match {
+    let mut game = Match::client(declared);
+    game.init_resource::<SpawnLog>();
+    game.insert_non_send(Spawner::new(|world, at, owner| {
+        world
+            .resource_mut::<SpawnLog>()
+            .0
+            .push(Spawned { at, owner });
+        let core = at.core(owner.map(Owner::new));
+        core.spawn(world, Destination::default()).id()
+    }));
+    let data = UnitTypeData::default();
+    let grunt = game.load_unit_type(TypeScope::Mode, "grunt", &data);
+    let barracks = game.load_unit_type(TypeScope::Mode, "barracks", &data);
+    let depot = game.load_unit_type(TypeScope::Mode, "depot", &data);
+    let forge = game.load_unit_type(TypeScope::Mode, "forge", &data);
+    let production = ProductionData {
+        queue: NonZeroU8::new(3).unwrap(),
+    };
+    game.resource_mut::<ByType<ProductionData>>()
+        .set(barracks, production);
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    game.insert_resource(Shop {
+        grunt,
+        barracks,
+        depot,
+        forge,
+        gold,
+    });
+    game
 }
 
 /// A queue of `train`, once for each of `times`, in ticks, pushed at tick 0.
@@ -198,52 +108,54 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
 
 #[test]
 fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() {
-    let mut shop = Shop::new();
-    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::ZERO, None);
+    let mut game = shop_match();
+    let shop = game.shop();
+    let train = game.add_train(shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
-    let (first, second) = (shop.id(), shop.id());
-    shop.producer(second, 2, 20, None, train, queue(train, &[0, 0, 1]));
-    shop.producer(first, 1, 10, Some(player), train, queue(train, &[0]));
+    let (first, second) = (game.allocate_id(), game.allocate_id());
+    game.producer(second, 2, 20, None, train, queue(train, &[0, 0, 1]));
+    game.producer(first, 1, 10, Some(player), train, queue(train, &[0]));
     let from_first = (Team::new(1), at(10), Some(player));
     let from_second = (Team::new(2), at(20), None);
     // Tick 0 ends at time 1. The first's train spawns first. The second's two trains of no time
     // spawn one after the other: each next starts at time 1 and is done at once. Its third, of
     // 1 tick, starts at time 1 and is done at time 2, the end of tick 1.
-    shop.tick();
-    assert_eq!(shop.spawns(), [from_first, from_second, from_second]);
-    shop.tick();
+    game.step();
+    assert_eq!(game.spawns(), [from_first, from_second, from_second]);
+    game.step();
     assert_eq!(
-        shop.spawns(),
+        game.spawns(),
         [from_first, from_second, from_second, from_second]
     );
 
     // A train of no time ordered in tick 2 starts at time 2 and spawns at the end of tick 2.
-    shop.order(first);
-    shop.tick();
-    assert_eq!(shop.spawns().len(), 5);
-    assert_eq!(shop.spawns()[4], from_first);
+    game.order_train(first);
+    game.step();
+    assert_eq!(game.spawns().len(), 5);
+    assert_eq!(game.spawns()[4], from_first);
 
     // Dead through ticks 3 and 4, the first's queue holds a train done since time 0: it spawns in
     // tick 5, the tick the producer lives again.
-    let entity = shop.sim.entity(first);
-    shop.sim.insert(first, (queue(train, &[0]), Dead));
-    shop.tick();
-    shop.tick();
-    assert_eq!(shop.spawns().len(), 5);
-    shop.sim.world.entity_mut(entity).remove::<Dead>();
-    shop.tick();
-    assert_eq!(shop.spawns().len(), 6);
-    assert_eq!(shop.spawns()[5], from_first);
+    let entity = game.unit_entity(first);
+    game.insert_parts(first, (queue(train, &[0]), Dead));
+    game.step();
+    game.step();
+    assert_eq!(game.spawns().len(), 5);
+    game.entity_mut(entity).remove::<Dead>();
+    game.step();
+    assert_eq!(game.spawns().len(), 6);
+    assert_eq!(game.spawns()[5], from_first);
 }
 
 #[test]
 fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
-    let mut shop = Shop::new();
+    let mut game = shop_match();
+    let shop = game.shop();
     let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let player = PlayerSlot::new(0);
-    MatchEntity::spawn_players(&mut shop.sim.world, 1, 1);
-    PlayerResources::of_mut(&mut shop.sim.world, player)
+    game.spawn_players(1, 1);
+    game.player_resources_mut(player)
         .unwrap()
         .add(gold, 5)
         .unwrap();
@@ -251,34 +163,22 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         resource: gold,
         amount: 2,
     };
-    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::ZERO, Some(cost));
-    let (owned, unowned) = (shop.id(), shop.id());
-    shop.producer(owned, 1, 10, Some(player), train, TrainQueue::default());
-    shop.producer(unowned, 1, 20, None, train, TrainQueue::default());
+    let train = game.add_train(shop.grunt, Ticks::ZERO, Some(cost));
+    let (owned, unowned) = (game.allocate_id(), game.allocate_id());
+    game.producer(owned, 1, 10, Some(player), train, TrainQueue::default());
+    game.producer(unowned, 1, 20, None, train, TrainQueue::default());
     // The owned producer pays 2 of its player's 5 gold, and its train spawns. The other has no
     // player to pay: its order ends, and nothing is paid, queued or spawned.
-    shop.order(owned);
-    shop.order(unowned);
-    shop.tick();
-    assert_eq!(shop.spawns(), [(Team::new(1), at(10), Some(player))]);
-    let held = PlayerResources::of_player(&shop.sim.world, player)
-        .unwrap()
-        .amount(gold);
+    game.order_train(owned);
+    game.order_train(unowned);
+    game.step();
+    assert_eq!(game.spawns(), [(Team::new(1), at(10), Some(player))]);
+    let held = game.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {
-        let entity = shop.sim.entity(id);
-        assert_eq!(
-            shop.sim
-                .world
-                .get::<ActionSlots>(entity)
-                .unwrap()
-                .in_progress(),
-            None
-        );
-        assert_eq!(
-            shop.sim.world.get::<TrainQueue>(entity),
-            Some(&TrainQueue::default())
-        );
+        let entity = game.unit_entity(id);
+        assert_eq!(game.get::<ActionSlots>(entity).unwrap().in_progress(), None);
+        assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
 }
 
@@ -325,18 +225,20 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
 #[test]
 fn a_train_queue_is_state_and_restores() {
     // A queue of two trains, the first ordered at tick 0 to be done at tick 3.
-    let mut shop = Shop::new();
-    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::new(3), None);
-    let id = shop.id();
-    shop.producer(id, 1, 10, None, train, queue(train, &[3, 3]));
-    shop.tick();
+    let mut game = shop_match();
+    let shop = game.shop();
+    let train = game.add_train(shop.grunt, Ticks::new(3), None);
+    let id = game.allocate_id();
+    game.producer(id, 1, 10, None, train, queue(train, &[3, 3]));
+    game.step();
     // A restore loads the match's books first: the same train.
-    let mut restored = Shop::new();
-    internals::train(&mut restored.sim.world, restored.grunt, Ticks::new(3), None);
-    shop.sim.restore_into(&mut restored.sim);
+    let mut restored = shop_match();
+    let restored_shop = restored.shop();
+    restored.add_train(restored_shop.grunt, Ticks::new(3), None);
+    game.restore_into(&mut restored);
     // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
     // or a tick longer, it fails to decode.
-    let entity = restored.sim.entity(id);
+    let entity = restored.unit_entity(id);
     let check = |pushed: u64, time: u64| {
         let mut queue = TrainQueue::default();
         let queued = Queued {
@@ -346,14 +248,11 @@ fn a_train_queue_is_state_and_restores() {
             paid: 0,
         };
         queue.push(queued, &[], Tick::new(pushed));
-        TestMatch::decodes(&queue) && queue.check(&restored.sim.world, entity)
+        Match::decodes(&queue) && queue.check(&restored, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));
-    assert_eq!(
-        restored.sim.get::<TrainQueue>(id),
-        shop.sim.get::<TrainQueue>(id)
-    );
+    assert_eq!(restored.part::<TrainQueue>(id), game.part::<TrainQueue>(id));
 }
 
 mod construction;

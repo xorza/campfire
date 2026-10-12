@@ -152,14 +152,14 @@ pub(crate) struct CheckedJoins {
 }
 
 impl Offering {
-    /// The offering of a session of `terms` on the server of `setup`.
-    pub(crate) fn new(terms: SessionTerms, setup: &ServerSetup) -> Offering {
+    /// The offering of a session of `terms` on the server of `server`.
+    pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Offering {
         Offering {
             terms,
-            certificate: setup.certificate,
-            times: setup.times,
-            clock: setup.clock,
-            entropy: setup.entropy,
+            certificate: server.certificate,
+            times: server.times,
+            clock: server.clock,
+            entropy: server.entropy,
             secp: Secp256k1::verification_only(),
         }
     }

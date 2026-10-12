@@ -157,9 +157,9 @@ impl ProgressionColumn {
             .ok_or_else(|| ApiError::UnknownTrack.fail())?)
     }
 
-    /// Whether `unit` has `track`; false for a unit the view does not hold.
-    pub(crate) fn has(view: &View, unit: StableId, track: TrackId) -> bool {
-        let Some(row) = view.row_index(unit) else {
+    /// Whether `id` has `track`; false for a unit the view does not hold.
+    pub(crate) fn has(view: &View, id: StableId, track: TrackId) -> bool {
+        let Some(row) = view.row_index(id) else {
             return false;
         };
         view.column(|column: &ProgressionColumn| column.find(row, track).is_some())

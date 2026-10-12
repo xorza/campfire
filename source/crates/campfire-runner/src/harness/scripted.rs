@@ -6,7 +6,9 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 
 use crate::harness::fixed_match::FixedMatch;
+use crate::harness::harness_world::HarnessWorldInternals;
 use crate::harness::match_units::MatchUnits;
+use crate::session::session_world::SessionWorld;
 
 /// The tick rate of the scripted matches.
 pub(crate) const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
@@ -53,10 +55,12 @@ impl<P: Plan> Scripted<P> {
     /// packet of its own, then runs it.
     pub(crate) fn play_tick(script: &[Scripted<P>], fixed: &mut FixedMatch, tick: u64) {
         for scripted in script.iter().filter(|scripted| scripted.stamp == tick) {
-            let order = scripted.plan.order(MatchUnits::of(fixed), scripted.slot);
+            let order = scripted
+                .plan
+                .order(fixed.game().match_units(), scripted.slot);
             fixed.send(scripted.slot, Tick::new(tick), &Order::payload(&[order]));
         }
-        fixed.runner_mut().run_tick();
+        fixed.game_mut().run_tick_alone();
     }
 }
 

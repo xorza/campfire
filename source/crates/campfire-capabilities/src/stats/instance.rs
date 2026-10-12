@@ -17,7 +17,7 @@ pub(crate) struct Instance {
     pub(crate) source: Option<StableId>,
     /// The ability whose cast, projectile, area or modifier applied it, or whose passive it is,
     /// at its rank on the source.
-    pub(crate) ability: Option<ActionId>,
+    pub(crate) action: Option<ActionId>,
     pub(crate) rank: Rank,
     /// What keeps it: an ability's passive, which a death keeps, an aura, an area or its
     /// carrier's player, and an application of its own.

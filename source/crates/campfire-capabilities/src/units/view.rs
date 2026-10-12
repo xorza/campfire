@@ -403,7 +403,7 @@ impl View {
         };
         let mut targets = self.0.targets.borrow_mut();
         let found = targets.find(&rows, query, seen);
-        let unit = |&at: &usize| Dynamic::from(Unit::new(units[at].id, at, self.clone()));
+        let unit = |&index: &usize| Dynamic::from(Unit::new(units[index].id, index, self.clone()));
         Ok(found.iter().map(unit).collect())
     }
 
@@ -435,7 +435,7 @@ impl View {
             .targets
             .borrow_mut()
             .visit(&rows, query, seen, |body| {
-                let distance = metric.offset(of.pos, body.at).length_squared_bits();
+                let distance = metric.offset(of.pos, body.pos).length_squared_bits();
                 let candidate = (distance, body.id, body.key);
                 if nearest.is_none_or(|best| candidate < best) {
                     nearest = Some(candidate);
@@ -479,12 +479,12 @@ impl fmt::Debug for View {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use crate::stats::stats_column::StatsColumn;
     use std::cell::RefMut;
 
     use crate::actions::cost_target::CostTarget;
     use crate::scripts::error::ApiError;
     use crate::stats::stat_id::StatId;
+    use crate::stats::stats_column::StatsColumn;
     use crate::units::filter::Filter;
     use crate::units::unit_types::UnitTypes;
     use crate::units::view::View;

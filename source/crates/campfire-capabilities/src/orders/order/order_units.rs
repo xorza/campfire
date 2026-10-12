@@ -15,8 +15,8 @@ enum Units {
 }
 
 impl OrderUnits {
-    pub const fn one(unit: StableId) -> OrderUnits {
-        OrderUnits(Units::One(unit))
+    pub const fn one(id: StableId) -> OrderUnits {
+        OrderUnits(Units::One(id))
     }
 
     /// The list `units`; `None` unless it has one at least and rises strictly.

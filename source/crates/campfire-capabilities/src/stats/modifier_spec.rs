@@ -244,10 +244,10 @@ mod tests {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    use crate::release::test_match::TestMatch;
     use campfire_common::Ticks;
     use campfire_math::Num;
 
+    use crate::release::r#match::Match;
     use crate::stats::error::ModifierProblem;
     use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
     use crate::stats::modifier_spec::{
@@ -314,7 +314,7 @@ mod tests {
             params: BTreeMap::from([(name("bind_ms"), one.clone()), (name("slow"), one)]),
             state: BTreeMap::new(),
         };
-        let rate = TestMatch::RATE;
+        let rate = Match::TEST_RATE;
         let stats = ["armor", "move_speed"].map(|stat| Stat::named(stat).unwrap());
         let names = SpecNames {
             stat: |stat: &Stat| StatId::new(stats.iter().position(|at| at == stat).unwrap()),

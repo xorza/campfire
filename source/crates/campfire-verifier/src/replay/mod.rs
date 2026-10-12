@@ -1,10 +1,11 @@
+use campfire_capabilities::Match;
 use campfire_common::Tick;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{Checkpoint, SeedError, SessionLog, SnapshotFingerprint};
-use campfire_runner::{Runner, Session, StartError};
+use campfire_runner::{Session, SessionMatch, SessionWorld, StartError};
+use campfire_sim::SimWorld;
 
-use crate::replay::error::ReplayError;
-use crate::replay::error::SnapshotCheckError;
+use crate::replay::error::{ReplayError, SnapshotCheckError};
 
 pub(crate) mod error;
 
@@ -15,7 +16,7 @@ pub(crate) mod error;
 /// result after the last tick.
 #[derive(Debug)]
 pub struct Replay {
-    runner: Runner,
+    game: Match,
     packages: ModePackages,
     /// The tick after the last the log holds.
     ticks: Tick,
@@ -34,7 +35,7 @@ impl Replay {
         let packages = Session::packages(store, terms)?;
         let ticks = published.next_tick();
         Ok(Replay {
-            runner: Runner::new(published.rewound(), seeds, &packages)?,
+            game: Match::start_session(published.rewound(), seeds, &packages)?,
             packages,
             ticks,
         })
@@ -44,9 +45,9 @@ impl Replay {
     /// it holds one, holds for the state. An error when the state at the boundary where a segment
     /// starts is not the one its checkpoint records, or the result does not hold.
     pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
-        let next = self.runner.log().next_tick();
-        if let Some(record) = self.runner.log().checkpoint_at(next) {
-            let replayed = self.runner.state_hash();
+        let next = self.game.session().log().next_tick();
+        if let Some(record) = self.game.session().log().checkpoint_at(next) {
+            let replayed = self.game.state_hash();
             if replayed != record.state_hash {
                 return Err(ReplayError::Checkpoint {
                     segment: record.segment,
@@ -57,10 +58,10 @@ impl Replay {
             }
         }
         if next == self.ticks {
-            self.runner.check_result().map_err(ReplayError::Result)?;
+            self.game.check_result().map_err(ReplayError::Result)?;
             return Ok(false);
         }
-        self.runner.run_tick();
+        self.game.run_tick_alone();
         Ok(true)
     }
 
@@ -74,7 +75,7 @@ impl Replay {
         if SnapshotFingerprint::of(snapshot) != record.snapshot {
             return Err(SnapshotCheckError::Fingerprint);
         }
-        let header = self.runner.log().header();
+        let header = self.game.session().log().header();
         let restored = Session::snapshot_hash(&self.packages, header, snapshot)
             .map_err(SnapshotCheckError::Restore)?;
         if restored != record.state_hash {
@@ -86,7 +87,7 @@ impl Replay {
         Ok(())
     }
 
-    pub const fn runner(&self) -> &Runner {
-        &self.runner
+    pub const fn game(&self) -> &Match {
+        &self.game
     }
 }

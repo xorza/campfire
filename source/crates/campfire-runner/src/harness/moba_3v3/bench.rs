@@ -4,17 +4,15 @@ use std::time::{Duration, Instant};
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use bevy_ecs::world::World;
 use campfire_capabilities::Team;
-use campfire_capabilities::internals::{Density, KernelScene, read_view, spawn_typed};
+use campfire_capabilities::internals::{KernelScene, ScriptsWorldInternals};
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;
+use crate::harness::harness_world::HarnessWorldInternals;
 use crate::harness::moba_3v3::Moba3v3;
 
-/// The creep types of the 3v3's waves, which the scene's units take in turn.
-const CREEPS: [&str; 2] = ["melee_creep", "caster_creep"];
 /// A later read of a tick finds one unit in this many changed.
 const REREAD_CHANGED: usize = 100;
 
@@ -25,22 +23,11 @@ struct ViewScene {
     units: Vec<Entity>,
 }
 
-/// Spawns `KernelScene::UNITS` of the 3v3's creeps into `world`, on both teams in turn by
-/// pairs, at the crowded scene's points, which lie within its map.
-pub(crate) fn crowd(world: &mut World) {
-    let mut scene = KernelScene::new(13);
-    for unit in 0..KernelScene::UNITS {
-        let at = Position::new(scene.point(Density::Crowded.span())).unwrap();
-        let team = Team::new(u8::from(unit % 4 >= 2));
-        spawn_typed(world, CREEPS[unit % 2], team, at);
-    }
-}
-
 impl ViewScene {
     fn new() -> ViewScene {
         let mut fixed = Moba3v3::load().start();
-        let world = fixed.runner_mut().world_mut();
-        crowd(world);
+        let world = fixed.game_mut();
+        world.crowd_creeps();
         let units = world
             .query_filtered::<Entity, (With<Position>, With<Team>)>()
             .iter(world)
@@ -64,7 +51,7 @@ pub(crate) fn script_view(c: &mut Criterion) {
         let mut round = 0;
         group.bench_function(case, |b| {
             let ViewScene { fixed, units } = scene.get_or_insert_with(ViewScene::new);
-            let world = fixed.runner_mut().world_mut();
+            let world = fixed.game_mut();
             b.iter_custom(|reads| {
                 let mut spent = Duration::ZERO;
                 for _ in 0..reads {
@@ -73,7 +60,7 @@ pub(crate) fn script_view(c: &mut Criterion) {
                     }
                     round += 1;
                     let start = Instant::now();
-                    read_view(world);
+                    world.read_view();
                     spent += start.elapsed();
                 }
                 black_box(&*world);

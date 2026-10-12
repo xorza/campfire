@@ -1,23 +1,24 @@
 use std::num::NonZeroU32;
 
-use campfire_sim::{EntityIndex, TickInput, TickInputs};
+use campfire_sim::EntityIndex;
+use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
+use crate::actions::actions_world::internals::ActionsWorldCrateInternals;
 use crate::actions::gather_spec::GatherSpec;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
+use crate::navigation::navigation_world::NavigationWorldCrate;
 use crate::navigation::walker::Walker;
 use crate::orders::order::{Action, Order};
 use crate::production::gatherer::{GatherStep, Gatherer, Load};
-use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::resource_set::ResourceSet;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
@@ -33,128 +34,33 @@ fn half(x: i64, z: i64) -> Position {
 /// of a half meter. Its minerals are nodes of gold, boxes of 2 by 1 m of the neutral team 2; its
 /// hall, player 0's, a box of 4 by 2 m, takes gold. A worker's gather takes 5 a trip in 3
 /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
-#[derive(Debug)]
-struct Mine {
-    shop: Shop,
-    gather: ActionId,
-    gold: ResourceId,
-    mineral: UnitType,
-}
-
-impl Mine {
-    fn new() -> Mine {
-        let mut shop = Shop::ordering();
-        let world = &mut shop.sim.world;
-        let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        world.insert_resource(bounds);
-        let walker = Walker {
-            layer: Layer::FIRST,
-            radius: Num::HALF,
-        };
-        let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(world, grid, &[], vec![walker]);
-        let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
-        MatchEntity::spawn_players(world, 1, 1);
-        let mineral = Units::load_type(world, TypeScope::Mode, "mineral", &UnitTypeData::default());
-        let mut nodes = NodeBook::default();
-        nodes.nodes.set(mineral, gold);
-        nodes.drop_offs.set(shop.depot, ResourceSet::of([gold]));
-        world.insert_resource(nodes);
-        let spec = GatherSpec {
-            resource: gold,
-            take: NonZeroU32::new(5).unwrap(),
-            bounce: Num::int(4),
-        };
-        let all = Filter::of_relations(RelationSet::All);
-        let gather = internals::gather(world, spec, all, Num::ONE, Ticks::new(3));
-        Mine {
-            shop,
-            gather,
-            gold,
-            mineral,
-        }
-    }
-
-    /// A worker of player `owner` at `at`, of a half meter, walking a meter a tick, with the
-    /// gather in its slot 0.
-    fn worker(&mut self, at: Position, owner: u32) -> StableId {
-        self.worker_ranked(at, owner, Rank::new(1))
-    }
-
-    /// A worker as `worker` gives, its gather at `rank`, or not learned with none.
-    fn worker_ranked(&mut self, at: Position, owner: u32, rank: Option<Rank>) -> StableId {
-        let slots = ActionSlots::new([(self.gather, SlotKind::new(0), rank)]).timed();
-        let parts = (
-            Owner::new(PlayerSlot::new(owner)),
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            slots,
-            Gatherer::default(),
-        );
-        self.shop.sim.spawn(at, Team::new(0), parts)
-    }
-
-    /// A mineral at `at` holding `amount`.
-    fn mineral(&mut self, at: Position, amount: u32) -> StableId {
-        let body = BodyForm::box_sized([Num::int(2), Num::ONE])
-            .unwrap()
-            .at(Num::ZERO);
-        let parts = (body, Node::new(amount));
-        self.shop
-            .sim
-            .spawn_of(self.mineral, at, Team::new(2), parts)
-    }
-
-    /// Player 0's hall at `at`.
-    fn hall(&mut self, at: Position) -> StableId {
-        let body = BodyForm::box_sized([Num::int(4), Num::int(2)])
-            .unwrap()
-            .at(Num::ZERO);
-        let parts = (Owner::new(PlayerSlot::new(0)), body);
-        self.shop
-            .sim
-            .spawn_of(self.shop.depot, at, Team::new(0), parts)
-    }
-
-    /// Runs a tick in which player 0 orders each of `workers` to gather at `node`.
-    fn gather_at(&mut self, workers: &[StableId], node: StableId) {
-        let orders: Vec<Order> = workers
-            .iter()
-            .map(|&unit| {
-                let target = ActionTarget::Unit(node);
-                Order::one(unit, Action::Slot { slot: 0, target })
-            })
-            .collect();
-        let payload = Order::payload(&orders);
-        self.shop
-            .sim
-            .world
-            .resource_mut::<TickInputs>()
-            .push(TickInput {
-                slot: PlayerSlot::new(0),
-                payload: &payload,
-            });
-        self.shop.sim.step();
-    }
-
-    fn gold(&self) -> i64 {
-        PlayerResources::of_player(&self.shop.sim.world, PlayerSlot::new(0))
-            .unwrap()
-            .amount(self.gold)
-    }
-
-    /// What `node` holds, none once gone.
-    fn amount(&self, node: StableId) -> Option<u32> {
-        self.shop
-            .sim
-            .try_get::<Node>(node)
-            .map(|node| node.amount())
-    }
-
-    fn step(&self, worker: StableId) -> Option<GatherStep> {
-        let gatherer = self.shop.sim.get::<Gatherer>(worker);
-        gatherer.order().map(|order| order.step)
-    }
+fn mine_match() -> Match {
+    let mut game = ordering_match();
+    let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
+    game.insert_resource(bounds);
+    let walker = Walker {
+        layer: Layer::FIRST,
+        radius: Num::HALF,
+    };
+    let grid = Grid::new(Num::ONE, bounds).unwrap();
+    game.load_pathing(grid, &[], vec![walker]);
+    let shop = game.shop();
+    let gold = shop.gold;
+    game.spawn_players(1, 1);
+    let mineral = game.load_unit_type(TypeScope::Mode, "mineral", &UnitTypeData::default());
+    let mut nodes = NodeBook::default();
+    nodes.nodes.set(mineral, gold);
+    nodes.drop_offs.set(shop.depot, ResourceSet::of([gold]));
+    game.insert_resource(nodes);
+    let spec = GatherSpec {
+        resource: gold,
+        take: NonZeroU32::new(5).unwrap(),
+        bounce: Num::int(4),
+    };
+    let all = Filter::of_relations(RelationSet::All);
+    let gather = game.add_gather(spec, all, Num::ONE, Ticks::new(3));
+    game.insert_resource(Mine { gather, mineral });
+    game
 }
 
 #[test]
@@ -167,20 +73,20 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     // trip of 7 ticks. Tick 13 delivers 10; tick 18 takes the last 2, and the mineral despawns
     // as the tick ends; tick 20 delivers 12, and the worker, with no mineral within 4 m of its
     // mineral's place, stops.
-    let mut mine = Mine::new();
-    mine.hall(half(0, 0));
-    let node = mine.mineral(half(0, 12), 12);
-    let worker = mine.worker(half(1, 6), 0);
+    let mut game = mine_match();
+    game.hall(half(0, 0));
+    let node = game.mineral(half(0, 12), 12);
+    let worker = game.worker(half(1, 6), 0);
     // A worker far off whose gather it has not learned holds no gather: its order stops in the
     // tick it applies.
-    let unlearned = mine.worker_ranked(half(-20, 6), 0, None);
-    mine.gather_at(&[worker, unlearned], node);
+    let unlearned = game.worker_ranked(half(-20, 6), 0, None);
+    game.gather_at(&[worker, unlearned], node);
     let mut seen = Vec::new();
     for tick in 1..=21 {
-        mine.shop.tick();
-        seen.push((mine.gold(), mine.amount(node)));
+        game.step();
+        seen.push((game.gold(), game.node_amount(node)));
         if tick == 1 {
-            assert_eq!(mine.step(unlearned), None);
+            assert_eq!(game.gather_step(unlearned), None);
         }
     }
     let at = |tick: usize| seen[tick - 1];
@@ -190,21 +96,8 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     assert_eq!([at(11), at(13)], [(5, Some(2)), (10, Some(2))]);
     assert_eq!([at(17), at(18)], [(10, Some(2)), (10, None)]);
     assert_eq!([at(19), at(20)], [(10, None), (12, None)]);
-    assert_eq!(mine.step(worker), None);
-    assert_eq!(mine.shop.sim.get::<Gatherer>(worker).load(), None);
-}
-
-impl Mine {
-    /// The node `worker`'s loop is at.
-    fn node_of(&self, worker: StableId) -> Option<StableId> {
-        let gatherer = self.shop.sim.get::<Gatherer>(worker);
-        gatherer.order().map(|order| order.node.node)
-    }
-
-    /// The worker that holds `node`.
-    fn holder(&self, node: StableId) -> Option<StableId> {
-        self.shop.sim.get::<Node>(node).holder()
-    }
+    assert_eq!(game.gather_step(worker), None);
+    assert_eq!(game.part::<Gatherer>(worker).load(), None);
 }
 
 #[test]
@@ -216,17 +109,17 @@ fn waiting_workers_take_a_freed_node_by_the_tick_they_waited_then_by_stable_id()
     // The first frees it to the second in tick 3, the second to the third in tick 6, each of a
     // higher id than the one that frees it, and the third back to the first in tick 9, of a
     // lower id, which waited from tick 3, before the second, from 6.
-    let mut mine = Mine::new();
-    mine.hall(half(0, 3));
-    let node = mine.mineral(half(0, 12), 100);
-    let workers = [-2, 0, 2].map(|x| mine.worker(half(x, 8), 0));
-    mine.gather_at(&workers, node);
-    let mut holders = vec![mine.holder(node)];
-    let mut gold = vec![mine.gold()];
+    let mut game = mine_match();
+    game.hall(half(0, 3));
+    let node = game.mineral(half(0, 12), 100);
+    let workers = [-2, 0, 2].map(|x| game.worker(half(x, 8), 0));
+    game.gather_at(&workers, node);
+    let mut holders = vec![game.holder(node)];
+    let mut gold = vec![game.gold()];
     for _ in 1..=12 {
-        mine.shop.tick();
-        holders.push(mine.holder(node));
-        gold.push(mine.gold());
+        game.step();
+        holders.push(game.holder(node));
+        gold.push(game.gold());
     }
     let [first, second, third] = workers.map(Some);
     let by_tick = [
@@ -240,7 +133,7 @@ fn waiting_workers_take_a_freed_node_by_the_tick_they_waited_then_by_stable_id()
     );
     let positions: Vec<Position> = workers
         .iter()
-        .map(|&id| *mine.shop.sim.get::<Position>(id))
+        .map(|&id| *game.part::<Position>(id))
         .collect();
     assert_eq!(positions, [-2, 0, 2].map(|x| half(x, 8)));
 }
@@ -251,32 +144,32 @@ fn a_worker_at_a_taken_node_goes_to_the_nearest_free_one_near_it_or_waits() {
     // (12, 6), 10 m, past the bounce of 4 m. The first worker, at (0.5, 4), takes the first; the
     // second, at (−0.5, 4), finds it taken, and goes on to the nearest free node within 4 m of
     // it: to (3.5, 6), whose box is √11.25 m off, not to (−5, 6), √14.5 m off.
-    let mut mine = Mine::new();
-    let node = mine.mineral(half(0, 12), 100);
-    let east = mine.mineral(half(7, 12), 100);
-    mine.mineral(half(-10, 12), 100);
-    mine.mineral(half(24, 12), 100);
-    let first = mine.worker(half(1, 8), 0);
-    let second = mine.worker(half(-1, 8), 0);
-    mine.gather_at(&[first, second], node);
-    assert_eq!(mine.holder(node), Some(first));
+    let mut game = mine_match();
+    let node = game.mineral(half(0, 12), 100);
+    let east = game.mineral(half(7, 12), 100);
+    game.mineral(half(-10, 12), 100);
+    game.mineral(half(24, 12), 100);
+    let first = game.worker(half(1, 8), 0);
+    let second = game.worker(half(-1, 8), 0);
+    game.gather_at(&[first, second], node);
+    assert_eq!(game.holder(node), Some(first));
     assert_eq!(
-        (mine.node_of(second), mine.step(second)),
+        (game.node_of(second), game.gather_step(second)),
         (Some(east), Some(GatherStep::ToNode))
     );
 
     // With only the far node free, the second waits at its own.
-    let mut mine = Mine::new();
-    let node = mine.mineral(half(0, 12), 100);
-    mine.mineral(half(24, 12), 100);
-    let first = mine.worker(half(1, 8), 0);
-    let second = mine.worker(half(-1, 8), 0);
-    mine.gather_at(&[first, second], node);
+    let mut game = mine_match();
+    let node = game.mineral(half(0, 12), 100);
+    game.mineral(half(24, 12), 100);
+    let first = game.worker(half(1, 8), 0);
+    let second = game.worker(half(-1, 8), 0);
+    game.gather_at(&[first, second], node);
     let waits = GatherStep::Waiting {
         since: Tick::new(0),
     };
     assert_eq!(
-        (mine.node_of(second), mine.step(second)),
+        (game.node_of(second), game.gather_step(second)),
         (Some(node), Some(waits))
     );
 }
@@ -287,35 +180,28 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
     // runs, the holder is dead, or its loop ended by a move order of tick 1: the waiting worker
     // holds the node, and its gather runs from tick 1.
     for dies in [true, false] {
-        let mut mine = Mine::new();
-        let node = mine.mineral(half(0, 12), 100);
-        let first = mine.worker(half(1, 8), 0);
-        let second = mine.worker(half(-1, 8), 0);
-        mine.gather_at(&[first, second], node);
+        let mut game = mine_match();
+        let node = game.mineral(half(0, 12), 100);
+        let first = game.worker(half(1, 8), 0);
+        let second = game.worker(half(-1, 8), 0);
+        game.gather_at(&[first, second], node);
         if dies {
-            mine.shop.sim.insert(first, Dead);
-            mine.shop.tick();
+            game.insert_parts(first, Dead);
+            game.step();
         } else {
             let away = Action::Move {
                 x: Num::int(10),
                 z: Num::ZERO,
             };
             let payload = Order::payload(&[Order::one(first, away)]);
-            mine.shop
-                .sim
-                .world
-                .resource_mut::<TickInputs>()
-                .push(TickInput {
-                    slot: PlayerSlot::new(0),
-                    payload: &payload,
-                });
-            mine.shop.sim.step();
+            game.push_input(PlayerSlot::new(0), &payload);
+            game.step();
         }
         let gathers = GatherStep::Gathering {
             since: Tick::new(1),
         };
-        assert_eq!(mine.holder(node), Some(second), "dies {dies}");
-        assert_eq!(mine.step(second), Some(gathers), "dies {dies}");
+        assert_eq!(game.holder(node), Some(second), "dies {dies}");
+        assert_eq!(game.gather_step(second), Some(gathers), "dies {dies}");
     }
 }
 
@@ -324,31 +210,29 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
     // A worker in range gathers from tick 0. In tick 1 a tag blocks its `use` group: its gather
     // ends with no load, and the node frees. Its loop waits while blocked; once the block ends,
     // in tick 3, it takes the node again, its gather running from tick 3.
-    let mut mine = Mine::new();
-    let node = mine.mineral(half(0, 12), 100);
-    let worker = mine.worker(half(1, 8), 0);
-    mine.gather_at(&[worker], node);
-    mine.shop
-        .sim
-        .insert(worker, UnitTags::blocking(&[Block::Use]));
-    mine.shop.tick();
+    let mut game = mine_match();
+    let node = game.mineral(half(0, 12), 100);
+    let worker = game.worker(half(1, 8), 0);
+    game.gather_at(&[worker], node);
+    game.insert_parts(worker, UnitTags::blocking(&[Block::Use]));
+    game.step();
     assert_eq!(
-        (mine.holder(node), mine.step(worker)),
+        (game.holder(node), game.gather_step(worker)),
         (None, Some(GatherStep::ToNode))
     );
-    mine.shop.tick();
-    assert_eq!(mine.step(worker), Some(GatherStep::ToNode));
-    let entity = mine.shop.sim.entity(worker);
-    mine.shop.sim.world.entity_mut(entity).remove::<UnitTags>();
-    mine.shop.tick();
+    game.step();
+    assert_eq!(game.gather_step(worker), Some(GatherStep::ToNode));
+    let entity = game.unit_entity(worker);
+    game.entity_mut(entity).remove::<UnitTags>();
+    game.step();
     let gathers = GatherStep::Gathering {
         since: Tick::new(3),
     };
     assert_eq!(
-        (mine.holder(node), mine.step(worker)),
+        (game.holder(node), game.gather_step(worker)),
         (Some(worker), Some(gathers))
     );
-    assert_eq!(mine.shop.sim.get::<Gatherer>(worker).load(), None);
+    assert_eq!(game.part::<Gatherer>(worker).load(), None);
 }
 
 #[test]
@@ -356,33 +240,34 @@ fn a_load_past_what_an_amount_holds_stays_with_its_worker() {
     // The player holds 2 short of the most: the first load, 5, would pass it, so the worker,
     // in range of the hall, stands with it, and its loop keeps it at the drop-off. A worker no
     // player owns has no drop-off, and stands with its load too.
-    let mut mine = Mine::new();
-    mine.hall(half(0, 3));
-    let node = mine.mineral(half(0, 12), 100);
-    let worker = mine.worker(half(1, 8), 0);
+    let mut game = mine_match();
+    let shop = game.shop();
+    game.hall(half(0, 3));
+    let node = game.mineral(half(0, 12), 100);
+    let worker = game.worker(half(1, 8), 0);
     let near_most = i64::MAX - 2;
-    let resources = PlayerResources::of_mut(&mut mine.shop.sim.world, PlayerSlot::new(0));
-    resources.unwrap().add(mine.gold, near_most).unwrap();
-    mine.gather_at(&[worker], node);
+    let resources = game.player_resources_mut(PlayerSlot::new(0));
+    resources.unwrap().add(shop.gold, near_most).unwrap();
+    game.gather_at(&[worker], node);
     for _ in 1..=4 {
-        mine.shop.tick();
+        game.step();
     }
-    let stands = |mine: &Mine| {
-        assert_eq!(mine.gold(), near_most);
-        let gatherer = *mine.shop.sim.get::<Gatherer>(worker);
+    let stands = |game: &Match| {
+        assert_eq!(game.gold(), near_most);
+        let gatherer = *game.part::<Gatherer>(worker);
         assert_eq!(gatherer.load().map(|load| load.amount), Some(5));
         assert!(matches!(
-            mine.step(worker),
+            game.gather_step(worker),
             Some(GatherStep::ToDropOff { .. })
         ));
-        let to = mine.shop.sim.try_get::<Destination>(worker).copied();
+        let to = game.try_part::<Destination>(worker).copied();
         assert_eq!(to.and_then(Destination::get), None);
     };
-    stands(&mine);
-    let entity = mine.shop.sim.entity(worker);
-    mine.shop.sim.world.entity_mut(entity).remove::<Owner>();
-    mine.shop.tick();
-    stands(&mine);
+    stands(&game);
+    let entity = game.unit_entity(worker);
+    game.entity_mut(entity).remove::<Owner>();
+    game.step();
+    stands(&game);
 }
 
 #[test]
@@ -390,26 +275,27 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     // A worker that gathered the mineral carries 5 when its loop is cut by a move. Sent to the
     // hall, in range, it delivers at once and goes back to the mineral it gathered last, 1.5 m
     // off, though a free one spans x 1.5 to 3.5 at z 4, 1 m off and within 4 m of it.
-    let mut mine = Mine::new();
-    let hall = mine.hall(half(0, 3));
-    let node = mine.mineral(half(0, 12), 100);
-    let worker = mine.worker(half(1, 8), 0);
-    mine.gather_at(&[worker], node);
+    let mut game = mine_match();
+    let shop = game.shop();
+    let hall = game.hall(half(0, 3));
+    let node = game.mineral(half(0, 12), 100);
+    let worker = game.worker(half(1, 8), 0);
+    game.gather_at(&[worker], node);
     for _ in 1..=3 {
-        mine.shop.tick();
+        game.step();
     }
-    let nearer = mine.mineral(half(5, 8), 100);
-    let mut gatherer = mine.shop.sim.get_mut::<Gatherer>(worker);
+    let nearer = game.mineral(half(5, 8), 100);
+    let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {
-        resource: mine.gold,
+        resource: shop.gold,
         amount: 5,
     }));
-    mine.gather_at(&[worker], hall);
-    assert_eq!(mine.gold(), 10);
-    assert_eq!(mine.node_of(worker), Some(node));
-    assert_eq!(mine.holder(nearer), None);
-    assert_eq!(mine.shop.sim.get::<Gatherer>(worker).load(), None);
+    game.gather_at(&[worker], hall);
+    assert_eq!(game.gold(), 10);
+    assert_eq!(game.node_of(worker), Some(node));
+    assert_eq!(game.holder(nearer), None);
+    assert_eq!(game.part::<Gatherer>(worker).load(), None);
 
     // A load of another resource, sent to gather gold, is dropped.
     let wood = ResourceId::named(
@@ -417,14 +303,14 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
         "wood",
     )
     .unwrap();
-    let mut gatherer = mine.shop.sim.get_mut::<Gatherer>(worker);
+    let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {
         resource: wood,
         amount: 3,
     }));
-    mine.gather_at(&[worker], node);
-    assert_eq!(mine.shop.sim.get::<Gatherer>(worker).load(), None);
+    game.gather_at(&[worker], node);
+    assert_eq!(game.part::<Gatherer>(worker).load(), None);
 }
 
 #[test]
@@ -433,18 +319,18 @@ fn a_node_that_runs_out_mid_trip_sends_its_worker_to_the_nearest_free_one() {
     // worker, in range of the first and of the hall, takes the 5 as tick 3's gather ends and
     // delivers them; the first, with nothing left, is gone to the loop, so the worker goes on
     // to the second in the same tick, and the first despawns as the tick ends.
-    let mut mine = Mine::new();
-    mine.hall(half(0, 3));
-    let node = mine.mineral(half(0, 12), 5);
-    let east = mine.mineral(half(7, 12), 100);
-    let worker = mine.worker(half(1, 8), 0);
-    mine.gather_at(&[worker], node);
+    let mut game = mine_match();
+    game.hall(half(0, 3));
+    let node = game.mineral(half(0, 12), 5);
+    let east = game.mineral(half(7, 12), 100);
+    let worker = game.worker(half(1, 8), 0);
+    game.gather_at(&[worker], node);
     for _ in 1..=3 {
-        mine.shop.tick();
+        game.step();
     }
-    assert_eq!((mine.gold(), mine.amount(node)), (5, None));
+    assert_eq!((game.gold(), game.node_amount(node)), (5, None));
     assert_eq!(
-        (mine.node_of(worker), mine.step(worker)),
+        (game.node_of(worker), game.gather_step(worker)),
         (Some(east), Some(GatherStep::ToNode))
     );
 }
@@ -454,12 +340,13 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     // A barracks whose rally point is the mineral trains a worker at once; it spawns with the
     // gather in its slot 0, which gathers the mineral's gold, and its loop goes to the mineral
     // as the next tick's orders are checked.
-    let mut mine = Mine::new();
-    let node = mine.mineral(half(0, 12), 100);
+    let mut game = mine_match();
+    let mine = game.mine();
+    let shop = game.shop();
+    let node = game.mineral(half(0, 12), 100);
     let gather = mine.gather;
-    let worker_type = mine.shop.grunt;
-    let world = &mut mine.shop.sim.world;
-    world.insert_non_send(Spawner::new(move |world, at, owner| {
+    let worker_type = shop.grunt;
+    game.insert_non_send(Spawner::new(move |world, at, owner| {
         let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]).timed();
         let parts = (
             Body::new(Num::HALF).unwrap(),
@@ -470,26 +357,23 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
         assert_eq!(at.unit_type, worker_type);
         at.core(owner.map(Owner::new)).spawn(world, parts).id()
     }));
-    let train = internals::train(world, worker_type, Ticks::ZERO, None);
-    let barracks = mine.shop.id();
+    let train = game.add_train(worker_type, Ticks::ZERO, None);
+    let barracks = game.allocate_id();
     let player = Some(PlayerSlot::new(0));
-    mine.shop
-        .producer(barracks, 0, -10, player, train, TrainQueue::default());
-    mine.shop
-        .sim
-        .insert(barracks, Rally::new(RallyTarget::Unit(node)));
-    mine.shop.order(barracks);
-    mine.shop.tick();
-    let index = mine.shop.sim.world.resource::<EntityIndex>();
+    game.producer(barracks, 0, -10, player, train, TrainQueue::default());
+    game.insert_parts(barracks, Rally::new(RallyTarget::Unit(node)));
+    game.order_train(barracks);
+    game.step();
+    let index = game.resource::<EntityIndex>();
     let units = index
         .iter()
         .map(|(id, _)| id)
         .filter(|id| id.is_allocated());
     let trained = units.max().unwrap();
-    assert_eq!(mine.step(trained), Some(GatherStep::Ordered));
-    mine.shop.tick();
+    assert_eq!(game.gather_step(trained), Some(GatherStep::Ordered));
+    game.step();
     assert_eq!(
-        (mine.node_of(trained), mine.step(trained)),
+        (game.node_of(trained), game.gather_step(trained)),
         (Some(node), Some(GatherStep::ToNode))
     );
 }

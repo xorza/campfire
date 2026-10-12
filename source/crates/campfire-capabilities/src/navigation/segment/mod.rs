@@ -34,11 +34,11 @@ pub(crate) mod internals {
     use crate::navigation::segment::Segment;
 
     impl Segment {
-        /// Whether the segment comes closer than `reach` to `at`, exactly; touching at `reach`
+        /// Whether the segment comes closer than `reach` to `pos`, exactly; touching at `reach`
         /// is not closer: the circles' test, which the shapes' must agree with.
-        pub(crate) fn comes_within(self, at: Position, reach: Num) -> bool {
+        pub(crate) fn comes_within(self, pos: Position, reach: Num) -> bool {
             let path = Metric::Planar.offset(self.from, self.to);
-            let off = Metric::Planar.offset(self.from, at);
+            let off = Metric::Planar.offset(self.from, pos);
             Approach::of(path, off, reach).nearest == Ordering::Less
         }
     }

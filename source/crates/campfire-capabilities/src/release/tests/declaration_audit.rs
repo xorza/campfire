@@ -20,7 +20,7 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::parted_kind::PartedKind;
 use crate::players::player::Player;
 use crate::release::Release;
-use crate::release::test_match::TestMatch;
+use crate::release::r#match::Match;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::state_types::data_kind::DataKind;
@@ -349,10 +349,7 @@ fn each_listed_effect_queues_in_the_capability_it_names() {
         let owner = does.capability();
         let mut declared = Vec::new();
         with_needs(owner, &mut declared);
-        let sim = TestMatch::client(&declared);
-        assert!(
-            sim.world.resource::<EffectQueues>().holds(owner),
-            "{owner:?}"
-        );
+        let game = Match::client(&declared);
+        assert!(game.resource::<EffectQueues>().holds(owner), "{owner:?}");
     }
 }

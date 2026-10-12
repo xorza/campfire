@@ -54,9 +54,9 @@ impl Signer {
         challenge.answer(&self.secp, &self.key, certificate, &self.random())
     }
 
-    /// The session key's signature over the head of `chain` in the session `session`.
-    pub(crate) fn sign(&self, chain: &InputChain, session: SessionId) -> Signature {
-        chain.sign(&self.secp, &self.key, session, &self.random())
+    /// The session key's signature over the head of `chain` in the session of `session_id`.
+    pub(crate) fn sign(&self, chain: &InputChain, session_id: SessionId) -> Signature {
+        chain.sign(&self.secp, &self.key, session_id, &self.random())
     }
 
     pub(crate) fn public_key(&self) -> XOnlyPublicKey {

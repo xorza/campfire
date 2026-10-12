@@ -5,7 +5,7 @@ use campfire_common::Tick;
 use campfire_sim::{Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::players::player_resources::PlayerResources;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -35,7 +35,7 @@ pub(crate) struct GatherOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct NodeAt {
     pub(crate) node: StableId,
-    pub(crate) at: Position,
+    pub(crate) pos: Position,
 }
 
 /// Where a worker is in its loop.
@@ -97,7 +97,7 @@ impl SimComponent for Gatherer {
     // node to go back to; a checked loop's node is the last it chose. A step's tick of any value
     // is compared, not counted from.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let resources = PlayerResources::declared(world);
+        let resources = world.declared_resources();
         let load = self
             .load
             .is_none_or(|load| load.resource.index() < resources && self.last.is_some());
@@ -115,13 +115,11 @@ impl Replication for Gatherer {
 
 #[cfg(test)]
 mod tests {
-    use campfire_math::{Num, Vec3};
-    use campfire_sim::IdAllocator;
-
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    use campfire_sim::TickRate;
+    use campfire_math::{Num, Vec3};
+    use campfire_sim::{IdAllocator, TickRate};
 
     use super::*;
     use crate::units::view::View;
@@ -140,7 +138,7 @@ mod tests {
         let mut ids = IdAllocator::default();
         let [first, second] = [0, 1].map(|z| NodeAt {
             node: ids.allocate(),
-            at: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::int(z))).unwrap(),
+            pos: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::int(z))).unwrap(),
         });
         let load = |resource| Load {
             resource,

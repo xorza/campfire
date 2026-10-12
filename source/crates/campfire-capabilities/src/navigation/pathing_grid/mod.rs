@@ -83,11 +83,11 @@ impl PathingGrid {
         }
     }
 
-    /// Follows the last update of `index`, which held the static bodies this grid was marked
+    /// Follows the last update of `statics`, which held the static bodies this grid was marked
     /// from: in each clearance, the cells of each body of its layer that the update took away
     /// open, then the bodies still near mark them again, and each body it put in marks its own;
     /// each clearance's regions are labeled again in the chunks those cells lie in.
-    pub(crate) fn update(&mut self, index: &BodyIndex) {
+    pub(crate) fn update(&mut self, statics: &BodyIndex) {
         let PathingGrid {
             grid,
             walkers,
@@ -105,7 +105,7 @@ impl PathingGrid {
             let regions = &mut regions[at];
             dirty.fill(false);
             let ours = |body: &&IndexedBody| body.layer == layer;
-            for body in index.removed().iter().filter(ours) {
+            for body in statics.removed().iter().filter(ours) {
                 cleared.clear();
                 body.spans_closer(grid, radius, |cells| {
                     regions.touch(cells.clone(), dirty);
@@ -118,7 +118,7 @@ impl PathingGrid {
                 // A cell another body blocks too lies within the walker's radius of each, so the
                 // other's bounding box comes within this one's bound and twice the radius.
                 let reach = body.shape.bound() + radius + radius;
-                index.near(layer, body.at.get(), reach, |other| {
+                statics.near(layer, body.pos.get(), reach, |other| {
                     other.spans_closer(grid, radius, |cells| {
                         let at = cleared.partition_point(|run| run.end <= cells.start);
                         let Some(run) = cleared.get(at) else {
@@ -130,7 +130,7 @@ impl PathingGrid {
                     });
                 });
             }
-            for body in index.added().iter().filter(ours) {
+            for body in statics.added().iter().filter(ours) {
                 body.spans_closer(grid, radius, |cells| {
                     regions.touch(cells.clone(), dirty);
                     for cell in cells {
@@ -147,15 +147,6 @@ impl PathingGrid {
     /// The side of a cell.
     pub(crate) const fn cell(&self) -> Num {
         self.grid.cell()
-    }
-
-    /// Whether the unit of `entity` in `world` walks as one of the mode's kinds of walker, which
-    /// routes and steering read its cells by; every unit does in a match with no pathing grid.
-    pub(crate) fn serves(world: &World, entity: Entity) -> bool {
-        world.get_resource::<PathingGrid>().is_none_or(|grid| {
-            Walker::of(world.get::<Body>(entity))
-                .is_some_and(|walker| grid.walkers.binary_search(&walker).is_ok())
-        })
     }
 
     /// The cells `walker` may stand in, when it is one of the mode's kinds of walker.
@@ -231,6 +222,15 @@ impl PathingGrid {
                 }
             }
         }
+    }
+
+    /// Whether the unit of `entity` in `world` walks as one of the mode's kinds of walker, which
+    /// routes and steering read its cells by; every unit does in a match with no pathing grid.
+    pub(super) fn serves(world: &World, entity: Entity) -> bool {
+        world.get_resource::<PathingGrid>().is_none_or(|grid| {
+            Walker::of(world.get::<Body>(entity))
+                .is_some_and(|walker| grid.walkers.binary_search(&walker).is_ok())
+        })
     }
 }
 

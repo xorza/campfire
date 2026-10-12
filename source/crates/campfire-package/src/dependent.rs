@@ -37,7 +37,7 @@ impl Dependent {
     pub(crate) fn read(
         name: &PackageName,
         files: &PackageFiles,
-        parser: &ScriptHost,
+        host: &ScriptHost,
         api: &ScriptApi,
     ) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError::of(name, problem);
@@ -70,7 +70,7 @@ impl Dependent {
             Manifest::Rules(_) => (PackageContent::default(), DependentKind::Rules),
             Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(files, header, parser, api)?;
+        let package = Package::read(files, header, host, api)?;
         Ok(Dependent {
             package,
             content,

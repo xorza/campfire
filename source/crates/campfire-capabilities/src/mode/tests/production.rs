@@ -1,4 +1,5 @@
 use super::*;
+use crate::players::players_world::PlayersWorldCrate;
 use crate::production::gatherer::{Gatherer, Load};
 use crate::production::production_column::ProductionColumn;
 use crate::production::supply_costs::SupplyCosts;
@@ -12,8 +13,8 @@ fn on_mode_input(ctx, player, name, value) {
     pick(ctx, player, value);
 }
 ";
-    let mut game = Game::new(picker, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x"))]);
+    let mut game = mode_match(picker, ScriptLimits::ROOMY);
+    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
     // A grunt for 30 mana and 5 gold, in 300 ms, 3 ticks at 10 a second.
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
     let cost = ["mana", "gold"].map(|name| DeclaredName::new(name).unwrap());
@@ -24,49 +25,37 @@ fn on_mode_input(ctx, player, name, value) {
         unit_type: Some(DeclaredName::new("grunt").unwrap()),
         ..blink_data()
     };
-    let world = &mut game.sim.world;
-    let train = Actions::load(world, 0, "train_grunt", &train, None, 1).unwrap();
+    let train = game.load_action(0, "train_grunt", &train, None, 1).unwrap();
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
-    let mut owned = world.query_filtered::<Entity, With<Owner>>();
-    let producer = owned.single(world).unwrap();
+    let mut owned = game.query_filtered::<Entity, With<Owner>>();
+    let producer = owned.single(&game).unwrap();
     let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
     let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
-    let hero_type = *world.get::<UnitType>(producer).unwrap();
+    let hero_type = *game.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
     };
-    let mut producers = world.resource_mut::<ByType<ProductionData>>();
+    let mut producers = game.resource_mut::<ByType<ProductionData>>();
     producers.set(hero_type, production);
     let parts = (pools, slots, TrainQueue::default());
-    world.entity_mut(producer).insert(parts);
+    game.entity_mut(producer).insert(parts);
     let gold = resource("gold").unwrap();
     let player = PlayerSlot::new(0);
-    let mut resources = PlayerResources::of_mut(world, player).unwrap();
+    let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, 15).unwrap();
-    let order = |game: &mut Game| {
-        let mut slots = game.sim.world.get_mut::<ActionSlots>(producer).unwrap();
+    let order = |game: &mut Match| {
+        let mut slots = game.get_mut::<ActionSlots>(producer).unwrap();
         slots.order(0, ActionTarget::None);
     };
-    let paid = |game: &Game| {
-        let mana = game
-            .sim
-            .world
-            .get::<Pools>(producer)
-            .unwrap()
-            .current(MANA)
-            .unwrap();
-        let held = PlayerResources::of_player(&game.sim.world, player)
-            .unwrap()
-            .amount(gold);
+    let paid = |game: &Match| {
+        let mana = game.get::<Pools>(producer).unwrap().current(MANA).unwrap();
+        let held = game.player_resources(player).unwrap().amount(gold);
         (mana.round(), held)
     };
-    let mut grunts = game
-        .sim
-        .world
-        .query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();
-    let hero = *game.sim.world.get::<UnitType>(producer).unwrap();
-    let mut trained = |game: &mut Game| {
-        let units = grunts.iter(&game.sim.world);
+    let mut grunts = game.query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();
+    let hero = *game.get::<UnitType>(producer).unwrap();
+    let mut trained = |game: &mut Match| {
+        let units = grunts.iter(game);
         units.filter(|&(&unit_type, ..)| unit_type != hero).count()
     };
 
@@ -89,26 +78,24 @@ fn on_mode_input(ctx, player, name, value) {
         (false, (10, 0), 3),
     ];
     for (at, (ordered, expected, made)) in (1..).zip(steps) {
-        assert_eq!(game.sim.now().get(), at);
+        assert_eq!(game.now().get(), at);
         if ordered {
             order(&mut game);
         }
-        game.tick(&[]);
+        game.tick_inputs(&[]);
         assert_eq!(paid(&game), expected, "tick {at}");
         assert_eq!(trained(&mut game), made, "tick {at}");
     }
     // Each grunt stands where the producer stood, its player's, and the queue is empty.
-    let at = *game.sim.world.get::<Position>(producer).unwrap();
+    let pos = *game.get::<Position>(producer).unwrap();
     let made: Vec<_> = grunts
-        .iter(&game.sim.world)
+        .iter(&game)
         .filter(|&(&unit_type, ..)| unit_type != hero)
-        .map(|(_, owner, &pos)| (owner.slot(), pos))
+        .map(|(_, owner, &grunt_pos)| (owner.slot(), grunt_pos))
         .collect();
-    assert_eq!(made, [(player, at); 3]);
+    assert_eq!(made, [(player, pos); 3]);
     assert!(
-        game.sim
-            .world
-            .get::<TrainQueue>(producer)
+        game.get::<TrainQueue>(producer)
             .unwrap()
             .entries()
             .is_empty()
@@ -134,10 +121,9 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     // Hero X uses 2 and gives 6, of a most of 5; a grunt uses 1.
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x"))]);
-    let world = &mut game.sim.world;
-    let view = world.non_send::<View>().clone();
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    game.tick_inputs(&[(0, input("hero", "hero-x"))]);
+    let view = game.non_send::<View>().clone();
     let named = |name: &str| view.unit_type_named(name).unwrap();
     let (hero, grunt) = (named("hero-x"), named("grunt"));
     let mut types = ByType::default();
@@ -155,7 +141,7 @@ fn on_mode_input(ctx, player, name, value) {
             provides: 0,
         },
     );
-    let costs = SupplyCosts::new(types, world.resource::<ActionBook>());
+    let costs = SupplyCosts::new(types, game.resource::<ActionBook>());
     ProductionColumn::share(&view, Some(SupplyRules { max: 5 }), costs);
     // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
     // third gathers and carries nothing.
@@ -165,11 +151,11 @@ fn on_mode_input(ctx, player, name, value) {
         .into_iter()
         .zip(loads)
     {
-        let at = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
         let parts = (Owner::new(PlayerSlot::new(slot)), UnitStats::default());
-        let unit = game.sim.spawn_of(grunt, at, Team::new(0), parts);
+        let id = game.spawn_unit_of(grunt, pos, Team::new(0), parts);
         if dead {
-            game.sim.insert(unit, Dead);
+            game.insert_parts(id, Dead);
         }
         if let Some(amount) = load {
             let mut gatherer = Gatherer::default();
@@ -177,26 +163,26 @@ fn on_mode_input(ctx, player, name, value) {
                 resource: gold,
                 amount,
             }));
-            game.sim.insert(unit, gatherer);
+            game.insert_parts(id, gatherer);
         }
     }
     // Player 0 uses 2 + 1 + 1 = 4 of a cap of 6 at most 5; player 1 uses 1 of none.
-    game.tick(&[(0, input("phase", "read"))]);
+    game.tick_inputs(&[(0, input("phase", "read"))]);
     assert_eq!(
         (game.field("count"), game.field("seen")),
         (StateValue::Int(4), StateValue::Int(5))
     );
-    game.tick(&[(1, input("phase", "read"))]);
+    game.tick_inputs(&[(1, input("phase", "read"))]);
     assert_eq!(
         (game.field("count"), game.field("seen")),
         (StateValue::Int(1), StateValue::Int(0))
     );
     // The loads by stable id, 0, 7, 0 and 0, two digits each: ((0·100 + 7)·100 + 0)·100 + 0.
-    game.tick(&[(0, input("phase", "load"))]);
+    game.tick_inputs(&[(0, input("phase", "load"))]);
     assert_eq!(game.field("count"), StateValue::Int(70_000));
     assert_eq!(game.failures(), []);
     // A mode that counts no supply fails the call.
     ProductionColumn::share(&view, None, SupplyCosts::default());
-    game.tick(&[(0, input("phase", "read"))]);
+    game.tick_inputs(&[(0, input("phase", "read"))]);
     assert_eq!(game.failures(), [FailureKind::Api(ApiError::NoSupply)]);
 }

@@ -26,13 +26,9 @@ pub(crate) struct PoolStats {
 }
 
 impl PoolBook {
-    /// The book of `pools`, whose stats the load checked `stats` declares.
-    pub(crate) fn new(pools: &BTreeMap<DeclaredName, PoolData>, stats: &StatBook) -> PoolBook {
-        let index = |stat| {
-            stats
-                .named(stat)
-                .expect("the load checked the pools' stats")
-        };
+    /// The book of `pools`, whose stats the load checked `book` declares.
+    pub(crate) fn new(pools: &BTreeMap<DeclaredName, PoolData>, book: &StatBook) -> PoolBook {
+        let index = |stat| book.named(stat).expect("the load checked the pools' stats");
         PoolBook {
             names: pools.keys().cloned().collect(),
             pools: pools

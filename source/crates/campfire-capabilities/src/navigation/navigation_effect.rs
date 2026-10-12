@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{Position, SimWorld, StableId};
 
 use crate::actions::capability_does::CapabilityDoes;
 use crate::actions::effect_data::EffectTo;
@@ -31,86 +31,86 @@ use crate::units::view::View;
 pub(crate) enum NavigationEffect {
     /// A dash of `step` a tick to `to`, the delivery `delivers` when it is one.
     Dash {
-        unit: StableId,
+        id: StableId,
         to: DashTo,
         step: Num,
         delivers: Option<DashDelivery>,
     },
     /// A knock back `distance` away from `from` over `ticks`.
     KnockBack {
-        unit: StableId,
+        id: StableId,
         from: Position,
         distance: Num,
         ticks: Ticks,
     },
     Teleport {
-        unit: StableId,
+        id: StableId,
         to: Position,
     },
 }
 
 impl NavigationEffect {
-    /// A dash of `unit`, which walks, to `to` at `speed` meters a second, which `view` sees: a
+    /// A dash of `id`, which walks, to `to` at `speed` meters a second, which `view` sees: a
     /// step a tick of `speed` over the tick rate, rounded once, more than 0. A call that delivers
     /// an instant action, its `on_resolve`, makes the dash that delivery, as `frame` says.
     pub(crate) fn dash(
         view: &View,
         frame: &Frame,
-        unit: StableId,
+        id: StableId,
         to: DashTo,
         speed: Num,
     ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, unit)?;
+        NavigationEffect::walker(view, id)?;
         let hz = i64::from(view.rate().hz().get());
         let step = speed
             .checked_div_int(hz)
             .filter(|&step| step > Num::ZERO)
             .ok_or(ApiError::NotASpeed)?;
         Ok(NavigationEffect::Dash {
-            unit,
+            id,
             to,
             step,
             delivers: frame.dash_delivers(),
         })
     }
 
-    /// A knock back of `unit`, which walks, `distance` away from `from`, more than 0 and within
+    /// A knock back of `id`, which walks, `distance` away from `from`, more than 0 and within
     /// the world's bound, over `ms`, more than 0, rounded up to ticks.
     pub(crate) fn knock_back(
         view: &View,
-        unit: StableId,
+        id: StableId,
         from: Position,
         distance: Num,
         ms: i64,
     ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, unit)?;
+        NavigationEffect::walker(view, id)?;
         if distance <= Num::ZERO || distance > Position::BOUND {
             return Err(ApiError::NotADistance);
         }
         let ticks = view.lasting(ms)?;
         Ok(NavigationEffect::KnockBack {
-            unit,
+            id,
             from,
             distance,
             ticks,
         })
     }
 
-    /// A teleport of `unit`, which walks, to `to`.
+    /// A teleport of `id`, which walks, to `to`.
     pub(crate) fn teleport(
         view: &View,
-        unit: StableId,
+        id: StableId,
         to: Position,
     ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, unit)?;
-        Ok(NavigationEffect::Teleport { unit, to })
+        NavigationEffect::walker(view, id)?;
+        Ok(NavigationEffect::Teleport { id, to })
     }
 
-    /// Queues a listed forced move of `unit`, whose other unit is the acting unit or `reached`,
+    /// Queues a listed forced move of `id`, whose other unit is the acting unit or `reached`,
     /// the unit the list reached, by the rules of the script's calls.
     pub(crate) fn queue_listed(
         does: CapabilityDoes,
-        unit: StableId,
+        id: StableId,
         reached: Option<StableId>,
         frame: &mut Frame,
         view: &View,
@@ -124,13 +124,13 @@ impl NavigationEffect {
         };
         let effect = match does {
             CapabilityDoes::Dash { to, speed } => other(to).and_then(|to| {
-                NavigationEffect::dash(view, frame, unit, DashTo::Unit(to), speed.number(frame))
+                NavigationEffect::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))
             }),
             CapabilityDoes::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
                 // Whole, as the load checked, so the floor is exact.
                 let ms = ms.number(frame).floor();
-                NavigationEffect::knock_back(view, unit, from, distance.number(frame), ms)
+                NavigationEffect::knock_back(view, id, from, distance.number(frame), ms)
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };
@@ -138,12 +138,24 @@ impl NavigationEffect {
         Ok(())
     }
 
-    /// Fails unless `unit` walks: only a walker moves.
-    fn walker(view: &View, unit: StableId) -> Result<(), ApiError> {
-        if !NavigationColumn::walks(view, unit) {
+    /// Fails unless `id` walks: only a walker moves.
+    fn walker(view: &View, id: StableId) -> Result<(), ApiError> {
+        if !NavigationColumn::walks(view, id) {
             return Err(ApiError::NoWalker);
         }
         Ok(())
+    }
+
+    /// Puts the unit of `entity` at `pos`, at once: it ends its forced move and walks its route
+    /// again from there, as a teleport and a box that spawns over it put a unit.
+    pub(super) fn put(world: &mut World, entity: Entity, pos: Position, now: Tick) {
+        let mut moved = world.entity_mut(entity);
+        *moved.get_mut::<Position>().expect("a unit has a place") = pos;
+        moved.remove::<ForcedMove>();
+        let mut walkers = world.query::<(&Destination, &mut Route, &mut Progress)>();
+        if let Ok((destination, mut route, mut progress)) = walkers.get_mut(world, entity) {
+            route.ask_again(destination, &mut progress, now);
+        }
     }
 }
 
@@ -151,12 +163,12 @@ impl Effect for NavigationEffect {
     // A unit gone or dead since the call moves no more.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let unit = match self {
-            NavigationEffect::Dash { unit, .. }
-            | NavigationEffect::KnockBack { unit, .. }
-            | NavigationEffect::Teleport { unit, .. } => unit,
+        let id = match self {
+            NavigationEffect::Dash { id, .. }
+            | NavigationEffect::KnockBack { id, .. }
+            | NavigationEffect::Teleport { id, .. } => id,
         };
-        let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
+        let Some(entity) = world.entity_of(id) else {
             return;
         };
         if world.entity(entity).contains::<Dead>() {
@@ -172,14 +184,14 @@ impl Effect for NavigationEffect {
                 ticks,
                 ..
             } => {
-                let at = *world.get::<Position>(entity).expect("a unit has a place");
+                let pos = *world.get::<Position>(entity).expect("a unit has a place");
                 ForcedMove::KnockBack {
-                    to: knock_back_end(at, from, distance),
+                    to: knock_back_end(pos, from, distance),
                     left: ticks.get(),
                 }
             }
             NavigationEffect::Teleport { to, .. } => {
-                teleport(world, entity, unit, to, now);
+                teleport(world, entity, id, to, now);
                 return;
             }
         };
@@ -187,42 +199,28 @@ impl Effect for NavigationEffect {
     }
 }
 
-/// Where a knock back `distance` away from `from` takes a unit at `at`: straight away on the
+/// Where a knock back `distance` away from `from` takes a unit at `pos`: straight away on the
 /// ground plane, each component of the direction rounded once, along x from `from` itself, as
 /// collision parts two on one spot.
-fn knock_back_end(at: Position, from: Position, distance: Num) -> Vec3 {
+fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
     let away =
-        from.ground_offset(at)
+        from.ground_offset(pos)
             .normalized()
             .unwrap_or(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO));
     let offset = away
         .checked_mul(distance)
         .expect("a distance within the bound scales a unit vector");
-    at.get()
+    pos.get()
         .checked_add(offset)
         .expect("a place and a distance within the bound add")
 }
 
-impl NavigationEffect {
-    /// Puts the unit of `entity` at `place`, at once: it ends its forced move and walks its route
-    /// again from there, as a teleport and a box that spawns over it put a unit.
-    pub(crate) fn put(world: &mut World, entity: Entity, place: Position, now: Tick) {
-        let mut moved = world.entity_mut(entity);
-        *moved.get_mut::<Position>().expect("a unit has a place") = place;
-        moved.remove::<ForcedMove>();
-        let mut walkers = world.query::<(&Destination, &mut Route, &mut Progress)>();
-        if let Ok((destination, mut route, mut progress)) = walkers.get_mut(world, entity) {
-            route.ask_again(destination, &mut progress, now);
-        }
-    }
-}
-
-/// Puts the unit of `entity`, `unit`, at `to`, taken to the nearest point of the bounds, or, where
+/// Puts the unit of `entity`, `id`, at `to`, taken to the nearest point of the bounds, or, where
 /// its walker may not stand on the pathing grid, at the center of the nearest cell it may stand
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
 /// its route again from there, and every homing projectile on it loses it.
-fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now: Tick) {
-    let mut place = world.resource::<Bounds>().clamp(to);
+fn teleport(world: &mut World, entity: Entity, id: StableId, to: Position, now: Tick) {
+    let mut pos = world.resource::<Bounds>().clamp(to);
     if let Some(grid) = world.get_resource::<PathingGrid>()
         && PathingGrid::serves(world, entity)
     {
@@ -230,15 +228,15 @@ fn teleport(world: &mut World, entity: Entity, unit: StableId, to: Position, now
             grid.clearance(Walker::walking(world.get::<Body>(entity))),
             world.resource::<BodyIndex>(),
         );
-        let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, place) else {
+        let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, pos) else {
             return;
         };
-        place = open;
+        pos = open;
     }
-    NavigationEffect::put(world, entity, place, now);
+    NavigationEffect::put(world, entity, pos, now);
     let mut projectiles = world.query::<(&Projectile, &mut FlightState)>();
     for (projectile, mut state) in projectiles.iter_mut(world) {
-        if projectile.homes_on(unit) {
+        if projectile.homes_on(id) {
             state.disjoint();
         }
     }

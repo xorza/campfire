@@ -80,6 +80,7 @@ pub use crate::sim_client::client_layout::ClientLayout;
 pub use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
+pub use crate::sim_client::sim_client_world::SimClientWorld;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient};
 pub use crate::sim_server::SimServer;
 pub use crate::sim_server::checkpoints::error::SaveRefusal;
@@ -92,7 +93,6 @@ pub use crate::sim_server::lobby::{Lobby, LobbySetup};
 pub use crate::sim_server::player_link::PlayerLink;
 pub use crate::sim_server::server_bots::{ServerBots, SlotBot};
 pub use crate::sim_server::server_dir::ServerDir;
-pub use crate::sim_server::server_exit::ServerExit;
 pub use crate::sim_server::server_layout::ServerLayout;
 pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
@@ -101,6 +101,7 @@ pub use crate::sim_server::session_dir::error::{
 pub use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
 pub use crate::sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;
+pub use crate::sim_server::sim_server_world::SimServerWorld;
 pub use crate::sim_server::slot_bot_file::SlotBotFile;
 pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::tick_hashes::TickHashes;

@@ -1,7 +1,5 @@
-use campfire_sim::Position;
-
 use campfire_math::Num;
-use campfire_sim::IdAllocator;
+use campfire_sim::{IdAllocator, Position};
 
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
@@ -232,8 +230,8 @@ impl ModeMap {
                 .iter()
                 .filter(|(other, held)| *other != at && held.layer == body.layer);
             let walls = Some(&placed_walls);
-            let clear = Walls::room_for(walls, *bounds, body.at, &boxed, body.layer)
-                && !others.any(|(_, other)| other.overlaps_box(body.at, &boxed));
+            let clear = Walls::room_for(walls, *bounds, body.pos, &boxed, body.layer)
+                && !others.any(|(_, other)| other.overlaps_box(body.pos, &boxed));
             if !clear {
                 return Err(MapProblem::BoxBlocked {
                     unit: at,
@@ -259,14 +257,14 @@ impl ModeMap {
         for walker in widest {
             let clearance = grid.clearance(walker);
             let walkable = Walkable::of(clearance, &statics);
-            let stands = |at: Position| !walkable.blocks(Segment::new(at, at));
+            let stands = |pos: Position| !walkable.blocks(Segment::new(pos, pos));
             for marker in &self.markers {
                 if marker.pos.is_some_and(|pos| !stands(pos)) {
                     let marker = declared(&marker.name);
                     return Err(MapProblem::MarkerBlocked { marker });
                 }
             }
-            let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
+            let reach = |pos: Position| clearance.regions().reach(cells.nearest_cell(pos));
             for (path, name) in self.paths.names().enumerate() {
                 let points = self.paths.points(Paths::id_at(path));
                 if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {
