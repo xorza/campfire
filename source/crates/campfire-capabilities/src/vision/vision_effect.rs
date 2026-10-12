@@ -7,7 +7,7 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::team::Team;
 use crate::vision::reveals::{Reveal, Reveals};
-use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_book::VisionBook;
 
 /// A reveal a call queued: to `team`'s vision group, of the cells within `radius` of `pos`, in
 /// `ticks` Vision stages from the tick it applies in.
@@ -23,7 +23,7 @@ impl Effect for VisionEffect {
     // A match with no grid sees nothing, so it keeps no reveal.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        if !world.contains_resource::<VisionGrid>() {
+        if world.resource::<VisionBook>().grid().is_none() {
             return;
         }
         let last = now.after(Ticks::new(self.ticks.get() - 1));

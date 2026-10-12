@@ -5,9 +5,6 @@ use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
 
-use crate::actions::slot_kinds::SlotKinds;
-use crate::combat::assist_window::AssistWindow;
-use crate::combat::combat_bindings::CombatBindings;
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
@@ -16,33 +13,21 @@ use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::geometry::bounds::Bounds;
-use crate::geometry::metric::Metric;
-use crate::items::shop::Shop;
 use crate::mode::mode_world::ModeWorld;
-use crate::navigation::paths::Paths;
-use crate::navigation::walls::Walls;
 use crate::players::entity_parts::EntityParts;
-use crate::production::mode_supply_data::ModeSupplyData;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
-use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::state_types::replication::Replication;
 use crate::state_types::{Declared, StateTypes};
-use crate::stats::life_pool::LifePool;
-use crate::stats::pool_book::PoolBook;
-use crate::stats::stat_book::StatBook;
 use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::predicting::Predicting;
 use crate::units::row_reads::RowReads;
-use crate::units::tag_book::TagBook;
 use crate::units::view_column::ViewColumn;
 use crate::visibility::OutView;
-use crate::vision::vision_grid::VisionGrid;
 
 /// A scratch resource, by its name, and whether a world holds it clear.
 #[derive(Debug, Clone, Copy)]
@@ -67,7 +52,6 @@ impl DeclaredResources {
         let mut declared = DeclaredResources::default();
         Release::declare(set, &mut declared);
         declared.ids.extend(DeclaredResources::release_own());
-        declared.ids.extend(DeclaredResources::undeclared_yet());
         declared.ids.extend(SimWorldBuilder::sim_resources());
         declared.ids.extend(host);
         let mut unlisted: Vec<String> = world
@@ -97,28 +81,6 @@ impl DeclaredResources {
             TypeId::of::<OutView>(),
             TypeId::of::<ScriptBudgets>(),
             TypeId::of::<Predicting>(),
-        ]
-    }
-
-    /// The books that no declaration names yet, which plan step F24 declares, and removes this
-    /// list.
-    fn undeclared_yet() -> [TypeId; 15] {
-        [
-            TypeId::of::<SlotKinds>(),
-            TypeId::of::<CombatBindings>(),
-            TypeId::of::<LifePool>(),
-            TypeId::of::<PoolBook>(),
-            TypeId::of::<StatBook>(),
-            TypeId::of::<TagBook>(),
-            TypeId::of::<ScriptBook>(),
-            TypeId::of::<Paths>(),
-            TypeId::of::<Bounds>(),
-            TypeId::of::<Metric>(),
-            TypeId::of::<Walls>(),
-            TypeId::of::<VisionGrid>(),
-            TypeId::of::<Shop>(),
-            TypeId::of::<AssistWindow>(),
-            TypeId::of::<ModeSupplyData>(),
         ]
     }
 }

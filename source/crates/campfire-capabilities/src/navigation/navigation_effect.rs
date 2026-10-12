@@ -6,7 +6,6 @@ use campfire_sim::{Position, SimWorld, StableId};
 
 use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::actions::effect_data::EffectTo;
-use crate::geometry::bounds::Bounds;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::navigation_column::NavigationColumn;
@@ -23,6 +22,7 @@ use crate::scripts::frame::Frame;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
+use crate::units::map_book::MapBook;
 use crate::units::view::View;
 
 /// A forced move a call queued, of a living unit that walks: a dash or a knock back, which starts
@@ -220,7 +220,7 @@ fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
 /// its route again from there, and every homing projectile on it loses it.
 fn teleport(world: &mut World, entity: Entity, id: StableId, to: Position, now: Tick) {
-    let mut pos = world.resource::<Bounds>().clamp(to);
+    let mut pos = world.resource::<MapBook>().bounds.clamp(to);
     if let Some(grid) = world.get_resource::<PathingGrid>()
         && PathingGrid::serves(world, entity)
     {

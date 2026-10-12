@@ -38,7 +38,7 @@ fn on_mode_input(ctx, player, name, value) {
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
     let victim = Mode::entity_by_id(&game, 1);
     *game.get_mut::<Position>(victim).unwrap() = Position::from((3, 0, 0));
-    game.insert_resource(AssistWindow(Ticks::new(10)));
+    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
     let ids: Vec<_> = game
         .resource::<EntityIndex>()
         .iter()

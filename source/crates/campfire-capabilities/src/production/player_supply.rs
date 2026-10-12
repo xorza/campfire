@@ -7,8 +7,8 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::players::player::Player;
-use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::supply::{CountedUnit, Supply};
+use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::trains::Counted;
 use crate::state_types::data_kind::DataKind;
@@ -38,14 +38,14 @@ impl PlayerSupply {
     /// entity where it changed. A client holds the player entities unpredicted, which no query
     /// here reads, so only the server writes it.
     pub(super) fn refresh(
-        rules: Option<Res<'_, ModeSupplyData>>,
+        rules: Res<'_, SupplyBook>,
         costs: Res<'_, SupplyCostBook>,
         units: Query<'_, '_, Counted>,
         mut players: Query<'_, '_, (Entity, &Player, Option<&mut PlayerSupply>)>,
         mut supply: Local<'_, Supply>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(rules) = rules else {
+        let Some(rules) = rules.0 else {
             return;
         };
         let counted = units
@@ -57,7 +57,7 @@ impl PlayerSupply {
                 complete: !site,
                 queue,
             });
-        supply.count(&costs, *rules, counted);
+        supply.count(&costs, rules, counted);
         for (entity, player, held) in &mut players {
             let now = PlayerSupply {
                 used: supply.used(player.slot()),

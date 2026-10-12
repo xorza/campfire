@@ -3,22 +3,26 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
-use campfire_sim::TickRate;
+use campfire_sim::{Capability, TickRate};
 
+use crate::declare::book::Book;
 use crate::scripts::error::UnknownName;
+use crate::scripts::frame::Frame;
 use crate::scripts::name_kind::NameKind;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
+use crate::stats::stats_column::StatsColumn;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use crate::values::names::Names;
 use crate::values::stat::{EngineStat, Stat};
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
 /// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
 /// Package data, not state.
-#[derive(Resource, Debug)]
+#[derive(Resource, Debug, Default)]
 pub(crate) struct StatBook {
     /// The stats' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<StatId>>,
@@ -177,11 +181,6 @@ impl StatBook {
         })
     }
 
-    /// The stats' names, by id.
-    pub(crate) const fn names(&self) -> &Arc<Names<StatId>> {
-        &self.names
-    }
-
     /// The id of `stat`; `None` when the mode does not declare it.
     pub(crate) fn named(&self, stat: &Stat) -> Option<StatId> {
         self.names.named(stat.name())
@@ -201,5 +200,14 @@ impl StatBook {
             .clamp(Num::ZERO, self.max_move_speed);
         let hz = i64::from(rate.hz().get());
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
+    }
+}
+
+impl Book for StatBook {
+    const OWNER: Option<Capability> = Some(Capability::Stats);
+    const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, view: &View, _: Option<&mut Frame>) {
+        StatsColumn::share_stat_names(view, Arc::clone(&self.names));
     }
 }

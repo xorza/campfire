@@ -7,6 +7,7 @@ use campfire_sim::{Position, StableId};
 
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::IndexedBody;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::walls::Walls;
 use crate::units::body::Body;
@@ -47,9 +48,8 @@ struct NavigationRow {
 impl ViewColumn for NavigationColumn {
     fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
-        if let Some(walls) = world.get_resource::<Walls>()
-            && !walls.same(&self.walls)
-        {
+        let walls = &world.resource::<NavigationBook>().walls;
+        if !walls.same(&self.walls) {
             self.walls = walls.clone();
         }
         false

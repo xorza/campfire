@@ -5,6 +5,8 @@ use campfire_sim::{Position, SimWorld, StableId};
 use super::*;
 use crate::geometry::body_box::BodyBox;
 use crate::geometry::bounds::Bounds;
+use crate::geometry::grid::Grid;
+use crate::geometry::polygon::Polygon;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::error::ApiError;

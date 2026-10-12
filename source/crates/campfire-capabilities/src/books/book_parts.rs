@@ -25,7 +25,7 @@ use crate::vision::sight::Sight;
 #[derive(Debug, Default)]
 pub(crate) struct BookParts {
     pub(super) types: UnitTypes,
-    pub(super) tracks: Option<TrackBook>,
+    pub(super) tracks: TrackBook,
     pub(super) modifiers: ModifierBook,
     pub(super) actions: ActionBook,
     /// Every action's and modifier's params.

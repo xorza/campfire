@@ -1,9 +1,9 @@
 use bevy_ecs::system::{Res, SystemParam};
 
 use crate::actions::action_book::ActionBook;
-use crate::production::mode_supply_data::ModeSupplyData;
 use crate::production::production_data::ProductionData;
 use crate::production::requirement_book::RequirementBook;
+use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
 use crate::units::by_type::ByType;
 
@@ -15,5 +15,5 @@ pub(crate) struct ProductionBooks<'w> {
     pub(crate) producers: Res<'w, ByType<ProductionData>>,
     pub(crate) requirements: Res<'w, RequirementBook>,
     pub(crate) costs: Res<'w, SupplyCostBook>,
-    pub(crate) rules: Option<Res<'w, ModeSupplyData>>,
+    pub(crate) rules: Res<'w, SupplyBook>,
 }

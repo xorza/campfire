@@ -29,6 +29,7 @@ use crate::stats::unit_pools::UnitPools;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
@@ -243,11 +244,11 @@ impl Construction {
     /// group. A site that reaches its time completes: it loses
     /// its site and its `constructing` tag, and its builders' orders end.
     pub(crate) fn progress_sites(
-        (index, book, builds, metric): (
+        (index, book, builds, map): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
             Res<'_, BuildBook>,
-            Res<'_, Metric>,
+            Res<'_, MapBook>,
         ),
         mut sites: Query<
             '_,
@@ -301,7 +302,7 @@ impl Construction {
                 pos: at,
                 body: *site_body,
             };
-            let reaches = Construction::in_range(*metric, from, body, range, placed);
+            let reaches = Construction::in_range(map.metric, from, body, range, placed);
             if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
                 building.push(BuildingAt {
                     site,

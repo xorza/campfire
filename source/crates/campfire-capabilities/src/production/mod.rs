@@ -20,6 +20,7 @@ use crate::production::production_data::ProductionData;
 use crate::production::rally::Rally;
 use crate::production::requirement_book::RequirementBook;
 use crate::production::site::Site;
+use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
@@ -57,6 +58,7 @@ pub(crate) mod requirement_book;
 pub(crate) mod resource_set;
 pub(crate) mod site;
 pub(crate) mod supply;
+pub(crate) mod supply_book;
 pub(crate) mod supply_cost_book;
 pub(crate) mod supply_data;
 pub(crate) mod train_queue;
@@ -99,6 +101,7 @@ impl Module for Production {
         d.book::<SupplyCostBook>();
         d.book::<BuildBook>();
         d.book::<NodeBook>();
+        d.book::<SupplyBook>();
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
     }
@@ -197,6 +200,7 @@ pub(crate) mod test_world {
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::action_target::ActionTarget;
+    use crate::books::Books;
     use crate::navigation::Navigation;
     use crate::orders::order::{Action, Order};
     use crate::production::Production;
@@ -205,6 +209,7 @@ pub(crate) mod test_world {
     use crate::production::gatherer::{GatherStep, Gatherer};
     use crate::production::mode_supply_data::ModeSupplyData;
     use crate::production::site::Site;
+    use crate::production::supply_book::SupplyBook;
     use crate::production::supply_cost_book::SupplyCostBook;
     use crate::production::supply_data::SupplyData;
     use crate::stats::life::Life;
@@ -230,8 +235,8 @@ pub(crate) mod test_world {
                 types.set(unit_type, supply);
             }
             let costs = SupplyCostBook::new(types, world.resource::<ActionBook>());
-            world.insert_resource(costs);
-            world.insert_resource(ModeSupplyData { max });
+            Books::load(world, costs);
+            Books::load(world, SupplyBook(Some(ModeSupplyData { max })));
         }
 
         /// A unit of `unit_type` owned by `owner`, at the origin.

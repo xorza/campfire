@@ -4,15 +4,15 @@ use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{Position, Unpredicted};
 
-use crate::geometry::bounds::Bounds;
-use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::walls::Walls;
 use crate::players::on_match::OnMatch;
 use crate::production::build_book::{BuildSpec, PlacementCheck};
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::move_step::MoveStep;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
@@ -25,11 +25,10 @@ use crate::vision::team_sight::TeamSight;
 /// client tests the units it holds and does not predict too, where the server last had them.
 #[derive(SystemParam, Debug)]
 pub(crate) struct Placement<'w, 's, S: TeamSight> {
-    bounds: Res<'w, Bounds>,
-    walls: Option<Res<'w, Walls>>,
+    navigation: Option<Res<'w, NavigationBook>>,
     statics: Res<'w, BodyIndex>,
     relations: OnMatch<'w, 's, Relations>,
-    metric: Res<'w, Metric>,
+    map: Res<'w, MapBook>,
     units: Query<
         'w,
         's,
@@ -62,8 +61,8 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             panic!("a building's body is a box");
         };
         let layer = body.layer();
-        let walls = self.walls.as_deref();
-        if !Walls::room_for(walls, *self.bounds, pos, &boxed, layer) {
+        let walls = self.navigation.as_deref().map(|book| &book.walls);
+        if !Walls::room_for(walls, self.map.bounds, pos, &boxed, layer) {
             return false;
         }
         let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);
@@ -110,7 +109,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                 let relation = self.relations.get().between(team, other_team);
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
                 rule.filter.selects(relation, tags)
-                    && self.metric.reaches(
+                    && self.map.metric.reaches(
                         pos,
                         body.shape(),
                         rule.distance,

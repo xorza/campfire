@@ -10,7 +10,6 @@ use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
-use crate::geometry::bounds::Bounds;
 use crate::items::ItemsSet;
 use crate::orders::ai::Ai;
 use crate::orders::destinations::Destinations;
@@ -27,6 +26,7 @@ use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::production::ProductionSet;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
+use crate::units::map_book::MapBook;
 use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
 pub(crate) mod ai;
@@ -154,7 +154,7 @@ impl Orders {
     /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
     /// order applies; a unit that resets takes none.
     pub(super) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
-        let bounds = *world.resource::<Bounds>();
+        let bounds = world.resource::<MapBook>().bounds;
         let mut unit = world.entity_mut(entity);
         if unit.contains::<Resetting>() {
             return;

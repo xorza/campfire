@@ -22,13 +22,16 @@ use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::test_world::TestWeapon;
+use crate::books::Books;
 use crate::combat::on_death::OnDeath;
 use crate::combat::test_world::Armed;
+use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::{ItemBook, ItemSpec};
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
+use crate::items::shop_book::ShopBook;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
@@ -238,7 +241,7 @@ const ORDERS: [Capability; 4] = [
 fn orders_match_with(paths: Paths, limits: ScriptLimits) -> Match {
     let scripts = ScriptBudgets::new(limits, 2);
     let mut game = Match::server(&ORDERS, scripts);
-    game.insert_resource(paths);
+    Navigation::load_paths(&mut game, paths);
     game
 }
 
@@ -1049,7 +1052,6 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     Navigation::load_pathing(
         &mut game,
         Grid::new(Num::ONE, bounds).unwrap(),
-        &[],
         vec![ground],
     );
     for z in 0..3 {
@@ -1331,7 +1333,10 @@ fn shop_match() -> Match {
     }];
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     game.insert_resource(book);
-    game.insert_resource(Shop::new(sells, gold, places, share));
+    Books::load(
+        &mut game,
+        ShopBook(Some(Shop::new(sells, gold, places, share))),
+    );
     Players::spawn(&mut game, 2, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
@@ -1488,7 +1493,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
             radius: Num::ZERO,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(&mut game, grid, &[], [walker]);
+        Navigation::load_pathing(&mut game, grid, [walker]);
         let walkers = [
             Position::from((1, 0, 2)),
             Position::from((4, 0, 6)),

@@ -4,10 +4,10 @@ use campfire_sim::{Position, StableId};
 use crate::actions::capability_does_spec::CapabilityDoesSpec;
 use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
-use crate::geometry::bounds::Bounds;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
+use crate::units::map_book::MapBook;
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 
@@ -69,7 +69,7 @@ impl Effect for AreasEffect {
     /// Applies the effect: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
     fn apply(self, world: &mut World, _: &mut Frame) {
-        let pos = world.resource::<Bounds>().clamp(self.pos);
+        let pos = world.resource::<MapBook>().bounds.clamp(self.pos);
         Areas::push(world, self.by, self.unit_type, pos, None, self.id);
     }
 }

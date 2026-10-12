@@ -4,7 +4,6 @@ use bevy_ecs::query::{Added, Allow, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 
-use crate::geometry::bounds::Bounds;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -20,6 +19,7 @@ use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::forced_move::ForcedMove;
+use crate::units::map_book::MapBook;
 use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
 
@@ -284,11 +284,11 @@ impl Walking {
 
     /// Clamps each unit that walks into the bounds; a unit already within them does not change.
     pub(super) fn keep_in_bounds(
-        bounds: Res<'_, Bounds>,
+        map: Res<'_, MapBook>,
         mut units: Query<'_, '_, &mut Position, With<MoveStep>>,
     ) {
         for mut position in &mut units {
-            position.set_if_neq(bounds.clamp(*position));
+            position.set_if_neq(map.bounds.clamp(*position));
         }
     }
 }

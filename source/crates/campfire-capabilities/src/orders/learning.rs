@@ -4,7 +4,7 @@ use crate::actions::action::Action;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlot;
 use crate::actions::rank_values::ChargeRule;
-use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::progression::points::Points;
 use crate::stats::level::Level;
 use crate::values::rank::Rank;
@@ -15,14 +15,14 @@ use crate::values::rank::Rank;
 #[derive(SystemParam, Debug)]
 pub struct Learning<'w> {
     book: Res<'w, ActionBook>,
-    kinds: Res<'w, SlotKinds>,
+    kinds: Res<'w, SlotKindBook>,
 }
 
 impl Learning<'_> {
     /// How many ranks the action in `held` has, when its kind's ranks are learned; none for a
     /// kind whose one rank comes with the spawn.
     pub fn ranks(&self, held: ActionSlot) -> Option<u8> {
-        if self.kinds.first_rank(held.kind).is_some() {
+        if self.kinds.0.first_rank(held.kind).is_some() {
             return None;
         }
         let ranks = self.action(held)?.ranks.len();
@@ -40,6 +40,7 @@ impl Learning<'_> {
         points.get() > 0
             && next.is_some_and(|next| {
                 self.kinds
+                    .0
                     .level_of(held.kind, next)
                     .is_none_or(|needed| needed <= level)
             })

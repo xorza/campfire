@@ -14,6 +14,7 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_data::{DoesData, EffectData, EffectTo, HealFields};
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::targeting::Targeting;
+use crate::books::Books;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::geometry::bounds::Bounds;
@@ -226,7 +227,10 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
         region: Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap(),
     }];
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
-    game.insert_resource(Shop::new(sells, resource, places, share));
+    Books::load(
+        game,
+        ShopBook(Some(Shop::new(sells, resource, places, share))),
+    );
     Players::spawn(game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()

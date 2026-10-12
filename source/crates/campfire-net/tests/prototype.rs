@@ -7,8 +7,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life,
-    MatchResult, Metric, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
+    Action, ActionSlots, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life, MapBook,
+    MatchResult, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
     PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
     SyncAll, SyncNone, Team, UnitsWorld,
 };
@@ -247,8 +247,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     local.start_match();
     // The client predicts on the ground and with the life pool the server's mode installs.
     let (server, client) = (local.server().world(), local.client(0).world());
-    assert_eq!(client.resource::<Metric>(), server.resource::<Metric>());
-    assert_eq!(client.resource::<Bounds>(), server.resource::<Bounds>());
+    assert_eq!(client.resource::<MapBook>(), server.resource::<MapBook>());
     assert_eq!(client.life_pool(), Some(PoolId::FIRST));
     assert_eq!(server.life_pool(), Some(PoolId::FIRST));
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 6.25 m from its

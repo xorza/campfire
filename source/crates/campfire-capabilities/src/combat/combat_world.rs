@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 
-use crate::stats::life_pool::LifePool;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 
 /// What the combat module gives a world, for every crate.
@@ -11,6 +11,6 @@ pub trait CombatWorld {
 
 impl CombatWorld for World {
     fn life_pool(&self) -> Option<PoolId> {
-        Some(self.get_resource::<LifePool>()?.0)
+        self.get_resource::<PoolBook>()?.life()
     }
 }

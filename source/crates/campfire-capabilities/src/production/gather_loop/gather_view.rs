@@ -10,7 +10,6 @@ use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::kind_spec::KindSpec;
-use crate::geometry::metric::Metric;
 use crate::players::on_match::OnMatch;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRows;
@@ -28,6 +27,7 @@ use crate::production::site::Site;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
@@ -42,7 +42,7 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
     pub(super) nodes_book: Res<'w, NodeBook>,
-    pub(super) metric: Res<'w, Metric>,
+    pub(super) map: Res<'w, MapBook>,
     pub(super) relations: OnMatch<'w, 's, Relations>,
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
     pub(super) workers: Query<'w, 's, Worker, Without<Dead>>,
@@ -139,9 +139,13 @@ impl GatherView<'_, '_> {
             .filter_map(|(_, &id, ..)| {
                 let place = self.node(id, gather, team)?.place;
                 let shape = Body::shape_of(place.body.as_ref());
-                let within =
-                    self.metric
-                        .reaches(near.pos, near_shape, gather.spec.bounce, place.pos, shape);
+                let within = self.map.metric.reaches(
+                    near.pos,
+                    near_shape,
+                    gather.spec.bounce,
+                    place.pos,
+                    shape,
+                );
                 within.then_some((place.distance_from(from), id, place.pos))
             })
             .min_by_key(|&(distance, id, _)| (distance, id))
@@ -223,7 +227,9 @@ impl GatherView<'_, '_> {
     ) -> bool {
         let shape = Body::shape_of(body);
         let to = Body::shape_of(at.body.as_ref());
-        self.metric.reaches(from, shape, gather.range, at.pos, to)
+        self.map
+            .metric
+            .reaches(from, shape, gather.range, at.pos, to)
     }
 
     /// What the worker of `entity` does in its loop this tick.

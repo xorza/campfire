@@ -1,14 +1,11 @@
-use bevy_ecs::resource::Resource;
-
 use crate::combat::mode_combat_data::ModeCombatData;
 use crate::stats::stat_id::StatId;
 use crate::values::stat::Stat;
 
 /// What the mode's `[combat]` binds besides its life pool: the places among the stats of leech
-/// from attacks and from other damage, and of the heal scale. Package data, not state; without a
-/// stat binding, its rule does nothing. A match with combat has it, as the load checked the
-/// mode names its life pool.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+/// from attacks and from other damage, and of the heal scale; without a stat binding, its rule
+/// does nothing.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct CombatBindings {
     pub(crate) leech_attack: Option<StatId>,
     pub(crate) leech_other: Option<StatId>,
@@ -28,19 +25,5 @@ impl CombatBindings {
             leech_other: bound(leech.and_then(|leech| leech.other.as_ref()))?,
             heal_scale: bound(rules.heal_scale.as_ref())?,
         })
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::combat::combat_bindings::CombatBindings;
-
-    impl CombatBindings {
-        /// The bindings of no stat.
-        pub(crate) const UNBOUND: CombatBindings = CombatBindings {
-            leech_attack: None,
-            leech_other: None,
-            heal_scale: None,
-        };
     }
 }

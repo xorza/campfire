@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
+use crate::stats::pool_book::PoolBook;
 use crate::units::unit_entity::UnitEntity;
 
 /// A unit's life: its meter of the mode's life pool, which every client that sees the unit
@@ -69,7 +69,10 @@ impl SimComponent for Life {
     // meter carries, regen adds, as `Pools` holds.
     fn check(&self, world: &World, _: Entity) -> bool {
         let hz = world.resource::<TickRate>().hz().get();
-        world.contains_resource::<LifePool>() && self.0.settled(hz)
+        world
+            .get_resource::<PoolBook>()
+            .is_some_and(|book| book.life().is_some())
+            && self.0.settled(hz)
     }
 }
 

@@ -12,17 +12,20 @@ use crate::actions::action_parts::ActionParts;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::actions_column::ActionsColumn;
 use crate::actions::checked_action::CheckedAction;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
 use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::view::View;
 use crate::values::names::Names;
 use crate::values::relation::Relation;
 
@@ -168,8 +171,12 @@ impl ActionBook {
 }
 
 impl Book for ActionBook {
-    const CAPABILITY: Option<Capability> = None;
+    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, view: &View, _: Option<&mut Frame>) {
+        ActionsColumn::share(view, self.clone());
+    }
 }
 
 #[cfg(feature = "internals")]

@@ -50,6 +50,6 @@ impl ProjectileSpec {
 }
 
 impl PerType for ProjectileSpec {
-    const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
+    const OWNER: Option<Capability> = Some(Capability::Projectiles);
     const SCRIPTS_ONLY: bool = false;
 }

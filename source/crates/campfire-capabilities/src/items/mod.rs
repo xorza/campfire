@@ -15,6 +15,7 @@ use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
 use crate::items::items_api::ItemsApi;
+use crate::items::shop_book::ShopBook;
 
 pub(crate) mod inventory;
 pub(crate) mod inventory_data;
@@ -24,6 +25,7 @@ pub(crate) mod item_holds;
 pub(crate) mod item_id;
 pub(crate) mod items_api;
 pub(crate) mod shop;
+pub(crate) mod shop_book;
 pub(crate) mod shop_data;
 
 /// The `items` capability: item types a mode package declares, the inventories its unit types
@@ -46,6 +48,7 @@ impl Module for Items {
         d.callback::<CastSpends>((), Items::spend_use);
         d.component::<Inventory>();
         d.book::<ItemBook>();
+        d.book::<ShopBook>();
         d.api(ItemsApi::register);
     }
 

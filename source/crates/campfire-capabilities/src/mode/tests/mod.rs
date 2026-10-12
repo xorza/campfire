@@ -11,6 +11,7 @@ use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{
     EntityIndex, Position, SimComponent, SimResource, SimTick, SlotEvent, SlotEventKind, StableId,
+    TickRate,
 };
 
 use super::*;
@@ -21,10 +22,13 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targeting::Targeting;
+use crate::books::Books;
 use crate::combat::combat_bindings::CombatBindings;
+use crate::combat::combat_book::CombatBook;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::heal::{Heal, HealCause};
 use crate::combat::mode_combat_data::ModeCombatData;
@@ -43,9 +47,9 @@ use crate::mode::map_data::{
 };
 use crate::mode::map_point::MapPoint;
 use crate::mode::match_end::MatchResult;
-use crate::mode::mode_books::ModeBooksInput;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_input::{InputValue, ModeInput};
+use crate::mode::mode_map::ResolvedMap;
 use crate::mode::mode_names::ModeNames;
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::mode_world::ModeWorld;
@@ -60,7 +64,6 @@ use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::navigation::path_walker::PathEnd;
-use crate::navigation::paths::Paths;
 use crate::navigation::route::Route;
 use crate::navigation::walker::Walker;
 use crate::players::match_entity::MatchEntity;
@@ -133,7 +136,6 @@ use crate::values::relation::Relation;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 use crate::visibility::mode_visibility::ModeVisibility;
-use crate::vision::vision_grid::VisionGrid;
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -720,6 +722,79 @@ fn start_match(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<M
     start_match_setup(script, limits, files, |_| {})
 }
 
+/// Loads the books of the mode of `files` and `setup` into `game`, each as the install loads it,
+/// and gives back what `Mode::load` takes beside them.
+fn load_mode_books(game: &mut Match, files: &ModeFiles, setup: &ModeSetup<'_>) -> ModeLoad {
+    // The grunt and both heroes walk with the grunt's body: one kind.
+    let mut walkers = ByType::default();
+    for setup in &setup.units.unit_types {
+        if setup.kit.step.is_some() {
+            walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
+        }
+    }
+    // The mode's books, each loaded as the install loads it.
+    let data = &files.data;
+    let mode_names = ModeNames::of(data);
+    let resolved = {
+        let view = game.non_send::<View>();
+        let relations = &data.relations;
+        let unit_type = |name: &str| view.names().unit_types().named((TypeScope::Mode, name));
+        let layers = &mode_names.layers;
+        ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap()
+    };
+    let stats = StatBook::new(&data.stats, Num::int(10));
+    let stat = |stat: &Stat| stats.named(stat).ok_or(stat.clone());
+    // The test mode names no life pool: the one the test match binds stays.
+    let life = data.combat.life_pool(&mode_names.pools).unwrap();
+    let life = life.or(game.resource::<PoolBook>().life());
+    let pools = Arc::clone(&mode_names.pools);
+    let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
+    let bindings = CombatBindings::new(&data.combat, stat).unwrap();
+    let tags = {
+        let view = game.non_send::<View>();
+        let mut types = view.types_mut();
+        let bodies = setup.units.unit_types.iter();
+        types.tag_layers(
+            &mode_names.layers,
+            bodies.map(|setup| (setup.unit_type, setup.kit.body)),
+        );
+        types.tag_book(&data.tags)
+    };
+    Books::load(game, stats);
+    Books::load(game, pools);
+    Books::load(game, tags);
+    Books::load(game, SlotKindBook(data.slots.clone()));
+    let assist_window = data.combat.assist_window_ms.map(|ms| RATE.window(ms));
+    Books::load(
+        game,
+        CombatBook {
+            bindings,
+            assist_window,
+        },
+    );
+    let ResolvedMap {
+        map,
+        ground,
+        navigation,
+        vision,
+    } = resolved;
+    Books::load(game, ground);
+    Books::load(game, navigation);
+    Books::load(game, vision);
+    game.non_send::<View>()
+        .names_mut()
+        .set_mode_names(mode_names.damage_kinds, mode_names.resources);
+    let mut kinds: Vec<Walker> = walkers.values().copied().collect();
+    kinds.sort_unstable();
+    kinds.dedup();
+    assert_eq!(kinds, [Walker::of_form(grunt().body).unwrap()]);
+    ModeLoad {
+        map,
+        walkers: kinds,
+        loadout_ranks: data.loadout_ranks(),
+    }
+}
+
 /// The match `start` gives, its setup changed by `adjust` before the mode installs.
 fn start_match_setup(
     script: &str,
@@ -780,44 +855,8 @@ fn start_match_setup(
     let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
     let mut setup = setup(&files, script, types, spell, strike, blessing);
     adjust(&mut setup);
-    // The grunt and both heroes walk with the grunt's body: one kind.
-    let mut walkers = ByType::default();
-    for setup in &setup.units.unit_types {
-        if setup.kit.step.is_some() {
-            walkers.set(setup.unit_type, Walker::of_form(setup.kit.body).unwrap());
-        }
-    }
-    let books = {
-        let view = game.non_send::<View>();
-        let stats = StatBook::new(&files.data.stats, Num::int(10));
-        let relations = &files.data.relations;
-        let unit_type = |name: &str| view.names().unit_types().named((TypeScope::Mode, name));
-        let data = &files.data;
-        let mode_names = ModeNames::of(data);
-        let layers = &mode_names.layers;
-        let map = ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap();
-        let stat = |stat: &Stat| stats.named(stat).ok_or(stat.clone());
-        let pools = Arc::clone(&mode_names.pools);
-        let pools = PoolBook::new(&data.pools, pools, |_, held| stat(held)).unwrap();
-        let life = data.combat.life_pool(&mode_names.pools).unwrap();
-        let bindings = life.map(|_| CombatBindings::new(&data.combat, stat).unwrap());
-        ModeBooks::build(ModeBooksInput {
-            data,
-            unit_types: &setup.units.unit_types,
-            types: &mut view.types_mut(),
-            walkers: &walkers,
-            stats,
-            pools,
-            life,
-            bindings,
-            loadout_ranks: data.loadout_ranks(),
-            names: mode_names,
-            map,
-            shop: None,
-        })
-    };
-    assert_eq!(books.walkers, [Walker::of_form(grunt().body).unwrap()]);
-    Release::install_mode(&mut game, setup, books);
+    let load = load_mode_books(&mut game, &files, &setup);
+    Release::install_mode(&mut game, setup, load);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
     Mode::start(&mut game)?;

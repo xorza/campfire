@@ -12,6 +12,7 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
 use crate::units::body::Body;
 use crate::units::entity_filters::UnitFilter;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::row_fill::{FillRow, RowFill, RowSource};
@@ -120,8 +121,8 @@ impl UnitRows {
         let refill = mem::take(&mut self.refill) || full || *relations != self.relations;
         self.now = now;
         self.relations.clone_from(relations);
-        self.metric = *world.resource::<Metric>();
-        self.bounds = *world.resource::<Bounds>();
+        self.metric = world.resource::<MapBook>().metric;
+        self.bounds = world.resource::<MapBook>().bounds;
         let core = self
             .core
             .as_mut()

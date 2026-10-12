@@ -98,14 +98,15 @@ pub(crate) mod test_matches {
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 
+    use crate::actions::slot_kind_book::SlotKindBook;
     use crate::actions::slot_kind_data::SlotKindData;
     use crate::actions::slot_kinds::SlotKinds;
+    use crate::books::Books;
     use crate::combat::Combat;
     use crate::players::Players;
     use crate::release::Release;
     use crate::release::r#match::Match;
     use crate::release::match_spec::MatchSpec;
-    use crate::scripts::script_book::ScriptBook;
     use crate::scripts::script_budgets::ScriptBudgets;
     use crate::stats::pool_id::PoolId;
     use crate::values::declared_name::DeclaredName;
@@ -148,17 +149,13 @@ pub(crate) mod test_matches {
             let set = spec.set;
             let mut world = World::new();
             Release::build(&mut world, spec);
-            // A match installs the book its package load read; a test fills one as it compiles.
-            world.insert_resource(ScriptBook::default());
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
             // with the spawn, which a test that needs others replaces.
-            if world.contains_resource::<SlotKinds>() {
-                let basic = SlotKindData {
-                    name: DeclaredName::new("basic").unwrap(),
-                    ranks: None,
-                };
-                world.insert_resource(SlotKinds::from([basic]));
-            }
+            let basic = SlotKindData {
+                name: DeclaredName::new("basic").unwrap(),
+                ranks: None,
+            };
+            Books::load(&mut world, SlotKindBook(SlotKinds::from([basic])));
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }

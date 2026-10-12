@@ -7,7 +7,6 @@ use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
 
 use crate::stats::level::Level;
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
 use crate::stats::live_carriers::LiveCarriers;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
@@ -23,9 +22,7 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
-use crate::units::tag_book::TagBook;
 use crate::units::tag_effect::TagEffect;
-use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
@@ -52,7 +49,6 @@ impl Refresh {
     )]
     pub(crate) fn run(
         books: StatBooks<'_>,
-        life: Option<Res<'_, LifePool>>,
         index: Res<'_, EntityIndex>,
         params: Res<'_, ParamBook>,
         rate: Res<'_, TickRate>,
@@ -105,9 +101,6 @@ impl Refresh {
             modifiers: modifier_book,
             tags: tag_book,
         } = books;
-        let (Some(book), Some(pool_book)) = (book, pool_book) else {
-            return;
-        };
         let scratch = &mut *scratch;
         scratch.clear();
         visits.clear();
@@ -120,9 +113,7 @@ impl Refresh {
             |id| index.get(id).is_some(),
             |entity| ids.contains(entity),
         );
-        let granting = tag_book
-            .as_deref()
-            .map_or(TagSet::default(), TagBook::granting);
+        let granting = tag_book.granting();
         let mut refreshing = units.p1();
         for &entity in &*visits {
             let Ok((&id, &unit_type, level, modifiers, tags, status)) = refreshing.get_mut(entity)
@@ -134,13 +125,11 @@ impl Refresh {
                 .filter(|instance| instance.stacks > 0)
                 .map(|instance| modifier_book.tags(instance.id))
                 .chain(status.map(|status| status.get()));
-            let derived = tag_book
-                .as_deref()
-                .map(|book| book.unit_tags(unit_type, granted));
-            if let (Some(mut tags), Some(derived)) = (tags, derived) {
+            let derived = tag_book.unit_tags(unit_type, granted);
+            if let Some(mut tags) = tags {
                 tags.set_if_neq(derived);
             }
-            let immune = derived.map_or(TagSet::default(), |derived| derived.immune);
+            let immune = derived.immune;
             let takes_effect = TagEffect::new(granting, immune);
             let unit = Refreshing {
                 id,
@@ -167,7 +156,7 @@ impl Refresh {
         };
         scratch.compute(&book, &params, other);
         let count = usize::from(book.len());
-        let life = life.map(|life| life.0);
+        let life = pool_book.life();
         let mut stats = units.p3();
         for (unit, refreshing) in scratch.units.iter().enumerate() {
             let Ok(mut stats) = stats.get_mut(refreshing.entity) else {
@@ -228,12 +217,7 @@ impl Refresh {
     /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
     /// rate's share a tick, the remainder carried so a second gains exactly the regen.
     pub(crate) fn regenerate(
-        (book, pool_book, life, rate): (
-            Option<Res<'_, StatBook>>,
-            Option<Res<'_, PoolBook>>,
-            Option<Res<'_, LifePool>>,
-            Res<'_, TickRate>,
-        ),
+        (pool_book, rate): (Res<'_, PoolBook>, Res<'_, TickRate>),
         mut units: Query<
             '_,
             '_,
@@ -241,11 +225,8 @@ impl Refresh {
             (Or<(With<Life>, With<Pools>)>, Without<Dead>),
         >,
     ) {
-        let (Some(_), Some(pool_book)) = (book, pool_book) else {
-            return;
-        };
         let hz = rate.hz().get();
-        let life = life.map(|life| life.0);
+        let life = pool_book.life();
         for (stats, pools) in &mut units {
             let values = stats.values();
             let mut pools = pools.of(life);

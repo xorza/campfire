@@ -5,9 +5,12 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::declare::book::Book;
+use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::track_data::TrackData;
+use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
+use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 use crate::values::names::Names;
 use campfire_sim::Capability;
@@ -91,6 +94,10 @@ impl Default for TrackBook {
 }
 
 impl Book for TrackBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
+    const OWNER: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, view: &View, _: Option<&mut Frame>) {
+        ProgressionColumn::share(view, self.clone());
+    }
 }

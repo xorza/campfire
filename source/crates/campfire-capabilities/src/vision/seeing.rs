@@ -15,7 +15,7 @@ use crate::vision::fog::Fog;
 use crate::vision::reveals::Reveals;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
-use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_book::VisionBook;
 
 /// What each vision group sees, and the teams that see each unit.
 #[derive(Debug)]
@@ -29,8 +29,8 @@ impl Seeing {
     /// whose cells hold it, or, for a unit its tags hide, whose detection does. The groups follow
     /// the relations as they change.
     pub(super) fn see(
-        (grid, relations, tick): (
-            Option<Res<'_, VisionGrid>>,
+        (vision, relations, tick): (
+            Res<'_, VisionBook>,
             OnMatch<'_, '_, Relations>,
             Res<'_, SimTick>,
         ),
@@ -51,23 +51,23 @@ impl Seeing {
         mut commands: Commands<'_, '_>,
         mut fog: Local<'_, Fog>,
     ) {
-        let Some(grid) = grid else {
+        let Some(grid) = vision.grid() else {
             return;
         };
         let relations = relations.get();
-        if relations.is_changed() || grid.is_changed() {
-            fog.rebuild(&grid, &relations);
+        if relations.is_changed() || vision.is_changed() {
+            fog.rebuild(grid, &relations);
         }
         fog.begin_tick();
         for (entity, &pos, &team, sight, tags) in &seers {
             let detects = UnitTags::properties_of(tags).detects();
             let slot = entity.index_u32() as usize;
-            fog.sight(&grid, slot, pos, team, sight.range(), detects);
+            fog.sight(grid, slot, pos, team, sight.range(), detects);
         }
         // A write marks the reveals changed, so a tick with none writes nothing.
         if !reveals.is_empty() {
             reveals.run(tick.start(), |reveal| {
-                fog.reveal(&grid, reveal.pos, reveal.team, reveal.radius);
+                fog.reveal(grid, reveal.pos, reveal.team, reveal.radius);
             });
         }
         for (entity, &pos, &team, body, tags, seen) in &mut units {
@@ -77,7 +77,7 @@ impl Seeing {
                 Shape::Circle(_) => None,
             };
             let slot = entity.index_u32() as usize;
-            let teams = fog.seen_by(&grid, slot, pos, boxed, team, hidden);
+            let teams = fog.seen_by(grid, slot, pos, boxed, team, hidden);
             match seen {
                 Some(mut seen) if seen.get() != teams => *seen = SeenBy::new(teams),
                 Some(_) => {}

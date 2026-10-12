@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::navigation::paths::Paths;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
@@ -34,7 +34,7 @@ impl SimComponent for OnPath {
 
     // A path the map lacks has no name for `unit.path` to read.
     fn check(&self, world: &World, _: Entity) -> bool {
-        self.0.index() < world.resource::<Paths>().count() as usize
+        self.0.index() < world.resource::<NavigationBook>().paths.count() as usize
     }
 }
 

@@ -7,9 +7,9 @@ use crate::actions::action_range::ActionRange;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::targets::Targets;
 use crate::navigation::destination::Destination;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
-use crate::navigation::paths::Paths;
 use crate::navigation::route::Route;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -25,7 +25,7 @@ impl Destinations {
     /// stands on the waypoint with no body: walkers that push each other never stand on one point.
     /// A walker that chased a target walks back to where it left its path.
     pub(super) fn follow_paths(
-        paths: Res<'_, Paths>,
+        navigation: Res<'_, NavigationBook>,
         mut walkers: Query<
             '_,
             '_,
@@ -41,6 +41,7 @@ impl Destinations {
             Without<Dead>,
         >,
     ) {
+        let paths = &navigation.paths;
         for (&position, path, mut walker, slots, mut destination, route, body) in &mut walkers {
             let busy = |slots: &ActionSlots| slots.attack_target().is_some() || slots.approaching();
             if walker.left() || slots.is_some_and(busy) {

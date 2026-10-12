@@ -2,19 +2,17 @@
 //! mode's hooks on the capabilities below it.
 
 use std::any::Any;
-use std::mem;
 use std::rc::Rc;
 
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick, StateRegistry, TickRate};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick, StateRegistry};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::combat::CombatSet;
-use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::DamageWeigher;
 use crate::combat::heal::HealWeigher;
@@ -27,9 +25,9 @@ use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_api::ModeApi;
-use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_hooks::ModeHooks;
+use crate::mode::mode_load::ModeLoad;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_spec::{MapStart, ModeSpec};
@@ -42,6 +40,7 @@ use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
 use crate::mode::unit_kit::kit_part::KitPart;
 use crate::navigation::NavigationSet;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
@@ -66,7 +65,6 @@ use crate::units::spawner::Spawner;
 use crate::units::unit_state::{SyncAll, SyncNone};
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
-use crate::vision::Vision;
 
 pub(crate) mod calls;
 pub(crate) mod choice_data;
@@ -79,7 +77,6 @@ pub(crate) mod group_unit;
 pub(crate) mod height_grid;
 pub(crate) mod loadout_setup;
 pub(crate) mod map_data;
-pub(crate) mod map_ground;
 pub(crate) mod map_point;
 pub(crate) mod marker;
 pub(crate) mod marker_spec;
@@ -87,12 +84,13 @@ pub(crate) mod marker_tag;
 pub(crate) mod match_end;
 pub(crate) mod match_mode;
 pub(crate) mod mode_api;
-pub(crate) mod mode_books;
 pub(crate) mod mode_call;
 pub(crate) mod mode_data;
 pub(crate) mod mode_effect;
 pub(crate) mod mode_hooks;
 pub(crate) mod mode_input;
+pub(crate) mod mode_inputs;
+pub(crate) mod mode_load;
 pub(crate) mod mode_map;
 pub(crate) mod mode_names;
 pub(crate) mod mode_schema;
@@ -178,38 +176,38 @@ impl Module for Mode {
 }
 
 impl Mode {
-    /// Loads the mode of `setup`, whose books the book builder built, into a match whose
-    /// capabilities and mode are installed and whose unit types, abilities and AI are loaded: the
-    /// map's ground, paths and grid become the match's, and the mode's `[combat]` and
-    /// `calc_damage` combat's.
+    /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
+    /// and whose unit types, abilities and AI are loaded, with what `load` takes from the books:
+    /// the map's pathing grid, for the kinds of its walkers, and its teams.
     pub(crate) fn load(
         world: &mut World,
         registry: &StateRegistry,
         setup: ModeSetup<'_>,
-        mut books: ModeBooks,
+        load: ModeLoad,
     ) {
         let view = world.non_send::<View>().clone();
-        let rate = *world.resource::<TickRate>();
-        let walkers = mem::take(&mut books.walkers);
-        let loadout_ranks = books.loadout_ranks;
-        // A window past what ticks can count covers the whole match.
-        let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
+        let ModeLoad {
+            map,
+            walkers,
+            loadout_ranks,
+        } = load;
+        map.install_pathing(world, walkers);
         let ModeMap {
-            ground,
             teams,
             relations,
-            paths,
             placed,
             markers,
-            grid,
-            brush,
-        } = books.install(world);
-        ground.install(world, walkers);
+            ..
+        } = map;
+        let paths = world
+            .get_resource::<NavigationBook>()
+            .map(|book| &book.paths);
+        let path_names = paths.into_iter().flat_map(|paths| paths.names().texts());
         let start = MapStart {
             teams,
             placed,
             relations,
-            map: GameMap::new(paths.names().texts().map(ImmutableString::from), &markers),
+            map: GameMap::new(path_names.map(ImmutableString::from), &markers),
         };
         let book = ModeSpec::new(
             setup,
@@ -218,15 +216,7 @@ impl Mode {
             loadout_ranks,
             KitPart::of_state(registry),
         );
-        if let Some(grid) = grid {
-            Vision::load_grid(world, grid, &brush, book.teams.count());
-        }
-        if let Some(window) = assist_window {
-            world.insert_resource(AssistWindow(window));
-        }
-        view.names_mut()
-            .set_teams(Rc::clone(&book.teams), paths.shared_names());
-        world.insert_resource(paths);
+        view.names_mut().set_teams(Rc::clone(&book.teams));
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
         let hooks = book.schema.hooks;

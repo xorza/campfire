@@ -19,7 +19,6 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
 use crate::actions::test_world::TestWeapon;
-use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage::DamageCause;
 use crate::combat::deaths::Fallen;
@@ -39,11 +38,11 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
-use crate::stats::life_pool::LifePool;
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -56,6 +55,7 @@ use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
+use crate::units::map_book::MapBook;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
@@ -171,7 +171,7 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
         (Num::int(3), 4, true, Metric::Spatial, false),
     ] {
         let mut game = fight_match();
-        game.insert_resource(metric);
+        game.resource_mut::<MapBook>().metric = metric;
         let fighter = Combat::spawn_armed(&mut game, (0, 0, 0), Team::new(0), fighter());
         let dummy_at = Position::new(Vec3::new(dummy_x, Num::int(dummy_y), Num::ZERO)).unwrap();
         let dummy = Combat::spawn_armed(&mut game, dummy_at, Team::new(1), dummy());
@@ -693,7 +693,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     for (window, assisted) in [(None, 0), (Some(4), 1), (Some(5), 2)] {
         let mut game = fight_match();
         if let Some(ticks) = window {
-            game.insert_resource(AssistWindow(Ticks::new(ticks)));
+            game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(ticks));
         }
         let team = Team::new(0);
         let [first, killer] =
@@ -810,10 +810,11 @@ fn load_damage_stats(world: &mut World) {
         ..ModeCombatData::default()
     };
     let pools = Names::<PoolId>::from([health.as_str()]);
-    world.insert_resource(LifePool(combat.life_pool(&pools).unwrap().unwrap()));
+    let life = combat.life_pool(&pools).unwrap();
     let bindings = CombatBindings::new(&combat, |stat| book.named(stat).ok_or(stat.clone()));
-    world.insert_resource(bindings.unwrap());
+    world.resource_mut::<CombatBook>().bindings = bindings.unwrap();
     Stats::load_book(world, book);
+    world.resource_mut::<PoolBook>().set_life(life);
 }
 
 /// A modifier of no stats, tags or script, as each shield the shield test gives is.
@@ -831,7 +832,7 @@ const ATTACK: DamageCause = DamageCause::Attack {
 #[test]
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let mut game = fight_match();
-    game.insert_resource(AssistWindow(Ticks::new(10)));
+    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
     let a = Combat::spawn_armed(&mut game, (0, 0, 0), Team::new(0), dummy());
     let b = Combat::spawn_armed(&mut game, (1, 0, 0), Team::new(0), dummy());
     let stays = dummy().on_death(OnDeath::Stay);

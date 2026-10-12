@@ -4,9 +4,11 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::units::action_id::ActionId;
 use crate::units::body_form::BodyForm;
 use crate::units::filter::Filter;
+use crate::units::view::View;
 use crate::values::share::Share;
 use campfire_sim::Capability;
 
@@ -149,8 +151,10 @@ impl BuildSpec<'_> {
 }
 
 impl Book for BuildBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }
 
 #[cfg(test)]

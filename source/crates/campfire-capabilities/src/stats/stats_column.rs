@@ -10,12 +10,12 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_handle::{HandleOf, ModifierHandle};
 use crate::stats::modifiers::Modifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_id::StatId;
@@ -89,7 +89,7 @@ struct ModifierRow {
 impl ViewColumn for StatsColumn {
     fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
-        self.life_pool = world.get_resource::<LifePool>().map(|life| life.0);
+        self.life_pool = world.get_resource::<PoolBook>().and_then(PoolBook::life);
         false
     }
 

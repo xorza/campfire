@@ -6,7 +6,7 @@ use campfire_sim::{Position, SimResource};
 use serde::{Deserialize, Serialize};
 
 use crate::units::team::Team;
-use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_book::VisionBook;
 
 /// The reveals under way, in the order made: each shows its team's vision group the grid cells
 /// whose centers lie within its radius of its place, in each Vision stage to its last tick.
@@ -47,7 +47,9 @@ impl SimResource for Reveals {
     // A reveal of a team the grid's match lacks has no group, and one of a negative radius no
     // cells; a match with no grid makes none.
     fn check(&self, world: &World) -> bool {
-        let grid = world.get_resource::<VisionGrid>();
+        let grid = world
+            .get_resource::<VisionBook>()
+            .and_then(VisionBook::grid);
         self.0.iter().all(|reveal| {
             reveal.radius >= Num::ZERO && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
         })

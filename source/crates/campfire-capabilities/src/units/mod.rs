@@ -11,10 +11,9 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::Module;
-use crate::geometry::bounds::Bounds;
-use crate::geometry::metric::Metric;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
+use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
@@ -27,6 +26,7 @@ use crate::units::engine_tag::EngineTag;
 use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
 use crate::units::lifespan::Lifespan;
+use crate::units::map_book::MapBook;
 use crate::units::move_step::MoveStep;
 use crate::units::new_unit::NewUnit;
 use crate::units::new_unit_states::NewUnitStates;
@@ -34,6 +34,7 @@ use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
+use crate::units::tag_book::TagBook;
 use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
 use crate::units::type_origin_book::TypeOriginBook;
@@ -73,6 +74,7 @@ pub(crate) mod kept_rows;
 pub(crate) mod layer;
 pub(crate) mod lifespan;
 pub(crate) mod living_unit;
+pub(crate) mod map_book;
 pub(crate) mod modifier_id;
 pub(crate) mod move_step;
 pub(crate) mod new_unit;
@@ -177,6 +179,9 @@ impl Module for Units {
         d.require::<UnitEntity, Team>();
         d.book::<UnitStateBook>();
         d.book::<TypeOriginBook>();
+        d.book::<TagBook>();
+        d.book::<MapBook>();
+        d.book::<ScriptBook>();
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptsCall>();
@@ -187,14 +192,11 @@ impl Module for Units {
         d.api(View::register_queries);
     }
 
-    /// Adds the core to a match, on a planar map until the mode sets its own. With scripts, in
+    /// Adds the core to a match. With scripts, in
     /// Inputs, every pool starts full and the last tick's failures clear, and as the tick ends,
     /// its writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_>) {
         let world = &mut *cx.world;
-        world.insert_resource(Metric::default());
-        // The world's bounds until a map's take their place.
-        world.insert_resource(Bounds::WORLD);
         world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
             view.refill_next();
         });
@@ -223,7 +225,7 @@ impl Units {
     /// Whether every unit stands within the match's bounds, as every system keeps it, and as
     /// vision and navigation index the map's cells by it; the first that does not.
     fn within_bounds(world: &World) -> Result<(), Breach> {
-        let bounds = *world.resource::<Bounds>();
+        let bounds = world.resource::<MapBook>().bounds;
         Breach::first(world, |entity| {
             world
                 .get::<Position>(entity)
@@ -309,6 +311,7 @@ pub(crate) mod test_world {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId};
 
+    use crate::books::Books;
     use crate::scripts::ctx::Ctx;
     use crate::scripts::error::CallError;
     use crate::scripts::script_book::ScriptBook;
@@ -326,7 +329,6 @@ pub(crate) mod test_world {
     use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_core::UnitTypeCore;
-    use crate::units::units_column::UnitsColumn;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
@@ -418,7 +420,8 @@ pub(crate) mod test_world {
         /// Seals the match's unit types, once, with no effect for any tag but an engine tag's own,
         /// as `seal_types_with` does.
         pub(crate) fn seal_types(world: &mut World) {
-            if world.contains_resource::<TestUnitType>() || world.contains_resource::<TagBook>() {
+            if world.contains_resource::<TestUnitType>() || !world.resource::<TagBook>().is_empty()
+            {
                 return;
             }
             Units::seal_types_with(world, &BTreeMap::new());
@@ -552,8 +555,7 @@ pub(crate) mod test_world {
             let unit_type = view.types_mut().load(scope, package, name, data);
             view.names_mut().share_type_names();
             let states = view.types_mut().state_book();
-            UnitsColumn::share(&view, states.clone());
-            world.insert_resource(states);
+            Books::load(world, states);
             unit_type
         }
 

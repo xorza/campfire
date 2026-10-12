@@ -53,13 +53,13 @@ impl SimComponent for StatusTags {
     const NAME: &'static str = "units.status_tags";
     type Host = UnitEntity;
 
-    // Engine tags alone, which every match declares first; a match with no tag book has none.
+    // Engine tags alone, which every match declares first; a match whose tag book is empty, or
+    // a world with none, as a copy of a match's state, has none.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
+        let engine = world
             .get_resource::<TagBook>()
-            .map_or(self.0 == TagSet::default(), |book| {
-                self.0.iter().all(|tag| tag.index() < book.engine_count())
-            })
+            .map_or(0, TagBook::engine_count);
+        self.0.iter().all(|tag| tag.index() < engine)
     }
 }
 

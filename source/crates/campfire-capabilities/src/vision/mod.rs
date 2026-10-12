@@ -1,21 +1,17 @@
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::world::World;
 use campfire_sim::{Capability, SimSet};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
-use crate::geometry::grid::Grid;
-use crate::geometry::polygon::Polygon;
 use crate::units::by_type::ByType;
-use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
 use crate::vision::seeing::Seeing;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
 use crate::vision::vision_api::VisionApi;
+use crate::vision::vision_book::VisionBook;
 use crate::vision::vision_column::{RowReads, VisionColumn};
-use crate::vision::vision_grid::VisionGrid;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -29,6 +25,7 @@ pub(crate) mod sight_cache;
 pub(crate) mod sight_maps;
 pub(crate) mod team_sight;
 pub(crate) mod vision_api;
+pub(crate) mod vision_book;
 pub(crate) mod vision_column;
 pub(crate) mod vision_data;
 pub(crate) mod vision_effect;
@@ -50,6 +47,7 @@ impl Module for Vision {
         d.component::<SeenBy>();
         d.component::<Sight>();
         d.book::<ByType<Sight>>();
+        d.book::<VisionBook>();
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
     }
@@ -67,20 +65,37 @@ impl Module for Vision {
     }
 }
 
-impl Vision {
-    /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
-    /// and the number of its teams.
-    pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {
-        debug_assert!(
-            world.contains_resource::<Reveals>(),
-            "a map's vision grid is vision's, which the load checked the mode declares"
-        );
-        assert!(
-            teams <= VisionGrid::MAX_TEAMS,
-            "the mode's check limits the teams of a map with vision"
-        );
-        let brush = BrushMap::new(&grid, brush);
-        world.insert_resource(VisionGrid { grid, brush, teams });
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::books::Books;
+    use crate::geometry::grid::Grid;
+    use crate::geometry::polygon::Polygon;
+    use crate::vision::Vision;
+    use crate::vision::brush_map::BrushMap;
+    use crate::vision::vision_book::VisionBook;
+    use crate::vision::vision_grid::VisionGrid;
+
+    impl Vision {
+        /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's
+        /// order, and the number of its teams, as the book builder gives a mode's.
+        pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {
+            assert!(
+                teams <= VisionGrid::MAX_TEAMS,
+                "the mode's check limits the teams of a map with vision"
+            );
+            let brush = BrushMap::new(&grid, brush);
+            Books::load(world, VisionBook(Some(VisionGrid { grid, brush, teams })));
+        }
+
+        /// Takes the map's vision grid out of a match that holds one, so every unit sees all
+        /// until a test loads a grid.
+        pub fn clear_grid(world: &mut World) {
+            if world.contains_resource::<VisionBook>() {
+                Books::load(world, VisionBook::default());
+            }
+        }
     }
 }
 
@@ -108,6 +123,7 @@ pub(crate) mod test_world {
     use crate::vision::brush_map::BrushMap;
     use crate::vision::seen_by::SeenBy;
     use crate::vision::sight::Sight;
+    use crate::vision::vision_book::VisionBook;
     use crate::vision::vision_column::VisionColumn;
     use crate::vision::vision_grid::VisionGrid;
 
@@ -118,7 +134,9 @@ pub(crate) mod test_world {
             let bounds = Bounds::new([-Num::HALF; 2], [Num::HALF; 2]).unwrap();
             let grid = Grid::new(Num::ONE, bounds).unwrap();
             let brush = BrushMap::new(&grid, &[]);
-            world.insert_resource(VisionGrid { grid, brush, teams });
+            // A match with no vision declares no vision book: the grid makes its orders read
+            // the sight a test sets, as a match with vision does.
+            world.insert_resource(VisionBook(Some(VisionGrid { grid, brush, teams })));
         }
 
         /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing

@@ -301,8 +301,10 @@ fn position(len: usize) -> u32 {
 }
 
 impl Book for EffectListBook {
-    const CAPABILITY: Option<Capability> = None;
+    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }
 
 #[cfg(test)]

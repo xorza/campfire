@@ -56,6 +56,6 @@ impl<'de> Deserialize<'de> for Sight {
 }
 
 impl PerType for Sight {
-    const CAPABILITY: Option<Capability> = Some(Capability::Vision);
+    const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 }

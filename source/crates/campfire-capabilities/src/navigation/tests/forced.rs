@@ -155,9 +155,8 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
 #[test]
 fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
     let mut game = walk_match();
-    game.insert_resource(
-        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
-    );
+    game.resource_mut::<MapBook>().bounds =
+        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
     // A tower of 1 m at (3, 0, 0). A dash of 2 m a tick from (−3, 0, 0) to (4, 0, 0), its body
     // 0.5 m: −1, then 1; the step to 3 would come within 1.5 m of the tower, so it stays on 1
     // and ends.
@@ -215,9 +214,8 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         [4, 4],
         vec![ground(Num::ZERO)],
     );
-    game.insert_resource(
-        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
-    );
+    game.resource_mut::<MapBook>().bounds =
+        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
     // A tower of 1 m at the origin blocks the four cells round it, whose centers are √0.5 m off.
     Navigation::body(&mut game, (0, 0, 0), None, None, Num::ONE);
     let id = Navigation::unit(&mut game, (-3, 0, -3), Some(Position::from((3, 0, 3))));

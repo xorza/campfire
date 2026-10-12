@@ -1,6 +1,5 @@
 use std::cmp::Ordering;
 
-use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
@@ -10,8 +9,8 @@ use crate::geometry::fraction::Fraction;
 use crate::geometry::shape::Shape;
 
 /// How a map measures ranges, reach and sight: on the ground plane, as MOBAs and RTS games do, or
-/// in 3D, as shooters and flight do. Package data, not state.
-#[derive(Resource, Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+/// in 3D, as shooters and flight do.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Metric {
     #[default]

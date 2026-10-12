@@ -39,6 +39,6 @@ impl Ai {
 }
 
 impl PerType for Ai {
-    const CAPABILITY: Option<Capability> = Some(Capability::Orders);
+    const OWNER: Option<Capability> = Some(Capability::Orders);
     const SCRIPTS_ONLY: bool = true;
 }

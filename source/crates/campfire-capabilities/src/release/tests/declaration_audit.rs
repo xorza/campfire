@@ -26,6 +26,7 @@ use crate::players::player::Player;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
+use crate::scripts::frame::Frame;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
@@ -37,6 +38,7 @@ use crate::units::entity_kind::EntityKind;
 use crate::units::row_reads::RowReads;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit_entity::UnitEntity;
+use crate::units::view::View;
 use crate::units::view_column::ViewColumn;
 use crate::vision::vision_column::VisionColumn;
 
@@ -69,12 +71,11 @@ struct State {
     kinds: Option<Vec<TypeId>>,
 }
 
-/// A book as declared: its type, its capability, and the capability of the module that declares
-/// it.
+/// A book as declared: its type, its owner, and the capability of the module that declares it.
 #[derive(Debug)]
 struct DeclaredBook {
     ty: Named,
-    capability: Option<Capability>,
+    owner: Option<Capability>,
     declared_by: Option<Capability>,
 }
 
@@ -191,7 +192,7 @@ impl DeclarationAudit {
             }
         }
         for book in &self.books {
-            if book.capability != book.declared_by {
+            if book.owner != book.declared_by {
                 problems.push(format!("{} is declared by another module", book.ty.name));
             }
         }
@@ -327,7 +328,7 @@ impl Declarations for DeclarationAudit {
     fn book<B: Book>(&mut self) {
         self.books.push(DeclaredBook {
             ty: Named::of::<B>(),
-            capability: B::CAPABILITY,
+            owner: B::OWNER,
             declared_by: self.capability,
         });
     }
@@ -383,12 +384,12 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, and the 18 books, 5 of the core's.
+    // player, the mode's three of the match, and the 29 books, 9 of the core's.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 5);
-    assert_eq!(audit.books.len(), 18);
-    let core = audit.books.iter().filter(|book| book.capability.is_none());
-    assert_eq!(core.count(), 5);
+    assert_eq!(audit.books.len(), 29);
+    let core = audit.books.iter().filter(|book| book.owner.is_none());
+    assert_eq!(core.count(), 9);
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
     assert_eq!(
@@ -438,8 +439,10 @@ struct Undeclared;
 struct StrayBook;
 
 impl Book for StrayBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
+    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }
 
 #[test]

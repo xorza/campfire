@@ -1,9 +1,13 @@
 use bevy_ecs::resource::Resource;
 use campfire_script::ScriptId;
 
+use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_role::ScriptRole;
+use crate::units::view::View;
+use campfire_sim::Capability;
 
 /// The hooks each script of a match defines, by `ScriptId`, in the order the match compiles its
 /// scripts: what a book reads to know which hooks of a script its owner calls, with no script
@@ -33,6 +37,13 @@ impl ScriptBook {
         let hooks = Hook::ALL.into_iter().filter(|hook| hook.role() == role);
         hooks.filter(|&hook| defined.contains(hook)).collect()
     }
+}
+
+impl Book for ScriptBook {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = true;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }
 
 #[cfg(test)]

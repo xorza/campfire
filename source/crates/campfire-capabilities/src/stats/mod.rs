@@ -1,8 +1,6 @@
 //! The `stats` capability: a unit type's stats and how they grow by level, the rules the mode
 //! declares for them, and each unit's stats derived from its type and level.
 
-use std::sync::Arc;
-
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
@@ -39,7 +37,6 @@ use crate::units::action_id::ActionId;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
-use crate::units::view::View;
 use crate::values::rank::Rank;
 
 pub(crate) mod application;
@@ -51,7 +48,6 @@ pub(crate) mod held_pass;
 pub(crate) mod instance;
 pub(crate) mod level;
 pub(crate) mod life;
-pub(crate) mod life_pool;
 pub(crate) mod lifetime;
 pub(crate) mod live_carriers;
 pub(crate) mod live_param;
@@ -125,6 +121,8 @@ impl Module for Stats {
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| PlayerModifiers::default());
         d.book::<ModifierBook>();
+        d.book::<StatBook>();
+        d.book::<PoolBook>();
         d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
         d.call_part::<StatsCall>();
         d.api(StatsApi::register);
@@ -185,9 +183,6 @@ impl Stats {
         }
         let now = world.resource::<SimTick>().start();
         let rate = *world.resource::<TickRate>();
-        if !world.contains_resource::<StatBook>() {
-            return;
-        }
         let book = world.resource::<ModifierBook>();
         let source = applier
             .source
@@ -227,15 +222,6 @@ impl Stats {
         if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
             carried.write(data.id, data.source, data.stacks, &data.state, now);
         }
-    }
-
-    /// Gives the match the mode's stat book and pool book, whose names its scripts read.
-    pub(crate) fn load_books(world: &mut World, book: StatBook, pools: PoolBook) {
-        let view = world.non_send::<View>();
-        StatsColumn::share_stat_names(view, Arc::clone(book.names()));
-        StatsColumn::share_pool_names(view, Arc::clone(pools.names()));
-        world.insert_resource(book);
-        world.insert_resource(pools);
     }
 
     /// `has_way` of the match's books at its rate.
@@ -323,7 +309,6 @@ pub(crate) mod internals {
 #[cfg(test)]
 pub(crate) mod test_world {
     use std::collections::BTreeMap;
-    use std::sync::Arc;
 
     use bevy_ecs::world::{Mut, World};
     use campfire_math::Num;
@@ -331,20 +316,17 @@ pub(crate) mod test_world {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
 
-    use crate::scripts::ctx::Ctx;
+    use crate::books::Books;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::Stats;
     use crate::stats::life::Life;
     use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
     use crate::stats::modifier_data::ModifierData;
     use crate::stats::param_book::ParamBook;
-    use crate::stats::pool_book::PoolBook;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
     use crate::stats::stat_op::StatOp;
     use crate::stats::stat_rule::StatRule;
-    use crate::stats::stats_call::StatsCall;
-    use crate::stats::stats_column::StatsColumn;
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
     use crate::units::tag_set::TagSet;
@@ -390,7 +372,9 @@ pub(crate) mod test_world {
         ) {
             let name = DeclaredName::new(name).expect("a modifier's name is a name");
             world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
-                let scripts = world.resource::<ScriptBook>();
+                // A match that runs no scripts holds no script book, and its modifiers none.
+                let none = ScriptBook::default();
+                let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
                 let view = world.non_send::<View>();
                 let places = Stats::stat_places(world, data.stats.keys());
                 let mut types = view.types_mut();
@@ -413,7 +397,7 @@ pub(crate) mod test_world {
                 .names()
                 .named((package, name.as_str()))
                 .expect("the modifier loaded");
-            StatsColumn::share_modifiers(world.non_send::<View>(), book.clone());
+            Books::share::<ModifierBook>(world);
             let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
             Stats::load_modifier_params(world, id, &data.params, |stat| places[stat]);
         }
@@ -421,9 +405,7 @@ pub(crate) mod test_world {
         /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
         /// scripts name stay named.
         pub(crate) fn load_book(world: &mut World, book: StatBook) {
-            StatsColumn::share_stat_names(world.non_send::<View>(), Arc::clone(book.names()));
-            world.insert_resource(book);
-            world.insert_resource(PoolBook::default());
+            Books::load(world, book);
         }
 
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
@@ -442,7 +424,7 @@ pub(crate) mod test_world {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
-            Stats::share_params(world);
+            Books::share::<ParamBook>(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -457,7 +439,7 @@ pub(crate) mod test_world {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
-            Stats::share_params(world);
+            Books::share::<ParamBook>(world);
         }
 
         /// The place of each of `stats` in the match's book, which a world that names no stat
@@ -473,14 +455,6 @@ pub(crate) mod test_world {
                     (stat, book.named(stat).expect("a test names its stats"))
                 })
                 .collect()
-        }
-
-        /// Gives the match's script frame, when it has one, the param book as it is now.
-        fn share_params(world: &World) {
-            if let Some(ctx) = world.get_non_send::<Ctx>() {
-                let params = world.resource::<ParamBook>().clone();
-                StatsCall::share_params(&mut ctx.frame(), params);
-            }
         }
     }
 }

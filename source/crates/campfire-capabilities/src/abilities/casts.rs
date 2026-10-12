@@ -37,7 +37,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
-use crate::stats::life_pool::LifePool;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
@@ -79,10 +79,7 @@ impl Casts {
     pub(super) fn start_casts(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        (resources, life): (
-            PlayerRows<'_, '_, PlayerResources>,
-            Option<Res<'_, LifePool>>,
-        ),
+        (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -105,7 +102,7 @@ impl Casts {
         >,
     ) {
         let now = tick.start();
-        let life = life.map(|life| life.0);
+        let life = life.life();
         for (
             &position,
             &team,
@@ -283,10 +280,7 @@ impl Casts {
     pub(super) fn predict_casts(
         clock: TickClock<'_>,
         book: Res<'_, ActionBook>,
-        (resources, life): (
-            PlayerRows<'_, '_, PlayerResources>,
-            Option<Res<'_, LifePool>>,
-        ),
+        (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
         mut casters: Query<
             '_,
@@ -305,7 +299,7 @@ impl Casts {
         >,
     ) {
         let now = clock.start();
-        let life = life.map(|life| life.0);
+        let life = life.life();
         let second = Abilities::second(clock.rate());
         for (&team, mut slots, mut times, pools, owner, tags, forced, inventory) in &mut casters {
             let Some(ActionCall {

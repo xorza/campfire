@@ -27,7 +27,7 @@ use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
 use crate::players::players_world::PlayersWorldCrate;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
-use crate::stats::life_pool::LifePool;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
@@ -64,10 +64,7 @@ impl Attacks {
     pub(super) fn start_attacks(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
-        (resources, life): (
-            PlayerRows<'_, '_, PlayerResources>,
-            Option<Res<'_, LifePool>>,
-        ),
+        (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
         mut units: Query<
             '_,
@@ -87,7 +84,7 @@ impl Attacks {
         >,
     ) {
         let now = tick.start();
-        let life = life.map(|life| life.0);
+        let life = life.life();
         for (&position, &team, mut slots, times, pools, owner, body, tags, forced) in &mut units {
             let blocked = UnitTags::blocks(tags, forced, Block::Attack);
             match slots.in_progress() {
@@ -186,7 +183,7 @@ impl Attacks {
         (tick, book, life, predicting): (
             Res<'_, SimTick>,
             Res<'_, ActionBook>,
-            Option<Res<'_, LifePool>>,
+            Res<'_, PoolBook>,
             Option<Res<'_, Predicting>>,
         ),
         mut attackers: Query<'_, '_, (&ActionSlots, &mut SlotTimes, UnitPools), Without<Dead>>,
@@ -195,7 +192,7 @@ impl Attacks {
             return;
         }
         let now = tick.start();
-        let life = life.map(|life| life.0);
+        let life = life.life();
         for (slots, mut times, pools) in &mut attackers {
             if Self::going_off(slots, now).is_some() {
                 times.pay_attack_toggles(slots, &book, &mut pools.of(life));
@@ -217,7 +214,7 @@ impl Attacks {
             TickClock<'_>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
-            Option<Res<'_, LifePool>>,
+            Res<'_, PoolBook>,
         ),
         (mut queue, mut fired, mut resources, predicting): (
             ResMut<'_, PassQueue>,
@@ -245,7 +242,7 @@ impl Attacks {
         mut order: Local<'_, Ordered>,
     ) {
         let now = clock.start();
-        let life = life.map(|life| life.0);
+        let life = life.life();
         let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
             Self::going_off(slots, now).map(|_| Keyed { id, entity })
         });

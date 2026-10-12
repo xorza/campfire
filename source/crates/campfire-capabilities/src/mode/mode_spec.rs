@@ -20,9 +20,9 @@ use crate::mode::roster::Roster;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::UnitKit;
 use crate::mode::unit_kit::kit_part::{KitPart, KitSpawn};
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
-use crate::navigation::paths::Paths;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
@@ -245,7 +245,8 @@ impl ModeSpec {
             return;
         };
         let pos = world
-            .resource::<Paths>()
+            .resource::<NavigationBook>()
+            .paths
             .waypoint(path, 0, from)
             .expect("a path has a waypoint");
         for &GroupUnit { unit_type, id } in units {

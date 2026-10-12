@@ -1,4 +1,6 @@
 use super::*;
+use crate::units::map_book::MapBook;
+use crate::vision::vision_book::VisionBook;
 
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
@@ -63,10 +65,10 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     );
     assert_eq!(game.player_entity(PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
-    let vision = game.resource::<VisionGrid>();
+    let vision = game.resource::<VisionBook>().grid().unwrap();
     let grid = Grid::new(Num::int(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
-    assert_eq!(*game.resource::<Bounds>(), map().bounds);
+    assert_eq!(game.resource::<MapBook>().bounds, map().bounds);
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
     let tags = |id| {
@@ -143,7 +145,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut files = mode_files();
     files.map = raised(files.map, 3);
     let mut game = start_match(script, ScriptLimits::ROOMY, files).unwrap();
-    assert_eq!(*game.resource::<Metric>(), Metric::Spatial);
+    assert_eq!(game.resource::<MapBook>().metric, Metric::Spatial);
     let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
     let walkers = |game: &Match| <[_; 3]>::try_from(&Mode::placed_units(game)[1..]).unwrap();
     assert_eq!(
@@ -156,7 +158,7 @@ fn on_mode_input(ctx, player, name, value) {
     );
     // Each walks to the last waypoint from its end: a and the neutral team to (10, 3, 0), b to
     // (−10, 3, 0).
-    let paths = game.resource::<Paths>();
+    let paths = &game.resource::<NavigationBook>().paths;
     let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
     // A text that names no end fails the call of `named`, and a string in place of a member

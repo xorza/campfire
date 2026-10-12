@@ -31,6 +31,7 @@ use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::kind_data::KindData;
 use crate::actions::range_field::RangeField;
 use crate::actions::slot_aim::SlotAim;
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::slot_times::SlotTimes;
@@ -38,8 +39,9 @@ use crate::actions::targeting::Targeting;
 use crate::areas::Areas;
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInsideData};
+use crate::books::Books;
 use crate::combat::Combat;
-use crate::combat::assist_window::AssistWindow;
+use crate::combat::combat_book::CombatBook;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
@@ -2400,7 +2402,7 @@ fn on_interval(ctx, m) { throw "interval"; }
             ("pulse", scripted(Some(100), &[])),
         ],
     );
-    game.insert_resource(AssistWindow(Ticks::new(10)));
+    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
     let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     let origin = Position::from((0, 0, 0));
     let attacker = Abilities::attacker(&mut game, origin, Team::new(0), striker(500), victim);
@@ -2557,10 +2559,13 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
-    game.insert_resource(SlotKinds::from([SlotKindData {
-        name: DeclaredName::new("basic").unwrap(),
-        ranks: Some(ranks),
-    }]));
+    Books::load(
+        &mut game,
+        SlotKindBook(SlotKinds::from([SlotKindData {
+            name: DeclaredName::new("basic").unwrap(),
+            ranks: Some(ranks),
+        }])),
+    );
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = Abilities::caster(&mut game, lash_out, 0);
     let track = TrackId::new(0);

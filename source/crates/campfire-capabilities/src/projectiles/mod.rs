@@ -16,7 +16,6 @@ use crate::deliveries::DeliverySet;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
 use crate::geometry::bounds::Bounds;
-use crate::geometry::metric::Metric;
 use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::flying::Flying;
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
@@ -27,6 +26,7 @@ use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::projectiles::struck_units::StruckUnits;
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
+use crate::units::map_book::MapBook;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit_type::UnitType;
 
@@ -118,7 +118,7 @@ impl Projectiles {
         let Some(at) = target.point(world) else {
             return;
         };
-        let offset = world.resource::<Metric>().offset(from, at);
+        let offset = world.resource::<MapBook>().metric.offset(from, at);
         let Some(aim) = offset.normalized() else {
             return;
         };
@@ -129,7 +129,7 @@ impl Projectiles {
         } else {
             range
         };
-        let bounds = *world.resource::<Bounds>();
+        let bounds = world.resource::<MapBook>().bounds;
         let flights = (0..fan.count.get()).map(|at| {
             let direction = aim.rotated_y(fan.turn(at).sin_cos());
             let reach = Projectiles::reach(bounds, range, from, direction);

@@ -14,10 +14,12 @@ use crate::mode::map_data::{
 };
 use crate::mode::map_point::MapPoint;
 use crate::mode::mode_map::ModeMap;
+use crate::mode::mode_map::ResolvedMap;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::error::MapProblem;
 use crate::navigation::mode_navigation_data::ModeNavigationData;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::paths::Paths;
 use crate::navigation::wall::Wall;
 use crate::release::Release;
 use crate::release::r#match::Match;
@@ -26,6 +28,7 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
+use crate::units::map_book::MapBook;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -84,10 +87,9 @@ fn a_unit_walks_to_its_destination_exactly() {
 #[test]
 fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     let mut game = walk_match();
-    assert_eq!(*game.resource::<Bounds>(), Bounds::WORLD);
-    game.insert_resource(
-        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
-    );
+    assert_eq!(game.resource::<MapBook>().bounds, Bounds::WORLD);
+    game.resource_mut::<MapBook>().bounds =
+        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap();
     // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
     let outside = Navigation::unit(&mut game, (6, 1, 2), None);
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
@@ -840,10 +842,17 @@ fn check_walkable(
         name: DeclaredName::new("west").unwrap(),
         slots: 0,
     }];
-    let map = ModeMap::resolve(map, &teams, &[], &layer_table(rules), unit_type).unwrap();
+    let resolved = ModeMap::resolve(map, &teams, &[], &layer_table(rules), unit_type).unwrap();
+    let ResolvedMap {
+        map,
+        ground,
+        navigation,
+        ..
+    } = resolved;
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
-    map.check_walkable(walkers, |unit_type| body_of(name(unit_type)), named)
+    let body = |unit_type| body_of(name(unit_type));
+    map.check_walkable(&ground, &navigation, walkers, body, named)
 }
 
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
@@ -1073,10 +1082,10 @@ fn every_navigation_type_is_state() {
             &[Position::from((0, 0, 0)), Position::from((0, 0, 5))][..],
         )])
     };
-    game.insert_resource(lane());
+    Navigation::load_paths(&mut game, lane());
     // A restore loads the map first, as the packages give it.
     let mut restored = walk_match();
-    restored.insert_resource(lane());
+    Navigation::load_paths(&mut restored, lane());
     Release::restore_into(&game, &mut restored);
 }
 

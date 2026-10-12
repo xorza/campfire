@@ -24,12 +24,10 @@ impl TagEffect {
         !tags.meets(self.immune) || tags.meets(self.granting)
     }
 
-    /// Which modifiers take effect on the unit of `entity`: every one in a match with no tag
-    /// book, or on a unit with no tags.
+    /// Which modifiers take effect on the unit of `entity`: every one in a match whose tag book
+    /// is empty, or on a unit with no tags.
     pub(crate) fn of(world: &World, entity: Entity) -> TagEffect {
-        let granting = world
-            .get_resource::<TagBook>()
-            .map_or(TagSet::default(), TagBook::granting);
+        let granting = world.resource::<TagBook>().granting();
         let immune = world
             .get::<UnitTags>(entity)
             .map_or(TagSet::default(), |tags| tags.immune);

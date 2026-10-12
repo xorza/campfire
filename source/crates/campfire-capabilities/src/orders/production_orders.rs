@@ -3,7 +3,6 @@ use bevy_ecs::query::Has;
 use bevy_ecs::system::{Commands, Local, Query, Res};
 use campfire_sim::{EntityIndex, SimTick};
 
-use crate::geometry::bounds::Bounds;
 use crate::orders::order::Action;
 use crate::orders::seen_targets::SeenTargets;
 use crate::orders::tick_orders::TickOrders;
@@ -16,6 +15,7 @@ use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
 use crate::production::train_queue::TrainQueue;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::vision::team_sight::TeamSight;
@@ -36,9 +36,9 @@ impl ProductionOrders {
     /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
     /// unit its player's vision group sees, or clears it; a rally to another unit is ignored.
     pub(super) fn apply_production_orders<S: TeamSight>(
-        (tick, bounds, orders, index): (
+        (tick, map, orders, index): (
             Res<'_, SimTick>,
-            Res<'_, Bounds>,
+            Res<'_, MapBook>,
             Res<'_, TickOrders>,
             Res<'_, EntityIndex>,
         ),
@@ -105,7 +105,7 @@ impl ProductionOrders {
                     (Action::Rally { target }, Some(_), _) => {
                         let target = target.map(|target| match target {
                             RallyTarget::Point { x, z } => {
-                                let [x, z] = bounds.clamp_ground([x, z]);
+                                let [x, z] = map.bounds.clamp_ground([x, z]);
                                 RallyTarget::Point { x, z }
                             }
                             unit @ RallyTarget::Unit(_) => unit,

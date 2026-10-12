@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
 use crate::geometry::body_box::BodyBox;
@@ -8,14 +7,17 @@ use crate::geometry::bounds::Bounds;
 use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
 
-/// The map's walls, as a placement tests a box against them: package data, not state. A restore
-/// takes them from the map, as a new match does.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+/// The map's walls, as a placement tests a box against them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Walls(Arc<[Wall]>);
 
 impl Walls {
     pub(crate) fn new(walls: &[Wall]) -> Walls {
         Walls(walls.into())
+    }
+
+    pub(crate) fn walls(&self) -> &[Wall] {
+        &self.0
     }
 
     /// Whether `other` shares these walls, by their one allocation: a copy of a match's walls is

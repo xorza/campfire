@@ -5,8 +5,8 @@ use bevy_ecs::world::World;
 use campfire_math::Num;
 
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -102,7 +102,7 @@ impl<'a> PoolMeters<'a> {
 
     /// The pools of the unit of `entity`, the life pool the match's.
     pub fn of(world: &World, entity: Entity) -> PoolMeters<'_> {
-        let life_pool = world.get_resource::<LifePool>().map(|life| life.0);
+        let life_pool = world.get_resource::<PoolBook>().and_then(PoolBook::life);
         PoolMeters::new(life_pool, world.get(entity), world.get(entity))
     }
 }

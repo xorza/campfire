@@ -7,7 +7,7 @@ use crate::units::entity_filters::UnitFilter;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::vision::team_sight::TeamSight;
-use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_book::VisionBook;
 
 /// The units a player's order may aim at: those its vision group sees as the order applies, by
 /// `S`, so a stable id never tells a client what its group does not see; every unit in a match
@@ -17,7 +17,7 @@ use crate::vision::vision_grid::VisionGrid;
 #[derive(SystemParam, Debug)]
 pub(crate) struct SeenTargets<'w, 's, S: TeamSight> {
     index: Res<'w, EntityIndex>,
-    grid: Option<Res<'w, VisionGrid>>,
+    vision: Option<Res<'w, VisionBook>>,
     relations: OnMatch<'w, 's, Relations>,
     units: Query<'w, 's, (&'static Team, <S as TeamSight>::Seen), (UnitFilter, Allow<Unpredicted>)>,
 }
@@ -34,7 +34,7 @@ impl<S: TeamSight> SeenTargets<'_, '_, S> {
         else {
             return false;
         };
-        if self.grid.is_none() {
+        if self.vision.as_deref().and_then(VisionBook::grid).is_none() {
             return true;
         }
         S::sees(seen, team).unwrap_or_else(|| self.relations.get().vision_group(own).contains(team))

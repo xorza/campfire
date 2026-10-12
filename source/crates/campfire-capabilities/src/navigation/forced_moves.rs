@@ -6,7 +6,6 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
 
 use crate::deliveries::Deliveries;
-use crate::geometry::bounds::Bounds;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
@@ -19,6 +18,7 @@ use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::forced_move::{DashTo, ForcedMove, Goal};
+use crate::units::map_book::MapBook;
 
 /// The forced moves of the units: their dashes, knock backs and teleports.
 #[derive(Debug)]
@@ -33,9 +33,9 @@ impl ForcedMoves {
     /// cell it may, as a teleport does. A unit whose move ended walks its route again from there,
     /// and a dash that delivers an action queues that action's end there, its hooks to run in Hit.
     pub(super) fn force_units(
-        (tick, bounds, statics, index): (
+        (tick, map, statics, index): (
             Res<'_, SimTick>,
-            Res<'_, Bounds>,
+            Res<'_, MapBook>,
             Res<'_, BodyIndex>,
             Res<'_, EntityIndex>,
         ),
@@ -109,7 +109,9 @@ impl ForcedMoves {
                 }),
             };
             let advanced = forced.advance(at.get(), goal);
-            let to = bounds.ground_point([advanced.point.x, advanced.point.z], at);
+            let to = map
+                .bounds
+                .ground_point([advanced.point.x, advanced.point.z], at);
             let past = to.get() != advanced.point;
             let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
             let step = Segment::new(at, to);

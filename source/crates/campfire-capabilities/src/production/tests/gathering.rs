@@ -19,6 +19,7 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
+use crate::units::map_book::MapBook;
 use crate::units::move_step::MoveStep;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation_set::RelationSet;
@@ -37,13 +38,13 @@ impl Mine {
     /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
     fn place(game: &mut Match, shop: Shop) -> Mine {
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        game.insert_resource(bounds);
+        game.resource_mut::<MapBook>().bounds = bounds;
         let walker = Walker {
             layer: Layer::FIRST,
             radius: Num::HALF,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(game, grid, &[], [walker]);
+        Navigation::load_pathing(game, grid, [walker]);
         let gold = shop.gold;
         Players::spawn(game, 1, 1);
         let mineral = Units::load_type(game, TypeScope::Mode, "mineral", &UnitTypeCore::default());

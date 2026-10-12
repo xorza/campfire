@@ -13,7 +13,6 @@ use crate::actions::kind_spec::KindSpec;
 use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
 use crate::actions::slot_times::SlotTimes;
-use crate::geometry::bounds::Bounds;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
 use crate::navigation::walker::Walker;
@@ -29,12 +28,13 @@ use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
 use crate::production::supply::{CountedUnit, Supply};
 use crate::production::train_queue::{Queued, TrainQueue};
-use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::UnitPools;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawner::Spawner;
@@ -83,7 +83,7 @@ impl Trains {
         tick: Res<'_, SimTick>,
         books: ProductionBooks<'_>,
         held_modifiers: PlayerRows<'_, '_, PlayerModifiers>,
-        life: Option<Res<'_, LifePool>>,
+        life: Option<Res<'_, PoolBook>>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: ParamSet<
             '_,
@@ -119,7 +119,7 @@ impl Trains {
         }
         {
             let counted = units.p0();
-            if let Some(rules) = rules.as_deref() {
+            if let Some(rules) = rules.0 {
                 let units = counted
                     .iter()
                     .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
@@ -129,7 +129,7 @@ impl Trains {
                         complete: !site,
                         queue,
                     });
-                supply.count(&costs, *rules, units);
+                supply.count(&costs, rules, units);
             }
             let complete = counted
                 .iter()
@@ -146,7 +146,7 @@ impl Trains {
         for &Keyed { entity, .. } in trains {
             let (_, _, &unit_type, mut slots, mut times, mut queue, pools, held_by) =
                 training.get_mut(entity).expect("a unit in the order");
-            let pools = pools.of(life.as_deref().map(|life| life.0));
+            let pools = pools.of(life.as_deref().and_then(PoolBook::life));
             let ordered = slots
                 .ordered(&book, ActionKind::Train)
                 .expect("an ordered train");
@@ -171,7 +171,7 @@ impl Trains {
                 panic!("a train's action trains");
             };
             let cost = costs.cost(made);
-            let counts = rules.is_some().then_some(owner).flatten();
+            let counts = rules.0.is_some().then_some(owner).flatten();
             if counts.is_some_and(|owner| !supply.has_room(owner, cost)) {
                 continue;
             }
@@ -290,7 +290,7 @@ impl Trains {
         let pos = *producer.get::<Position>().expect("a producer stands");
         match producer.get::<Rally>()?.get() {
             RallyTarget::Point { x, z } => {
-                Some(world.resource::<Bounds>().ground_point([x, z], pos))
+                Some(world.resource::<MapBook>().bounds.ground_point([x, z], pos))
             }
             RallyTarget::Unit(id) => {
                 let unit = world.entity_ref_of(id)?;

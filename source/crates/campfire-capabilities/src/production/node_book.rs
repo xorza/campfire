@@ -3,8 +3,10 @@ use bevy_ecs::resource::Resource;
 use crate::declare::book::Book;
 use crate::players::resource_id::ResourceId;
 use crate::production::resource_set::ResourceSet;
+use crate::scripts::frame::Frame;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use campfire_sim::Capability;
 
 /// What each node type holds, and what each drop-off type takes: package data, not state.
@@ -29,6 +31,8 @@ impl NodeBook {
 }
 
 impl Book for NodeBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }

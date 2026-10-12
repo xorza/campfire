@@ -1,19 +1,20 @@
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{IdAllocator, Position};
 
 use crate::geometry::grid::Grid;
-use crate::geometry::polygon::Polygon;
 use crate::geometry::shape::Shape;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::MapData;
-use crate::mode::map_ground::MapGround;
 use crate::mode::map_point::MapPoint;
 use crate::mode::marker_spec::MarkerSpec;
 use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
+use crate::navigation::Navigation;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::error::MapProblem;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
 use crate::navigation::route_planner::Walkable;
@@ -23,29 +24,38 @@ use crate::navigation::walker::Walker;
 use crate::navigation::walls::Walls;
 use crate::units::body_form::BodyForm;
 use crate::units::layer::Layer;
+use crate::units::map_book::MapBook;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::NamesError;
 use crate::values::names::Names;
+use crate::vision::brush_map::BrushMap;
+use crate::vision::vision_book::VisionBook;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
-/// checks them: its ground, the relations the match starts with, its paths, the units it places,
-/// its markers, and the cells vision reveals, when it has them.
+/// checks them, but what its books hold: the relations the match starts with, the units it
+/// places, its markers, and the cells units plan routes over, when it has them.
 #[derive(Debug)]
 pub struct ModeMap {
-    pub(crate) ground: MapGround,
     /// The mode's teams' names, by team.
     pub(crate) teams: Names<Team>,
     pub(crate) relations: Relations,
-    pub(crate) paths: Paths,
     pub(crate) placed: Vec<PlacedUnit>,
     pub(crate) markers: Vec<MarkerSpec>,
-    pub(crate) grid: Option<Grid>,
-    /// The areas of the vision grid's brush, in the map's order.
-    pub(crate) brush: Vec<Polygon>,
+    pub(crate) pathing: Option<Grid>,
+}
+
+/// The mode's map as the book builder resolves it: the map a match starts from, and the books of
+/// its ground, of its paths and walls, and of its vision grid.
+#[derive(Debug)]
+pub(crate) struct ResolvedMap {
+    pub(crate) map: ModeMap,
+    pub(crate) ground: MapBook,
+    pub(crate) navigation: NavigationBook,
+    pub(crate) vision: VisionBook,
 }
 
 impl ModeMap {
@@ -80,7 +90,7 @@ impl ModeMap {
         relations: &[RelationData],
         layers: &Names<Layer>,
         unit_type: impl Fn(&str) -> Option<UnitType>,
-    ) -> Result<ModeMap, ModeError> {
+    ) -> Result<ResolvedMap, ModeError> {
         let team_names = ModeMap::team_names(teams)?;
         let team = |name: &DeclaredName| {
             let team = team_names.named(name.as_str());
@@ -142,21 +152,37 @@ impl ModeMap {
             });
         }
         let markers = ModeMap::markers(map, team)?;
-        Ok(ModeMap {
-            ground: MapGround {
+        let vision = grid.map(|grid| VisionGrid {
+            brush: BrushMap::new(&grid, &brush),
+            grid,
+            teams: team_names.len(),
+        });
+        Ok(ResolvedMap {
+            map: ModeMap {
+                teams: team_names,
+                relations: resolved,
+                placed,
+                markers,
+                pathing,
+            },
+            ground: MapBook {
                 metric: map.metric,
                 bounds: map.bounds,
-                pathing,
-                walls,
             },
-            teams: team_names,
-            relations: resolved,
-            paths,
-            placed,
-            markers,
-            grid,
-            brush,
+            navigation: NavigationBook {
+                paths,
+                walls: Walls::new(&walls),
+            },
+            vision: VisionBook(vision),
         })
+    }
+
+    /// Gives `world` the map's pathing grid, when it has one, for the kinds of `walkers`, among the
+    /// walls of its navigation book.
+    pub(crate) fn install_pathing(&self, world: &mut World, walkers: Vec<Walker>) {
+        if let Some(grid) = self.pathing {
+            Navigation::load_pathing(world, grid, walkers);
+        }
     }
 
     /// The markers of `map`, each with its team as `team` resolves it; an error for two of one
@@ -207,16 +233,17 @@ impl ModeMap {
     /// check.
     pub(crate) fn check_walkable(
         &self,
+        ground: &MapBook,
+        navigation: &NavigationBook,
         walkers: &[Walker],
         body_of: impl Fn(UnitType) -> Option<BodyForm>,
         name_of: impl Fn(UnitType) -> DeclaredName,
     ) -> Result<(), MapProblem> {
-        let MapGround {
-            bounds,
-            pathing,
-            walls,
-            ..
-        } = &self.ground;
+        let bounds = &ground.bounds;
+        let NavigationBook {
+            paths,
+            walls: placed_walls,
+        } = navigation;
         let mut ids = IdAllocator::default();
         let structures: Vec<(usize, IndexedBody)> = self
             .placed
@@ -227,7 +254,6 @@ impl ModeMap {
                 Some((at, IndexedBody::of(ids.allocate(), unit.pos, &body)))
             })
             .collect();
-        let placed_walls = Walls::new(walls);
         for &(at, body) in &structures {
             let Shape::Box(boxed) = body.shape else {
                 continue;
@@ -235,7 +261,7 @@ impl ModeMap {
             let mut others = structures
                 .iter()
                 .filter(|(other, held)| *other != at && held.layer == body.layer);
-            let walls = Some(&placed_walls);
+            let walls = Some(placed_walls);
             let clear = Walls::room_for(walls, *bounds, body.pos, &boxed, body.layer)
                 && !others.any(|(_, other)| other.overlaps_box(body.pos, &boxed));
             if !clear {
@@ -246,10 +272,10 @@ impl ModeMap {
             }
         }
         let structures: Vec<IndexedBody> = structures.into_iter().map(|(_, body)| body).collect();
-        let Some(cells) = *pathing else {
+        let Some(cells) = self.pathing else {
             return Ok(());
         };
-        let terrain = Terrain::new(&cells, walls);
+        let terrain = Terrain::new(&cells, placed_walls.walls());
         debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
         let widest = walkers
             .chunk_by(|a, b| a.layer == b.layer)
@@ -271,8 +297,8 @@ impl ModeMap {
                 }
             }
             let reach = |pos: Position| clearance.regions().reach(cells.nearest_cell(pos));
-            for (path, name) in self.paths.names().iter() {
-                let points = self.paths.points(path);
+            for (path, name) in paths.names().iter() {
+                let points = paths.points(path);
                 if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {
                     let path = declared(name);
                     return Err(MapProblem::WaypointBlocked { path, waypoint });

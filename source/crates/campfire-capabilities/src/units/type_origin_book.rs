@@ -1,7 +1,9 @@
 use bevy_ecs::resource::Resource;
 
 use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 use campfire_sim::Capability;
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its
@@ -54,6 +56,8 @@ impl TypeOriginBook {
 }
 
 impl Book for TypeOriginBook {
-    const CAPABILITY: Option<Capability> = None;
+    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }

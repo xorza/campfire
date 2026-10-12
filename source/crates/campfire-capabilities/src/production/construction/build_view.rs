@@ -11,7 +11,6 @@ use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::Purse;
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
-use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
@@ -27,11 +26,12 @@ use crate::production::holdings::Holdings;
 use crate::production::placement::Placement;
 use crate::production::requirement_book::RequirementBook;
 use crate::production::site::Site;
-use crate::stats::life_pool::LifePool;
 use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::UnitPoolsReadOnly;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
@@ -49,9 +49,9 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) book: Res<'w, ActionBook>,
     pub(super) builds: Res<'w, BuildBook>,
     pub(super) requirements: Res<'w, RequirementBook>,
-    pub(super) metric: Res<'w, Metric>,
+    pub(super) map: Res<'w, MapBook>,
     pub(super) resources: PlayerRows<'w, 's, PlayerResources>,
-    pub(super) life: Option<Res<'w, LifePool>>,
+    pub(super) life: Option<Res<'w, PoolBook>>,
     pub(super) modifiers: PlayerRows<'w, 's, PlayerModifiers>,
     pub(super) placement: Placement<'w, 's, S>,
     pub(super) builders: Query<
@@ -171,7 +171,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         };
         let building = self.building(slots, order.slot)?;
         let placed = self.placed(building, from, owner, order.target)?;
-        let life = self.life.as_deref().map(|life| life.0);
+        let life = self.life.as_deref().and_then(PoolBook::life);
         let purse = Purse::of(pools.of(life), self.resources.of(owner));
         let modifiers = self.modifiers.of(owner);
         let owner = owner.map(|owner| owner.slot());
@@ -231,7 +231,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         building: Building<'_>,
         placed: Placed,
     ) -> bool {
-        Construction::in_range(*self.metric, from, body, building.range, placed)
+        Construction::in_range(self.map.metric, from, body, building.range, placed)
     }
 
     /// Whether the builder `holder` holds the site `site`: it lives, and its order is to build

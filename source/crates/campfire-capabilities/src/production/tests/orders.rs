@@ -7,6 +7,7 @@ use crate::orders::order::Action;
 use crate::production::rally_target::RallyTarget;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
+use crate::units::map_book::MapBook;
 use crate::units::team_set::TeamSet;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
@@ -104,13 +105,8 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         layer: Layer::FIRST,
         radius: Num::HALF,
     };
-    game.insert_resource(bounds);
-    Navigation::load_pathing(
-        &mut game,
-        Grid::new(Num::ONE, bounds).unwrap(),
-        &[],
-        [walker],
-    );
+    game.resource_mut::<MapBook>().bounds = bounds;
+    Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [walker]);
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);
     game.insert_resource(walkers);

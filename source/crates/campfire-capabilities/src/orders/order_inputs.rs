@@ -10,7 +10,6 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::targets::Targets;
 use crate::declare::scratch::Scratch;
-use crate::geometry::bounds::Bounds;
 use crate::navigation::destination::Destination;
 use crate::navigation::group_box::GroupBox;
 use crate::navigation::party::{Party, PartyKey};
@@ -23,6 +22,7 @@ use crate::players::out_of_play::OutOfPlay;
 use crate::players::player_rows::PlayerRows;
 use crate::production::build_target::BuildTarget;
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::visibility::OutView;
@@ -76,9 +76,9 @@ impl OrderInputs {
     /// send anything. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
-        (tick, bounds, orders, index): (
+        (tick, map, orders, index): (
             Res<'_, SimTick>,
-            Res<'_, Bounds>,
+            Res<'_, MapBook>,
             Res<'_, TickOrders>,
             Res<'_, EntityIndex>,
         ),
@@ -117,17 +117,17 @@ impl OrderInputs {
                         .push((entity, UnitOrder::Move { x, z, party: None }));
                     continue;
                 }
-                let goal = bounds.clamp_ground([x, z]);
+                let goal = map.bounds.clamp_ground([x, z]);
                 let key = PartyKey::Order {
                     tick: now,
                     slot: order.slot,
                     number: order.number,
                 };
                 for &Mover { entity, pos: at } in &*movers {
-                    let [x, z] = group.goal_of(at, goal, *bounds);
+                    let [x, z] = group.goal_of(at, goal, map.bounds);
                     let party = Party {
                         key,
-                        goal: bounds.ground_point(goal, at),
+                        goal: map.bounds.ground_point(goal, at),
                     };
                     checked.0.push((
                         entity,
@@ -194,14 +194,14 @@ impl OrderInputs {
     /// player orders no reset.
     pub(super) fn apply_player_orders(
         tick: Res<'_, SimTick>,
-        bounds: Res<'_, Bounds>,
+        map: Res<'_, MapBook>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut units: Query<'_, '_, OrderedUnit>,
     ) {
         let now = tick.start();
         for (entity, order) in checked.0.drain(..) {
             let parts = units.get_mut(entity).expect("a checked order's unit");
-            let resets = order.apply(parts, &bounds, now);
+            let resets = order.apply(parts, &map.bounds, now);
             debug_assert!(!resets, "a player orders no reset");
         }
     }

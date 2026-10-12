@@ -8,7 +8,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::rank_fields::TogglePer;
 use crate::actions::slot_times::SlotTimes;
 use crate::items::inventory::Inventory;
-use crate::stats::life_pool::LifePool;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::UnitPools;
 use crate::units::dead::Dead;
 use crate::units::unit_tags::UnitTags;
@@ -23,11 +23,7 @@ impl Toggles {
     /// when it turned on, and one its pools cannot pay turns off. The server alone runs it, as a
     /// client's pools come from the server.
     pub(super) fn run_toggles(
-        (clock, book, life): (
-            TickClock<'_>,
-            Res<'_, ActionBook>,
-            Option<Res<'_, LifePool>>,
-        ),
+        (clock, book, life): (TickClock<'_>, Res<'_, ActionBook>, Res<'_, PoolBook>),
         mut units: Query<
             '_,
             '_,
@@ -43,7 +39,7 @@ impl Toggles {
     ) {
         let now = clock.start();
         let second = Abilities::second(clock.rate());
-        let life = life.map(|life| life.0);
+        let life = life.life();
         for (slots, mut times, pools, tags, inventory, dead) in &mut units {
             let mut pools = pools.of(life);
             for (at, slot) in slots.indexed() {

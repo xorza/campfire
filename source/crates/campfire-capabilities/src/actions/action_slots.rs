@@ -17,7 +17,7 @@ use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::rank_values::{ChannelRule, RankValues};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_times::{SlotTimes, TimedSlots};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
@@ -550,7 +550,7 @@ impl SimComponent for ActionSlots {
     // be read past the mode's kinds.
     fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.resource::<ActionBook>();
-        let kinds = world.resource::<SlotKinds>();
+        let kinds = &world.resource::<SlotKindBook>().0;
         let held = |slot: &ActionSlot| {
             let Some(action) = slot.action else {
                 return kinds.holds(slot.kind, 0);

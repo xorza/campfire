@@ -1,4 +1,3 @@
-use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
 use crate::geometry::bounds::Bounds;
@@ -9,8 +8,8 @@ use crate::values::share::Share;
 
 /// The mode's shop as a match reads it: the item types it sells, the player resource it takes,
 /// the places it stands, each a region of the map that serves one team, and the share of an
-/// item's cost a sale gives back. Package data, not state.
-#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+/// item's cost a sale gives back.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Shop {
     sells: Vec<ItemId>,
     pub(crate) resource: ResourceId,

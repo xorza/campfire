@@ -12,8 +12,8 @@ use campfire_sim::{Position, SimWorld, StableId, TickRate};
 
 use crate::match_build::MatchBuild;
 
-/// An arena: the books of a mode, on its only map, with every book in place, the mode's own
-/// among them, and no mode installed. Its script never runs, so no `calc_damage` weighs a hit and
+/// An arena: the books of a mode, on its only map, with every book in place but the map's vision
+/// grid, which `load_vision` gives, and no mode installed. Its script never runs, so no `calc_damage` weighs a hit and
 /// no map unit spawns, and its match starts with the match's entity alone. A test spawns its units
 /// as the mode spawns them, each of a type the test adds to the mode, and drives their actions, as
 /// the packages hold them.

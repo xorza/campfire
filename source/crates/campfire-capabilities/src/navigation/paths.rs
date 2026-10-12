@@ -1,16 +1,14 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
 use crate::navigation::path_walker::PathEnd;
 use crate::units::path_id::PathId;
 use crate::values::names::Names;
 
-/// The map's paths, each a named list of waypoints that walkers go along forward or backward. Map
-/// data, not state: a restore takes it from the map, as a new match does.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+/// The map's paths, each a named list of waypoints that walkers go along forward or backward.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Paths {
     /// Shared with the script view, which names paths to scripts.
     names: Arc<Names<PathId>>,

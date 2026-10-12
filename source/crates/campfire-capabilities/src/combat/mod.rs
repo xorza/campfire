@@ -6,6 +6,7 @@ use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
 use crate::combat::attacks::Attacks;
 use crate::combat::combat_api::CombatApi;
+use crate::combat::combat_book::CombatBook;
 use crate::combat::combat_column::{CombatColumn, RowReads};
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvents;
@@ -30,10 +31,10 @@ use crate::stats::life::Life;
 use crate::units::dead::Dead;
 use crate::units::spawn_point::SpawnPoint;
 
-pub(crate) mod assist_window;
 pub(crate) mod attacks;
 pub(crate) mod combat_api;
 pub(crate) mod combat_bindings;
+pub(crate) mod combat_book;
 pub(crate) mod combat_column;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
@@ -106,6 +107,7 @@ impl Module for Combat {
         d.scratch::<PassQueue>();
         d.scratch::<Shots>();
         d.report::<Deaths>();
+        d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
@@ -241,13 +243,14 @@ pub(crate) mod test_world {
     use crate::actions::test_world::TestWeapon;
     use crate::combat::Combat;
     use crate::combat::combat_bindings::CombatBindings;
+    use crate::combat::combat_book::CombatBook;
     use crate::combat::damage::{Damage, DamageCause};
     use crate::combat::damage_pass::DamagePass;
     use crate::combat::on_death::OnDeath;
     use crate::combat::pass_queue::PassQueue;
     use crate::combat::recent_attackers::RecentAttackers;
     use crate::stats::life::Life;
-    use crate::stats::life_pool::LifePool;
+    use crate::stats::pool_book::PoolBook;
     use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
@@ -417,8 +420,8 @@ pub(crate) mod test_world {
 
         /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
         pub(crate) fn bind_life(world: &mut World, life: PoolId) {
-            world.insert_resource(LifePool(life));
-            world.insert_resource(CombatBindings::UNBOUND);
+            world.resource_mut::<PoolBook>().set_life(Some(life));
+            world.resource_mut::<CombatBook>().bindings = CombatBindings::default();
         }
 
         pub(crate) fn spawn_armed(

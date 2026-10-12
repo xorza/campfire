@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
+use crate::units::body_form::BodyForm;
 use crate::units::engine_tag::EngineTag;
+use crate::units::layer::Layer;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
@@ -142,6 +144,25 @@ impl UnitTypes {
     /// Each type's package and its name there, as the client finds its look.
     pub(crate) fn origins(&self) -> TypeOriginBook {
         self.origins.clone()
+    }
+
+    /// Tags each unit type of `bodies`, each by the body it has, if any, with the name of the
+    /// layer it moves on, when `layers` names that layer: the first with no body.
+    pub(crate) fn tag_layers(
+        &mut self,
+        layers: &Names<Layer>,
+        bodies: impl IntoIterator<Item = (UnitType, Option<BodyForm>)>,
+    ) {
+        for (unit_type, body) in bodies {
+            let layer = body.map_or(Layer::FIRST, BodyForm::layer);
+            if let Some(name) = layers.name(layer) {
+                let tag = self
+                    .tags()
+                    .named(name)
+                    .expect("the match declared every tag its packages name");
+                self.give_tag(unit_type, tag);
+            }
+        }
     }
 
     /// The book of the effects `data` gives the tags, by name, beside an engine tag's own, and of

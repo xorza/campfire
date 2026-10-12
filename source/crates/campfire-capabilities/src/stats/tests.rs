@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::slice;
+use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use campfire_codec::Toml;
@@ -9,6 +10,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
 
 use super::*;
+use crate::books::Books;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -17,7 +19,6 @@ use crate::stats::application::{Application, NewInstance};
 use crate::stats::held_modifiers::Held;
 use crate::stats::instance::StatShare;
 use crate::stats::life::Life;
-use crate::stats::life_pool::LifePool;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::Clock;
 use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
@@ -133,18 +134,19 @@ fn stat_match(types: &[StatsData]) -> Match {
     }
     let pools = pools();
     let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
-    let pools = PoolBook::new(&pools, names, |_, stat| {
+    let pools = PoolBook::new(&pools, names, None, |_, stat| {
         book.named(stat).ok_or(stat.clone())
     });
     let pools = pools.unwrap();
-    Stats::load_books(&mut game, book, pools);
+    Books::load(&mut game, book);
+    Books::load(&mut game, pools);
     game
 }
 
 /// A unit of `unit_type` at level 1 that walks and has a pool of health and of mana, its values
 /// before the stats derive them: health its life when the match's life pool is health.
 fn unit(game: &mut Match, unit_type: u16) -> Entity {
-    let bound = game.get_resource::<LifePool>() == Some(&LifePool(HEALTH));
+    let bound = game.resource::<PoolBook>().life() == Some(HEALTH);
     let parts = (
         Level::default(),
         UnitStats::default(),
@@ -173,7 +175,7 @@ fn unit(game: &mut Match, unit_type: u16) -> Entity {
 /// The current amount and the maximum of `pool` of `entity`: its life's when the match's life pool
 /// is `pool`.
 fn amounts(world: &World, entity: Entity, pool: PoolId) -> (Num, Num) {
-    if world.get_resource::<LifePool>() == Some(&LifePool(pool)) {
+    if world.resource::<PoolBook>().life() == Some(pool) {
         let life = world.get::<Life>(entity).unwrap();
         return (life.current(), life.max());
     }
@@ -210,7 +212,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     for bound in [false, true] {
         let mut game = stat_match(slice::from_ref(&hero));
         if bound {
-            game.insert_resource(LifePool(HEALTH));
+            game.resource_mut::<PoolBook>().set_life(Some(HEALTH));
         }
         let unit = unit(&mut game, 0);
         game.step();
@@ -599,7 +601,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     // it holds can be marked below.
     Unpredicted::register(&mut game);
     let book = StatBook::new(&rules(), Num::int(6));
-    Stats::load_books(&mut game, book, PoolBook::default());
+    Books::load(&mut game, book);
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
         radius: Number::Value(Scalar::Int(2)),
@@ -702,7 +704,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
-    Stats::load_books(&mut game, book, PoolBook::default());
+    Books::load(&mut game, book);
     Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
     let id = Units::spawn(
         &mut game,

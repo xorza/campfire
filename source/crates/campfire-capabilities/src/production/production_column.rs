@@ -76,12 +76,14 @@ impl ViewColumn for ProductionColumn {
 }
 
 impl ProductionColumn {
-    /// Gives `view`'s column the mode's supply `rules` and `costs`.
-    pub(crate) fn share(view: &View, rules: Option<ModeSupplyData>, costs: SupplyCostBook) {
-        view.column_mut(|column: &mut ProductionColumn| {
-            column.rules = rules;
-            column.costs = costs;
-        });
+    /// Gives `view`'s column the mode's supply `rules`, none in a mode that counts no supply.
+    pub(crate) fn share_rules(view: &View, rules: Option<ModeSupplyData>) {
+        view.column_mut(|column: &mut ProductionColumn| column.rules = rules);
+    }
+
+    /// Gives `view`'s column what each unit type costs in supply.
+    pub(crate) fn share_costs(view: &View, costs: SupplyCostBook) {
+        view.column_mut(|column: &mut ProductionColumn| column.costs = costs);
     }
 
     /// Adds the row of a unit owned by `owner`, which counts for `counted` and carries `load`.

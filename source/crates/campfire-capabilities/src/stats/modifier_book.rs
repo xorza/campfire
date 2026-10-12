@@ -9,6 +9,7 @@ use campfire_sim::{Capability, TickRate};
 use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
 use crate::scripts::error::UnknownName;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_book::ScriptBook;
@@ -24,10 +25,12 @@ use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumbe
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
+use crate::stats::stats_column::StatsColumn;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
+use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 use crate::values::names::Names;
 use crate::values::rank::Rank;
@@ -299,8 +302,12 @@ impl ModifierBook {
 }
 
 impl Book for ModifierBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
+    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, view: &View, _: Option<&mut Frame>) {
+        StatsColumn::share_modifiers(view, self.clone());
+    }
 }
 
 #[cfg(test)]

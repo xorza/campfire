@@ -7,6 +7,7 @@ use campfire_sim::{Capability, TickRate};
 
 use crate::declare::book::Book;
 use crate::scripts::error::ParamProblem;
+use crate::scripts::frame::Frame;
 use crate::stats::live_param::{LiveParam, ParamOwner};
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_spec::ParamPlace;
@@ -14,8 +15,10 @@ use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 use crate::stats::stat_id::StatId;
+use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
 use crate::values::rank::Rank;
@@ -180,8 +183,14 @@ impl ParamTables {
 }
 
 impl Book for ParamBook {
-    const CAPABILITY: Option<Capability> = None;
+    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, frame: Option<&mut Frame>) {
+        if let Some(frame) = frame {
+            StatsCall::share_params(frame, self.clone());
+        }
+    }
 }
 
 #[cfg(test)]

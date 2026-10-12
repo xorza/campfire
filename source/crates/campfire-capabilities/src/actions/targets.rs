@@ -12,6 +12,7 @@ use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
+use crate::units::map_book::MapBook;
 use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -26,7 +27,7 @@ use crate::values::relation::Relation;
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
     relations: OnMatch<'w, 's, Relations>,
-    metric: Res<'w, Metric>,
+    map: Res<'w, MapBook>,
     units: Query<
         'w,
         's,
@@ -69,7 +70,7 @@ impl Targets<'_, '_> {
     }
 
     pub(crate) fn metric(&self) -> Metric {
-        *self.metric
+        self.map.metric
     }
 
     /// How `of` regards `other`.
@@ -86,7 +87,8 @@ impl Targets<'_, '_> {
         range: Num,
         target: &LivingUnit,
     ) -> bool {
-        self.metric
+        self.map
+            .metric
             .reaches(from, shape, range, target.pos, target.shape)
     }
 
@@ -99,12 +101,14 @@ impl Targets<'_, '_> {
         range: Num,
         pos: Position,
     ) -> bool {
-        self.metric.reaches(from, shape, range, pos, Shape::POINT)
+        self.map
+            .metric
+            .reaches(from, shape, range, pos, Shape::POINT)
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
     pub(crate) fn toward(&self, from: Position, to: Position, step: Num) -> Position {
-        self.metric.step_toward(from, to, step)
+        self.map.metric.step_toward(from, to, step)
     }
 
     /// `target`, when it is a living unit that may be a target.

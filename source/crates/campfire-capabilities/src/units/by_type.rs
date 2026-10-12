@@ -4,7 +4,9 @@ use campfire_sim::Capability;
 use crate::declare::book::Book;
 use crate::declare::per_type::PerType;
 
+use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
 
 /// A value for some of the match's unit types, by type: a capability's package data about each
 /// type that has it, such as its AI or its kit.
@@ -43,8 +45,10 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
 }
 
 impl<T: PerType> Book for ByType<T> {
-    const CAPABILITY: Option<Capability> = T::CAPABILITY;
+    const OWNER: Option<Capability> = T::OWNER;
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }
 
 #[cfg(test)]

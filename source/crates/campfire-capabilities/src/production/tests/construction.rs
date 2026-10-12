@@ -18,6 +18,7 @@ use crate::stats::life::Life;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
+use crate::units::map_book::MapBook;
 use crate::units::move_step::MoveStep;
 use crate::units::status_tags::StatusTags;
 use crate::units::team_set::TeamSet;
@@ -103,13 +104,14 @@ impl Yard {
             entity
         }));
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
-        game.insert_resource(bounds);
+        game.resource_mut::<MapBook>().bounds = bounds;
         let walker = Walker {
             layer: Layer::FIRST,
             radius: Num::HALF,
         };
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        Navigation::load_pathing(game, grid, &rules.walls, [walker]);
+        Navigation::load_walls(game, &rules.walls);
+        Navigation::load_pathing(game, grid, [walker]);
         let gold = shop.gold;
         let player = PlayerSlot::new(0);
         Players::spawn(game, 1, 1);

@@ -6,8 +6,10 @@ use crate::declare::book::Book;
 use crate::items::item_id::ItemId;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
+use crate::scripts::frame::Frame;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::view::View;
 use crate::values::names::Names;
 use campfire_sim::Capability;
 
@@ -78,6 +80,8 @@ impl ItemSpec {
 }
 
 impl Book for ItemBook {
-    const CAPABILITY: Option<Capability> = Some(Capability::Items);
+    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
 }

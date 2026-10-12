@@ -313,14 +313,13 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// types take them, or in the load, which resolves the packages' names once; but the one marked,
 /// which runs as a modifier applies. The test fails when a lookup appears and when one listed
 /// here is gone.
-const LOOKUPS: [(&str, &str); 40] = [
+const LOOKUPS: [(&str, &str); 39] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
     ("mode/map_data.rs", "named"),
-    ("mode/mode_books.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
     ("mode/mode_names.rs", "named"),
@@ -514,9 +513,6 @@ const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data
 /// book of a value for each unit type.
 const SUFFIX_EXCEPTIONS: [&str; 1] = ["ByType"];
 
-/// The `*Book` types that are no books yet: resources of package data that F24 declares as books.
-const BOOKS_TO_DECLARE: [&str; 4] = ["PoolBook", "ScriptBook", "StatBook", "TagBook"];
-
 /// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
 fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
     let opening = format!(" {role} for ");
@@ -577,14 +573,12 @@ fn a_book_and_a_data_table_take_their_suffix() {
         Vec::<String>::new(),
         "a holder of a role misnamed"
     );
-    // Every `*Book` is a book, but those F24 declares.
-    let mut no_books: Vec<_> = books
+    // Every `*Book` is a book.
+    let no_books: Vec<_> = books
         .iter()
         .filter(|name| !holders[0].contains(name))
-        .cloned()
         .collect();
-    no_books.sort();
-    assert_eq!(no_books, BOOKS_TO_DECLARE, "a `*Book` that is no book");
+    assert_eq!(no_books, Vec::<&String>::new(), "a `*Book` that is no book");
 
     // A generic impl and a plain one are found, and a mention in a comment is not.
     let code =

@@ -9,8 +9,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::lists_of::ListsOf;
-use crate::combat::assist_window::AssistWindow;
-use crate::combat::combat_bindings::CombatBindings;
+use crate::combat::combat_book::CombatBook;
 use crate::combat::combat_event::{CombatEvent, CombatEvents};
 use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::combat_world::CombatWorld;
@@ -291,7 +290,7 @@ impl DamagePass {
         });
         let death = killed.then(|| {
             world.resource_scope(|world, mut deaths: Mut<'_, Deaths>| {
-                let window = world.get_resource::<AssistWindow>().map(|window| window.0);
+                let window = world.resource::<CombatBook>().assist_window;
                 let index = world.resource::<EntityIndex>();
                 let assisted = |attack: &RecentAttack| {
                     let within = window
@@ -313,7 +312,7 @@ impl DamagePass {
         if let Some((id, entity)) =
             source.and_then(|id| DamagePass::living(world, id).map(|entity| (id, entity)))
         {
-            let bindings = world.resource::<CombatBindings>();
+            let bindings = world.resource::<CombatBook>().bindings;
             let stat = if damage.cause.attack() {
                 bindings.leech_attack
             } else {
@@ -337,7 +336,7 @@ impl DamagePass {
     /// Heals the life pool of `entity`, a living unit, by `amount` times one plus its
     /// `heal_scale` stat.
     pub(super) fn heal(world: &mut World, entity: Entity, amount: Num) {
-        let bindings = *world.resource::<CombatBindings>();
+        let bindings = world.resource::<CombatBook>().bindings;
         let scale = DamagePass::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
         let amount = scaled(amount, received);

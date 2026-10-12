@@ -8,7 +8,7 @@ use crate::actions::actions_column::{ActionsColumn, RowReads};
 use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
-use crate::actions::slot_kinds::SlotKinds;
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_times::SlotTimes;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
@@ -62,6 +62,7 @@ pub(crate) mod ready_waits;
 pub(crate) mod requires_data;
 pub(crate) mod slot_aim;
 pub(crate) mod slot_kind;
+pub(crate) mod slot_kind_book;
 pub(crate) mod slot_kind_data;
 pub(crate) mod slot_kinds;
 pub(crate) mod slot_times;
@@ -101,6 +102,7 @@ impl Module for Actions {
         d.book::<ActionBook>();
         d.book::<ParamBook>();
         d.book::<EffectListBook>();
+        d.book::<SlotKindBook>();
         d.calls::<EffectQueues>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
@@ -112,7 +114,6 @@ impl Module for Actions {
     /// none, as every action's unit target is one combat finds; the start of an action is the
     /// abilities'.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.world.insert_resource(SlotKinds::default());
         if cx.has(Capability::Combat) {
             Actions::schedule(cx.schedule);
         }
@@ -151,15 +152,14 @@ pub(crate) mod internals {
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_range::ActionRange;
-    use crate::actions::actions_column::ActionsColumn;
     use crate::actions::gather_spec::GatherSpec;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
+    use crate::books::Books;
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
-    use crate::units::view::View;
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -211,8 +211,7 @@ pub(crate) mod internals {
         pub(crate) fn push(world: &mut World, name: &str, action: Action) -> ActionId {
             let mut book = world.resource_mut::<ActionBook>();
             let id = book.push(name, action);
-            let book = book.clone();
-            ActionsColumn::share(world.non_send::<View>(), book);
+            Books::share::<ActionBook>(world);
             id
         }
     }
@@ -236,7 +235,6 @@ pub(crate) mod test_world {
     use crate::actions::action_names::ActionNames;
     use crate::actions::action_parts::ActionParts;
     use crate::actions::action_range::ActionRange;
-    use crate::actions::actions_column::ActionsColumn;
     use crate::actions::cost_target::CostTarget;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::effect_list_book::EffectListBook;
@@ -246,6 +244,7 @@ pub(crate) mod test_world {
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
+    use crate::books::Books;
     use crate::players::resource_amount::ResourceAmount;
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::error::UnknownName;
@@ -385,13 +384,14 @@ pub(crate) mod test_world {
             let names = MatchNames::new(world, &view, world.resource::<ModifierBook>());
             let parts = ActionParts::of(data, package, ranks, rate, &names)?;
             let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
-                let scripts = world.resource::<ScriptBook>();
+                // A match that runs no scripts holds no script book, and its actions none.
+                let none = ScriptBook::default();
+                let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
                 actions.load(scripts, package, name, data, script, parts)
             });
             let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
             Stats::load_action_params(world, id, &data.params, |stat| places[stat]);
-            let book = world.resource::<ActionBook>().clone();
-            ActionsColumn::share(world.non_send::<View>(), book);
+            Books::share::<ActionBook>(world);
             Ok(id)
         }
 

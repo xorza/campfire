@@ -7,7 +7,7 @@ use crate::actions::slot_times::SlotTimes;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
-use crate::items::shop::Shop;
+use crate::items::shop_book::ShopBook;
 use crate::orders::order::Action;
 use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
@@ -34,7 +34,7 @@ impl TradeOrders {
         (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
         (book, shop, mut resources): (
             Res<'_, ItemBook>,
-            Option<Res<'_, Shop>>,
+            Option<Res<'_, ShopBook>>,
             PlayerRowsMut<'_, '_, PlayerResources>,
         ),
         mut units: Query<
@@ -74,6 +74,7 @@ impl TradeOrders {
                 inventory.note(&mut before);
                 let shop = shop
                     .as_deref()
+                    .and_then(|book| book.0.as_ref())
                     .filter(|shop| dead || shop.serves(team, pos));
                 match (action, shop) {
                     (Action::Swap { from, to }, _) => {

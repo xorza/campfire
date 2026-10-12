@@ -34,7 +34,7 @@ impl MatchBuild {
     /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books
     /// at the match's rate, and the mode itself.
     pub(crate) fn install_mode(packages: &ModePackages, world: &mut World, players: u32) {
-        let ModeInputs { units, books } = MatchBuild::books(packages, world);
+        let ModeInputs { units, load } = MatchBuild::books(packages, world);
         let setup = ModeSetup {
             script: packages.mode_script(),
             data: packages.data(),
@@ -42,15 +42,14 @@ impl MatchBuild {
             players,
             units,
         };
-        Release::install_mode(world, setup, books);
+        Release::install_mode(world, setup, load);
     }
 
     /// The first part of `install_mode`: every package's scripts and the books at the match's
-    /// rate in place, but the mode's own, which it gives back.
+    /// rate in place; what the mode's install takes from them.
     pub(crate) fn books(packages: &ModePackages, world: &mut World) -> ModeInputs {
         let set = packages.manifest().capabilities;
         packages.compile_scripts(|source| Units::compile(world, source));
-        world.insert_resource(packages.script_book().clone());
         let rate = *world.resource::<TickRate>();
         packages.books(rate).install(world, set, true)
     }
@@ -62,7 +61,7 @@ pub(crate) mod bench;
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_capabilities::internals::Players;
-    use campfire_capabilities::{Match, MatchSpec, ModeInputs};
+    use campfire_capabilities::{Match, MatchSpec, ModeInputs, Vision};
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
     use campfire_package::ModePackages;
@@ -75,16 +74,16 @@ pub(crate) mod internals {
     const ZERO_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
 
     impl MatchBuild {
-        /// The match of `packages` at `rate`, for `players` players, with every book in place,
-        /// the mode's own among them, and no mode installed, as an arena holds it; it starts
+        /// The match of `packages` at `rate`, for `players` players, with every book in place but
+        /// the map's vision grid, and no mode installed, as an arena holds it; it starts
         /// with the match's entity alone, holds the mode's unit types for a test to spawn, and
         /// fails its test on any warning it logs.
         pub(crate) fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
             let spec = MatchBuild::spec(packages, ZERO_SEED, rate, players);
             let mut game = Match::new(spec).with_log(log);
-            let ModeInputs { units, books } = MatchBuild::books(packages, &mut game);
-            books.install(&mut game);
+            let ModeInputs { units, .. } = MatchBuild::books(packages, &mut game);
+            Vision::clear_grid(&mut game);
             Players::start_without_mode(&mut game, [], 0);
             game.insert_non_send(ArenaUnits(units));
             game

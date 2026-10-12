@@ -69,6 +69,6 @@ impl Inside {
 }
 
 impl PerType for AreaSpec {
-    const CAPABILITY: Option<Capability> = Some(Capability::Areas);
+    const OWNER: Option<Capability> = Some(Capability::Areas);
     const SCRIPTS_ONLY: bool = false;
 }

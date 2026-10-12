@@ -1,4 +1,3 @@
-use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
@@ -8,7 +7,7 @@ use crate::values::scalar::Scalar;
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
 /// No unit is ever outside them.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bounds {
     min: [Num; 2],
     max: [Num; 2],

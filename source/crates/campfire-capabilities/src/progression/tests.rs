@@ -5,6 +5,7 @@ use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
 
 use super::*;
+use crate::books::Books;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
@@ -14,7 +15,6 @@ use crate::stats::level::Level;
 use crate::units::Units;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
-use crate::units::view::View;
 use crate::values::declared_name::DeclaredName;
 
 fn track(at: u8) -> TrackId {
@@ -142,9 +142,7 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
 fn experience_is_state_and_restores() {
     // A match of stats and progression with the tracks of `book`, the same in both.
     let tracks = |game: &mut Match| {
-        let book = book();
-        ProgressionColumn::share(game.non_send::<View>(), book.clone());
-        game.insert_resource(book);
+        Books::load(game, book());
     };
     let declared = [Capability::Stats, Capability::Progression];
     let mut game = Match::client(&declared);

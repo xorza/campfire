@@ -19,7 +19,7 @@ use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_load::ModeLoad;
 use crate::mode::mode_setup::ModeSetup;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
@@ -223,9 +223,9 @@ impl Release {
         sim.build();
     }
 
-    /// Installs the mode into the match the world holds, once the capabilities' books are in
-    /// place but the mode's own, `books`: its declarations and systems, then the mode of `setup`.
-    pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, books: ModeBooks) {
+    /// Installs the mode into the match the world holds, once the books are in place: its
+    /// declarations and systems, then the mode of `setup`, with what `load` takes from the books.
+    pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
         let set = *world.resource::<CapabilitySet>();
         let mut sim = SimWorldBuilder::reopen(world);
         let SimParts {
@@ -236,7 +236,7 @@ impl Release {
         let called = Release::called(set);
         let mut cx = InstallCx::new(world, schedule, set, true, false, called);
         Installing::new(&mut cx, registry).install::<Mode>();
-        Mode::load(world, registry, setup, books);
+        Mode::load(world, registry, setup, load);
         sim.build();
     }
 }

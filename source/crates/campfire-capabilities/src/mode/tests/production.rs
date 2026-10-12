@@ -149,7 +149,8 @@ fn on_mode_input(ctx, player, name, value) {
         },
     );
     let costs = SupplyCostBook::new(types, game.resource::<ActionBook>());
-    ProductionColumn::share(&view, Some(ModeSupplyData { max: 5 }), costs);
+    ProductionColumn::share_rules(&view, Some(ModeSupplyData { max: 5 }));
+    ProductionColumn::share_costs(&view, costs);
     // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
     // third gathers and carries nothing.
     let gold = resource("gold").unwrap();
@@ -189,7 +190,8 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(70_000));
     assert_eq!(Mode::failures(&game), []);
     // A mode that counts no supply fails the call.
-    ProductionColumn::share(&view, None, SupplyCostBook::default());
+    ProductionColumn::share_rules(&view, None);
+    ProductionColumn::share_costs(&view, SupplyCostBook::default());
     Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
         Mode::failures(&game),

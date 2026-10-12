@@ -36,8 +36,9 @@ impl UnitTags {
             || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 
-    /// The tags a unit of `unit_type` spawns with: its type's own, from `book`, none in a match
-    /// with no tag book. Its modifiers' grants join them as stats derive them.
+    /// The tags a unit of `unit_type` spawns with: its type's own, from `book`, none in a world
+    /// with no tag book, as a copy of a match's state. Its modifiers' grants join them as stats
+    /// derive them.
     pub(crate) fn at_spawn(book: Option<&TagBook>, unit_type: UnitType) -> UnitTags {
         book.map_or(UnitTags::default(), |book| {
             book.unit_tags(unit_type, iter::empty())

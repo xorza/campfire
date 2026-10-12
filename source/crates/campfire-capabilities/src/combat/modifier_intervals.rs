@@ -38,9 +38,7 @@ impl ModifierIntervals {
         mut due: Local<'_, Vec<IntervalDue>>,
     ) {
         let now = world.resource::<SimTick>().start();
-        let granting = world
-            .get_resource::<TagBook>()
-            .map_or(TagSet::default(), TagBook::granting);
+        let granting = world.resource::<TagBook>().granting();
         let book = world.resource::<ModifierBook>().clone();
         due.clear();
         for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {

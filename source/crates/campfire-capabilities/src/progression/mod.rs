@@ -50,19 +50,16 @@ pub(crate) mod test_world {
 
     use bevy_ecs::world::World;
 
+    use crate::books::Books;
     use crate::progression::Progression;
-    use crate::progression::progression_column::ProgressionColumn;
     use crate::progression::track_book::TrackBook;
     use crate::progression::track_data::TrackData;
-    use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
 
     impl Progression {
         /// Loads the mode's `tracks`, which the package load checked, into the match.
         pub(crate) fn load_tracks(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
-            let book = TrackBook::new(tracks);
-            ProgressionColumn::share(world.non_send::<View>(), book.clone());
-            world.insert_resource(book);
+            Books::load(world, TrackBook::new(tracks));
         }
     }
 }

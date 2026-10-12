@@ -3,7 +3,6 @@ use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
 
-use crate::geometry::metric::Metric;
 use crate::geometry::shape::Shape;
 use crate::players::on_match::OnMatch;
 use crate::players::player_rows::PlayerRows;
@@ -21,10 +20,10 @@ use crate::stats::stat_books::StatBooks;
 use crate::units::body::Body;
 use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::dead::Dead;
+use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
 use crate::units::relations::Relations;
-use crate::units::tag_book::TagBook;
 use crate::units::tag_effect::TagEffect;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -98,7 +97,7 @@ impl HeldPass {
     pub(crate) fn run(
         books: StatBooks<'_>,
         clock: TickClock<'_>,
-        metric: Res<'_, Metric>,
+        map: Res<'_, MapBook>,
         players: PlayerRows<'_, '_, PlayerModifiers>,
         mut others: ResMut<'_, HeldModifiers>,
         params: ModifierParams<'_, '_>,
@@ -110,22 +109,16 @@ impl HeldPass {
         mut grid: Local<'_, BodyGrid<Entity>>,
     ) {
         let StatBooks {
-            stats,
             modifiers: book,
             tags: tag_book,
             ..
         } = books;
-        if stats.is_none() {
-            return;
-        }
         let relations = relations.get();
         let rate = clock.rate();
         held.clear();
         held.extend(others.0.drain(..));
         HeldPass::hold_player_modifiers(&mut held, &book, &players, &units);
-        let granting = tag_book
-            .as_deref()
-            .map_or(TagSet::default(), TagBook::granting);
+        let granting = tag_book.granting();
         let mut indexed = false;
         let written = units
             .iter()
@@ -158,7 +151,9 @@ impl HeldPass {
                         units.get(body.key).expect("an indexed unit");
                     let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                     let relation = relations.between(team, other);
-                    let reaches = metric.reaches(at, Shape::POINT, radius, body.pos, body.shape);
+                    let reaches =
+                        map.metric
+                            .reaches(at, Shape::POINT, radius, body.pos, body.shape);
                     if reaches && filter.selects(relation, tags) {
                         held.push(Held {
                             target,

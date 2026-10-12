@@ -77,10 +77,14 @@ impl ViewNames {
         self.unit_types = ScriptNames::new(Arc::clone(self.types.types()));
     }
 
-    /// Names the teams and the paths.
-    pub(crate) fn set_teams(&mut self, teams: Rc<Teams>, paths: Arc<Names<PathId>>) {
+    /// Names the teams.
+    pub(crate) fn set_teams(&mut self, teams: Rc<Teams>) {
         self.team_names = ScriptNames::new(Arc::clone(teams.names()));
         self.teams = Some(teams);
+    }
+
+    /// Names the paths.
+    pub(crate) fn set_paths(&mut self, paths: Arc<Names<PathId>>) {
         self.paths = ScriptNames::new(paths);
     }
 

@@ -15,6 +15,8 @@ use super::*;
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::Combat;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::geometry::bounds::Bounds;
+use crate::geometry::metric::Metric;
 use crate::navigation::on_path::OnPath;
 use crate::release::Release;
 use crate::release::r#match::Match;
@@ -29,7 +31,6 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::path_id::PathId;
-use crate::units::tag_book::TagBook;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::scalar::Scalar;
@@ -84,14 +85,14 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
             .any(|unit| found.contains(unit))
     );
     // In space, the high one is √(81 + 9) ≈ 9.49 m away: out of reach, and no longer the nearest.
-    game.insert_resource(Metric::Spatial);
+    game.resource_mut::<MapBook>().metric = Metric::Spatial;
     assert_eq!(find(&mut game, "enemies"), [east, west, edge]);
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(10), "enemies") }"#;
     assert_eq!(
         Unit::ids(Units::probe(&mut game, nearest, of).unwrap()),
         [east]
     );
-    game.insert_resource(Metric::Planar);
+    game.resource_mut::<MapBook>().metric = Metric::Planar;
 
     // A query reaches a body to its edge, as an area does: far, at 6 m, with a body of 1 m comes
     // within 5 m. `nearest_visible` reaches from the edge of `of`'s body too, as a weapon's
@@ -172,7 +173,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
         ),
     ];
     for (metric, within, distance) in metrics {
-        game.insert_resource(metric);
+        game.resource_mut::<MapBook>().metric = metric;
         let read = Units::probe(&mut game, probe, of).unwrap().cast::<Array>();
         let read_within: Vec<_> = read[..5]
             .iter()
@@ -241,7 +242,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     view.read(&mut game);
     assert_eq!(view.bounds(), Bounds::WORLD);
     let bounds = Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap();
-    game.insert_resource(bounds);
+    game.resource_mut::<MapBook>().bounds = bounds;
     view.read(&mut game);
     assert_eq!(view.bounds(), bounds);
 
@@ -249,13 +250,13 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     // x = 10 it restores; a little past it, though well within the world's bound, it does not.
     let restores = |x: Num| {
         let mut game = units_match();
-        game.insert_resource(bounds);
+        game.resource_mut::<MapBook>().bounds = bounds;
         let pos = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
         let id = Units::spawn(&mut game, pos, Team::new(0), ());
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();
-        fresh.insert_resource(bounds);
+        fresh.resource_mut::<MapBook>().bounds = bounds;
         assert_eq!(Units::test_type(&mut fresh), Units::test_type(&mut game));
         Release::clear(&mut fresh);
         let restored = fresh.restore(&snapshot);

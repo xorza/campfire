@@ -1,11 +1,15 @@
 use bevy_ecs::resource::Resource;
 
+use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::units::tag::Tag;
 use crate::units::tag_effect::TagEffect;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::units::view::View;
+use campfire_sim::Capability;
 
 /// What each tag of a match does, and each unit type's own tags. Package data, not state.
 #[derive(Resource, Debug, Default)]
@@ -103,6 +107,25 @@ impl TagBook {
     /// The tags that make their unit immune to some.
     pub(crate) const fn granting(&self) -> TagSet {
         self.granting
+    }
+}
+
+impl Book for TagBook {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::units::tag_book::TagBook;
+
+    impl TagBook {
+        /// Whether it holds no tag, as before a match's unit types seal.
+        pub(crate) const fn is_empty(&self) -> bool {
+            self.properties.is_empty()
+        }
     }
 }
 

@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use bevy_ecs::resource::Resource;
 use serde::Deserialize;
 
 use crate::actions::slot_kind::SlotKind;
@@ -11,9 +10,7 @@ use crate::values::names::Names;
 use crate::values::rank::Rank;
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order, and their names.
-/// As a resource, the match's, which the `learn` order reads; empty until the mode's books
-/// install.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(from = "Vec<SlotKindData>")]
 pub struct SlotKinds {
     kinds: Vec<SlotKindData>,

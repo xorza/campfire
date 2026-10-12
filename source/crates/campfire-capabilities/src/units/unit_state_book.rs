@@ -3,11 +3,14 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 
 use crate::declare::book::Book;
+use crate::scripts::frame::Frame;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_value::StateValue;
 use crate::units::unit_states::UnitStates;
 use crate::units::unit_type::UnitType;
+use crate::units::units_column::UnitsColumn;
+use crate::units::view::View;
 use crate::values::name_table::NameTable;
 use campfire_sim::Capability;
 
@@ -95,8 +98,12 @@ impl UnitStateBook {
 }
 
 impl Book for UnitStateBook {
-    const CAPABILITY: Option<Capability> = None;
+    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, view: &View, _: Option<&mut Frame>) {
+        UnitsColumn::share(view, self.clone());
+    }
 }
 
 #[cfg(test)]

@@ -13,6 +13,7 @@ use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
 use crate::actions::error::ActionError;
 use crate::actions::placement_data::{PlacementData, PlacementRule};
+use crate::actions::slot_kind_book::SlotKindBook;
 use crate::areas::Areas;
 use crate::areas::area_spec::AreaSpec;
 use crate::areas::error::AreaError;
@@ -20,18 +21,22 @@ use crate::books::Books;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::book_parts::BookParts;
 use crate::books::book_place::BookPlace;
+use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
 use crate::books::unit_type_data::UnitTypeData;
 use crate::combat::combat_bindings::CombatBindings;
+use crate::combat::combat_book::CombatBook;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::items::item_book::{ItemBook, ItemSpec};
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
+use crate::items::shop_book::ShopBook;
 use crate::items::shop_data::ShopData;
-use crate::mode::mode_books::{ModeBooks, ModeBooksInput};
-use crate::mode::mode_map::ModeMap;
+use crate::mode::mode_inputs::ModeInputs;
+use crate::mode::mode_load::ModeLoad;
+use crate::mode::mode_map::{ModeMap, ResolvedMap};
 use crate::mode::mode_names::ModeNames;
 use crate::mode::slot_action::SlotAction;
 use crate::mode::unit_kit::{InventorySpec, KitSections, UnitKit};
@@ -43,6 +48,8 @@ use crate::players::resource_id::ResourceId;
 use crate::production::Production;
 use crate::production::build_book::{NewBuild, PlacementCheck, Style};
 use crate::production::resource_set::ResourceSet;
+use crate::production::supply_book::SupplyBook;
+use crate::production::supply_cost_book::SupplyCostBook;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::Projectiles;
@@ -52,6 +59,7 @@ use crate::scripts::error::UnknownName;
 use crate::scripts::name_kind::NameKind;
 use crate::stats::error::{ModifierError, SpecError};
 use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
@@ -172,7 +180,7 @@ impl<'a> BookBuilder<'a> {
         let life = data.combat.life_pool(&names.pools);
         let life = life.map_err(|name| BookError::unknown(0, BookPlace::Combat, name))?;
         let stats = BookBuilder::stat_book(input, &books.types)?;
-        let pools = PoolBook::new(&data.pools, Arc::clone(&names.pools), |pool, stat| {
+        let pools = PoolBook::new(&data.pools, Arc::clone(&names.pools), life, |pool, stat| {
             let at = BookPlace::Pool(pool.clone());
             BookBuilder::stat_in(&stats, 0, at, stat)
         })?;
@@ -203,7 +211,7 @@ impl<'a> BookBuilder<'a> {
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
         if input.progression {
-            self.books.tracks = Some(TrackBook::new(&input.data.tracks));
+            self.books.tracks = TrackBook::new(&input.data.tracks);
         }
         for (index, package) in (0..).zip(&input.packages) {
             self.modifiers(index, package)?;
@@ -237,9 +245,108 @@ impl<'a> BookBuilder<'a> {
                 BookKind::Rules => {}
             }
         }
+        self.into_books()
+    }
+
+    /// The books the builder loaded, each in the built books, the unit types and the mode's names
+    /// beside them, and the mode's map, resolved, among what its install takes; an error for what
+    /// the map names that the mode does not have.
+    fn into_books(self) -> Result<Books, BookError> {
+        let input = self.input;
+        let data = input.data;
+        let resolved = self.resolve_map(&self.books.types)?;
         let mut parts = self.books;
+        let shop = data
+            .shop
+            .as_ref()
+            .map(|shop| {
+                BookBuilder::shop(
+                    shop,
+                    parts.items.names(),
+                    &self.names.resources,
+                    &resolved.map,
+                )
+            })
+            .transpose()
+            .map_err(|name| BookError::unknown(0, BookPlace::Shop, name))?;
+        let stats = &self.stats;
+        let bindings = CombatBindings::new(&data.combat, |stat| {
+            BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
+        })?;
+        let bodies = parts.units.unit_types.iter();
+        let bodies = bodies.map(|setup| (setup.unit_type, setup.kit.body));
+        parts.types.tag_layers(&self.names.layers, bodies);
+        let mut kinds: Vec<Walker> = parts.walkers.values().copied().collect();
+        kinds.sort_unstable();
+        kinds.dedup();
+        let ResolvedMap {
+            map,
+            ground,
+            navigation,
+            vision,
+        } = resolved;
+        // A window past what ticks can count covers the whole match.
+        let assist_window = data.combat.assist_window_ms.map(|ms| input.rate.window(ms));
+        let mut built = BuiltBooks::default();
+        built.add(parts.types.state_book());
+        built.add(parts.types.origins());
+        built.add(parts.types.tag_book(&data.tags));
+        built.add(input.scripts.clone());
+        built.add(ground);
+        built.add(self.stats);
+        built.add(self.pools);
+        built.add(parts.modifiers);
+        built.add(ParamBook::new(parts.params));
+        built.add(SupplyCostBook::new(parts.supplies, &parts.actions));
+        built.add(parts.actions);
+        built.add(parts.effects);
+        built.add(SlotKindBook(data.slots.clone()));
+        built.add(CombatBook {
+            bindings,
+            assist_window,
+        });
+        built.add(parts.ais);
+        built.add(parts.projectiles);
+        built.add(parts.areas);
+        built.add(parts.sights);
+        built.add(navigation);
+        built.add(parts.walkers);
+        built.add(vision);
+        built.add(parts.tracks);
+        built.add(parts.producers);
+        built.add(parts.requirements);
+        built.add(parts.builds);
+        built.add(parts.nodes);
+        built.add(SupplyBook(parts.supply));
+        built.add(parts.items);
+        built.add(ShopBook(shop));
+        let ModeNames {
+            damage_kinds,
+            resources,
+            ..
+        } = self.names;
+        Ok(Books {
+            built,
+            types: parts.types,
+            damage_kinds,
+            resources,
+            inputs: ModeInputs {
+                units: parts.units,
+                load: ModeLoad {
+                    map,
+                    walkers: kinds,
+                    loadout_ranks: self.loadout_ranks,
+                },
+            },
+        })
+    }
+
+    /// The mode's map, resolved, its placed units' types among `types`; an error for what it
+    /// names that the mode does not have.
+    fn resolve_map(&self, types: &UnitTypes) -> Result<ResolvedMap, BookError> {
+        let input = self.input;
+        let data = input.data;
         let mode_units = &input.packages[0].content.units;
-        let types = &parts.types;
         let standing = |name: &str| {
             let stands = mode_units.get(name).is_some_and(|file| !file.delivers());
             stands.then(|| {
@@ -249,42 +356,14 @@ impl<'a> BookBuilder<'a> {
                     .expect(DECLARED)
             })
         };
-        let data = input.data;
-        let map = ModeMap::resolve(
+        ModeMap::resolve(
             input.map,
             input.teams,
             &data.relations,
             &self.names.layers,
             standing,
         )
-        .map_err(BookError::Mode)?;
-        let items = parts.items.names();
-        let shop = data
-            .shop
-            .as_ref()
-            .map(|shop| BookBuilder::shop(shop, items, &self.names.resources, &map))
-            .transpose()
-            .map_err(|name| BookError::unknown(0, BookPlace::Shop, name))?;
-        let stats = &self.stats;
-        let bindings = CombatBindings::new(&data.combat, |stat| {
-            BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
-        })?;
-        let bindings = self.life.map(|_| bindings);
-        let mode = ModeBooks::build(ModeBooksInput {
-            data,
-            unit_types: &parts.units.unit_types,
-            types: &mut parts.types,
-            walkers: &parts.walkers,
-            stats: self.stats,
-            pools: self.pools,
-            life: self.life,
-            bindings,
-            loadout_ranks: self.loadout_ranks,
-            names: self.names,
-            map,
-            shop,
-        });
-        Ok(Books { parts, mode })
+        .map_err(BookError::Mode)
     }
 
     /// The item book of the mode package `package`, at `index`, its actions `actions`; an error
@@ -616,7 +695,7 @@ impl<'a> BookBuilder<'a> {
             stats: &self.stats,
             types: &self.books.types,
             modifiers: &self.books.modifiers,
-            tracks: self.books.tracks.as_ref(),
+            tracks: &self.books.tracks,
             params: &self.books.params.actions,
             action,
             package,
@@ -913,7 +992,7 @@ struct BuildNames<'b> {
     stats: &'b StatBook,
     types: &'b UnitTypes,
     modifiers: &'b ModifierBook,
-    tracks: Option<&'b TrackBook>,
+    tracks: &'b TrackBook,
     params: &'b ParamTable,
     /// The action whose effect lists resolve, with its params.
     action: Option<ActionId>,
@@ -982,9 +1061,7 @@ impl EffectNames for BuildNames<'_> {
     }
 
     fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
-        let track = self
-            .tracks
-            .and_then(|tracks| tracks.names().named(name.as_str()));
+        let track = self.tracks.names().named(name.as_str());
         track.ok_or_else(|| UnknownName::new(NameKind::Track, name))
     }
 

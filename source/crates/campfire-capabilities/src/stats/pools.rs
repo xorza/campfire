@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::stats::life_pool::LifePool;
 use crate::stats::meter::Meter;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::units::unit_entity::UnitEntity;
 
@@ -77,8 +77,8 @@ impl SimComponent for Pools {
     // would regenerate past a pool's rate.
     fn check(&self, world: &World, _: Entity) -> bool {
         let hz = world.resource::<TickRate>().hz().get();
-        let life = world.get_resource::<LifePool>();
-        let no_life = life.is_none_or(|life| self.0[life.0.index()].is_none());
+        let life = world.get_resource::<PoolBook>().and_then(PoolBook::life);
+        let no_life = life.is_none_or(|life| self.0[life.index()].is_none());
         no_life && self.0.iter().flatten().all(|meter| meter.settled(hz))
     }
 }

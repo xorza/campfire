@@ -19,12 +19,12 @@ use crate::navigation::body_index::BodyIndex;
 use crate::navigation::destination::Destination;
 use crate::navigation::forced_moves::ForcedMoves;
 use crate::navigation::navigation_api::NavigationApi;
+use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::navigation_column::{NavigationColumn, RowReads};
 use crate::navigation::navigation_effect::NavigationEffect;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
-use crate::navigation::paths::Paths;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Walkable};
@@ -35,8 +35,6 @@ use crate::navigation::statics_dirty::StaticsDirty;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
-use crate::navigation::wall::Wall;
-use crate::navigation::walls::Walls;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
@@ -53,6 +51,7 @@ pub(crate) mod forced_moves;
 pub(crate) mod group_box;
 pub(crate) mod mode_navigation_data;
 pub(crate) mod navigation_api;
+pub(crate) mod navigation_book;
 pub(crate) mod navigation_column;
 pub(crate) mod navigation_effect;
 pub(crate) mod on_path;
@@ -108,6 +107,7 @@ impl Module for Navigation {
         d.cache::<StaticTrackingRun>();
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>();
+        d.book::<NavigationBook>();
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
     }
@@ -119,7 +119,6 @@ impl Module for Navigation {
     /// unit that walks stands within the bounds again.
     fn install(cx: &mut InstallCx<'_>) {
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(Paths::default());
         world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
         StaticsDirty::install(world);
         let run = world.register_system(StaticTracking::track_static_bodies);
@@ -165,14 +164,13 @@ impl Navigation {
         }
     }
 
-    /// Gives the match the map's pathing grid on the cells of `grid`, those `walls` block, for the
-    /// kinds of `walkers`, a static index for the widest of them, a planner of routes on the
-    /// grid, and the walls for placements to test; the static bodies fill the grid and the index
-    /// from the first tick on.
+    /// Gives the match the map's pathing grid on the cells of `grid`, those the walls of its
+    /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
+    /// and a planner of routes on the grid; the static bodies fill the grid and the index from
+    /// the first tick on.
     pub(crate) fn load_pathing(
         world: &mut World,
         grid: Grid,
-        walls: &[Wall],
         walkers: impl IntoIterator<Item = Walker>,
     ) {
         let walkers: Vec<Walker> = walkers.into_iter().collect();
@@ -180,12 +178,11 @@ impl Navigation {
             world.contains_resource::<StaticChanges>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
         );
-        let terrain = Terrain::new(&grid, walls);
+        let terrain = Terrain::new(&grid, world.resource::<NavigationBook>().walls.walls());
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));
         world.insert_resource(PathingGrid::new(grid, walkers, &terrain));
-        world.insert_resource(Walls::new(walls));
         world.resource_mut::<StaticsDirty>().set();
     }
 
@@ -258,12 +255,16 @@ pub(crate) mod test_world {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Position, StableId};
 
+    use crate::books::Books;
     use crate::geometry::bounds::Bounds;
     use crate::geometry::grid::Grid;
     use crate::navigation::Navigation;
     use crate::navigation::destination::Destination;
+    use crate::navigation::navigation_book::NavigationBook;
+    use crate::navigation::paths::Paths;
     use crate::navigation::walker::Walker;
     use crate::navigation::wall::Wall;
+    use crate::navigation::walls::Walls;
     use crate::units::Units;
     use crate::units::body::Body;
     use crate::units::move_step::MoveStep;
@@ -294,7 +295,26 @@ pub(crate) mod test_world {
             let cell = cell.into();
             let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
             let grid = Grid::new(cell, bounds).unwrap();
-            Navigation::load_pathing(world, grid, walls, walkers);
+            Navigation::load_walls(world, walls);
+            Navigation::load_pathing(world, grid, walkers);
+        }
+
+        /// Gives the match the walls `walls`, which a pathing grid loaded after blocks.
+        pub(crate) fn load_walls(world: &mut World, walls: &[Wall]) {
+            let book = NavigationBook {
+                walls: Walls::new(walls),
+                ..world.resource::<NavigationBook>().clone()
+            };
+            Books::load(world, book);
+        }
+
+        /// Gives the match the paths `paths`.
+        pub(crate) fn load_paths(world: &mut World, paths: Paths) {
+            let book = NavigationBook {
+                paths,
+                ..world.resource::<NavigationBook>().clone()
+            };
+            Books::load(world, book);
         }
 
         /// A unit at `pos` walking a meter a tick to `to`.

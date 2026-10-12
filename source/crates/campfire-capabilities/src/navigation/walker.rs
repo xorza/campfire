@@ -53,6 +53,6 @@ impl Walker {
 }
 
 impl PerType for Walker {
-    const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
+    const OWNER: Option<Capability> = Some(Capability::Navigation);
     const SCRIPTS_ONLY: bool = false;
 }
