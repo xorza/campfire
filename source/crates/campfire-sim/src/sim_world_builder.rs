@@ -149,6 +149,20 @@ pub(crate) mod internals {
         pub fn without_sync_points(&mut self) {
             StrictSchedule::without_sync_points(&mut self.schedule);
         }
+
+        /// Ends the build with the tick's schedule unbuilt, each system in its graph, for a test
+        /// that reads what each accesses: the world then runs no tick.
+        pub fn leave_unbuilt(self) {
+            let SimWorldBuilder {
+                world,
+                schedule,
+                registry,
+                unbuilt,
+            } = self;
+            unbuilt.defuse();
+            world.add_schedule(schedule);
+            world.insert_resource(registry);
+        }
     }
 }
 

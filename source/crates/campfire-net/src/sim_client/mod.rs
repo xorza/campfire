@@ -200,7 +200,9 @@ impl Plugin for SimClient {
         let set = packages.manifest().capabilities;
         Release::build(
             world,
-            MatchSpec::new(PREDICTION_SEED, rate).capabilities(set),
+            MatchSpec::new(PREDICTION_SEED, rate)
+                .capabilities(set)
+                .predicting(),
         );
         packages.books(rate).install_prediction(world, set);
         mark_unpredicted(world);
@@ -718,7 +720,6 @@ fn run_predicted_tick(world: &mut World) {
 /// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the
 /// two markers arrive, and again as the server stops its prediction here, as its owner changes.
 fn mark_unpredicted(world: &mut World) {
-    Unpredicted::register(world);
     world.add_observer(
         |added: On<'_, '_, Add, Replicated>,
          predicted: Query<'_, '_, (), With<Predicted>>,

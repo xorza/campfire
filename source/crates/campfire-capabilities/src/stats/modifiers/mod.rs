@@ -28,7 +28,6 @@ use crate::units::unit_entity::UnitEntity;
 /// copy of a unit's modifiers, as a rollback makes, allocates a buffer per kind, not per
 /// instance. Its clocks, which derive nothing, are `ModifierClocks`, in the same order.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[require(ModifierClocks)]
 pub struct Modifiers {
     instances: Vec<Instance>,
     ends: Vec<StackEnd>,

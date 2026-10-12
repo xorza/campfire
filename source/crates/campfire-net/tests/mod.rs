@@ -1,7 +1,9 @@
+mod auras;
 mod bots;
 mod checkpoints;
 mod fog;
 mod lane;
+mod leak;
 mod local_server;
 mod pace;
 mod prototype;
@@ -10,4 +12,5 @@ mod rejoin;
 mod restore;
 mod saves;
 mod scenario;
+mod short_3v3;
 mod spectators;

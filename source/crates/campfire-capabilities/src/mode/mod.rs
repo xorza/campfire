@@ -44,7 +44,9 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
 use crate::players::Players;
+use crate::players::held_out::HeldOut;
 use crate::players::match_entity::MatchEntity;
+use crate::players::out_of_play::OutOfPlay;
 use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::players::players_world::PlayersWorld;
@@ -128,6 +130,8 @@ impl Declares for Mode {
         d.resource::<Choices>();
         d.component::<PlayerResources>();
         d.component::<Player>();
+        d.component::<HeldOut>();
+        d.derived_sent::<OutOfPlay>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
@@ -238,6 +242,7 @@ impl Mode {
                 .chain()
                 .in_set(SimSet::Mode)
                 .after(ProductionSet::Finish),
+            OutOfPlay::refresh.in_set(SimSet::Vision),
         ));
     }
 

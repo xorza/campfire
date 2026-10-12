@@ -325,7 +325,7 @@ pub(crate) mod test_world {
             let modifier = Stats::modifier(world, 0, name).unwrap();
             let entity = world.unit_entity(id);
             if !world.entity(entity).contains::<Modifiers>() {
-                world.insert_parts(id, Modifiers::default());
+                world.insert_parts(id, (Modifiers::default(), ModifierClocks::default()));
             }
             let from = Some((source, None, 1));
             Stats::give_modifier(world, id, modifier, from, false);

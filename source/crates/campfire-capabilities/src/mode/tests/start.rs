@@ -21,6 +21,12 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         game.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
     );
+    // Each holds its stats from its spawn, before any refresh: a value for each stat the mode
+    // declares, its type's at level 1, with no modifiers, as its first refresh derives them.
+    let tower_type = *game.get::<UnitType>(tower).unwrap();
+    let base = game.resource::<StatBook>().base_values(tower_type, 1);
+    assert_eq!(base.len(), STATS_3V3.len());
+    assert_eq!(game.get::<UnitStats>(tower).unwrap().values(), base);
     // Beside them, the match's entity and each player's, of their named ids: players 0 and 1 of
     // team a, player 2 of b.
     let named: Vec<_> = game

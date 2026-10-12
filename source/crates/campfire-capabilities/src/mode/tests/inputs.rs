@@ -336,10 +336,10 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let grunt = *game.get::<UnitType>(Mode::entity_by_id(&game, 1)).unwrap();
     let hero_type = *game.get::<UnitType>(hero).unwrap();
     let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
-    for (slot, unit_type) in [(0, grunt), (1, grunt), (0, hero_type)] {
+    let [_, grunt_1, second] = [(0, grunt), (1, grunt), (0, hero_type)].map(|(slot, unit_type)| {
         let owner = Owner::new(PlayerSlot::new(slot));
-        Units::spawn_of(&mut game, unit_type, pos, Team::new(0), owner);
-    }
+        Units::spawn_of(&mut game, unit_type, pos, Team::new(0), owner)
+    });
     let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {
         players
@@ -349,4 +349,34 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     assert_eq!(avatar(&mut players, 0), Some(hero));
     assert_eq!(avatar(&mut players, 1), None);
     assert_eq!(avatar(&mut players, 2), None);
+
+    // Out of play, as each tick ends: player 0 while both its heroes are dead, and no more as one
+    // lives again; player 1, whose grunt is no avatar, never by a death, and while the script
+    // holds it out; player 2, of no unit, never.
+    let second = Mode::entity_by_id(&game, second.get());
+    let out = |game: &Match| {
+        (0..3)
+            .map(|slot| {
+                let player = game.player_entity(PlayerSlot::new(slot)).unwrap();
+                game.entity(player).contains::<OutOfPlay>()
+            })
+            .collect::<Vec<bool>>()
+    };
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(out(&game), [false, false, false]);
+    game.entity_mut(hero).insert(Dead);
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(out(&game), [false, false, false]);
+    game.entity_mut(second).insert(Dead);
+    let grunt_1 = Mode::entity_by_id(&game, grunt_1.get());
+    game.entity_mut(grunt_1).insert(Dead);
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(out(&game), [true, false, false]);
+    game.entity_mut(hero).remove::<Dead>();
+    Mode::tick_inputs(&mut game, &[(1, input("out", "on"))]);
+    assert_eq!(out(&game), [false, true, false]);
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(out(&game), [false, true, false]);
+    Mode::tick_inputs(&mut game, &[(1, input("out", "off"))]);
+    assert_eq!(out(&game), [false, false, false]);
 }

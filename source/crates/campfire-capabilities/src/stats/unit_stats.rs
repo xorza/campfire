@@ -9,6 +9,10 @@ pub(crate) struct UnitStats {
 }
 
 impl UnitStats {
+    pub(crate) const fn new(values: Vec<Num>) -> UnitStats {
+        UnitStats { values }
+    }
+
     pub(crate) fn values(&self) -> &[Num] {
         &self.values
     }

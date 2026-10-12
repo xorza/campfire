@@ -130,8 +130,8 @@ impl Stats {
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
     /// every unit whose level or modifiers changed, or that is new, has its stats and states
     /// derived again, and the components that hold their effect follow them; as each tick
-    /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one
-    /// or on a client, which loads none, nothing changes.
+    /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one,
+    /// nothing changes.
     pub(crate) fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(HeldModifiers::default());
         cx.world.insert_resource(LiveCarriers::default());

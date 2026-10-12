@@ -584,7 +584,7 @@ impl InProcessMatch {
 
     /// Opens the session for every client, and steps until each joined and every end runs the
     /// match; see `Lobby`. The players take the slots in player order, as `LinkLayout` says.
-    pub(crate) fn open_match(&mut self) {
+    pub fn open_match(&mut self) {
         let packages = Arc::clone(&self.packages);
         let mut lobby = Lobby::new(LobbySetup {
             tick_hz: packages.manifest().tick_hz.default(),
@@ -628,11 +628,11 @@ impl InProcessMatch {
         panic!("the match did not start in {CONNECT_FRAMES} frames");
     }
 
-    /// Steps until each client holds its player's avatar, for at most `frames` frames: a mode
-    /// may spawn the avatars only after its pick.
-    pub(crate) fn await_avatars(&mut self, frames: usize) {
+    /// Steps until each player's client holds its player's avatar, for at most `frames` frames:
+    /// a mode may spawn the avatars only after its pick.
+    pub fn await_avatars(&mut self, frames: usize) {
         for _ in 0..frames {
-            if (0..self.clients.len()).all(|client| self.holds_avatar(client)) {
+            if (0..self.setup.players).all(|client| self.holds_avatar(client)) {
                 return;
             }
             self.step();

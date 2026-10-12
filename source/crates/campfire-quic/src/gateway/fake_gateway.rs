@@ -1,6 +1,6 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 use campfire_store::Worker;
@@ -11,9 +11,16 @@ use crate::gateway::MESSAGE_MAX;
 /// gives, none for silence, and keeps each request.
 pub(crate) struct FakeGateway {
     pub(crate) address: SocketAddrV4,
-    requests: Arc<Mutex<Vec<Vec<u8>>>>,
+    requests: Arc<Requests>,
     stop: Arc<AtomicBool>,
     _worker: Worker,
+}
+
+/// The requests a fake gateway kept, and the signal of each new one.
+#[derive(Debug, Default)]
+struct Requests {
+    kept: Mutex<Vec<Vec<u8>>>,
+    added: Condvar,
 }
 
 impl FakeGateway {
@@ -27,7 +34,7 @@ impl FakeGateway {
         let SocketAddr::V4(address) = socket.local_addr().unwrap() else {
             unreachable!()
         };
-        let requests = Arc::new(Mutex::new(Vec::new()));
+        let requests = Arc::new(Requests::default());
         let stop = Arc::new(AtomicBool::new(false));
         let worker = {
             let (requests, stop) = (Arc::clone(&requests), Arc::clone(&stop));
@@ -39,7 +46,8 @@ impl FakeGateway {
                     };
                     // Kept before the replies go, so a client that has its answer finds its request.
                     let replies = answer(&buffer[..len]);
-                    requests.lock().unwrap().push(buffer[..len].to_vec());
+                    requests.kept.lock().unwrap().push(buffer[..len].to_vec());
+                    requests.added.notify_all();
                     for reply in replies {
                         socket.send_to(&reply, from).unwrap();
                     }
@@ -69,7 +77,19 @@ impl FakeGateway {
     }
 
     pub(crate) fn requests(&self) -> Vec<Vec<u8>> {
-        self.requests.lock().unwrap().clone()
+        self.requests.kept.lock().unwrap().clone()
+    }
+
+    /// The requests it kept, once it kept `count` or a second passed: it reads each on a thread
+    /// of its own, which a loaded runner may run after the client stopped waiting for an answer.
+    pub(crate) fn requests_once(&self, count: usize) -> Vec<Vec<u8>> {
+        let kept = self.requests.kept.lock().unwrap();
+        let (kept, _) = self
+            .requests
+            .added
+            .wait_timeout_while(kept, Duration::from_secs(1), |kept| kept.len() < count)
+            .unwrap();
+        kept.clone()
     }
 }
 

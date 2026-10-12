@@ -12,9 +12,9 @@ use bevy_ecs::bundle::Bundle;
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
-    Life, Match, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner,
-    PackagePath, Param, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers, Scalar,
-    Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
+    Life, Match, ModifierClocks, ModifierId, Modifiers, MoveStep, Navigation, Number, OnDeath,
+    Order, Owner, PackagePath, Param, Pools, Projectile, RangeField, Rank, Ranked, RecentAttackers,
+    Scalar, Scaling, SeenBy, SlotKind, SlotTimes, Stat, Targeting, Team, UnitEntity,
 };
 use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
@@ -249,7 +249,7 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
         &mut game,
         0,
         Team::new(0),
-        (player, Modifiers::default()),
+        (player, (Modifiers::default(), ModifierClocks::default())),
     );
     let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
     let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
@@ -306,9 +306,15 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
         0,
         Team::new(0),
         (20, 0),
-        (player, Modifiers::default()),
+        (player, (Modifiers::default(), ModifierClocks::default())),
     );
-    let enemy = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
+    let enemy = spawn(
+        &arena,
+        &mut game,
+        1,
+        Team::new(1),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     arm_with(&mut game, rime, chill, 10, 10);
     let mana = |game: &Match| pool(&arena, game, rime, "mana").round();
     let holds = |game: &Match| carried(game, rime).contains(&(hold, Some(rime)));
@@ -351,7 +357,14 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
     let mut game = arena.start(RATE, 1);
     let dread = arena.action(&game, "hero-husk", "dread");
     // Husk with 20 mana; an enemy of 500 health 2 m away, inside Dread's 3 m.
-    let husk = caster(&arena, &mut game, dread, 1, (20, 0), Modifiers::default());
+    let husk = caster(
+        &arena,
+        &mut game,
+        dread,
+        1,
+        (20, 0),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     let enemy = spawn(&arena, &mut game, 2, Team::new(1), ());
     let mana = |game: &Match| pool(&arena, game, husk, "mana").round();
     // On in tick 0. It pays 8 at each whole second, in ticks 30 and 60: 4 are left. Its hold's
@@ -409,7 +422,7 @@ fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while
         still_mind,
         1,
         (100, 0),
-        Modifiers::default(),
+        (Modifiers::default(), ModifierClocks::default()),
     );
     let entity = game.entity_of(kensho).unwrap();
     let life = *game.get::<Life>(entity).unwrap();
@@ -462,7 +475,13 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     game.entity_mut(entity)
         .insert(internals::spent(pools, energy, Num::int(100)));
     let other = spawn(&arena, &mut game, 0, Team::new(0), player);
-    let marked = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
+    let marked = spawn(
+        &arena,
+        &mut game,
+        1,
+        Team::new(1),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     let marks = |game: &Match| !carried(game, marked).is_empty();
     let from = Some((veil, Some(action), 2));
     Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
@@ -498,7 +517,14 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     // ±9.583°, ±19.167° and ±28.75°, each 0.4 m wide, so a body of no radius within 0.2 m of an
     // arrow's path is in reach, up to the 12 m of the range.
     let enemy = |game: &mut Match, at| {
-        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+        spawn_at(
+            &arena,
+            game,
+            at,
+            Team::new(1),
+            (0, 0),
+            (Modifiers::default(), ModifierClocks::default()),
+        )
     };
     // 1 m out on +x, 1 · sin 9.583° = 0.166 m from the arrows beside the middle one: three
     // arrows reach it in the same tick, and the cast hits it once.
@@ -518,7 +544,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
         milli(5000, 0),
         Team::new(0),
         (0, 0),
-        Modifiers::default(),
+        (Modifiers::default(), ModifierClocks::default()),
     );
 
     arena.tick(
@@ -657,7 +683,14 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
     // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
     let enemy = |game: &mut Match, at| {
-        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+        spawn_at(
+            &arena,
+            game,
+            at,
+            Team::new(1),
+            (0, 0),
+            (Modifiers::default(), ModifierClocks::default()),
+        )
     };
     let center = enemy(&mut game, milli(6000, 0));
     let edge = enemy(&mut game, milli(8400, 0));
@@ -669,7 +702,7 @@ fn erupt_at(rate: TickRate, erupts: u64) {
         milli(6000, 0),
         Team::new(0),
         (0, 0),
-        Modifiers::default(),
+        (Modifiers::default(), ModifierClocks::default()),
     );
     let from = Some((caster, Some(eruption), 1));
     Stats::give_modifier(&mut game, burning, kindle, from, false);
@@ -770,7 +803,14 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let ring = arena.action(&game, "hero-veil", "smoke_ring");
     let cover = arena.modifier(&game, "hero-veil", "smoke_ring_cover");
     let slow = arena.modifier(&game, "hero-veil", "smoke_ring_slow");
-    let caster = caster(&arena, &mut game, ring, 1, (0, 100), Modifiers::default());
+    let caster = caster(
+        &arena,
+        &mut game,
+        ring,
+        1,
+        (0, 100),
+        (Modifiers::default(), ModifierClocks::default()),
+    );
     let unit = |game: &mut Match, team, x| {
         spawn_with(
             &arena,
@@ -778,7 +818,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
             x,
             Team::new(team),
             (0, 0),
-            Modifiers::default(),
+            (Modifiers::default(), ModifierClocks::default()),
         )
     };
     // The ring lands where Veil stands, of radius 3: an enemy 2 m and one 3 m away are inside,
@@ -897,7 +937,7 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
         &mut game,
         5,
         Team::new(1),
-        (body(), Modifiers::default()),
+        (body(), (Modifiers::default(), ModifierClocks::default())),
     );
 
     // The cast resolves after its windup of 250 ms, 8 ticks, and its wraps fly 20/30 m a tick
