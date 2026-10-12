@@ -293,14 +293,11 @@ pub(crate) mod test_world {
     use bevy_ecs::system::{Query, Res};
     use bevy_ecs::world::World;
     use campfire_common::Tick;
-    use campfire_math::Num;
     use campfire_script::rhai::Dynamic;
     use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId};
 
-    use crate::combat::internals::Armed;
-    use crate::combat::on_death::OnDeath;
     use crate::scripts::ctx::Ctx;
     use crate::scripts::error::CallError;
     use crate::scripts::script_book::ScriptBook;
@@ -536,32 +533,6 @@ pub(crate) mod test_world {
         ) -> UnitType {
             let data = UnitTypeData::of(tags, params);
             Units::load_next_type(world, &data)
-        }
-
-        /// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`,
-        /// with a weapon of 2 m, of the match's own type and `team`, with `parts`.
-        pub(crate) fn spawn_armed(
-            world: &mut World,
-            pos: Position,
-            team: u8,
-            parts: impl Bundle,
-        ) -> StableId {
-            let unit_type = Units::test_type(world);
-            Units::spawn_armed_of(world, unit_type, pos, team, parts)
-        }
-
-        /// A unit as `spawn_armed` gives, of `unit_type`.
-        pub(crate) fn spawn_armed_of(
-            world: &mut World,
-            unit_type: UnitType,
-            pos: Position,
-            team: u8,
-            parts: impl Bundle,
-        ) -> StableId {
-            let armed = Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO)
-                .on_death(OnDeath::Stay)
-                .bundle(world);
-            Units::spawn_of(world, unit_type, pos, Team::new(team), (armed, parts))
         }
     }
 

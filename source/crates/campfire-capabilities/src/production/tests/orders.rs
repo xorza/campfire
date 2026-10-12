@@ -41,7 +41,15 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     }
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
-    shop.producer(&mut game, producer, 1, 10, Some(player), train, queue);
+    shop.producer(
+        &mut game,
+        producer,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
     let held = |game: &Match| {
         let amount = game.player_resources(player).unwrap().amount(gold);
         (
@@ -117,8 +125,8 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     shop.producer(
         &mut game,
         producer,
-        1,
         0,
+        Team::new(1),
         Some(player),
         train,
         TrainQueue::default(),

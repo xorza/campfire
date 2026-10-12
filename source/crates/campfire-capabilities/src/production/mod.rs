@@ -225,14 +225,14 @@ pub(crate) mod test_world {
         pub(crate) fn yard_walker(
             world: &mut World,
             pos: Position,
-            team: u8,
+            team: Team,
             seen: Option<TeamSet>,
         ) -> StableId {
             let parts = (
                 Body::new(Num::HALF).unwrap(),
                 Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
             );
-            let id = Units::spawn(world, pos, Team::new(team), parts);
+            let id = Units::spawn(world, pos, team, parts);
             if let Some(teams) = seen {
                 world.insert_parts(id, SeenBy::new(teams));
             }

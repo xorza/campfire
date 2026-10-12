@@ -383,6 +383,8 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 pub(crate) mod test_world {
+    use crate::combat::on_death::OnDeath;
+    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_common::Tick;
     use campfire_math::Num;
@@ -424,19 +426,19 @@ pub(crate) mod test_world {
 
         pub(crate) fn spawn_armed(
             world: &mut World,
-            team: Team,
             pos: Position,
+            team: Team,
             combatant: Armed,
         ) -> StableId {
             let unit_type = Units::test_type(world);
-            Combat::spawn_armed_of(world, unit_type, team, pos, combatant)
+            Combat::spawn_armed_of(world, unit_type, pos, team, combatant)
         }
 
         pub(crate) fn spawn_armed_of(
             world: &mut World,
             unit_type: UnitType,
-            team: Team,
             pos: Position,
+            team: Team,
             combatant: Armed,
         ) -> StableId {
             let bundle = combatant.bundle(world);
@@ -476,6 +478,32 @@ pub(crate) mod test_world {
                 depth: 0,
                 hit: None,
             });
+        }
+
+        /// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`,
+        /// with a weapon of 2 m, of the match's own type and `team`, with `parts`.
+        pub(crate) fn spawn_melee(
+            world: &mut World,
+            pos: Position,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            let unit_type = Units::test_type(world);
+            Combat::spawn_melee_of(world, unit_type, pos, team, parts)
+        }
+
+        /// A unit as `spawn_melee` gives, of `unit_type`.
+        pub(crate) fn spawn_melee_of(
+            world: &mut World,
+            unit_type: UnitType,
+            pos: Position,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            let armed = Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO)
+                .on_death(OnDeath::Stay)
+                .bundle(world);
+            Units::spawn_of(world, unit_type, pos, team, (armed, parts))
         }
     }
 

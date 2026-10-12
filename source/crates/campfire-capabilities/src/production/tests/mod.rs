@@ -116,18 +116,18 @@ impl Shop {
         &game.resource::<SpawnLog>().0
     }
 
-    /// A producer `id` of `team` at `x` meters, owned by `owner`, with `train` in its slot 0
+    /// A producer `id` at `x` meters of `team`, owned by `owner`, with `train` in its slot 0
     /// and `queue`.
     #[expect(
         clippy::too_many_arguments,
-        reason = "the shop and the match, then the producer's id, team, place, owner, train and queue"
+        reason = "the shop and the match, then the producer's id, place, team, owner, train and queue"
     )]
     fn producer(
         self,
         game: &mut World,
         id: StableId,
-        team: u8,
         x: i64,
+        team: Team,
         owner: Option<PlayerSlot>,
         train: ActionId,
         queue: TrainQueue,
@@ -137,7 +137,7 @@ impl Shop {
             id,
             pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap(),
             unit_type: self.barracks,
-            team: Team::new(team),
+            team,
             owner: owner.map(Owner::new),
         };
         Units::spawn_core(game, core, (slots, queue));
@@ -223,8 +223,8 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     shop.producer(
         &mut game,
         second,
-        2,
         20,
+        Team::new(2),
         None,
         train,
         queue(train, &[0, 0, 1]),
@@ -232,8 +232,8 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
     shop.producer(
         &mut game,
         first,
-        1,
         10,
+        Team::new(1),
         Some(player),
         train,
         queue(train, &[0]),
@@ -293,8 +293,8 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     shop.producer(
         &mut game,
         owned,
-        1,
         10,
+        Team::new(1),
         Some(player),
         train,
         TrainQueue::default(),
@@ -302,8 +302,8 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     shop.producer(
         &mut game,
         unowned,
-        1,
         20,
+        Team::new(1),
         None,
         train,
         TrainQueue::default(),
@@ -370,7 +370,15 @@ fn a_train_queue_is_state_and_restores() {
     let shop = Shop::place(&mut game);
     let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(3), None);
     let id = Production::allocate_id(&mut game);
-    shop.producer(&mut game, id, 1, 10, None, train, queue(train, &[3, 3]));
+    shop.producer(
+        &mut game,
+        id,
+        10,
+        Team::new(1),
+        None,
+        train,
+        queue(train, &[3, 3]),
+    );
     game.step();
     // A restore loads the match's books first: the same train.
     let mut restored = shop_match();

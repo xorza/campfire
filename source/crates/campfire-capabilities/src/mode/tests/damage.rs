@@ -11,7 +11,7 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     // more.
     let source = Mode::stat_grunt(
         &mut game,
-        0,
+        Team::new(0),
         &[
             ("damage_dealt_pct", half),
             ("crit_chance", Num::ONE / 4),
@@ -21,14 +21,14 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     );
     let armored = Mode::stat_grunt(
         &mut game,
-        1,
+        Team::new(1),
         &[
             ("armor", Num::int(120)),
             ("magic_resist", Num::int(60)),
             ("physical_block", Num::int(5)),
         ],
     );
-    let exposed = Mode::stat_grunt(&mut game, 1, &[("armor", Num::int(-100))]);
+    let exposed = Mode::stat_grunt(&mut game, Team::new(1), &[("armor", Num::int(-100))]);
     Mode::tick_inputs(&mut game, &[]);
     let crit = DamageCause::Attack {
         roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
@@ -98,8 +98,8 @@ fn calc_heal(ctx, h) {
         ..ScriptLimits::ROOMY
     };
     let mut game = mode_match(script, limits);
-    let source = Mode::stat_grunt(&mut game, 0, &[]);
-    let target = Mode::stat_grunt(&mut game, 1, &[]);
+    let source = Mode::stat_grunt(&mut game, Team::new(0), &[]);
+    let target = Mode::stat_grunt(&mut game, Team::new(1), &[]);
     Mode::tick_inputs(&mut game, &[]);
     // Physical 10, tripled; magic 10, whose timer the pure `ctx` refuses; true 10, which returns
     // no number. The two failures keep their 10: 1000 − 30 − 10 − 10.

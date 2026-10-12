@@ -201,20 +201,20 @@ pub(crate) mod test_world {
         /// `parts`, with no slots unless they hold some.
         pub(crate) fn spawn_combatant(
             world: &mut World,
-            team: u8,
             pos: Position,
+            team: Team,
             parts: impl Bundle,
         ) -> StableId {
             let unit_type = Units::test_type(world);
-            Abilities::spawn_combatant_of(world, unit_type, team, pos, parts)
+            Abilities::spawn_combatant_of(world, unit_type, pos, team, parts)
         }
 
         /// A unit of `unit_type`, spawned as `spawn` spawns one.
         pub(crate) fn spawn_combatant_of(
             world: &mut World,
             unit_type: UnitType,
-            team: u8,
             pos: Position,
+            team: Team,
             parts: impl Bundle,
         ) -> StableId {
             let combat = (
@@ -222,7 +222,7 @@ pub(crate) mod test_world {
                 OnDeath::Stay,
                 RecentAttackers::default(),
             );
-            let id = Units::spawn_of(world, unit_type, pos, Team::new(team), (combat, parts));
+            let id = Units::spawn_of(world, unit_type, pos, team, (combat, parts));
             let unit = world.unit_entity(id);
             world
                 .entity_mut(unit)
@@ -233,13 +233,13 @@ pub(crate) mod test_world {
         /// A unit of `team` armed as `combatant` that attacks `target`.
         pub(crate) fn attacker(
             world: &mut World,
-            team: u8,
             pos: Position,
+            team: Team,
             combatant: Armed,
             target: StableId,
         ) -> StableId {
             let combatant = combatant.bundle(world);
-            let id = Units::spawn(world, pos, Team::new(team), combatant);
+            let id = Units::spawn(world, pos, team, combatant);
             let mut slots = world.part_mut::<ActionSlots>(id);
             slots.set_attack_target(Some(target));
             id
@@ -250,8 +250,8 @@ pub(crate) mod test_world {
         pub(crate) fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId {
             let caster = Abilities::spawn_combatant(
                 world,
-                0,
                 Position::ORIGIN,
+                Team::new(0),
                 (
                     Owner::new(PlayerSlot::new(0)),
                     ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed(),
@@ -349,7 +349,7 @@ pub(crate) mod test_world {
         /// A `fighter` of team 0 at the origin, of level 1, with `slots`.
         pub(crate) fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
             let parts = (Level::new(1).unwrap(), UnitStats::default(), slots);
-            Abilities::spawn_combatant_of(world, fighter, 0, Position::ORIGIN, parts)
+            Abilities::spawn_combatant_of(world, fighter, Position::ORIGIN, Team::new(0), parts)
         }
 
         /// The shield of `id`'s `mark` from `source`, if it carries one.

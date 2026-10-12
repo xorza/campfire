@@ -31,8 +31,8 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     shop.producer(
         &mut game,
         producer,
-        1,
         10,
+        Team::new(1),
         Some(player),
         train,
         TrainQueue::default(),
@@ -120,8 +120,8 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     shop.producer(
         &mut game,
         producer,
-        1,
         10,
+        Team::new(1),
         Some(player),
         train,
         TrainQueue::default(),

@@ -489,7 +489,7 @@ pub(crate) mod test_world {
         }
 
         /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
-        pub(crate) fn stat_grunt(world: &mut World, team: u8, stats: &[(&str, Num)]) -> StableId {
+        pub(crate) fn stat_grunt(world: &mut World, team: Team, stats: &[(&str, Num)]) -> StableId {
             let book = world.resource::<StatBook>();
             let changes: Vec<_> = stats
                 .iter()
@@ -516,7 +516,7 @@ pub(crate) mod test_world {
                 UnitStats::default(),
                 modifiers,
             );
-            Units::spawn_of(world, grunt, Position::ORIGIN, Team::new(team), parts)
+            Units::spawn_of(world, grunt, Position::ORIGIN, team, parts)
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

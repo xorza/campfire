@@ -305,7 +305,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
-    let fighter = Mode::stat_grunt(&mut game, 0, &[("armor", Num::int(1))]);
+    let fighter = Mode::stat_grunt(&mut game, Team::new(0), &[("armor", Num::int(1))]);
     let fighter = Mode::entity_by_id(&game, fighter.get());
     let modifiers = game.get::<Modifiers>(fighter).unwrap();
     assert!(modifiers.check(&game, fighter));

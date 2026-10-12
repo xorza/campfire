@@ -274,9 +274,9 @@ pub(crate) mod test_world {
         /// A hero of `slot` that walks a meter a tick.
         pub(crate) fn hero(
             world: &mut World,
-            slot: u32,
-            team: Team,
             pos: Position,
+            team: Team,
+            slot: u32,
             combatant: Armed,
         ) -> StableId {
             let combatant = combatant.bundle(world);

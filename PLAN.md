@@ -2,12 +2,6 @@
 
 The steps of the current slice ([Workflow](AGENTS.md#workflow)), in order, open items only: remove a step when it is done. Each step ends with the check chain passing for the crates it touches, and a stop for review. The slice ends when the user plays it in the client. Slice 3, replication audiences, comes first, in the order of [PLAN_NET.md](PLAN_NET.md), after the network steps that order puts before it; slice 2 goes on from S1 after it.
 
-## Refactor — one home for each operation
-
-The rule of [Structural rules](docs/design/02-engine-core.md#structural-rules): a world trait keeps the whole match and the fast access to a module's singleton or index; the match's content goes to the module's capability type, a value or a view made from the world to its own type, and a match a module builds to the module's type. A world method knows no fixture. Each step ends with the check chain over the workspace, as public names move.
-
-1. **W3. One spawn for the tests** (`capabilities`): the tests' spawns become one spawn, or keep their helpers with one parameter order; see [PLAN_QUESTIONS.md](PLAN_QUESTIONS.md#w3-one-spawn-for-the-tests).
-
 ## Slice 2 — Wide bodies, uses, the shop and gravity
 
 The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.

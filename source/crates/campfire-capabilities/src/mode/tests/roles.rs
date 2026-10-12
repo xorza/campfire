@@ -16,8 +16,8 @@ fn probe(ctx, unit) {
 "#;
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
-    let actor = Mode::stat_grunt(&mut game, 0, &[]);
-    let target = Mode::stat_grunt(&mut game, 1, &[]);
+    let actor = Mode::stat_grunt(&mut game, Team::new(0), &[]);
+    let target = Mode::stat_grunt(&mut game, Team::new(1), &[]);
     let entity = game.unit_entity(target);
     let mut life = Life::full(Num::int(1000));
     life.take(Num::int(20));
@@ -94,8 +94,8 @@ fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
     // both. At the origin: a's and b's fighters, and the map's neutral grunt.
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[]);
-    let a = Mode::stat_grunt(&mut game, 0, &[]);
-    Mode::stat_grunt(&mut game, 1, &[]);
+    let a = Mode::stat_grunt(&mut game, Team::new(0), &[]);
+    Mode::stat_grunt(&mut game, Team::new(1), &[]);
     let counts = r#"
 fn probe(ctx, unit) {
     ["hostiles", "neutrals", "enemies"].map(|filter| ctx.find(unit, unit.pos, 1, filter).len())

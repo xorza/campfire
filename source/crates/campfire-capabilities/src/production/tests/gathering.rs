@@ -452,8 +452,8 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     shop.producer(
         &mut game,
         barracks,
-        0,
         -10,
+        Team::new(0),
         player,
         train,
         TrainQueue::default(),

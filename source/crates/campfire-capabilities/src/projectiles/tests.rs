@@ -136,8 +136,8 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
     let bolt = volley.bolt;
-    let shooter_id = Combat::spawn_armed(&mut game, Team::new(0), at(0, 0), shooter(bolt));
-    let target_id = Combat::spawn_armed(&mut game, Team::new(1), at(5, 0), target());
+    let shooter_id = Combat::spawn_armed(&mut game, at(0, 0), Team::new(0), shooter(bolt));
+    let target_id = Combat::spawn_armed(&mut game, at(5, 0), Team::new(1), target());
     let body = Body::new(Num::ONE).unwrap();
     let entity = game.unit_entity(target_id);
     game.insert_parts(target_id, body);
@@ -185,10 +185,10 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
     let bolt = volley.bolt;
-    let first = Combat::spawn_armed(&mut game, Team::new(0), at(0, 0), shooter(bolt));
-    let second = Combat::spawn_armed(&mut game, Team::new(0), at(0, 1), shooter(bolt));
-    let doomed = Combat::spawn_armed(&mut game, Team::new(1), at(5, 0), target());
-    let gone = Combat::spawn_armed(&mut game, Team::new(1), at(-5, 1), target());
+    let first = Combat::spawn_armed(&mut game, at(0, 0), Team::new(0), shooter(bolt));
+    let second = Combat::spawn_armed(&mut game, at(0, 1), Team::new(0), shooter(bolt));
+    let doomed = Combat::spawn_armed(&mut game, at(5, 0), Team::new(1), target());
+    let gone = Combat::spawn_armed(&mut game, at(-5, 1), Team::new(1), target());
     Combat::attack(&mut game, first, doomed);
     Combat::attack(&mut game, second, gone);
 
@@ -271,10 +271,10 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
     ]);
     let volley = Volley::place(&mut game);
     let bolt = volley.bolt;
-    let first = Combat::spawn_armed(&mut game, Team::new(0), at(0, 0), shooter(bolt));
-    let second = Combat::spawn_armed(&mut game, Team::new(0), at(0, 1), shooter(bolt));
-    let blinker = Combat::spawn_armed(&mut game, Team::new(1), at(5, 0), target());
-    let dasher = Combat::spawn_armed(&mut game, Team::new(1), at(5, 1), target());
+    let first = Combat::spawn_armed(&mut game, at(0, 0), Team::new(0), shooter(bolt));
+    let second = Combat::spawn_armed(&mut game, at(0, 1), Team::new(0), shooter(bolt));
+    let blinker = Combat::spawn_armed(&mut game, at(5, 0), Team::new(1), target());
+    let dasher = Combat::spawn_armed(&mut game, at(5, 1), Team::new(1), target());
     Combat::attack(&mut game, first, blinker);
     Combat::attack(&mut game, second, dasher);
 
@@ -330,8 +330,8 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         let volley = Volley::place(&mut game);
         let bolt = volley.bolt;
         let shooters =
-            [0, 10].map(|x| Combat::spawn_armed(&mut game, Team::new(0), at(x, 0), shooter(bolt)));
-        let victim = Combat::spawn_armed(&mut game, Team::new(1), at(5, 0), target());
+            [0, 10].map(|x| Combat::spawn_armed(&mut game, at(x, 0), Team::new(0), shooter(bolt)));
+        let victim = Combat::spawn_armed(&mut game, at(5, 0), Team::new(1), target());
         let victim_entity = game.unit_entity(victim);
         let mut life = game.get_mut::<Life>(victim_entity).unwrap();
         life.take(Num::int(40));
@@ -379,7 +379,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
 fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_ends_at_its_range() {
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let source = Combat::spawn_armed(&mut game, Team::new(0), at(0, -9), target());
+    let source = Combat::spawn_armed(&mut game, at(0, -9), Team::new(0), target());
     let point = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
     let e = Num::EPSILON;
     // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
@@ -387,27 +387,27 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // not, and an ally is never hit.
     let beside = Combat::spawn_armed(
         &mut game,
-        Team::new(1),
         point(Num::int(2), Num::HALF),
+        Team::new(1),
         target(),
     );
     let wide = Combat::spawn_armed(
         &mut game,
-        Team::new(1),
         point(Num::int(3), Num::HALF + e),
+        Team::new(1),
         target(),
     );
-    let ally = Combat::spawn_armed(&mut game, Team::new(0), at(1, 0), target());
+    let ally = Combat::spawn_armed(&mut game, at(1, 0), Team::new(0), target());
     let past = Combat::spawn_armed(
         &mut game,
-        Team::new(1),
         point(Num::int(6) + Num::HALF, Num::ZERO),
+        Team::new(1),
         target(),
     );
     let beyond = Combat::spawn_armed(
         &mut game,
-        Team::new(1),
         point(Num::int(6) + Num::HALF + e, Num::ZERO),
+        Team::new(1),
         target(),
     );
     let lance = volley.lance;
@@ -451,9 +451,9 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // tick 6, where its path reaches 3 m from 2.5 m; the one past them is never hit.
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
-    let source = Combat::spawn_armed(&mut game, Team::new(0), at(0, -9), target());
+    let source = Combat::spawn_armed(&mut game, at(0, -9), Team::new(0), target());
     let [first, second, behind] = [at(3, 0), at(3, 0), at(4, 0)]
-        .map(|at| Combat::spawn_armed(&mut game, Team::new(1), at, target()));
+        .map(|at| Combat::spawn_armed(&mut game, at, Team::new(1), target()));
     let dart = volley.dart;
     Projectiles::fire_line(&mut game, source, dart);
     for _ in 0..6 {
@@ -473,12 +473,12 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // it, though its center lies past the point, in tick 6, and the dart ends on it.
     let mut game = volley_match();
     Volley::place(&mut game);
-    let source = Combat::spawn_armed(&mut game, Team::new(0), at(0, -9), target());
+    let source = Combat::spawn_armed(&mut game, at(0, -9), Team::new(0), target());
     let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());
-    let block = Combat::spawn_armed(&mut game, Team::new(1), near("3.5", "0.3"), target());
+    let block = Combat::spawn_armed(&mut game, near("3.5", "0.3"), Team::new(1), target());
     let body = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
     game.insert_parts(block, Body::of_box(body));
-    let dot = Combat::spawn_armed(&mut game, Team::new(1), near("2.6", "0"), target());
+    let dot = Combat::spawn_armed(&mut game, near("2.6", "0"), Team::new(1), target());
     Projectiles::fire_line(&mut game, source, dart);
     for _ in 0..7 {
         game.step();
@@ -507,8 +507,8 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
     let sight = Sight::new(Num::ONE).unwrap();
     game.resource_mut::<ByType<Sight>>().set(scout, sight);
-    let source = Combat::spawn_armed(&mut game, Team::new(0), at(0, -9), target());
-    let enemy = Combat::spawn_armed(&mut game, Team::new(1), at(5, 0), target());
+    let source = Combat::spawn_armed(&mut game, at(0, -9), Team::new(0), target());
+    let enemy = Combat::spawn_armed(&mut game, at(5, 0), Team::new(1), target());
     Projectiles::fire_line(&mut game, source, scout);
     let seen = |game: &Match| game.part::<SeenBy>(enemy).get().contains(Team::new(0));
     let mut seen_in = Vec::new();

@@ -50,21 +50,21 @@ fn arena() -> Arena {
 fn spawn_with(
     arena: &Arena,
     game: &mut Match,
-    team: u8,
     x: i64,
+    team: Team,
     pools: (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
     let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    spawn_at(arena, game, team, pos, pools, parts)
+    spawn_at(arena, game, pos, team, pools, parts)
 }
 
 /// A unit as `spawn_with` gives, at `pos`.
 fn spawn_at(
     arena: &Arena,
     game: &mut Match,
-    team: u8,
     pos: Position,
+    team: Team,
     (mana, energy): (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
@@ -79,7 +79,7 @@ fn spawn_at(
         OnDeath::Stay,
         RecentAttackers::default(),
     );
-    let mut unit = game.spawn((id, UnitEntity, pos, Team::new(team), combat, parts));
+    let mut unit = game.spawn((id, UnitEntity, pos, team, combat, parts));
     if !pools.is_empty() {
         unit.insert(Pools::new(pools).unwrap());
     }
@@ -88,8 +88,8 @@ fn spawn_at(
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
-fn spawn(arena: &Arena, game: &mut Match, team: u8, x: i64, parts: impl Bundle) -> StableId {
-    spawn_with(arena, game, team, x, (0, 0), parts)
+fn spawn(arena: &Arena, game: &mut Match, x: i64, team: Team, parts: impl Bundle) -> StableId {
+    spawn_with(arena, game, x, team, (0, 0), parts)
 }
 
 fn health(arena: &Arena, game: &Match, id: StableId) -> i64 {
@@ -130,7 +130,7 @@ fn caster(
 ) -> StableId {
     let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed();
     let player = Owner::new(PlayerSlot::new(0));
-    spawn_with(arena, game, 0, 0, pools, (player, slots, parts))
+    spawn_with(arena, game, 0, Team::new(0), pools, (player, slots, parts))
 }
 
 /// The modifiers `id` carries, each with its source.
@@ -231,8 +231,8 @@ fn lash_out_from_its_package_hits_exactly() {
     let mut game = arena.start(RATE, 1);
     let lash_out = arena.action(&game, "hero-husk", "lash_out");
     let caster = caster(&arena, &mut game, lash_out, 3, (100, 0), ());
-    let near = spawn(&arena, &mut game, 1, 3, ());
-    let far = spawn(&arena, &mut game, 1, 4, ());
+    let near = spawn(&arena, &mut game, 3, Team::new(1), ());
+    let far = spawn(&arena, &mut game, 4, Team::new(1), ());
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::None)]);
     // Rank 3 deals 125 within 3.5 m: 500 → 375 at 3 m, and nothing at 4 m.
     assert_eq!(health(&arena, &game, near), 375);
@@ -244,8 +244,14 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     let player = Owner::new(PlayerSlot::new(0));
-    let blade = spawn(&arena, &mut game, 0, 0, (player, Modifiers::default()));
-    let dummy = spawn(&arena, &mut game, 1, 1, ());
+    let blade = spawn(
+        &arena,
+        &mut game,
+        0,
+        Team::new(0),
+        (player, Modifiers::default()),
+    );
+    let dummy = spawn(&arena, &mut game, 1, Team::new(1), ());
     let twin_cut = arena.modifier(&game, "hero-kensho", "twin_cut");
     Stats::give_modifier(&mut game, blade, twin_cut, Some((blade, None, 1)), true);
     // 20 an attack, every 10 ticks from tick 0, so 7 within 4 s are consecutive: 6 by tick 50,
@@ -298,11 +304,11 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
         &arena,
         &mut game,
         0,
-        0,
+        Team::new(0),
         (20, 0),
         (player, Modifiers::default()),
     );
-    let enemy = spawn(&arena, &mut game, 1, 1, Modifiers::default());
+    let enemy = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
     arm_with(&mut game, rime, chill, 10, 10);
     let mana = |game: &Match| pool(&arena, game, rime, "mana").round();
     let holds = |game: &Match| carried(game, rime).contains(&(hold, Some(rime)));
@@ -346,7 +352,7 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
     let dread = arena.action(&game, "hero-husk", "dread");
     // Husk with 20 mana; an enemy of 500 health 2 m away, inside Dread's 3 m.
     let husk = caster(&arena, &mut game, dread, 1, (20, 0), Modifiers::default());
-    let enemy = spawn(&arena, &mut game, 1, 2, ());
+    let enemy = spawn(&arena, &mut game, 2, Team::new(1), ());
     let mana = |game: &Match| pool(&arena, game, husk, "mana").round();
     // On in tick 0. It pays 8 at each whole second, in ticks 30 and 60: 4 are left. Its hold's
     // interval of 1000 ms deals 1.5% of the enemy's 500 health in ticks 30 and 60. In tick 90 it
@@ -449,14 +455,14 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let action = arena.action(&game, "hero-veil", "dusk_mark");
     let dusk_mark = arena.modifier(&game, "hero-veil", "dusk_mark");
     let player = Owner::new(PlayerSlot::new(0));
-    let veil = spawn_with(&arena, &mut game, 0, 0, (0, 200), player);
+    let veil = spawn_with(&arena, &mut game, 0, Team::new(0), (0, 200), player);
     let energy = arena.pool("energy");
     let entity = game.entity_of(veil).unwrap();
     let pools = *game.get::<Pools>(entity).unwrap();
     game.entity_mut(entity)
         .insert(internals::spent(pools, energy, Num::int(100)));
-    let other = spawn(&arena, &mut game, 0, 0, player);
-    let marked = spawn(&arena, &mut game, 1, 1, Modifiers::default());
+    let other = spawn(&arena, &mut game, 0, Team::new(0), player);
+    let marked = spawn(&arena, &mut game, 1, Team::new(1), Modifiers::default());
     let marks = |game: &Match| !carried(game, marked).is_empty();
     let from = Some((veil, Some(action), 2));
     Stats::give_modifier(&mut game, marked, dusk_mark, from, false);
@@ -491,7 +497,9 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     // Seven arrows from the origin, 57.5° apart from the first to the last, around +x: at 0°,
     // ±9.583°, ±19.167° and ±28.75°, each 0.4 m wide, so a body of no radius within 0.2 m of an
     // arrow's path is in reach, up to the 12 m of the range.
-    let enemy = |game: &mut Match, at| spawn_at(&arena, game, 1, at, (0, 0), Modifiers::default());
+    let enemy = |game: &mut Match, at| {
+        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+    };
     // 1 m out on +x, 1 · sin 9.583° = 0.166 m from the arrows beside the middle one: three
     // arrows reach it in the same tick, and the cast hits it once.
     let near = enemy(&mut game, milli(1000, 0));
@@ -507,8 +515,8 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let ally = spawn_at(
         &arena,
         &mut game,
-        0,
         milli(5000, 0),
+        Team::new(0),
         (0, 0),
         Modifiers::default(),
     );
@@ -549,7 +557,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     let caster = caster(&arena, &mut game, snow_owl, 1, (0, 0), ());
     // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
     // the owl's sight of 4 m and its linger's radius of 4 m; the caster has no sight of its own.
-    let enemy = spawn(&arena, &mut game, 1, 10, ());
+    let enemy = spawn(&arena, &mut game, 10, Team::new(1), ());
     let seen = |game: &Match| {
         let entity = game.entity_of(enemy).unwrap();
         game.get::<SeenBy>(entity)
@@ -602,8 +610,8 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     let caster = caster(&arena, &mut game, farsight, 1, (0, 0), ());
     // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m
     // off, and not that of (26, 0), at (26.5, 0.5) √42.5 ≈ 6.52 m off. Team 2 sees neither.
-    let near = spawn(&arena, &mut game, 1, 25, ());
-    let far = spawn(&arena, &mut game, 1, 26, ());
+    let near = spawn(&arena, &mut game, 25, Team::new(1), ());
+    let far = spawn(&arena, &mut game, 26, Team::new(1), ());
     let seen = |game: &Match, id: StableId| {
         let entity = game.entity_of(id).unwrap();
         let teams = game.get::<SeenBy>(entity).unwrap().get();
@@ -648,7 +656,9 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     let caster = caster(&arena, &mut game, eruption, 1, (100, 0), ());
     // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
     // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
-    let enemy = |game: &mut Match, at| spawn_at(&arena, game, 1, at, (0, 0), Modifiers::default());
+    let enemy = |game: &mut Match, at| {
+        spawn_at(&arena, game, at, Team::new(1), (0, 0), Modifiers::default())
+    };
     let center = enemy(&mut game, milli(6000, 0));
     let edge = enemy(&mut game, milli(8400, 0));
     let beyond = enemy(&mut game, milli(6000, 2401));
@@ -656,8 +666,8 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     let ally = spawn_at(
         &arena,
         &mut game,
-        0,
         milli(6000, 0),
+        Team::new(0),
         (0, 0),
         Modifiers::default(),
     );
@@ -707,8 +717,8 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     // Two enemies 4 m apart, within the 5 m of a bounce. The arena has no map, so its Vision
     // stage never runs: each is seen by every team, as a bounce picks among what its caster's
     // team sees.
-    let near = spawn(&arena, &mut game, 1, 4, internals::seen_by_all());
-    let far = spawn(&arena, &mut game, 1, 8, internals::seen_by_all());
+    let near = spawn(&arena, &mut game, 4, Team::new(1), internals::seen_by_all());
+    let far = spawn(&arena, &mut game, 8, Team::new(1), internals::seen_by_all());
     let projectiles = |game: &mut Match| -> Vec<u64> {
         let mut query = game.query::<(&Projectile, &StableId)>();
         query.iter(game).map(|(_, id)| id.get()).collect()
@@ -761,8 +771,16 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let cover = arena.modifier(&game, "hero-veil", "smoke_ring_cover");
     let slow = arena.modifier(&game, "hero-veil", "smoke_ring_slow");
     let caster = caster(&arena, &mut game, ring, 1, (0, 100), Modifiers::default());
-    let unit =
-        |game: &mut Match, team, x| spawn_with(&arena, game, team, x, (0, 0), Modifiers::default());
+    let unit = |game: &mut Match, team, x| {
+        spawn_with(
+            &arena,
+            game,
+            x,
+            Team::new(team),
+            (0, 0),
+            Modifiers::default(),
+        )
+    };
     // The ring lands where Veil stands, of radius 3: an enemy 2 m and one 3 m away are inside,
     // one 4 m away is not, and an ally inside gets nothing, as the ring names no `allies`.
     let near = unit(&mut game, 1, 2);
@@ -834,7 +852,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
     let mut game = arena.start(RATE, 1);
     let night_step = arena.action(&game, "hero-veil", "night_step");
     let veil = caster(&arena, &mut game, night_step, 1, (0, 200), walker());
-    let enemy = spawn(&arena, &mut game, 1, 6, body());
+    let enemy = spawn(&arena, &mut game, 6, Team::new(1), body());
 
     // It resolves at once in tick 0, and its dash of 22 m a second goes 22/30 m a tick, s, from
     // tick 1, until the bodies of half a meter touch, 1 m apart. Six steps leave 6 − 6s = 1.6 m,
@@ -874,7 +892,13 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
     let mut game = arena.start(RATE, 1);
     let wraps = arena.action(&game, "hero-husk", "grasping_wraps");
     let husk = caster(&arena, &mut game, wraps, 1, (200, 0), walker());
-    let enemy = spawn(&arena, &mut game, 1, 5, (body(), Modifiers::default()));
+    let enemy = spawn(
+        &arena,
+        &mut game,
+        5,
+        Team::new(1),
+        (body(), Modifiers::default()),
+    );
 
     // The cast resolves after its windup of 250 ms, 8 ticks, and its wraps fly 20/30 m a tick
     // from tick 9, 1.6 m wide: they reach the enemy's body once their front comes within 0.8 +

@@ -120,16 +120,16 @@ pub(crate) mod test_world {
         /// `sight` when given.
         pub(crate) fn spawn_seer(
             world: &mut World,
-            team: u8,
             x: i64,
             z: i64,
+            team: Team,
             sight: Option<i64>,
         ) -> StableId {
             let life = Life::full(Num::int(100));
             let id = Units::spawn(
                 world,
                 Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
-                Team::new(team),
+                team,
                 life,
             );
             if let Some(range) = sight {

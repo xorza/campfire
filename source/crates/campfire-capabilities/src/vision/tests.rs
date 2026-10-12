@@ -53,14 +53,14 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     let mut game = vision_match();
     // Team 0 sees 3 m from (0, 0). The cell of (2, 0) has its center at (2.5, 0.5), √6.5 ≈ 2.55 m
     // away; the cell of (3, 0), at (3.5, 0.5), √12.5 ≈ 3.54 m away.
-    let seer = Vision::spawn_seer(&mut game, 0, 0, 0, Some(3));
-    let near = Vision::spawn_seer(&mut game, 1, 2, 0, Some(0));
-    let far = Vision::spawn_seer(&mut game, 1, 3, 0, None);
+    let seer = Vision::spawn_seer(&mut game, 0, 0, Team::new(0), Some(3));
+    let near = Vision::spawn_seer(&mut game, 2, 0, Team::new(1), Some(0));
+    let far = Vision::spawn_seer(&mut game, 3, 0, Team::new(1), None);
     // A dead unit reveals nothing, however far it sees.
-    let dead = Vision::spawn_seer(&mut game, 2, 5, 5, Some(20));
+    let dead = Vision::spawn_seer(&mut game, 5, 5, Team::new(2), Some(20));
     game.insert_parts(dead, Dead);
     // An enemy with no life pool, as a projectile is, is no target: no query finds it.
-    let shell = Vision::spawn_seer(&mut game, 1, 1, 0, None);
+    let shell = Vision::spawn_seer(&mut game, 1, 0, Team::new(1), None);
     let entity = game.unit_entity(shell);
     game.entity_mut(entity).remove::<Life>();
     let team = |index| TeamSet::of(Team::new(index));
@@ -113,9 +113,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // √12.5 ≈ 3.54 m from that center. The seer's sight does not show it, nor does the ward's
     // true sight, beyond: team 1 alone sees it. The ward steps to (−3, 0), √6.5 ≈ 2.55 m off:
     // its true sight shows the sneak to team 0.
-    let sneak = Vision::spawn_seer(&mut game, 1, -1, 0, None);
+    let sneak = Vision::spawn_seer(&mut game, -1, 0, Team::new(1), None);
     Vision::set_properties(&mut game, sneak, TagProperties::default().with_hidden());
-    let ward = Vision::spawn_seer(&mut game, 0, -4, 0, Some(3));
+    let ward = Vision::spawn_seer(&mut game, -4, 0, Team::new(0), Some(3));
     Vision::set_properties(&mut game, ward, TagProperties::default().with_detects());
     game.step();
     assert_eq!(Vision::seen_by(&game, sneak), team(1));
@@ -128,7 +128,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // it: teams 1 and 2 become friends that share vision.
     let relations = &mut game.relations_mut();
     relations.set(Team::new(1), Team::new(2), Relation::Friendly, true);
-    let new = Vision::spawn_seer(&mut game, 2, 9, 9, None);
+    let new = Vision::spawn_seer(&mut game, 9, 9, Team::new(2), None);
     assert_eq!(Vision::seen_by(&game, new), team(2).with(Team::new(1)));
     game.step();
     assert_eq!(Vision::seen_by(&game, new), team(2).with(Team::new(1)));
@@ -151,7 +151,7 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
         (63, -2, 0, None),
         (1, 9, 9, None),
     ]
-    .map(|(team, x, z, sight)| Vision::spawn_seer(&mut game, team, x, z, sight));
+    .map(|(team, x, z, sight)| Vision::spawn_seer(&mut game, x, z, Team::new(team), sight));
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
     let mut relations = game.relations_mut();
@@ -185,12 +185,12 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     // cell of (5, 0), its center at (5.5, 0.5) √0.5 ≈ 0.71 m away, and of (5, 1), at (5.5, 1.5)
     // √2.5 ≈ 1.58 m away; not that of (7, 0), at (7.5, 0.5) √6.5 ≈ 2.55 m away. Team 2 sees
     // nothing there, and team 1's sneak at (5, 1) stays hidden.
-    let caster = Vision::spawn_seer(&mut game, 0, -9, -9, Some(1));
-    let target = Vision::spawn_seer(&mut game, 1, 5, 0, None);
-    let sneak = Vision::spawn_seer(&mut game, 1, 5, 1, None);
+    let caster = Vision::spawn_seer(&mut game, -9, -9, Team::new(0), Some(1));
+    let target = Vision::spawn_seer(&mut game, 5, 0, Team::new(1), None);
+    let sneak = Vision::spawn_seer(&mut game, 5, 1, Team::new(1), None);
     Vision::set_properties(&mut game, sneak, TagProperties::default().with_hidden());
-    let beyond = Vision::spawn_seer(&mut game, 1, 7, 0, None);
-    Vision::spawn_seer(&mut game, 2, -9, 9, Some(1));
+    let beyond = Vision::spawn_seer(&mut game, 7, 0, Team::new(1), None);
+    Vision::spawn_seer(&mut game, -9, 9, Team::new(2), Some(1));
     game.step();
     assert_eq!(Vision::seen_by(&game, target), team(1));
 
@@ -255,9 +255,9 @@ fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
     let and = |a: u8, b: u8| team(a).with(Team::new(b));
     // Team 1 hides in A at (3, 0), its cell's center (3.5, 0.5); team 0 watches from (0, 0), 3.54 m
     // off, and team 2 lurks in B at (8, 0), 5 m off. Each sees 6 m.
-    let hider = Vision::spawn_seer(&mut game, 1, 3, 0, Some(6));
-    let watcher = Vision::spawn_seer(&mut game, 0, 0, 0, Some(6));
-    let lurker = Vision::spawn_seer(&mut game, 2, 8, 0, Some(6));
+    let hider = Vision::spawn_seer(&mut game, 3, 0, Team::new(1), Some(6));
+    let watcher = Vision::spawn_seer(&mut game, 0, 0, Team::new(0), Some(6));
+    let lurker = Vision::spawn_seer(&mut game, 8, 0, Team::new(2), Some(6));
     game.step();
     // The hider is seen by no one outside A; it sees out of A, so the watcher is seen by it, and
     // not into B, so the lurker is not. The watcher sees no brush cell at all.
@@ -265,7 +265,7 @@ fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
     assert_eq!(seen(&game), [team(1), and(0, 1), team(2)]);
     // A unit of team 2 at (5, 0), in the column both hold, stands in A, and so sees the hider, 2 m
     // off.
-    Vision::spawn_seer(&mut game, 2, 5, 0, Some(3));
+    Vision::spawn_seer(&mut game, 5, 0, Team::new(2), Some(3));
     game.step();
     assert_eq!(seen(&game)[0], and(1, 2));
     // The watcher's reveal of 1 m round the hider sees into A for its 3 ticks.
@@ -295,10 +295,10 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     // where a unit seen by the cell of its position would stay hidden.
     let mut game = vision_match();
     let team = |index| TeamSet::of(Team::new(index));
-    let building = Vision::spawn_seer(&mut game, 1, 5, 0, None);
+    let building = Vision::spawn_seer(&mut game, 5, 0, Team::new(1), None);
     let body = BodyBox::new([Num::int(6), Num::int(2)], Num::ZERO).unwrap();
     game.insert_parts(building, Body::of_box(body));
-    let seer = Vision::spawn_seer(&mut game, 0, -1, 0, Some(4));
+    let seer = Vision::spawn_seer(&mut game, -1, 0, Team::new(0), Some(4));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));
     // A script's query reaches the box from its edge too, 3 m from the seer: within 3 m, not
@@ -323,7 +323,7 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     *game.get_mut::<Position>(entity).unwrap() = at(-1, 0);
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1));
-    let ward = Vision::spawn_seer(&mut game, 0, -1, 1, Some(4));
+    let ward = Vision::spawn_seer(&mut game, -1, 1, Team::new(0), Some(4));
     Vision::set_properties(&mut game, ward, TagProperties::default().with_detects());
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));
