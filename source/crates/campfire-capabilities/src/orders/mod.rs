@@ -274,11 +274,12 @@ pub(crate) mod test_world {
         /// A hero of `slot` that walks a meter a tick.
         pub(crate) fn hero(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             slot: u32,
             combatant: Armed,
         ) -> StableId {
+            let pos = pos.into();
             let combatant = combatant.bundle(world);
             let parts = (
                 combatant,

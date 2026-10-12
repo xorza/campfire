@@ -2,10 +2,6 @@ use campfire_math::internals::SplitMix64;
 
 use super::*;
 
-fn at(x: Num, z: Num) -> Position {
-    Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
-}
-
 /// The cells `Grid::touches` visits from `from` to `to`, each column's rows found by dividing
 /// its span's ends, as the walk did before it carried its quotient.
 fn touched_by_division(grid: &Grid, from: Position, to: Position) -> Vec<usize> {
@@ -58,18 +54,25 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     let grid = Grid::new(Num::int(1), bounds).unwrap();
     assert_eq!(grid.cells(), 12);
     // Cell (2, 1) is x from 0 to 1, z from 0 to 1: number 1 × 4 + 2 = 6.
-    assert_eq!(grid.cell_of(at(Num::ZERO, Num::ZERO)), Some(6));
+    assert_eq!(grid.cell_of(Position::from((0, 0, 0))), Some(6));
     assert_eq!(
-        grid.cell_of(at(Num::int(1) - Num::EPSILON, Num::int(1) - Num::EPSILON)),
+        grid.cell_of(
+            Position::try_from(Vec3::from((
+                Num::int(1) - Num::EPSILON,
+                0,
+                Num::int(1) - Num::EPSILON
+            )))
+            .unwrap()
+        ),
         Some(6)
     );
-    assert_eq!(grid.cell_of(at(Num::int(-2), Num::int(-1))), Some(0));
+    assert_eq!(grid.cell_of(Position::from((-2, 0, -1))), Some(0));
     // On the max edges: x = 2 ends cell column 3, the last, so (2, 0) is in 1 × 4 + 3 = 7;
     // z = 1.5 is inside row 2, so (0, 1.5) is in 2 × 4 + 2 = 10, and the corner in 11.
     let edges = [
-        at(Num::int(2), Num::ZERO),
-        at(Num::ZERO, Num::int(1) + half),
-        at(Num::int(2), Num::int(1) + half),
+        Position::from((2, 0, 0)),
+        Position::try_from(Vec3::from((0, 0, Num::int(1) + half))).unwrap(),
+        Position::try_from(Vec3::from((2, 0, Num::int(1) + half))).unwrap(),
     ];
     assert_eq!(
         edges.map(|pos| grid.cell_of(pos)),
@@ -77,9 +80,9 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     );
     // Outside the bounds, even within the last row's cells, which reach z = 2.
     let off = [
-        at(Num::int(2) + Num::EPSILON, Num::ZERO),
-        at(Num::int(-2) - Num::EPSILON, Num::ZERO),
-        at(Num::ZERO, Num::int(1) + half + Num::EPSILON),
+        Position::try_from(Vec3::from((Num::int(2) + Num::EPSILON, 0, 0))).unwrap(),
+        Position::try_from(Vec3::from((Num::int(-2) - Num::EPSILON, 0, 0))).unwrap(),
+        Position::try_from(Vec3::from((0, 0, Num::int(1) + half + Num::EPSILON))).unwrap(),
     ];
     assert_eq!(off.map(|pos| grid.cell_of(pos)), [None, None, None]);
 
@@ -87,7 +90,7 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     // ones, such as (1.5, 0.5), √2.5 ≈ 1.58 m. A radius of 1.5 reaches only the four.
     let reveal = |radius: Num| {
         let mut cells = Vec::new();
-        grid.spans_within(at(Num::ZERO, Num::ZERO), radius, |span| cells.extend(span));
+        grid.spans_within(Position::from((0, 0, 0)), radius, |span| cells.extend(span));
         cells
     };
     assert_eq!(reveal(Num::int(1) + half), [1, 2, 5, 6]);
@@ -108,7 +111,7 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     let twice = |value: Num| 2 * i128::from(value.to_bits());
     for x in -12..12 {
         for z in -8..10 {
-            let pos = at(quarter * x, quarter * z);
+            let pos = Position::try_from(Vec3::from((quarter * x, 0, quarter * z))).unwrap();
             for radius in [0, 1, 2, 3, 5, 6, 7, 9, 12, 20].map(|r| quarter * r) {
                 // Within the radius, and strictly closer than it.
                 for strict in [false, true] {
@@ -170,7 +173,7 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
         // A reach of 2·radius halves fits while 2·radius + 8·cell < 2³¹.
         let widest = (1 << 30) - 4 * bits - 1;
         let rows_of =
-            |radius: i64| grid.disc_rows(at(Num::ZERO, Num::ZERO), Num::from_bits(radius), false);
+            |radius: i64| grid.disc_rows(Position::from((0, 0, 0)), Num::from_bits(radius), false);
         assert!(rows_of(widest).fit_lanes(bits));
         assert!(!rows_of(widest + 1).fit_lanes(bits));
         let runs = |rows: &Rows, lanes: bool| {
@@ -194,7 +197,12 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
                     along
                 }
             };
-            let pos = at(Num::from_bits(point()), Num::from_bits(point()));
+            let pos = Position::try_from(Vec3::from((
+                Num::from_bits(point()),
+                0,
+                Num::from_bits(point()),
+            )))
+            .unwrap();
             let radius = match case % 4 {
                 0 => widest - (words.next_u64() % 4).cast_signed(),
                 1 => (words.next_u64() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
@@ -221,7 +229,8 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
     let half = |value: i64| Num::HALF * value;
     let touched = |from: [i64; 2], to: [i64; 2]| {
         let mut cells = Vec::new();
-        let point = |[x, z]: [i64; 2]| at(half(x), half(z));
+        let point =
+            |[x, z]: [i64; 2]| Position::try_from(Vec3::from((half(x), 0, half(z)))).unwrap();
         grid.touches(point(from), point(to), |cell| {
             cells.push(cell);
             false
@@ -267,11 +276,11 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
                 };
                 Num::int(low) + Num::from_bits(offset.cast_signed())
             };
-            let from = at(along(-12, 14), along(-9, 10));
+            let from = Position::try_from(Vec3::from((along(-12, 14), 0, along(-9, 10)))).unwrap();
             let to = match case % 5 {
                 0 => from,
-                1 => at(from.get().x, along(-5, 6)),
-                _ => at(along(-12, 14), along(-9, 10)),
+                1 => Position::try_from(Vec3::from((from.get().x, 0, along(-5, 6)))).unwrap(),
+                _ => Position::try_from(Vec3::from((along(-12, 14), 0, along(-9, 10)))).unwrap(),
             };
             let mut cells = Vec::new();
             grid.touches(from, to, |cell| {
@@ -288,12 +297,14 @@ fn a_segment_touches_the_cells_whose_closed_squares_it_meets() {
 
     // The visit ends at the first hit.
     let mut seen = 0;
-    assert!(
-        grid.touches(at(half(1), half(1)), at(half(5), half(1)), |cell| {
+    assert!(grid.touches(
+        Position::try_from(Vec3::from((half(1), 0, half(1)))).unwrap(),
+        Position::try_from(Vec3::from((half(5), 0, half(1)))).unwrap(),
+        |cell| {
             seen += 1;
             cell == 1
-        })
-    );
+        }
+    ));
     assert_eq!(seen, 2);
 }
 
@@ -342,10 +353,12 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
         };
         let size = [narrow, draw(one / 4, 4 * one)].map(Num::from_bits);
         let body = BodyBox::new(size, Num::from_bits(draw(0, 360 * one))).unwrap();
-        let centre = at(
+        let centre = Position::try_from(Vec3::from((
             Num::from_bits(draw(-6 * one, 12 * one)),
+            0,
             Num::from_bits(draw(-6 * one, 12 * one)),
-        );
+        )))
+        .unwrap();
         let reach = Num::from_bits(if round % 4 == 1 { 0 } else { draw(0, one) });
         let off = |cell: usize| grid.center_twice(cell) - Halves::ground(centre);
         let closer = from_runs(&grid, |mark| {

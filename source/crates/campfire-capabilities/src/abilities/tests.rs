@@ -148,15 +148,6 @@ fn halves(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 1))
 }
 
-fn at(x: Num, y: Num, z: Num) -> Position {
-    Position::new(Vec3::new(x, y, z)).unwrap()
-}
-
-/// The point at `x`, `z` on the ground.
-fn ground(x: Num, z: Num) -> Position {
-    at(x, Num::ZERO, z)
-}
-
 /// A unit that strikes for `damage` within 2 m, as its windup of no ticks ends, every 5 ticks.
 fn striker(damage: i64) -> Armed {
     Armed::melee(Num::int(500), Num::int(2), 0, 5, Num::int(damage)).on_death(OnDeath::Stay)
@@ -358,8 +349,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
         &LASH_OUT.replace(r#""magic""#, r#""fire""#),
     );
     let husk = Abilities::caster(&mut game, fire, 2);
-    let near =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(1), ());
+    let near = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
     assert_eq!(
@@ -383,28 +373,19 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     Abilities::load(&mut game, "strike", &strike(), STRIKE);
     let lash_out = Abilities::load(&mut game, "lash_out", &lash_out(), LASH_OUT);
     let husk = Abilities::caster(&mut game, lash_out, 2);
-    let near =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(1), ());
+    let near = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
     // At exactly 3.5 m: within the radius.
-    let edge =
-        Abilities::spawn_combatant(&mut game, ground(Num::ZERO, halves(7)), Team::new(1), ());
-    let beyond =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(4), Num::ZERO), Team::new(1), ());
+    let edge = Abilities::spawn_combatant(
+        &mut game,
+        Position::try_from(Vec3::from((0, 0, halves(7)))).unwrap(),
+        Team::new(1),
+        (),
+    );
+    let beyond = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
     // Up at y = 9, 2 m away on the ground plane.
-    let high = Abilities::spawn_combatant(
-        &mut game,
-        at(Num::ZERO, Num::int(9), Num::int(2)),
-        Team::new(1),
-        (),
-    );
-    let ally =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(1), Num::ZERO), Team::new(0), ());
-    let dead = Abilities::spawn_combatant(
-        &mut game,
-        ground(Num::int(1), Num::int(1)),
-        Team::new(1),
-        (),
-    );
+    let high = Abilities::spawn_combatant(&mut game, (0, 9, 2), Team::new(1), ());
+    let ally = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(0), ());
+    let dead = Abilities::spawn_combatant(&mut game, (1, 0, 1), Team::new(1), ());
     game.insert_parts(dead, Dead);
 
     // Rank 2 deals 100, and 0.5 × 0 ability power: 500 → 400 for the three enemies in reach.
@@ -466,12 +447,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let caster = Abilities::caster(&mut game, aim, 1);
     game.insert_parts(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
     let slots = ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]).timed();
-    let shover = Abilities::spawn_combatant(
-        &mut game,
-        ground(Num::int(5), Num::ZERO),
-        Team::new(1),
-        slots,
-    );
+    let shover = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), slots);
 
     // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
     // Move, and knocks the caster along −x in ticks 3, 4 and 5: Aim's windup is interrupted in
@@ -481,10 +457,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     game.step();
     Abilities::cast(&mut game, shover, ActionTarget::Unit(caster));
     game.run_until(6);
-    assert_eq!(
-        *game.part::<Position>(caster),
-        ground(Num::int(-3), Num::ZERO)
-    );
+    assert_eq!(*game.part::<Position>(caster), Position::from((-3, 0, 0)));
     let ordered = InProgress::Order {
         aim: SlotAim {
             slot: 0,
@@ -585,8 +558,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     let walker = || Navigation::walker(MoveStep::new(Num::ONE).unwrap());
     let caster = Abilities::caster(&mut game, lunge, 1);
     game.insert_parts(caster, walker());
-    let target =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(2), Num::ZERO), enemy, walker());
+    let target = Abilities::spawn_combatant(&mut game, (2, 0, 0), enemy, walker());
     // It resolves in tick 0. The caster, of the lower id, moves first each tick, at the target's
     // place before the target's own move: 1, 2, 3, then 4, and in tick 5 onto 5, where they
     // touch, as neither has a body. The target goes 3, 4, 5.
@@ -608,7 +580,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     );
     assert_eq!(Abilities::failed_calls(&game), []);
     // A unit that does not walk takes no forced move: the list fails the cast.
-    let still = Abilities::spawn_combatant(&mut game, ground(Num::int(6), Num::ZERO), enemy, ());
+    let still = Abilities::spawn_combatant(&mut game, (6, 0, 0), enemy, ());
     game.run_until(40);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(still));
     let failed = Abilities::failed_calls(&game);
@@ -616,8 +588,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoWalker));
     // A dash a knock back cuts delivers nothing, as League of Legends' and Dota 2's cut dashes
     // deliver nothing: the knock back replaces it, and its end runs no `on_end`.
-    let far =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(12), Num::ZERO), enemy, walker());
+    let far = Abilities::spawn_combatant(&mut game, (12, 0, 0), enemy, walker());
     game.run_until(80);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(far));
     let dashing = game.part::<ForcedMove>(caster);
@@ -672,17 +643,10 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     Orders::load_ai(&mut game, spinner, &ai, spin).unwrap();
     let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(5), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let spinners: Vec<_> = (0..11)
         .map(|z| {
-            Abilities::spawn_combatant_of(
-                &mut game,
-                spinner,
-                ground(Num::ZERO, Num::int(20 + z)),
-                Team::new(2),
-                (),
-            )
+            Abilities::spawn_combatant_of(&mut game, spinner, (0, 0, 20 + z), Team::new(2), ())
         })
         .collect();
 
@@ -710,10 +674,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = abilities_match();
     let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let mut caster_at = |x: i64, rank: u8, mana: i64, rage: i64| {
+    let mut caster_at = |x: i16, rank: u8, mana: i64, rage: i64| {
         let id = Abilities::spawn_combatant(
             &mut game,
-            ground(Num::int(x), Num::ZERO),
+            (x, 0, 0),
             Team::new(0),
             (
                 Owner::new(PlayerSlot::new(0)),
@@ -732,18 +696,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.get_mut::<Pools>(entity)
         .unwrap()
         .take(MANA, Num::int(91));
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(5), Num::ZERO), Team::new(1), ());
-    let far =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(6), Num::ZERO), Team::new(1), ());
-    let ally = Abilities::spawn_combatant(
-        &mut game,
-        ground(Num::int(1), Num::int(1)),
-        Team::new(0),
-        (),
-    );
-    let hidden =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(1), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
+    let far = Abilities::spawn_combatant(&mut game, (6, 0, 0), Team::new(1), ());
+    let ally = Abilities::spawn_combatant(&mut game, (1, 0, 1), Team::new(0), ());
+    let hidden = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
@@ -812,13 +768,12 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let caster = Abilities::caster(&mut game, strike, 1);
     let ownerless = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::ZERO, Num::int(1)),
+        (0, 0, 1),
         Team::new(0),
         ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     Abilities::give_pools(&mut game, ownerless, 100, 20);
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(5), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let player = PlayerSlot::new(0);
     game.player_resources_mut(player)
         .unwrap()
@@ -857,8 +812,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(5), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let target = ActionTarget::Unit(enemy);
     let aim = SlotAim { slot: 0, target };
     let ordered = Some(InProgress::Order {
@@ -867,7 +821,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     });
     // Each start from where the caster stands, the origin.
     let start = ActionStart {
-        origin: ground(Num::ZERO, Num::ZERO),
+        origin: Position::from((0, 0, 0)),
         charge: None,
     };
     let started = |tick| {
@@ -945,12 +899,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             let mut game = abilities_match();
             let action = Abilities::load(&mut game, "ability", &data, script);
             let caster = Abilities::caster(&mut game, action, 1);
-            let enemy = Abilities::spawn_combatant(
-                &mut game,
-                ground(Num::int(1), Num::ZERO),
-                Team::new(1),
-                (),
-            );
+            let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
             if ordered {
                 Abilities::cast(&mut game, caster, ActionTarget::None);
                 let failed = FailedCall {
@@ -1002,10 +951,9 @@ fn on_resolve(ctx, caster, target) {
     Abilities::load_stats(&mut game);
     let clamped = Abilities::load(&mut game, "leap", &leap(true), script);
     let plain = Abilities::load(&mut game, "hop", &leap(false), script);
-    let point = |x, z| ActionTarget::Point(ground(Num::int(x), Num::int(z)));
-    let enemy = |game: &mut Match, x, z| {
-        Abilities::spawn_combatant(game, ground(Num::int(x), Num::int(z)), Team::new(1), ())
-    };
+    let point = |x, z| ActionTarget::Point(Position::from((x, 0, z)));
+    let enemy =
+        |game: &mut Match, x, z| Abilities::spawn_combatant(game, (x, 0, z), Team::new(1), ());
     // From the origin, 4 m of range: an aim at 10 m along x lands at 4 m; one at 2 m stays.
     for (aim, at) in [(point(10, 0), (4, 0)), (point(2, 0), (2, 0))] {
         let caster = Abilities::caster(&mut game, clamped, 1);
@@ -1018,7 +966,7 @@ fn on_resolve(ctx, caster, target) {
     let caster = Abilities::caster(&mut game, clamped, 1);
     let struck = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::int(12) / 5, Num::int(16) / 5),
+        Position::try_from(Vec3::from((Num::int(12) / 5, 0, Num::int(16) / 5))).unwrap(),
         Team::new(1),
         (),
     );
@@ -1042,7 +990,14 @@ fn on_resolve(ctx, caster, target) {
         game.insert_parts(caster, Body::of_box(body));
         caster
     };
-    let near = |x: &str, z: &str| ground(x.parse().unwrap(), z.parse().unwrap());
+    let near = |x: &str, z: &str| {
+        Position::try_from(Vec3::from((
+            x.parse::<Num>().unwrap(),
+            0,
+            z.parse::<Num>().unwrap(),
+        )))
+        .unwrap()
+    };
     let caster = boxed(&mut game);
     let struck = Abilities::spawn_combatant(&mut game, near("5.6", "0"), Team::new(1), ());
     Abilities::cast(&mut game, caster, point(10, 0));
@@ -1115,12 +1070,11 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     // at t, before that tick's step, and 10 − t m within 4 m first in tick 6, where it stops and
     // hops.
     let hopper = Abilities::walking_caster(&mut game, reaching.hop);
-    let still =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(10), Num::ZERO), Team::new(1), ());
+    let still = Abilities::spawn_combatant(&mut game, (10, 0, 0), Team::new(1), ());
     Abilities::cast(
         &mut game,
         hopper,
-        ActionTarget::Point(ground(Num::int(10), Num::ZERO)),
+        ActionTarget::Point(Position::from((10, 0, 0))),
     );
     assert!(game.part::<ActionSlots>(hopper).approaching());
     game.run_until(6);
@@ -1146,13 +1100,9 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
     // finds it at 12 + t/2 and the caster at t, 12 − t/2 m apart, within 4 m first in tick 16.
     let jabber = Abilities::walking_caster(&mut game, reaching.jab);
     let start = game.resource::<SimTick>().start().get();
-    let fleeing = Abilities::spawn_combatant(
-        &mut game,
-        ground(Num::int(12), Num::ZERO),
-        Team::new(1),
-        walker(halves(1)),
-    );
-    let away = Destination::to(Some(ground(Num::int(100), Num::ZERO)));
+    let fleeing =
+        Abilities::spawn_combatant(&mut game, (12, 0, 0), Team::new(1), walker(halves(1)));
+    let away = Destination::to(Some(Position::from((100, 0, 0))));
     game.insert_parts(fleeing, away);
     Abilities::cast(&mut game, jabber, ActionTarget::Unit(fleeing));
     game.run_until(start + 16);
@@ -1173,8 +1123,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let mut game = abilities_match_with(ScriptLimits::ROOMY, &Reaching::CAPABILITIES);
     let reaching = Reaching::place(&mut game);
     let mover = Abilities::walking_caster(&mut game, reaching.jab);
-    let far =
-        Abilities::spawn_combatant(&mut game, ground(Num::ZERO, Num::int(30)), Team::new(1), ());
+    let far = Abilities::spawn_combatant(&mut game, (0, 0, 30), Team::new(1), ());
     let send = |game: &mut Match, action| {
         let payload = Order::payload(&[Order::one(mover, action)]);
         game.step_with(&[(PlayerSlot::new(0), &payload)]);
@@ -1187,7 +1136,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     // A move order ends the walk to jab, and the jab: the unit walks where it was told.
     send(&mut game, jab);
     assert!(approaching(&game));
-    let back = ground(Num::ZERO, Num::int(-5));
+    let back = Position::from((0, 0, -5));
     send(
         &mut game,
         Action::Move {
@@ -1254,7 +1203,7 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     let dud = Abilities::load(&mut game, "dud", &plain, dud);
     let caster = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::ZERO, Num::ZERO),
+        (0, 0, 0),
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
@@ -1314,7 +1263,7 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     // A unit that holds Step unlearned has no charges for Refill to add to.
     let learner = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::int(5), Num::ZERO),
+        (5, 0, 0),
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
@@ -1370,7 +1319,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         });
         Units::spawn(
             game,
-            ground(Num::ZERO, Num::ZERO),
+            (0, 0, 0),
             Team::new(0),
             ActionSlots::new(slots).timed(),
         )
@@ -1446,12 +1395,11 @@ fn on_interrupt(ctx, caster, target) {
     let drain = Abilities::load(&mut game, "drain", &drain, script);
     let ward = Stats::modifier(&game, 0, "ward").unwrap();
     // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
-    let run = |game: &mut Match, x: i64, cut: &dyn Fn(&mut Match, StableId)| {
+    let run = |game: &mut Match, x: i16, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = Abilities::caster(game, drain, 1);
         game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
-        *game.part_mut::<Position>(caster) = ground(Num::int(x), Num::ZERO);
-        let target =
-            Abilities::spawn_combatant(game, ground(Num::int(x + 1), Num::ZERO), Team::new(1), ());
+        *game.part_mut::<Position>(caster) = Position::from((x, 0, 0));
+        let target = Abilities::spawn_combatant(game, (x + 1, 0, 0), Team::new(1), ());
         Abilities::cast(game, caster, ActionTarget::Unit(target));
         let mut seen = Vec::new();
         for tick in 1..=12 {
@@ -1543,8 +1491,8 @@ fn on_resolve(ctx, caster, target) {
     let draw = Abilities::load(&mut game, "draw", &draw, script);
     let plain = Abilities::load(&mut game, "plain", &plain, script);
     let other = Abilities::load(&mut game, "other", &lash_out(), LASH_OUT);
-    let caster = |game: &mut Match, x: i64| {
-        let pos = ground(Num::int(x), Num::ZERO);
+    let caster = |game: &mut Match, x: i16| {
+        let pos = Position::from((x, 0, 0));
         let slots = ActionSlots::new([
             (draw, SlotKind::new(0), Rank::new(1)),
             (other, SlotKind::new(0), Rank::new(1)),
@@ -1557,8 +1505,7 @@ fn on_resolve(ctx, caster, target) {
             (Owner::new(PlayerSlot::new(0)), slots),
         );
         Abilities::give_pools(game, caster, 100, 20);
-        let target =
-            Abilities::spawn_combatant(game, ground(Num::int(x + 3), Num::ZERO), Team::new(1), ());
+        let target = Abilities::spawn_combatant(game, (x + 3, 0, 0), Team::new(1), ());
         (caster, target)
     };
     let order = |game: &mut Match, id: StableId, slot: u8, target: ActionTarget| {
@@ -1572,7 +1519,7 @@ fn on_resolve(ctx, caster, target) {
     let (released, target) = caster(&mut game, 0);
     order(&mut game, released, 0, ActionTarget::Unit(target));
     run_to(&mut game, 10);
-    *game.part_mut::<Position>(released) = ground(Num::int(-2), Num::ZERO);
+    *game.part_mut::<Position>(released) = Position::from((-2, 0, 0));
     run_to(&mut game, 30);
     order(&mut game, released, 0, ActionTarget::Unit(target));
     game.step();
@@ -1587,8 +1534,8 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(game.part::<Life>(target).current(), Num::int(410));
     // Another action's order cancels it, and so does a stun: the draw spends nothing. Lash Out,
     // ordered instead, hits the target 3 m away for its 75 and costs its 35.
-    for (cut, life, mana) in [(0, 425, 65), (1, 500, 100)] {
-        let (cancelled, target) = caster(&mut game, 40 + 20 * i64::from(cut));
+    for (cut, life, mana) in [(0_i16, 425, 65), (1, 500, 100)] {
+        let (cancelled, target) = caster(&mut game, 40 + 20 * cut);
         order(&mut game, cancelled, 0, ActionTarget::Unit(target));
         game.step();
         if cut == 0 {
@@ -1604,7 +1551,7 @@ fn on_resolve(ctx, caster, target) {
     }
     assert_eq!(Abilities::failed_calls(&game), []);
     // The same script in an action that does not charge fails its call.
-    let pos = ground(Num::int(100), Num::ZERO);
+    let pos = Position::from((100, 0, 0));
     let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]).timed();
     let caster = Abilities::spawn_combatant(
         &mut game,
@@ -1613,12 +1560,7 @@ fn on_resolve(ctx, caster, target) {
         (Owner::new(PlayerSlot::new(0)), slots),
     );
     Abilities::give_pools(&mut game, caster, 100, 20);
-    let target = Abilities::spawn_combatant(
-        &mut game,
-        ground(Num::int(103), Num::ZERO),
-        Team::new(1),
-        (),
-    );
+    let target = Abilities::spawn_combatant(&mut game, (103, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
     let failed = Abilities::failed_calls(&game);
     assert_eq!(failed.len(), 1);
@@ -1647,8 +1589,7 @@ fn on_resolve(ctx, caster, target) {
     let far = Abilities::load(&mut game, "far", &global, script);
     for (action, damage) in [(near, 50), (far, 1)] {
         let caster = Abilities::caster(&mut game, action, 1);
-        let target =
-            Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(1), ());
+        let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
         Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
         assert_eq!(Stats::health(&game, target), 500 - damage);
     }
@@ -1672,7 +1613,7 @@ fn on_resolve(ctx, caster, target) {
     let first = Abilities::caster(&mut game, action, 1);
     let second = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::int(20), Num::ZERO),
+        (20, 0, 0),
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
@@ -1680,8 +1621,14 @@ fn on_resolve(ctx, caster, target) {
         ),
     );
     Abilities::give_pools(&mut game, second, 100, 20);
-    let targets = [Num::int(1), Num::int(21)]
-        .map(|x| Abilities::spawn_combatant(&mut game, ground(x, Num::ZERO), Team::new(1), ()));
+    let targets = [Num::int(1), Num::int(21)].map(|x| {
+        Abilities::spawn_combatant(
+            &mut game,
+            Position::try_from(Vec3::from((x, 0, 0))).unwrap(),
+            Team::new(1),
+            (),
+        )
+    });
     Abilities::casts(
         &mut game,
         &[(first, ActionTarget::None), (second, ActionTarget::None)],
@@ -1733,7 +1680,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let spinner = Abilities::caster(&mut game, spin, 1);
         let striker = Abilities::spawn_combatant(
             &mut game,
-            ground(Num::ZERO, Num::int(1)),
+            (0, 0, 1),
             Team::new(0),
             (
                 Owner::new(PlayerSlot::new(1)),
@@ -1741,8 +1688,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ),
         );
         Abilities::give_pools(&mut game, striker, 100, 20);
-        let enemy =
-            Abilities::spawn_combatant(&mut game, ground(Num::int(1), Num::ZERO), Team::new(1), ());
+        let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
         let casts = [
             (spinner, ActionTarget::None),
             (striker, ActionTarget::Unit(enemy)),
@@ -1905,20 +1851,8 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = Abilities::load(&mut game, "strike", &heroes_only, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy_creep = Abilities::spawn_combatant_of(
-        &mut game,
-        creep,
-        ground(Num::int(3), Num::ZERO),
-        Team::new(1),
-        (),
-    );
-    let enemy_hero = Abilities::spawn_combatant_of(
-        &mut game,
-        hero,
-        ground(Num::int(4), Num::ZERO),
-        Team::new(1),
-        (),
-    );
+    let enemy_creep = Abilities::spawn_combatant_of(&mut game, creep, (3, 0, 0), Team::new(1), ());
+    let enemy_hero = Abilities::spawn_combatant_of(&mut game, hero, (4, 0, 0), Team::new(1), ());
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(Stats::health(&game, enemy_creep), 500);
@@ -2003,8 +1937,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game, 0, "claws", &claws, None, 1).unwrap();
     let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]).timed();
-    let beast =
-        Abilities::spawn_combatant(&mut game, ground(Num::ZERO, Num::ZERO), Team::new(0), slots);
+    let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
     let entity = game.unit_entity(beast);
     game.insert_parts(beast, (Modifiers::default(), ModifierClocks::default()));
     game.step();
@@ -2124,13 +2057,8 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         UnitStats::default(),
         (Modifiers::default(), ModifierClocks::default()),
     );
-    let enemy = Abilities::spawn_combatant_of(
-        &mut game,
-        target_type,
-        ground(Num::int(5), Num::ZERO),
-        Team::new(1),
-        parts,
-    );
+    let enemy =
+        Abilities::spawn_combatant_of(&mut game, target_type, (5, 0, 0), Team::new(1), parts);
     let entity = game.unit_entity(enemy);
     let mut seen = Vec::new();
     for tick in 0..8 {
@@ -2207,20 +2135,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
             (Modifiers::default(), ModifierClocks::default()),
         )
     };
-    let freed = Abilities::spawn_combatant_of(
-        &mut game,
-        target,
-        ground(Num::int(1), Num::ZERO),
-        Team::new(1),
-        parts(),
-    );
-    let held = Abilities::spawn_combatant_of(
-        &mut game,
-        target,
-        ground(Num::int(-1), Num::ZERO),
-        Team::new(1),
-        parts(),
-    );
+    let freed = Abilities::spawn_combatant_of(&mut game, target, (1, 0, 0), Team::new(1), parts());
+    let held = Abilities::spawn_combatant_of(&mut game, target, (-1, 0, 0), Team::new(1), parts());
     for source in [first, second] {
         Abilities::give_from(&mut game, freed, source, "stun");
     }
@@ -2351,12 +2267,11 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let tracked = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::int(1), Num::ZERO),
+        (1, 0, 0),
         Team::new(1),
         Experience::new(TrackSet::of([valor]), None),
     );
-    let untracked =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(-1), Num::ZERO), Team::new(1), ());
+    let untracked = Abilities::spawn_combatant(&mut game, (-1, 0, 0), Team::new(1), ());
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
     Abilities::cast(&mut game, first, ActionTarget::Unit(tracked));
     assert_eq!(Abilities::failed_calls(&game), []);
@@ -2418,12 +2333,11 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let caster = Abilities::caster(&mut game, action, 1);
     game.insert_parts(caster, Experience::new(TrackSet::of([valor]), None));
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(4), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
     Abilities::cast(
         &mut game,
         caster,
-        ActionTarget::Point(ground(Num::int(10), Num::ZERO)),
+        ActionTarget::Point(Position::from((10, 0, 0))),
     );
     let entity = game.unit_entity(caster);
     game.despawn(entity);
@@ -2479,14 +2393,11 @@ fn on_interval(ctx, m) { throw "interval"; }
         ],
     );
     game.insert_resource(AssistWindow(Ticks::new(10)));
-    let victim =
-        Abilities::spawn_combatant(&mut game, ground(Num::ONE, Num::ZERO), Team::new(1), ());
-    let origin = ground(Num::ZERO, Num::ZERO);
+    let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let origin = Position::from((0, 0, 0));
     let attacker = Abilities::attacker(&mut game, origin, Team::new(0), striker(500), victim);
-    let assister =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(0), ());
-    let bystander =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(9), Num::ZERO), Team::new(1), ());
+    let assister = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(0), ());
+    let bystander = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
     for unit in [attacker, assister, victim] {
         Abilities::give(&mut game, unit, "log");
     }
@@ -2551,12 +2462,10 @@ fn on_damage_taken(ctx, m, d) {
             ("echo", scripted(None, &[("echo", 1)])),
         ],
     );
-    let victim =
-        Abilities::spawn_combatant(&mut game, ground(Num::ONE, Num::ZERO), Team::new(1), ());
-    let origin = ground(Num::ZERO, Num::ZERO);
+    let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
+    let origin = Position::from((0, 0, 0));
     let attacker = Abilities::attacker(&mut game, origin, Team::new(0), striker(30), victim);
-    let echoer =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(9), Num::ZERO), Team::new(1), ());
+    let echoer = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
     Abilities::give(&mut game, attacker, "double");
     Abilities::give(&mut game, echoer, "echo");
     game.resource_mut::<PassQueue>().push_damage(Damage {
@@ -2595,8 +2504,7 @@ fn on_damage_taken(ctx, m, d) {
 "#;
     let mut game =
         abilities_match_with_modifiers(hooks, &[("mend", scripted(None, &[("mend", 30)]))]);
-    let carrier =
-        Abilities::spawn_combatant(&mut game, ground(Num::ZERO, Num::ZERO), Team::new(1), ());
+    let carrier = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(1), ());
     Abilities::give(&mut game, carrier, "mend");
     for (amount, kind) in [(450, 2), (100, 0)] {
         game.resource_mut::<PassQueue>().push_damage(Damage {
@@ -2695,7 +2603,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     send(&mut game, 0, &[learn]);
     assert_eq!(progress(&game), (1, 1, Some(75)));
     let destination = game.get::<Destination>(entity).unwrap().get();
-    assert_eq!(destination, Some(ground(Num::int(9), Num::ZERO)));
+    assert_eq!(destination, Some(Position::from((9, 0, 0))));
     // In tick 3, a cast ordered before two learns: the first learns rank 2 with the last point,
     // the second finds none, and the cast starts at rank 2, after the learns of its tick, with
     // rank 2's cooldown of 9000 ms, 270 ticks.
@@ -2855,7 +2763,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let out = if ranged { 4 } else { 1 };
         let target = Abilities::spawn_combatant(
             &mut game,
-            ground(Num::int(out), Num::ZERO),
+            (out, 0, 0),
             Team::new(1),
             (Modifiers::default(), ModifierClocks::default()),
         );
@@ -2965,7 +2873,12 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
     let [target, near, far] = [1, 2, 4].map(|x| {
-        let pos = ground(Num::int(x) + Num::HALF * i64::from(x == 2), Num::ZERO);
+        let pos = Position::try_from(Vec3::from((
+            Num::int(x) + Num::HALF * i64::from(x == 2),
+            0,
+            0,
+        )))
+        .unwrap();
         Abilities::spawn_combatant(&mut game, pos, Team::new(1), ())
     });
     game.part_mut::<ActionSlots>(attacker)
@@ -3005,8 +2918,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         fighter,
         ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
-    let target =
-        Abilities::spawn_combatant(&mut game, ground(Num::ONE, Num::ZERO), Team::new(1), ());
+    let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     game.part_mut::<ActionSlots>(attacker)
         .set_attack_target(Some(target));
     game.step();
@@ -3043,7 +2955,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     let mut target = |x| {
         Abilities::spawn_combatant(
             &mut game,
-            ground(Num::int(x), Num::ZERO),
+            (x, 0, 0),
             Team::new(1),
             (Modifiers::default(), ModifierClocks::default()),
         )
@@ -3206,7 +3118,7 @@ fn on_resolve(ctx, caster, target) {
     Abilities::give(&mut game, caster, "boost");
     let target = Abilities::spawn_combatant(
         &mut game,
-        ground(Num::int(5), Num::ZERO),
+        (5, 0, 0),
         Team::new(1),
         (Modifiers::default(), ModifierClocks::default()),
     );
@@ -3287,7 +3199,7 @@ impl Veil {
         let veil = Abilities::spawn_combatant_of(
             game,
             veil_type,
-            ground(Num::ZERO, Num::ZERO),
+            (0, 0, 0),
             Team::new(0),
             (Level::default(), UnitStats::default()),
         );
@@ -3348,7 +3260,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     let ward = Abilities::spawn_combatant_of(
         &mut game,
         veil.unit_type,
-        ground(Num::ONE, Num::ZERO),
+        (1, 0, 0),
         Team::new(0),
         ward_parts,
     );
@@ -3424,8 +3336,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     "#;
     let action = Abilities::load(&mut game, "shot", &shot, source);
     let caster = Abilities::caster(&mut game, action, 1);
-    let target =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(1), ());
+    let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
     // 3 m flown, in the direction it flew.
@@ -3496,12 +3407,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
             let action = Abilities::load(&mut game, "shot", &shot, &source);
             let caster = Abilities::caster(&mut game, action, 1);
-            let target = Abilities::spawn_combatant(
-                &mut game,
-                ground(Num::int(3), Num::ZERO),
-                Team::new(1),
-                (),
-            );
+            let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             game.run_until(1);
             let mut projectiles = game.query::<&Projectile>();
@@ -3597,8 +3503,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             );
             let action = Abilities::load(&mut game, "shot", &shot, &source);
             let caster = Abilities::caster(&mut game, action, 1);
-            let target =
-                Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), enemy, ());
+            let target = Abilities::spawn_combatant(&mut game, (3, 0, 0), enemy, ());
             assert_eq!([caster, target].map(StableId::get), [0, 1]);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             game.run_until(1);
@@ -3612,12 +3517,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
             let failed = Abilities::failed_calls(&game).len();
             if fails {
                 assert_eq!((spawned, failed), (vec![], 1), "{area}");
-                let next = Abilities::spawn_combatant(
-                    &mut game,
-                    ground(Num::int(5), Num::ZERO),
-                    enemy,
-                    (),
-                );
+                let next = Abilities::spawn_combatant(&mut game, (5, 0, 0), enemy, ());
                 assert_eq!(next.get(), 2, "{area}");
             } else {
                 let both = vec![(2, state(3)), (3, state(0))];
@@ -3716,7 +3616,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,
     // past its 0.25; at 26.6 degrees, past the fan; 8 m out on the middle line, past the range;
     // behind the caster; and an ally of the caster's on the middle line.
-    let point = |x: Num, z: Num| ground(x, z);
+    let point = |x: Num, z: Num| Position::try_from(Vec3::from((x, 0, z))).unwrap();
     let decimal = |text: &str| text.parse::<Num>().unwrap();
     let enemies = [
         point(Num::int(4), Num::ZERO),
@@ -3821,28 +3721,36 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         let center = Num::int(4);
         let edge = Abilities::spawn_combatant(
             &mut game,
-            ground(center + Num::int(2), Num::ZERO),
+            Position::try_from(Vec3::from((center + Num::int(2), 0, 0))).unwrap(),
             Team::new(1),
             (),
         );
         let beyond = Abilities::spawn_combatant(
             &mut game,
-            ground(center, Num::int(2) + Num::EPSILON),
+            Position::try_from(Vec3::from((center, 0, Num::int(2) + Num::EPSILON))).unwrap(),
             Team::new(1),
             (),
         );
         let body = Body::new(halves(1)).unwrap();
         let wide = Abilities::spawn_combatant(
             &mut game,
-            ground(center - halves(5), Num::ZERO),
+            Position::try_from(Vec3::from((center - halves(5), 0, 0))).unwrap(),
             Team::new(1),
             body,
         );
-        let hidden =
-            Abilities::spawn_combatant(&mut game, ground(center, Num::ONE), Team::new(1), ());
+        let hidden = Abilities::spawn_combatant(
+            &mut game,
+            Position::try_from(Vec3::from((center, 0, 1))).unwrap(),
+            Team::new(1),
+            (),
+        );
         Units::set_blocks(&mut game, hidden, &[Block::Target]);
-        let ally =
-            Abilities::spawn_combatant(&mut game, ground(center, Num::ZERO), Team::new(0), ());
+        let ally = Abilities::spawn_combatant(
+            &mut game,
+            Position::try_from(Vec3::from((center, 0, 0))).unwrap(),
+            Team::new(0),
+            (),
+        );
         let units = [edge, beyond, wide, hidden, ally, caster];
         let areas = |game: &mut Match| {
             let mut query = game.query::<&Area>();
@@ -3852,7 +3760,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         Abilities::cast(
             &mut game,
             caster,
-            ActionTarget::Point(ground(center, Num::ZERO)),
+            ActionTarget::Point(Position::try_from(Vec3::from((center, 0, 0))).unwrap()),
         );
         game.run_until(trigger);
         assert_eq!(
@@ -3927,7 +3835,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
     // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
     // and an enemy grunt.
-    let point = |x: i64, z: i64| ground(Num::int(x), Num::int(z));
+    let point = |x: i16, z: i16| Position::from((x, 0, z));
     let none = || (Modifiers::default(), ModifierClocks::default());
     let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), none());
     let enemy_grunt = Abilities::spawn_combatant_of(
@@ -3998,8 +3906,7 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     };
     let strike = Abilities::load(&mut game, "strike", &windup, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy =
-        Abilities::spawn_combatant(&mut game, ground(Num::int(3), Num::ZERO), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy));
     assert!(Abilities::casting(&game, caster).is_some());
     game.run_until(2);

@@ -394,10 +394,11 @@ pub(crate) mod test_world {
         pub(crate) fn add_build(
             world: &mut World,
             unit_type: UnitType,
-            range: Num,
+            range: impl Into<Num>,
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
+            let range = range.into();
             Actions::push(
                 world,
                 Action {

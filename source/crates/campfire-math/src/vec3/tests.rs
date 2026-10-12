@@ -226,3 +226,19 @@ proptest! {
         prop_assert_eq!(a.checked_dot(b), b.checked_dot(a));
     }
 }
+
+#[test]
+fn a_triple_converts_each_element_exactly() {
+    // A tuple's elements may differ in type; an array's are one.
+    let mixed = Vec3::from((-1_i8, Num::HALF, u32::MAX));
+    assert_eq!(
+        mixed,
+        Vec3::new(Num::int(-1), Num::HALF, Num::int(4_294_967_295))
+    );
+    let wide = Vec3::from([i32::MIN, 0, i32::MAX]);
+    assert_eq!(
+        wide,
+        Vec3::new(Num::int(-2_147_483_648), Num::ZERO, Num::int(2_147_483_647))
+    );
+    assert_eq!(Vec3::from((3, 0, 4)), v(3, 0, 4));
+}

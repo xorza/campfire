@@ -438,3 +438,53 @@ proptest! {
         prop_assert!(sqrt_rounds_to_nearest(a));
     }
 }
+
+#[test]
+fn an_integer_converts_exactly_or_is_refused_past_the_range() {
+    // Each type whose every value a Num holds converts at its least and greatest value: the value
+    // times 2²⁴.
+    let num = |value: i64| Num::from_bits(value << Num::FRAC_BITS);
+    assert_eq!(
+        [Num::from(i8::MIN), Num::from(i8::MAX), Num::from(u8::MAX)],
+        [num(-128), num(127), num(255)]
+    );
+    assert_eq!(
+        [
+            Num::from(i16::MIN),
+            Num::from(i16::MAX),
+            Num::from(u16::MAX)
+        ],
+        [num(-32_768), num(32_767), num(65_535)]
+    );
+    assert_eq!(
+        [
+            Num::from(i32::MIN),
+            Num::from(i32::MAX),
+            Num::from(u32::MAX)
+        ],
+        [num(-2_147_483_648), num(2_147_483_647), num(4_294_967_295)]
+    );
+    assert_eq!([Num::from(0_u8), Num::from(0_u32)], [Num::ZERO; 2]);
+    // An i64 or a u64 converts within −2³⁹ ≤ value < 2³⁹: −2³⁹ is i64::MIN's bits, 2³⁹ − 1 the
+    // greatest whole Num; one past either end is refused.
+    let limit = 1_i64 << 39;
+    assert_eq!(Num::try_from(-limit), Ok(Num::MIN));
+    assert_eq!(Num::try_from(limit - 1), Ok(num(limit - 1)));
+    for refused in [-limit - 1, limit, i64::MIN, i64::MAX] {
+        assert_eq!(
+            Num::try_from(refused),
+            Err(IntToNumError::OutOfRange),
+            "{refused}"
+        );
+    }
+    let unsigned = u64::try_from(limit).unwrap();
+    assert_eq!(Num::try_from(unsigned - 1), Ok(num(limit - 1)));
+    assert_eq!(Num::try_from(0_u64), Ok(Num::ZERO));
+    for refused in [unsigned, u64::MAX] {
+        assert_eq!(
+            Num::try_from(refused),
+            Err(IntToNumError::OutOfRange),
+            "{refused}"
+        );
+    }
+}

@@ -1,14 +1,9 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_sim::IdAllocator;
 
 use super::*;
 use crate::geometry::shape::Shape;
 use crate::units::layer::Layer;
-
-fn at(x: i64, z: i64) -> Position {
-    let num = |value: i64| Num::from_int(value).unwrap();
-    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
-}
 
 #[test]
 fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() {
@@ -19,7 +14,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
     let mut ids = IdAllocator::default();
     let mut post = |x, z, layer| IndexedBody {
         id: ids.allocate(),
-        pos: at(x, z),
+        pos: Position::from((x, 0, z)),
         shape: Shape::Circle(Num::ONE),
         layer,
     };
@@ -33,7 +28,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
         layer: Layer::FIRST,
         radius: Num::ONE,
     };
-    let route = [at(10, 0), at(10, 10)];
+    let route = [Position::from((10, 0, 0)), Position::from((10, 0, 10))];
     let mut index = BodyIndex::new(Num::ONE);
     let mut changes = StaticChanges::default();
     // Two updates before a check, the second taking a post away: both count.
@@ -42,11 +37,11 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
     index.update(&[far, touching]);
     changes.note(&index);
     assert!(changes.removed());
-    assert!(!changes.blocks_route(at(0, 0), &route, walker));
+    assert!(!changes.blocks_route(Position::from((0, 0, 0)), &route, walker));
     index.update(&[far, touching, near]);
     changes.note(&index);
-    assert!(changes.blocks_route(at(0, 0), &route, walker));
+    assert!(changes.blocks_route(Position::from((0, 0, 0)), &route, walker));
     changes.clear();
     assert!(!changes.removed());
-    assert!(!changes.blocks_route(at(0, 0), &route, walker));
+    assert!(!changes.blocks_route(Position::from((0, 0, 0)), &route, walker));
 }

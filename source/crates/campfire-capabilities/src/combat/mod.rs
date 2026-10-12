@@ -412,7 +412,8 @@ pub(crate) mod test_world {
 
     impl Combat {
         /// Heals `id` at once, as the pass heals it, when it exists and its life is above zero.
-        pub(crate) fn heal_unit(world: &mut World, id: StableId, amount: Num) {
+        pub(crate) fn heal_unit(world: &mut World, id: StableId, amount: impl Into<Num>) {
+            let amount = amount.into();
             if let Some(entity) = DamagePass::living(world, id) {
                 DamagePass::heal(world, entity, amount);
             }
@@ -426,10 +427,11 @@ pub(crate) mod test_world {
 
         pub(crate) fn spawn_armed(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             combatant: Armed,
         ) -> StableId {
+            let pos = pos.into();
             let unit_type = Units::test_type(world);
             Combat::spawn_armed_of(world, unit_type, pos, team, combatant)
         }
@@ -437,10 +439,11 @@ pub(crate) mod test_world {
         pub(crate) fn spawn_armed_of(
             world: &mut World,
             unit_type: UnitType,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             combatant: Armed,
         ) -> StableId {
+            let pos = pos.into();
             let bundle = combatant.bundle(world);
             Units::spawn_of(world, unit_type, pos, team, bundle)
         }
@@ -484,10 +487,11 @@ pub(crate) mod test_world {
         /// with a weapon of 2 m, of the match's own type and `team`, with `parts`.
         pub(crate) fn spawn_melee(
             world: &mut World,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let unit_type = Units::test_type(world);
             Combat::spawn_melee_of(world, unit_type, pos, team, parts)
         }
@@ -496,10 +500,11 @@ pub(crate) mod test_world {
         pub(crate) fn spawn_melee_of(
             world: &mut World,
             unit_type: UnitType,
-            pos: Position,
+            pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
+            let pos = pos.into();
             let armed = Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO)
                 .on_death(OnDeath::Stay)
                 .bundle(world);

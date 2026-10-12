@@ -315,10 +315,6 @@ fn marker(
     }
 }
 
-fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
-}
-
 fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
     StateDecl::new(kind, default).unwrap()
 }
