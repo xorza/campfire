@@ -1,4 +1,6 @@
 [profile.default]
+# A run lists every failure, so one fix pass takes them all: a stuck test still ends at its bound.
+fail-fast = false
 # SLOW names a test past 1 s, the bound of AGENTS.md; in a full run the tests share the cores, so
 # the bound holds for a test alone, `--test-threads 1`. One that runs 5 s is stuck in a loop or a
 # wait, and nextest ends it, as libtest can end no test.
