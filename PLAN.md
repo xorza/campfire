@@ -24,11 +24,12 @@ Every batch moves the engine toward one shape, and each item names the part it b
 | Script members, hooks and data tables | `d.api` | today |
 | An observer, a system a spawn runs out of the schedule, and a derived part another part requires | `d.observer`, `d.one_shot`, `d.requires` | F49 |
 
-- **A kind is a marker,** one on each entity, and an entity spawns whole: each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once. A part derived from another part comes by that part's hook; a part a system derives each tick is a declared part the system writes in place, never one it inserts by command.
+- **A kind is a marker,** one on each entity, and an entity spawns whole: each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once. A part derived from another part comes by Bevy's required components or that part's hook; a part a system derives each tick is a declared part the system writes in place, never one it inserts by command. A marker of a state that an event starts and ends, as `Dead`, `Respawn` or `OutOfPlay`, comes and goes by command; F52 measures it in a sparse set, where it moves no table.
 - **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
-- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (I1), and a fact fixed at install is a fact of the schedule (F39).
-- **Each layer imports only below it,** and no two modules of one layer import each other (F50, F53).
+- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (I1), and a fact fixed at install or at the load is a fact of the schedule (F39).
+- **Each crate depends only on lower layers,** which `LAYERS` holds: no two crates of one layer depend on each other. The four modules that `campfire-core` holds still import each other, until F50 and F53 split it. A capability asks another for its work through a contract below both, never by writing its state (F59).
+- **Bevy's own mechanisms, not hand-made ones:** what install or the load fixes is a run condition or an `If` parameter (F39); observers, one-shot systems and required components are declarations (F49); a marker that comes and goes is measured in a sparse set, and the units' order by stable id in one shared order (F52); a composition of an `App` is a plugin group (H2).
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
@@ -42,32 +43,32 @@ So a new capability is one entry of the list; a new state type its type and one 
 
 ## 2. The script call's runtime and the script view
 
-`campfire-core`'s `scripts`, `declare`, `units` and `players`; `mode`'s state, `stats`' call, in their crates. The script view becomes the script runtime's own data, which the modules fill, and with it the knot of layer 1 comes apart and `campfire-core` splits into four crates; then what a script call costs and how its parts are kept. The design of the view, F50 and F53 together, goes into design 02 and design 03 for review before the code moves. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
+`campfire-core`'s `scripts`, `declare`, `units` and `players`; `mode`'s state, `stats`' call, in their crates. The script view becomes the script runtime's own data, which the modules fill, and with it the knot of `campfire-core` comes apart and `campfire-core` splits into four crates; then what a script call costs and how its parts are kept. The design of the view, F50 and F53 together, goes into design 02 and design 03 for review before the code moves. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
 
-### F50. One direction between the modules of layer 1
+### F50. One direction between the modules of `campfire-core`
 
-(`capabilities`: `values`, `scripts`, `units`, `players`; **Core**.) The modules of layer 1 import each other in three pairs: `units ↔ scripts` (32 files of `units` import `scripts`; `scripts` imports `View` and `Unit` in four files, and the plain types `ActionId`, `ModifierId`, `Team`, `Block`, `TagProperty`, `TagData` and `CollisionData`), `units ↔ declare` and `scripts ↔ declare` (F53 takes the two of `declare`); and `scripts` imports `players` (`scripts/frame.rs:6`), against the order below. They share `campfire-core`, so Cargo checks no import between them. The order this step and F53 give them, each importing only those before it, is `scripts`, `declare`, `units`, `players`, with `values` below all four; `campfire-core` then splits into a crate for each, and `scripts` joins `campfire-script`, which then holds every use of Rhai:
+(`capabilities`: `values`, `scripts`, `units`, `players`; **Core**.) The four modules of `campfire-core` import each other in three pairs: `units ↔ scripts` (32 files of `units` import `scripts`; `scripts` imports `View` and `Unit` in four files, and the plain types `ActionId`, `ModifierId`, `Team`, `Block`, `TagProperty`, `TagData`, `CollisionData` and `DashDelivery`), `units ↔ declare` and `scripts ↔ declare` (F53 takes the two of `declare`); and `scripts` imports `players` (`core/src/scripts/frame.rs:7`), against the order below. They share `campfire-core`, so Cargo checks no import between them. The order this step and F53 give them, each importing only those before it, is `scripts`, `declare`, `units`, `players`, with `values` below all four; `campfire-core` then splits into a crate for each, and `scripts` joins `campfire-script`, which then holds every use of Rhai:
 
 - The plain types and ids, and the `NameKind` trait they implement, go to `values`, so no module of the four takes them from another.
-- `scripts` imports nothing of `units`: the script view becomes the runtime's own data, rows of plain values that `scripts` defines, with the columns' contracts `ViewColumn`, `RowFill` and `RowReads`, the names and `Book`, which shares a book into the view and the frame (`declare/book.rs:19`); the fill that reads the units stays in `units`. Today `View` reaches, through its rows, columns, names, filter and target index, 64 of `units`' 87 files, so a move of the view as it is would move the unit model: the view's rows hold values, its names come as tables the load fills, and the unit model stays in `units`. This is I1's view, designed once. The frame's copy of the players' resources (`scripts/frame.rs:6`) takes them through a contract of `scripts` that `players` fills.
+- `scripts` imports nothing of `units`: the script view becomes the runtime's own data, rows of plain values that `scripts` defines, with the columns' contracts `ViewColumn`, `RowFill` and `RowReads`, the names and `Book`, which shares a book into the view and the frame (`core/src/declare/book.rs:23`); the fill that reads the units stays in `units`. Today `View` reaches, through its rows, columns, names, filter and target index, 64 of `units`' 86 files, so a move of the view as it is would move the unit model: the view's rows hold values, its names come as tables the load fills, and the unit model stays in `units`. This is I1's view, designed once. The frame's copy of the players' resources (`core/src/scripts/frame.rs:7`) takes them through a contract of `scripts` that `players` fills.
 
 Check: `scripts` imports nothing of `units` or `players`.
 
 ### F53. `declare` holds only the contracts a module implements
 
-(`capabilities`: `declare`, `units`, `scripts`; **Core**.) Every module imports `declare`, and `declare` imports `units` for `EntityKind` (`declare/kind_visitor.rs:1`), `EngineTag` (`declarations.rs:16`) and the context a part is made from, which reads its unit's type, its facing and the books by type (`kind_spawn.rs:9-11`), and imports `scripts` for `ApiBuilder`, `CallPart` and, after F50, the view's contracts and `Book`. `EntityKind`, a contract each kind implements, moves into `declare`, and `EngineTag` to `values`. The context of a part reads the unit model, so it moves to `units`, and `d.part` takes it through a trait of `declare` that `units` implements, as a declaration takes a contract and never the type that fills it; the step writes this into design 02's [Structural rules](docs/design/02-engine-core.md#structural-rules) for review before the code moves. Check: `campfire-core` splits into `campfire-script`, `campfire-declare`, `campfire-units` and `campfire-players`, each depending only on those before it, and the workspace builds; `campfire-script` no longer re-exports Rhai (`pub use rhai;`), so Cargo refuses `rhai::` in any other crate.
+(`capabilities`: `declare`, `units`, `scripts`; **Core**.) Every module imports `declare`, and `declare` imports `units` for `EntityKind` (`core/src/declare/kind_visitor.rs:1`), `EngineTag` (`declarations.rs:16`) and the context a part is made from, which reads its unit's type, its facing and the books by type (`kind_spawn.rs:9-11`), and imports `scripts` for `ApiBuilder`, `CallPart` and, after F50, the view's contracts and `Book`. `EntityKind`, a contract each kind implements, moves into `declare`, and `EngineTag` to `values`. The context of a part reads the unit model, so it moves to `units`, and `d.part` takes it through a trait of `declare` that `units` implements, as a declaration takes a contract and never the type that fills it; the step writes this into design 02's [Structural rules](docs/design/02-engine-core.md#structural-rules) for review before the code moves. Check: `campfire-core` splits into `campfire-script`, `campfire-declare`, `campfire-units` and `campfire-players`, each on a layer of its own in `LAYERS`, depending only on those before it, and the workspace builds; `campfire-script` no longer re-exports Rhai (`pub use rhai;`), so Cargo refuses `rhai::` in any other crate.
 
 
 ### F36. One schema of script state
 
-(`capabilities`: `mode`, `units`, `stats`.) Mode, unit and modifier state each look a field up their own way: `NameTable` and places kept for the mode (`mode/mode_schema.rs:25-71`); `UnitStateBook::field`, which counts the field's place on every access (`units/unit_state_book.rs:50-63`); a binary search of its own for a modifier (`stats/modifier_handle.rs:189`). Two `StateField` types differ (`mode_schema.rs:35`, `unit_state_book.rs:23`). `StateValue::Text(String)` allocates an `ImmutableString` on every read (`scripts/state_value.rs:72`), and each mode call clones the whole state and every value again as it commits. One `StateSchema { names: Names<StateField>, places: Vec<StatePlace> }`, built once for each unit type and for the mode; text kept shared, so a read counts a reference; the mode copies a field only when it is written.
+(`capabilities`: `mode`, `units`, `stats`.) Mode, unit and modifier state each look a field up their own way: `NameTable` and places kept for the mode (`mode/src/mode_schema.rs:20-66`); `UnitStateBook::field`, which counts the field's place on every access (`core/src/units/unit_state_book.rs:53-63`); a binary search of its own for a modifier (`stats/src/modifier_handle.rs:187`). Two `StateField` types differ (`mode_schema.rs:30`, `unit_state_book.rs:26`). `StateValue::Text(String)` allocates a `ScriptText` on every read (`core/src/scripts/state_value.rs:74`), and each mode call clones the whole state and every value again as it commits. One `StateSchema { names: Names<StateField>, places: Vec<StatePlace> }`, built once for each unit type and for the mode; text kept shared, so a read counts a reference; the mode copies a field only when it is written.
 
 ### F37. One contract of a call part, and one list by type
 
-(`capabilities`: `scripts`, `units`.) `CallPart::param` is on the trait, and two of four parts return `None`; the split of params by role is written three times (`stats/stats_call.rs:70`, `mode/mode_call.rs:55`, `scripts/ctx.rs:112`); `ModeCall::apply` does nothing and the mode commits apart, before the effects apply (`mode/calls.rs:116-128`). Three lists keyed by type are built three ways: `CallParts` by the vtable's `type_id` (`scripts/call_part.rs:36`), `ViewColumns` by a `TypeId` vec (`units/view_column.rs:28`), `Effects` by `as_any().is`; and each of the eight columns writes the same four delegating methods.
+(`capabilities`: `scripts`, `units`.) `CallPart::param` is on the trait, and two of four parts return `None`; the split of params by role is written three times (`stats/src/stats_call.rs:65`, `mode/src/mode_call.rs:50`, `core/src/scripts/ctx.rs:120`); `ModeCall::apply` does nothing (`mode/src/mode_call.rs:57`) and the mode commits apart, before the effects apply (`mode/src/calls.rs:114-125`). Three lists keyed by type are built three ways: `CallParts` by the vtable's `type_id` (`core/src/scripts/call_part.rs:40`), `ViewColumns` by a `TypeId` vec (`core/src/units/view_column.rs:28-37`), `Effects` by `as_any().is` (`core/src/scripts/effects.rs:31`); and each of the nine columns writes the same four delegating methods.
 
 ```rust
-pub(crate) trait CallPart {
+pub trait CallPart {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
     /// Writes what the call changed, in the order `COMMITS` gives: before or after the effects.
     fn commit(&mut self, world: &mut World);
@@ -75,7 +76,7 @@ pub(crate) trait CallPart {
 }
 
 /// The params of one scope of a call, which the frame holds by `ScriptRole::params`.
-pub(crate) trait ParamSource {
+pub trait ParamSource {
     fn param(&self, name: &str) -> Option<Dynamic>;
 }
 
@@ -90,7 +91,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### F38. What a call costs
 
-(`capabilities`: `stats`, `scripts`.) `StatsCall::begin` computes every param of the call before the script reads one (`stats/stats_call.rs:35-66`), where design 08 says `ctx.p` resolves when it is read; mode params are kept as `NameTable<Dynamic>` and cloned on each read (`mode/mode_schema.rs:76`), an array deeply; `Ctx` is three `Rc`s where one serves. Params resolve on read, behind a mask of those computed; a mode param is read by reference; `Ctx` holds one `Rc`. The frame keeps its copy of each player's resources, which F50 fills through a contract: a script call holds no world to read them from later, and the copy allocates nothing. Rhai boxes each custom-type value twice (`Box<Box<dyn Variant>>`), which the batch measures before any change.
+(`capabilities`: `stats`, `scripts`.) `StatsCall::begin` computes every param of the call before the script reads one (`stats/src/stats_call.rs:30-61`), where design 08 says `ctx.p` resolves when it is read; mode params are kept as `NameTable<ScriptValue>` and cloned on each read (`mode/src/mode_schema.rs:71`), an array deeply; `Ctx` is three `Rc`s where one serves. Params resolve on read, behind a mask of those computed; a mode param is read by reference; `Ctx` holds one `Rc`. The frame keeps its copy of each player's resources, which F50 fills through a contract: a script call holds no world to read them from later, and the copy allocates nothing. Rhai boxes each custom-type value twice (`Box<Box<dyn Variant>>`), which the batch measures before any change.
 
 ### I1. The script view's copy
 
@@ -102,15 +103,15 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### F39. What is fixed at install is a run condition
 
-(`capabilities`.) "Return if the book is missing" is written by hand in systems (`actions/holds.rs:74-80`; `vision/seeing.rs:53`; `production/player_supply.rs:47`; `players/out_of_play.rs:44`), and `navigation/walking.rs:80-85` pairs two `Option`s of the map's pathing grid and planner with an `expect`; `pay_attack_toggles` returns at once on a client (`combat/attacks.rs:194`), though the install knows it predicts (`combat/mod.rs:121`); the mode's hooks check its hook set each tick (`mode/mode_hooks.rs:44`, `171`), which the install knows (`mode/mod.rs:207`). A declared book is always present while its owner is installed, empty until a mode loads, so a guard for a missing book goes, and an empty book gives no work; a structure the map may lack, as the pathing grid with its planner, is taken by `If<(Res<PathingGrid>, ResMut<RoutePlanner>)>`, Bevy 0.19's parameter that skips a system while it is missing; a client's schedule leaves `pay_attack_toggles` out; the mode schedules only the hooks it defines, and the clear of `LevelUps` becomes a system of its own. A system skipped for a missing parameter keeps its last run, so its first run after the book arrives sees every change since the build: each system is checked for that, and the goldens and the archetype shuffle test hold it.
+(`capabilities`.) "Return if the book is missing" is written by hand in systems (`actions/src/holds.rs:67-72`; `production/src/player_supply.rs:45`), and "return if the map has no grid" too (`vision/src/seeing.rs:48`); `navigation/src/walking.rs:35-37` takes the map's pathing grid and planner as two `Option`s and pairs them with an `expect` (`78-79`); `pay_attack_toggles` returns at once on a client (`combat/src/attacks.rs:189-190`), though the install knows it predicts (`combat/src/lib.rs:168`); the mode's hooks check its hook set each tick (`mode/src/mode_hooks.rs:44`, `121`, `146`, `177`, `250`), which `Mode::load` fixes (`mode/src/lib.rs:234`), after the install built the schedule. A declared book is always present while its owner is installed, empty until a mode loads, so a guard for a missing book goes, and an empty book gives no work; a structure the map may lack, as the pathing grid with its planner, is taken by `If<(Res<PathingGrid>, ResMut<RoutePlanner>)>`, Bevy 0.19's parameter that skips a system while it is missing; a client's schedule leaves `pay_attack_toggles` out; each hook's system runs under a run condition on the hook set the load fixed, as Bevy's `run_if` skips a system before it reads its data, and the clear of `LevelUps` becomes a system of its own. A system skipped for a missing parameter keeps its last run, so its first run after the book arrives sees every change since the build: each system is checked for that, and the goldens and the archetype shuffle test hold it.
 
 ### F49. Observers and runs out of the schedule are declarations
 
-(`capabilities`: `declare`, `release`, `navigation`, `units`, `projectiles`.) Seven observers and two systems run out of the schedule are added by hand in `install`: `StaticsDirty`'s three (`navigation/statics_dirty.rs:101-103`), `UnitGrid`'s two (`units/unit_grid/mod.rs:67-80`), the view's tick check (`units/mod.rs:247`) and `Flying::lose_teleported` (`projectiles/mod.rs:73`); `StaticTrackingRun` and `RoomMakingRun` (`navigation/mod.rs:167-170`); and production's requirement that a player spawn with its supply on the server (`production/mod.rs`, `install`). The declaration audit sees none of them. `d.observer(observer)`, `d.one_shot::<R>(system)`, whose resource `R` keeps the run's id, and `d.requires::<H, C>()`, a derived part `C` that every entity with `H` spawns with, on the server or on every world, declare them, and the installer adds them. Two of the observers' owners keep the same mark by two mechanisms: `StaticsDirty` notes a static body that came or went by observers and finds one that moved by `Changed` filters (`navigation/static_tracking.rs:26-37`), and `UnitGrid` compares change ticks and a count with its last build. One tracker of a set of units, its filter, the change ticks of what it holds and the observers of what moves a unit in or out of it, serves both. Check: the declaration audit lists each observer and run.
+(`capabilities`: `declare`, `release`, `navigation`, `units`, `projectiles`.) Seven observers and two systems run out of the schedule are added by hand in `install`: `StaticsDirty`'s three (`navigation/src/statics_dirty.rs:97-99`), `UnitGrid`'s two (`core/src/units/unit_grid/mod.rs:67-80`), the view's tick check (`core/src/units/mod.rs:244`) and `Flying::lose_teleported` (`projectiles/src/lib.rs:102`); `StaticTrackingRun` and `RoomMakingRun` (`navigation/src/lib.rs:171-174`); and production's requirement that a player spawn with its supply on the server (`production/src/lib.rs:177`). The declaration audit sees none of them. `d.observer(observer)`, `d.one_shot::<R>(system)`, Bevy's one-shot system, whose resource `R` keeps its `SystemId`, and `d.requires::<H, C>()`, Bevy's required component, a derived part `C` that every entity with `H` spawns with, on the server or on every world, declare them, and the installer adds them. Two of the observers' owners keep the same mark by two mechanisms: `StaticsDirty` notes a static body that came or went by observers and finds one that moved by `Changed` filters (`navigation/src/static_tracking.rs:21-29`), and `UnitGrid` compares change ticks and a count with its last build. One tracker of a set of units, its filter, the change ticks of what it holds and the observers of what moves a unit in or out of it, serves both. Check: the declaration audit lists each observer and run.
 
 ### F51. The match's role is one value
 
-(`capabilities`: `release`, `declare`; `net`, `runner`.) `MatchSpec` holds `budgets: Option<ScriptBudgets>` and `predicting: bool` (`release/match_spec.rs:17-20`), and `InstallCx` gives `scripts()` and `predicting()` (`declare/install_cx.rs:53-66`): four combinations, of which a server's and a predicting client's ship, a server with no scripts serves the tests, and a predicting client with scripts is invalid but builds. Each install branches on the two flags its own way (`orders/mod.rs:118`, `production/mod.rs:189`, `combat/mod.rs:189`, `projectiles/mod.rs:72`, `vision/mod.rs:95`, …). One `Role`, `Server(Option<ScriptBudgets>)` or `Client`, that `MatchSpec` holds and `InstallCx::role` gives; a module adds a system that computes the server's own state through `cx.server(systems)`, which a client's install leaves out, so the prediction test's `SERVER_ONLY` (`release/tests/prediction_reads.rs:31`) is read from the server's schedule, not written again. Check: the prediction test passes with no hand list of server systems.
+(`capabilities`: `release`, `declare`; `net`, `runner`.) `MatchSpec` holds `budgets: Option<ScriptBudgets>` and `predicting: bool` (`capabilities/src/release/match_spec.rs:15-18`), and `InstallCx` gives `scripts()` and `predicting()` (`core/src/declare/install_cx.rs:53-66`): four combinations, of which a server's and a predicting client's ship, a server with no scripts serves the tests, and a predicting client with scripts is invalid but builds. Each install branches on the two flags its own way (`orders/src/lib.rs:97`, `production/src/lib.rs:173`, `combat/src/lib.rs:167-168`, `projectiles/src/lib.rs:101`, `vision/src/lib.rs:101`, …). One `Role`, `Server(Option<ScriptBudgets>)` or `Client`, that `MatchSpec` holds and `InstallCx::role` gives; a module adds a system that computes the server's own state through `cx.server(systems)`, which a client's install leaves out, so the prediction test's `SERVER_ONLY` (`capabilities/src/release/tests/prediction_reads.rs:30`) is read from the server's schedule, not written again. Check: the prediction test passes with no hand list of server systems.
 
 ## 4. Match records and replays
 
@@ -138,7 +139,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### H2. Server compositions
 
-(`net`, `server`.) The task pool, time, states and `SimServer` setup appear three times (`server/src/main.rs`, `net/src/local/local_server/mod.rs`, `net/src/harness/in_process_match/mod.rs`): `SimServer::app(tick, &ModePackages) -> App` holds them, and the server's edges to `capabilities` and `sim`, each used once, go.
+(`net`, `server`.) The task pool, time, states and `SimServer` setup appear three times (`server/src/main.rs:246-256`, `net/src/local/local_server/mod.rs:345-360`, `net/src/harness/in_process_match/mod.rs:343`): one `PluginGroup`, `SimServerPlugins { tick, packages }`, holds them, as Bevy's `MinimalPlugins` groups the task pool, time and the run loop; each composition adds it and its own plugins, a run loop where it runs one. The server's edges to `capabilities` and `sim`, each used once, go.
 
 ### H3. Restore glue
 
@@ -150,7 +151,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### H5. Log events
 
-(`net`.) The match's end is logged ad hoc on the server and on the client (`net/src/sim_client/mod.rs:558`), and the client logs a death ad hoc though `UnitDied` exists: a `MatchEnded` event, and `UnitDied` on both ends.
+(`net`.) The match's end is logged ad hoc on the server and on the client (`net/src/sim_client/mod.rs:555-559`), and the client logs a death ad hoc though `UnitDied` exists: a `MatchEnded` log record beside `UnitDied` in `net/src/events`, a record of the log and not a Bevy event or message, and `UnitDied` on both ends.
 
 ### F43. The clock and the entropy as one value
 
@@ -162,7 +163,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### F46. The broadphase in the grid's form, measured
 
-(`capabilities`.) The broadphase (`navigation/broadphase.rs:26-41`) sorts a four-field entry, a `Place` of layer, level, row and column beside the collider's index, where `BodyGrid` packs one number per entry, a `CellKey` of level, row and column above the stable id: the step takes `BodyGrid`'s form for the broadphase, and measures again on it the levels by size that make Collide slower for walkers of ordinary sizes (**Navigation**). Check: the goldens do not move, and `./drive.py bench -- integration/collision/` runs before and after.
+(`capabilities`.) The broadphase (`navigation/src/broadphase.rs:31-43`) sorts a four-field entry, a `Place` of layer, level, row and column beside the collider's index, where `BodyGrid` packs one number per entry, a `CellKey` of level, row and column above the stable id: the step takes `BodyGrid`'s form for the broadphase, and measures again on it the levels by size that make Collide slower for walkers of ordinary sizes (**Navigation**). Check: the goldens do not move, and `./drive.py bench -- integration/collision/` runs before and after.
 
 ### I4. Tests past 1 s
 
@@ -206,23 +207,23 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ### F44. The capability graph in one table
 
-(`capabilities`, `docs/design/04-capabilities/00-overview.md`.) The graph's needs and the install order are one list of modules, `Release::modules`; the overview's layers stay in prose. Each capability is a crate, whose `Cargo.toml` lists the crates it depends on: Cargo refuses a cycle, and a release test refuses a dependency on the same layer or a higher one; no test ties those dependencies to `Module::NEEDS`.
+(`capabilities`, `docs/design/04-capabilities/00-overview.md`.) The graph's needs and the install order are one list of modules, `Release::modules`; the overview points to design 02's table of crates and their layers. Each capability is a crate, whose `Cargo.toml` lists the crates it depends on: Cargo refuses a cycle, and a release test refuses a dependency on the same layer or a higher one; no test ties those dependencies to `Module::NEEDS`.
 
 A capability's edge to another is a need, without which it does not run, or a use, which it reads when the match has it, each read guarded by `cx.has`: production runs without navigation, with no gathering. The table holds both, and the test holds it equal to the manifests: each capability crate's dependencies on other capabilities are exactly its needs and uses. No module names another's sets, so the schedule adds no edge.
 
 ```rust
-// declare/module.rs: beside `CAPABILITY` and `NEEDS`
+// core/src/declare/module.rs: beside `CAPABILITY` and `NEEDS`
 /// The capabilities it reads when the match has them, and runs without.
 const USES: &'static [Capability];
 
-// production/mod.rs
+// production/src/lib.rs
 const USES: &'static [Capability] = &[Capability::Navigation, Capability::Vision];
 
-// release/tests/mod.rs
+// capabilities/src/release/tests/mod.rs
 #[test]
 fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
     for capability in Release::capabilities().iter() {
-        // The `campfire-<capability>` dependencies of its crate's manifest, read through `store`.
+        // The `campfire-<capability>` dependencies of its crate's manifest, as the layer test reads them.
         let depends: Vec<Capability> = Manifest::of(capability).capabilities();
         let edges = Edges::of(capability); // a `ModuleVisitor` that collects `M::NEEDS` and `M::USES`
         assert_eq!(depends, edges, "{capability:?}");
@@ -238,7 +239,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 ### M2. Genre words stay out of the engine
 
-(`capabilities`: the release tests.) A test reads the crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
+(`capabilities`: the release tests.) A test reads every capability crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
 ## 10. The shrine
 
