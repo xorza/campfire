@@ -8,55 +8,69 @@ the commands.
 
 from __future__ import annotations
 
+import collections
 import enum
+import functools
 import hashlib
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
+import threading
 import time
-from collections.abc import Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable, Iterable, Mapping
+from dataclasses import dataclass, field, replace
 from pathlib import Path
+from typing import IO
 
 SOURCE = Path(__file__).resolve().parent
+# The one folder outside the workspace that its tests read: the design documents, which tests of
+# `common` and `capabilities` compare to the code.
+DOCS = SOURCE.parent / "docs"
 OWN = SOURCE / "target" / "drive"
 LOGS = OWN / "log"
 # One JSON line for each step a command ran, so the checks' times are measured, not assumed.
 HISTORY = OWN / "history.jsonl"
-# For each step of `check`, the tree it last passed on.
+# For each step, the tree it last passed on.
 PASSES = OWN / "passes.json"
-# A copy of git's index, which the tree of the working files is written through.
-TREE_INDEX = OWN / "tree-index"
 LAN_ROOT = OWN / "lan-check"
 
 IN_CI = "GITHUB_ACTIONS" in os.environ
-PRINTED_LINES = 200
+# A step prints its first lines and its last: the summaries come last, nextest's list of the
+# failed tests among them.
+HEAD_LINES = 150
+TAIL_LINES = 50
 
 # Clippy's arguments after `--` are part of each unit's fingerprint, so every lint passes these.
 DENY = ("--", "-D", "warnings")
+# Cargo's messages as JSON, each diagnostic rendered short: the driver tells a lint from code that
+# does not compile, and prints each diagnostic once. The format is in no fingerprint.
+JSON = "--message-format=json-diagnostic-short"
 LINT = (
-    "clippy", "--workspace", "--all-targets", "--all-features", "--locked", "--keep-going",
-    "--message-format=short",
+    "clippy", "--workspace", "--all-targets", "--all-features", "--locked", "--keep-going", JSON,
 )
-SHIP = ("clippy", "--workspace", "--locked", "--keep-going", "--message-format=short")
-TESTS = ("nextest", "run", "--workspace", "--all-features", "--locked")
+SHIP = ("clippy", "--workspace", "--locked", "--keep-going", JSON)
+TESTS = (
+    "nextest", "run", "--workspace", "--all-features", "--locked",
+    "--cargo-message-format", "json-diagnostic-short",
+)
 QUIET_NEXTEST = (
     "--show-progress", "none", "--status-level", "fail",
     "--final-status-level", "slow", "--failure-output", "final", "--success-output", "never",
 )
 # The one test that compares each workspace package to its `package.index`, and writes the index
 # again from the package's files when the run blesses: the format stays with `package` alone.
+INDEX_PACKAGE = "campfire-package"
 INDEX_TEST = (
-    "package(campfire-package) & "
+    f"package(={INDEX_PACKAGE}) & "
     "test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)"
 )
-# The crates whose tests read the files of every crate, the workspace's rules: a selection of
-# tests always holds them, as a change anywhere is their input. A new test that reads other crates'
-# files goes in one of them.
-WORKSPACE_READERS = ("campfire-common", "campfire-log")
+# The crates whose tests read the files of every crate, the workspace's rules: a change in any
+# crate reaches them. A new test that reads other crates' files goes in one of them.
+WORKSPACE_READERS = frozenset(("campfire-common", "campfire-log"))
 LAN_PACKAGES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
 )
@@ -67,12 +81,23 @@ PROGRESS = re.compile(
 )
 # Nextest's run header and its notices of a test still running: its summary lists each slow test.
 NEXTEST_PROGRESS = re.compile(r"^\s*(Nextest run ID .*|Starting \d+ tests? .*|\[>\s*[\d.]+s\] .*|─+)$")
+# Cargo's tallies of the diagnostics a step prints one by one, and nextest's of its failures.
+TALLY = re.compile(
+    r"^(warning: `[^`]+` \(.*\) generated \d+ warnings?.*"
+    r"|error: could not compile `[^`]+` \(.*\) due to \d+ previous errors?.*"
+    r"|warning: build failed, waiting for other jobs to finish\.\.\."
+    r"|error: test run failed)$"
+)
+# Nextest's count of the tests it ran, which goes on the step's line.
+NEXTEST_SUMMARY = re.compile(r"^\s*Summary \[\s*[\d.]+s\] (.*)$")
 # A unit cargo had to build.
 BUILT = re.compile(r"^\s*(Compiling|Checking|Documenting)\s")
 # What changes a step's result from outside the working files: the toolchain's settings, cargo's,
 # and the tests' own.
 STEP_ENV = re.compile(r"^(RUST\w*|CARGO\w*|CAMPFIRE_\w+)$")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# Rustc's code of an error that is no lint; a lint's code is its name.
+ERROR_CODE = re.compile(r"^E\d{4}$")
 
 
 class Platform:
@@ -110,24 +135,43 @@ def current_platform() -> Platform:
 PLATFORM = current_platform()
 
 
-@dataclass
+class Kind(enum.Enum):
+    """What a step runs, which says what its output holds and what its failure means."""
+
+    # `cargo fmt`, which builds nothing.
+    FORMAT = enum.auto()
+    # A build or a lint, which fails only through the diagnostics it reports.
+    CHECK = enum.auto()
+    # A nextest run: a build, then the tests.
+    TESTS = enum.auto()
+    # A program whose output is its own: a bench, a check binary.
+    PROGRAM = enum.auto()
+
+    def diagnoses(self) -> bool:
+        return self in (Kind.CHECK, Kind.TESTS)
+
+
+@dataclass(frozen=True)
 class Step:
     name: str
-    argv: list[str]
-    env: dict[str, str] = field(default_factory=dict)
-    # It runs what the step before it built, so it is skipped when that one failed.
+    kind: Kind
+    argv: tuple[str, ...]
+    env: Mapping[str, str] = field(default_factory=dict)
+    # It runs what the step before it made, so it is skipped when that one did not pass.
     needs_previous: bool = False
-    # A nextest run that may run only the tests of the crates a change reaches.
-    selects: bool = False
+    # The command asks for a run each time: no pass is reused, and no nextest run narrowed.
+    always_runs: bool = False
+    # The members whose tests a nextest step runs, None for every member.
+    scope: frozenset[str] | None = None
 
-    def selecting(self, packages: list[str]) -> Step:
-        reached = [f"rdeps(={package})" for package in packages]
-        expression = " | ".join([*reached, *(f"package(={crate})" for crate in WORKSPACE_READERS)])
-        argv = [*self.argv, "-E", expression, "--no-tests=pass"]
-        return Step(self.name, argv, self.env, self.needs_previous)
+    def narrowed(self, members: Iterable[str]) -> Step:
+        # Nextest unites its filters, so a narrowed step can hold no filter of its own.
+        assert "-E" not in self.argv, f"{self.name} narrows a filter of its own"
+        expression = " | ".join(f"package(={member})" for member in sorted(members))
+        return replace(self, argv=(*self.argv, "-E", expression, "--no-tests=pass"))
 
-    def log_name(self) -> str:
-        return self.name.replace(" ", "-") + ".log"
+    def log(self) -> Path:
+        return LOGS / (self.name.replace(" ", "-") + ".log")
 
 
 class Status(enum.Enum):
@@ -136,28 +180,96 @@ class Status(enum.Enum):
     SKIP = "skip"
 
 
-@dataclass
+@dataclass(frozen=True)
 class Outcome:
     name: str
     status: Status
-    seconds: float
-    log: Path | None
-    printed: int
-    built: int
-    # It passed on this tree before, so it did not run.
+    seconds: float = 0.0
+    log: Path | None = None
+    printed: int = 0
+    built: int = 0
+    note: str = ""
+    # It found code that does not compile, so no later step builds it.
+    broken: bool = False
+    # It passed on these inputs before, so it did not run.
     reused: bool = False
 
     def line(self) -> str:
-        text = f"{self.name:<12} {self.status.value:<4} {self.seconds:6.1f} s"
+        parts = [f"{self.name:<12} {self.status.value:<4} {self.seconds:6.1f} s"]
         if self.status is Status.FAIL and self.log is not None:
-            text += f"  {shown_path(self.log)}"
-        if self.reused:
-            text += "  passed on this tree"
-        return text
+            parts.append(shown_path(self.log))
+        if self.note:
+            parts.append(self.note)
+        return "  ".join(parts)
 
 
-def cargo(*args: str) -> list[str]:
-    return ["cargo", *args]
+@dataclass(frozen=True)
+class Workspace:
+    """The workspace's members as `cargo metadata` gives them."""
+
+    folders: Mapping[str, Path]
+    # The members that depend on each member, by a dependency of any kind, target or feature.
+    dependents: Mapping[str, frozenset[str]]
+    benches: frozenset[str]
+    # Each member that turns `internals` on through a normal, required dependency on a member.
+    unifies_internals: tuple[str, ...]
+    target: Path
+
+    def reach(self, changed: Iterable[str]) -> frozenset[str]:
+        """The members whose tests a change in `changed` can change: they and every member that
+        depends on them, and `WORKSPACE_READERS`."""
+        found = set(changed)
+        queue = list(found)
+        while queue:
+            for dependent in self.dependents[queue.pop()]:
+                if dependent not in found:
+                    found.add(dependent)
+                    queue.append(dependent)
+        return frozenset(found | WORKSPACE_READERS)
+
+
+@functools.cache
+def workspace() -> Workspace:
+    found = subprocess.run(
+        cargo("metadata", "--format-version", "1", "--no-deps", "--locked"),
+        cwd=SOURCE, capture_output=True, text=True,
+    )
+    if found.returncode != 0:
+        print(found.stderr, end="", file=sys.stderr)
+        raise SystemExit(1)
+    metadata = json.loads(found.stdout)
+    packages = metadata["packages"]
+    names = {package["name"] for package in packages}
+    dependents: dict[str, set[str]] = {name: set() for name in names}
+    for package in packages:
+        for dependency in package["dependencies"]:
+            if dependency["name"] in names:
+                dependents[dependency["name"]].add(package["name"])
+    return Workspace(
+        folders={package["name"]: Path(package["manifest_path"]).parent for package in packages},
+        dependents={name: frozenset(found) for name, found in dependents.items()},
+        benches=frozenset(
+            package["name"]
+            for package in packages
+            if any("bench" in target["kind"] for target in package["targets"])
+        ),
+        unifies_internals=tuple(
+            package["name"]
+            for package in packages
+            if any(
+                dependency["kind"] is None
+                and not dependency["optional"]
+                and dependency["name"] in names
+                and "internals" in dependency["features"]
+                for dependency in package["dependencies"]
+            )
+        ),
+        target=Path(metadata["target_directory"]),
+    )
+
+
+def cargo(*args: str) -> tuple[str, ...]:
+    return ("cargo", *args)
 
 
 def nextest_output() -> tuple[str, ...]:
@@ -166,101 +278,82 @@ def nextest_output() -> tuple[str, ...]:
 
 def index_step() -> Step:
     return Step(
-        "index", cargo(*TESTS, *nextest_output(), "-E", INDEX_TEST), {"CAMPFIRE_BLESS": "1"}
+        "index", Kind.TESTS, cargo(*TESTS, *nextest_output(), "-E", INDEX_TEST),
+        {"CAMPFIRE_BLESS": "1"}, scope=frozenset((INDEX_PACKAGE,)),
     )
 
 
 def fmt_step() -> Step:
-    return Step("fmt", cargo("fmt", "--all"))
+    return Step("fmt", Kind.FORMAT, cargo("fmt", "--all"))
 
 
 def fmt_check_step() -> Step:
-    return Step("fmt", cargo("fmt", "--all", "--check"))
+    return Step("fmt", Kind.FORMAT, cargo("fmt", "--all", "--check"))
 
 
 def lint_step() -> Step:
-    return Step("lint", cargo(*LINT, *DENY))
+    return Step("lint", Kind.CHECK, cargo(*LINT, *DENY))
 
 
 def ship_step() -> Step:
     # A member that turns `internals` on through a normal dependency, as the Zero Hour check does,
     # unifies it into that crate and the crates below it: with such a member, no build that ships
     # is linted. Its own code is linted by `lint`.
-    found = metadata()
-    members = {package["name"] for package in found["packages"]}
-    excluded = [
-        arg
-        for package in found["packages"]
-        if any(
-            dependency["kind"] is None
-            and not dependency["optional"]
-            and dependency["name"] in members
-            and "internals" in dependency["features"]
-            for dependency in package["dependencies"]
-        )
-        for arg in ("--exclude", package["name"])
-    ]
-    return Step("ship", cargo(*SHIP, *excluded, *DENY))
+    excluded = [arg for name in workspace().unifies_internals for arg in ("--exclude", name)]
+    return Step("ship", Kind.CHECK, cargo(*SHIP, *excluded, *DENY))
 
 
 def tests_step(
-    extra: list[str] | None = None, env: dict[str, str] | None = None, selects: bool = False,
+    extra: Iterable[str] = (), env: Mapping[str, str] | None = None, always_runs: bool = False,
 ) -> Step:
-    argv = cargo(*TESTS, *nextest_output(), *(extra or []))
-    return Step("tests", argv, env or {}, selects=selects)
+    argv = cargo(*TESTS, *nextest_output(), *extra)
+    return Step("tests", Kind.TESTS, argv, env or {}, always_runs=always_runs)
 
 
 def bench_cases_step() -> Step:
-    return Step("bench cases", cargo(*TESTS, *nextest_output(), "--bench", "*"))
+    return Step(
+        "bench cases", Kind.TESTS, cargo(*TESTS, *nextest_output(), "--bench", "*"),
+        scope=workspace().benches,
+    )
 
 
 def rustdoc_step() -> Step:
     return Step(
-        "rustdoc",
-        cargo("doc", "--workspace", "--no-deps", "--all-features", "--locked"),
+        "rustdoc", Kind.CHECK,
+        cargo("doc", "--workspace", "--no-deps", "--all-features", "--locked", JSON),
         {"RUSTDOCFLAGS": "-D warnings"},
     )
 
 
 def cross_step(target: str) -> Step:
-    return Step("cross", cargo(*LINT, "--target", target, *DENY))
+    return Step("cross", Kind.CHECK, cargo(*LINT, "--target", target, *DENY))
 
 
 def lan_build_step() -> Step:
     # One build of the check and the processes it starts, which then share every feature: the
-    # check builds them again with the `CARGO` it is given, and finds every crate fresh.
+    # check builds them again with the `CARGO` it is given, and finds every crate fresh. It runs
+    # each time, as the tests' build writes the same binaries with every feature.
     packages = [arg for package in LAN_PACKAGES for arg in ("-p", package)]
-    return Step("lan build", cargo("build", "--locked", *packages))
+    return Step(
+        "lan build", Kind.CHECK, cargo("build", "--locked", JSON, *packages), always_runs=True,
+    )
 
 
 def lan_run_step() -> Step:
-    target = Path(metadata()["target_directory"])
-    check = target / "debug" / f"campfire-lan-check{PLATFORM.exe_suffix}"
-    return Step("lan", [str(check), str(LAN_ROOT)], {"CARGO": "cargo"}, needs_previous=True)
+    check = workspace().target / "debug" / f"campfire-lan-check{PLATFORM.exe_suffix}"
+    return Step(
+        "lan", Kind.PROGRAM, (str(check), str(LAN_ROOT)), {"CARGO": "cargo"},
+        needs_previous=True, always_runs=True,
+    )
 
 
 def bench_step(args: list[str]) -> Step:
     # Every run selects the same crates, the ones with a `[[bench]]`, so a case measures the same
     # code whichever cases run: `--workspace` would unify the client's Bevy features into the
     # shared crates, and one `-p` would give its dependencies fewer.
-    packages = [
-        arg
-        for package in metadata()["packages"]
-        if any("bench" in target["kind"] for target in package["targets"])
-        for arg in ("-p", package["name"])
-    ]
-    return Step("bench", cargo("bench", "--features", "internals", "--locked", *packages, *args))
-
-
-def metadata() -> dict:
-    found = subprocess.run(
-        cargo("metadata", "--format-version", "1", "--no-deps", "--locked"),
-        cwd=SOURCE, capture_output=True, text=True,
-    )
-    if found.returncode != 0:
-        print(found.stderr, end="", file=sys.stderr)
-        raise SystemExit(1)
-    return json.loads(found.stdout)
+    packages = [arg for name in sorted(workspace().benches) for arg in ("-p", name)]
+    argv = cargo("bench", "--features", "internals", "--locked", *packages, *args)
+    return Step("bench", Kind.PROGRAM, argv, always_runs=True)
 
 
 def shown_path(path: Path) -> str:
@@ -270,79 +363,182 @@ def shown_path(path: Path) -> str:
         return str(path)
 
 
-class LineFilter:
-    """Keeps what a reader acts on: diagnostics, failures and results, not cargo's progress."""
+class StepOutput:
+    """What a step prints: diagnostics, failures and results, not cargo's progress, and each error
+    diagnostic once in a command. Its log holds every line, each diagnostic short."""
 
-    def __init__(self) -> None:
+    def __init__(self, kind: Kind, file: IO[str], shown: set[str]) -> None:
+        self.kind = kind
+        self.file = file
+        # The error diagnostics the command printed, shared by its steps.
+        self.shown = shown
+        # A crate's library and its tests report one diagnostic twice.
+        self.logged: set[str] = set()
+        # The reader of standard output and the reader of standard error share the counts.
+        self.lock = threading.Lock()
         self.last_blank = True
+        self.printed = 0
+        self.hidden = 0
+        self.tail: collections.deque[str] = collections.deque(maxlen=TAIL_LINES)
+        self.built = 0
+        self.errors = 0
+        self.repeated = 0
+        self.summary = ""
+        # Errors that are no lint: the code does not compile.
+        self.hard = 0
 
-    def keeps(self, line: str) -> bool:
-        if PROGRESS.match(line) or NEXTEST_PROGRESS.match(line):
-            return False
-        blank = not line.strip()
-        if blank and self.last_blank:
-            return False
-        self.last_blank = blank
-        return True
-
-
-def run_step(step: Step) -> Outcome:
-    LOGS.mkdir(parents=True, exist_ok=True)
-    log = LOGS / step.log_name()
-    keep = LineFilter()
-    printed = hidden = built = 0
-    start = time.monotonic()
-    if IN_CI:
-        print(f"::group::{step.name}")
-    with log.open("w", encoding="utf-8") as out:
+    def run(self, step: Step) -> int:
         try:
             process = subprocess.Popen(
-                step.argv, cwd=SOURCE, env=os.environ | step.env, stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8",
+                step.argv, cwd=SOURCE, env=os.environ | dict(step.env), stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, encoding="utf-8",
                 errors="replace",
             )
         except FileNotFoundError:
-            message = f"{step.argv[0]} is not on PATH, or not built"
-            out.write(message + "\n")
-            print(message)
-            printed, code = 1, 127
+            self.take_line(f"{step.argv[0]} is not on PATH, or not built")
+            return 127
+        reader = threading.Thread(target=self.read_stdout, args=(process.stdout,), daemon=True)
+        reader.start()
+        try:
+            for raw in process.stderr:
+                self.take_line(raw)
+            reader.join()
+            return process.wait()
+        except KeyboardInterrupt:
+            process.terminate()
+            process.wait()
+            raise
+
+    def read_stdout(self, pipe: IO[str]) -> None:
+        for raw in pipe:
+            if self.kind.diagnoses() and raw.startswith("{"):
+                try:
+                    message = json.loads(raw)
+                except json.JSONDecodeError:
+                    message = None
+                if isinstance(message, dict) and "reason" in message:
+                    if message["reason"] == "compiler-message":
+                        self.take_diagnostic(message["message"])
+                    continue
+            self.take_line(raw)
+
+    def take_line(self, raw: str) -> None:
+        line = ANSI.sub("", raw.rstrip("\r\n"))
+        with self.lock:
+            self.file.write(line + "\n")
+            if BUILT.match(line):
+                self.built += 1
+            summary = NEXTEST_SUMMARY.match(line)
+            if summary:
+                self.summary = summary[1]
+            if IN_CI:
+                print(raw.rstrip("\r\n"))
+            elif not (
+                summary or PROGRESS.match(line) or NEXTEST_PROGRESS.match(line) or TALLY.match(line)
+            ):
+                self.show(line)
+
+    def take_diagnostic(self, diagnostic: dict) -> None:
+        rendered = (diagnostic.get("rendered") or diagnostic["message"]).rstrip("\n")
+        with self.lock:
+            if rendered in self.logged:
+                return
+            self.logged.add(rendered)
+            self.file.write(rendered + "\n")
+            if IN_CI:
+                print(rendered)
+            # Each warning is an error in the lints, which print it; a step that warns is no
+            # step that lints.
+            if not diagnostic["level"].startswith("error"):
+                return
+            self.errors += 1
+            code = (diagnostic.get("code") or {}).get("code")
+            if code is None or ERROR_CODE.match(code):
+                self.hard += 1
+            if rendered in self.shown:
+                self.repeated += 1
+            elif not IN_CI:
+                self.shown.add(rendered)
+                self.show(rendered)
+
+    def show(self, line: str) -> None:
+        blank = not line.strip()
+        if blank and self.last_blank:
+            return
+        self.last_blank = blank
+        if self.printed < HEAD_LINES:
+            print(line)
+            self.printed += 1
         else:
-            try:
-                for raw in process.stdout:
-                    line = ANSI.sub("", raw.rstrip("\r\n"))
-                    out.write(line + "\n")
-                    if BUILT.match(line):
-                        built += 1
-                    if IN_CI:
-                        print(raw, end="")
-                        printed += 1
-                    elif keep.keeps(line):
-                        if printed < PRINTED_LINES:
-                            print(line)
-                            printed += 1
-                        else:
-                            hidden += 1
-                code = process.wait()
-            except KeyboardInterrupt:
-                process.wait()
-                raise
+            self.tail.append(line)
+            self.hidden += 1
+
+    def finish(self, log: Path) -> None:
+        omitted = self.hidden - len(self.tail)
+        if omitted:
+            print(f"... {omitted} more lines in {shown_path(log)}")
+        for line in self.tail:
+            print(line)
+        self.printed += len(self.tail)
+
+    def notes(self) -> list[str]:
+        found = [self.summary] if self.summary else []
+        if self.errors:
+            text = f"{self.errors} error{'s' if self.errors != 1 else ''}"
+            found.append(text + (f", {self.repeated} shown above" if self.repeated else ""))
+        return found
+
+
+def run_step(step: Step, shown: set[str], note: str = "") -> Outcome:
+    LOGS.mkdir(parents=True, exist_ok=True)
+    log = step.log()
+    start = time.monotonic()
+    if IN_CI:
+        print(f"::group::{step.name}")
+    # Written aside and moved in whole, so a run beside this one leaves each log whole.
+    written = log.with_name(f"{log.stem}-{os.getpid()}.tmp")
+    with written.open("w", encoding="utf-8") as file:
+        output = StepOutput(step.kind, file, shown)
+        try:
+            code = output.run(step)
+        finally:
+            file.close()
+            written.replace(log)
     if IN_CI:
         print("::endgroup::")
-    if hidden:
-        print(f"... {hidden} more lines in {shown_path(log)}")
+    output.finish(log)
     status = Status.OK if code == 0 else Status.FAIL
-    return Outcome(step.name, status, time.monotonic() - start, log, printed, built)
+    # A lint that fails with no diagnostic failed before rustc ran: no build gets further.
+    broken = output.hard > 0 or (
+        status is Status.FAIL and step.kind is Kind.CHECK and not output.errors
+    )
+    notes = [note, *output.notes()] if note else output.notes()
+    return Outcome(
+        step.name, status, time.monotonic() - start, log, output.printed, output.built,
+        "; ".join(notes), broken,
+    )
 
 
-def run_steps(command: str, steps: list[Step], passes: Passes | None = None) -> int:
+def run_steps(command: str, steps: list[Step], reuse: bool = False) -> int:
+    """Runs `steps`, each after the one before it, past failures: a step that builds is skipped
+    once one found code that does not compile, and a step that needs the one before it when that
+    one did not pass. With `reuse`, outside CI, each step runs only as `Passes` allows."""
+    passes = Passes() if reuse and not IN_CI else None
+    shown: set[str] = set()
     outcomes: list[Outcome] = []
+    broken: str | None = None
     for step in steps:
-        if step.needs_previous and outcomes and outcomes[-1].status is not Status.OK:
-            outcome = Outcome(step.name, Status.SKIP, 0.0, None, 0, 0)
-        elif passes is None:
-            outcome = run_step(step)
+        if broken is not None and step.kind is not Kind.FORMAT:
+            note = f"{broken} found code that does not compile"
+            outcome = Outcome(step.name, Status.SKIP, note=note)
+        elif step.needs_previous and outcomes and outcomes[-1].status is not Status.OK:
+            outcome = Outcome(step.name, Status.SKIP, note=f"{outcomes[-1].name} did not pass")
+        elif passes is not None and not step.always_runs:
+            outcome = passes.run(step, shown)
         else:
-            outcome = passes.run(step)
+            outcome = run_step(step, shown)
+        if outcome.broken and broken is None:
+            broken = outcome.name
         print(outcome.line())
         record(command, outcome)
         outcomes.append(outcome)
@@ -364,104 +560,163 @@ def record(command: str, outcome: Outcome) -> None:
         "seconds": round(outcome.seconds, 1),
         "built": outcome.built,
         "reused": outcome.reused,
+        "note": outcome.note,
     }
     OWN.mkdir(parents=True, exist_ok=True)
     with HISTORY.open("a", encoding="utf-8") as history:
         history.write(json.dumps(entry) + "\n")
 
 
-def git(*args: str, env: dict[str, str] | None = None) -> str | None:
+def git(*args: str, env: Mapping[str, str] | None = None) -> str | None:
     found = subprocess.run(
-        ["git", *args], cwd=SOURCE, env=os.environ | (env or {}), capture_output=True, text=True,
+        ["git", *args], cwd=SOURCE, env=os.environ | dict(env or {}), capture_output=True,
+        text=True,
     )
     return found.stdout if found.returncode == 0 else None
 
 
+@functools.cache
+def repository() -> Path | None:
+    top = git("rev-parse", "--show-toplevel")
+    return Path(top.strip()) if top else None
+
+
 def working_tree() -> str | None:
     """The id of git's tree of the working files as they stand, tracked and new alike, as
-    `.gitignore` leaves them; None outside git. It is written through a copy of the index, so the
-    index itself stays as it is."""
+    `.gitignore` leaves them; None outside git. It is written through a copy of the index, the
+    process's own, so the index stays as it is and concurrent runs share no file."""
     index = git("rev-parse", "--path-format=absolute", "--git-path", "index")
     if index is None:
         return None
     OWN.mkdir(parents=True, exist_ok=True)
+    copy = OWN / f"tree-index-{os.getpid()}"
     try:
-        shutil.copyfile(index.strip(), TREE_INDEX)
-    except FileNotFoundError:
-        TREE_INDEX.unlink(missing_ok=True)
-    env = {"GIT_INDEX_FILE": str(TREE_INDEX)}
-    if git("add", "--all", "--", ":/", env=env) is None:
-        return None
-    tree = git("write-tree", env=env)
-    return tree.strip() if tree else None
+        try:
+            shutil.copyfile(index.strip(), copy)
+        except FileNotFoundError:
+            copy.unlink(missing_ok=True)
+        env = {"GIT_INDEX_FILE": str(copy)}
+        if git("add", "--all", "--", ":/", env=env) is None:
+            return None
+        tree = git("write-tree", env=env)
+        return tree.strip() if tree else None
+    finally:
+        copy.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class Change:
+    """The change from the tree a step last passed on to the tree it would run on."""
+
+    # The changed files the workspace reads: those in it, and the design documents.
+    inputs: tuple[Path, ...]
+    # The members whose tests the change can change; None for every member, when a changed input
+    # is in no member or is a manifest, whose features unify into members that do not depend on
+    # it.
+    reach: frozenset[str] | None
+
+    @staticmethod
+    def between(since: str, tree: str) -> Change | None:
+        """None when git cannot compare them, as when `since` is gone."""
+        top = repository()
+        changed = git("diff", "--name-only", "--no-renames", "-z", since, tree)
+        if top is None or changed is None:
+            return None
+        inputs = tuple(
+            path
+            for path in (top / name for name in changed.split("\0") if name)
+            if path.is_relative_to(SOURCE) or path.is_relative_to(DOCS)
+        )
+        return Change(inputs, Change.reach_of(inputs))
+
+    @staticmethod
+    def reach_of(inputs: tuple[Path, ...]) -> frozenset[str] | None:
+        folders = workspace().folders
+        owners = set()
+        for path in inputs:
+            if path.name == "Cargo.toml":
+                return None
+            holders = [name for name, folder in folders.items() if path.is_relative_to(folder)]
+            if not holders:
+                return None
+            owners.add(max(holders, key=lambda name: len(folders[name].parts)))
+        return workspace().reach(owners)
 
 
 class Passes:
-    """The tree each step of `check` last passed on. A step does not run again on that tree, and
-    the tests run only in the crates that the change since it reaches, through nextest's
-    `rdeps()`, which follows every dependency, dev-dependencies too: the tests outside them
-    passed on that tree, and nothing they build changed; the tests of `WORKSPACE_READERS` always
-    run. A change to a manifest, or outside every crate, as to the lock, the lint or test
-    settings, a package of game data or a document a test reads, runs every test."""
+    """The tree each step last passed on, with its command, its environment and the tools.
+
+    A step does not run again when no file the workspace reads changed since that tree. A nextest
+    step runs only the tests of the members the change reaches (`Workspace.reach`), and does not
+    run when it reaches none of its own: the other tests passed on that tree, and nothing they
+    read changed. A pass is kept only when no file changed while the step ran."""
 
     def __init__(self) -> None:
+        self.trees = Passes.load()
+        self.tree = working_tree()
+
+    @staticmethod
+    def load() -> dict[str, str]:
         try:
-            self.trees: dict[str, str] = json.loads(PASSES.read_text())
+            return json.loads(PASSES.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
-            self.trees = {}
-        rustc = subprocess.run(["rustc", "-V"], cwd=SOURCE, capture_output=True, text=True)
-        self.toolchain = rustc.stdout.strip()
+            return {}
 
-    def key(self, step: Step) -> str:
-        env = {name: value for name, value in os.environ.items() if STEP_ENV.match(name)}
-        identity = [step.name, step.argv, sorted((env | step.env).items()), self.toolchain]
-        return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
-
-    def run(self, step: Step) -> Outcome:
-        tree = working_tree()
-        key = self.key(step)
+    def run(self, step: Step, shown: set[str]) -> Outcome:
+        tree = self.tree
+        if tree is None:
+            return run_step(step, shown)
+        key = step_key(step)
         last = self.trees.get(key)
-        if tree is not None and tree == last:
-            return Outcome(step.name, Status.OK, 0.0, None, 0, 0, reused=True)
-        run = step
-        if step.selects and tree is not None and last is not None:
-            packages = reached_packages(last, tree)
-            if packages is not None:
-                print(f"tests of the crates that depend on {', '.join(packages)}, and the rules")
-                run = step.selecting(packages)
-        outcome = run_step(run)
-        # A file changed while it ran leaves the tree unchecked as a whole.
-        if outcome.status is Status.OK and tree is not None and working_tree() == tree:
-            self.trees[key] = tree
-            OWN.mkdir(parents=True, exist_ok=True)
-            written = PASSES.with_suffix(".tmp")
-            written.write_text(json.dumps(self.trees, indent=1))
-            written.replace(PASSES)
+        change = None if last is None else Change.between(last, tree)
+        run, note = step, ""
+        if change is not None:
+            if not change.inputs:
+                return self.reuse(step, key, tree, "no input changed since it passed")
+            if step.kind is Kind.TESTS and change.reach is not None:
+                scope = step.scope if step.scope is not None else frozenset(workspace().folders)
+                reached = scope & change.reach
+                if not reached:
+                    return self.reuse(step, key, tree, "no change reaches its tests")
+                if reached != scope:
+                    run = step.narrowed(reached)
+                    note = f"the tests of {len(reached)} of {len(scope)} crates"
+        outcome = run_step(run, shown, note)
+        self.tree = working_tree()
+        if outcome.status is Status.OK and self.tree == tree:
+            self.keep(key, tree)
         return outcome
 
+    def reuse(self, step: Step, key: str, tree: str, note: str) -> Outcome:
+        self.keep(key, tree)
+        return Outcome(step.name, Status.OK, note=note, reused=True)
 
-def reached_packages(since: str, tree: str) -> list[str] | None:
-    """The workspace's crates that hold a file changed from tree `since` to `tree`; None when a
-    changed file is in no crate or is a manifest, whose features unify into crates that do not
-    depend on it, or when `since` is gone."""
-    changed = git("diff", "--name-only", "-z", since, tree)
-    top = git("rev-parse", "--show-toplevel")
-    if changed is None or top is None:
-        return None
-    folders = [
-        (Path(package["manifest_path"]).parent, package["name"])
-        for package in metadata()["packages"]
+    def keep(self, key: str, tree: str) -> None:
+        # Another run may have kept passes since this one started: keep theirs.
+        self.trees = Passes.load() | {key: tree}
+        OWN.mkdir(parents=True, exist_ok=True)
+        written = PASSES.with_name(f"passes-{os.getpid()}.tmp")
+        written.write_text(json.dumps(self.trees, indent=1))
+        written.replace(PASSES)
+
+
+def step_key(step: Step) -> str:
+    env = {name: value for name, value in os.environ.items() if STEP_ENV.match(name)}
+    env |= step.env
+    identity = [step.name, list(step.argv), sorted(env.items()), tools(step.kind)]
+    return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
+
+
+@functools.cache
+def tools(kind: Kind) -> list[str]:
+    """The versions of the tools a step of `kind` runs: the toolchain, and nextest."""
+    commands = [["rustc", "-V"]]
+    if kind is Kind.TESTS:
+        commands.append(["cargo", "nextest", "--version"])
+    return [
+        subprocess.run(command, cwd=SOURCE, capture_output=True, text=True).stdout.split("\n")[0]
+        for command in commands
     ]
-    found = set()
-    for name in filter(None, changed.split("\0")):
-        path = Path(top.strip()) / name
-        if path.name == "Cargo.toml":
-            return None
-        owners = [(folder, package) for folder, package in folders if path.is_relative_to(folder)]
-        if not owners:
-            return None
-        found.add(max(owners, key=lambda owner: len(owner[0].parts))[1])
-    return sorted(found)
 
 
 def refuse_arguments(name: str, args: list[str]) -> None:
@@ -474,8 +729,9 @@ def check(args: list[str]) -> int:
     refuse_arguments("check", args)
     # The lints first, as they answer in seconds where `index` waits for every test binary; the
     # index before the tests, as a stale one fails every test that loads its package.
-    steps = [fmt_step(), lint_step(), ship_step(), index_step(), tests_step(selects=True)]
-    return run_steps("check", steps, Passes())
+    tests = replace(tests_step(), needs_previous=True)
+    steps = [fmt_step(), lint_step(), ship_step(), index_step(), tests]
+    return run_steps("check", steps, reuse=True)
 
 
 def test(args: list[str]) -> int:
@@ -483,17 +739,17 @@ def test(args: list[str]) -> int:
     own, rest = args[:split], args[split:]
     env = {"CAMPFIRE_BLESS": "1"} if "--bless" in own else {}
     own = [arg for arg in own if arg != "--bless"]
-    return run_steps("test", [tests_step(own + rest, env)])
+    return run_steps("test", [tests_step(own + rest, env, always_runs=True)])
 
 
 def index(args: list[str]) -> int:
     refuse_arguments("index", args)
-    return run_steps("index", [index_step()])
+    return run_steps("index", [index_step()], reuse=True)
 
 
 def doc(args: list[str]) -> int:
     refuse_arguments("doc", args)
-    return run_steps("doc", [rustdoc_step()])
+    return run_steps("doc", [rustdoc_step()], reuse=True)
 
 
 def bench(args: list[str]) -> int:
@@ -508,8 +764,9 @@ def lan(args: list[str]) -> int:
 def zero_hour(args: list[str]) -> int:
     return run_steps("zero-hour", [
         Step(
-            "zero hour",
+            "zero hour", Kind.PROGRAM,
             cargo("run", "--release", "--locked", "-p", "campfire-zero-hour-check", "--", *args),
+            always_runs=True,
         )
     ])
 
@@ -519,20 +776,18 @@ def gate(args: list[str]) -> int:
     steps = []
     if not IN_CI or PLATFORM.formats_in_ci:
         steps.append(fmt_check_step())
-    steps += [
-        lint_step(), ship_step(), tests_step(), bench_cases_step(), rustdoc_step(),
-    ]
+    steps += [lint_step(), ship_step(), tests_step(), bench_cases_step(), rustdoc_step()]
+    # After the tests, so target/debug holds the LAN check's build of each binary, which CI keeps.
+    steps += [lan_build_step(), lan_run_step()]
     # CI checks Windows on Windows itself.
     if not IN_CI and PLATFORM.cross_target is not None:
         steps.append(cross_step(PLATFORM.cross_target))
-    # Last, so target/debug holds the LAN check's build of each binary, which CI keeps.
-    steps += [lan_build_step(), lan_run_step()]
-    return run_steps("gate", steps)
+    return run_steps("gate", steps, reuse=True)
 
 
 COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
     "check": (check, "", "fmt, lint, ship, index, tests: the check after a change"),
-    "test": (test, "[--bless] [nextest args]", "the tests, all or filtered"),
+    "test": (test, "[--bless] [nextest args]", "the tests, all or filtered, each time"),
     "index": (index, "", "writes each workspace package's package.index from its files"),
     "doc": (doc, "", "rustdoc with -D warnings"),
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
@@ -549,8 +804,14 @@ def usage() -> str:
     return "\n".join(lines)
 
 
+def stop(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt
+
+
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(line_buffering=True, errors="replace")
+    # A harness that ends the driver ends the step it runs too, which would hold cargo's lock.
+    signal.signal(signal.SIGTERM, stop)
     if not argv or argv[0] in ("help", "-h", "--help"):
         print(usage())
         return 0 if argv else 2

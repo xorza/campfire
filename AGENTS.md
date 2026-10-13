@@ -61,15 +61,15 @@ Every check, test, doc build and bench runs through `source/drive.py` ([The driv
 
 | Command | Runs |
 | --- | --- |
-| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index written again, and the tests of the crates the change since the last pass reaches: a step's check. A step that passed on the same tree does not run again |
+| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index written again, and the tests of the crates the change since the last pass reaches: a step's check. A step does not run again when no file the workspace reads changed since it passed, and no step builds after a lint finds code that does not compile |
 | `./drive.py index` | each workspace package's `package.index` written again from its files, after a change to a package |
-| `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again |
+| `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again. It runs each time |
 | `./drive.py doc` | rustdoc with `-D warnings` |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
 | `./drive.py lan`, `./drive.py zero-hour [run root]` | the LAN check, and the Zero Hour check, on request |
 | `./drive.py gate` | every step CI runs, and the Windows lint on Linux |
 
-Each step prints one line, its result and its time, after its diagnostics in short form; a failed step names its log, `target/drive/log/<step>.log`, which holds its whole output. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`: what it prints is already filtered. The exit status is 0 when every step passed.
+Each step prints one line, its result, its time and a note, as what it ran and nextest's count, after its diagnostics in short form, each error once in a command; a failed step names its log, `target/drive/log/<step>.log`, which holds its whole output, a diagnostic a line, warnings among them. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`: what it prints is already filtered. The exit status is 0 when every step passed.
 
 ## Code
 
