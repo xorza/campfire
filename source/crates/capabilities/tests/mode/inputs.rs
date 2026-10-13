@@ -300,7 +300,7 @@ fn on_input(ctx, player, name, value) {
         types[2].inventory = Some((Inventory::new(NonZeroU8::MAX), UseGroup::new(spell)));
     };
     let script = format!("{script}{PICKING}");
-    let mut game = start_match_setup(&script, ScriptLimits::ROOMY, mode_files(), carry).unwrap();
+    let mut game = start_match_setup(&script, ScriptLimits::ROOMY, &mode_files(), carry).unwrap();
     let blink = Actions::named(&game, 0, "blink").unwrap();
     let owned = |game: &mut Match| {
         let mut owned = game.query::<(&Owner, &ActionSlots)>();

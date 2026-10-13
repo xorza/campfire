@@ -55,14 +55,13 @@ impl<'de> Deserialize<'de> for ConstructData {
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::Toml;
-    use toml::de;
+    use campfire_codec::{Toml, TomlError};
 
     use super::*;
 
     #[test]
     fn a_style_reads_as_its_name_or_its_table_of_positive_rates() {
-        let read = |text: &str| -> Result<ConstructData, de::Error> {
+        let read = |text: &str| -> Result<ConstructData, TomlError> {
             #[derive(Debug, Deserialize)]
             struct Field {
                 construct: ConstructData,

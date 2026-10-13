@@ -26,6 +26,7 @@ use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, St
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
+use serde::de::{IntoDeserializer, value};
 
 const POTION: u32 = 0;
 const FLASH: u32 = 1;
@@ -187,7 +188,8 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
             item(300, 1, None, None, vec![might]),
         ],
     ));
-    let share = Share::deserialize(toml::Value::String("0.5".to_owned())).unwrap();
+    let share =
+        Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer("0.5")).unwrap();
     let places = vec![ShopPlace {
         team: Team::new(0),
         region: Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap(),
@@ -365,7 +367,8 @@ fn shop_match() -> Match {
             item(125, &[], 1),
         ],
     );
-    let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
+    let share =
+        Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer("0.7")).unwrap();
     let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
     let places = vec![ShopPlace {
         team: Team::new(0),

@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-sim/internals",
 ]
 
@@ -16,7 +17,6 @@ campfire-sim.workspace = true
 bevy_ecs.workspace = true
 
 [dev-dependencies]
-campfire-sim = { workspace = true, features = ["internals"] }
 campfire-state-types = { workspace = true, features = ["internals"] }
 
 [lints]

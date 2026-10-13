@@ -22,7 +22,7 @@ pub trait ScriptEnum: Copy + PartialEq + 'static {
 pub(crate) mod internals {
     use std::fmt::Debug;
 
-    use serde::de::DeserializeOwned;
+    use serde::de::{DeserializeOwned, IntoDeserializer, value};
 
     use crate::script_enum::ScriptEnum;
 
@@ -30,8 +30,8 @@ pub(crate) mod internals {
     /// a text that names no member names none.
     pub fn named_as_data<T: ScriptEnum + DeserializeOwned + Debug>() {
         for &(_, member) in T::MEMBERS {
-            let text = toml::Value::String(member.data_name().to_owned());
-            assert_eq!(text.try_into::<T>().unwrap(), member);
+            let text = IntoDeserializer::<value::Error>::into_deserializer(member.data_name());
+            assert_eq!(T::deserialize(text).unwrap(), member);
             assert_eq!(T::named(member.data_name()), Some(member));
         }
         assert_eq!(T::named("none"), None);

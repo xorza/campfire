@@ -359,6 +359,10 @@ fn a_cancel_refunds_its_share_rounded_down_and_a_site_that_dies_refunds_nothing(
     );
 }
 
+/// A placement the rules refuse: its name, the rules, a change to the match before the build, and
+/// the site's x, in meters.
+type Case<'r> = (&'static str, Rules<'r>, Option<fn(&mut Match)>, i64);
+
 #[test]
 fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules() {
     // Each case's build at the origin, its box from (−2, −1) to (2, 1), by a builder in range at
@@ -373,7 +377,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         filter: Filter::of_release_relations(relation),
         distance: Num::int(2),
     };
-    let cases: [(&str, Rules<'_>, Option<fn(&mut Match)>, i64); 6] = [
+    let cases: [Case<'_>; 6] = [
         (
             "wall",
             Rules {

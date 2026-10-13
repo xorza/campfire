@@ -655,3 +655,9 @@ fn a_spawn_gives_its_declared_parts_in_one_move() {
     ];
     assert_eq!(parts.map(|id| holding(&game, id)), [1, 1, 1]);
 }
+
+mod entity_kinds;
+mod status_tags;
+mod tag_book;
+mod unit_grid;
+mod unit_types;

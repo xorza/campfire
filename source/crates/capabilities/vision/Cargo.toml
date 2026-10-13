@@ -3,17 +3,17 @@ name = "campfire-vision"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-core/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
+    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-values/internals",
-    "dep:campfire-log",
     "dep:campfire-script",
     "dep:criterion",
 ]
@@ -22,7 +22,6 @@ internals = [
 campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-geometry.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-script = { workspace = true, optional = true }
 campfire-sim.workspace = true
@@ -34,17 +33,7 @@ criterion = { workspace = true, optional = true }
 serde.workspace = true
 
 [dev-dependencies]
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-deliveries = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-mode = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-stats = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 campfire-vision = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true
@@ -57,7 +46,3 @@ bench = false
 name = "vision"
 harness = false
 required-features = ["internals"]
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

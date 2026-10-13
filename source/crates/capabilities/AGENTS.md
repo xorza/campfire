@@ -33,6 +33,7 @@ The engine's capabilities and the core under them, a crate each: the core's crat
 
 - A new rule of a mode's match joins that mode's scripted match, its event asserted in its own tick: `docs/design/02-engine-core.md`, Testing and diagnostics.
 - A change that moves a golden says why in its commit, with the number that moved. A refactor moves neither column; a layout change moves only the state column.
-- A test that builds a `Match` is an integration test in its crate's `tests/`, one binary for each crate, with a dev-dependency on `campfire-capabilities`, which composes the match; it reads the crate's privates through `internals`. A test of a crate's own types, with no `Match`, is a unit test. A test helper that needs a higher crate is a method of a fixtures trait in `src/fixtures/`, `<Module>Fixtures`, which the top crate's `internals` publishes.
+- A test that builds a `Match` lives in this crate's `tests/`, in the module of the crate it tests, and reads that crate's privates through `internals`. A test of a crate's own types, with no `Match`, is a unit test in its crate. A test helper that needs a higher crate is a method of a fixtures trait in `src/fixtures/`, `<Module>Fixtures`, which this crate's `internals` publishes.
+- A crate's `internals` turns on `internals` in each dependency that has it. A crate's dev-dependencies are itself with `internals`, and only the tools its tests use that are not its dependencies: `campfire-codec` and `campfire-store`.
 - A test that runs a match holds a `LogCheck` through its fixture (here a `Match` from `Match::test`); a warning no test takes fails it.
 - Benches live in `bench.rs` beside what they measure, behind the `internals` feature.

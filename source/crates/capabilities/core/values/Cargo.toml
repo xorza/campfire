@@ -6,9 +6,9 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
-    "dep:toml",
 ]
 
 [dependencies]
@@ -19,15 +19,10 @@ campfire-sim.workspace = true
 derive_more.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-toml = { workspace = true, optional = true }
 
 [dev-dependencies]
 campfire-codec.workspace = true
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true

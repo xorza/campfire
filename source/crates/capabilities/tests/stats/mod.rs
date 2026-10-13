@@ -858,3 +858,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
 fn a_modifiers_default_is_what_an_empty_table_reads() {
     assert_eq!(Toml::parse::<ModifierData>(""), Ok(ModifierData::default()));
 }
+
+mod modifier_book;
+mod modifier_spec;
+mod stats_call;

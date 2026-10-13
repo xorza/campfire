@@ -114,7 +114,7 @@ fn a_mode_whose_start_fails_starts_no_match() {
         let failing = format!(
             "fn on_match_start(ctx) {{ ctx.spawn_unit(\"{unit_type}\", \"a\", ctx.map.markers(\"camp\")[0].pos); }}"
         );
-        let failed = start_match(&failing, ScriptLimits::ROOMY, mode_files()).err();
+        let failed = start_match(&failing, ScriptLimits::ROOMY, &mode_files()).err();
         assert_eq!(
             failed.as_ref().map(CallError::kind),
             Some(FailureKind::Api(ApiError::Unknown(NameKind::UnitType))),
@@ -145,7 +145,7 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     let mut files = mode_files();
     files.map = raised(files.map, 3);
-    let mut game = start_match(script, ScriptLimits::ROOMY, files).unwrap();
+    let mut game = start_match(script, ScriptLimits::ROOMY, &files).unwrap();
     assert_eq!(game.resource::<MapBook>().metric, Metric::Spatial);
     let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
     let walkers = |game: &Match| <[_; 3]>::try_from(&Mode::placed_units(game)[1..]).unwrap();
@@ -231,7 +231,7 @@ fn on_input(ctx, player, name, value) {
             .markers
             .push(MarkerData::tagged(name, &[name], MapPoint::ground(x, z)));
     }
-    let mut game = start_match(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, files).unwrap();
+    let mut game = start_match(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, &files).unwrap();
     let crates = |game: &Match| {
         let mut at: Vec<Position> = game
             .resource::<EntityIndex>()
@@ -270,7 +270,7 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     let mut files = mode_files();
     files.map.units[0].height = Num::int(3);
     files.map.units[0].angle = Num::int(-90);
-    let game = start_match(SCRIPT, ScriptLimits::ROOMY, files).unwrap();
+    let game = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
     let tower = game.entity(Mode::entity_by_id(&game, 0));
     let raised = Position::new(Vec3::new(Num::int(-8), Num::int(3), Num::ZERO)).unwrap();
     assert_eq!(tower.get::<Position>(), Some(&raised));

@@ -3,11 +3,11 @@ name = "campfire-areas"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-common/internals",
     "campfire-core/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",
@@ -16,7 +16,6 @@ internals = [
     "campfire-state-types/internals",
     "campfire-stats/internals",
     "campfire-values/internals",
-    "dep:campfire-log",
 ]
 
 [dependencies]
@@ -25,7 +24,6 @@ campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-deliveries.workspace = true
 campfire-geometry.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
@@ -38,20 +36,6 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-areas = { workspace = true, features = ["internals"] }
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-codec.workspace = true
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-mode = { workspace = true, features = ["internals"] }
-campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

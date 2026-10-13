@@ -87,6 +87,11 @@ mod tests {
 
     #[test]
     fn a_share_is_exactly_the_decimal_data_writes() {
+        /// A field of data that holds a share.
+        #[derive(Debug, Deserialize)]
+        struct Field {
+            share: Share,
+        }
         let share = |text: &str| Share::parse(text);
         // 0.7 has no exact binary value; as a fraction of 10 it gives 70% of 300 exactly, and
         // 0.333 of 1000 is 333.
@@ -113,12 +118,8 @@ mod tests {
         ] {
             assert_eq!(share(refused), None, "{refused}");
         }
-        let read = |text: &str| Toml::parse::<toml::Table>(text).unwrap()["share"].clone();
-        let of = |text: &str| {
-            Share::deserialize(read(text))
-                .map(|share| share.of(100))
-                .ok()
-        };
+        let read = |text: &str| Toml::parse::<Field>(text).map(|field| field.share).ok();
+        let of = |text: &str| read(text).map(|share| share.of(100));
         assert_eq!(of("share = 1"), Some(100));
         assert_eq!(of("share = 0"), Some(0));
         assert_eq!(of("share = \"0.25\""), Some(25));
@@ -126,6 +127,6 @@ mod tests {
         // One share however data writes it.
         assert_eq!(share("0.5"), share("0.50"));
         assert_eq!(share("1.0"), Some(Share::ALL));
-        assert_eq!(Share::deserialize(read("share = 1")).ok(), Some(Share::ALL));
+        assert_eq!(read("share = 1"), Some(Share::ALL));
     }
 }

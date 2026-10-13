@@ -77,6 +77,8 @@ impl<'de> Deserialize<'de> for Stat {
 
 #[cfg(test)]
 mod tests {
+    use serde::de::{IntoDeserializer, value};
+
     use super::*;
 
     #[test]
@@ -94,7 +96,9 @@ mod tests {
             assert_eq!(Stat::named(name).unwrap().name(), name);
         }
         // An engine stat's name reads as the engine stat, so it has no declared form.
-        let read = |name: &str| Stat::deserialize(toml::Value::String(name.to_owned())).unwrap();
+        let read = |name: &str| {
+            Stat::deserialize(IntoDeserializer::<value::Error>::into_deserializer(name)).unwrap()
+        };
         assert_eq!(read("move_speed"), Stat::Engine(EngineStat::MoveSpeed));
         assert_eq!(read("armor"), armor);
     }

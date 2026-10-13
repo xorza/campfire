@@ -7,18 +7,17 @@ license.workspace = true
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-common/internals",
     "campfire-core/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
     "campfire-values/internals",
-    "dep:campfire-log",
 ]
 
 [dependencies]
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-core.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-sim.workspace = true
 campfire-values.workspace = true
@@ -28,12 +27,6 @@ serde.workspace = true
 
 [dev-dependencies]
 campfire-deliveries = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true

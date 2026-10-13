@@ -2092,26 +2092,15 @@ dependencies = [
  "bevy_ecs",
  "campfire-abilities",
  "campfire-actions",
- "campfire-areas",
- "campfire-capabilities",
- "campfire-combat",
  "campfire-common",
  "campfire-core",
  "campfire-deliveries",
- "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-navigation",
- "campfire-orders",
- "campfire-progression",
- "campfire-projectiles",
  "campfire-script",
  "campfire-sim",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
- "toml",
 ]
 
 [[package]]
@@ -2124,17 +2113,14 @@ dependencies = [
  "campfire-common",
  "campfire-core",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2144,24 +2130,17 @@ dependencies = [
  "bevy_ecs",
  "campfire-actions",
  "campfire-areas",
- "campfire-capabilities",
- "campfire-codec",
  "campfire-common",
  "campfire-core",
  "campfire-deliveries",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
- "campfire-projectiles",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2200,7 +2179,6 @@ dependencies = [
  "derive_more",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2245,22 +2223,16 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
  "campfire-codec",
  "campfire-combat",
  "campfire-common",
  "campfire-core",
- "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "serde",
- "toml",
 ]
 
 [[package]]
@@ -2281,37 +2253,20 @@ name = "campfire-core"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-actions",
- "campfire-areas",
- "campfire-capabilities",
  "campfire-codec",
- "campfire-combat",
  "campfire-common",
  "campfire-core",
- "campfire-deliveries",
  "campfire-geometry",
- "campfire-items",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
- "campfire-navigation",
- "campfire-orders",
- "campfire-production",
- "campfire-progression",
- "campfire-projectiles",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
- "campfire-stats",
- "campfire-store",
  "campfire-values",
  "campfire-visibility",
- "campfire-vision",
  "criterion 0.8.2",
  "derive_more",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2323,13 +2278,10 @@ dependencies = [
  "campfire-common",
  "campfire-core",
  "campfire-deliveries",
- "campfire-log",
  "campfire-math",
  "campfire-sim",
- "campfire-store",
  "campfire-values",
  "serde",
- "toml",
 ]
 
 [[package]]
@@ -2339,15 +2291,12 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
  "campfire-sim",
- "campfire-store",
  "campfire-values",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2379,24 +2328,15 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
- "campfire-combat",
  "campfire-common",
  "campfire-core",
  "campfire-geometry",
  "campfire-items",
- "campfire-log",
- "campfire-math",
- "campfire-mode",
- "campfire-orders",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
- "campfire-visibility",
  "serde",
- "toml",
 ]
 
 [[package]]
@@ -2454,31 +2394,26 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
  "campfire-codec",
  "campfire-combat",
  "campfire-common",
  "campfire-core",
  "campfire-geometry",
  "campfire-items",
- "campfire-log",
  "campfire-math",
  "campfire-mode",
  "campfire-navigation",
- "campfire-orders",
  "campfire-production",
  "campfire-progression",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "campfire-visibility",
  "campfire-vision",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2487,23 +2422,18 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
  "campfire-common",
  "campfire-core",
  "campfire-deliveries",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-navigation",
  "campfire-sim",
  "campfire-state-types",
- "campfire-store",
  "campfire-values",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2542,16 +2472,10 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
- "campfire-codec",
- "campfire-combat",
  "campfire-common",
  "campfire-core",
- "campfire-deliveries",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-navigation",
  "campfire-orders",
  "campfire-production",
@@ -2559,13 +2483,10 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
- "campfire-visibility",
  "campfire-vision",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2596,25 +2517,18 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
- "campfire-codec",
  "campfire-common",
  "campfire-core",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-navigation",
- "campfire-orders",
  "campfire-production",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "campfire-vision",
  "serde",
- "toml",
 ]
 
 [[package]]
@@ -2623,22 +2537,16 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
- "campfire-codec",
  "campfire-common",
  "campfire-core",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-progression",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2647,26 +2555,17 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
- "campfire-capabilities",
- "campfire-codec",
- "campfire-combat",
  "campfire-common",
  "campfire-core",
  "campfire-deliveries",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
- "campfire-navigation",
  "campfire-projectiles",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
- "campfire-vision",
  "serde",
- "toml",
 ]
 
 [[package]]
@@ -2815,23 +2714,18 @@ name = "campfire-stats"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-capabilities",
  "campfire-codec",
  "campfire-common",
  "campfire-core",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
  "campfire-stats",
- "campfire-store",
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2859,7 +2753,6 @@ dependencies = [
  "derive_more",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2898,24 +2791,17 @@ name = "campfire-vision"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-capabilities",
  "campfire-common",
  "campfire-core",
- "campfire-deliveries",
  "campfire-geometry",
- "campfire-log",
  "campfire-math",
- "campfire-mode",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
- "campfire-stats",
- "campfire-store",
  "campfire-values",
  "campfire-vision",
  "criterion 0.8.2",
  "serde",
- "toml",
 ]
 
 [[package]]

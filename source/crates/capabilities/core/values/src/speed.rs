@@ -33,6 +33,8 @@ impl<'de> Deserialize<'de> for Speed {
 
 #[cfg(test)]
 mod tests {
+    use serde::de::{IntoDeserializer, value};
+
     use super::*;
 
     #[test]
@@ -42,16 +44,14 @@ mod tests {
         assert!(Speed::new(-Num::EPSILON).is_none());
         // Read from data, a number past what a `Num` holds fails as every data number does, and
         // one that is not positive as a speed does.
-        let read = |value: toml::Value| {
-            Speed::deserialize(value).map_err(|error| error.message().to_owned())
+        let read = |value: i64| {
+            Speed::deserialize(IntoDeserializer::<value::Error>::into_deserializer(value))
+                .map_err(|error| error.to_string())
         };
-        assert_eq!(
-            read(toml::Value::Integer(3)).map(Speed::get),
-            Ok(Num::int(3))
-        );
-        let past = read(toml::Value::Integer(1 << 40)).unwrap_err();
+        assert_eq!(read(3).map(Speed::get), Ok(Num::int(3)));
+        let past = read(1 << 40).unwrap_err();
         assert_eq!(past, "Int(1099511627776) is past what a number holds");
-        let zero = read(toml::Value::Integer(0)).unwrap_err();
+        let zero = read(0).unwrap_err();
         assert_eq!(zero, "a speed is a positive number");
     }
 }

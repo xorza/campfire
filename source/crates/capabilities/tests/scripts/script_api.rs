@@ -197,6 +197,9 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     assert!(api.builtin("len") && api.builtin("max") && !api.builtin("pos"));
 }
 
+/// A misuse of the registry, and the panic it ends in.
+type Misuse = (fn(&mut ScriptApi), &'static str);
+
 #[test]
 fn a_binding_records_its_spec_once_and_whole() {
     let mut api = Release::script_api();
@@ -208,7 +211,7 @@ fn a_binding_records_its_spec_once_and_whole() {
     assert_eq!((held.spec, held.writable), (damage, true));
     api.record(stacks.spec, false, stacks.status);
     assert!(api.member(ApiOwner::Modifier, "stacks").unwrap().writable);
-    let misuses: [(fn(&mut ScriptApi), &str); 4] = [
+    let misuses: [Misuse; 4] = [
         (
             |api| {
                 let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
@@ -341,7 +344,7 @@ const REFERENCE_LEN: usize = 16 << 20;
 /// The reference beside design 08.
 const REFERENCE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../../../docs/design/08-script-api-reference.md"
+    "/../../../docs/design/08-script-api-reference.md"
 );
 
 #[test]

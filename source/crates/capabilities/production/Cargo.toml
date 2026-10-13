@@ -3,11 +3,11 @@ name = "campfire-production"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-common/internals",
     "campfire-core/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
@@ -17,7 +17,6 @@ internals = [
     "campfire-stats/internals",
     "campfire-values/internals",
     "campfire-vision/internals",
-    "dep:campfire-log",
 ]
 
 [dependencies]
@@ -25,7 +24,6 @@ campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-geometry.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-navigation.workspace = true
 campfire-sim.workspace = true
@@ -38,21 +36,7 @@ bevy_ecs.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-codec.workspace = true
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-mode = { workspace = true, features = ["internals"] }
-campfire-orders = { workspace = true, features = ["internals"] }
 campfire-production = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

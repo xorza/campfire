@@ -3,17 +3,17 @@ name = "campfire-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
+    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
-    "dep:campfire-log",
     "dep:criterion",
 ]
 
@@ -21,7 +21,6 @@ internals = [
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-geometry.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
@@ -36,27 +35,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-campfire-actions = { workspace = true, features = ["internals"] }
-campfire-areas = { workspace = true, features = ["internals"] }
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-combat = { workspace = true, features = ["internals"] }
 campfire-core = { workspace = true, features = ["internals"] }
-campfire-deliveries = { workspace = true, features = ["internals"] }
-campfire-items = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-mode = { workspace = true, features = ["internals"] }
-campfire-navigation = { workspace = true, features = ["internals"] }
-campfire-orders = { workspace = true, features = ["internals"] }
-campfire-production = { workspace = true, features = ["internals"] }
-campfire-progression = { workspace = true, features = ["internals"] }
-campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-stats = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-campfire-vision = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true
@@ -69,7 +48,3 @@ bench = false
 name = "core"
 harness = false
 required-features = ["internals"]
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

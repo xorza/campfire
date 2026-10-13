@@ -399,6 +399,7 @@ fn a_train_queue_is_state_and_restores() {
 }
 
 mod construction;
+mod gatherer;
 mod gathering;
 mod orders;
 mod supply;

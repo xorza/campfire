@@ -3,12 +3,12 @@ name = "campfire-mode"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
     "campfire-actions/internals",
     "campfire-combat/internals",
+    "campfire-common/internals",
     "campfire-core/internals",
     "campfire-geometry/internals",
     "campfire-items/internals",
@@ -16,13 +16,13 @@ internals = [
     "campfire-navigation/internals",
     "campfire-production/internals",
     "campfire-progression/internals",
+    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-stats/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
-    "dep:campfire-log",
 ]
 
 [dependencies]
@@ -33,7 +33,6 @@ campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-geometry.workspace = true
 campfire-items.workspace = true
-campfire-log = { workspace = true, optional = true, features = ["internals"] }
 campfire-math.workspace = true
 campfire-navigation.workspace = true
 campfire-production.workspace = true
@@ -51,19 +50,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
 campfire-mode = { workspace = true, features = ["internals"] }
-campfire-orders = { workspace = true, features = ["internals"] }
-campfire-sim = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-
-toml.workspace = true
 
 [lints]
 workspace = true
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

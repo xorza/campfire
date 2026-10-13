@@ -673,7 +673,7 @@ fn setup<'a>(
 
 /// A match of the test mode for 3 players, two on team `a` and one on `b`, with `limits`.
 fn mode_match(script: &str, limits: ScriptLimits) -> Match {
-    start_match(script, limits, mode_files()).unwrap()
+    start_match(script, limits, &mode_files()).unwrap()
 }
 
 /// A match of `script`, whose `on_input` takes every mode input but a pick of a hero.
@@ -682,7 +682,7 @@ fn picking_match(script: &str, limits: ScriptLimits) -> Match {
 }
 
 /// The match `mode_match` gives, of the mode `files`; an error when the mode's start fails.
-fn start_match(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Match, CallError> {
+fn start_match(script: &str, limits: ScriptLimits, files: &ModeFiles) -> Result<Match, CallError> {
     start_match_setup(script, limits, files, |_| {})
 }
 
@@ -759,7 +759,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
 fn start_match_setup(
     script: &str,
     limits: ScriptLimits,
-    files: ModeFiles,
+    files: &ModeFiles,
     adjust: impl FnOnce(&mut [TestType]),
 ) -> Result<Match, CallError> {
     let scripts = ScriptBudgets::new(limits, 3);
@@ -815,8 +815,8 @@ fn start_match_setup(
     let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
     let mut types = test_types(types, strike, blessing);
     adjust(&mut types);
-    let setup = setup(&files, script, &types, spell);
-    let load = load_mode_books(&mut game, &files, &types);
+    let setup = setup(files, script, &types, spell);
+    let load = load_mode_books(&mut game, files, &types);
     Release::install_mode(&mut game, setup, load);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
@@ -885,4 +885,5 @@ mod progression;
 mod restore;
 mod roles;
 mod start;
+mod timers;
 mod unit_state;
