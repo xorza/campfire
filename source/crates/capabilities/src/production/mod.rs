@@ -1,16 +1,12 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
-use crate::abilities::AbilitiesSet;
-use crate::actions::ActionsSet;
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::items::ItemsSet;
-use crate::navigation::NavigationSet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::production::build_book::BuildBook;
 use crate::production::builder::Builder;
 use crate::production::construction::Construction;
@@ -30,8 +26,6 @@ use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
-use crate::progression::ProgressionSet;
-use crate::stats::StatsSet;
 use crate::units::block::Block;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
@@ -103,36 +97,14 @@ impl ModuleSet for ProductionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const ALL: &'static [ProductionSet] = &ProductionSet::ALL;
 
-    fn place(self) -> SimPlace {
-        SimPlace::Stage(match self {
-            ProductionSet::Commands | ProductionSet::CheckBuilds => SimSet::Inputs,
-            ProductionSet::Start => SimSet::Act,
-            ProductionSet::Finish => SimSet::Mode,
-            ProductionSet::Supply => SimSet::Vision,
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ProductionSet::Commands => Phase::Produce,
+            ProductionSet::CheckBuilds => Phase::CheckBuilds,
+            ProductionSet::Start => Phase::StartBuilds,
+            ProductionSet::Finish => Phase::Finish,
+            ProductionSet::Supply => Phase::End,
         })
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            ProductionSet::Commands => {
-                o.after(StatsSet::Regenerate)
-                    .after(CombatSet::Respawn)
-                    .after(AbilitiesSet::Toggles)
-                    .before(ActionsSet::HoldAtInputs)
-                    .before(ItemsSet::HoldAtInputs)
-                    .before(ProductionSet::CheckBuilds)
-                    .after(ProgressionSet::Commands);
-            }
-            ProductionSet::CheckBuilds => {
-                o.after(StatsSet::Regenerate)
-                    .after(NavigationSet::TrackStatics)
-                    .after(StatsSet::GrantAtInputs);
-            }
-            ProductionSet::Start => {
-                o.after(ActionsSet::Start);
-            }
-            ProductionSet::Finish | ProductionSet::Supply => {}
-        }
     }
 }
 

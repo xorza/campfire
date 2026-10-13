@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
-use campfire_sim::{SimEdge, SimUpdate};
+use campfire_sim::{SimEdge, SimSet, SimUpdate};
 
 use super::*;
 

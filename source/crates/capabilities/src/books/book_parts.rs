@@ -1,6 +1,7 @@
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::effect_list_book::EffectListBook;
+use crate::actions::use_group::UseGroup;
 use crate::areas::area_spec::AreaSpec;
 use crate::combat::on_death::OnDeath;
 use crate::items::inventory::Inventory;
@@ -60,6 +61,7 @@ pub(crate) struct BookParts {
     pub(super) node_starts: ByType<Node>,
     pub(super) gatherers: ByType<Gatherer>,
     pub(super) inventories: ByType<Inventory>,
+    pub(super) use_groups: ByType<UseGroup>,
     /// The slots each type with actions or an inventory spawns with.
     pub(super) slots: ByType<ActionSlots>,
     pub(super) producers: ByType<ProductionData>,

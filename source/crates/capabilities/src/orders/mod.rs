@@ -2,17 +2,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
-use crate::abilities::AbilitiesSet;
-use crate::actions::ActionsSet;
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::items::ItemsSet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::orders::ai::Ai;
 use crate::orders::destinations::Destinations;
 use crate::orders::next_think::NextThink;
@@ -21,9 +18,6 @@ use crate::orders::orders_api::OrdersApi;
 use crate::orders::resetting::Resetting;
 use crate::orders::thinking::Thinking;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
-use crate::production::ProductionSet;
-use crate::progression::ProgressionSet;
-use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::map_book::MapBook;
 use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
@@ -60,32 +54,12 @@ impl ModuleSet for OrdersSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Orders);
     const ALL: &'static [OrdersSet] = &OrdersSet::ALL;
 
-    fn place(self) -> SimPlace {
-        match self {
-            OrdersSet::Orders => SimPlace::Stage(SimSet::Inputs),
-            OrdersSet::Chase => SimPlace::Stage(SimSet::Act),
-            OrdersSet::Think => SimPlace::Stage(SimSet::Think),
-        }
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            OrdersSet::Orders => {
-                o.after(StatsSet::Regenerate)
-                    .after(CombatSet::Respawn)
-                    .after(AbilitiesSet::Toggles)
-                    .before(ActionsSet::HoldAtInputs)
-                    .before(ItemsSet::HoldAtInputs)
-                    .before(ProductionSet::CheckBuilds)
-                    .after(ProgressionSet::Commands)
-                    .after(ProductionSet::Commands)
-                    .after(ItemsSet::Commands);
-            }
-            OrdersSet::Chase => {
-                o.before(CombatSet::Attack);
-            }
-            OrdersSet::Think => {}
-        }
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            OrdersSet::Orders => Phase::Order,
+            OrdersSet::Chase => Phase::Chase,
+            OrdersSet::Think => Phase::Think,
+        })
     }
 }
 

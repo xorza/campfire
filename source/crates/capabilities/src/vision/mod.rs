@@ -1,11 +1,12 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::units::by_type::ByType;
 use crate::units::predicting::Predicting;
 use crate::units::unit_entity::UnitEntity;
@@ -58,16 +59,10 @@ impl ModuleSet for VisionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
     const ALL: &'static [VisionSet] = &VisionSet::ALL;
 
-    fn place(self) -> SimPlace {
-        match self {
-            VisionSet::See => SimPlace::Stage(SimSet::Vision),
-        }
-    }
-
-    fn order(self, _: &mut SetOrder) {
-        match self {
-            VisionSet::See => {}
-        }
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            VisionSet::See => Phase::End,
+        })
     }
 }
 

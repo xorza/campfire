@@ -4,7 +4,8 @@ use campfire_sim::{EntityIndex, Position};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_times::SlotTimes;
-use crate::items::inventory::Inventory;
+use crate::actions::use_group::UseGroup;
+use crate::items::inventory::{CarrierSlots, Inventory};
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::items::items_action::ItemsAction;
@@ -45,6 +46,7 @@ impl TradeOrders {
                 &Team,
                 &Position,
                 &mut Inventory,
+                &UseGroup,
                 Option<(&mut ActionSlots, &mut SlotTimes)>,
                 Has<Dead>,
             ),
@@ -54,7 +56,7 @@ impl TradeOrders {
         orders.for_each(|order| {
             let action = order.action;
             for &unit in order.units {
-                let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
+                let Some(Ok((owner, &team, &pos, mut inventory, &group, mut slots, dead))) =
                     index.get(unit).map(|entity| units.get_mut(entity))
                 else {
                     continue;
@@ -72,10 +74,12 @@ impl TradeOrders {
                     .filter(|shop| dead || shop.serves(team, pos));
                 match (action, shop) {
                     (ItemsAction::Swap { from, to }, _) => {
-                        let slots = slots
-                            .as_mut()
-                            .map(|(slots, times)| (&mut **slots, &mut **times));
-                        inventory.swap_with(from, to, slots);
+                        let carrier = slots.as_mut().map(|(slots, times)| CarrierSlots {
+                            slots,
+                            times,
+                            group,
+                        });
+                        inventory.swap_with(from, to, carrier);
                         continue;
                     }
                     (ItemsAction::Buy { item }, Some(shop)) if shop.sells(item) => {
@@ -107,7 +111,12 @@ impl TradeOrders {
                     _ => continue,
                 }
                 if let Some((slots, times)) = &mut slots {
-                    inventory.follow(&book, (&mut **slots, &mut **times), &before);
+                    let carrier = CarrierSlots {
+                        slots,
+                        times,
+                        group,
+                    };
+                    inventory.follow(&book, carrier, &before);
                 }
             }
         });

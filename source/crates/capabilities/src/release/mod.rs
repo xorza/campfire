@@ -15,6 +15,7 @@ use crate::declare::error::CapabilityError;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::ModuleVisitor;
+use crate::declare::phase::Phase;
 use crate::deliveries::Deliveries;
 use crate::items::Items;
 use crate::mode::Mode;
@@ -218,6 +219,9 @@ impl Release {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }
         MatchEnd::stop_stages(schedule);
+        for phase in Phase::ALL {
+            phase.configure(schedule);
+        }
         let called = Release::called(set);
         let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting, called);
         Release::modules(&mut Installing::new(&mut cx, registry));
@@ -298,11 +302,11 @@ pub(crate) mod internals {
     }
 
     impl Release {
-        /// Every system set the release's modules declare, in the order they declare them: the
-        /// sets each game system sits in, an anchor's among them.
-        pub fn module_sets() -> Vec<InternedSystemSet> {
+        /// Every system set the modules of `set` declare, in the order they declare them: the
+        /// sets each game system of a match of `set` sits in.
+        pub fn module_sets(set: CapabilitySet) -> Vec<InternedSystemSet> {
             let mut sets = ModuleSets::default();
-            Release::declare(Release::capabilities(), &mut sets);
+            Release::declare(set, &mut sets);
             sets.0
         }
 

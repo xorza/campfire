@@ -14,7 +14,7 @@ use crate::values::damage_kind::DamageKind;
 use crate::values::rank::Rank;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
-/// those scripts launch, which spawn in `CombatSet::Launch`. Not state: it empties within the
+/// those scripts launch, which spawn in `Phase::Launch`. Not state: it empties within the
 /// tick.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Launches {

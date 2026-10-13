@@ -9,14 +9,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::world::World;
-use campfire_sim::{
-    Breach, Capability, HostRule, OnAny, SimComponent, SimPlace, SimResource, SimSet,
-};
+use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use serde::{Deserialize, Serialize};
 
-use crate::abilities::cast_spends::CastSpends;
-use crate::actions::ActionsSet;
 use crate::actions::capability_does_spec::CapabilityDoesSpec;
+use crate::actions::cast_spends::CastSpends;
 use crate::actions::effect_queues::{EffectQueues, QueueListed};
 use crate::declare::book::Book;
 use crate::declare::cache::Cache;
@@ -25,9 +22,10 @@ use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module_set::ModuleSet;
+use crate::declare::phase::Phase;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::declare::set_order::{SetEdge, SetOrder};
+use crate::declare::set_place::SetPlace;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
@@ -96,16 +94,13 @@ struct DeclaredCallback {
     declared_by: Option<Capability>,
 }
 
-/// A system set as declared: its set, its place, the capability its type names, the capability
-/// of the module that declares it, and the sets it orders against, whose own records give their
-/// capabilities.
+/// A system set as declared: its set, the capability its type names, and the capability of the
+/// module that declares it.
 #[derive(Debug)]
 struct DeclaredSet {
     set: InternedSystemSet,
-    place: SimPlace,
     owner: Option<Capability>,
     declared_by: Option<Capability>,
-    edges: Vec<SetEdge>,
 }
 
 /// Every declaration of the modules it visits.
@@ -234,8 +229,7 @@ impl DeclarationAudit {
         problems
     }
 
-    /// Each system set declared twice or by another module than its own, and each order against
-    /// a set that is not declared or sits in another place.
+    /// Each system set declared twice or by another module than its own.
     fn set_problems(&self, problems: &mut Vec<String>) {
         for (at, declared) in self.sets.iter().enumerate() {
             let set = declared.set;
@@ -244,20 +238,6 @@ impl DeclarationAudit {
             }
             if declared.owner != declared.declared_by {
                 problems.push(format!("the set {set:?} is declared by another module"));
-            }
-            for edge in &declared.edges {
-                let other = edge.set;
-                match self.sets.iter().find(|target| target.set == other) {
-                    None => {
-                        problems.push(format!("{set:?} orders against {other:?}, not declared"));
-                    }
-                    Some(target) if target.place != declared.place => {
-                        problems.push(format!(
-                            "{set:?} orders against {other:?}, in another place"
-                        ));
-                    }
-                    Some(_) => {}
-                }
             }
         }
     }
@@ -364,14 +344,10 @@ impl Declarations for DeclarationAudit {
 
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {
-            let mut order = SetOrder::default();
-            set.order(&mut order);
             self.sets.push(DeclaredSet {
                 set: set.intern(),
-                place: set.place(),
                 owner: S::CAPABILITY,
                 declared_by: self.capability,
-                edges: order.iter().copied().collect(),
             });
         }
     }
@@ -431,11 +407,11 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 25 of a unit, vision's `SeenBy` among them, and
-    // the 40 books, 12 of the core's.
+    // player, the mode's three of the match, the 26 of a unit, vision's `SeenBy` and items'
+    // `UseGroup` among them, and the 41 books, 12 of the core's.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 30);
-    assert_eq!(audit.books.len(), 40);
+    assert_eq!(audit.parts.len(), 31);
+    assert_eq!(audit.books.len(), 41);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 12);
     // The engine tags keep their numbers while the module list keeps its order.
@@ -494,8 +470,7 @@ impl Book for StrayBook {
 }
 
 campfire_common::enum_all! {
-    /// Sets the stats own, one in Inputs ordered against the other, in Hit, and that one against
-    /// a set no module declares.
+    /// Sets the stats own.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     enum StraySet {
         Early,
@@ -508,22 +483,11 @@ impl ModuleSet for StraySet {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [StraySet] = &StraySet::ALL;
 
-    fn place(self) -> SimPlace {
-        SimPlace::Stage(match self {
-            StraySet::Early => SimSet::Inputs,
-            StraySet::Late => SimSet::Hit,
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            StraySet::Early => Phase::Begin,
+            StraySet::Late => Phase::Fire,
         })
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            StraySet::Early => {
-                o.before(StraySet::Late);
-            }
-            StraySet::Late => {
-                o.after(ActionsSet::Start);
-            }
-        }
     }
 }
 
@@ -553,8 +517,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     let queue: QueueListed = |_, _, _, _, _| Ok(());
     audit.callback::<EffectQueues>(Capability::Areas, queue);
     audit.callback::<EffectQueues>(Capability::Areas, queue);
-    // Sets the stats own, twice; one orders against a set in another place, one against a set
-    // no module declares.
+    // Sets the stats own, twice.
     audit.sets::<StraySet>();
     audit.sets::<StraySet>();
     let queues = type_name::<EffectQueues>();
@@ -580,15 +543,11 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("the callback Areas of {queues} is declared twice"),
             format!("{queues} has a callback no module calls"),
             "the set Early is declared by another module".to_owned(),
-            "Early orders against Late, in another place".to_owned(),
             "the set Late is declared by another module".to_owned(),
-            "Late orders against Start, not declared".to_owned(),
             "the set Early is declared twice".to_owned(),
             "the set Early is declared by another module".to_owned(),
-            "Early orders against Late, in another place".to_owned(),
             "the set Late is declared twice".to_owned(),
             "the set Late is declared by another module".to_owned(),
-            "Late orders against Start, not declared".to_owned(),
         ]
     );
     // A `host` declaration puts the stray on a declared kind.

@@ -31,7 +31,7 @@ Equipment, world items, loot, crafting, owners and trade come with the imported 
 
 ## State and derived
 
-- **State:** each inventory's slots, each an item type, its stack and its uses; later each item on the ground, its added modifiers, its owner and any sale that holds it.
+- **State:** each inventory's slots, each an item type, its stack and its uses, and its carrier's `UseGroup`, the inventory's slot kind, a state type of `actions`, which the abilities read for the `use` group with no import of `items`; later each item on the ground, its added modifiers, its owner and any sale that holds it.
 - **Derived:** the modifiers and actions an item grants while carried; a recipe's cost less its components.
 
 ## Script API

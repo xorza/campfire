@@ -4,13 +4,14 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_sim::{Capability, SimEdge, SimPlace, SimSet, SimTick, SimWorld, StableId, TickRate};
+use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::grant_pass::GrantPass;
@@ -102,7 +103,7 @@ pub(crate) mod unit_stats;
 #[derive(Debug)]
 pub struct Stats;
 
-/// The steps of `stats`, for the capabilities built on it to order theirs against.
+/// The steps of `stats`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum StatsSet {
     /// The modifiers and stacks that hold no longer end.
@@ -163,37 +164,16 @@ impl ModuleSet for StatsSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [StatsSet] = &StatsSet::ALL;
 
-    fn place(self) -> SimPlace {
+    fn place(self) -> SetPlace {
         match self {
-            StatsSet::Expire | StatsSet::Regenerate | StatsSet::GrantAtInputs => {
-                SimPlace::Stage(SimSet::Inputs)
-            }
-            StatsSet::GrantAtStrike => SimPlace::Stage(SimSet::Hit),
-            StatsSet::GrantAtResolve | StatsSet::ClearDead | StatsSet::Hold => {
-                SimPlace::Stage(SimSet::Resolve)
-            }
-            StatsSet::GrantAtEnd => SimPlace::Stage(SimSet::Vision),
-            StatsSet::Refresh(edge) => SimPlace::Edge(edge),
-        }
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            StatsSet::GrantAtInputs => {
-                o.after(StatsSet::Expire);
-            }
-            StatsSet::GrantAtResolve => {
-                o.before(StatsSet::ClearDead);
-            }
-            StatsSet::Hold => {
-                o.after(StatsSet::ClearDead);
-            }
-            StatsSet::Expire
-            | StatsSet::Regenerate
-            | StatsSet::GrantAtStrike
-            | StatsSet::GrantAtEnd
-            | StatsSet::ClearDead
-            | StatsSet::Refresh(_) => {}
+            StatsSet::Expire | StatsSet::Regenerate => SetPlace::Phase(Phase::Begin),
+            StatsSet::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
+            StatsSet::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
+            StatsSet::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
+            StatsSet::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
+            StatsSet::ClearDead => SetPlace::Phase(Phase::ClearDead),
+            StatsSet::Hold => SetPlace::Phase(Phase::HoldModifiers),
+            StatsSet::Refresh(edge) => SetPlace::Gap(edge),
         }
     }
 }

@@ -1,9 +1,8 @@
-use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, StableId};
 
-use crate::actions::ActionsSet;
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_range::ActionRange;
@@ -12,7 +11,9 @@ use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
-use crate::deliveries::DeliverySet;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
 use crate::geometry::bounds::Bounds;
@@ -47,12 +48,41 @@ pub(crate) mod struck_units;
 #[derive(Debug)]
 pub struct Projectiles;
 
+campfire_common::enum_all! {
+    /// The steps of `projectiles`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ProjectilesSet {
+        /// Projectiles fly a step, and their hits and ends run their actions' hooks.
+        Fly,
+        /// The ranged attacks and the actions that fire take their shots.
+        TakeShots,
+        /// The tick's shots launch.
+        Launch,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ProjectilesSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
+    const ALL: &'static [ProjectilesSet] = &ProjectilesSet::ALL;
+
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ProjectilesSet::Fly => Phase::Fly,
+            ProjectilesSet::TakeShots => Phase::Fire,
+            ProjectilesSet::Launch => Phase::Launch,
+        })
+    }
+}
+
 impl Module for Projectiles {
     const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.engine_tags(&[Projectiles::TAG]);
+        d.sets::<ProjectilesSet>();
         d.component::<Projectile>();
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
@@ -73,11 +103,11 @@ impl Module for Projectiles {
         cx.world.add_observer(Flying::lose_teleported);
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
-            Launching::take_shots.in_set(ActionsSet::Fire),
-            Launching::launch.in_set(ActionsSet::Launch),
+            Launching::take_shots.in_set(ProjectilesSet::TakeShots),
+            Launching::launch.in_set(ProjectilesSet::Launch),
         ));
         if !predicting {
-            schedule.add_systems(Flying::fly.in_set(DeliverySet::Fly));
+            schedule.add_systems(Flying::fly.in_set(ProjectilesSet::Fly));
         }
     }
 }

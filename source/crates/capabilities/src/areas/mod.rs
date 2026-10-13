@@ -1,8 +1,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, Position, SimPlace, SimSet, StableId};
+use campfire_sim::{Capability, Position, StableId};
 
-use crate::actions::ActionsSet;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::Delivery;
 use crate::actions::effect_queues::EffectQueues;
@@ -18,11 +17,10 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::deliveries::DeliverySet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
-use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag_properties::TagProperties;
@@ -49,6 +47,12 @@ campfire_common::enum_all! {
     /// The steps of `areas`.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum AreasSet {
+        /// Areas trigger and end.
+        Trigger,
+        /// The areas the tick's actions deliver land.
+        Land,
+        /// The areas the tick's resolving actions deliver land.
+        LandAtResolve,
         /// After the dead units' modifiers end and before stats hold: each area lists those it
         /// holds on the units inside.
         HoldInside,
@@ -61,18 +65,13 @@ impl ModuleSet for AreasSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const ALL: &'static [AreasSet] = &AreasSet::ALL;
 
-    fn place(self) -> SimPlace {
-        match self {
-            AreasSet::HoldInside => SimPlace::Stage(SimSet::Resolve),
-        }
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            AreasSet::HoldInside => {
-                o.after(StatsSet::ClearDead).before(StatsSet::Hold);
-            }
-        }
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            AreasSet::Trigger => Phase::Trigger,
+            AreasSet::Land => Phase::Land,
+            AreasSet::LandAtResolve => Phase::Resolve,
+            AreasSet::HoldInside => Phase::HoldInside,
+        })
     }
 }
 
@@ -102,11 +101,11 @@ impl Module for Areas {
         let predicting = cx.predicting();
         let schedule = &mut *cx.schedule;
         if !predicting {
-            schedule.add_systems(AreaLife::trigger.in_set(DeliverySet::Trigger));
+            schedule.add_systems(AreaLife::trigger.in_set(AreasSet::Trigger));
         }
         schedule.add_systems((
-            AreaLife::land.in_set(ActionsSet::Land),
-            AreaLife::land.in_set(ActionsSet::Resolve),
+            AreaLife::land.in_set(AreasSet::Land),
+            AreaLife::land.in_set(AreasSet::LandAtResolve),
             AreaHolds::hold_inside.in_set(AreasSet::HoldInside),
         ));
     }

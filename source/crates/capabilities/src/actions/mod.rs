@@ -1,5 +1,5 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -16,8 +16,8 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::stats::StatsSet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::stats::param_book::ParamBook;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
@@ -38,6 +38,7 @@ pub(crate) mod actions_column;
 pub(crate) mod actions_effect;
 pub(crate) mod amount;
 pub(crate) mod capability_does_spec;
+pub(crate) mod cast_spends;
 pub(crate) mod channel_call;
 pub(crate) mod checked_action;
 pub(crate) mod construct_data;
@@ -76,6 +77,7 @@ pub(crate) mod slot_kinds;
 pub(crate) mod slot_times;
 pub(crate) mod targeting;
 pub(crate) mod targets;
+pub(crate) mod use_group;
 pub(crate) mod weapon;
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
@@ -83,8 +85,8 @@ pub(crate) mod weapon;
 pub struct Actions;
 
 campfire_common::enum_all! {
-    /// The steps of the action pipeline, which every capability that acts orders its systems
-    /// against. They name no capability: each capability places its own steps between them.
+    /// The steps of the action pipeline. Each capability that acts puts its own steps in the
+    /// phases between them.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum ActionsSet {
         /// After attacks start: what each unit was ordered starts, each kind's orders by the
@@ -120,51 +122,19 @@ impl ModuleSet for ActionsSet {
     const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [ActionsSet] = &ActionsSet::ALL;
 
-    fn place(self) -> SimPlace {
-        SimPlace::Stage(match self {
-            ActionsSet::Start => SimSet::Act,
-            ActionsSet::Deliver
-            | ActionsSet::Fire
-            | ActionsSet::Launch
-            | ActionsSet::Land
-            | ActionsSet::HoldAtStrike => SimSet::Hit,
-            ActionsSet::Resolve | ActionsSet::HoldAtResolve => SimSet::Resolve,
-            ActionsSet::HoldAtInputs => SimSet::Inputs,
-            ActionsSet::HoldAtEnd => SimSet::Vision,
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ActionsSet::Start => Phase::Start,
+            ActionsSet::Deliver => Phase::Deliver,
+            ActionsSet::Fire => Phase::Fire,
+            ActionsSet::Launch => Phase::Launch,
+            ActionsSet::Land => Phase::Land,
+            ActionsSet::Resolve => Phase::Resolve,
+            ActionsSet::HoldAtInputs => Phase::HoldAtInputs,
+            ActionsSet::HoldAtStrike => Phase::HoldAtStrike,
+            ActionsSet::HoldAtResolve => Phase::HoldAtResolve,
+            ActionsSet::HoldAtEnd => Phase::HoldAtEnd,
         })
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            ActionsSet::Start => {}
-            ActionsSet::Deliver => {
-                o.before(StatsSet::GrantAtStrike);
-            }
-            ActionsSet::Fire => {
-                o.after(ActionsSet::Deliver).after(StatsSet::GrantAtStrike);
-            }
-            ActionsSet::Launch => {
-                o.after(ActionsSet::Fire);
-            }
-            ActionsSet::Land => {
-                o.after(ActionsSet::Launch);
-            }
-            ActionsSet::Resolve => {
-                o.before(ActionsSet::HoldAtResolve);
-            }
-            ActionsSet::HoldAtInputs => {
-                o.after(StatsSet::Expire).before(StatsSet::GrantAtInputs);
-            }
-            ActionsSet::HoldAtStrike => {
-                o.before(StatsSet::GrantAtStrike);
-            }
-            ActionsSet::HoldAtResolve => {
-                o.before(StatsSet::GrantAtResolve);
-            }
-            ActionsSet::HoldAtEnd => {
-                o.before(StatsSet::GrantAtEnd);
-            }
-        }
     }
 }
 

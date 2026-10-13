@@ -504,8 +504,8 @@ fn every_order_the_proving_match_relies_on_is_stated() {
     let proving = ProvingMatch::load();
     let mut target =
         MatchBuild::restore_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
-    // Each game system sits in a set its module declares, an anchor's among them: one ordered by
-    // hand runs where Bevy picks, and one between two stages before or after the probe there.
-    let sets = Release::module_sets();
+    // Each game system sits in a set its module declares: one ordered by hand runs where Bevy
+    // picks, and one between two stages before or after the probe there.
+    let sets = Release::module_sets(*target.resource::<CapabilitySet>());
     assert_eq!(target.systems_outside(&sets), Vec::<String>::new());
 }

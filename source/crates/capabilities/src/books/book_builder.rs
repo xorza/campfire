@@ -15,6 +15,7 @@ use crate::actions::effect_names::EffectNames;
 use crate::actions::error::ActionProblem;
 use crate::actions::placement_data::{PlacementData, PlacementRule};
 use crate::actions::slot_kind_book::SlotKindBook;
+use crate::actions::use_group::UseGroup;
 use crate::areas::Areas;
 use crate::areas::area_spec::AreaSpec;
 use crate::areas::error::AreaError;
@@ -340,6 +341,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.node_starts);
         built.add(parts.gatherers);
         built.add(parts.inventories);
+        built.add(parts.use_groups);
         built.add(parts.slots);
         built.add(navigation);
         built.add(parts.walkers);
@@ -929,7 +931,7 @@ impl<'a> BookBuilder<'a> {
         let inventory = file.inventory.as_ref().map(|inventory| {
             let kind = input.data.slots.names().named(inventory.kind.as_str());
             let kind = kind.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &inventory.kind))?;
-            Ok(Inventory::new(inventory.slots, kind))
+            Ok((Inventory::new(inventory.slots), UseGroup::new(kind)))
         });
         let inventory = inventory.transpose().map_err(unknown)?;
         let slots = self
@@ -958,7 +960,9 @@ impl<'a> BookBuilder<'a> {
         books.node_starts.set_some(unit_type, node);
         let gathers = slotted(ActionKind::Gather).then(Gatherer::default);
         books.gatherers.set_some(unit_type, gathers);
+        let (inventory, group) = inventory.unzip();
         books.inventories.set_some(unit_type, inventory);
+        books.use_groups.set_some(unit_type, group);
         books.slots.set_some(unit_type, slots);
         Ok(())
     }
@@ -984,7 +988,7 @@ impl<'a> BookBuilder<'a> {
         &self,
         file: &UnitTypeData,
         actions: &BTreeMap<&str, ActionId>,
-        inventory: Option<&Inventory>,
+        inventory: Option<&(Inventory, UseGroup)>,
     ) -> Result<Option<ActionSlots>, UnknownName> {
         let slots = &self.input.data.slots;
         let mut held = Vec::new();
@@ -1000,7 +1004,7 @@ impl<'a> BookBuilder<'a> {
         held.sort_by_key(|&(_, kind, _)| kind);
         let slots = ActionSlots::new(held);
         Ok(Some(match inventory {
-            Some(inventory) => inventory.extend_slots(slots),
+            Some((inventory, group)) => inventory.extend_slots(slots, *group),
             None => slots,
         }))
     }

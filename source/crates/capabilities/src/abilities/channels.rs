@@ -10,7 +10,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_call::ActionCall;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::channel_call::{ChannelCall, ChannelStep};
-use crate::items::inventory::Inventory;
+use crate::actions::use_group::UseGroup;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -127,32 +127,32 @@ impl Channels {
                 &mut ActionSlots,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
-                Option<&Inventory>,
+                Option<&UseGroup>,
             ),
         >,
     ) {
         let now = tick.start();
-        for (mut slots, tags, forced, inventory) in &mut units {
+        for (mut slots, tags, forced, used) in &mut units {
             if !slots.channel_due() {
                 continue;
             }
-            let blocked = Self::blocked(&slots, tags, forced, inventory);
+            let blocked = Self::blocked(&slots, tags, forced, used);
             let tick = Self::channel_tick(&book, &slots);
             slots.step_channel(now, blocked, tick);
         }
     }
 
     /// Whether the tags of a unit that holds `slots` keep its channel from running, as its slot's
-    /// kind says, under a forced move when `forced`, and with `inventory`.
+    /// kind says, under a forced move when `forced`, and of the use group `used`.
     fn blocked(
         slots: &ActionSlots,
         tags: Option<&UnitTags>,
         forced: bool,
-        inventory: Option<&Inventory>,
+        used: Option<&UseGroup>,
     ) -> bool {
         let channel = slots.channeling().and_then(|slot| slots.slot(slot));
         let kind = channel.map(|slot| slot.kind);
-        Abilities::blocked(tags, forced, inventory, kind)
+        Abilities::blocked(tags, forced, used, kind)
     }
 
     /// The time between the ticks of the channel `slots` runs, if one runs.

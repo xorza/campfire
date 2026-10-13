@@ -7,7 +7,7 @@ use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, Position, SimRng, SimTick, SimWorld, StableId, StateCopy};
+use campfire_sim::{EntityIndex, Position, SimRng, SimSet, SimTick, SimWorld, StableId, StateCopy};
 
 use super::*;
 use crate::abilities::test_world::{MANA, RAGE, scaling_stats};

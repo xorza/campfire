@@ -9,20 +9,20 @@ use campfire_script::ScriptId;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 
 use crate::abilities::Abilities;
-use crate::abilities::cast_spends::CastSpends;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_call::{ActionCall, ResolvedCast};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::cast_spends::CastSpends;
 use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::lists_of::ListsOf;
 use crate::actions::purse::Purse;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
+use crate::actions::use_group::UseGroup;
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::delivering::Delivering;
-use crate::items::inventory::Inventory;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 use crate::players::player_resources::PlayerResources;
@@ -96,7 +96,7 @@ impl Casts {
                 Has<ForcedMove>,
                 Option<&mut Destination>,
                 Option<&Route>,
-                Option<&Inventory>,
+                Option<&UseGroup>,
             ),
             Without<Dead>,
         >,
@@ -115,7 +115,7 @@ impl Casts {
             forced,
             mut destination,
             route,
-            inventory,
+            used,
         ) in &mut units
         {
             let Some(underway) = slots.in_progress() else {
@@ -125,7 +125,7 @@ impl Casts {
                 .slot(underway.slot())
                 .expect("a slot the unit has")
                 .kind;
-            let blocked = Abilities::blocked(tags, forced, inventory, Some(kind));
+            let blocked = Abilities::blocked(tags, forced, used, Some(kind));
             if let InProgress::Charge { .. } = underway {
                 if blocked {
                     slots.interrupt();
@@ -253,8 +253,8 @@ impl Casts {
             let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
             let due = slots.in_progress().expect("a due cast is under way");
             let kind = slots.slot(due.slot()).expect("a cast's slot").kind;
-            let carried = unit.get::<Inventory>();
-            let can_cast = !Abilities::blocked(unit.get::<UnitTags>(), forced, carried, Some(kind));
+            let used = unit.get::<UseGroup>();
+            let can_cast = !Abilities::blocked(unit.get::<UnitTags>(), forced, used, Some(kind));
             if !can_cast {
                 world
                     .get_mut::<ActionSlots>(entity)
@@ -293,7 +293,7 @@ impl Casts {
                 Option<&Owner>,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
-                Option<&Inventory>,
+                Option<&UseGroup>,
             ),
             Without<Dead>,
         >,
@@ -301,7 +301,7 @@ impl Casts {
         let now = clock.start();
         let life = life.life();
         let second = Abilities::second(clock.rate());
-        for (&team, mut slots, mut times, pools, owner, tags, forced, inventory) in &mut casters {
+        for (&team, mut slots, mut times, pools, owner, tags, forced, used) in &mut casters {
             let Some(ActionCall {
                 aim: casting,
                 start,
@@ -312,7 +312,7 @@ impl Casts {
                 continue;
             };
             let kind = slots.slot(casting.slot).expect("a cast's slot").kind;
-            if Abilities::blocked(tags, forced, inventory, Some(kind)) {
+            if Abilities::blocked(tags, forced, used, Some(kind)) {
                 slots.interrupt();
                 continue;
             }

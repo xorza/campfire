@@ -7,24 +7,30 @@ use campfire_sim::{Capability, SimComponent};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
+use crate::actions::use_group::UseGroup;
 use crate::declare::per_type::PerType;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
-use crate::units::block::Block;
 use crate::units::resource_id::ResourceId;
 use crate::units::unit_entity::UnitEntity;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
-/// item type, and the slot kind whose action slots they fill, one each. State of `items`.
+/// item type, which fill the action slots of the carrier's `UseGroup`, one each. State of `items`.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Inventory {
-    kind: SlotKind,
     slots: Vec<Option<ItemStack>>,
+}
+
+/// A carrier's action slots, their times, and the use group whose slots its inventory fills.
+#[derive(Debug)]
+pub(crate) struct CarrierSlots<'a> {
+    pub(crate) slots: &'a mut ActionSlots,
+    pub(crate) times: &'a mut SlotTimes,
+    pub(crate) group: UseGroup,
 }
 
 /// A stack in a slot: its item type, how many, at least one and at most the type's stack, and
@@ -37,29 +43,18 @@ pub struct ItemStack {
 }
 
 impl Inventory {
-    /// `slots` empty slots, which fill action slots of `kind`.
-    pub(crate) fn new(slots: NonZeroU8, kind: SlotKind) -> Inventory {
+    /// `slots` empty slots.
+    pub(crate) fn new(slots: NonZeroU8) -> Inventory {
         Inventory {
-            kind,
             slots: vec![None; NonZeroUsize::from(slots).get()],
         }
     }
 
-    /// `slots` with an empty slot of the inventory's kind for each of its slots, after the slots
-    /// of that kind, as a carrier's are as it spawns.
-    pub(crate) fn extend_slots(&self, slots: ActionSlots) -> ActionSlots {
+    /// `slots` with an empty slot of `group`'s kind for each of its slots, after the slots of
+    /// that kind, as a carrier's are as it spawns.
+    pub(crate) fn extend_slots(&self, slots: ActionSlots, group: UseGroup) -> ActionSlots {
         let count = u8::try_from(self.slots.len()).expect("an inventory's slots fit u8");
-        slots.with_empty(self.kind, count)
-    }
-
-    /// The group a tag blocks of the action in a slot of `kind`, of a unit that carries
-    /// `inventory`: `use` for an item's slot, whatever its action's kind, else `cast`.
-    pub(crate) fn group(inventory: Option<&Inventory>, kind: SlotKind) -> Block {
-        if inventory.is_some_and(|inventory| inventory.kind == kind) {
-            Block::Use
-        } else {
-            Block::Cast
-        }
+        slots.with_empty(group.kind(), count)
     }
 
     pub const fn slots(&self) -> &[Option<ItemStack>] {
@@ -182,14 +177,19 @@ impl Inventory {
     }
 
     /// Fills each action slot of a slot whose item type differs from `before`'s with its item's
-    /// action, or none, afresh, in `slots`, the carrier's, and their `times`.
+    /// action, or none, afresh, in `carrier`'s slots.
     pub(crate) fn follow(
         &self,
         book: &ItemBook,
-        (slots, times): (&mut ActionSlots, &mut SlotTimes),
+        carrier: CarrierSlots<'_>,
         before: &[Option<ItemId>],
     ) {
-        let first = slots.first_of(self.kind);
+        let CarrierSlots {
+            slots,
+            times,
+            group,
+        } = carrier;
+        let first = slots.first_of(group.kind());
         for (at, (slot, &was)) in self.slots.iter().zip(before).enumerate() {
             let item = slot.map(|carried| carried.item);
             if item != was {
@@ -201,17 +201,17 @@ impl Inventory {
         }
     }
 
-    /// Spends a use of the consumable in the item's slot whose action slot is `slot` of `slots`,
-    /// the carrier's, when `slot` is one of its inventory's: the item on top goes with its last
-    /// use, the next fresh, and the inventory slot with the last item, its action slot then empty
-    /// and ready in `times`.
-    pub(crate) fn spend_use(
-        &mut self,
-        book: &ItemBook,
-        (slots, times): (&mut ActionSlots, &mut SlotTimes),
-        slot: u8,
-    ) {
-        let first = slots.first_of(self.kind);
+    /// Spends a use of the consumable in the item's slot whose action slot is `slot` of
+    /// `carrier`'s, when `slot` is one of its inventory's: the item on top goes with its last use,
+    /// the next fresh, and the inventory slot with the last item, its action slot then empty and
+    /// ready.
+    pub(crate) fn spend_use(&mut self, book: &ItemBook, carrier: CarrierSlots<'_>, slot: u8) {
+        let CarrierSlots {
+            slots,
+            times,
+            group,
+        } = carrier;
+        let first = slots.first_of(group.kind());
         let Some(at) = slot
             .checked_sub(first)
             .filter(|&at| usize::from(at) < self.slots.len())
@@ -238,20 +238,20 @@ impl Inventory {
         }
     }
 
-    /// Swaps slots `from` and `to`, empty or not, and their action slots in `slots`, the
-    /// carrier's, each keeping its times; nothing when either is no slot.
-    pub(crate) fn swap_with(
-        &mut self,
-        from: u8,
-        to: u8,
-        slots: Option<(&mut ActionSlots, &mut SlotTimes)>,
-    ) {
+    /// Swaps slots `from` and `to`, empty or not, and their action slots in `carrier`'s, each
+    /// keeping its times; nothing when either is no slot.
+    pub(crate) fn swap_with(&mut self, from: u8, to: u8, carrier: Option<CarrierSlots<'_>>) {
         if usize::from(from.max(to)) >= self.slots.len() {
             return;
         }
         self.slots.swap(usize::from(from), usize::from(to));
-        if let Some((slots, times)) = slots {
-            let first = slots.first_of(self.kind);
+        if let Some(CarrierSlots {
+            slots,
+            times,
+            group,
+        }) = carrier
+        {
+            let first = slots.first_of(group.kind());
             slots.swap(times, first + from, first + to);
         }
     }

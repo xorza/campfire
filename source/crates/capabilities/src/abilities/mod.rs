@@ -1,32 +1,29 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::Ticks;
-use campfire_sim::{Capability, SimPlace, SimSet, TickRate};
+use campfire_sim::{Capability, TickRate};
 
 use crate::abilities::abilities_api::AbilitiesApi;
-use crate::abilities::cast_spends::CastSpends;
 use crate::abilities::casts::Casts;
 use crate::abilities::channels::Channels;
 use crate::abilities::toggles::Toggles;
-use crate::actions::ActionsSet;
 use crate::actions::action_target::ActionTarget;
+use crate::actions::cast_spends::CastSpends;
 use crate::actions::slot_kind::SlotKind;
-use crate::combat::CombatSet;
+use crate::actions::use_group::UseGroup;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::deliveries::deliverers::Deliverers;
-use crate::items::inventory::Inventory;
 use crate::scripts::script_value::ScriptValue;
-use crate::stats::StatsSet;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
 use crate::units::view::View;
 
 pub(crate) mod abilities_api;
 pub(crate) mod abilities_effect;
-pub(crate) mod cast_spends;
 pub(crate) mod casts;
 pub(crate) mod channels;
 pub(crate) mod toggles;
@@ -42,6 +39,8 @@ campfire_common::enum_all! {
     pub(crate) enum AbilitiesSet {
         /// Before the holds follow: toggles pay their seconds or turn off.
         Toggles,
+        /// The due casts start.
+        StartCasts,
         /// After attacks strike and before the tick's projectiles launch: due casts resolve.
         Resolve,
     }
@@ -53,24 +52,12 @@ impl ModuleSet for AbilitiesSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const ALL: &'static [AbilitiesSet] = &AbilitiesSet::ALL;
 
-    fn place(self) -> SimPlace {
-        match self {
-            AbilitiesSet::Toggles => SimPlace::Stage(SimSet::Inputs),
-            AbilitiesSet::Resolve => SimPlace::Stage(SimSet::Hit),
-        }
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            AbilitiesSet::Toggles => {
-                o.after(StatsSet::Regenerate)
-                    .after(CombatSet::Respawn)
-                    .before(ActionsSet::HoldAtInputs);
-            }
-            AbilitiesSet::Resolve => {
-                o.after(ActionsSet::Fire).before(ActionsSet::Launch);
-            }
-        }
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            AbilitiesSet::Toggles => Phase::Toggles,
+            AbilitiesSet::StartCasts => Phase::Start,
+            AbilitiesSet::Resolve => Phase::CastResolve,
+        })
     }
 }
 
@@ -94,7 +81,7 @@ impl Module for Abilities {
     fn install(cx: &mut InstallCx<'_>) {
         let scripts = cx.scripts();
         let schedule = &mut *cx.schedule;
-        schedule.add_systems(Casts::start_casts.in_set(ActionsSet::Start));
+        schedule.add_systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
         if !scripts {
             schedule.add_systems(
                 (Casts::predict_casts, Channels::predict_channels)
@@ -126,16 +113,16 @@ impl Abilities {
         }
     }
 
-    /// Whether a unit with `tags`, under a forced move when `forced`, carrying `inventory`, is
-    /// kept from the action of a slot of `kind`: from using it, for one of its inventory's, else,
+    /// Whether a unit with `tags`, under a forced move when `forced`, of the use group `used`, is
+    /// kept from the action of a slot of `kind`: from using it, for a slot of its use group, else,
     /// and with no slot, from casting it.
     fn blocked(
         tags: Option<&UnitTags>,
         forced: bool,
-        inventory: Option<&Inventory>,
+        used: Option<&UseGroup>,
         kind: Option<SlotKind>,
     ) -> bool {
-        let group = kind.map_or(Block::Cast, |kind| Inventory::group(inventory, kind));
+        let group = kind.map_or(Block::Cast, |kind| UseGroup::group(used, kind));
         UnitTags::blocks(tags, forced, group)
     }
 

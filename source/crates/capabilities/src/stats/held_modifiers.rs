@@ -6,9 +6,10 @@ use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::rank::Rank;
 
-/// The modifiers capabilities other than stats hold on units this tick, which `StatsSet::Hold`
-/// holds as it holds auras': each producer adds to it before that set, which takes all it holds,
-/// so every producer's entries reach it, and none outlives its tick. Not state.
+/// The modifiers capabilities other than stats hold on units this tick, which stats hold in
+/// `Phase::HoldModifiers` as they hold auras': each producer adds to it before that phase, whose
+/// pass takes all it holds, so every producer's entries reach it, and none outlives its tick. Not
+/// state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct HeldModifiers(pub(crate) Vec<Held>);
 

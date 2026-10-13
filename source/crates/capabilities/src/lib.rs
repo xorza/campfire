@@ -75,6 +75,7 @@ pub use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 pub use crate::actions::slot_kinds::SlotKinds;
 pub use crate::actions::slot_times::{SlotCharges, SlotTime, SlotTimes, TimedSlots};
 pub use crate::actions::targeting::Targeting;
+pub use crate::actions::use_group::UseGroup;
 pub use crate::areas::Areas;
 pub use crate::areas::area::Area;
 pub use crate::areas::area_data::{AreaData, AreaInsideData};

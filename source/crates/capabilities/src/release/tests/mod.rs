@@ -313,6 +313,44 @@ fn a_module_imports_only_from_its_layer_and_below() {
     assert_eq!(upward, [], "imports from a higher layer");
 }
 
+#[test]
+fn no_module_names_another_modules_sets() {
+    // A set's order is its phase's alone: a module that named another's set would order against
+    // it, or put a system in it, outside the one list of phases.
+    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    let mut sets = Vec::new();
+    for (module, _) in LAYERS {
+        production(&src.join(module), &mut |_, code| {
+            for (at, _) in code.match_indices("impl ModuleSet for ") {
+                let rest = &code[at + "impl ModuleSet for ".len()..];
+                let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
+                sets.push((module, rest[..end].to_owned()));
+            }
+        });
+    }
+    assert!(
+        sets.iter()
+            .any(|(module, set)| *module == "actions" && set == "ActionsSet")
+    );
+    let mut named = Vec::new();
+    for (module, _) in LAYERS {
+        production(&src.join(module), &mut |path, code| {
+            let words = code.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
+            for word in words {
+                let other = sets
+                    .iter()
+                    .find(|(owner, set)| set == word && *owner != module);
+                if let Some((owner, set)) = other {
+                    named.push(format!("{module}/{path} names {owner}'s {set}"));
+                }
+            }
+        });
+    }
+    named.sort();
+    named.dedup();
+    assert_eq!(named, Vec::<String>::new());
+}
+
 /// Every lookup by name that the production code calls, by file: a method or function whose
 /// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
 /// most. Each runs in a script call, which resolves the names it is given once, as its arguments'

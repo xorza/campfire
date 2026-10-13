@@ -1,21 +1,17 @@
 use bevy_ecs::schedule::SystemSet;
-use campfire_sim::{Capability, SimPlace};
+use campfire_sim::Capability;
 
-use crate::declare::set_order::SetOrder;
+use crate::declare::set_place::SetPlace;
 
-/// A module's system set: its place in the sim schedule and its order against other modules'
-/// sets, stated once. Each method matches every variant, so a new step does not compile until it
-/// has both. A system names one set of its own module or of an anchor, and orders within its
-/// module by `.chain()` alone.
+/// A module's system set: the phase or the gap it runs in, stated once. Its order against other
+/// sets is its phase's in `Phase::ALL`, so no module names another's sets. A system names one set
+/// of its own module, and orders within its set by `.chain()` alone.
 pub(crate) trait ModuleSet: SystemSet + Copy {
     /// The capability of the module that owns it; `None` for the core's.
     const CAPABILITY: Option<Capability>;
     /// Every variant.
     const ALL: &'static [Self];
 
-    /// The stage or the edge it runs in.
-    fn place(self) -> SimPlace;
-
-    /// The sets it runs after and before.
-    fn order(self, o: &mut SetOrder);
+    /// The phase or the gap it runs in.
+    fn place(self) -> SetPlace;
 }

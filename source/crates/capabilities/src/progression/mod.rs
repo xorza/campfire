@@ -1,17 +1,13 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
-use crate::abilities::AbilitiesSet;
-use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::items::ItemsSet;
-use crate::production::ProductionSet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::progression::experience::Experience;
 use crate::progression::learn_orders::LearnOrders;
 use crate::progression::level_ups::LevelUps;
@@ -21,7 +17,6 @@ use crate::progression::progression_column::{ProgressionColumn, RowReads};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
-use crate::stats::StatsSet;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 
@@ -59,27 +54,10 @@ impl ModuleSet for ProgressionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const ALL: &'static [ProgressionSet] = &ProgressionSet::ALL;
 
-    fn place(self) -> SimPlace {
-        match self {
-            ProgressionSet::Commands => SimPlace::Stage(SimSet::Inputs),
-        }
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            // A capability's orders apply after the pools regenerate, the dead respawn and the
-            // toggles pay, so an order finds its units as they stand this tick, and before the
-            // holds push their grants and the build orders are checked, which read what orders
-            // change; each after those of the capabilities before it in the module list.
-            ProgressionSet::Commands => {
-                o.after(StatsSet::Regenerate)
-                    .after(CombatSet::Respawn)
-                    .after(AbilitiesSet::Toggles)
-                    .before(ActionsSet::HoldAtInputs)
-                    .before(ItemsSet::HoldAtInputs)
-                    .before(ProductionSet::CheckBuilds);
-            }
-        }
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ProgressionSet::Commands => Phase::Learn,
+        })
     }
 }
 

@@ -31,7 +31,7 @@ impl Callbacks for CastSpends {
 
 impl CastSpends {
     /// Spends what the cast of the unit of `entity`, from `slot`, spends beside its slot.
-    pub(super) fn spend(world: &mut World, entity: Entity, slot: u8) {
+    pub(crate) fn spend(world: &mut World, entity: Entity, slot: u8) {
         if let Some(spend) = world.resource::<CastSpends>().0 {
             spend(world, entity, slot);
         }

@@ -7,7 +7,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::rank_fields::TogglePer;
 use crate::actions::slot_times::SlotTimes;
-use crate::items::inventory::Inventory;
+use crate::actions::use_group::UseGroup;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::unit_pools::UnitPools;
 use crate::units::dead::Dead;
@@ -32,7 +32,7 @@ impl Toggles {
                 &mut SlotTimes,
                 UnitPools,
                 Option<&UnitTags>,
-                Option<&Inventory>,
+                Option<&UseGroup>,
                 Has<Dead>,
             ),
         >,
@@ -40,13 +40,13 @@ impl Toggles {
         let now = clock.start();
         let second = Abilities::second(clock.rate());
         let life = life.life();
-        for (slots, mut times, pools, tags, inventory, dead) in &mut units {
+        for (slots, mut times, pools, tags, used, dead) in &mut units {
             let mut pools = pools.of(life);
             for (at, slot) in slots.indexed() {
                 let Some(next) = times.slot(at).and_then(|time| time.toggle) else {
                     continue;
                 };
-                let group = Inventory::group(inventory, slot.kind);
+                let group = UseGroup::group(used, slot.kind);
                 if dead || UnitTags::properties_of(tags).blocks(group) {
                     times.toggle_off(at);
                     continue;

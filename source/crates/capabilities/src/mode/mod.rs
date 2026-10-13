@@ -6,12 +6,9 @@ use std::rc::Rc;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_sim::{Breach, Capability, IdAllocator, SimPlace, SimSet, SimTick};
+use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
 
-use crate::abilities::AbilitiesSet;
-use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
-use crate::combat::CombatSet;
 use crate::combat::combat_hooks::CombatHooks;
 use crate::combat::damage::DamageWeigher;
 use crate::combat::heal::HealWeigher;
@@ -19,7 +16,8 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
@@ -40,23 +38,18 @@ use crate::mode::save_asked::SaveAsked;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::mode::unanswered_slot_events::UnansweredSlotEvents;
-use crate::navigation::NavigationSet;
 use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
-use crate::orders::OrdersSet;
 use crate::players::Players;
 use crate::players::out_of_play::OutOfPlay;
 use crate::players::players_world::PlayersWorld;
-use crate::production::ProductionSet;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_text::ScriptText;
-use crate::stats::StatsSet;
-use crate::units::UnitsSet;
 use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::match_entity::MatchEntity;
@@ -139,31 +132,12 @@ impl ModuleSet for ModeSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const ALL: &'static [ModeSet] = &ModeSet::ALL;
 
-    fn place(self) -> SimPlace {
-        SimPlace::Stage(match self {
-            ModeSet::Inputs => SimSet::Inputs,
-            ModeSet::Hooks => SimSet::Mode,
-            ModeSet::OutOfPlay => SimSet::Vision,
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ModeSet::Inputs => Phase::ModeInputs,
+            ModeSet::Hooks => Phase::ModeHooks,
+            ModeSet::OutOfPlay => Phase::End,
         })
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            ModeSet::Inputs => {
-                o.after(UnitsSet::BeginTick)
-                    .after(StatsSet::Expire)
-                    .after(StatsSet::Regenerate)
-                    .after(NavigationSet::TrackStatics)
-                    .after(CombatSet::Respawn)
-                    .before(OrdersSet::Orders)
-                    .before(AbilitiesSet::Toggles)
-                    .before(ActionsSet::HoldAtInputs);
-            }
-            ModeSet::Hooks => {
-                o.after(ProductionSet::Finish);
-            }
-            ModeSet::OutOfPlay => {}
-        }
     }
 }
 

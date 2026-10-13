@@ -25,6 +25,7 @@ use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
 use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targeting::Targeting;
+use crate::actions::use_group::UseGroup;
 use crate::books::Books;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_book::CombatBook;
@@ -359,7 +360,7 @@ struct TestType {
     body: Option<BodyForm>,
     tracks: TrackSet,
     actions: Vec<(ActionId, SlotKind, Option<Rank>)>,
-    inventory: Option<Inventory>,
+    inventory: Option<(Inventory, UseGroup)>,
     passive: Option<ModifierId>,
 }
 
@@ -384,7 +385,7 @@ impl TestType {
         }
         let slots = ActionSlots::new(self.actions.iter().copied());
         Some(match &self.inventory {
-            Some(inventory) => inventory.extend_slots(slots),
+            Some((inventory, group)) => inventory.extend_slots(slots, *group),
             None => slots,
         })
     }

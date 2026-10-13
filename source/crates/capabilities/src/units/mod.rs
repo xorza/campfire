@@ -4,14 +4,15 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{Breach, Capability, Position, SimEdge, SimPlace, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_book::ScriptBook;
@@ -142,7 +143,7 @@ pub(crate) mod view_column;
 pub(crate) mod view_names;
 
 campfire_common::enum_all! {
-    /// The core's steps, for the capabilities above it to order theirs against.
+    /// The core's steps.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum UnitsSet {
         /// Every pool starts full.
@@ -160,17 +161,11 @@ impl ModuleSet for UnitsSet {
     const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [UnitsSet] = &UnitsSet::ALL;
 
-    fn place(self) -> SimPlace {
+    fn place(self) -> SetPlace {
         match self {
-            UnitsSet::BeginTick => SimPlace::Stage(SimSet::Inputs),
-            UnitsSet::EndLifespans => SimPlace::Stage(SimSet::Vision),
-            UnitsSet::DropUnspawned => SimPlace::Edge(SimEdge::After(SimSet::Vision)),
-        }
-    }
-
-    fn order(self, _: &mut SetOrder) {
-        match self {
-            UnitsSet::BeginTick | UnitsSet::EndLifespans | UnitsSet::DropUnspawned => {}
+            UnitsSet::BeginTick => SetPlace::Phase(Phase::Begin),
+            UnitsSet::EndLifespans => SetPlace::Phase(Phase::End),
+            UnitsSet::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }

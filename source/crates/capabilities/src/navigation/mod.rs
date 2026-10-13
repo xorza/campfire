@@ -4,14 +4,15 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{Capability, Position, SimEdge, SimPlace, SimSet};
+use campfire_sim::{Capability, Position, SimEdge, SimSet};
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::geometry::grid::Grid;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
@@ -79,7 +80,7 @@ pub(crate) mod wall;
 pub(crate) mod walls;
 
 campfire_common::enum_all! {
-    /// Navigation's steps, for the capabilities built on it to order theirs against.
+    /// Navigation's steps.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum NavigationSet {
         /// The static index and the pathing grid take the static bodies as the tick starts.
@@ -99,21 +100,12 @@ impl ModuleSet for NavigationSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
     const ALL: &'static [NavigationSet] = &NavigationSet::ALL;
 
-    fn place(self) -> SimPlace {
+    fn place(self) -> SetPlace {
         match self {
-            NavigationSet::TrackStatics => SimPlace::Stage(SimSet::Inputs),
-            NavigationSet::Move => SimPlace::Stage(SimSet::Move),
-            NavigationSet::Collide => SimPlace::Stage(SimSet::Collide),
-            NavigationSet::Bounds => SimPlace::Edge(SimEdge::After(SimSet::Collide)),
-        }
-    }
-
-    fn order(self, _: &mut SetOrder) {
-        match self {
-            NavigationSet::TrackStatics
-            | NavigationSet::Move
-            | NavigationSet::Collide
-            | NavigationSet::Bounds => {}
+            NavigationSet::TrackStatics => SetPlace::Phase(Phase::Begin),
+            NavigationSet::Move => SetPlace::Phase(Phase::Move),
+            NavigationSet::Collide => SetPlace::Phase(Phase::Collide),
+            NavigationSet::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
         }
     }
 }

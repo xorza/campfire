@@ -131,7 +131,8 @@ impl Carrier {
         Units::give_type(game, carrier, OnDeath::Stay);
         Units::give_type(game, carrier, ActionSlots::new([]).with_empty(kind, 3));
         let three = NonZeroU8::new(3).unwrap();
-        Units::give_type(game, carrier, Inventory::new(three, kind));
+        Units::give_type(game, carrier, Inventory::new(three));
+        Units::give_type(game, carrier, UseGroup::new(kind));
         let owner = Owner::new(PlayerSlot::new(0));
         let id = Mode::spawn(game, carrier, Position::ORIGIN, Team::new(0), owner);
         game.part_mut::<Life>(id).take(Num::int(200));
@@ -258,7 +259,7 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
     // a slot, and a flash with no uses.
     let restored = |item: u32, count: u32, uses: Option<u32>| {
-        let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap(), SlotKind::new(0));
+        let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap());
         let stack = ItemStack {
             item: ItemId::nth(item),
             count: NonZeroU32::new(count).unwrap(),
@@ -423,7 +424,8 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     let mut game = shop_match();
     let three = NonZeroU8::new(3).unwrap();
     let shopper = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    Units::give_type(&mut game, shopper, Inventory::new(three, SlotKind::new(0)));
+    Units::give_type(&mut game, shopper, Inventory::new(three));
+    Units::give_type(&mut game, shopper, UseGroup::new(SlotKind::new(0)));
     let owner = Owner::new(PlayerSlot::new(0));
     let hero = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(0), owner);
     let step = |game: &mut Match, actions: &[ItemsAction]| {

@@ -1,8 +1,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::RngStream;
-use campfire_sim::{Capability, SimPlace, SimSet};
+use campfire_sim::Capability;
 
-use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
 use crate::combat::attacks::Attacks;
 use crate::combat::combat_api::CombatApi;
@@ -25,10 +24,9 @@ use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
-use crate::declare::set_order::SetOrder;
-use crate::deliveries::DeliverySet;
+use crate::declare::phase::Phase;
+use crate::declare::set_place::SetPlace;
 use crate::scripts::ctx::Ctx;
-use crate::stats::StatsSet;
 use crate::stats::life::Life;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
@@ -72,7 +70,7 @@ pub(crate) const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 pub struct Combat;
 
 campfire_common::enum_all! {
-    /// Combat's steps, for the capabilities built on it to order theirs against.
+    /// Combat's steps.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum CombatSet {
         /// Dead units whose respawn is due come back, before any input of the tick can reach
@@ -104,49 +102,18 @@ impl ModuleSet for CombatSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const ALL: &'static [CombatSet] = &CombatSet::ALL;
 
-    fn place(self) -> SimPlace {
-        SimPlace::Stage(match self {
-            CombatSet::Respawn => SimSet::Inputs,
-            CombatSet::Attack => SimSet::Act,
-            CombatSet::Hits | CombatSet::Pay | CombatSet::Strike | CombatSet::Interval => {
-                SimSet::Hit
-            }
-            CombatSet::Damage | CombatSet::Die => SimSet::Resolve,
-            CombatSet::Despawn => SimSet::Vision,
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            CombatSet::Respawn => Phase::Begin,
+            CombatSet::Attack => Phase::Attack,
+            CombatSet::Hits => Phase::Hits,
+            CombatSet::Pay => Phase::Pay,
+            CombatSet::Strike => Phase::Strike,
+            CombatSet::Interval => Phase::Interval,
+            CombatSet::Damage => Phase::Damage,
+            CombatSet::Die => Phase::Die,
+            CombatSet::Despawn => Phase::End,
         })
-    }
-
-    fn order(self, o: &mut SetOrder) {
-        match self {
-            CombatSet::Respawn | CombatSet::Despawn => {}
-            CombatSet::Attack => {
-                o.before(ActionsSet::Start);
-            }
-            CombatSet::Hits => {
-                o.after(DeliverySet::Fly)
-                    .before(DeliverySet::Trigger)
-                    .before(ActionsSet::Deliver);
-            }
-            CombatSet::Pay => {
-                o.after(ActionsSet::Deliver)
-                    .before(ActionsSet::HoldAtStrike);
-            }
-            CombatSet::Strike => {
-                o.after(CombatSet::Pay)
-                    .after(StatsSet::GrantAtStrike)
-                    .before(ActionsSet::Fire);
-            }
-            CombatSet::Interval => {
-                o.after(ActionsSet::Land);
-            }
-            CombatSet::Damage => {
-                o.before(ActionsSet::Resolve);
-            }
-            CombatSet::Die => {
-                o.after(StatsSet::GrantAtResolve)
-                    .before(StatsSet::ClearDead);
-            }
-        }
     }
 }
 

@@ -17,7 +17,6 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
-use crate::declare::set_order::{SetOrder, Side};
 use crate::declare::spawn_parts::SpawnParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
@@ -131,18 +130,8 @@ impl Declarations for Installer<'_> {
             "the sets of {} are their owner's to declare",
             type_name::<S>()
         );
-        let mut order = SetOrder::default();
         for &set in S::ALL {
-            order.clear();
-            set.order(&mut order);
-            let mut config = set.in_set(set.place().set());
-            for edge in &order {
-                config = match edge.side {
-                    Side::After => config.after(edge.set),
-                    Side::Before => config.before(edge.set),
-                };
-            }
-            self.schedule.configure_sets(config);
+            self.schedule.configure_sets(set.in_set(set.place().set()));
         }
     }
 

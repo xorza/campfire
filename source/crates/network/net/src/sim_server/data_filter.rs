@@ -15,7 +15,7 @@ use campfire_capabilities::{
     ModifierClocks, Modifiers, OnDeath, OnPath, Owner, PathWalker, Player, PlayerModifiers,
     PlayerResources, PlayerSupply, Points, Pools, Progress, Recipients, Release, Replication,
     Respawn, Route, Site, SlotTimes, SpawnPoint, StateTypes, SyncAll, SyncOwner, SyncTeam, Team,
-    TrainQueue, UnitState,
+    TrainQueue, UnitState, UseGroup,
 };
 use campfire_common::PlayerSlot;
 use campfire_sim::SimResource;
@@ -91,7 +91,7 @@ filtered_kinds! {
     /// A unit's experience and points.
     ProgressionKind: Progression = (Experience, Points);
     /// A unit's inventory.
-    InventoryKind: Inventory = SingleComponent<Inventory>;
+    InventoryKind: Inventory = (Inventory, UseGroup);
     /// The mode's script state fields of `sync = "all"`.
     ModeStateKind: ModeState = SingleComponent<ModeState<SyncAll>>;
     /// A player's resources.

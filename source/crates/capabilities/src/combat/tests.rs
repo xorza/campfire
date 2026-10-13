@@ -9,7 +9,7 @@ use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    EntityIndex, Position, SimComponent, SimEdge, SimRng, SimUpdate, SimWorld, StableId,
+    EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimUpdate, SimWorld, StableId,
     Unpredicted,
 };
 
@@ -41,6 +41,7 @@ use crate::release::r#match::Match;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
+use crate::stats::StatsSet;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_clocks::ModifierClocks;
