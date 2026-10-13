@@ -5,6 +5,7 @@ use thiserror::Error;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::server_input::error::ServerInputDecodeError;
+use crate::stamp_count::error::StampError;
 
 /// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
 /// failure.
@@ -40,6 +41,15 @@ pub enum InputError {
     /// forged, or an input is missing, out of order or altered.
     #[error("chain head not signed by the player's session key")]
     BadSignature,
+}
+
+impl From<StampError> for InputError {
+    fn from(error: StampError) -> InputError {
+        match error {
+            StampError::Back => InputError::StampBack,
+            StampError::TooMany => InputError::TooManyInputs,
+        }
+    }
 }
 
 /// Why the log refused a server input. The server signs only what it means to log, so each is a
@@ -253,4 +263,27 @@ pub enum LogError {
     /// The bytes decode, but not from the one encoding the log has, such as an overlong varint.
     #[error("session log is not in its canonical encoding")]
     NotCanonical,
+}
+
+/// Why a journal's records do not rebuild a log. The server writes only records its log took, so
+/// each is a fault of the journal's bytes, past the checks of its frames.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum JournalReplayError {
+    /// The journal holds no record, or its first is not the header.
+    #[error("the journal starts with no header")]
+    NoHeader,
+    /// The record of index `record`, from 0, comes after the result, which ends the session.
+    #[error("journal record {record} comes after the session's result")]
+    AfterResult { record: u64 },
+    /// The record of index `record`, from 0, begins a checkpoint after an entry of the tick it
+    /// comes before.
+    #[error("journal record {record} begins a checkpoint after an entry of its tick")]
+    CheckpointMidTick { record: u64 },
+    /// The record of index `record`, from 0, does not decode, or the log refuses it.
+    #[error("journal record {record}")]
+    Record {
+        record: u64,
+        #[source]
+        error: LogError,
+    },
 }

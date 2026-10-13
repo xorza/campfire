@@ -9,7 +9,6 @@ use campfire_runner::{InputRules, SessionRules};
 use campfire_store::{AppendFile, AppendWriter};
 
 use super::*;
-use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::session_journal::SessionJournal;
 
 /// A journal's file whose every sync fails.

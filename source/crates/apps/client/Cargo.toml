@@ -21,7 +21,6 @@ campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
 campfire-quic.workspace = true
-campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-stats.workspace = true
 campfire-store.workspace = true

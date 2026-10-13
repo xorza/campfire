@@ -2204,7 +2204,6 @@ dependencies = [
  "campfire-projectiles",
  "campfire-protocol",
  "campfire-quic",
- "campfire-runner",
  "campfire-sim",
  "campfire-stats",
  "campfire-store",
@@ -2256,7 +2255,6 @@ dependencies = [
  "campfire-store",
  "derive_more",
  "serde",
- "thiserror 2.0.21",
 ]
 
 [[package]]

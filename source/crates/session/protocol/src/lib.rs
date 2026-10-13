@@ -34,6 +34,8 @@ mod slot_change;
 mod slot_plan;
 mod slot_start;
 mod snapshot_fingerprint;
+mod spill;
+mod stamp_count;
 
 pub use crate::checkpoint::Checkpoint;
 pub use crate::checkpoint::checkpoint_begun::CheckpointBegun;
@@ -51,7 +53,7 @@ pub use crate::engine_release::EngineRelease;
 pub use crate::engine_release::error::NotRelease;
 pub use crate::input_chain::InputChain;
 pub use crate::input_hash::InputHash;
-pub use crate::journal::error::{JournalReplayError, NotJournal};
+pub use crate::journal::error::NotJournal;
 pub use crate::journal::journal_frames::JournalFrames;
 pub use crate::journal::record_sink::RecordSink;
 pub use crate::nsec::Nsec;
@@ -71,8 +73,8 @@ pub use crate::session_log::SessionLog;
 pub use crate::session_log::applied::Applied;
 pub use crate::session_log::durable_head::DurableHead;
 pub use crate::session_log::error::{
-    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, SeedError,
-    ServerInputError,
+    CheckpointError, HeaderError, InputError, JournalReplayError, LogError, LogLoadError,
+    ResultError, SeedError, ServerInputError,
 };
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;

@@ -17,7 +17,6 @@ use crate::controller::Controller;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
-use crate::journal::error::JournalReplayError;
 use crate::journal::journal_frames::MAX_RECORD;
 use crate::journal::record_sink::RecordSink;
 use crate::player_input::PlayerInput;
@@ -29,18 +28,19 @@ use crate::session_id::SessionId;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{
-    CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
+    CheckpointError, HeaderError, InputError, JournalReplayError, LogError, LogLoadError,
+    ResultError, ServerInputError,
 };
 use crate::session_log::paged_bytes::{BytesAt, PagedBytes};
 use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::spill::Spill;
-use crate::session_log::stamp_count::StampCount;
 use crate::session_result::SessionResult;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
 use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 use crate::slot_start::SlotStart;
+use crate::spill::Spill;
+use crate::stamp_count::StampCount;
 
 pub(crate) mod applied;
 pub(crate) mod durable_head;
@@ -48,8 +48,6 @@ pub(crate) mod error;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
 pub(crate) mod session_header;
-pub(crate) mod spill;
-pub(crate) mod stamp_count;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
 const LOG_TAG: &[u8] = b"campfire/session-log/v4";

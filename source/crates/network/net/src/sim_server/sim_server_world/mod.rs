@@ -15,6 +15,7 @@ use crate::match_clock::MatchClock;
 use crate::sim_server::Reload;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
+use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::SessionDir;
@@ -105,6 +106,7 @@ impl SimServerWorld for World {
     }
 
     fn exit_due(&mut self, stop: bool) -> Option<AppExit> {
+        JournalWatch::report_failure(self);
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }

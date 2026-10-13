@@ -19,7 +19,7 @@ use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
-use campfire_runner::SessionRules;
+use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
@@ -95,7 +95,7 @@ pub struct SimClient {
     /// Whether the server runs on a thread of the client's process, the only one that loads a
     /// save.
     pub local: bool,
-    /// The packages of the mode it plays, which must run at the listing's rate.
+    /// The packages of the mode it plays, which must run at the server's rate: `check`.
     pub packages: Arc<ModePackages>,
     /// Unix seconds: when the delegation is made, and so when it expires.
     pub clock: fn() -> u64,
@@ -163,6 +163,12 @@ impl PendingOrders {
 }
 
 impl SimClient {
+    /// An error when its packages do not run at the rate its server is pinned to, as a listing
+    /// may name a rate the mode does not run at. Its caller checks before it adds the plugin.
+    pub fn check(&self) -> Result<(), TermsError> {
+        SessionRules::of(&self.packages).runs_at(self.server.tick_hz)
+    }
+
     /// Spawns the client's entity, which its link and its connect name. Its link takes
     /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
     /// links it (design 15, D5).
@@ -180,6 +186,10 @@ impl SimClient {
 
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
+        assert!(
+            self.check().is_ok(),
+            "a client's packages run at its server's pinned rate, which its caller checks"
+        );
         let rate = TickRate::new(self.server.tick_hz);
         app.add_plugins(ClientPlugins {
             tick_duration: rate.length(),
@@ -248,6 +258,7 @@ impl Plugin for SimClient {
             Update,
             (
                 (link, receive_input_acks, report_end, report_deaths),
+                ReceiptWriter::report_failures,
                 Faults::watch,
             )
                 .chain(),

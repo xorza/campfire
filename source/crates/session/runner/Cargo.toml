@@ -31,6 +31,7 @@ internals = [
     "dep:campfire-combat",
     "dep:campfire-geometry",
     "dep:campfire-items",
+    "dep:campfire-math",
     "dep:campfire-navigation",
     "dep:campfire-orders",
     "dep:campfire-production",
@@ -51,7 +52,7 @@ campfire-core.workspace = true
 campfire-geometry = { workspace = true, optional = true }
 campfire-items = { workspace = true, optional = true }
 campfire-log.workspace = true
-campfire-math.workspace = true
+campfire-math = { workspace = true, optional = true }
 campfire-mode.workspace = true
 campfire-navigation = { workspace = true, optional = true }
 campfire-orders = { workspace = true, optional = true }

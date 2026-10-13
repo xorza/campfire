@@ -1,9 +1,12 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::{Res, ResMut};
 use campfire_protocol::SignedReceipt;
 use campfire_store::{DurableError, DurableFile, LatestWriter, PathError};
 
+use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::sim_client::client_dir::ClientDir;
 
 /// Writes the newest receipt a client keeps to its data directory, on a worker of its own, so no
@@ -33,8 +36,15 @@ impl ReceiptWriter {
         self.0.give(receipt);
     }
 
-    /// The writes that failed since the last call.
-    pub(crate) fn failures(&self) -> Vec<PathError<DurableError>> {
-        self.0.take_failures()
+    /// Reports to `Faults` each write that failed since the last frame.
+    pub(crate) fn report_failures(
+        writer: Option<Res<'_, ReceiptWriter>>,
+        mut faults: ResMut<'_, Faults>,
+    ) {
+        if let Some(writer) = writer {
+            for failure in writer.0.take_failures() {
+                faults.report(Fault::Receipt(failure));
+            }
+        }
     }
 }

@@ -83,6 +83,7 @@ pub(crate) mod journal_watch;
 pub(crate) mod key_file;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
+pub(crate) mod local_session;
 pub(crate) mod match_visibility;
 pub(crate) mod offering;
 pub(crate) mod player_link;

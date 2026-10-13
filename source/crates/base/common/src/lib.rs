@@ -6,9 +6,8 @@
 //! A type enters only when two crates that do not depend on each other both name it, and only
 //! as a plain value: construction, parsing, display and serde, no other logic. The exceptions
 //! are `enum_all!`, which states an enum with the list of its variants, and, behind `internals`,
-//! the allocation audit every crate's `tests/alloc` suite runs on. The
-//! crate depends on nothing but `serde`, `derive_more` and `thiserror`, and, for the audit,
-//! `backtrace`.
+//! the allocation audit every crate's `tests/alloc` suite runs on. The crate depends on nothing
+//! but `serde` and `derive_more`, and, for the audit, `backtrace`.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

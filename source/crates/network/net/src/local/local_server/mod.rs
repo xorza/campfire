@@ -31,7 +31,6 @@ use tracing::error;
 
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
-use crate::local::local_session::LocalSession;
 use crate::net_protocol::NetProtocol;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
@@ -39,6 +38,7 @@ use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::SimServer;
 use crate::sim_server::key_file::KeyFile;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
+use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;

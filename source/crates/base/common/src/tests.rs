@@ -79,7 +79,7 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
     // group's crates, so its exemption covers no call of another group.
     assert_eq!(
         crate_dependencies("base/common"),
-        ["backtrace", "derive_more", "serde", "thiserror"]
+        ["backtrace", "derive_more", "serde"]
     );
     let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
     assert!(
@@ -419,6 +419,8 @@ fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
 #[derive(Debug)]
 struct Crate {
     folder: String,
+    /// Its folder's path under `source/`, as `sources` names a file's.
+    path: String,
     name: String,
     manifest: String,
 }
@@ -438,6 +440,12 @@ fn crates() -> Vec<Crate> {
             let manifest = read(dir.join("Cargo.toml").to_str().unwrap());
             found.push(Crate {
                 folder: dir.file_name().unwrap().to_str().unwrap().to_owned(),
+                path: dir
+                    .strip_prefix(source())
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .to_owned(),
                 name: package_name(&manifest).to_owned(),
                 manifest,
             });
@@ -708,6 +716,116 @@ fn no_crate_re_exports_another_crate() {
     // crate's own, a macro's own and a plain import are not.
     let sample = "pub use rhai;\npub use crate::a::B;\npub(crate) use ::toml::de::Error as E;\n    pub use other::{A, B};\npub use self::x;\nuse other::C;\npub use super::y;\npub extern crate rhai;\n        pub use $crate::Item;";
     assert_eq!(foreign_re_exports(sample), [1, 3, 4, 8]);
+}
+
+/// The required dependencies of `manifest` that `production`, its crate's production code, names
+/// nowhere: a dependency that only code a gate holds uses is optional, and `internals` turns it on.
+fn unnamed_dependencies<'a>(manifest: &'a str, production: &str) -> Vec<&'a str> {
+    section(manifest, "dependencies")
+        .filter(|line| !line.contains("optional = true"))
+        .map(dependency)
+        .filter(|name| !production.contains(&format!("{}::", name.replace('-', "_"))))
+        .collect()
+}
+
+/// The production code of each of `crates`, in their order: each source's that no crate nested
+/// in its folder holds.
+fn production_by_crate(crates: &[Crate]) -> Vec<String> {
+    let mut code = vec![String::new(); crates.len()];
+    for file in sources() {
+        let holder = crates
+            .iter()
+            .enumerate()
+            .filter(|(_, krate)| file.path.starts_with(&format!("{}/", krate.path)))
+            .max_by_key(|(_, krate)| krate.path.len());
+        if let (Some((at, _)), Some(production)) = (holder, file.production()) {
+            code[at].push_str(&production);
+        }
+    }
+    code
+}
+
+#[test]
+fn a_required_dependency_is_named_by_production_code() {
+    let crates = crates();
+    let mut found = Vec::new();
+    for (krate, production) in crates.iter().zip(production_by_crate(&crates)) {
+        for name in unnamed_dependencies(&krate.manifest, &production) {
+            found.push(format!("{} {name}", krate.name));
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+    // A plain and an inline dependency are found where no code names them; an optional one, and
+    // one a path names, are not.
+    let manifest = "[package]\nname = \"a\"\n\n[dependencies]\nb.workspace = true\nc-d = { workspace = true }\ne = { workspace = true, optional = true }\n";
+    assert_eq!(unnamed_dependencies(manifest, ""), ["b", "c-d"]);
+    assert_eq!(
+        unnamed_dependencies(manifest, "use b::X; c_d::f();"),
+        Vec::<&str>::new()
+    );
+}
+
+/// The modules of a crate's `src/` in the order they import, a group at each place: each imports
+/// only modules of the groups before its own (design 02, Structural rules).
+const MODULE_ORDERS: [(&str, &[&[&str]]); 2] = [
+    (
+        "crates/network/net/src",
+        &[&["faults"], &["sim_client", "sim_server"], &["local"]],
+    ),
+    (
+        "crates/session/protocol/src",
+        &[
+            &["spill", "stamp_count"],
+            &["checkpoint", "journal"],
+            &["session_log"],
+        ],
+    ),
+];
+
+/// The modules of `order` that `code`, of the module `module`, imports though they do not come
+/// before its group.
+fn order_breaches<'a>(order: &[&[&'a str]], module: &str, code: &str) -> Vec<&'a str> {
+    let place = |name: &str| order.iter().position(|group| group.contains(&name));
+    let own = place(module).expect("the module has a place");
+    order
+        .iter()
+        .flat_map(|group| group.iter().copied())
+        .filter(|other| *other != module && place(other).unwrap() >= own)
+        .filter(|other| code.contains(&format!("crate::{other}::")))
+        .collect()
+}
+
+#[test]
+fn a_crates_modules_import_in_their_order() {
+    let sources = sources();
+    let mut found = Vec::new();
+    for (src, order) in MODULE_ORDERS {
+        for module in order.iter().flat_map(|group| group.iter()) {
+            let mut files = 0;
+            for file in &sources {
+                let Some(rest) = file.path.strip_prefix(&format!("{src}/")) else {
+                    continue;
+                };
+                if rest != format!("{module}.rs") && !rest.starts_with(&format!("{module}/")) {
+                    continue;
+                }
+                files += 1;
+                let Some(code) = file.production() else {
+                    continue;
+                };
+                for other in order_breaches(order, module, &code) {
+                    found.push(format!("{}: {module} imports {other}", file.path));
+                }
+            }
+            assert!(files > 0, "{src}/{module} holds no file");
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
+    // A module of a later group and one of its own are breaches; one before it is not.
+    let order: &[&[&str]] = &[&["a"], &["b", "c"], &["d"]];
+    let code = "use crate::a::X;\nuse crate::c::Y;\nuse crate::d::Z;";
+    assert_eq!(order_breaches(order, "b", code), ["c", "d"]);
+    assert_eq!(order_breaches(order, "d", code), Vec::<&str>::new());
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).

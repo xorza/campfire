@@ -4,8 +4,6 @@ use bevy_ecs::world::World;
 use campfire_common::ExitStatus;
 
 use crate::faults::fault::{Fault, FaultPolicy};
-use crate::sim_client::receipt_writer::ReceiptWriter;
-use crate::sim_server::journal_watch::JournalWatch;
 
 pub(crate) mod fault;
 
@@ -31,22 +29,10 @@ impl Faults {
         }
     }
 
-    /// Takes the failures of the session's workers, the journal's and the receipt writer's,
-    /// with those reported, and applies each policy: logs each, and gives the exit of a server
-    /// one of them ends.
+    /// Applies the policy of each fault reported: logs each, and gives the exit of a server one
+    /// of them ends.
     pub(crate) fn apply(world: &mut World) -> Option<AppExit> {
-        let mut gathered = Vec::new();
-        if let Some(error) = world
-            .get_resource::<JournalWatch>()
-            .and_then(|journal| journal.0.take_failure())
-        {
-            gathered.push(Fault::Journal(error));
-        }
-        if let Some(writer) = world.get_resource::<ReceiptWriter>() {
-            gathered.extend(writer.failures().into_iter().map(Fault::Receipt));
-        }
         let mut faults = world.resource_mut::<Faults>();
-        faults.pending.extend(gathered);
         let mut exit = None;
         for fault in faults.pending.drain(..) {
             fault.log();

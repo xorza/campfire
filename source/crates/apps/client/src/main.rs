@@ -40,14 +40,13 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
-use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use campfire_store::SecretFile;
 use lightyear::prelude::Connect;
 use secp256k1::Keypair;
 use tracing::error;
 
-use crate::args::{Args, Server};
+use crate::args::Args;
 use crate::bot::Bot;
 use crate::connection::Connection;
 use crate::hud::Hud;
@@ -127,31 +126,37 @@ fn main() -> ExitCode {
     };
     let pin = connection.pin();
     let tick = TickRate::new(pin.tick_hz).length();
+    let sim_client = SimClient {
+        main_key,
+        session_key: RandomKey::generate(Os::fill),
+        server: pin,
+        role: if args.spectate {
+            JoinRole::Watch
+        } else {
+            JoinRole::Play
+        },
+        local: matches!(connection, Connection::Local(_)),
+        packages: Arc::clone(&packages),
+        clock: Os::unix_now,
+        entropy: Os::fill,
+        data,
+    };
+    if let Err(error) = sim_client.check() {
+        error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
+        return ExitCode::from(ExitStatus::Usage);
+    }
 
     let mut app = App::new();
     if let Some(teams) = watch {
         app.insert_resource(WatchRequest(teams));
     }
-    let local = matches!(connection, Connection::Local(_));
-    add_ends(&mut app, script, local.then_some(&pace), &packages);
-    app.add_plugins((
-        SimClient {
-            main_key,
-            session_key: RandomKey::generate(Os::fill),
-            server: pin,
-            role: if args.spectate {
-                JoinRole::Watch
-            } else {
-                JoinRole::Play
-            },
-            local,
-            packages,
-            clock: Os::unix_now,
-            entropy: Os::fill,
-            data,
-        },
-        LinkWatch,
-    ));
+    add_ends(
+        &mut app,
+        script,
+        sim_client.local.then_some(&pace),
+        &packages,
+    );
+    app.add_plugins((sim_client, LinkWatch));
     let client = SimClient::spawn(app.world_mut());
     if let Err(code) = connection.link(&mut app, client, &pace, tick) {
         return code;
@@ -215,8 +220,7 @@ fn add_ends(
     ));
 }
 
-/// The packages of the mode the arguments name, which must run at the listing's rate; the exit
-/// code when they do not load, or run at another rate.
+/// The packages of the mode the arguments name; the exit code when they do not load.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let mode = PackageDir::new(&args.mode);
     let packages = ModePackages::choose_map(&mode, args.map.clone())
@@ -225,14 +229,6 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
         error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)
     })?;
-    if let Server::Remote { tick_hz, .. } = args.server {
-        SessionRules::of(&packages)
-            .runs_at(tick_hz)
-            .map_err(|error| {
-                error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
-                ExitCode::from(ExitStatus::Usage)
-            })?;
-    }
     Ok(packages)
 }
 

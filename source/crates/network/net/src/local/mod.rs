@@ -4,4 +4,3 @@
 pub(crate) mod local_pace;
 pub(crate) mod local_relink;
 pub(crate) mod local_server;
-pub(crate) mod local_session;
