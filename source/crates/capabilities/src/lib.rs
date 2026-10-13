@@ -3,12 +3,12 @@
 //! match's books, and `Order` is the body of a command, by the capability that owns it. Its
 //! `pub use` list is the surface the crates above read.
 //!
-//! A capability crate depends only on the crates of its layer and the layers below, lowest
-//! first: `values`, `geometry` and `state-types`; `visibility` and the `core` (units, scripts,
-//! players, and how a module declares what it adds); `stats`; `actions` and `deliveries`;
-//! `combat`; `projectiles`, `areas`, `abilities`, `navigation`, `vision`, `progression`,
-//! `production` and `items`; `orders`; and the `mode`. `LAYERS`, in `release`'s tests, holds
-//! this list, and a test fails on a dependency on a higher layer. A capability gives the script
+//! A capability crate depends only on the crates of lower layers, lowest first: `state-types`
+//! and `values`; `geometry` and `visibility`; the `core` (units, scripts, players, and how a
+//! module declares what it adds); `stats`; `actions`; `combat`, `deliveries`, `items` and
+//! `progression`; `areas`, `navigation`, `projectiles` and `vision`; `abilities` and
+//! `production`; and `mode` and `orders`. `LAYERS`, in `release`'s tests, holds this list, and a
+//! test fails on a dependency on the same layer or a higher one. A capability gives the script
 //! view its fields of a unit through its column, and the call frame what a call reads besides
 //! the core's through its part.
 

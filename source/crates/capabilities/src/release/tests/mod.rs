@@ -200,28 +200,28 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 }
 
 /// Each capability crate's folder under this crate's and its layer, lowest first: a crate
-/// depends only on crates of its own layer and the layers below, as design 02's structural rules
-/// ask. This crate sits above them all.
+/// depends only on crates of lower layers, and a capability needs only capabilities of lower
+/// layers, as design 02's structural rules ask. This crate sits above them all.
 const LAYERS: [(&str, u8); 19] = [
-    ("core/values", 0),
-    ("core/geometry", 0),
     ("core/state-types", 0),
+    ("core/values", 0),
+    ("core/geometry", 1),
     ("core/visibility", 1),
-    ("core/core", 1),
-    ("stats", 2),
-    ("core/actions", 3),
-    ("core/deliveries", 3),
-    ("combat", 4),
-    ("projectiles", 5),
-    ("areas", 5),
-    ("abilities", 5),
-    ("navigation", 5),
-    ("vision", 5),
-    ("progression", 5),
-    ("production", 5),
+    ("core/core", 2),
+    ("stats", 3),
+    ("core/actions", 4),
+    ("combat", 5),
+    ("core/deliveries", 5),
     ("items", 5),
-    ("orders", 6),
-    ("mode", 7),
+    ("progression", 5),
+    ("areas", 6),
+    ("navigation", 6),
+    ("projectiles", 6),
+    ("vision", 6),
+    ("abilities", 7),
+    ("production", 7),
+    ("mode", 8),
+    ("orders", 8),
 ];
 
 /// The layer of the capability crate `name`, by the last part of its folder.
@@ -235,7 +235,7 @@ fn layer(name: &str) -> Option<u8> {
 const MANIFEST_LEN: usize = 1 << 16;
 
 #[test]
-fn a_capability_crate_depends_only_on_its_layer_and_below() {
+fn a_capability_crate_depends_only_on_lower_layers() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut edges = Vec::new();
     for (folder, own) in LAYERS {
@@ -251,7 +251,7 @@ fn a_capability_crate_depends_only_on_its_layer_and_below() {
             };
             let name = &name[..name.find(['.', ' ']).unwrap()];
             if let Some(layer) = layer(name) {
-                edges.push((folder, name.to_owned(), layer > own));
+                edges.push((folder, name.to_owned(), layer >= own));
             }
         }
     }
@@ -260,11 +260,15 @@ fn a_capability_crate_depends_only_on_its_layer_and_below() {
             .iter()
             .any(|(from, to, _)| *from == "mode" && to == "stats")
     );
-    let upward: Vec<_> = edges
+    let not_lower: Vec<_> = edges
         .into_iter()
-        .filter_map(|(from, to, upward)| upward.then_some((from, to)))
+        .filter_map(|(from, to, not_lower)| not_lower.then_some((from, to)))
         .collect();
-    assert_eq!(upward, [], "dependencies on a higher layer");
+    assert_eq!(
+        not_lower,
+        [],
+        "dependencies on the same layer or a higher one"
+    );
 }
 
 /// Visits each source file under `dir` with its production code, by its path from `dir`.

@@ -89,7 +89,7 @@ The dependencies form a fixed graph with no cycle:
 - **`combat` and `stats`:** pools, damage, deaths, stats, modifiers, tag properties.
 - **Everything else** builds on those: action kinds and deliveries, who starts actions (`orders`, `character`), and the rest.
 
-The capabilities are modules of one crate; one with a heavy dependency, as physics, gets its own. Only the declared capabilities' systems run.
+Each capability is a crate, which depends only on the crates of lower layers ([The capabilities' crates](../02-engine-core.md#the-capabilities-crates)). Only the declared capabilities' systems run.
 
 ## Tick stages
 

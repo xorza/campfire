@@ -122,32 +122,32 @@ Before the split, `campfire-capabilities` held 59,000 lines of production code a
 
 | Layer | Crate | Modules | Folder | Depends on, of these crates |
 | --- | --- | --- | --- | --- |
-| 0 | `campfire-values` | `values` | `capabilities/core/values` | none |
-| 0 | `campfire-geometry` | `geometry` | `capabilities/core/geometry` | values |
 | 0 | `campfire-state-types` | `state_types` | `capabilities/core/state-types` | none |
+| 0 | `campfire-values` | `values` | `capabilities/core/values` | none |
+| 1 | `campfire-geometry` | `geometry` | `capabilities/core/geometry` | values |
 | 1 | `campfire-visibility` | `visibility` | `capabilities/core/visibility` | state-types |
-| 1 | `campfire-core` | `scripts`, `declare`, `units`, `players`, which import each other until F50 and F53 split them | `capabilities/core/core` | values, geometry, state-types, visibility |
-| 2 | `campfire-stats` | `stats` | `capabilities/stats` | core, geometry, state-types, values |
-| 3 | `campfire-actions` | `actions` | `capabilities/core/actions` | core, geometry, state-types, stats, values |
-| 3 | `campfire-deliveries` | `deliveries` | `capabilities/core/deliveries` | actions, core, values |
-| 4 | `campfire-combat` | `combat` | `capabilities/combat` | actions, core, state-types, stats, values |
-| 5 | `campfire-navigation` | `navigation` | `capabilities/navigation` | actions, core, deliveries, geometry, state-types, values |
-| 5 | `campfire-vision` | `vision` | `capabilities/vision` | core, geometry, state-types, values |
-| 5 | `campfire-projectiles` | `projectiles` | `capabilities/projectiles` | actions, core, deliveries, geometry, state-types, stats, values |
-| 5 | `campfire-areas` | `areas` | `capabilities/areas` | actions, core, deliveries, geometry, state-types, stats, values |
-| 5 | `campfire-abilities` | `abilities` | `capabilities/abilities` | actions, core, deliveries, navigation, stats, values |
-| 5 | `campfire-progression` | `progression` | `capabilities/progression` | actions, core, state-types, stats, values |
-| 5 | `campfire-production` | `production` | `capabilities/production` | actions, core, geometry, navigation, state-types, stats, values, vision |
+| 2 | `campfire-core` | `scripts`, `declare`, `units`, `players`, which import each other until F50 and F53 split them | `capabilities/core/core` | values, geometry, state-types, visibility |
+| 3 | `campfire-stats` | `stats` | `capabilities/stats` | core, geometry, state-types, values |
+| 4 | `campfire-actions` | `actions` | `capabilities/core/actions` | core, geometry, state-types, stats, values |
+| 5 | `campfire-combat` | `combat` | `capabilities/combat` | actions, core, state-types, stats, values |
+| 5 | `campfire-deliveries` | `deliveries` | `capabilities/core/deliveries` | actions, core, values |
 | 5 | `campfire-items` | `items` | `capabilities/items` | actions, core, geometry, state-types, stats, values |
-| 6 | `campfire-orders` | `orders` | `capabilities/orders` | actions, core, geometry, navigation, production, state-types, stats, values, vision |
-| 7 | `campfire-mode` | `mode` | `capabilities/mode` | actions, combat, core, geometry, items, navigation, production, progression, state-types, stats, values, visibility, vision |
-| 8 | `campfire-capabilities` | `release`, `books`, `Match`, the senders' `Order` and its `Action`, `lib.rs` | `capabilities` | every crate above |
+| 5 | `campfire-progression` | `progression` | `capabilities/progression` | actions, core, state-types, stats, values |
+| 6 | `campfire-areas` | `areas` | `capabilities/areas` | actions, core, deliveries, geometry, state-types, stats, values |
+| 6 | `campfire-navigation` | `navigation` | `capabilities/navigation` | actions, core, deliveries, geometry, state-types, values |
+| 6 | `campfire-projectiles` | `projectiles` | `capabilities/projectiles` | actions, core, deliveries, geometry, state-types, stats, values |
+| 6 | `campfire-vision` | `vision` | `capabilities/vision` | core, geometry, state-types, values |
+| 7 | `campfire-abilities` | `abilities` | `capabilities/abilities` | actions, core, deliveries, navigation, stats, values |
+| 7 | `campfire-production` | `production` | `capabilities/production` | actions, core, geometry, navigation, state-types, stats, values, vision |
+| 8 | `campfire-mode` | `mode` | `capabilities/mode` | actions, combat, core, geometry, items, navigation, production, progression, state-types, stats, values, visibility, vision |
+| 8 | `campfire-orders` | `orders` | `capabilities/orders` | actions, core, geometry, navigation, production, state-types, stats, values, vision |
+| 9 | `campfire-capabilities` | `release`, `books`, `Match`, the senders' `Order` and its `Action`, `lib.rs` | `capabilities` | every crate above |
 
 - **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, move from `orders` to the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, and on `vision`, whose sight it reads.
 - **Visibility.** An item that another crate uses becomes `pub`; the rest stays `pub(crate)`. A crate's published surface is its `lib.rs`. The top crate's `lib.rs` publishes what `net`, `runner` and `client` import today, so they keep their imports.
 - **Tests.** A test that builds a whole `Match` lives in the top crate's `tests/`, one binary, in a module for each capability crate and for each module of `campfire-core`: `release` composes the match there, and every crate it tests is a dependency of that crate. A test of a crate's own types, with no `Match`, stays a unit test in its crate. So no crate has a dev-dependency on a crate above it, and no test build holds a second copy of a crate, whose types would not be the match's. Each `#[cfg(test)] test_world` that another crate's tests use becomes `internals`, and a test helper that needs a higher crate is a method of an extension trait in the top crate's `internals`.
 - **Dependencies.** A crate's `internals` turns on `internals` in each of its dependencies that has the feature, so its self dev-dependency gives its tests every dependency's `internals`. Its other dev-dependencies are only tools its tests use that are not its dependencies: `campfire-codec` for a unit test of a type's encoded form, as every format goes through it, and `campfire-store`, with its `internals`, for the files a test reads.
-- **Checks.** Each crate carries the lint list and the `internals` self dev-dependency, and the drive's lanes cover it. Cargo refuses a cycle, but not a dependency on a higher layer whose crate does not depend back: `LAYERS` lists each capability crate with its layer, and a test reads each crate's manifest and fails on a dependency on a higher layer. The test that no module names another's sets reads every capability crate.
+- **Checks.** Each crate carries the lint list and the `internals` self dev-dependency, and the drive's lanes cover it. Cargo refuses a cycle, but not a dependency on the same layer or a higher one whose crate does not depend back: `LAYERS` lists each capability crate with its layer, and a test reads each crate's manifest and fails on a dependency that is not on a lower layer. A crate's layer is one above the highest of the crates it depends on and the capabilities it needs, so no two crates of one layer depend on each other. The test that no module names another's sets reads every capability crate.
 - **Measured.** Before the split, `./drive.py check` after a change in `units`, a low module, takes 7.4 s to lint, 4.7 s to lint the ship build and 15.3 s to test, and the same after a change in `orders`, a high one, as both rebuild the one crate. After the split, a change in `units` takes 15.7 s to lint, 6.6 s to lint the ship build and 17.9 s to test, as the 20 capability crates above `campfire-core` and their dependents are checked again one layer after the other; a change in `orders` takes 12.1 s, 3.2 s and 17.8 s.
 
 **Game-bound code.** Code that serves one imported game lives in a module named after it, in the crate whose interface it serves: Zero Hour's importer in `import::zero_hour`, its backends in `navigation::zero_hour`, its AI in the `zero_hour` module of the crate that drives server bots. Nothing depends on it but the place that installs it; a mechanism a second game needs moves into a general module.

@@ -32,7 +32,15 @@ Every batch moves the engine toward one shape, and each item names the part it b
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. The script call's runtime and the script view
+## 1. Walking below navigation
+
+`capabilities`: `navigation`, `campfire-core`'s `units`, `abilities`, `production`, `orders`; design 02, design 04's navigation. A change of the crates' layout: a part moves from `navigation` to the core, and `abilities` stops depending on `navigation`, so it goes first, before the batches that split `campfire-core` (the contract moves with `units`) and before U1 adds a fourth capability that walks a unit.
+
+### F59. A walk is asked through a contract of the core
+
+(`capabilities`: `navigation`, `units`, `abilities`, `production`, `orders`; **Navigation**.) Every capability that walks a unit writes navigation's own state: a cast that walks into range or stops (`abilities/src/casts.rs:199`), a train's rally (`production/src/trains.rs:229`), a build and a gather that give up a walk the route ends short of (`production/src/construction/build_view.rs:262`, `gather_loop/place.rs:31`), and the move, stop, chase and path orders (`orders/src/unit_order.rs:106`, `163`; `destinations.rs:46-93`). Each sets `Destination` and reads `Route::arrived_short_of` through `Destination::walk_to` and `Destination::gives_up`, so each depends on `campfire-navigation`; `abilities` takes nothing else of it. 0 A.D.'s components ask a walk of `UnitMotion` through its interface, never its state. The walk's goal and what a walker reports of it, that it arrived short, become a part of the core's `units`, which a capability writes and navigation pursues and answers; `Destination`'s check, which reads navigation's pathing grid (`navigation/src/destination.rs`, `check`), and its prediction stay navigation's. The step writes the contract into design 02 and design 04's [Navigation](docs/design/04-capabilities/navigation.md) for review before the code moves. Check: `abilities` does not depend on `campfire-navigation`, and goes down a layer; `production` and `orders` name no navigation type to walk a unit; no golden moves.
+
+## 2. The script call's runtime and the script view
 
 `campfire-core`'s `scripts`, `declare`, `units` and `players`; `mode`'s state, `stats`' call, in their crates. The script view becomes the script runtime's own data, which the modules fill, and with it the knot of layer 1 comes apart and `campfire-core` splits into four crates; then what a script call costs and how its parts are kept. The design of the view, F50 and F53 together, goes into design 02 and design 03 for review before the code moves. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
 
@@ -88,7 +96,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`; **Core**, and Foundations.) Each script batch reads every unit again, 14.2 % of a 3v3 match's time; it goes before the Zero Hour import multiplies the units. Its direction: a batch reads again only the rows whose parts changed since the last, by the change filter each column's `RowReads` already gives and its list of what it reads, `RowReads::components`; the columns' half of F37 lands with it, and the batch measures it.
 
-## 2. What install holds
+## 3. What install holds
 
 `capabilities`, every module's `install`; `release`. A sweep, last of the refactorings of `capabilities`' structure, over what a module adds at install: its systems alone, each fact of the build a fact of the schedule, every other addition a declaration.
 
@@ -104,7 +112,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`: `release`, `declare`; `net`, `runner`.) `MatchSpec` holds `budgets: Option<ScriptBudgets>` and `predicting: bool` (`release/match_spec.rs:17-20`), and `InstallCx` gives `scripts()` and `predicting()` (`declare/install_cx.rs:53-66`): four combinations, of which a server's and a predicting client's ship, a server with no scripts serves the tests, and a predicting client with scripts is invalid but builds. Each install branches on the two flags its own way (`orders/mod.rs:118`, `production/mod.rs:189`, `combat/mod.rs:189`, `projectiles/mod.rs:72`, `vision/mod.rs:95`, …). One `Role`, `Server(Option<ScriptBudgets>)` or `Client`, that `MatchSpec` holds and `InstallCx::role` gives; a module adds a system that computes the server's own state through `cx.server(systems)`, which a client's install leaves out, so the prediction test's `SERVER_ONLY` (`release/tests/prediction_reads.rs:31`) is read from the server's schedule, not written again. Check: the prediction test passes with no hand list of server systems.
 
-## 3. Match records and replays
+## 4. Match records and replays
 
 `runner`, `verifier`; the tests of `runner` and `net`. How a test builds a match, records it and replays its log, in one form each.
 
@@ -124,7 +132,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`runner`, `common`.) A zero seed, `MatchBuild::spec`, `Match::new` and `install_mode` are written three times (`runner/src/session/mod.rs:112-117`, `match_build/mod.rs:121-126`, `match_build/bench.rs:40-44`), and `MatchBuild` is `pub` only for the internals, with an `expect(unreachable_pub)`. A production `MatchBuild::restore_target(packages, rate, players)` serves all three, the internals add only the `LogCheck`, `SegmentSeed::ZERO` replaces the repeated zero seed, and the lint's suppression goes. F51's `Role` replaces the flags it passes.
 
-## 4. The session's host
+## 5. The session's host
 
 `net`, `server`, `client`, `runner`. Its code stays in `net`, which hosts every session (design 02), and the operating system's clock and randomness travel as one value.
 
@@ -148,7 +156,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`net`, `server`, `client`.) `clock: fn() -> u64` and `entropy: fn(&mut [u8; 32])` travel as two function pointers through some ten types (`SimClient`, `net/src/sim_client/mod.rs:104-106`; `ServerSetup`; `LocalServerSetup`, `local_server/mod.rs:123-125`; `Offering`, `JoinState`, `ServerSigner`, `KeyFile`, `SessionDir::abort`, `server/src/opening/mod.rs:119`). A function pointer holds no state, so the tests' settable clock lives in two `thread_local!`s (`net/src/harness/in_process_match/mod.rs:73-80`, `net/src/sim_client/join_state/tests.rs:16-22`), which the style rules refuse. `Os` (`net/src/os.rs`) becomes a value, `Os { clock: Clock, entropy: Entropy }`, where `Clock` is `System` or `Manual(Arc<AtomicU64>)`; every setup holds one `os: Os`, and the harness keeps the `Arc` as it keeps its pace. Both thread-locals go.
 
-## 5. The tick and the tests, measured
+## 6. The tick and the tests, measured
 
 `capabilities`: `navigation`'s broadphase, `vision`'s bitmap, the storage of toggled parts; `package`, `runner`. A bench session: it runs when the user asks for the benches, after the refactorings above, so it measures the code they leave. The tests past their bound go here, as the proving match's spend their time in the broadphase and collider that F46 changes.
 
@@ -164,13 +172,13 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `runner`; **Runner**, **Vision**.) Design 02's worst 3v3 tick, 0.83 ms, and design 10's, 0.51 ms, disagree; `Bitmap::set` takes 6.9 % of the mean tick, for runs of one or two words a row. The session measures `integration/server_tick/worst_3v3` again and writes the figure into design 02, finds which part of `Bitmap::set` costs it, and measures two changes the engine's best practice suggests before either lands: parts that come and go while a match runs, `Dead`, `Respawn`, `ForcedMove`, `Resetting`, `OutOfPlay`, `Kept`, `Rally`, `AreaTrigger` and `Unpredicted`, stored in Bevy's sparse sets, where a change moves no table, as Bevy's `StorageType` advises for parts added and removed often; and the twelve systems that sort their units by stable id each tick (`Local<Ordered>`) reading one shared order instead. Each lands only where the worst tick gains. Check: the goldens do not move; the archetype shuffle test passes.
 
-## 6. The shop
+## 7. The shop
 
 `capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
 
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 6 to 10. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 7 to 11. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 4 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 5 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 
@@ -180,7 +188,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `package`, `packages/test/moba`; D8; **Package**.) `name`, a message id, on item types, actions, a loadout's spells, the mode, its teams and its choices, as only an avatar names its own today, and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
 
-## 7. The client's shop
+## 8. The client's shop
 
 `client`. I2 gives the view tests' units their types, and the issue log's **Client** item on the camera's keys is decided, before S2 changes the client's input.
 
@@ -192,13 +200,13 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 8. Use and the graph
+## 9. Use and the graph
 
 `capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 ties each capability crate's dependencies to its needs and uses, and U1 adds the `use` kind, beside `actions`' `UseGroup`. M2 reads the code as the release tests do.
 
 ### F44. The capability graph in one table
 
-(`capabilities`, `docs/design/04-capabilities/00-overview.md`.) The graph's needs and the install order are one list of modules, `Release::modules`; the overview's layers stay in prose. Each capability is a crate, whose `Cargo.toml` lists the crates it depends on: Cargo refuses a cycle, and a release test refuses a dependency on a higher layer; no test ties those dependencies to `Module::NEEDS`.
+(`capabilities`, `docs/design/04-capabilities/00-overview.md`.) The graph's needs and the install order are one list of modules, `Release::modules`; the overview's layers stay in prose. Each capability is a crate, whose `Cargo.toml` lists the crates it depends on: Cargo refuses a cycle, and a release test refuses a dependency on the same layer or a higher one; no test ties those dependencies to `Module::NEEDS`.
 
 A capability's edge to another is a need, without which it does not run, or a use, which it reads when the match has it, each read guarded by `cx.has`: production runs without navigation, with no gathering. The table holds both, and the test holds it equal to the manifests: each capability crate's dependencies on other capabilities are exactly its needs and uses. No module names another's sets, so the schedule adds no edge.
 
@@ -232,7 +240,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`: the release tests.) A test reads the crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 9. The shrine
+## 10. The shrine
 
 `packages/test/moba`, `client`.
 
@@ -240,7 +248,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 10. Gravity
+## 11. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -248,7 +256,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 11. Queues and capacities
+## 12. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -260,9 +268,9 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 12. Work and haul
+## 13. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 11, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 12, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -274,7 +282,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 13. The genre proofs
+## 14. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -303,7 +311,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 14. The network
+## 15. The network
 
 `quic`, `net`.
 
@@ -317,7 +325,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 15. Planned
+## 16. Planned
 
 ### P1. LAN listing
 
