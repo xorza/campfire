@@ -1,16 +1,14 @@
 use std::cmp::Ordering;
 
 use super::*;
-use crate::geometry::body_box::BodyBox;
 use crate::units::forced_move::{DashTo, ForcedMove};
 
 const HALF: Num = Num::HALF;
 const QUARTER: Num = Num::QUARTER;
 
-/// A box body of `width` by `height` meters, turned `angle` degrees.
-fn boxed(width: i64, height: i64, angle: i64) -> Body {
-    let body = BodyBox::new([Num::int(width), Num::int(height)], Num::int(angle));
-    Body::of_box(body.unwrap())
+/// A box form of `width` by `height` meters.
+fn boxed(width: i64, height: i64) -> BodyForm {
+    BodyForm::box_sized([Num::int(width), Num::int(height)]).unwrap()
 }
 
 /// The point `(x, z)` in quarters of a meter, on the ground.
@@ -35,8 +33,17 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
     // inside the box, its center at least 0.5 m off it every tick, and arrives.
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, HALF, [-8, -8], [8, 8], [ground(HALF)]);
-    let body = boxed(4, 1, 30);
-    Navigation::body_on(&mut game, (0, 0, 0), None, None, body);
+    let turn = Num::int(30);
+    let body = boxed(4, 1).at(turn);
+    Navigation::spawn_turned(
+        &mut game,
+        (0, 0, 0),
+        turn,
+        Team::new(0),
+        None,
+        None,
+        Some(boxed(4, 1)),
+    );
     let walker = Navigation::body(
         &mut game,
         (-6, 0, 0),
@@ -73,8 +80,9 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
         [600, 80],
         vec![ground(HALF)],
     );
-    let bridge = boxed(1117, 100, 0);
+    let bridge = boxed(1117, 100);
     Navigation::body_on(&mut game, (0, 0, 0), None, None, bridge);
+    let bridge = bridge.at(Num::ZERO);
     let walker = Navigation::body(
         &mut game,
         (540, 0, -56),
@@ -116,7 +124,7 @@ fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, exactly, and
     // leaves the box where it stands.
     let mut game = walk_match();
-    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(4, 2, 0));
+    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(4, 2));
     let walker = Navigation::body(&mut game, quarters(10, 0), None, Some(QUARTER), Num::ONE);
     game.step();
     assert_eq!(*game.part::<Position>(walker), Position::from((3, 0, 0)));
@@ -134,16 +142,12 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     Navigation::load_open_pathing(&mut game, HALF, [-4, -4], [4, 4], [ground(QUARTER)]);
     let walker = Navigation::body(&mut game, quarters(1, 1), None, Some(QUARTER), QUARTER);
     game.step();
-    let building = Units::spawn(&mut game, (0, 0, 0), Team::new(0), boxed(2, 2, 0));
-    let entity = game.unit_entity(building);
-    Navigation::make_room(&mut game, entity);
+    Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
     assert_eq!(*game.part::<Position>(walker), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch.
     let mut bare = walk_match();
     let walker = Navigation::body(&mut bare, quarters(1, 0), None, Some(QUARTER), QUARTER);
-    let building = Units::spawn(&mut bare, (0, 0, 0), Team::new(0), boxed(2, 2, 0));
-    let entity = bare.unit_entity(building);
-    Navigation::make_room(&mut bare, entity);
+    Navigation::body_on(&mut bare, (0, 0, 0), None, None, boxed(2, 2));
     assert_eq!(*bare.part::<Position>(walker), quarters(5, 0));
 }
 
@@ -153,7 +157,7 @@ fn a_dash_at_a_box_ends_touching_it() {
     // at its nearest point, (-1, 0), each tick, through -4, -3 and -2, to -1.5, where the
     // bodies touch, in tick 3, and the dash ends.
     let mut game = walk_match();
-    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2, 0));
+    let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
     let dasher = Navigation::body(&mut game, (-5, 0, 0), None, Some(QUARTER), HALF);
     game.insert_parts(
         dasher,

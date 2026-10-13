@@ -22,12 +22,14 @@ use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
+use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::status_tags::StatusTags;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view::View;
@@ -175,6 +177,19 @@ impl ModifierBook {
     /// The tags modifier `id` grants its carrier.
     pub(crate) fn tags(&self, id: ModifierId) -> TagSet {
         self.get(id).tags
+    }
+
+    /// The tag sets a unit's tags derive from beside its type's: those of the modifier of each
+    /// instance of `modifiers` with a stack, then `status`, which a capability gives it.
+    pub(crate) fn granted<'a>(
+        &'a self,
+        modifiers: Option<&'a Modifiers>,
+        status: Option<StatusTags>,
+    ) -> impl Iterator<Item = TagSet> + Clone + 'a {
+        let held = modifiers.into_iter().flat_map(Modifiers::iter);
+        held.filter(|instance| instance.stacks > 0)
+            .map(|instance| self.tags(instance.id))
+            .chain(status.map(StatusTags::get))
     }
 
     pub(crate) fn get(&self, id: ModifierId) -> &ModifierEntry {

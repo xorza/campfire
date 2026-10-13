@@ -15,7 +15,6 @@ use crate::production::build_target::BuildTarget;
 use crate::production::builder::Builder;
 use crate::production::site::Site;
 use crate::stats::life::Life;
-use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
@@ -79,6 +78,7 @@ impl<'a> Rules<'a> {
 #[derive(Debug, Clone, Copy)]
 struct Yard {
     build: ActionId,
+    builder: UnitType,
 }
 
 impl Yard {
@@ -123,7 +123,13 @@ impl Yard {
         };
         builds.push(build, new);
         game.insert_resource(builds);
-        Yard { build }
+        // Builders, of a half meter, walk a meter a tick.
+        let builder = Units::load_type(game, TypeScope::Mode, "builder", &UnitTypeCore::default());
+        Units::give_type(game, builder, BodyForm::circle(Num::HALF).unwrap());
+        Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
+        Units::give_type(game, builder, Builder::default());
+        Mode::load_test_units(game);
+        Yard { build, builder }
     }
 
     /// A builder of `team`, owned by player `owner`, at `pos`, of a half meter, that walks a
@@ -138,14 +144,8 @@ impl Yard {
         let pos = pos.into();
         let build = self.build;
         let slots = ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]).timed();
-        let parts = (
-            Owner::new(PlayerSlot::new(owner)),
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            slots,
-            Builder::default(),
-        );
-        Units::spawn(game, pos, team, parts)
+        let parts = (Owner::new(PlayerSlot::new(owner)), slots);
+        Mode::spawn(game, self.builder, pos, team, parts)
     }
 }
 
@@ -401,8 +401,8 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
             "static body",
             Rules::of(Style::Alone),
             Some(|game: &mut Match| {
-                let body = Body::new(Num::ONE).unwrap();
-                Units::spawn(game, halves(2, 0), Team::new(2), body);
+                let body = BodyForm::circle(Num::ONE).unwrap();
+                Navigation::spawn_unit(game, halves(2, 0), Team::new(2), None, None, Some(body));
             }),
             0,
         ),
@@ -469,8 +469,15 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         ..Rules::of(Style::Alone)
     };
     let yard = Yard::place(&mut game, shop, near);
-    let enemy = Body::new(Num::HALF).unwrap();
-    Units::spawn(&mut game, halves(0, 6), Team::new(1), enemy);
+    let enemy = BodyForm::circle(Num::HALF).unwrap();
+    Navigation::spawn_unit(
+        &mut game,
+        halves(0, 6),
+        Team::new(1),
+        None,
+        None,
+        Some(enemy),
+    );
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     assert_eq!(shop.depots(&mut game).len(), 1);

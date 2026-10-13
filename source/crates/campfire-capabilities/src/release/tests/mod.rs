@@ -21,6 +21,7 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::view::View;
 
 #[test]
@@ -620,6 +621,8 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
 
 #[test]
 fn a_unit_holds_only_parts_the_declarations_list() {
+    // The mode's module, which the capability of the same name hides here.
+    use crate::mode::Mode;
     // A match of every capability the release runs: a unit holds only parts the declarations
     // list, as state or derived; one more is named.
     /// A part of a unit that no declaration lists.
@@ -628,7 +631,8 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
     let mut game = Match::client(&declared);
-    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
+    let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    let id = Mode::spawn(&mut game, unit_type, Position::ORIGIN, Team::new(0), ());
     assert_eq!(
         Release::unlisted_components(set, &game),
         Vec::<String>::new()

@@ -458,6 +458,7 @@ pub(crate) mod test_world {
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
     use crate::units::tag_set::TagSet;
+    use crate::units::unit_type::UnitType;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
@@ -534,6 +535,12 @@ pub(crate) mod test_world {
         /// scripts name stay named.
         pub(crate) fn load_book(world: &mut World, book: StatBook) {
             Books::load(world, book);
+        }
+
+        /// Gives `unit_type` `values` at level 1 in the match's stat book, by the stats' places,
+        /// as its `stats` section would.
+        pub(crate) fn give_type_stats(world: &mut World, unit_type: UnitType, values: &[Num]) {
+            world.resource_mut::<StatBook>().add_base(unit_type, values);
         }
 
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;

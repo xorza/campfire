@@ -8,12 +8,15 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::launch_id::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInsideData};
+use crate::deliveries::Deliveries;
+use crate::mode::Mode;
 use crate::projectiles::Projectiles;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::stats::Stats;
 use crate::stats::modifier_data::ModifierData;
 use crate::units::Units;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -104,12 +107,13 @@ fn an_area_is_state_and_restores() {
         };
         let area = AreaData { inside, ..area };
         Areas::load_type(game, warding, 0, &area);
-        (field, action, warding)
+        let source = Units::load_type(game, TypeScope::Mode, "source", &data);
+        (field, action, warding, source)
     };
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
     let mut game = Match::client(&declared);
-    let (field, action, warding) = loads(&mut game);
-    let source = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
+    let (field, action, warding, source_type) = loads(&mut game);
+    let source = Mode::spawn(&mut game, source_type, Position::ORIGIN, Team::new(0), ());
     let by = Delivering {
         source,
         action,
@@ -119,13 +123,7 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
-    let id = Units::spawn_delivery_of(
-        &mut game,
-        field,
-        Position::ORIGIN,
-        Team::new(0),
-        (area, trigger),
-    );
+    let id = Deliveries::spawn_of(&mut game, source, field, Position::ORIGIN, (area, trigger));
     let mut restored = Match::client(&declared);
     loads(&mut restored);
     Release::restore_into(&game, &mut restored);
@@ -135,7 +133,7 @@ fn an_area_is_state_and_restores() {
     let entity = game.unit_entity(id);
     let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&game, entity);
     assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
-    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(&mut game, source_type, Position::ORIGIN, Team::new(0), ());
     assert!(!trigger.check(&game, game.unit_entity(id)));
     // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
@@ -152,7 +150,7 @@ fn an_area_is_state_and_restores() {
     assert!(!area.check(&game, entity));
     // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
     // would fail as an ally takes it.
-    let warded = Units::spawn_of(&mut game, warding, Position::ORIGIN, Team::new(0), ());
+    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, DeliveryEntity);
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));

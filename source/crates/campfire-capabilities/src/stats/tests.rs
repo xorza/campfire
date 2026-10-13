@@ -11,6 +11,7 @@ use campfire_sim::{IdAllocator, Position, SimComponent, SimUpdate, Unpredicted};
 
 use super::*;
 use crate::books::Books;
+use crate::mode::Mode;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -34,6 +35,7 @@ use crate::units::body::Body;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::move_step::MoveStep;
 use crate::units::tag_book::TagBook;
+use crate::units::tag_data::TagData;
 use crate::units::tag_properties::TagProperties;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -122,10 +124,10 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
         .collect()
 }
 
-/// A match with the stats capability, a unit type for each of `types`, and a book of their
-/// stats, with a move speed cap of 6.
+/// A match with the stats capability, and combat, whose life a pool may be, a unit type for each
+/// of `types`, the mode's, and a book of their stats, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> Match {
-    let mut game = Match::client(&[Capability::Stats]);
+    let mut game = Match::client(&[Capability::Stats, Capability::Combat]);
     let mut book = StatBook::new(&rules(), Num::int(6));
     for data in types {
         let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
@@ -143,32 +145,20 @@ fn stat_match(types: &[StatsData]) -> Match {
 }
 
 /// A unit of `unit_type` at level 1 that walks and has a pool of health and of mana, its values
-/// before the stats derive them: health its life when the match's life pool is health.
+/// before the stats derive them, which its type gives: health its life when the match's life
+/// pool is health.
 fn unit(game: &mut Match, unit_type: u16) -> Entity {
-    let bound = game.resource::<PoolBook>().life() == Some(HEALTH);
-    let parts = (
-        Level::default(),
-        UnitStats::default(),
-        MoveStep::new(Num::ZERO).unwrap(),
-    );
-    let id = Units::spawn_of(
-        game,
-        UnitType::new(unit_type),
-        Position::new(Vec3::ZERO).unwrap(),
-        Team::new(0),
-        parts,
-    );
-    let unit = game.unit_entity(id);
-    if bound {
-        game.entity_mut(unit).insert((
-            Life::full(Num::ONE),
-            Pools::new([(MANA, Num::ONE)]).unwrap(),
-        ));
+    let unit_type = UnitType::new(unit_type);
+    if game.resource::<PoolBook>().life() == Some(HEALTH) {
+        Units::give_type(game, unit_type, Life::full(Num::ONE));
+        Units::give_type(game, unit_type, Pools::new([(MANA, Num::ONE)]).unwrap());
     } else {
         let pools = Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap();
-        game.entity_mut(unit).insert(pools);
+        Units::give_type(game, unit_type, pools);
     }
-    unit
+    Units::give_type(game, unit_type, MoveStep::new(Num::ZERO).unwrap());
+    let id = Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), ());
+    game.unit_entity(id)
 }
 
 /// The current amount and the maximum of `pool` of `entity`: its life's when the match's life pool
@@ -359,8 +349,6 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let own = TagSet::from([sight]);
     game.insert_resource(TagBook::new(0, effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit)
-        .insert((Modifiers::default(), ModifierClocks::default()));
     let book = game.resource::<StatBook>();
     let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
@@ -453,8 +441,6 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit)
-        .insert((Modifiers::default(), ModifierClocks::default()));
     let half = Param::Ranked(Ranked::One(Scalar::Decimal(sixteenths(8))));
     let cut = StatChange {
         op: StatOp::Cut,
@@ -539,8 +525,6 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
     // the decode of an instance refuses one below zero, so the snapshot restores.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit)
-        .insert((Modifiers::default(), ModifierClocks::default()));
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
@@ -563,8 +547,6 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
     // interval past the limit, whose next tick would overflow, fails to decode.
     let (mut game, warding) = warding_match();
     let unit = unit(&mut game, 0);
-    game.entity_mut(unit)
-        .insert((Modifiers::default(), ModifierClocks::default()));
     game.step();
     let id = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, id, warding, Some((id, None, 1)), false);
@@ -614,15 +596,23 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         &modifier_data(Some(presence)),
         None,
     );
-    let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
-    let spawn = |game: &mut Match, x: i64, team: u8| {
-        Units::spawn(
-            game,
-            at(x),
-            Team::new(team),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    // `warded`, whose modifier `ward` grants it, makes immune to the engine's tag 0, `avatar`.
+    let warded = DeclaredName::new("warded").unwrap();
+    Units::declare_tags(&game, [warded.as_str()]);
+    let immune = TagData {
+        immune: vec![DeclaredName::new("avatar").unwrap()],
+        ..TagData::default()
     };
+    Units::seal_tags(&mut game, &BTreeMap::from([(warded.clone(), immune)]));
+    let ward = ModifierData {
+        tags: vec![warded],
+        ..modifier_data(None)
+    };
+    Stats::load_modifier(&mut game, 0, "ward", &ward, None);
+    let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
+    let spawn =
+        |game: &mut Match, x: i64, team: u8| Mode::spawn(game, plain, at(x), Team::new(team), ());
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
     let near = spawn(&mut game, 2, 0);
@@ -676,15 +666,14 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     assert!(holds(&game, far));
     let mut book = game.resource_mut::<ModifierBook>();
     book.grant_tags(presence, TagSet::from([Tag::new(0)]));
-    let immune = UnitTags {
-        immune: TagSet::from([Tag::new(0)]),
-        ..UnitTags::default()
-    };
-    let carrier_entity = entity(&game, carrier);
-    game.entity_mut(carrier_entity).insert(immune);
+    let ward = Stats::modifier(&game, 0, "ward").unwrap();
+    Stats::give_modifier(&mut game, carrier, ward, None, false);
     game.step();
     assert!(!holds(&game, far));
-    game.entity_mut(carrier_entity).remove::<UnitTags>();
+    let carrier_entity = entity(&game, carrier);
+    CarriedMut::of(&mut game, carrier_entity)
+        .unwrap()
+        .remove(ward, None);
     // As on a predicting client, whose sim runs only on the units it predicts: a carrier it only
     // holds, as the server sent it, carries its aura still to the ally it predicts, and the pass
     // writes none of the held carrier's own modifiers.
@@ -710,12 +699,8 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let book = StatBook::new(&rules(), Num::int(6));
     Books::load(&mut game, book);
     Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
-    let id = Units::spawn(
-        &mut game,
-        Position::ORIGIN,
-        Team::new(0),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
@@ -751,9 +736,9 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let book = StatBook::new(&rules(), Num::int(6));
     Books::load(&mut game, book);
     Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
-    let carrier = || (Modifiers::default(), ModifierClocks::default());
-    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), carrier());
-    let gone = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), carrier());
+    let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
+    let gone = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()

@@ -13,8 +13,6 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::declare::per_type::PerType;
 use crate::mode::Mode;
-use crate::mode::mode_units::ModeUnits;
-use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::destination::Destination;
 use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
@@ -99,15 +97,7 @@ impl Shop {
         Shop::give(game, barracks, production);
         Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
-        let unit_types = [grunt, barracks, depot, forge].map(|unit_type| UnitTypeSetup {
-            unit_type,
-            passive: None,
-        });
-        let units = ModeUnits {
-            unit_types: unit_types.into(),
-            ..ModeUnits::default()
-        };
-        Mode::load_units(game, &units);
+        Mode::load_test_units(game);
         let gold = ResourceId::nth(0);
         Shop {
             grunt,
@@ -199,8 +189,7 @@ impl Shop {
             .unwrap()
             .at(Num::ZERO);
         let parts = (Owner::new(PlayerSlot::new(0)), body);
-        let depot = self.depot;
-        Units::spawn_of(game, depot, pos, Team::new(0), parts)
+        Mode::spawn(game, self.depot, pos, Team::new(0), parts)
     }
 }
 

@@ -244,6 +244,7 @@ pub(crate) mod test_world {
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::action_target::ActionTarget;
     use crate::books::Books;
+    use crate::mode::Mode;
     use crate::navigation::Navigation;
     use crate::orders::order::{Action, Order};
     use crate::production::Production;
@@ -256,10 +257,8 @@ pub(crate) mod test_world {
     use crate::production::supply_cost_book::SupplyCostBook;
     use crate::production::supply_data::SupplyData;
     use crate::stats::life::Life;
-    use crate::units::Units;
-    use crate::units::body::Body;
+    use crate::units::body_form::BodyForm;
     use crate::units::by_type::ByType;
-    use crate::units::move_step::MoveStep;
     use crate::units::owner::Owner;
     use crate::units::team::Team;
     use crate::units::team_set::TeamSet;
@@ -284,7 +283,7 @@ pub(crate) mod test_world {
 
         /// A unit of `unit_type` owned by `owner`, at the origin.
         pub(crate) fn owned(world: &mut World, unit_type: UnitType, owner: PlayerSlot) -> StableId {
-            Units::spawn_of(
+            Mode::spawn(
                 world,
                 unit_type,
                 Position::ORIGIN,
@@ -326,12 +325,8 @@ pub(crate) mod test_world {
             team: Team,
             seen: Option<TeamSet>,
         ) -> StableId {
-            let pos = pos.into();
-            let parts = (
-                Body::new(Num::HALF).unwrap(),
-                Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            );
-            let id = Units::spawn(world, pos, team, parts);
+            let form = BodyForm::circle(Num::HALF).unwrap();
+            let id = Navigation::spawn_unit(world, pos, team, None, Some(Num::ONE), Some(form));
             if let Some(teams) = seen {
                 world.insert_parts(id, SeenBy::new(teams));
             }

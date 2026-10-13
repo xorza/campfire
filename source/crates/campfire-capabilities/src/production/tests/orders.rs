@@ -5,7 +5,6 @@ use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
 use crate::orders::order::Action;
 use crate::production::rally_target::RallyTarget;
-use crate::units::body::Body;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
 use crate::units::team_set::TeamSet;
@@ -126,11 +125,14 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         .unwrap()
         .at(Num::ZERO);
     game.insert_parts(producer, body);
-    let flag = Units::spawn(
+    let half = BodyForm::circle(Num::HALF).unwrap();
+    let flag = Navigation::spawn_unit(
         &mut game,
         halves(0, 12),
         Team::new(1),
-        Body::new(Num::HALF).unwrap(),
+        None,
+        None,
+        Some(half),
     );
     let rally = |target| Action::Rally {
         target: Some(target),
@@ -180,11 +182,13 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     // not see is ignored: the dead flag stays its rally, and the grunt spawns at its producer.
     // Once team 1 sees it, the rally takes it, as the living flag's did.
     Vision::fog_grid(&mut game, 2);
-    let watch = Units::spawn(
+    let watch = Navigation::spawn_unit(
         &mut game,
         halves(0, 12),
         Team::new(0),
-        Body::new(Num::HALF).unwrap(),
+        None,
+        None,
+        Some(half),
     );
     let team0 = TeamSet::of(Team::new(0));
     for (at, (seers, place)) in [

@@ -10,9 +10,6 @@ use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_sim::Breach;
 
 use crate::declare::kind_spawn::KindSpawn;
-use crate::units::delivery_entity::DeliveryEntity;
-use crate::units::spawner::Spawner;
-use crate::units::unit_type::UnitType;
 
 /// A part as `EntityParts` holds it: its type, how it goes on a spawning entity, and whether an
 /// entity as it stands lacks it.
@@ -25,7 +22,7 @@ struct Part<H> {
 /// The parts the installed modules declare for each entity of the host `H`: the match's, a
 /// player's, a unit's, or every unit's, each made at the spawn from the entity and the world.
 /// Derived from the declarations: a restore takes the parts from its snapshot, and checks that
-/// each entity whose spawn gives the parts holds each part its spawn would give it.
+/// each entity of the host holds each part its spawn would give it.
 #[derive(Resource)]
 pub(crate) struct EntityParts<H: Send + Sync + 'static> {
     parts: Arc<Vec<Part<H>>>,
@@ -87,24 +84,10 @@ impl<H: Component> EntityParts<H> {
         };
         let part = parts.parts.iter().find(|part| part.ty == TypeId::of::<C>());
         let part = part.expect("the check of a declared part");
-        let spawner = world.get_non_send::<Spawner>();
         let lacks = |entity: Entity| {
-            world.get::<H>(entity).is_some()
-                && EntityParts::<H>::given(world, spawner, entity)
-                && (part.missing)(&KindSpawn::of(world, entity))
+            world.get::<H>(entity).is_some() && (part.missing)(&KindSpawn::of(world, entity))
         };
         Breach::first(world, lacks)
-    }
-
-    /// Whether the spawn of `entity` gave it its declared parts: an entity that is no unit, a
-    /// delivery, or a unit of a type the mode's spawner spawns. A unit a test spawns bare has
-    /// none. `spawner` is the match's, if it has one.
-    fn given(world: &World, spawner: Option<&Spawner>, entity: Entity) -> bool {
-        let Some(&unit_type) = world.get::<UnitType>(entity) else {
-            return true;
-        };
-        world.get::<DeliveryEntity>(entity).is_some()
-            || spawner.is_some_and(|spawner| spawner.spawns(unit_type))
     }
 }
 

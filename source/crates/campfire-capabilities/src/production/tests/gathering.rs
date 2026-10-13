@@ -16,11 +16,9 @@ use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::resource_set::ResourceSet;
 use crate::units::block::Block;
-use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
-use crate::units::unit_tags::UnitTags;
 use crate::values::relation_set::RelationSet;
 
 /// A mine's match: a worker's gather, and the type of the minerals it gathers at.
@@ -28,6 +26,7 @@ use crate::values::relation_set::RelationSet;
 struct Mine {
     gather: ActionId,
     mineral: UnitType,
+    worker: UnitType,
 }
 
 impl Mine {
@@ -58,7 +57,19 @@ impl Mine {
         };
         let all = Filter::of_release_relations(RelationSet::All);
         let gather = Actions::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
-        Mine { gather, mineral }
+        // Minerals are boxes of 2 by 1 m; workers, of a half meter, walk a meter a tick.
+        let mineral_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
+        Units::give_type(game, mineral, mineral_body);
+        let worker = Units::load_type(game, TypeScope::Mode, "worker", &UnitTypeCore::default());
+        Units::give_type(game, worker, BodyForm::circle(Num::HALF).unwrap());
+        Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
+        Units::give_type(game, worker, Gatherer::default());
+        Mode::load_test_units(game);
+        Mine {
+            gather,
+            mineral,
+            worker,
+        }
     }
 
     /// A worker of player `owner` at `pos`, its gather learned.
@@ -78,25 +89,13 @@ impl Mine {
         let pos = pos.into();
         let gather = self.gather;
         let slots = ActionSlots::new([(gather, SlotKind::new(0), rank)]).timed();
-        let parts = (
-            Owner::new(PlayerSlot::new(owner)),
-            Body::new(Num::HALF).unwrap(),
-            Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-            slots,
-            Gatherer::default(),
-        );
-        Units::spawn(game, pos, Team::new(0), parts)
+        let parts = (Owner::new(PlayerSlot::new(owner)), slots);
+        Mode::spawn(game, self.worker, pos, Team::new(0), parts)
     }
 
     /// A mineral at `pos` holding `amount`.
     fn mineral(self, game: &mut World, pos: impl Into<Position>, amount: u32) -> StableId {
-        let pos = pos.into();
-        let body = BodyForm::box_sized([Num::int(2), Num::ONE])
-            .unwrap()
-            .at(Num::ZERO);
-        let parts = (body, Node::new(amount));
-        let mineral = self.mineral;
-        Units::spawn_of(game, mineral, pos, Team::new(2), parts)
+        Mode::spawn(game, self.mineral, pos, Team::new(2), Node::new(amount))
     }
 }
 
@@ -302,7 +301,7 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
     let node = mine.mineral(&mut game, halves(0, 12), 100);
     let worker = mine.worker(&mut game, halves(1, 8), 0);
     Production::gather_at(&mut game, &[worker], node);
-    game.insert_parts(worker, UnitTags::blocking(&[Block::Use]));
+    Units::set_blocks(&mut game, worker, &[Block::Use]);
     game.step();
     assert_eq!(
         (
@@ -316,8 +315,7 @@ fn a_block_of_use_ends_a_gather_with_no_load_and_the_loop_starts_again_as_it_end
         Production::gather_step(&game, worker),
         Some(GatherStep::ToNode)
     );
-    let entity = game.unit_entity(worker);
-    game.entity_mut(entity).remove::<UnitTags>();
+    Units::set_blocks(&mut game, worker, &[]);
     game.step();
     let gathers = GatherStep::Gathering {
         since: Tick::new(3),

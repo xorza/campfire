@@ -231,6 +231,11 @@ pub(crate) mod internals {
         pub(crate) fn count(&self) -> usize {
             self.types.len()
         }
+
+        /// Whether the tag book took the types' tags, after which no type loads.
+        pub(crate) const fn sealed(&self) -> bool {
+            self.staged_tags.is_none()
+        }
     }
 }
 

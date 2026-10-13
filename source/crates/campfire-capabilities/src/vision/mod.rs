@@ -141,6 +141,7 @@ pub(crate) mod test_world {
 
     use crate::geometry::bounds::Bounds;
     use crate::geometry::grid::Grid;
+    use crate::mode::Mode;
     use crate::scripts::ctx::Ctx;
     use crate::scripts::error::CallError;
     use crate::scripts::error::internals::FailureKind;
@@ -149,7 +150,8 @@ pub(crate) mod test_world {
     use crate::units::tag_properties::TagProperties;
     use crate::units::team::Team;
     use crate::units::team_set::TeamSet;
-    use crate::units::unit_tags::UnitTags;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::units::units_world::UnitsWorldCrate;
     use crate::vision::Vision;
     use crate::vision::brush_map::BrushMap;
@@ -158,6 +160,18 @@ pub(crate) mod test_world {
     use crate::vision::vision_book::VisionBook;
     use crate::vision::vision_column::VisionColumn;
     use crate::vision::vision_grid::VisionGrid;
+
+    /// The sights of the tests' seers, in meters: none, then each range one sees.
+    const SIGHTS: [Option<i64>; 8] = [
+        None,
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(3),
+        Some(4),
+        Some(6),
+        Some(20),
+    ];
 
     impl Vision {
         /// Gives the match a grid of one cell, for `teams` teams, that no Vision stage reads: the
@@ -171,8 +185,26 @@ pub(crate) mod test_world {
             world.insert_resource(VisionBook(Some(VisionGrid { grid, brush, teams })));
         }
 
-        /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing
-        /// `sight` when given.
+        /// Loads the mode's seers, each of 100 life, so it may be a target, and seeing one of
+        /// `SIGHTS`, named for it.
+        pub(crate) fn load_seers(world: &mut World) {
+            for sight in SIGHTS {
+                let core = UnitTypeCore::default();
+                let seer = Units::load_type(world, TypeScope::Mode, &Vision::seer(sight), &core);
+                Units::give_type(world, seer, Life::full(Num::int(100)));
+                if let Some(range) = sight {
+                    Units::give_type(world, seer, Sight::new(Num::int(range)).unwrap());
+                }
+            }
+        }
+
+        /// The name of the seer of `sight`, one of `SIGHTS`.
+        fn seer(sight: Option<i64>) -> String {
+            debug_assert!(SIGHTS.contains(&sight), "a sight of the seers");
+            sight.map_or_else(|| "blind".to_owned(), |range| format!("seer of {range}"))
+        }
+
+        /// A seer of `team` at `x`, `z`, seeing `sight`, one of `SIGHTS`.
         pub(crate) fn spawn_seer(
             world: &mut World,
             x: i64,
@@ -180,22 +212,14 @@ pub(crate) mod test_world {
             team: Team,
             sight: Option<i64>,
         ) -> StableId {
-            let life = Life::full(Num::int(100));
-            let id = Units::spawn(
-                world,
-                Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
-                team,
-                life,
-            );
-            if let Some(range) = sight {
-                world.insert_parts(id, Sight::new(Num::int(range)).unwrap());
-            }
-            id
+            let pos = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+            Mode::spawn_named(world, &Vision::seer(sight), pos, team, ())
         }
 
-        /// Gives unit `id` tags with `properties`, as its modifiers would.
+        /// Holds on unit `id` the test tags whose effects make `properties`, as its modifiers
+        /// would.
         pub(crate) fn set_properties(world: &mut World, id: StableId, properties: TagProperties) {
-            world.insert_parts(id, UnitTags::with_properties(properties));
+            Units::hold_properties(world, id, properties);
         }
 
         /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` thinks, or as the mode with no actor,

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::{PlayerSlot, Tick};
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimComponent, SimWorld, StableId};
 use serde::Deserialize;
@@ -16,12 +16,12 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::targeting::Targeting;
 use crate::books::Books;
 use crate::combat::on_death::OnDeath;
-use crate::combat::recent_attackers::RecentAttackers;
 use crate::geometry::bounds::Bounds;
 use crate::items::inventory::ItemStack;
 use crate::items::item_book::ItemSpec;
 use crate::items::item_id::ItemId;
 use crate::items::shop::{Shop, ShopPlace};
+use crate::mode::Mode;
 use crate::orders::order::Action;
 use crate::orders::order::Order;
 use crate::players::Players;
@@ -34,7 +34,6 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::life::Life;
 use crate::stats::lifetime::Hold;
-use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_change::StatChange;
@@ -46,6 +45,7 @@ use crate::units::block::Block;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::number::Number;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
@@ -119,23 +119,17 @@ impl Carrier {
         };
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));
         stock(game, [drink, flash], might);
+        // Its type: 500 life that stays when it dies, and an inventory of 3, whose slots it has.
         let kind = SlotKind::new(0);
-        let slots = ActionSlots::new([]).with_empty(kind, 3).timed();
-        let mut life = Life::full(Num::int(500));
-        life.take(Num::int(200));
-        let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let carrier = Units::load_next_type(game, &UnitTypeCore::default());
+        Units::give_type(game, carrier, Life::full(Num::int(500)));
+        Units::give_type(game, carrier, OnDeath::Stay);
+        Units::give_type(game, carrier, ActionSlots::new([]).with_empty(kind, 3));
         let three = NonZeroU8::new(3).unwrap();
-        let id = Units::spawn(
-            game,
-            pos,
-            Team::new(0),
-            (
-                (Owner::new(PlayerSlot::new(0)), life),
-                (OnDeath::Stay, RecentAttackers::default()),
-                (Modifiers::default(), ModifierClocks::default()),
-                (slots, Inventory::new(three, kind)),
-            ),
-        );
+        Units::give_type(game, carrier, Inventory::new(three, kind));
+        let owner = Owner::new(PlayerSlot::new(0));
+        let id = Mode::spawn(game, carrier, Position::ORIGIN, Team::new(0), owner);
+        game.part_mut::<Life>(id).take(Num::int(200));
         Carrier {
             id,
             drink,

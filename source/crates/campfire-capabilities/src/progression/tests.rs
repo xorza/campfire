@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use super::*;
 use crate::books::Books;
+use crate::mode::Mode;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::release::Release;
@@ -14,6 +15,7 @@ use crate::stats::level::Level;
 use crate::units::Units;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::declared_name::DeclaredName;
 
 fn track(at: u8) -> TrackId {
@@ -139,13 +141,20 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
 
 #[test]
 fn experience_is_state_and_restores() {
-    // A match of stats and progression with the tracks of `book`, the same in both.
+    // A match of stats and progression with the tracks of `book`, the same in both, and a type
+    // on both tracks and one on `valor` alone.
     let tracks = |game: &mut Match| {
         Books::load(game, book());
+        let core = UnitTypeCore::default();
+        [[track(0), track(1)].as_slice(), &[track(1)]].map(|tracks| {
+            let unit_type = Units::load_next_type(game, &core);
+            Units::give_type(game, unit_type, TrackSet::from_iter(tracks.iter().copied()));
+            unit_type
+        })
     };
     let declared = [Capability::Stats, Capability::Progression];
     let mut game = Match::client(&declared);
-    tracks(&mut game);
+    let [on_both, on_valor] = tracks(&mut game);
     // A unit 150 into `level`, at level 2 with a point more than at its spawn, and 10 into
     // `valor`, still at level 1.
     let book = book();
@@ -156,8 +165,9 @@ fn experience_is_state_and_restores() {
     experience.add(track(0), Num::int(150), &book, Some(&mut level));
     experience.add(track(1), Num::int(10), &book, None);
     points.gain(1);
-    let id = Units::spawn(
+    let id = Mode::spawn(
         &mut game,
+        on_both,
         Position::ORIGIN,
         Team::new(0),
         (level, experience, points),
@@ -172,8 +182,9 @@ fn experience_is_state_and_restores() {
     // spawn, and points on it fail the check.
     let valor = TrackSet::from([track(1)]);
     assert_eq!(Points::at_spawn(valor, book.level_track()), None);
-    let held = Units::spawn(
+    let held = Mode::spawn(
         &mut game,
+        on_valor,
         Position::ORIGIN,
         Team::new(0),
         (Experience::new(valor, book.level_track()), points),

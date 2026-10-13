@@ -160,8 +160,8 @@ fn on_mode_input(ctx, player, name, value) {
         .zip(loads)
     {
         let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
-        let parts = (Owner::new(PlayerSlot::new(slot)), UnitStats::default());
-        let id = Units::spawn_of(&mut game, grunt, pos, Team::new(0), parts);
+        let owner = Owner::new(PlayerSlot::new(slot));
+        let id = Mode::spawn(&mut game, grunt, pos, Team::new(0), owner);
         if dead {
             game.insert_parts(id, Dead);
         }

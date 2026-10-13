@@ -47,6 +47,7 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::test_world::Armed;
 use crate::geometry::body_box::BodyBox;
+use crate::mode::Mode;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
 use crate::orders::Orders;
@@ -317,12 +318,13 @@ fn abilities_match() -> Match {
 }
 
 /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
-/// gold, as a mode would keep it.
+/// gold, as a mode would keep it, with the types the tests spawn.
 fn abilities_match_with(limits: ScriptLimits, declared: &[Capability]) -> Match {
     let mut game = Match::server(declared, ScriptBudgets::new(limits, 2));
     // The damage kinds a mode would declare: the MOBA test content's.
     Units::name_kinds(&game, &["physical", "magic", "true"], &POOLS, &["gold"]);
     Players::spawn(&mut game, 2, 1);
+    Abilities::load_types(&mut game);
     game
 }
 
@@ -637,6 +639,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         "spinner",
         &UnitTypeCore::default(),
     );
+    Abilities::give_combatant(&mut game, spinner);
     let ai = AiData {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 1,
@@ -648,9 +651,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let caster = Abilities::caster(&mut game, strike, 1);
     let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let spinners: Vec<_> = (0..11)
-        .map(|z| {
-            Abilities::spawn_combatant_of(&mut game, spinner, (0, 0, 20 + z), Team::new(2), ())
-        })
+        .map(|z| Mode::spawn(&mut game, spinner, (0, 0, 20 + z), Team::new(2), ()))
         .collect();
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
@@ -676,25 +677,27 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
 fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = abilities_match();
     let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
+    // Casters of 5 mana, of 3 rage, and of 10 mana and 4 rage, beside the 100 and 20 of the
+    // match's own.
+    let [poor, calm, exact] = [(5, 20), (100, 3), (10, 4)].map(|(mana, rage)| {
+        let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
+        Abilities::give_caster(&mut game, unit_type, mana, rage);
+        unit_type
+    });
+    let full = Units::type_named(&game, "caster").unwrap();
     let caster = Abilities::caster(&mut game, strike, 1);
-    let mut caster_at = |x: i16, rank: u8, mana: i64, rage: i64| {
-        let id = Abilities::spawn_combatant(
-            &mut game,
-            (x, 0, 0),
-            Team::new(0),
-            (
-                Owner::new(PlayerSlot::new(0)),
-                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]).timed(),
-            ),
+    let mut caster_at = |x: i16, rank: u8, unit_type| {
+        let parts = (
+            Owner::new(PlayerSlot::new(0)),
+            ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]).timed(),
         );
-        Abilities::give_pools(&mut game, id, mana, rage);
-        id
+        Mode::spawn(&mut game, unit_type, (x, 0, 0), Team::new(0), parts)
     };
-    let unlearned = caster_at(1, 0, 100, 20);
-    let poor = caster_at(2, 1, 5, 20);
-    let calm = caster_at(2, 1, 100, 3);
-    let spent = caster_at(2, 1, 100, 20);
-    let exact = caster_at(2, 1, 10, 4);
+    let unlearned = caster_at(1, 0, full);
+    let poor = caster_at(2, 1, poor);
+    let calm = caster_at(2, 1, calm);
+    let spent = caster_at(2, 1, full);
+    let exact = caster_at(2, 1, exact);
     let entity = game.unit_entity(spent);
     game.get_mut::<Pools>(entity)
         .unwrap()
@@ -769,13 +772,8 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let data = ActionData { cost, ..strike() };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let ownerless = Abilities::spawn_combatant(
-        &mut game,
-        (0, 0, 1),
-        Team::new(0),
-        ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
-    );
-    Abilities::give_pools(&mut game, ownerless, 100, 20);
+    let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed();
+    let ownerless = Mode::spawn_named(&mut game, "caster", (0, 0, 1), Team::new(0), slots);
     let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let player = PlayerSlot::new(0);
     game.player_resources_mut(player)
@@ -1210,9 +1208,10 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     let refill = Abilities::load(&mut game, "refill", &plain, refill);
     let dud = r#"fn on_resolve(ctx, caster, target) { ctx.add_charge(caster, "dud"); }"#;
     let dud = Abilities::load(&mut game, "dud", &plain, dud);
-    let caster = Abilities::spawn_combatant(
+    let caster = Mode::spawn_named(
         &mut game,
-        (0, 0, 0),
+        "caster",
+        Position::ORIGIN,
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
@@ -1224,7 +1223,6 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
             .timed(),
         ),
     );
-    Abilities::give_pools(&mut game, caster, 100, 20);
     let charges = |game: &Match| {
         let charges = Abilities::time(game, caster).charges.unwrap();
         (charges.count, charges.next.get())
@@ -1270,8 +1268,9 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoCharges));
     // A unit that holds Step unlearned has no charges for Refill to add to.
-    let learner = Abilities::spawn_combatant(
+    let learner = Mode::spawn_named(
         &mut game,
+        "caster",
         (5, 0, 0),
         Team::new(0),
         (
@@ -1283,7 +1282,6 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
             .timed(),
         ),
     );
-    Abilities::give_pools(&mut game, learner, 100, 20);
     game.part_mut::<ActionSlots>(learner)
         .order(1, ActionTarget::None);
     game.step();
@@ -1326,12 +1324,9 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
             let action = Actions::load(game, 0, name, data, None, 1).unwrap();
             (action, SlotKind::new(0), Rank::new(1))
         });
-        Units::spawn(
-            game,
-            (0, 0, 0),
-            Team::new(0),
-            ActionSlots::new(slots).timed(),
-        )
+        let unit_type = Units::load_next_type(game, &UnitTypeCore::default());
+        let slots = ActionSlots::new(slots).timed();
+        Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), slots)
     };
     let mut server = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
     let mut client = Match::client(&declared);
@@ -1406,7 +1401,6 @@ fn on_interrupt(ctx, caster, target) {
     // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
     let run = |game: &mut Match, x: i16, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = Abilities::caster(game, drain, 1);
-        game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
         *game.part_mut::<Position>(caster) = Position::from((x, 0, 0));
         let target = Abilities::spawn_combatant(game, (x + 1, 0, 0), Team::new(1), ());
         Abilities::cast(game, caster, ActionTarget::Unit(target));
@@ -1507,13 +1501,12 @@ fn on_resolve(ctx, caster, target) {
             (other, SlotKind::new(0), Rank::new(1)),
         ])
         .timed();
-        let caster = Abilities::spawn_combatant(
+        let caster = Abilities::spawn_caster(
             game,
             pos,
             Team::new(0),
             (Owner::new(PlayerSlot::new(0)), slots),
         );
-        Abilities::give_pools(game, caster, 100, 20);
         let target = Abilities::spawn_combatant(game, (x + 3, 0, 0), Team::new(1), ());
         (caster, target)
     };
@@ -1562,13 +1555,12 @@ fn on_resolve(ctx, caster, target) {
     // The same script in an action that does not charge fails its call.
     let pos = Position::from((100, 0, 0));
     let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]).timed();
-    let caster = Abilities::spawn_combatant(
+    let caster = Abilities::spawn_caster(
         &mut game,
         pos,
         Team::new(0),
         (Owner::new(PlayerSlot::new(0)), slots),
     );
-    Abilities::give_pools(&mut game, caster, 100, 20);
     let target = Abilities::spawn_combatant(&mut game, (103, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
     let failed = Abilities::failed_calls(&game);
@@ -1620,7 +1612,7 @@ fn on_resolve(ctx, caster, target) {
     Abilities::load_stats(&mut game);
     let action = Abilities::load(&mut game, "lash_out", &lash_out(), script);
     let first = Abilities::caster(&mut game, action, 1);
-    let second = Abilities::spawn_combatant(
+    let second = Abilities::spawn_caster(
         &mut game,
         (20, 0, 0),
         Team::new(0),
@@ -1629,7 +1621,6 @@ fn on_resolve(ctx, caster, target) {
             ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]).timed(),
         ),
     );
-    Abilities::give_pools(&mut game, second, 100, 20);
     let targets = [Num::int(1), Num::int(21)].map(|x| {
         Abilities::spawn_combatant(
             &mut game,
@@ -1687,7 +1678,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         );
         let strike = Abilities::load(&mut game, "strike", &strike(), STRIKE);
         let spinner = Abilities::caster(&mut game, spin, 1);
-        let striker = Abilities::spawn_combatant(
+        let striker = Abilities::spawn_caster(
             &mut game,
             (0, 0, 1),
             Team::new(0),
@@ -1696,7 +1687,6 @@ fn a_cast_draws_from_its_casters_player_pool() {
                 ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
             ),
         );
-        Abilities::give_pools(&mut game, striker, 100, 20);
         let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
         let casts = [
             (spinner, ActionTarget::None),
@@ -1865,12 +1855,15 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
         Units::load_type(&mut game, TypeScope::Mode, name, &data)
     };
     let (hero, creep) = (load_type("avatar"), load_type("creep"));
+    for unit_type in [hero, creep] {
+        Abilities::give_combatant(&mut game, unit_type);
+    }
     let mut heroes_only = strike();
     heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = Abilities::load(&mut game, "strike", &heroes_only, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let enemy_creep = Abilities::spawn_combatant_of(&mut game, creep, (3, 0, 0), Team::new(1), ());
-    let enemy_hero = Abilities::spawn_combatant_of(&mut game, hero, (4, 0, 0), Team::new(1), ());
+    let enemy_creep = Mode::spawn(&mut game, creep, (3, 0, 0), Team::new(1), ());
+    let enemy_hero = Mode::spawn(&mut game, hero, (4, 0, 0), Team::new(1), ());
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     Abilities::cast(&mut game, caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(Stats::health(&game, enemy_creep), 500);
@@ -1895,7 +1888,6 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let caster = Abilities::caster(&mut game, action, 0);
     let entity = game.unit_entity(caster);
-    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     let id = Stats::modifier(&game, 0, "guard").unwrap();
     let shield = |game: &Match| {
         let modifiers = game.get::<Modifiers>(entity).unwrap();
@@ -1957,7 +1949,6 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]).timed();
     let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
     let entity = game.unit_entity(beast);
-    game.insert_parts(beast, (Modifiers::default(), ModifierClocks::default()));
     game.step();
     let ward = Stats::modifier(&game, 0, "ward").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
@@ -1995,7 +1986,6 @@ fn on_resolve(ctx, caster, target) {
     let action = Abilities::load(&mut game, "lash_out", &lash_out(), marker);
     let caster = Abilities::caster(&mut game, action, 3);
     let entity = game.unit_entity(caster);
-    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     let t = game.resource::<SimTick>().start();
     Abilities::cast(&mut game, caster, ActionTarget::None);
     // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
@@ -2061,22 +2051,17 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         "target",
         &UnitTypeCore::default(),
     );
+    Abilities::give_combatant(&mut game, target_type);
     let stunned = TagData {
         blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
         ..TagData::default()
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
-    Units::seal_types_with(&mut game, &effects);
+    Units::seal_tags(&mut game, &effects);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = Abilities::load(&mut game, "strike", &strike(), script);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let parts = (
-        Level::default(),
-        UnitStats::default(),
-        (Modifiers::default(), ModifierClocks::default()),
-    );
-    let enemy =
-        Abilities::spawn_combatant_of(&mut game, target_type, (5, 0, 0), Team::new(1), parts);
+    let enemy = Mode::spawn(&mut game, target_type, (5, 0, 0), Team::new(1), ());
     let entity = game.unit_entity(enemy);
     let mut seen = Vec::new();
     for tick in 0..8 {
@@ -2129,12 +2114,13 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         "target",
         &UnitTypeCore::default(),
     );
+    Abilities::give_combatant(&mut game, target);
     let stunned = TagData {
         blocks: vec![Block::Move],
         ..TagData::default()
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
-    Units::seal_types_with(&mut game, &effects);
+    Units::seal_tags(&mut game, &effects);
     let purge = DoesData::Purge(PurgeFields {
         tag: DeclaredName::new("stunned").unwrap(),
     });
@@ -2146,15 +2132,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     let action = Actions::load(&mut game, 0, "cleanse", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
-    let parts = || {
-        (
-            Level::default(),
-            UnitStats::default(),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
-    };
-    let freed = Abilities::spawn_combatant_of(&mut game, target, (1, 0, 0), Team::new(1), parts());
-    let held = Abilities::spawn_combatant_of(&mut game, target, (-1, 0, 0), Team::new(1), parts());
+    let freed = Mode::spawn(&mut game, target, (1, 0, 0), Team::new(1), ());
+    let held = Mode::spawn(&mut game, target, (-1, 0, 0), Team::new(1), ());
     for source in [first, second] {
         Abilities::give_from(&mut game, freed, source, "stun");
     }
@@ -2411,9 +2390,10 @@ fn on_interval(ctx, m) { throw "interval"; }
         ],
     );
     game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
+    let striker = striker(500).load(&mut game);
     let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     let origin = Position::from((0, 0, 0));
-    let attacker = Abilities::attacker(&mut game, origin, Team::new(0), striker(500), victim);
+    let attacker = Abilities::attacker(&mut game, striker, origin, Team::new(0), victim);
     let assister = Abilities::spawn_combatant(&mut game, (3, 0, 0), Team::new(0), ());
     let bystander = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
     for unit in [attacker, assister, victim] {
@@ -2480,9 +2460,10 @@ fn on_damage_taken(ctx, m, d) {
             ("echo", scripted(None, &[("echo", 1)])),
         ],
     );
+    let striker = striker(30).load(&mut game);
     let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     let origin = Position::from((0, 0, 0));
-    let attacker = Abilities::attacker(&mut game, origin, Team::new(0), striker(30), victim);
+    let attacker = Abilities::attacker(&mut game, striker, origin, Team::new(0), victim);
     let echoer = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
     Abilities::give(&mut game, attacker, "double");
     Abilities::give(&mut game, echoer, "echo");
@@ -2580,12 +2561,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let mut points = Points::at_spawn(TrackSet::from([track]), Some(track)).unwrap();
     points.gain(1);
     let step = MoveStep::new(Num::ONE).unwrap();
-    let parts = (
-        Level::default(),
-        points,
-        (Modifiers::default(), ModifierClocks::default()),
-    );
-    game.insert_parts(caster, (parts, Navigation::walker(step)));
+    game.insert_parts(caster, (points, Navigation::walker(step)));
     let entity = game.unit_entity(caster);
     let id = Stats::modifier(&game, 0, "guard").unwrap();
     let send = |game: &mut Match, slot: u32, actions: &[Action]| {
@@ -2672,6 +2648,7 @@ fn weapon_match() -> (Match, UnitType) {
         "fighter",
         &UnitTypeCore::default(),
     );
+    Abilities::give_caster(&mut game, fighter, 100, 20);
     let flat = |value| StatValue {
         base: Num::int(value),
         per_level: Num::ZERO,
@@ -2783,12 +2760,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let (mut game, fighter) = weapon_match();
         let weapon = Abilities::load_weapon(&mut game, "sapper", &sapper(ranged));
         let out = if ranged { 4 } else { 1 };
-        let target = Abilities::spawn_combatant(
-            &mut game,
-            (out, 0, 0),
-            Team::new(1),
-            (Modifiers::default(), ModifierClocks::default()),
-        );
+        let target = Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), ());
         let attacker = if by_cast {
             let data = ActionData {
                 range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
@@ -2803,7 +2775,6 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             ])
             .timed();
             let caster = Abilities::fighter(&mut game, fighter, slots);
-            Abilities::give_pools(&mut game, caster, 100, 20);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             caster
         } else {
@@ -2974,14 +2945,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         fighter,
         ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
     );
-    let mut target = |x| {
-        Abilities::spawn_combatant(
-            &mut game,
-            (x, 0, 0),
-            Team::new(1),
-            (Modifiers::default(), ModifierClocks::default()),
-        )
-    };
+    let mut target = |x| Abilities::spawn_combatant(&mut game, (x, 0, 0), Team::new(1), ());
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
     // A tick first, whose stats derive each new unit's tags, as for every unit that spawns: the
     // blocked target's tags, set after it, stay.
@@ -3088,9 +3052,10 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let caster_type = Units::load_type(
         &mut game,
         TypeScope::Mode,
-        "caster",
+        "scaler",
         &UnitTypeCore::default(),
     );
+    Abilities::give_caster(&mut game, caster_type, 100, 20);
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
         base: Num::from_int(50).unwrap(),
@@ -3135,16 +3100,20 @@ fn on_resolve(ctx, caster, target) {
 }
 "#;
     let action = Abilities::load(&mut game, "ability", &data, script);
-    let caster = Abilities::caster(&mut game, action, 2);
-    let parts = (caster_type, Level::new(3).unwrap(), UnitStats::default());
-    game.insert_parts(caster, parts);
-    Abilities::give(&mut game, caster, "boost");
-    let target = Abilities::spawn_combatant(
-        &mut game,
-        (5, 0, 0),
-        Team::new(1),
-        (Modifiers::default(), ModifierClocks::default()),
+    let parts = (
+        Owner::new(PlayerSlot::new(0)),
+        ActionSlots::new([(action, SlotKind::new(0), Rank::new(2))]).timed(),
+        Level::new(3).unwrap(),
     );
+    let caster = Mode::spawn(
+        &mut game,
+        caster_type,
+        Position::ORIGIN,
+        Team::new(0),
+        parts,
+    );
+    Abilities::give(&mut game, caster, "boost");
+    let target = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
@@ -3179,6 +3148,7 @@ impl Veil {
     /// her.
     fn place(game: &mut Match) -> Veil {
         let veil_type = Units::load_type(game, TypeScope::Mode, "game", &UnitTypeCore::default());
+        Abilities::give_combatant(game, veil_type);
         let attack_damage = Stat::named("attack_damage").unwrap();
         let growth = StatValue {
             base: Num::from_int(53).unwrap(),
@@ -3220,13 +3190,7 @@ impl Veil {
         ] {
             Stats::load_modifier(game, 0, name, &data, None);
         }
-        let veil = Abilities::spawn_combatant_of(
-            game,
-            veil_type,
-            (0, 0, 0),
-            Team::new(0),
-            (Level::default(), UnitStats::default()),
-        );
+        let veil = Mode::spawn(game, veil_type, Position::ORIGIN, Team::new(0), ());
         Abilities::give(game, veil, "dual_path");
         Abilities::give(game, veil, "fortify");
         Veil {
@@ -3280,14 +3244,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     let source = veil.id;
     // Ward, of Veil's type, holds Dual Path from Veil, with Boost: 0.06 and 0.00167 of Veil's
     // bonus of 30, as above, spell vamp 1 847 173 bits.
-    let ward_parts = (Level::default(), UnitStats::default());
-    let ward = Abilities::spawn_combatant_of(
-        &mut game,
-        veil.unit_type,
-        (1, 0, 0),
-        Team::new(0),
-        ward_parts,
-    );
+    let ward = Mode::spawn(&mut game, veil.unit_type, (1, 0, 0), Team::new(0), ());
     Abilities::give(&mut game, source, "boost");
     Abilities::give_from(&mut game, ward, source, "dual_path");
     // A copy of the state follows the match: the value a live change last had is state, and
@@ -3654,9 +3611,6 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     .map(|pos| Abilities::spawn_combatant(&mut game, pos, Team::new(1), ()));
     let ally =
         Abilities::spawn_combatant(&mut game, point(Num::int(2), Num::ZERO), Team::new(0), ());
-    for unit in enemies.iter().chain([&ally]) {
-        game.insert_parts(*unit, (Modifiers::default(), ModifierClocks::default()));
-    }
     Abilities::cast(
         &mut game,
         caster,
@@ -3815,6 +3769,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
     let grunt = UnitTypeCore::tagged(&["grunt"]);
     let grunt = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt);
+    Abilities::give_combatant(&mut game, grunt);
     let field = Units::load_type(
         &mut game,
         TypeScope::Mode,
@@ -3841,7 +3796,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     };
     Areas::load_type(&mut game, field, 0, &data);
     // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
-    Units::seal_types_with(&mut game, &BTreeMap::new());
+    Units::seal_tags(&mut game, &BTreeMap::new());
     let shot = ActionData {
         targeting: Targeting::Point,
         delivery: Some(DeliveryData::Area {
@@ -3856,31 +3811,17 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     "#;
     let action = Abilities::load(&mut game, "shot", &shot, source);
     let caster = Abilities::caster(&mut game, action, 1);
-    game.insert_parts(caster, (Modifiers::default(), ModifierClocks::default()));
     // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
     // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
     // and an enemy grunt.
     let point = |x: i16, z: i16| Position::from((x, 0, z));
-    let none = || (Modifiers::default(), ModifierClocks::default());
-    let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), none());
-    let enemy_grunt = Abilities::spawn_combatant_of(
-        &mut game,
-        grunt,
-        point(2, 0),
-        Team::new(1),
-        (Level::default(), none()),
-    );
-    let enemy = Abilities::spawn_combatant(&mut game, point(1, -1), Team::new(1), none());
-    let hidden = Abilities::spawn_combatant(&mut game, point(0, 0), Team::new(1), none());
+    let ally = Abilities::spawn_combatant(&mut game, point(1, 1), Team::new(0), ());
+    let enemy_grunt = Mode::spawn(&mut game, grunt, point(2, 0), Team::new(1), ());
+    let enemy = Abilities::spawn_combatant(&mut game, point(1, -1), Team::new(1), ());
+    let hidden = Abilities::spawn_combatant(&mut game, point(0, 0), Team::new(1), ());
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
-    let far_ally = Abilities::spawn_combatant(&mut game, point(4, 0), Team::new(0), none());
-    let far_grunt = Abilities::spawn_combatant_of(
-        &mut game,
-        grunt,
-        point(1, 3),
-        Team::new(1),
-        (Level::default(), none()),
-    );
+    let far_ally = Abilities::spawn_combatant(&mut game, point(4, 0), Team::new(0), ());
+    let far_grunt = Mode::spawn(&mut game, grunt, point(1, 3), Team::new(1), ());
     let units = [
         caster,
         ally,
@@ -3890,7 +3831,14 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         far_ally,
         far_grunt,
     ];
-    let held = |game: &Match| units.map(|unit| Stats::carried_modifiers(game, unit));
+    // The area's modifiers each unit holds, beside the block the hidden one holds.
+    let held = |game: &Match| {
+        units.map(|unit| {
+            let mut held = Stats::carried_modifiers(game, unit);
+            held.retain(|(id, _)| [cover, rally, slow].contains(id));
+            held
+        })
+    };
     let from_caster = |id| vec![(id, Some(caster))];
     let inside = [
         from_caster(cover),
@@ -3941,7 +3889,7 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     assert!(game.entity(entity).contains::<Dead>());
     assert_eq!(Abilities::casting(&game, caster), None);
     game.entity_mut(entity).remove::<Dead>();
-    Abilities::give_pools(&mut game, caster, 100, 20);
+    game.entity_mut(entity).insert(Life::full(Num::int(500)));
     game.run_until(12);
     assert_eq!(Stats::health(&game, enemy), 500);
     assert_eq!(Abilities::pool(&game, caster), 100);

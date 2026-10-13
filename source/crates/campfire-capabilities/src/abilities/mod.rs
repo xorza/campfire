@@ -166,27 +166,25 @@ pub(crate) mod test_world {
     use crate::actions::slot_kind::SlotKind;
     use crate::actions::slot_times::{SlotTime, SlotTimes, TimedSlots};
     use crate::combat::on_death::OnDeath;
-    use crate::combat::recent_attackers::RecentAttackers;
-    use crate::combat::test_world::Armed;
-    use crate::navigation::Navigation;
+    use crate::mode::Mode;
     use crate::scripts::hook::Hook;
     use crate::scripts::script_failures::ScriptFailures;
     use crate::scripts::script_failures::internals::FailedCall;
     use crate::stats::Stats;
-    use crate::stats::level::Level;
     use crate::stats::life::Life;
     use crate::stats::modifier_clocks::ModifierClocks;
     use crate::stats::modifiers::Modifiers;
     use crate::stats::pool_id::PoolId;
     use crate::stats::pools::Pools;
     use crate::stats::stat_rule::StatRule;
-    use crate::stats::unit_stats::UnitStats;
     use crate::units::Units;
     use crate::units::action_id::ActionId;
     use crate::units::move_step::MoveStep;
     use crate::units::owner::Owner;
     use crate::units::team::Team;
+    use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::values::rank::Rank;
     use crate::values::stat::Stat;
 
@@ -221,78 +219,84 @@ pub(crate) mod test_world {
             Actions::load(world, 0, name, data, Some(script), 5).unwrap()
         }
 
-        /// A unit of the match's own type and `team` with 500 health that stays when it dies, and
-        /// `parts`, with no slots unless they hold some.
+        /// Loads the mode's types the tests spawn: `combatant`, of 500 health that stays when it
+        /// dies, with no slot; `caster`, a combatant of 100 mana and 20 rage; and `walking
+        /// caster`, a caster that walks a meter a tick.
+        pub(crate) fn load_types(world: &mut World) {
+            let core = UnitTypeCore::default();
+            let combatant = Units::load_type(world, TypeScope::Mode, "combatant", &core);
+            Abilities::give_combatant(world, combatant);
+            for name in ["caster", "walking caster"] {
+                let caster = Units::load_type(world, TypeScope::Mode, name, &core);
+                Abilities::give_caster(world, caster, 100, 20);
+            }
+            let walking = Units::type_named(world, "walking caster").unwrap();
+            Units::give_type(world, walking, MoveStep::new(Num::ONE).unwrap());
+        }
+
+        /// Gives `unit_type` a combatant's books: 500 health that stays when it dies, and no
+        /// slot.
+        pub(crate) fn give_combatant(world: &mut World, unit_type: UnitType) {
+            Units::give_type(world, unit_type, Life::full(Num::int(500)));
+            Units::give_type(world, unit_type, OnDeath::Stay);
+            Units::give_type(world, unit_type, ActionSlots::new([]));
+        }
+
+        /// Gives `unit_type` a combatant's books, and pools of `mana` and `rage`.
+        pub(crate) fn give_caster(world: &mut World, unit_type: UnitType, mana: i64, rage: i64) {
+            Abilities::give_combatant(world, unit_type);
+            let pools = [(MANA, mana), (RAGE, rage)];
+            let pools = Pools::new(pools.map(|(pool, max)| (pool, Num::int(max)))).unwrap();
+            Units::give_type(world, unit_type, pools);
+        }
+
+        /// A `combatant` of `team` with `parts`.
         pub(crate) fn spawn_combatant(
             world: &mut World,
             pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
-            let pos = pos.into();
-            let unit_type = Units::test_type(world);
-            Abilities::spawn_combatant_of(world, unit_type, pos, team, parts)
+            Mode::spawn_named(world, "combatant", pos, team, parts)
         }
 
-        /// A unit of `unit_type`, spawned as `spawn` spawns one.
-        pub(crate) fn spawn_combatant_of(
+        /// A `caster` of `team` with `parts`.
+        pub(crate) fn spawn_caster(
             world: &mut World,
-            unit_type: UnitType,
             pos: impl Into<Position>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
-            let pos = pos.into();
-            let combat = (
-                Life::full(Num::int(500)),
-                OnDeath::Stay,
-                RecentAttackers::default(),
-            );
-            let id = Units::spawn_of(world, unit_type, pos, team, (combat, parts));
-            let unit = world.unit_entity(id);
-            world
-                .entity_mut(unit)
-                .insert_if_new(ActionSlots::new([]).timed());
-            id
+            Mode::spawn_named(world, "caster", pos, team, parts)
         }
 
-        /// A unit of `team` armed as `combatant` that attacks `target`.
+        /// A unit of `team` of the armed type `unit_type` that attacks `target`.
         pub(crate) fn attacker(
             world: &mut World,
+            unit_type: UnitType,
             pos: impl Into<Position>,
             team: Team,
-            combatant: Armed,
             target: StableId,
         ) -> StableId {
-            let pos = pos.into();
-            let combatant = combatant.bundle(world);
-            let id = Units::spawn(world, pos, team, combatant);
+            let id = Mode::spawn(world, unit_type, pos, team, ());
             let mut slots = world.part_mut::<ActionSlots>(id);
             slots.set_attack_target(Some(target));
             id
         }
 
-        /// Player 0's caster at the origin, on team 0, with `action` at `rank`, 100 mana and 20
-        /// rage.
+        /// Player 0's `caster` at the origin, on team 0, with `action` at `rank`.
         pub(crate) fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId {
-            let caster = Abilities::spawn_combatant(
-                world,
-                Position::ORIGIN,
-                Team::new(0),
-                (
-                    Owner::new(PlayerSlot::new(0)),
-                    ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed(),
-                ),
-            );
-            Abilities::give_pools(world, caster, 100, 20);
-            caster
+            Abilities::caster_of(world, "caster", action, rank)
         }
 
-        /// Gives unit `id` full pools: its 500 health, `mana` and `rage`.
-        pub(crate) fn give_pools(world: &mut World, id: StableId, mana: i64, rage: i64) {
-            let pools = [(MANA, mana), (RAGE, rage)];
-            let pools = Pools::new(pools.map(|(pool, max)| (pool, Num::int(max)))).unwrap();
-            world.insert_parts(id, (Life::full(Num::int(500)), pools));
+        /// Player 0's unit of the caster type `name` at the origin, on team 0, with `action` at
+        /// `rank`.
+        fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
+            let parts = (
+                Owner::new(PlayerSlot::new(0)),
+                ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed(),
+            );
+            Mode::spawn_named(world, name, Position::ORIGIN, Team::new(0), parts)
         }
 
         pub(crate) fn cast(world: &mut World, id: StableId, target: ActionTarget) {
@@ -350,10 +354,6 @@ pub(crate) mod test_world {
         /// Gives `id` the modifier `name` of package 0, from `source`.
         pub(crate) fn give_from(world: &mut World, id: StableId, source: StableId, name: &str) {
             let modifier = Stats::modifier(world, 0, name).unwrap();
-            let entity = world.unit_entity(id);
-            if !world.entity(entity).contains::<Modifiers>() {
-                world.insert_parts(id, (Modifiers::default(), ModifierClocks::default()));
-            }
             let from = Some((source, None, 1));
             Stats::give_modifier(world, id, modifier, from, false);
         }
@@ -373,10 +373,9 @@ pub(crate) mod test_world {
             weapon
         }
 
-        /// A `fighter` of team 0 at the origin, of level 1, with `slots`.
+        /// A `fighter`, a combatant's type, of team 0 at the origin, with `slots`.
         pub(crate) fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
-            let parts = (Level::new(1).unwrap(), UnitStats::default(), slots);
-            Abilities::spawn_combatant_of(world, fighter, Position::ORIGIN, Team::new(0), parts)
+            Mode::spawn(world, fighter, Position::ORIGIN, Team::new(0), slots)
         }
 
         /// The shield of `id`'s `mark` from `source`, if it carries one.
@@ -389,11 +388,9 @@ pub(crate) mod test_world {
             clocks.shield_of(modifiers, mark, Some(source))
         }
 
-        /// Player 0's caster at the origin with `action`, walking a meter a tick.
+        /// Player 0's `walking caster` at the origin with `action`.
         pub(crate) fn walking_caster(world: &mut World, action: ActionId) -> StableId {
-            let caster = Abilities::caster(world, action, 1);
-            world.insert_parts(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
-            caster
+            Abilities::caster_of(world, "walking caster", action, 1)
         }
     }
 }

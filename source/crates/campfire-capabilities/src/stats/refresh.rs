@@ -120,11 +120,7 @@ impl Refresh {
             else {
                 continue;
             };
-            let held = modifiers.into_iter().flat_map(Modifiers::iter);
-            let granted = held
-                .filter(|instance| instance.stacks > 0)
-                .map(|instance| modifier_book.tags(instance.id))
-                .chain(status.map(|status| status.get()));
+            let granted = modifier_book.granted(modifiers, status.copied());
             let derived = tag_book.unit_tags(unit_type, granted);
             if let Some(mut tags) = tags {
                 tags.set_if_neq(derived);

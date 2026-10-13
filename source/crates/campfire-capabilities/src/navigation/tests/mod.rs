@@ -50,8 +50,21 @@ const fn ground(radius: Num) -> Walker {
     }
 }
 
+/// A match of navigation, with the type its units are of.
 fn walk_match() -> Match {
-    Match::client(&[Capability::Navigation])
+    walk_match_of(&[Capability::Navigation])
+}
+
+/// A match of `declared`, with navigation among them, as `walk_match` gives one.
+fn walk_match_of(declared: &[Capability]) -> Match {
+    let mut game = Match::client(declared);
+    Navigation::walker_type(&mut game);
+    game
+}
+
+/// A match of navigation and of stats, whose modifiers block units.
+fn blocking_walk_match() -> Match {
+    walk_match_of(&[Capability::Stats, Capability::Navigation])
 }
 
 #[test]
@@ -96,7 +109,7 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
     let past = Navigation::unit(&mut game, (3, 0, 0), Some(Position::from((5, 0, 0))));
     let inside = Navigation::unit(&mut game, (1, 0, 1), None);
-    let id = Units::spawn(&mut game, (9, 0, 9), Team::new(0), ());
+    let id = Navigation::spawn_unit(&mut game, (9, 0, 9), Team::new(0), None, None, None);
 
     game.step();
     assert_eq!(*game.part::<Position>(outside), Position::from((4, 1, 2)));
@@ -117,7 +130,7 @@ fn bodies_part_and_block_the_way() {
     // radii. Every tick after, they walk in and part again, to the same places.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let mut game = walk_match();
+    let mut game = blocking_walk_match();
     let a = Navigation::body(
         &mut game,
         (0, 0, 0),
@@ -548,7 +561,7 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     let standing = Navigation::body(&mut game, (3, 0, 3), None, Some(Num::ONE), half);
     // An air unit of 0.5 m from (1, 3) to (11, 3), a meter a tick, flies straight over both: in
     // tick 2 it is on the ground unit, which does not move, and in tick 10 at its goal.
-    let body = Body::new(half).unwrap().on(AIR);
+    let body = BodyForm::circle(half).unwrap().on(AIR);
     let flying = Navigation::body_on(
         &mut game,
         (1, 0, 3),
@@ -1026,7 +1039,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
 
 #[test]
 fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
-    let mut game = walk_match();
+    let mut game = blocking_walk_match();
     let unit = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, 5))));
     game.insert_parts(unit, Dead);
     // Tags that block moving hold their unit where it stands, its destination kept, until they

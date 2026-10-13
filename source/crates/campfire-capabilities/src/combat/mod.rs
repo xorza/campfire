@@ -265,12 +265,11 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 pub(crate) mod test_world {
-    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_common::{Tick, Ticks};
     use campfire_math::{Num, Rounding};
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{Position, StableId, TickRate};
+    use campfire_sim::{StableId, TickRate};
 
     use crate::actions::Actions;
     use crate::actions::action_book::ActionBook;
@@ -278,7 +277,7 @@ pub(crate) mod test_world {
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::in_progress::InProgress;
     use crate::actions::slot_kind::SlotKind;
-    use crate::actions::slot_times::{SlotTimes, TimedSlots};
+    use crate::actions::slot_times::SlotTimes;
     use crate::actions::test_world::TestWeapon;
     use crate::combat::Combat;
     use crate::combat::combat_bindings::CombatBindings;
@@ -287,19 +286,21 @@ pub(crate) mod test_world {
     use crate::combat::damage_pass::DamagePass;
     use crate::combat::on_death::OnDeath;
     use crate::combat::pass_queue::PassQueue;
-    use crate::combat::recent_attackers::RecentAttackers;
+    use crate::stats::Stats;
     use crate::stats::life::Life;
     use crate::stats::pool_book::PoolBook;
     use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
-    use crate::stats::unit_stats::UnitStats;
+    use crate::stats::stat_rule::StatRule;
     use crate::units::Units;
     use crate::units::filter::Filter;
-    use crate::units::team::Team;
     use crate::units::unit_type::UnitType;
+    use crate::units::unit_type_core::UnitTypeCore;
     use crate::values::damage_kind::DamageKind;
     use crate::values::rank::Rank;
     use crate::values::relation_set::RelationSet;
+    use crate::values::stat::Stat;
+    use std::collections::BTreeMap;
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
@@ -311,23 +312,6 @@ pub(crate) mod test_world {
         period: Ticks,
         damage: Num,
         projectile: Option<UnitType>,
-    }
-
-    /// A unit's slots and stats: its weapon's slot, if it has one, and the stats it reads.
-    #[derive(Debug, Bundle)]
-    pub(crate) struct ArmsParts {
-        slots: TimedSlots,
-        stats: UnitStats,
-    }
-
-    impl ArmsParts {
-        /// The parts of a unit with no weapon: no slot, and no stats.
-        pub(crate) fn unarmed() -> ArmsParts {
-            ArmsParts {
-                slots: ActionSlots::new([]).timed(),
-                stats: UnitStats::default(),
-            }
-        }
     }
 
     impl Arms {
@@ -351,10 +335,10 @@ pub(crate) mod test_world {
             }
         }
 
-        /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
-        /// the rate that makes its period at the match's rate, then its damage, then 0 for every
-        /// other stat of the match's stat book.
-        pub(crate) fn parts(self, world: &mut World) -> ArmsParts {
+        /// Adds the weapon to the book of `world`, and gives `unit_type` it in its one slot and
+        /// the stats it reads: the rate that makes its period at the match's rate, then its
+        /// damage, at the first two places of the match's stat book.
+        fn give(self, world: &mut World, unit_type: UnitType) {
             let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
                 projectile: self.projectile,
@@ -365,24 +349,22 @@ pub(crate) mod test_world {
                 )
             };
             let id = Actions::add_weapon(world, weapon);
+            Units::give_type(
+                world,
+                unit_type,
+                ActionSlots::new([(id, SlotKind::new(0), Some(Rank::FIRST))]),
+            );
             // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
             let period = Num::from_int(i64::try_from(self.period.get()).unwrap()).unwrap();
             let rate = Num::int(i64::from(hz))
                 .checked_div_rounded(period, Rounding::Ceiling)
                 .unwrap();
-            // One value for each stat of the match's book, as a refresh gives a unit, the rest 0.
-            let count = world
-                .get_resource::<StatBook>()
-                .map_or(2, |book| usize::from(book.len()));
-            let mut stats = UnitStats::default();
-            let values = stats.refill();
-            values.extend([rate, self.damage]);
-            values.resize(count.max(2), Num::ZERO);
-            ArmsParts {
-                slots: ActionSlots::new([(id, SlotKind::new(0), Some(Rank::FIRST))]).timed(),
-                stats,
-            }
+            debug_assert!(
+                world.resource::<StatBook>().len() >= 2,
+                "a stat book of a rate and a damage"
+            );
+            Stats::give_type_stats(world, unit_type, &[rate, self.damage]);
         }
     }
 
@@ -404,6 +386,12 @@ pub(crate) mod test_world {
                 on_death: OnDeath::Despawn,
                 arms: Some(Arms::melee(range, windup, period, damage)),
             }
+        }
+
+        /// A unit of 10 life that stays when it dies, with a melee weapon of 2 m that winds up no
+        /// tick and deals nothing, each tick.
+        pub(crate) fn sparring() -> Armed {
+            Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
         }
 
         /// A unit of `life` with no weapon, that despawns when it dies.
@@ -432,19 +420,23 @@ pub(crate) mod test_world {
             }
         }
 
-        /// The components of a new unit of this type in `world`, whose book takes its weapon: its
-        /// life pool, its death and its attackers, which combat declares for a unit, and its
-        /// weapon's parts.
-        pub(crate) fn bundle(self, world: &mut World) -> impl Bundle + use<> {
-            let parts = self
-                .arms
-                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world));
-            (
-                Life::full(self.life),
-                self.on_death,
-                RecentAttackers::default(),
-                parts,
-            )
+        /// Loads the next unit type of the mode, of these values, as `give` gives them.
+        pub(crate) fn load(self, world: &mut World) -> UnitType {
+            let unit_type = Units::load_next_type(world, &UnitTypeCore::default());
+            self.give(world, unit_type);
+            unit_type
+        }
+
+        /// Gives `unit_type` these values in its books, as its `combat` and `slots` sections
+        /// would: its life, its death, and its weapon, whose book takes it, with the stats it
+        /// reads; no slot when it has no weapon.
+        pub(crate) fn give(self, world: &mut World, unit_type: UnitType) {
+            Units::give_type(world, unit_type, Life::full(self.life));
+            Units::give_type(world, unit_type, self.on_death);
+            match self.arms {
+                Some(arms) => arms.give(world, unit_type),
+                None => Units::give_type(world, unit_type, ActionSlots::new([])),
+            }
         }
     }
 
@@ -457,33 +449,17 @@ pub(crate) mod test_world {
             }
         }
 
+        /// Gives a match with no mode the stat book a weapon reads, its rate, then its damage.
+        pub(crate) fn load_weapon_stats(world: &mut World) {
+            let rules = ["attack_rate", "damage"]
+                .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
+            Stats::load_rules(world, &BTreeMap::from(rules));
+        }
+
         /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
         pub(crate) fn bind_life(world: &mut World, life: PoolId) {
             world.resource_mut::<PoolBook>().set_life(Some(life));
             world.resource_mut::<CombatBook>().bindings = CombatBindings::default();
-        }
-
-        pub(crate) fn spawn_armed(
-            world: &mut World,
-            pos: impl Into<Position>,
-            team: Team,
-            combatant: Armed,
-        ) -> StableId {
-            let pos = pos.into();
-            let unit_type = Units::test_type(world);
-            Combat::spawn_armed_of(world, unit_type, pos, team, combatant)
-        }
-
-        pub(crate) fn spawn_armed_of(
-            world: &mut World,
-            unit_type: UnitType,
-            pos: impl Into<Position>,
-            team: Team,
-            combatant: Armed,
-        ) -> StableId {
-            let pos = pos.into();
-            let bundle = combatant.bundle(world);
-            Units::spawn_of(world, unit_type, pos, team, bundle)
         }
 
         pub(crate) fn attack(world: &mut World, attacker: StableId, target: StableId) {
@@ -492,13 +468,6 @@ pub(crate) mod test_world {
                 .get_mut::<ActionSlots>(entity)
                 .unwrap()
                 .set_attack_target(Some(target));
-        }
-
-        /// Gives `id` the values of `load_damage_stats`' stats.
-        pub(crate) fn stats(world: &mut World, id: StableId, values: [Num; 3]) {
-            let mut stats = UnitStats::default();
-            stats.refill().extend(values);
-            world.insert_parts(id, stats);
         }
 
         /// Queues `amount` of damage from `source` to `target`, dealt by `cause`.
@@ -519,34 +488,6 @@ pub(crate) mod test_world {
                 depth: 0,
                 hit: None,
             });
-        }
-
-        /// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`,
-        /// with a weapon of 2 m, of the match's own type and `team`, with `parts`.
-        pub(crate) fn spawn_melee(
-            world: &mut World,
-            pos: impl Into<Position>,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            let pos = pos.into();
-            let unit_type = Units::test_type(world);
-            Combat::spawn_melee_of(world, unit_type, pos, team, parts)
-        }
-
-        /// A unit as `spawn_melee` gives, of `unit_type`.
-        pub(crate) fn spawn_melee_of(
-            world: &mut World,
-            unit_type: UnitType,
-            pos: impl Into<Position>,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            let pos = pos.into();
-            let armed = Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO)
-                .on_death(OnDeath::Stay)
-                .bundle(world);
-            Units::spawn_of(world, unit_type, pos, team, (armed, parts))
         }
     }
 

@@ -384,20 +384,15 @@ pub(crate) mod test_world {
     use crate::players::players_world::PlayersWorld;
     use crate::release::Release;
     use crate::units::Units;
-    use crate::units::test_world::TestUnitType;
 
     impl Release {
         /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
-        /// error that refuses it, if one does. A match whose spawns sealed its unit types seals
-        /// `fresh`'s, which loads the same type of its own.
+        /// error that refuses it, if one does. `fresh`'s unit types seal as a spawn seals them,
+        /// and it loads the modifiers of the test tags when `world` did.
         pub(crate) fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
-            if let Some(&own) = world.get_resource::<TestUnitType>() {
-                Units::seal_types(fresh);
-                assert_eq!(
-                    fresh.get_resource::<TestUnitType>(),
-                    Some(&own),
-                    "the fresh match loaded the same types"
-                );
+            Units::seal_once(fresh);
+            if Units::loads_test_modifiers(world) {
+                Units::load_test_modifiers(fresh);
             }
             Release::clear(fresh);
             let mut snapshot = Vec::new();

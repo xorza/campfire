@@ -348,6 +348,7 @@ pub(crate) mod internals {
     use crate::units::spawn_at::SpawnAt;
     use crate::units::spawner::Spawner;
     use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
 
     impl Mode {
         /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
@@ -361,6 +362,20 @@ pub(crate) mod internals {
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
+            Mode::spawn_at(world, unit_type, pos, Num::ZERO, team, parts)
+        }
+
+        /// Spawns a unit of the mode's type `unit_type` at `pos`, turned `angle` degrees, on
+        /// `team`, of the next stable id, with `parts`, through the match's spawner, as the mode's
+        /// own spawns do.
+        pub(super) fn spawn_at(
+            world: &mut World,
+            unit_type: UnitType,
+            pos: Position,
+            angle: Num,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
             let id = world.resource_mut::<IdAllocator>().allocate();
             let at = SpawnAt {
                 id,
@@ -368,9 +383,12 @@ pub(crate) mod internals {
                 team,
                 owner: None,
                 pos,
-                angle: Num::ZERO,
+                angle,
             };
-            let spawner = world.non_send::<Spawner>().clone();
+            let spawner = world
+                .get_non_send::<Spawner>()
+                .expect("the mode loaded its unit types before a unit spawns")
+                .clone();
             spawner.spawn(world, at, parts);
             id
         }
@@ -398,7 +416,9 @@ pub(crate) mod test_world {
     use crate::mode::Mode;
     use crate::mode::mode_input::{InputValue, ModeInput};
     use crate::mode::mode_spec::ModeSpec;
+    use crate::mode::mode_units::ModeUnits;
     use crate::mode::mode_world::ModeWorld;
+    use crate::mode::unit_type_setup::UnitTypeSetup;
     use crate::navigation::path_walker::{PathEnd, PathWalker};
     use crate::scripts::call_start::CallStart;
     use crate::scripts::ctx::Ctx;
@@ -410,22 +430,81 @@ pub(crate) mod test_world {
     use crate::stats::Stats;
     use crate::stats::application::{Application, NewInstance};
     use crate::stats::instance::StatShare;
-    use crate::stats::level::Level;
     use crate::stats::life::Life;
     use crate::stats::modifiers::Modifiers;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_op::StatOp;
-    use crate::stats::unit_stats::UnitStats;
     use crate::units::Units;
     use crate::units::owner::Owner;
+    use crate::units::spawner::Spawner;
     use crate::units::tag_set::TagSet;
     use crate::units::team::Team;
     use crate::units::unit_type::UnitType;
     use crate::units::view::View;
     use crate::values::rank::Rank;
     use crate::values::stat::Stat;
+    use bevy_ecs::bundle::Bundle;
 
     impl Mode {
+        /// Spawns a unit of the mode's type `unit_type` at `pos` on `team`, of the next stable
+        /// id, with `parts`, as the mode's own spawns do, once the match loaded its types: the
+        /// first spawn seals their tags, with no effect for a tag, as a mode's load does once
+        /// its packages load, and loads the spawner of `load_test_units` when the test loaded
+        /// none.
+        pub(crate) fn spawn(
+            world: &mut World,
+            unit_type: UnitType,
+            pos: impl Into<Position>,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            Mode::spawn_turned(world, unit_type, pos, Num::ZERO, team, parts)
+        }
+
+        /// Spawns a unit as `spawn` does, turned `angle` degrees.
+        pub(crate) fn spawn_turned(
+            world: &mut World,
+            unit_type: UnitType,
+            pos: impl Into<Position>,
+            angle: Num,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            Units::seal_once(world);
+            if world.get_non_send::<Spawner>().is_none() {
+                Mode::load_test_units(world);
+            }
+            Mode::spawn_at(world, unit_type, pos.into(), angle, team, parts)
+        }
+
+        /// Loads the spawner of every unit type the match loaded so far, which applies no
+        /// passive, as a mode's load gives its own: a fixture that loads types loads it again.
+        pub(crate) fn load_test_units(world: &mut World) {
+            let count = world.non_send::<View>().types_count();
+            let types = (0..count).map(|index| UnitTypeSetup {
+                unit_type: UnitType::new(u16::try_from(index).expect("unit types fit u16")),
+                passive: None,
+            });
+            let units = ModeUnits {
+                unit_types: types.collect(),
+                ..ModeUnits::default()
+            };
+            Mode::load_units(world, &units);
+        }
+
+        /// Spawns a unit of the mode's type `name`, as `spawn` does.
+        pub(crate) fn spawn_named(
+            world: &mut World,
+            name: &str,
+            pos: impl Into<Position>,
+            team: Team,
+            parts: impl Bundle,
+        ) -> StableId {
+            let unit_type =
+                Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
+            Mode::spawn(world, unit_type, pos, team, parts)
+        }
+
         /// Player `slot` picks `hero` in a tick: the hero it then owns.
         pub(crate) fn pick(world: &mut World, slot: u32, hero: &str) -> Entity {
             let input = ModeInput {
@@ -509,7 +588,8 @@ pub(crate) mod test_world {
             failures.into_iter().map(|failure| failure.kind).collect()
         }
 
-        /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
+        /// A grunt of the mode's on `team`, of 1000 health in place of its type's, whose modifier
+        /// adds `stats` by name.
         pub(crate) fn stat_grunt(world: &mut World, team: Team, stats: &[(&str, Num)]) -> StableId {
             let book = world.resource::<StatBook>();
             let changes: Vec<_> = stats
@@ -531,13 +611,8 @@ pub(crate) mod test_world {
             };
             let modifiers = Modifiers::bundle([Application::refresh(instance)]);
             let grunt = Units::type_named(world, "grunt").unwrap();
-            let parts = (
-                Life::full(Num::int(1000)),
-                Level::default(),
-                UnitStats::default(),
-                modifiers,
-            );
-            Units::spawn_of(world, grunt, Position::ORIGIN, team, parts)
+            let parts = (Life::full(Num::int(1000)), modifiers);
+            Mode::spawn(world, grunt, Position::ORIGIN, team, parts)
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

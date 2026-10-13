@@ -134,3 +134,38 @@ impl Scratch for Deliveries {
         self.delivered.is_empty() && self.ended.is_empty()
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::system::RunSystemOnce;
+    use bevy_ecs::world::World;
+    use campfire_sim::{Position, StableId};
+
+    use crate::deliveries::Deliveries;
+    use crate::deliveries::delivery_spawner::DeliverySpawner;
+    use crate::units::unit_type::UnitType;
+
+    impl Deliveries {
+        /// Spawns a delivery of `unit_type` for `source` at `pos`, with `parts`, which make it
+        /// one, as an action's delivery spawns: its stable id.
+        pub(crate) fn spawn_of<B: Bundle>(
+            world: &mut World,
+            source: StableId,
+            unit_type: UnitType,
+            pos: impl Into<Position>,
+            parts: B,
+        ) -> StableId {
+            let pos = pos.into();
+            let mut parts = Some(parts);
+            let spawn = move |mut spawner: DeliverySpawner<'_, '_>| {
+                let parts = parts.take().expect("one spawn");
+                spawner.spawn(source, pos, unit_type, None, |_| parts)
+            };
+            world
+                .run_system_once(spawn)
+                .expect("the spawn runs")
+                .expect("its source stands")
+        }
+    }
+}

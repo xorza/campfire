@@ -262,6 +262,7 @@ pub(crate) mod test_world {
     use crate::books::Books;
     use crate::geometry::bounds::Bounds;
     use crate::geometry::grid::Grid;
+    use crate::mode::Mode;
     use crate::navigation::Navigation;
     use crate::navigation::destination::Destination;
     use crate::navigation::navigation_book::NavigationBook;
@@ -270,9 +271,12 @@ pub(crate) mod test_world {
     use crate::navigation::wall::Wall;
     use crate::navigation::walls::Walls;
     use crate::units::Units;
-    use crate::units::body::Body;
+    use crate::units::body_form::BodyForm;
     use crate::units::move_step::MoveStep;
     use crate::units::team::Team;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type::UnitType;
+    use crate::units::unit_type_core::UnitTypeCore;
 
     impl Navigation {
         /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
@@ -327,11 +331,7 @@ pub(crate) mod test_world {
             pos: impl Into<Position>,
             to: Option<Position>,
         ) -> StableId {
-            let pos = pos.into();
-            let walker = Navigation::walker(MoveStep::new(Num::ONE).unwrap());
-            let id = Units::spawn(world, pos, Team::new(0), walker);
-            *world.part_mut::<Destination>(id) = Destination::to(to);
-            id
+            Navigation::spawn_unit(world, pos, Team::new(0), to, Some(Num::ONE), None)
         }
 
         /// A unit at `pos` with a body of `radius`, walking `step` a tick to `to`, or one that does not
@@ -343,22 +343,66 @@ pub(crate) mod test_world {
             step: Option<Num>,
             radius: impl Into<Num>,
         ) -> StableId {
-            let pos = pos.into();
-            let radius = radius.into();
-            Navigation::body_on(world, pos, to, step, Body::new(radius).unwrap())
+            let form = BodyForm::circle(radius.into()).unwrap();
+            Navigation::body_on(world, pos, to, step, form)
         }
 
-        /// A unit at `pos` with `body`, walking `step` a tick to `to`, or one that does not walk when
-        /// `step` is `None`.
+        /// A unit at `pos` with a body of `form`, walking `step` a tick to `to`, or one that does
+        /// not walk when `step` is `None`.
         pub(crate) fn body_on(
             world: &mut World,
             pos: impl Into<Position>,
             to: Option<Position>,
             step: Option<Num>,
-            body: Body,
+            form: BodyForm,
         ) -> StableId {
-            let pos = pos.into();
-            let id = Units::spawn(world, pos, Team::new(0), body);
+            Navigation::spawn_unit(world, pos, Team::new(0), to, step, Some(form))
+        }
+
+        /// The mode's type `walker`, of no section, which the navigation tests' units are of:
+        /// loaded with the first call, which comes before any unit spawns, with the spawner of
+        /// every type.
+        pub(crate) fn walker_type(world: &mut World) -> UnitType {
+            Units::type_named(world, "walker").unwrap_or_else(|| {
+                let core = UnitTypeCore::default();
+                let walker = Units::load_type(world, TypeScope::Mode, "walker", &core);
+                Mode::load_test_units(world);
+                walker
+            })
+        }
+
+        /// A unit of `team` at `pos`, with a body of `form` when given, walking `step` a tick to
+        /// `to`, or one that does not walk when `step` is `None`, as `spawn_turned` spawns one.
+        pub(crate) fn spawn_unit(
+            world: &mut World,
+            pos: impl Into<Position>,
+            team: Team,
+            to: Option<Position>,
+            step: Option<Num>,
+            form: Option<BodyForm>,
+        ) -> StableId {
+            Navigation::spawn_turned(world, pos, Num::ZERO, team, to, step, form)
+        }
+
+        /// A unit as `spawn_unit` spawns one, turned `angle` degrees: of the mode's type
+        /// `walker`, of no section, which loads before the first unit spawns, its step and body
+        /// its own.
+        pub(crate) fn spawn_turned(
+            world: &mut World,
+            pos: impl Into<Position>,
+            angle: Num,
+            team: Team,
+            to: Option<Position>,
+            step: Option<Num>,
+            form: Option<BodyForm>,
+        ) -> StableId {
+            let unit_type = Navigation::walker_type(world);
+            let id = match form {
+                Some(form) => {
+                    Mode::spawn_turned(world, unit_type, pos, angle, team, form.at(angle))
+                }
+                None => Mode::spawn_turned(world, unit_type, pos, angle, team, ()),
+            };
             if let Some(step) = step {
                 world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
                 *world.part_mut::<Destination>(id) = Destination::to(to);

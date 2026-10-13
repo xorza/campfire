@@ -338,146 +338,177 @@ pub(crate) mod test_world {
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
-    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::change_detection::Mut;
-    use bevy_ecs::resource::Resource;
     use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
-    use bevy_ecs::system::{Query, Res};
     use bevy_ecs::world::World;
     use campfire_common::Tick;
     use campfire_script::rhai::Dynamic;
     use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{IdAllocator, Position, SimSet, SimTick, SimUpdate, StableId};
+    use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
 
     use crate::books::Books;
     use crate::scripts::ctx::Ctx;
     use crate::scripts::error::CallError;
     use crate::scripts::script_book::ScriptBook;
+    use crate::stats::Stats;
+    use crate::stats::carried_mut::CarriedMut;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::modifier_data::ModifierData;
+    use crate::stats::modifiers::Modifiers;
     use crate::stats::stats_column::StatsColumn;
     use crate::units::Units;
     use crate::units::block::Block;
-    use crate::units::body_unit::BodyUnit;
-    use crate::units::delivery_entity::DeliveryEntity;
-    use crate::units::entity_kind::EntityKind;
+    use crate::units::by_type::ByType;
+    use crate::units::status_tags::StatusTags;
     use crate::units::tag_book::TagBook;
     use crate::units::tag_data::TagData;
-    use crate::units::team::Team;
+    use crate::units::tag_properties::TagProperties;
     use crate::units::type_scope::TypeScope;
-    use crate::units::unit_core::UnitCore;
-    use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_core::UnitTypeCore;
     use crate::units::view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
 
+    /// The package of the modifiers that grant the test tags, after every package a test
+    /// loads its own from.
+    const TEST_PACKAGE: u16 = u16::MAX;
+
+    /// How many test tags `Units::test_tags` declares.
+    const TEST_TAGS: usize = Block::ALL.len() + 2;
+
     impl Units {
-        /// A unit of `team` at `pos` with `parts`, of the match's own type, spawned as `spawn_of`
-        /// spawns one.
-        pub(crate) fn spawn(
-            world: &mut World,
-            pos: impl Into<Position>,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            let pos = pos.into();
-            let unit_type = Units::test_type(world);
-            Units::spawn_of(world, unit_type, pos, team, parts)
-        }
-
-        /// A unit of `unit_type` and `team` at `pos`, of the next stable id, spawned as a mode's unit
-        /// and a delivery are: `parts`, then its core, with its type's tags and its script state from
-        /// the match's books. The first spawn seals the match's unit types, as a match loads them all
-        /// before any unit spawns.
-        pub(crate) fn spawn_of(
-            world: &mut World,
-            unit_type: UnitType,
-            pos: impl Into<Position>,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            Units::spawn_as(world, BodyUnit, unit_type, pos.into(), team, parts)
-        }
-
-        /// A delivery of `unit_type` and `team` at `pos`, with `parts`, which make it one,
-        /// spawned as `spawn_of` spawns a unit.
-        pub(crate) fn spawn_delivery_of(
-            world: &mut World,
-            unit_type: UnitType,
-            pos: impl Into<Position>,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            Units::spawn_as(world, DeliveryEntity, unit_type, pos.into(), team, parts)
-        }
-
-        /// A unit of the kind `kind` marks, of the next stable id, spawned as `spawn_of` says.
-        fn spawn_as<K: EntityKind>(
-            world: &mut World,
-            kind: K,
-            unit_type: UnitType,
-            pos: Position,
-            team: Team,
-            parts: impl Bundle,
-        ) -> StableId {
-            let id = world.resource_mut::<IdAllocator>().allocate();
-            let core = UnitCore {
-                id,
-                pos,
-                unit_type,
-                team,
-                owner: None,
-            };
-            Units::seal_types(world);
-            core.spawn_as(world, kind, parts);
-            id
-        }
-
-        /// The type of the units a test spawns with no type of its own: one of no tag, param or
-        /// state field, which sealing the match's unit types loads.
-        pub(crate) fn test_type(world: &mut World) -> UnitType {
-            Units::seal_types(world);
-            world
-                .get_resource::<TestUnitType>()
-                .expect("a test that puts its own tag book spawns units of its own types")
-                .0
-        }
-
-        /// Seals the match's unit types, once, with no effect for any tag but an engine tag's own,
-        /// as `seal_types_with` does.
-        pub(crate) fn seal_types(world: &mut World) {
-            if world.contains_resource::<TestUnitType>() || !world.resource::<TagBook>().is_empty()
-            {
-                return;
+        /// Seals the match's unit types' tags: gives the tag book their tags and `effects`, by
+        /// tag, as a match's books take them once its packages load, and the test tags, which
+        /// it declares after every type's, with theirs.
+        pub(crate) fn seal_tags(world: &mut World, effects: &BTreeMap<DeclaredName, TagData>) {
+            let mut effects = effects.clone();
+            let view = world.non_send::<View>().clone();
+            let mut types = view.types_mut();
+            for (name, data) in Units::test_tags() {
+                types.declare(name.as_str()).unwrap();
+                effects.insert(name, data);
             }
-            Units::seal_types_with(world, &BTreeMap::new());
-        }
-
-        /// Seals the match's unit types: loads the match's own type, and gives the tag book their
-        /// tags and `effects`, by tag, as a match's books take them once its packages load. A test
-        /// that put a tag book of its own sealed them itself, and its match has no type of its own.
-        pub(crate) fn seal_types_with(
-            world: &mut World,
-            effects: &BTreeMap<DeclaredName, TagData>,
-        ) {
-            assert!(
-                !world.contains_resource::<TestUnitType>(),
-                "a match seals its unit types once"
-            );
-            let unit_type = Units::load_next_type(world, &UnitTypeCore::default());
-            world.insert_resource(TestUnitType(unit_type));
-            let book = world.non_send::<View>().types_mut().tag_book(effects);
+            let book = types.tag_book(&effects);
+            drop(types);
             world.insert_resource(book);
         }
 
-        /// Gives unit `id` tags of no name that block `blocks`, in place of its own.
-        pub(crate) fn set_blocks(world: &mut World, id: StableId, blocks: &[Block]) {
-            world.insert_parts(id, UnitTags::blocking(blocks));
+        /// The tags a test holds on a unit, each by a modifier of its name that grants it, with
+        /// its effect: one that blocks each block, in the order of `Block::ALL`, then one hidden,
+        /// then one that detects.
+        fn test_tags() -> [(DeclaredName, TagData); TEST_TAGS] {
+            let name = |name: &str| DeclaredName::new(&format!("test_{name}")).unwrap();
+            let blocks = Block::ALL.into_iter().map(|block| {
+                let data = TagData {
+                    blocks: vec![block],
+                    ..TagData::default()
+                };
+                (name(&format!("blocks_{}", block.name())), data)
+            });
+            let hidden = TagData {
+                hidden: true,
+                ..TagData::default()
+            };
+            let detects = TagData {
+                detects: true,
+                ..TagData::default()
+            };
+            let all: Vec<_> = blocks
+                .chain([(name("hidden"), hidden), (name("detects"), detects)])
+                .collect();
+            all.try_into().expect("a test tag for each block, then two")
         }
 
-        /// Gives unit `id` tags of no name that block `blocks` in `stage` of tick `tick`, as a modifier
-        /// applied in that stage would.
+        /// Loads the modifiers that grant the test tags, each of its tag's name, in the package
+        /// `TEST_PACKAGE`, after every other, unless the match loaded them.
+        pub(crate) fn load_test_modifiers(world: &mut World) {
+            if Units::loads_test_modifiers(world) {
+                return;
+            }
+            let mut tags = Units::test_tags();
+            tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+            for (name, _) in tags {
+                let grants = ModifierData {
+                    tags: vec![name.clone()],
+                    ..ModifierData::default()
+                };
+                Stats::load_modifier(world, TEST_PACKAGE, name.as_str(), &grants, None);
+            }
+        }
+
+        /// Whether the match loaded the modifiers that grant the test tags.
+        pub(crate) fn loads_test_modifiers(world: &World) -> bool {
+            let (first, _) = &Units::test_tags()[0];
+            world.get_resource::<ModifierBook>().is_some()
+                && Stats::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
+        }
+
+        /// Holds on unit `id` the test tags whose effects make `properties`, in place of those it
+        /// held, each by the modifier that grants it, as a stun's does; and derives its tags at
+        /// once, as the stats derive them.
+        pub(crate) fn hold_properties(world: &mut World, id: StableId, properties: TagProperties) {
+            let blocks = Block::ALL.map(|block| properties.blocks(block));
+            let wanted = blocks
+                .into_iter()
+                .chain([properties.hidden(), properties.detects()]);
+            let entity = world.unit_entity(id);
+            Units::load_test_modifiers(world);
+            for ((name, _), wanted) in Units::test_tags().iter().zip(wanted) {
+                let modifier = Stats::modifier(world, TEST_PACKAGE, name.as_str()).unwrap();
+                let held = world
+                    .get::<Modifiers>(entity)
+                    .is_some_and(|modifiers| modifiers.get(modifier, None).is_some());
+                if wanted && !held {
+                    Stats::give_modifier(world, id, modifier, None, false);
+                } else if !wanted && held {
+                    CarriedMut::of(world, entity)
+                        .unwrap()
+                        .remove(modifier, None);
+                }
+            }
+            let unit = world.entity(entity);
+            let unit_type = *unit.get::<UnitType>().unwrap();
+            let status = unit.get::<StatusTags>().copied();
+            let granted = world
+                .resource::<ModifierBook>()
+                .granted(unit.get::<Modifiers>(), status);
+            let tags = world.resource::<TagBook>().unit_tags(unit_type, granted);
+            world.insert_parts(id, tags);
+        }
+
+        /// Seals the match's unit types' tags as `seal_tags` does, with no effect for a tag,
+        /// unless they are sealed, or the test put a tag book of its own.
+        pub(crate) fn seal_once(world: &mut World) {
+            let sealed = world.non_send::<View>().types_mut().sealed();
+            if !sealed && world.resource::<TagBook>().is_empty() {
+                Units::seal_tags(world, &BTreeMap::new());
+            }
+        }
+
+        /// Gives `unit_type` `value` in its book, as the books of a mode's type do.
+        pub(crate) fn give_type<T: Send + Sync + 'static>(
+            world: &mut World,
+            unit_type: UnitType,
+            value: T,
+        ) {
+            world.resource_mut::<ByType<T>>().set(unit_type, value);
+        }
+
+        /// Holds on unit `id` the test tags that block `blocks`, in place of those it held, as
+        /// `hold_properties` does.
+        pub(crate) fn set_blocks(world: &mut World, id: StableId, blocks: &[Block]) {
+            let properties = blocks
+                .iter()
+                .fold(TagProperties::default(), |properties, &block| {
+                    properties.with_block(block)
+                });
+            Units::hold_properties(world, id, properties);
+        }
+
+        /// Holds on unit `id` the test tags that block `blocks` in `stage` of tick `tick`, as
+        /// `set_blocks` does then, as a modifier applied in that stage would.
         pub(crate) fn block_at(
             world: &mut World,
             id: StableId,
@@ -485,10 +516,9 @@ pub(crate) mod test_world {
             stage: SimSet,
             blocks: &'static [Block],
         ) {
-            let entity = world.unit_entity(id);
-            let block = move |now: Res<'_, SimTick>, mut tags: Query<'_, '_, &mut UnitTags>| {
-                if now.start() == Tick::new(tick) {
-                    *tags.get_mut(entity).expect("a unit with tags") = UnitTags::blocking(blocks);
+            let block = move |world: &mut World| {
+                if world.resource::<SimTick>().start() == Tick::new(tick) {
+                    Units::set_blocks(world, id, blocks);
                 }
             };
             world
@@ -598,11 +628,6 @@ pub(crate) mod test_world {
             Units::load_next_type(world, &data)
         }
     }
-
-    /// The type of the units a test spawns with no type of its own, which sealing the match's unit
-    /// types loads.
-    #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
-    pub(crate) struct TestUnitType(pub(crate) UnitType);
 }
 
 #[cfg(test)]

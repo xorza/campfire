@@ -188,7 +188,7 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     let goal = Position::from((8, 0, 1));
     let party = ordered(goal);
     let ground = [2, 3].map(|x| game.member(Position::from((x, 0, 1)), goal, party));
-    let body = Body::new(Num::QUARTER).unwrap().on(AIR);
+    let body = BodyForm::circle(Num::QUARTER).unwrap().on(AIR);
     let air = [1, 2].map(|z| {
         let id = Navigation::body_on(&mut game, (2, 0, z), Some(goal), Some(Num::ONE), body);
         game.part_mut::<Route>(id)

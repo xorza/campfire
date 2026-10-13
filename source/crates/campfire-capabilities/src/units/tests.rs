@@ -1,6 +1,6 @@
 use std::panic::{self, AssertUnwindSafe};
-use std::sync::Arc;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
@@ -15,8 +15,11 @@ use super::*;
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::Combat;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::combat::test_world::Armed;
+use crate::deliveries::Deliveries;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::metric::Metric;
+use crate::mode::Mode;
 use crate::navigation::on_path::OnPath;
 use crate::release::Release;
 use crate::release::r#match::Match;
@@ -24,10 +27,10 @@ use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
-use crate::stats::stats_column::StatsColumn;
-use crate::stats::unit_stats::UnitStats;
+use crate::stats::stat_rule::StatRule;
 use crate::units::block::Block;
 use crate::units::entity_kinds::EntityKinds;
 use crate::units::error::TypesError;
@@ -35,32 +38,61 @@ use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
+use campfire_sim::StableId;
+use std::collections::BTreeMap;
 
+/// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
+/// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
+/// 1 life and no slot.
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let game = Match::server(&[Capability::Stats, Capability::Combat], scripts);
+    let mut game = Match::server(&[Capability::Stats, Capability::Combat], scripts);
     Units::name_kinds(&game, &[], &["health", "mana"], &[]);
+    Combat::load_weapon_stats(&mut game);
+    let core = UnitTypeCore::default();
+    let melee = Units::load_type(&mut game, TypeScope::Mode, "melee", &core);
+    Armed::sparring().give(&mut game, melee);
+    Units::load_type(&mut game, TypeScope::Mode, "unit", &core);
+    let bare = Units::load_type(&mut game, TypeScope::Mode, "bare", &core);
+    Units::give_type(&mut game, bare, Life::full(Num::int(1)));
     game
+}
+
+/// A `melee` unit of `team` at `pos` with `parts`.
+fn melee(game: &mut Match, pos: impl Into<Position>, team: Team, parts: impl Bundle) -> StableId {
+    Mode::spawn_named(game, "melee", pos, team, parts)
+}
+
+/// A unit of the type `name` of `team` at `pos`.
+fn spawn_named(game: &mut Match, name: &str, pos: impl Into<Position>, team: Team) -> StableId {
+    Mode::spawn_named(game, name, pos, team, ())
+}
+
+/// Gives `unit_type` the combat of a `melee` unit.
+fn arm(game: &mut Match, unit_type: UnitType) {
+    Armed::sparring().give(game, unit_type);
 }
 
 #[test]
 fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut game = units_match();
     let creep = Units::tagged_type(&mut game, &["creep"], &[]);
-    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(1), ());
+    arm(&mut game, creep);
+    let of = melee(&mut game, (0, 0, 0), Team::new(1), ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
-    let high = Combat::spawn_melee(&mut game, (0, 9, 3), Team::new(0), ());
-    let east = Combat::spawn_melee_of(&mut game, creep, (4, 0, 0), Team::new(0), ());
-    let west = Combat::spawn_melee(&mut game, (-4, 0, 0), Team::new(0), ());
-    let edge = Combat::spawn_melee(&mut game, (0, 0, 5), Team::new(0), ());
-    let far = Combat::spawn_melee(&mut game, (6, 0, 0), Team::new(0), ());
-    let ally = Combat::spawn_melee(&mut game, (1, 0, 0), Team::new(1), ());
-    let dead = Combat::spawn_melee(&mut game, (0, 0, 1), Team::new(0), Dead);
+    let high = melee(&mut game, (0, 9, 3), Team::new(0), ());
+    let east = Mode::spawn(&mut game, creep, (4, 0, 0), Team::new(0), ());
+    let west = melee(&mut game, (-4, 0, 0), Team::new(0), ());
+    let edge = melee(&mut game, (0, 0, 5), Team::new(0), ());
+    let far = melee(&mut game, (6, 0, 0), Team::new(0), ());
+    let ally = melee(&mut game, (1, 0, 0), Team::new(1), ());
+    let dead = melee(&mut game, (0, 0, 1), Team::new(0), Dead);
     // Within 2 m, but no target: one untargetable, one invulnerable.
-    let hidden = Combat::spawn_melee(&mut game, (2, 0, 0), Team::new(0), ());
+    let hidden = melee(&mut game, (2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
-    let guarded = Combat::spawn_melee(&mut game, (-2, 0, 0), Team::new(0), ());
+    let guarded = melee(&mut game, (-2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
 
     let find = |game: &mut Match, filter: &str| {
@@ -151,9 +183,9 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
 #[test]
 fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
-    Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
-    Combat::spawn_melee(&mut game, (0, 12, 3), Team::new(1), ());
+    let of = melee(&mut game, (0, 0, 0), Team::new(0), ());
+    melee(&mut game, (3, 0, 4), Team::new(1), ());
+    melee(&mut game, (0, 12, 3), Team::new(1), ());
     let probe = r#"fn probe(ctx, of) {
         let found = ctx.find(of, of.pos, 13, "enemies");
         let near = found[0];
@@ -199,8 +231,8 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
 #[test]
 fn vectors_add_subtract_and_scale_each_rounded_once() {
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
-    Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
+    let of = melee(&mut game, (0, 0, 0), Team::new(0), ());
+    melee(&mut game, (3, 0, 4), Team::new(1), ());
     let probe = r#"fn probe(ctx, of) {
         let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
         [d + d, d - d, d * 5, 5 * d, d * (num(1) / 2), (num(1) / 2) * d]
@@ -253,12 +285,13 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
         let mut game = units_match();
         game.resource_mut::<MapBook>().bounds = bounds;
         let pos = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        let id = Units::spawn(&mut game, pos, Team::new(0), ());
+        let id = spawn_named(&mut game, "unit", pos, Team::new(0));
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();
         fresh.resource_mut::<MapBook>().bounds = bounds;
-        assert_eq!(Units::test_type(&mut fresh), Units::test_type(&mut game));
+        let unit = |game: &Match| Units::type_named(game, "unit");
+        assert_eq!(unit(&fresh), unit(&game));
         Release::clear(&mut fresh);
         let restored = fresh.restore(&snapshot);
         restored.map_err(|error| (error, id))
@@ -279,9 +312,9 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     // away, and a team an entity gains, change no part's tick, only the unit's archetype. The
     // loose unit loses its team at once, as no spawn makes a unit of no team.
     let mut game = units_match();
-    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), ());
-    let other = Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
-    let loose = Units::spawn(&mut game, (1, 0, 0), Team::new(1), ());
+    let of = melee(&mut game, (0, 0, 0), Team::new(0), ());
+    let other = melee(&mut game, (3, 0, 4), Team::new(1), ());
+    let loose = spawn_named(&mut game, "unit", (1, 0, 0), Team::new(1));
     let loose_entity = game.unit_entity(loose);
     game.entity_mut(loose_entity).remove::<Team>();
     let value =
@@ -328,22 +361,23 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
     let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
+    arm(&mut game, hero);
     // On a path, but the scene has no `navigation` to fill `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let spawn = SpawnPoint::new(Position::from((5, 0, -5)));
-    let of = Combat::spawn_melee_of(
+    let of = Mode::spawn(
         &mut game,
         hero,
         (0, 0, 0),
         Team::new(0),
         (owner, path, body, spawn),
     );
-    let near = Combat::spawn_melee(&mut game, (3, 0, 4), Team::new(1), ());
-    let recent = Combat::spawn_melee(&mut game, (9, 0, 0), Team::new(1), ());
-    let fallen = Combat::spawn_melee(&mut game, (9, 0, 1), Team::new(1), Dead);
-    let bare = Units::spawn(&mut game, (9, 0, 2), Team::new(1), Life::full(Num::int(1)));
+    let near = melee(&mut game, (3, 0, 4), Team::new(1), ());
+    let recent = melee(&mut game, (9, 0, 0), Team::new(1), ());
+    let fallen = melee(&mut game, (9, 0, 1), Team::new(1), Dead);
+    let bare = spawn_named(&mut game, "bare", (9, 0, 2), Team::new(1));
     let entity = game.unit_entity(of);
     game.get_mut::<ActionSlots>(entity)
         .unwrap()
@@ -375,13 +409,15 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     };
     assert_eq!(radius(&mut game, of), body.radius().unwrap());
     assert_eq!(radius(&mut game, near), Num::ZERO);
-    // Where it spawned, which a unit the mode did not spawn has none of.
+    // Where it spawned, which a delivery has none of.
     let spawn_pos = |game: &mut Match, unit| {
         let source = "fn probe(ctx, of) { of.spawn_pos }";
         Units::probe(game, source, unit).unwrap()
     };
     assert_eq!(spawn_pos(&mut game, of).cast::<Position>(), spawn.get());
-    assert!(spawn_pos(&mut game, near).is_unit());
+    let unit_type = Units::type_named(&game, "unit").unwrap();
+    let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    assert!(spawn_pos(&mut game, delivery).is_unit());
     assert_eq!(
         value(&mut game, "of.params.help_window_ms").as_int(),
         Ok(2000)
@@ -435,19 +471,21 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
 #[test]
 fn a_handle_reads_its_units_level_pools_and_stats() {
     let mut game = units_match();
-    // Level 3, with armor 25 and health 10 among the mode's stats; its health pool of 10, 4
-    // taken, and no mana pool. One unit has a pool and no stats, one neither.
-    let names = ["armor", "health"].into_iter().collect();
-    StatsColumn::share_stat_names(game.non_send::<View>(), Arc::new(names));
-    let mut stats = UnitStats::default();
-    stats.refill().extend([Num::int(25), Num::int(10)]);
-    let of = Combat::spawn_melee(&mut game, (0, 0, 0), Team::new(0), Level::new(3).unwrap());
+    // Level 3, with armor 25 and health 10, the mode's stats; its health pool of 10, 4 taken,
+    // and no mana pool. One unit has no pool; a delivery, which is no body, has no stats.
+    let rules = ["armor", "health"].map(|name| (Stat::named(name).unwrap(), StatRule::default()));
+    Stats::load_rules(&mut game, &BTreeMap::from(rules));
+    let melee_type = Units::type_named(&game, "melee").unwrap();
+    Stats::give_type_stats(&mut game, melee_type, &[Num::int(25), Num::int(10)]);
+    let of = melee(&mut game, (0, 0, 0), Team::new(0), Level::new(3).unwrap());
     let entity = game.unit_entity(of);
-    game.insert_parts(of, stats);
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(4));
-    let bare = Units::spawn(&mut game, (1, 0, 0), Team::new(1), Life::full(Num::int(1)));
-    let shell = Units::spawn(&mut game, (2, 0, 0), Team::new(1), ());
+    let shell = spawn_named(&mut game, "unit", (2, 0, 0), Team::new(1));
+    let unit_type = Units::type_named(&game, "unit").unwrap();
+    let bare = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    // The refresh derives the stats.
+    game.step();
 
     let read = |game: &mut Match, unit, expression: &str| Units::read(game, expression, unit);
     let value = |game: &mut Match, expression: &str| read(game, of, expression).unwrap();
@@ -498,7 +536,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 
 #[test]
 fn a_unit_type_name_is_one_types_only_in_its_scope() {
-    let mut game = units_match();
+    let mut game = Match::client(&[Capability::Stats, Capability::Combat]);
     let data = UnitTypeCore::default();
     let mut load = |scope, name| Units::load_type(&mut game, scope, name, &data);
     let first = load(TypeScope::Mode, "grunt");
@@ -545,7 +583,7 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
 #[test]
 fn an_entity_is_of_the_one_kind_its_marker_names() {
     let mut game = units_match();
-    let unit = Units::spawn(&mut game, (0, 0, 0), Team::new(0), ());
+    let unit = spawn_named(&mut game, "unit", (0, 0, 0), Team::new(0));
     let entity = game.unit_entity(unit);
     let empty = game.spawn_empty().id();
     let kinds = game.resource::<EntityKinds>();
@@ -554,7 +592,7 @@ fn an_entity_is_of_the_one_kind_its_marker_names() {
     assert_eq!(kinds.of(game.entity(empty)), None);
     // A restore puts untrusted values in: the hook leaves the rule to the restore checks, and
     // the body unit's own check refuses a unit of a second kind.
-    let restored = Units::spawn(&mut game, (1, 0, 0), Team::new(0), ());
+    let restored = spawn_named(&mut game, "unit", (1, 0, 0), Team::new(0));
     let restored = game.unit_entity(restored);
     game.insert_resource(Restoring);
     game.entity_mut(restored).insert(DeliveryEntity);
@@ -580,7 +618,7 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
         (game, creep, hero)
     };
     let (mut game, creep, hero) = start();
-    let spawned = Units::spawn_of(&mut game, creep, (0, 0, 0), Team::new(0), ());
+    let spawned = Mode::spawn(&mut game, creep, (0, 0, 0), Team::new(0), ());
     let own = game.resource::<TagBook>().own(creep);
     assert_eq!(own.iter().count(), 1);
     let tags = |game: &Match, id| {

@@ -237,23 +237,20 @@ pub(crate) mod internals {
 pub(crate) mod test_world {
     use bevy_ecs::world::World;
     use campfire_common::{PlayerSlot, Tick};
-    use campfire_math::Num;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{Position, StableId};
 
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::in_progress::InProgress;
     use crate::actions::slot_times::SlotTimes;
-    use crate::combat::test_world::Armed;
     use crate::items::inventory::{Inventory, ItemStack};
-    use crate::navigation::Navigation;
+    use crate::mode::Mode;
     use crate::orders::Orders;
     use crate::orders::ai_data::AiData;
     use crate::players::players_world::PlayersWorld;
     use crate::players::resource_id::ResourceId;
     use crate::scripts::script_failures::ScriptFailures;
     use crate::units::Units;
-    use crate::units::move_step::MoveStep;
     use crate::units::owner::Owner;
     use crate::units::team::Team;
     use crate::units::unit_type::UnitType;
@@ -319,22 +316,15 @@ pub(crate) mod test_world {
             inventory.slots().iter().map(carried).collect()
         }
 
-        /// A hero of `slot` that walks a meter a tick.
+        /// A hero of `slot`, of the type `hero`.
         pub(crate) fn hero(
             world: &mut World,
+            hero: UnitType,
             pos: impl Into<Position>,
             team: Team,
             slot: u32,
-            combatant: Armed,
         ) -> StableId {
-            let pos = pos.into();
-            let combatant = combatant.bundle(world);
-            let parts = (
-                combatant,
-                Navigation::walker(MoveStep::new(Num::ONE).unwrap()),
-                Owner::new(PlayerSlot::new(slot)),
-            );
-            Units::spawn(world, pos, team, parts)
+            Mode::spawn(world, hero, pos, team, Owner::new(PlayerSlot::new(slot)))
         }
     }
 }

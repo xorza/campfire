@@ -341,7 +341,7 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
     let [_, grunt_1, second] = [(0, grunt), (1, grunt), (0, hero_type)].map(|(slot, unit_type)| {
         let owner = Owner::new(PlayerSlot::new(slot));
-        Units::spawn_of(&mut game, unit_type, pos, Team::new(0), owner)
+        Mode::spawn(&mut game, unit_type, pos, Team::new(0), owner)
     });
     let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {

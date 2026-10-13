@@ -45,31 +45,3 @@ impl UnitTags {
         })
     }
 }
-
-#[cfg(test)]
-pub(crate) mod internals {
-
-    use crate::units::block::Block;
-    use crate::units::tag_properties::TagProperties;
-    use crate::units::unit_tags::UnitTags;
-
-    impl UnitTags {
-        /// Tags of no name whose properties block `blocks`, as a unit's tags would.
-        pub(crate) fn blocking(blocks: &[Block]) -> UnitTags {
-            let properties = blocks
-                .iter()
-                .fold(TagProperties::default(), |properties, &block| {
-                    properties.with_block(block)
-                });
-            UnitTags::with_properties(properties)
-        }
-
-        /// Tags of no name with `properties`.
-        pub(crate) fn with_properties(properties: TagProperties) -> UnitTags {
-            UnitTags {
-                properties,
-                ..UnitTags::default()
-            }
-        }
-    }
-}

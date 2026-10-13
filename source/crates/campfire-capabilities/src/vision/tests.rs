@@ -3,10 +3,11 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId};
 
 use super::*;
-use crate::geometry::body_box::BodyBox;
+use crate::deliveries::Deliveries;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::geometry::polygon::Polygon;
+use crate::mode::Mode;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::scripts::error::ApiError;
@@ -15,12 +16,15 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::life::Life;
 use crate::units::Units;
-use crate::units::body::Body;
+use crate::units::body_form::BodyForm;
 use crate::units::dead::Dead;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::tag_properties::TagProperties;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
+use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::units_world::UnitsWorldCrate;
 use crate::values::relation::Relation;
 
@@ -34,15 +38,22 @@ fn vision_match_of_teams(teams: usize) -> Match {
     vision_match_with_brush(teams, &[])
 }
 
-/// A match of `teams` teams whose map has the brush of `brush`'s areas, in order.
+/// A match of `teams` teams whose map has the brush of `brush`'s areas, in order, with the
+/// tests' seers.
 fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
+    vision_match_of(&declared, teams, brush)
+}
+
+/// A match of `declared`, with vision among them, as `vision_match_with_brush` gives one.
+fn vision_match_of(declared: &[Capability], teams: usize, brush: &[Polygon]) -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-    let mut game = Match::server(&declared, scripts);
+    let mut game = Match::server(declared, scripts);
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     let grid = Grid::new(Num::int(1), bounds).unwrap();
     Vision::load_grid(&mut game, grid, brush, teams);
+    Vision::load_seers(&mut game);
     game
 }
 
@@ -57,10 +68,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // A dead unit reveals nothing, however far it sees.
     let dead = Vision::spawn_seer(&mut game, 5, 5, Team::new(2), Some(20));
     game.insert_parts(dead, Dead);
-    // An enemy with no life pool, as a projectile is, is no target: no query finds it.
-    let shell = Vision::spawn_seer(&mut game, 1, 0, Team::new(1), None);
-    let entity = game.unit_entity(shell);
-    game.entity_mut(entity).remove::<Life>();
+    // An enemy with no life pool, a projectile of team 1, is no target: no query finds it.
+    let blind = Units::type_named(&game, "blind").unwrap();
+    let shell = Deliveries::spawn_of(&mut game, near, blind, (1, 0, 0), DeliveryEntity);
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its vision group: here its team alone.
@@ -290,12 +300,22 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     // own cell, (5, 0), lies 5.5 m and more from (-1, 0). A seer of team 0 there sees 4 m: the
     // center of cell (2, 0), (2.5, 0.5), lies √12.5 ≈ 3.54 m off, in sight, and that of (3, 0),
     // (3.5, 0.5), √20.5 ≈ 4.53 m off, out of it. So team 0 sees the box by its edge's cells alone,
-    // where a unit seen by the cell of its position would stay hidden.
-    let mut game = vision_match();
+    // where a unit seen by the cell of its position would stay hidden. Its spawn makes room for
+    // it, as a box's does, which navigation does.
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Vision,
+    ];
+    let mut game = vision_match_of(&declared, 3, &[]);
     let team = |index| TeamSet::of(Team::new(index));
-    let building = Vision::spawn_seer(&mut game, 5, 0, Team::new(1), None);
-    let body = BodyBox::new([Num::int(6), Num::int(2)], Num::ZERO).unwrap();
-    game.insert_parts(building, Body::of_box(body));
+    let core = UnitTypeCore::default();
+    let building = Units::load_type(&mut game, TypeScope::Mode, "building", &core);
+    Units::give_type(&mut game, building, Life::full(Num::int(100)));
+    let body = BodyForm::box_sized([Num::int(6), Num::int(2)]).unwrap();
+    Units::give_type(&mut game, building, body);
+    let building = Mode::spawn(&mut game, building, (5, 0, 0), Team::new(1), ());
     let seer = Vision::spawn_seer(&mut game, -1, 0, Team::new(0), Some(4));
     game.step();
     assert_eq!(Vision::seen_by(&game, building), team(1).with(Team::new(0)));

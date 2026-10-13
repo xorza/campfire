@@ -212,3 +212,39 @@ impl Book for StatBook {
         StatsColumn::share_stat_names(view, Arc::clone(&self.names));
     }
 }
+
+#[cfg(test)]
+pub(crate) mod test_world {
+    use campfire_math::Num;
+
+    use crate::stats::stat_book::StatBook;
+    use crate::stats::stats_data::{StatValue, StatsData};
+    use crate::units::unit_type::UnitType;
+    use crate::values::stat::Stat;
+
+    impl StatBook {
+        /// Gives `unit_type` `values` at level 1 by the stats' places, with no gain a level, as
+        /// a `stats` section of each of the book's stats, in their order, would.
+        pub(crate) fn add_base(&mut self, unit_type: UnitType, values: &[Num]) {
+            debug_assert!(
+                values.len() <= self.names.len(),
+                "a value for a stat of the book"
+            );
+            let stats: StatsData = self
+                .names
+                .iter()
+                .zip(values)
+                .map(|((_, name), &base)| {
+                    let stat = Stat::named(name).expect("a book's stat has a name");
+                    let value = StatValue {
+                        base,
+                        per_level: Num::ZERO,
+                    };
+                    (stat, value)
+                })
+                .collect();
+            self.add_type(unit_type, &stats)
+                .expect("each stat is the book's");
+        }
+    }
+}
