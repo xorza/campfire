@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use crate::rounding::Rounding;
 use crate::wide_division::WideDivision;
 
@@ -32,6 +30,16 @@ impl U256 {
     /// The number `high · 2¹²⁸ + low`.
     pub(crate) const fn from_halves(high: u128, low: u128) -> U256 {
         U256 { high, low }
+    }
+
+    /// Its high half, the bits from 128 up.
+    pub(crate) const fn high(self) -> u128 {
+        self.high
+    }
+
+    /// Its low half.
+    pub(crate) const fn low(self) -> u128 {
+        self.low
     }
 
     /// `value`, widened.
@@ -160,47 +168,14 @@ impl U256 {
         Division { quotient, rest }
     }
 
-    /// How `self × by` orders against `other × other_by`, exactly: each product, up to 384 bits,
-    /// held as three 128-bit limbs, so no product passes them.
-    pub const fn cmp_products(self, by: u128, other: U256, other_by: u128) -> Ordering {
-        // Most values fit 128 bits, whose products fit 256: half the multiplies.
-        if self.high | other.high == 0 {
-            let ours = U256::product(self.low, by);
-            let theirs = U256::product(other.low, other_by);
-            return if ours.high != theirs.high {
-                if ours.high < theirs.high {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                }
-            } else if ours.low < theirs.low {
-                Ordering::Less
-            } else if ours.low > theirs.low {
-                Ordering::Greater
-            } else {
-                Ordering::Equal
-            };
-        }
-        let ours = self.wide_product(by);
-        let theirs = other.wide_product(other_by);
-        let mut limb = 0;
-        while limb < 3 {
-            if ours[limb] != theirs[limb] {
-                return if ours[limb] < theirs[limb] {
-                    Ordering::Less
-                } else {
-                    Ordering::Greater
-                };
-            }
-            limb += 1;
-        }
-        Ordering::Equal
-    }
-
     /// `self × by` as three 128-bit limbs, the most significant first. The high half's product
-    /// is below 2²⁵⁶ − 2¹²⁸, so its top limb takes the middle limb's carry.
-    const fn wide_product(self, by: u128) -> [u128; 3] {
+    /// is below 2²⁵⁶ − 2¹²⁸, so its top limb takes the middle limb's carry; a value within 128
+    /// bits, as most are, takes one product.
+    pub(crate) const fn wide_product(self, by: u128) -> [u128; 3] {
         let low = U256::product(self.low, by);
+        if self.high == 0 {
+            return [0, low.high, low.low];
+        }
         let high = U256::product(self.high, by);
         let (middle, carry) = low.high.overflowing_add(high.low);
         [high.high + carry as u128, middle, low.low]
@@ -240,4 +215,4 @@ impl U256 {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

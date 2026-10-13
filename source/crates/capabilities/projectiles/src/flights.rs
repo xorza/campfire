@@ -2,8 +2,8 @@ use bevy_ecs::entity::Entity;
 use campfire_actions::{ShotHit, ShotHits, Targets};
 use campfire_core::{BodyGrid, Team};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
-use campfire_geometry::{Fraction, Shape};
-use campfire_math::{Num, Vec3};
+use campfire_geometry::Shape;
+use campfire_math::{Num, Ratio, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_values::Hit;
 
@@ -22,7 +22,7 @@ pub(crate) struct Flights<'a> {
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line flies.
     pub(crate) grid: Option<&'a BodyGrid<Entity>>,
-    pub(crate) met: &'a mut Vec<(Fraction, StableId)>,
+    pub(crate) met: &'a mut Vec<(Ratio<i128, i128>, StableId)>,
 }
 
 /// A projectile in flight this tick: its stable id, its team, its type's spec, where it is,

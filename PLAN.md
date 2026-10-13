@@ -28,22 +28,30 @@ Every batch moves the engine toward one shape, and each item names the part it b
 - **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (I1), and a fact fixed at install or at the load is a fact of the schedule (F39).
-- **Each crate depends only on lower layers,** which `LAYERS` holds: no two crates of one layer depend on each other, and a crate depends on nothing that only its gated code names. No crate's top modules import each other in a cycle, which a rule test holds; the four modules that `campfire-core` holds still import each other, until F50 and F53 split it. What is the sim's lives in `sim`, and `math` holds the exact numbers every crate shares (F63, F64). A capability asks another for its work through a contract below both, never by writing its state (F59).
+- **Each crate depends only on lower layers,** which `LAYERS` holds: no two crates of one layer depend on each other, and a crate depends on nothing that only its gated code names. No crate's top modules import each other in a cycle, which a rule test holds; the four modules that `campfire-core` holds still import each other, until F50 and F53 split it. What is the sim's lives in `sim`, and `math` holds the numbers every crate shares, each operation one `i128` step rounded once (F66 to F69). A capability asks another for its work through a contract below both, never by writing its state (F59).
 - **Bevy's own mechanisms, not hand-made ones:** what install or the load fixes is a run condition or an `If` parameter (F39); observers, one-shot systems and required components are declarations (F49); a marker that comes and goes is measured in a sparse set, and the units' order by stable id in one shared order (F52); a composition of an `App` is a plugin group (H2).
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. Math's layout
+## 1. Math in 128 bits
 
-`math`, `sim`, `geometry`; design 09. What is the sim's leaves `math`, and the exact ratio types of `geometry` become one type of `math`. F64 changes the comparison of hot geometric queries, so it measures them before it lands, and the batch runs in a session where the user asks for the benches.
+`math`, `geometry`, `navigation`'s collider, `stats`, `projectiles`; design 16, a proposal for review, and designs 09 and 13. Every computation that passes 128 bits today computes in one `i128` and rounds once, so the wide integers and the exact ratio go. It changes hot geometric queries and moves the goldens once, so it measures each step before it lands, and runs in a session where the user asks for the benches.
 
-### F63. The tick's bookkeeping of the random sequences is the sim's
+### F66. Distances and places on a path are `Num`s
 
-(`math`, `sim`; **Math**.) `math`'s `RngSource` keeps the running tick, the count of the ticks started and the debug check for a sequence opened twice in one tick (`math/src/rng/rng_source.rs:9-40`), and `sim::SimRng` is a one-field wrapper of it (`sim/src/sim_rng.rs:12`), so the sim's lifecycle lives in `math`. `math` keeps `Rng`, its streams and an open of a sequence by its stream, entity and tick, which holds no state, as design 09 keys each sequence; `SimRng` keeps the tick, its starts and the check. Check: `math` names no tick lifecycle; the goldens do not move.
+(`geometry`, `projectiles`; design 16, D3, D4.) A distance to a line, a segment or a box's edge comes from the line's direction, a unit vector with 62 bits of fraction taken once for a path or a box's edge, within two bits; a place on a path is its distance from the start. `Ratio`, `I256` and `U384` go, with their benches; `Metric::meets` gives a distance along the path, and a projectile sorts and travels by it. Check: the goldens move once, by the amount the step states; `atomic/body_box/`, `atomic/shape/`, `atomic/grid/` and `integration/collision/` measured before and after.
 
-### F64. One exact ratio type in `math`
+### F67. Pushes in 128 bits
 
-(`math`, `geometry`; **Math**.) `geometry` holds two exact ratio types of one kind, each compared by its cross products: `Fraction`, an `i128` over an `i128`, a share of a straight path (`geometry/src/fraction.rs:8`), and `SquaredDistance`, a `U256` over a `u128`, a squared distance to a box's edge or a path (`geometry/src/squared_distance.rs:9`). One `Ratio` in `math`, generic over the integers of its numerator and denominator, as `num-rational`'s `Ratio<T>` is, takes their place: it compares exactly by cross products at a width that holds them, an `i256` for today's `Fraction` and a `U384` for `SquaredDistance`, which `math` gains with it. Design 09 gains the type. The step measures the collider's and the boxes' cases, `integration/collision/` and `atomic/` of `geometry`, before and after, as each comparison gets wider. Check: the goldens do not move; `proptest` differential tests against an exact reference, as design 09 asks of every operation.
+(`navigation`, `geometry`; design 16, D5.) The collider's push of two circles and the push of a circle out of a box round away from what they leave, in `i128`: `U256`'s division, `FineRoot`, `first_estimate` and the 256-bit bound of `outward` go. The one tolerance of collision is defined beside the distance it covers. Check: the tests at the bound of design 13's D2 pass, every push ends touching or apart, and `integration/collision/` measured before and after.
+
+### F68. Compound values are chains of rounded steps
+
+(`stats`; design 16, D6.) A stat's `(add) × (1 + pct) × (1 − cut)` and a scaled param's sum round at each step, saturating. `ProductSum` goes. Check: each value within the bound the step states of an exact reference in its test.
+
+### F69. `math` holds no type past 128 bits
+
+(`math`, `import`; design 16, D1, D7, D8, D9.) `U256` and its long division go, with what only it used; `CeilRoot` merges into `FloorRoot`; the import's sRGB check keeps its exact reference in its test. Each platform path and lane is measured against its plain form, and one that gains less than its noise goes. Design 09 and design 13's D2 take design 16's decisions, and design 16 folds into them. Check: `math`'s API names no type wider than 128 bits; `integration/server_tick/worst_3v3` measured before and after.
 
 ## 2. The capabilities' graph
 

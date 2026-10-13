@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use super::*;
 use crate::rng::split_mix64::SplitMix64;
 
@@ -210,7 +212,7 @@ fn a_long_division_is_the_division_a_bit_at_a_time() {
 }
 
 /// `value × by` by schoolbook multiplication of 32-bit limbs, the least significant first.
-fn limbs_times(value: U256, by: u128) -> [u64; 12] {
+pub(crate) fn limbs_times(value: U256, by: u128) -> [u64; 12] {
     let limbs = |half: u128| [0, 1, 2, 3].map(|at| (half >> (32 * at)) & u128::from(u32::MAX));
     let value: Vec<u128> = limbs(value.low)
         .into_iter()
@@ -302,19 +304,20 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
                     assert_eq!(product.div_rounded(divisor, rounding), expected, "{case}");
                 }
             }
-            // A product times a third value orders against another as their limbs do.
+            // A product times a third value is the product of their limbs, the most significant
+            // 128 bits first.
             for &by in &values {
-                let ours = limbs_times(product, by);
-                for &(c, d) in &[(a, by), (b, a), (by, by)] {
-                    let other = U256::product(c, d);
-                    let theirs = limbs_times(other, b);
-                    let order = product.cmp_products(by, other, b);
-                    assert_eq!(
-                        order,
-                        ours.iter().rev().cmp(theirs.iter().rev()),
-                        "{a} {b} {by}"
-                    );
-                }
+                let limbs = limbs_times(product, by);
+                let join = |at: usize| {
+                    (0..4).fold(0_u128, |sum, limb| {
+                        sum | (u128::from(limbs[4 * at + limb]) << (32 * limb))
+                    })
+                };
+                assert_eq!(
+                    product.wide_product(by),
+                    [join(2), join(1), join(0)],
+                    "{a} {b} {by}"
+                );
             }
             // The long division of the product's low half, led by its high half's rest, is the
             // division a bit at a time.
@@ -344,7 +347,7 @@ fn products_match_schoolbook_and_shifts_match_divisions() {
 }
 
 #[test]
-fn a_division_and_a_product_order_by_hand_at_the_ends() {
+fn a_division_rounds_by_hand_at_the_ends() {
     // 2²⁵⁵ / 3: 2 to an odd power is 2 past a multiple of 3, so (2²⁵⁵ − 2) / 3 rest 2; its
     // quotient passes u128, so rounded up it is none. 2²⁵⁵ / (2¹²⁸ − 1) is 2¹²⁷ + 2¹²⁷ / (2¹²⁸ − 1),
     // 2¹²⁷ with a rest, so 2¹²⁷ + 1 up.
@@ -383,41 +386,4 @@ fn a_division_and_a_product_order_by_hand_at_the_ends() {
         ),
         (Some(1), Some(1))
     );
-    // At 384 bits: (2²⁵⁶ − 1)(2¹²⁸ − 1) equals itself, and passes (2²⁵⁶ − 1)(2¹²⁸ − 2) by
-    // 2²⁵⁶ − 1; 2²⁵⁵ · 1 is 2¹²⁸ · 2¹²⁷, and below 2¹²⁸ · (2¹²⁷ + 1); and 0 · 0 is 0 · 1.
-    let full = U256 {
-        high: u128::MAX,
-        low: u128::MAX,
-    };
-    assert_eq!(
-        full.cmp_products(u128::MAX, full, u128::MAX),
-        Ordering::Equal
-    );
-    assert_eq!(
-        full.cmp_products(u128::MAX, full, u128::MAX - 1),
-        Ordering::Greater
-    );
-    assert_eq!(
-        full.cmp_products(u128::MAX - 1, full, u128::MAX),
-        Ordering::Less
-    );
-    assert_eq!(top.cmp_products(1, two_128, 1 << 127), Ordering::Equal);
-    assert_eq!(top.cmp_products(1, two_128, (1 << 127) + 1), Ordering::Less);
-    assert_eq!(U256::ZERO.cmp_products(0, U256::ZERO, 1), Ordering::Equal);
-    // Both values within 128 bits, whose products fit 256: (2¹²⁸ − 1)² equals itself and passes
-    // (2¹²⁸ − 1)(2¹²⁸ − 2), which differs in the low half too; 2¹²⁷ · 2 is 2 · 2¹²⁷, and passes
-    // (2¹²⁸ − 1) · 1 in the high half alone; 2 · 7 = 14 lies below 3 · 5 = 15.
-    let max = U256::from_u128(u128::MAX);
-    assert_eq!(max.cmp_products(u128::MAX, max, u128::MAX), Ordering::Equal);
-    assert_eq!(
-        max.cmp_products(u128::MAX - 1, max, u128::MAX),
-        Ordering::Less
-    );
-    let half = U256::from_u128(1 << 127);
-    let two = U256::from_u128(2);
-    assert_eq!(half.cmp_products(2, two, 1 << 127), Ordering::Equal);
-    assert_eq!(half.cmp_products(2, max, 1), Ordering::Greater);
-    let seven = U256::from_u128(7);
-    assert_eq!(two.cmp_products(7, U256::from_u128(3), 5), Ordering::Less);
-    assert_eq!(seven.cmp_products(2, two, 7), Ordering::Equal);
 }

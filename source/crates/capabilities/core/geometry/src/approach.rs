@@ -1,15 +1,13 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Num, U256, Vec3};
-
-use crate::fraction::Fraction;
+use campfire_math::{Num, Ratio, U256, Vec3};
 
 /// How near a straight path comes to a point: its nearest distance against a reach, and the share
 /// of the path at its nearest point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Approach {
     pub nearest: Ordering,
-    pub(crate) share: Fraction,
+    pub(crate) share: Ratio<i128, i128>,
 }
 
 impl Approach {
@@ -30,7 +28,7 @@ impl Approach {
         if reach < Num::ZERO {
             return Approach {
                 nearest: Ordering::Greater,
-                share: Fraction::ZERO,
+                share: Ratio::ZERO,
             };
         }
         let reach = u128::from(reach.to_bits().cast_unsigned());
@@ -38,14 +36,14 @@ impl Approach {
         if length == 0 || along <= 0 {
             return Approach {
                 nearest: off.length_squared_bits().cmp(&reach),
-                share: Fraction::ZERO,
+                share: Ratio::ZERO,
             };
         }
         let along = along.cast_unsigned();
         if along >= length {
             return Approach {
                 nearest: (off - path).length_squared_bits().cmp(&reach),
-                share: Fraction::ONE,
+                share: Ratio::ONE,
             };
         }
         // The squared distance from the line, times the squared length: exact in 256 bits.
@@ -55,7 +53,7 @@ impl Approach {
         // A squared length within the world's bound is below 2⁹⁴, so both fit an i128.
         Approach {
             nearest: apart.cmp(&allowed),
-            share: Fraction::new(along.cast_signed(), length.cast_signed()),
+            share: Ratio::new(along.cast_signed(), length.cast_signed()),
         }
     }
 }

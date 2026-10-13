@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, Tick};
 use campfire_geometry::Bounds;
-use campfire_math::{Num, RngSource, RngStream, Vec3};
+use campfire_math::{Num, Rng, RngStream, Vec3};
 
 use super::*;
 
@@ -18,8 +18,8 @@ fn blocked_at(blocked: &[u64], cell: usize) -> bool {
 
 /// Cells blocked at random, one in `odds` on average, from `seed`.
 fn scatter(cells: usize, seed: u64, odds: u64) -> Vec<u64> {
-    let source = RngSource::new(SegmentSeed::new([0; 32]));
-    let mut rng = source.open(RngStream::new("scatter"), seed);
+    let stream = RngStream::new("scatter");
+    let mut rng = Rng::new(&SegmentSeed::new([0; 32]), stream, seed, Tick::ZERO);
     let mut blocked = vec![0; cells.div_ceil(64)];
     for cell in 0..cells {
         if rng.below(odds) == 0 {

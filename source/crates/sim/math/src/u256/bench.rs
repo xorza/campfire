@@ -8,26 +8,13 @@ use crate::rounding::Rounding;
 use crate::u256::U256;
 
 /// `U256`'s operations over `COUNT` inputs each: `product` of two values of 1 to 128 bits;
-/// `div_rounded` up and to nearest, as `Collider::reaching` and `Fraction::of` take it, the square of
+/// `div_rounded` up and to nearest, as `Collider::reaching` and `Ratio::of` take it, the square of
 /// a value of 1 to 72 bits over one of 17 to 72, so the quotient fits and both the native path
-/// and the long division count; and `cmp_products` of two such squares, each times the other's
-/// divisor, the second from other draws; and `shr_rounded` of such a square by 1 to 127 bits, to
-/// nearest, as `ProductSum` and the stats' totals take it.
+/// and the long division count; and `shr_rounded` of such a square by 1 to 127 bits, to nearest,
+/// as `ProductSum` and the stats' totals take it.
 pub(crate) fn u256(c: &mut Criterion) {
     let (a, b) = (values(8, 128), values(9, 128));
-    let squares = |seed: u64| -> Vec<U256> {
-        let roots = values(seed, 72);
-        roots
-            .iter()
-            .map(|&root| U256::product(root, root))
-            .collect()
-    };
-    let divisors = |seed: u64| -> Vec<u128> {
-        let drawn = values(seed, 56);
-        drawn.into_iter().map(|value| value << 16).collect()
-    };
     let (ours, our_dens) = (squares(10), divisors(11));
-    let (theirs, their_dens) = (squares(12), divisors(13));
 
     let mut group = c.benchmark_group("atomic/u256");
     group.throughput(Throughput::Elements(COUNT as u64));
@@ -60,14 +47,21 @@ pub(crate) fn u256(c: &mut Criterion) {
             }
         });
     });
-    group.bench_function("cmp_products", |bench| {
-        bench.iter(|| {
-            for at in 0..COUNT {
-                let order =
-                    black_box(ours[at]).cmp_products(their_dens[at], theirs[at], our_dens[at]);
-                black_box(order);
-            }
-        });
-    });
     group.finish();
+}
+
+/// `COUNT` squares of values of 1 to 72 bits, drawn from `seed`: a point's squared distance in
+/// bits to a box's edge or a path, times its squared length.
+pub(crate) fn squares(seed: u64) -> Vec<U256> {
+    let roots = values(seed, 72);
+    roots
+        .iter()
+        .map(|&root| U256::product(root, root))
+        .collect()
+}
+
+/// `COUNT` values of 17 to 72 bits, drawn from `seed`: the squared lengths the squares are over.
+pub(crate) fn divisors(seed: u64) -> Vec<u128> {
+    let drawn = values(seed, 56);
+    drawn.into_iter().map(|value| value << 16).collect()
 }

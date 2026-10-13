@@ -36,7 +36,7 @@ pub use crate::ordered::{Keyed, Ordered};
 pub use crate::position::Position;
 pub use crate::position::error::OutOfBounds;
 pub use crate::restoring::Restoring;
-pub use crate::sim_rng::SimRng;
+pub use crate::sim_rng::{RngOpener, SimRng};
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
 pub use crate::sim_update::sim_place::SimPlace;

@@ -9,10 +9,10 @@ use bevy_ecs::schedule::{
 };
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use bevy_ecs::world::CommandQueue;
-use campfire_common::{PlayerSlot, StateHash};
+use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::internals::LogCheck;
 use campfire_log::{LogLevel, LogLine};
-use campfire_math::{Num, RngSource, RngStream};
+use campfire_math::{Num, Rng, RngStream};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -478,11 +478,9 @@ fn ticks_advance_and_key_the_draws() {
     // Unit k spawns in tick k and moves in the same tick, so it moves in ticks k to 4, by the draw
     // of stream "wander", entity k, tick t each time.
     let reference = |id: u64| {
-        let mut source = RngSource::new(SEED);
         (id..TICKS)
             .map(|tick| {
-                source.begin_tick(tick);
-                source.open(RngStream::new("wander"), id).below(STEP_BOUND)
+                Rng::new(&SEED, RngStream::new("wander"), id, Tick::new(tick)).below(STEP_BOUND)
             })
             .sum::<u64>()
     };

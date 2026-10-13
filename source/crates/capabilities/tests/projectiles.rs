@@ -10,7 +10,7 @@ use campfire_core::{
     UnitType, UnitTypeCore, Units,
 };
 use campfire_geometry::{Bounds, Grid};
-use campfire_math::{Num, RngSource, Vec3};
+use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::NavigationEffect;
 use campfire_projectiles::*;
@@ -166,9 +166,8 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
 
     // The one in flight, fired in tick 12, carries the roll its attack drew as its windup
     // ended: the first draw of its attacker's roll stream in that tick, on the match's seed.
-    let mut source = RngSource::new(SegmentSeed::new([0; 32]));
-    source.begin_tick(12);
-    let roll = source.open(ROLL_STREAM, shooter_id.get()).fraction();
+    let seed = SegmentSeed::new([0; 32]);
+    let roll = Rng::new(&seed, ROLL_STREAM, shooter_id.get(), Tick::new(12)).fraction();
     assert_eq!(Projectiles::rolls(&game), [roll]);
 }
 

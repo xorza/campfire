@@ -1,6 +1,6 @@
 //! Geometry on the ground plane and in space, exact in `Num`: the map's metric and bounds, the
-//! bodies' shapes and boxes, polygons, the grid of cells, and the distances and fractions their
-//! tests compute.
+//! bodies' shapes and boxes, polygons, the grid of cells, and the exact distances and shares of a
+//! path their tests compute.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
@@ -9,13 +9,11 @@ mod body_bound;
 mod body_box;
 mod bounds;
 mod cell_levels;
-mod fraction;
 mod grid;
 mod halves;
 mod metric;
 mod polygon;
 mod shape;
-mod squared_distance;
 
 #[cfg(feature = "internals")]
 mod kernel_scene;
@@ -25,7 +23,6 @@ pub use crate::body_bound::MAX_BOUND;
 pub use crate::body_box::BodyBox;
 pub use crate::bounds::Bounds;
 pub use crate::cell_levels::CellLevels;
-pub use crate::fraction::Fraction;
 pub use crate::grid::Grid;
 pub use crate::halves::Halves;
 pub use crate::metric::Metric;

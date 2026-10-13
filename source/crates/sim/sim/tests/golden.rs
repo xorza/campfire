@@ -16,9 +16,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, Tick};
 use campfire_log::internals::LogCheck;
-use campfire_math::{Num, RngSource, RngStream, Vec3};
+use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, SimWorld,
     SimWorldBuilder, StableId, StateRegistry, TickRate,
@@ -146,11 +146,10 @@ fn vec3_section(hasher: &mut Hasher) {
 }
 
 fn rng_section(hasher: &mut Hasher) {
-    let mut source = RngSource::new(SegmentSeed::new(*b"campfire golden test seed, 32 by"));
+    let seed = SegmentSeed::new(*b"campfire golden test seed, 32 by");
     for tick in 0..50 {
-        source.begin_tick(tick);
         for entity in 0..8 {
-            let mut rng = source.open(RngStream::new("golden"), entity);
+            let mut rng = Rng::new(&seed, RngStream::new("golden"), entity, Tick::new(tick));
             let draws = [
                 rng.next_u64(),
                 rng.below(1000),

@@ -39,7 +39,7 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
 }
 
 /// The squared distance from `pos` to the nearest point of `body` at `centre`; 0 inside.
-fn distance(body: &BodyBox, centre: Position, pos: Position) -> SquaredDistance {
+fn distance(body: &BodyBox, centre: Position, pos: Position) -> Ratio<U256, u128> {
     body.frame().nearest_to(flat(pos) - flat(centre)).distance
 }
 
@@ -49,19 +49,20 @@ fn flat_vec3(off: Flat) -> Vec3 {
 
 /// Where the path from `start` along `path` crosses the segment from `a` to `b`, as a share of
 /// the path, by the two lines' cross products; none for parallel lines or no crossing.
-fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<Fraction> {
+fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<Ratio<i128, i128>> {
     let edge = b - a;
     let den = path.cross(edge);
     if den == 0 {
         return None;
     }
     let to_a = a - start;
-    let (t, u) = (to_a.cross(edge), to_a.cross(path));
+    let sign = den.signum();
+    let (t, u) = (to_a.cross(edge) * sign, to_a.cross(path) * sign);
     let within = |num: i128| {
-        let fraction = Fraction::new(num, den);
-        Fraction::ZERO <= fraction && fraction <= Fraction::ONE
+        let share = Ratio::new(num, den.abs());
+        Ratio::ZERO <= share && share <= Ratio::ONE
     };
-    (within(t) && within(u)).then(|| Fraction::new(t, den))
+    (within(t) && within(u)).then(|| Ratio::new(t, den.abs()))
 }
 
 #[test]
@@ -233,7 +234,10 @@ fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
     let way = (flat(point) - flat(probe)).length_squared();
     let slack = 2 * (way.floor_root() + 1) + 1;
     let gap = distance(&turned, centre, probe);
-    assert!(SquaredDistance::whole(way - slack) < gap && gap < SquaredDistance::whole(way + slack));
+    assert!(
+        Ratio::whole(U256::from_u128(way - slack)) < gap
+            && gap < Ratio::whole(U256::from_u128(way + slack))
+    );
 }
 
 #[test]
@@ -266,7 +270,7 @@ fn twice_the_scale_sees_halves_of_a_bit() {
 fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let body = made("4", "2", "0");
     let centre = at("0", "0");
-    let share = |num: i128, den: i128| Fraction::new(num, den);
+    let share = |num: i128, den: i128| Ratio::new(num, den);
     let approach =
         |from: Position, to: Position, reach: &str| body.approach(centre, from, to, num(reach));
     // Through it along x from -10: it enters at x = -2, 8 of the path's 20 m; from the other
@@ -290,7 +294,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     // From inside: at its start.
     assert_eq!(
         approach(at("0", "0"), at("10", "0"), "0").share,
-        Fraction::ZERO
+        Ratio::ZERO
     );
     // Along z = 3, 2 m off the edge at z = 1 from x = -2 to 2: the first of that stretch.
     let beside = approach(at("-10", "3"), at("10", "3"), "2");
@@ -344,7 +348,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
         still,
         Approach {
             nearest: Ordering::Equal,
-            share: Fraction::ZERO
+            share: Ratio::ZERO
         }
     );
     // Past its end: the end is nearest, 1 m short of the edge.
@@ -355,7 +359,7 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
         stops,
         Approach {
             nearest: Ordering::Equal,
-            share: Fraction::ONE
+            share: Ratio::ONE
         }
     );
 }
@@ -589,8 +593,7 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
         expected,
         "{body:?} {probe:?}"
     );
-    let within =
-        Closer::new(body.frame(), SquaredDistance::bits(reach)).holds(flat(probe) - flat(centre));
+    let within = Closer::new(body.frame(), square_bits(reach)).holds(flat(probe) - flat(centre));
     assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
 }
 
@@ -611,7 +614,7 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
         .filter_map(|edge| crossing(start, path, corners[edge], corners[(edge + 1) % 4]))
         .min();
     let enters = if body.holds(centre, from) {
-        Some(Fraction::ZERO)
+        Some(Ratio::ZERO)
     } else {
         enters
     };

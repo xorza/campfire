@@ -1,7 +1,6 @@
 use std::fmt::Write;
 
 use super::*;
-use crate::rng::rng_source::RngSource;
 
 const WORDS_16: u64 = 1 << 16;
 
@@ -64,7 +63,7 @@ fn words_follow_the_documented_message() {
         .finalize_xof()
         .fill(&mut expected);
 
-    let mut rng = Rng::new(&seed(), RngStream::new("abc"), 7, 9);
+    let mut rng = Rng::new(&seed(), RngStream::new("abc"), 7, Tick::new(9));
     for &chunk in expected.as_chunks::<8>().0 {
         assert_eq!(rng.next_u64(), u64::from_le_bytes(chunk));
     }
@@ -168,8 +167,8 @@ fn chance_compares_the_top_24_bits() {
 
 #[test]
 fn chance_always_takes_one_word() {
-    let mut a = Rng::new(&seed(), RngStream::new("s"), 1, 1);
-    let mut b = Rng::new(&seed(), RngStream::new("s"), 1, 1);
+    let mut a = Rng::new(&seed(), RngStream::new("s"), 1, Tick::new(1));
+    let mut b = Rng::new(&seed(), RngStream::new("s"), 1, Tick::new(1));
     assert!(!a.chance(Num::ZERO));
     b.next_u64();
     assert_eq!(a.next_u64(), b.next_u64());
@@ -180,8 +179,8 @@ fn below_and_pick_take_the_words_lemires_method_accepts() {
     // A parallel stream of the same words, read by Lemire's method written apart: a word's
     // product with the bound gives its high 64 bits, unless its low 64 bits fall below
     // (2^64 − bound) mod bound, which rejects the word for the next.
-    let mut rng = Rng::new(&seed(), RngStream::new("s"), 1, 1);
-    let mut words = Rng::new(&seed(), RngStream::new("s"), 1, 1);
+    let mut rng = Rng::new(&seed(), RngStream::new("s"), 1, Tick::new(1));
+    let mut words = Rng::new(&seed(), RngStream::new("s"), 1, Tick::new(1));
     let mut lemire = |bound: u64| loop {
         let product = u128::from(words.next_u64()) * u128::from(bound);
         let threshold = ((1_u128 << 64) - u128::from(bound)) % u128::from(bound);
@@ -206,7 +205,7 @@ fn below_and_pick_take_the_words_lemires_method_accepts() {
 #[test]
 fn sequences_depend_on_every_field() {
     let first = |stream: &'static str, entity: u64, tick: u64| {
-        Rng::new(&seed(), RngStream::new(stream), entity, tick).next_u64()
+        Rng::new(&seed(), RngStream::new(stream), entity, Tick::new(tick)).next_u64()
     };
     let base = first("s", 1, 1);
     assert_eq!(base, first("s", 1, 1));
@@ -215,35 +214,12 @@ fn sequences_depend_on_every_field() {
     assert_ne!(base, first("s", 1, 2));
     assert_ne!(
         base,
-        Rng::new(&SegmentSeed::new([1; 32]), RngStream::new("s"), 1, 1).next_u64()
+        Rng::new(
+            &SegmentSeed::new([1; 32]),
+            RngStream::new("s"),
+            1,
+            Tick::new(1)
+        )
+        .next_u64()
     );
-}
-
-#[test]
-fn source_opens_each_pair_once_per_tick() {
-    let mut source = RngSource::new(seed());
-    source.begin_tick(5);
-    let a = source.open(RngStream::new("s"), 1).next_u64();
-    assert_ne!(source.open(RngStream::new("s"), 2).next_u64(), a);
-    assert_ne!(source.open(RngStream::new("t"), 1).next_u64(), a);
-    source.begin_tick(5);
-    assert_eq!(source.open(RngStream::new("s"), 1).next_u64(), a);
-    // An opener opens the same sequences away from the source, and two starts of one tick give
-    // two openers, so a holder knows to drop what the first opened.
-    let opener = source.opener();
-    assert_eq!(opener.open(RngStream::new("s"), 1).next_u64(), a);
-    assert_eq!(opener, source.opener());
-    source.begin_tick(5);
-    assert_ne!(opener, source.opener());
-    assert_eq!(source.opener().open(RngStream::new("s"), 1).next_u64(), a);
-}
-
-#[cfg(debug_assertions)]
-#[test]
-#[should_panic(expected = "opened twice for entity 1 in tick 5")]
-fn source_panics_on_a_repeated_pair() {
-    let mut source = RngSource::new(seed());
-    source.begin_tick(5);
-    let _first = source.open(RngStream::new("s"), 1);
-    let _second = source.open(RngStream::new("s"), 1);
 }

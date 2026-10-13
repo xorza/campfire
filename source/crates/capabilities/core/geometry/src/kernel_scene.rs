@@ -1,5 +1,5 @@
-use campfire_common::SegmentSeed;
-use campfire_math::{Num, Rng, RngSource, RngStream, Vec3};
+use campfire_common::{SegmentSeed, Tick};
+use campfire_math::{Num, Rng, RngStream, Vec3};
 
 use crate::body_box::BodyBox;
 use crate::shape::Shape;
@@ -57,9 +57,9 @@ impl KernelScene {
     pub const UNITS: usize = 1000;
 
     pub fn new(seed: u64) -> KernelScene {
-        let source = RngSource::new(SegmentSeed::new([0; 32]));
+        let stream = RngStream::new("scene");
         KernelScene {
-            rng: source.open(RngStream::new("scene"), seed),
+            rng: Rng::new(&SegmentSeed::new([0; 32]), stream, seed, Tick::ZERO),
         }
     }
 

@@ -1,12 +1,11 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Ratio, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
 use crate::approach::Approach;
 use crate::body_box::BodyBox;
-use crate::fraction::Fraction;
 use crate::shape::Shape;
 
 /// How a map measures ranges, reach and sight: on the ground plane, as MOBAs and RTS games do, or
@@ -119,7 +118,7 @@ impl Metric {
         pos: Position,
         shape: Shape,
         reach: Num,
-    ) -> Option<Fraction> {
+    ) -> Option<Ratio<i128, i128>> {
         let approach = self.approach(shape, pos, from, to, reach);
         (approach.nearest != Ordering::Greater).then_some(approach.share)
     }
@@ -216,11 +215,11 @@ mod tests {
         // Beside the path 2 m off, at 4 m along: met within 2, the share 4/10, and not within
         // 2 less a bit. Behind the start and past the end, the ends count.
         let cases = [
-            (Position::from((4, 0, 2)), num(2), Some(Fraction::new(2, 5))),
+            (Position::from((4, 0, 2)), num(2), Some(Ratio::new(2, 5))),
             (Position::from((4, 0, 2)), num(2) - Num::EPSILON, None),
-            (Position::from((-1, 0, 0)), num(1), Some(Fraction::ZERO)),
+            (Position::from((-1, 0, 0)), num(1), Some(Ratio::ZERO)),
             (Position::from((-2, 0, 0)), num(1), None),
-            (Position::from((12, 0, 0)), num(2), Some(Fraction::ONE)),
+            (Position::from((12, 0, 0)), num(2), Some(Ratio::ONE)),
             (Position::from((12, 0, 0)), num(1), None),
         ];
         for (at, reach, expected) in cases {
@@ -236,25 +235,25 @@ mod tests {
         // 3 m up: a planar map ignores the height, a spatial one counts it, √(4 + 9) > 3.
         let above = Position::from((4, 3, 2));
         // Its share of the path is the point's along it, 4 m of 10, either way.
-        let along = Some(Fraction::new(2, 5));
+        let along = Some(Ratio::new(2, 5));
         assert_eq!(Metric::Planar.meets(from, to, above, point, num(2)), along);
         assert_eq!(Metric::Spatial.meets(from, to, above, point, num(3)), None);
         assert_eq!(Metric::Spatial.meets(from, to, above, point, num(4)), along);
         // A path of no length meets what is within reach of its point.
         let still = Metric::Planar.meets(from, from, Position::from((0, 0, 1)), point, num(1));
-        assert_eq!(still, Some(Fraction::ZERO));
+        assert_eq!(still, Some(Ratio::ZERO));
         // A box of 4 × 2 m at 5 m along, through which the path runs: met where it enters, at
         // 3 m, whatever the reach.
         let body = Shape::Box(BodyBox::new([num(4), num(2)], Num::ZERO).unwrap());
         let entered = Metric::Planar.meets(from, to, Position::from((5, 0, 0)), body, Num::ZERO);
-        assert_eq!(entered, Some(Fraction::new(3, 10)));
+        assert_eq!(entered, Some(Ratio::new(3, 10)));
         // A reach and a radius whose sum passes every number reach every distance, as
         // `reaches` counts them: met at the path's nearest point, 4 m along, and come within.
         let huge = Shape::Circle(Num::MAX);
         let far = Position::from((4, 0, 900));
         assert_eq!(
             Metric::Planar.meets(from, to, far, huge, Num::MAX),
-            Some(Fraction::new(2, 5))
+            Some(Ratio::new(2, 5))
         );
         assert!(huge.comes_within(far, from, to, Num::MAX));
         assert!(Metric::Planar.reaches(from, huge, Num::MAX, far, point));

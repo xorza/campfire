@@ -1,15 +1,13 @@
 use std::cmp::Ordering;
 
-use campfire_math::{CeilRoot, Flat, FloorRoot, Num, Rounding, SinCos, U256, Vec3};
+use campfire_math::{CeilRoot, Flat, FloorRoot, Num, Ratio, Rounding, SinCos, U256, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::approach::Approach;
 use crate::body_bound::MAX_BOUND;
-use crate::fraction::Fraction;
 use crate::polygon::Polygon;
-use crate::squared_distance::SquaredDistance;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -47,7 +45,7 @@ enum Feature {
 /// A box's point nearest a point: its squared distance, and what of the box it is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Nearest {
-    distance: SquaredDistance,
+    distance: Ratio<U256, u128>,
     feature: Feature,
 }
 
@@ -56,14 +54,17 @@ struct Nearest {
 enum Span {
     All,
     Empty,
-    Between { low: Fraction, high: Fraction },
+    Between {
+        low: Ratio<i128, i128>,
+        high: Ratio<i128, i128>,
+    },
 }
 
 /// The values of `t` within every slab: from `low` to `high`, `None` an end with no bound.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Clip {
-    low: Option<Fraction>,
-    high: Option<Fraction>,
+    low: Option<Ratio<i128, i128>>,
+    high: Option<Ratio<i128, i128>>,
 }
 
 /// A box's test of the points closer than a reach to it, as `Frame::nearest_to` measures them,
@@ -197,7 +198,7 @@ impl BodyBox {
         if (0..2).any(|axis| off[axis].abs() > extent[axis].to_bits().saturating_add(reach_bits)) {
             return Ordering::Greater;
         }
-        Closer::new(self.frame(), SquaredDistance::bits(reach)).against(off)
+        Closer::new(self.frame(), square_bits(reach)).against(off)
     }
 
     /// The point of the box at `centre` nearest `pos`, each coordinate rounded to the nearest bit:
@@ -240,20 +241,20 @@ impl BodyBox {
         let frame = self.frame();
         let start = flat(from) - flat(centre);
         let path = flat(to) - flat(from);
-        let reach = SquaredDistance::of(reach);
+        let reach = reach_square(reach);
         if let Some(share) = frame.entry(start, path) {
             return Approach {
-                nearest: SquaredDistance::ZERO.cmp(&reach),
+                nearest: Ratio::ZERO.cmp(&reach),
                 share,
             };
         }
-        let mut best = (frame.nearest_to(start).distance, Fraction::ZERO);
-        let mut take = |candidate: (SquaredDistance, Fraction)| {
+        let mut best = (frame.nearest_to(start).distance, Ratio::ZERO);
+        let mut take = |candidate: (Ratio<U256, u128>, Ratio<i128, i128>)| {
             if candidate.0 < best.0 || candidate.0 == best.0 && candidate.1 < best.1 {
                 best = candidate;
             }
         };
-        take((frame.nearest_to(start + path).distance, Fraction::ONE));
+        take((frame.nearest_to(start + path).distance, Ratio::ONE));
         // Apart from the box, a path comes nearest at one of its ends, or where a corner's
         // nearest point lies inside it.
         let length = path.dot(path);
@@ -263,8 +264,8 @@ impl BodyBox {
             if 0 < along && along < length {
                 let across = path.cross(off).unsigned_abs();
                 let square = U256::product(across, across);
-                let distance = SquaredDistance::new(square, length.unsigned_abs());
-                take((distance, Fraction::new(along, length)));
+                let distance = Ratio::new(square, length.unsigned_abs());
+                take((distance, Ratio::new(along, length)));
             }
         }
         Approach {
@@ -290,7 +291,7 @@ impl BodyBox {
         let frame = self.frame();
         let start = flat(from) - flat(centre);
         let path = flat(to) - flat(from);
-        let reach = SquaredDistance::bits(reach);
+        let reach = square_bits(reach);
         let closer = Closer::new(frame, reach);
         if frame.meets_path(start, path) || closer.holds(start) || closer.holds(start + path) {
             return true;
@@ -318,7 +319,7 @@ impl BodyBox {
         let Nearest { distance, feature } = frame.nearest_to(off);
         let moved = match feature {
             Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
-            _ if distance >= SquaredDistance::of(radius) => return None,
+            _ if distance >= reach_square(radius) => return None,
             Feature::Edge(edge) => frame.out_through(edge, off, radius),
             Feature::Corner(corner) => {
                 // Off a corner the push runs along the way from it, and `off` lies the whole
@@ -353,9 +354,9 @@ impl BodyBox {
     ) -> Ordering {
         let (ours, theirs) = (self.frame(), other.frame());
         let apart = flat(other_centre) - flat(centre);
-        let reach = SquaredDistance::of(reach);
+        let reach = reach_square(reach);
         if ours.meets(apart, theirs, false) {
-            return SquaredDistance::ZERO.cmp(&reach);
+            return Ratio::ZERO.cmp(&reach);
         }
         // Apart, two convex shapes come nearest at a corner of one.
         let from_ours = ours
@@ -394,7 +395,7 @@ impl BodyBox {
         let reach = reach
             .checked_mul_int(2)
             .expect("a reach within a body and a walker doubles");
-        let closer = Closer::new(self.frame_twice(), SquaredDistance::bits(reach));
+        let closer = Closer::new(self.frame_twice(), square_bits(reach));
         move |off| closer.holds(off)
     }
 
@@ -468,7 +469,7 @@ impl Frame {
     fn nearest_to(&self, off: Flat) -> Nearest {
         if self.holds(off) {
             return Nearest {
-                distance: SquaredDistance::ZERO,
+                distance: Ratio::ZERO,
                 feature: Feature::Inside,
             };
         }
@@ -494,7 +495,7 @@ impl Frame {
                 let across = along_edge.cross(off_start).unsigned_abs();
                 let square = U256::product(across, across);
                 Nearest {
-                    distance: SquaredDistance::new(square, length.unsigned_abs()),
+                    distance: Ratio::new(square, length.unsigned_abs()),
                     feature: Feature::Edge(edge),
                 }
             };
@@ -527,7 +528,7 @@ impl Frame {
         let depth = |edge: usize| {
             let normal = self.normal(edge);
             let inward = normal.dot(off - corners[edge]).unsigned_abs();
-            SquaredDistance::new(U256::product(inward, inward), normal.length_squared())
+            Ratio::new(U256::product(inward, inward), normal.length_squared())
         };
         (0..4).min_by_key(|&edge| depth(edge)).expect("four edges")
     }
@@ -572,14 +573,10 @@ impl Frame {
     }
 
     /// The share where the path from `start`, along `path`, first meets the closed box, or none.
-    fn entry(&self, start: Flat, path: Flat) -> Option<Fraction> {
+    fn entry(&self, start: Flat, path: Flat) -> Option<Ratio<i128, i128>> {
         let clip = self.clip(start, path, false)?;
-        let enter = clip
-            .low
-            .map_or(Fraction::ZERO, |low| low.max(Fraction::ZERO));
-        let exit = clip
-            .high
-            .map_or(Fraction::ONE, |high| high.min(Fraction::ONE));
+        let enter = clip.low.map_or(Ratio::ZERO, |low| low.max(Ratio::ZERO));
+        let exit = clip.high.map_or(Ratio::ONE, |high| high.min(Ratio::ONE));
         (enter <= exit).then_some(enter)
     }
 
@@ -593,8 +590,8 @@ impl Frame {
             _ => true,
         };
         ordered
-            && low.is_none_or(|low| low < Fraction::ONE)
-            && high.is_none_or(|high| high > Fraction::ZERO)
+            && low.is_none_or(|low| low < Ratio::ONE)
+            && high.is_none_or(|high| high > Ratio::ZERO)
     }
 
     /// The values of `t` for which `start + t·path` lies within both slabs, `open` or closed;
@@ -710,7 +707,7 @@ impl Closer {
 }
 
 /// The values of `t` for which `value + t·along` lies within `bound` of 0, `open` or closed.
-const fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
+fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
     if along == 0 {
         let within = if open {
             value.abs() < bound
@@ -719,18 +716,17 @@ const fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
         };
         return if within { Span::All } else { Span::Empty };
     }
-    let below = Fraction::new(-bound - value, along);
-    let above = Fraction::new(bound - value, along);
-    if along > 0 {
-        Span::Between {
-            low: below,
-            high: above,
-        }
+    // `t·along` lies from `−bound − value` to `bound − value`; a negative `along` turns both ends
+    // and the order.
+    let (low, high) = if along > 0 {
+        (-bound - value, bound - value)
     } else {
-        Span::Between {
-            low: above,
-            high: below,
-        }
+        (value - bound, value + bound)
+    };
+    let den = along.abs();
+    Span::Between {
+        low: Ratio::new(low, den),
+        high: Ratio::new(high, den),
     }
 }
 
@@ -739,8 +735,20 @@ const fn flat(pos: Position) -> Flat {
     Flat::ground(pos.get())
 }
 
-const fn square(off: Flat) -> SquaredDistance {
-    SquaredDistance::whole(off.length_squared())
+const fn square(off: Flat) -> Ratio<U256, u128> {
+    Ratio::whole(U256::from_u128(off.length_squared()))
+}
+
+/// The square of `reach`, not negative.
+const fn reach_square(reach: Num) -> Ratio<U256, u128> {
+    Ratio::whole(U256::from_u128(square_bits(reach)))
+}
+
+/// The square of `reach`'s bits, not negative, which fits `u128`.
+const fn square_bits(reach: Num) -> u128 {
+    debug_assert!(reach.to_bits() >= 0, "a reach is not negative");
+    let bits = reach.to_bits().unsigned_abs() as u128;
+    bits * bits
 }
 
 /// `off` moved along `normal` until a body of `radius` there touches, from outside, the line

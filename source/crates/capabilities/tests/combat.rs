@@ -21,7 +21,7 @@ use campfire_core::{
     TypeScope, UnitType, UnitTypeCore, Units, UnitsWorldCrate, View,
 };
 use campfire_geometry::Metric;
-use campfire_math::{Num, RngSource, Vec3};
+use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -1002,10 +1002,16 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
         rolls.into_iter().map(|(_, roll)| roll).collect::<Vec<_>>()
     };
     // Each roll is the first draw of its attacker's roll stream in tick 0: one draw an attack.
-    let source = |seed: u8| RngSource::new(SegmentSeed::new([seed; 32]));
+    let draw = |seed: u8, id: &StableId| {
+        Rng::new(
+            &SegmentSeed::new([seed; 32]),
+            ROLL_STREAM,
+            id.get(),
+            Tick::ZERO,
+        )
+    };
     let expected = |seed: u8| {
-        let source = source(seed);
-        let roll = |&id: &StableId| source.open(ROLL_STREAM, id.get()).fraction();
+        let roll = |id| draw(seed, id).fraction();
         attackers.iter().map(roll).collect::<Vec<_>>()
     };
     let first = rolls(&mut game);
@@ -1019,8 +1025,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     // seed before scripts decided it: `chance` on the same draw.
     let half = Num::HALF;
     let crits: Vec<_> = first.iter().map(|&roll| roll < half).collect();
-    let old = source(0);
-    let rolled = |&id: &StableId| old.open(ROLL_STREAM, id.get()).chance(half);
+    let rolled = |id| draw(0, id).chance(half);
     assert_eq!(crits, attackers.iter().map(rolled).collect::<Vec<_>>());
     assert!(crits.contains(&true) && crits.contains(&false));
     game.insert_resource(SimRng::new(SegmentSeed::new([1; 32])));

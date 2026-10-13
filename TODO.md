@@ -1,4 +1,4 @@
 script api autogen doc
 timesource
-cargo modeuls in gate
+custom cargo build in checks
 rhai dependency

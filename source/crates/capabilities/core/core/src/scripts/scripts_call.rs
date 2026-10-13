@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
-use campfire_math::{Num, Rng, RngOpener, RngStream};
-use campfire_sim::{SimRng, StableId};
+use campfire_math::{Num, Rng, RngStream};
+use campfire_sim::{RngOpener, SimRng, StableId};
 
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;

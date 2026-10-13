@@ -1,13 +1,11 @@
 use blake3::{Hasher, OutputReader};
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, Tick};
 
 use crate::num::Num;
 use crate::rng::rng_stream::RngStream;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-pub(crate) mod rng_opener;
-pub(crate) mod rng_source;
 pub(crate) mod rng_stream;
 #[cfg(feature = "internals")]
 pub(crate) mod split_mix64;
@@ -32,9 +30,10 @@ pub struct Rng {
 }
 
 impl Rng {
-    /// The message is `DOMAIN ‖ u32 stream length ‖ stream ‖ u64 entity ‖ u64 tick`, little-endian;
-    /// the length prefix keeps two fields from running together.
-    pub(crate) fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: u64) -> Rng {
+    /// The sequence of `stream` for `entity` in `tick`, keyed by `seed`. Its message is `DOMAIN ‖
+    /// u32 stream length ‖ stream ‖ u64 entity ‖ u64 tick`, little-endian; the length prefix keeps
+    /// two fields from running together.
+    pub fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: Tick) -> Rng {
         let stream = stream.as_bytes();
         let stream_len = u32::try_from(stream.len()).expect("a stream's name has at most 64 bytes");
         // The whole message in one update, as each update pays its own checks and copies.
@@ -45,7 +44,7 @@ impl Rng {
             &stream_len.to_le_bytes(),
             stream,
             &entity.to_le_bytes(),
-            &tick.to_le_bytes(),
+            &tick.get().to_le_bytes(),
         ] {
             message[at..at + part.len()].copy_from_slice(part);
             at += part.len();

@@ -1,11 +1,11 @@
 use std::hint::black_box;
 
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, Tick};
 use criterion::{Criterion, Throughput};
 
 use crate::num::Num;
 use crate::num::bench::COUNT;
-use crate::rng::rng_source::RngSource;
+use crate::rng::Rng;
 use crate::rng::rng_stream::RngStream;
 use crate::rng::split_mix64::SplitMix64;
 
@@ -13,8 +13,8 @@ use crate::rng::split_mix64::SplitMix64;
 /// drawing from an open one a word, a value below a bound within 1000, an index below such a
 /// length, a fraction, a chance, and a chance of a ratio below such a bound.
 pub(crate) fn rng(c: &mut Criterion) {
-    let mut source = RngSource::new(SegmentSeed::new([7; 32]));
-    source.begin_tick(1);
+    let seed = SegmentSeed::new([7; 32]);
+    let tick = Tick::new(1);
     let mut words = SplitMix64::new(6);
     let bounds: Vec<u64> = (0..COUNT).map(|_| 1 + words.next_u64() % 1000).collect();
     let chances: Vec<Num> = (0..COUNT)
@@ -32,16 +32,16 @@ pub(crate) fn rng(c: &mut Criterion) {
         .map(|&bound| usize::try_from(bound).unwrap())
         .collect();
     let mut entity = 0_u64;
-    let mut rng = source.open(RngStream::new("bench"), u64::MAX);
+    let mut rng = Rng::new(&seed, RngStream::new("bench"), u64::MAX, tick);
 
     let mut group = c.benchmark_group("atomic/rng");
     group.throughput(Throughput::Elements(COUNT as u64));
     group.bench_function("open", |b| {
         b.iter(|| {
             for _ in 0..COUNT {
-                // A new entity each time, so the debug check of a test build never sees a repeat.
                 entity = entity.wrapping_add(1);
-                black_box(source.open(black_box(RngStream::new("ability.fire_lance")), entity));
+                let stream = black_box(RngStream::new("ability.fire_lance"));
+                black_box(Rng::new(&seed, stream, entity, tick));
             }
         });
     });
