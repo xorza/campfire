@@ -75,15 +75,14 @@ LAN_PACKAGES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
 )
 
-PROGRESS = re.compile(
+# The lines a step does not print: cargo's progress; nextest's run header and its notices of a
+# test still running, as its summary lists each slow test; cargo's tallies of the diagnostics a
+# step prints one by one, and nextest's of its failures.
+HIDDEN = re.compile(
     r"^\s*(Compiling|Checking|Documenting|Finished|Fresh|Blocking|Downloading|Downloaded|"
     r"Updating|Locking|Adding|Building|Generated|Running|Scraping)\s"
-)
-# Nextest's run header and its notices of a test still running: its summary lists each slow test.
-NEXTEST_PROGRESS = re.compile(r"^\s*(Nextest run ID .*|Starting \d+ tests? .*|\[>\s*[\d.]+s\] .*|─+)$")
-# Cargo's tallies of the diagnostics a step prints one by one, and nextest's of its failures.
-TALLY = re.compile(
-    r"^(warning: `[^`]+` \(.*\) generated \d+ warnings?.*"
+    r"|^\s*(Nextest run ID .*|Starting \d+ tests? .*|\[>\s*[\d.]+s\] .*|─+)$"
+    r"|^(warning: `[^`]+` \(.*\) generated \d+ warnings?.*"
     r"|error: could not compile `[^`]+` \(.*\) due to \d+ previous errors?.*"
     r"|warning: build failed, waiting for other jobs to finish\.\.\."
     r"|error: test run failed)$"
@@ -100,35 +99,23 @@ ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 ERROR_CODE = re.compile(r"^E\d{4}$")
 
 
+@dataclass(frozen=True)
 class Platform:
     """What differs between the OSes the driver runs on: no caller tests the OS."""
 
-    exe_suffix = ""
+    exe_suffix: str = ""
     cross_target: str | None = None
     # Formatting is the same on every OS, so CI checks it on one.
-    formats_in_ci = False
-
-
-class Linux(Platform):
-    cross_target = "x86_64-pc-windows-gnu"
-    formats_in_ci = True
-
-
-class MacOs(Platform):
-    pass
-
-
-class Windows(Platform):
-    exe_suffix = ".exe"
+    formats_in_ci: bool = False
 
 
 def current_platform() -> Platform:
     if sys.platform.startswith("linux"):
-        return Linux()
+        return Platform(cross_target="x86_64-pc-windows-gnu", formats_in_ci=True)
     if sys.platform == "darwin":
-        return MacOs()
+        return Platform()
     if sys.platform == "win32":
-        return Windows()
+        return Platform(exe_suffix=".exe")
     raise SystemExit(f"drive.py: {sys.platform} is not a platform Campfire runs on")
 
 
@@ -386,6 +373,8 @@ class StepOutput:
         self.summary = ""
         # Errors that are no lint: the code does not compile.
         self.hard = 0
+        # What ended the reader of standard output, raised again on the step's thread.
+        self.failure: BaseException | None = None
 
     def run(self, step: Step) -> int:
         try:
@@ -403,24 +392,35 @@ class StepOutput:
             for raw in process.stderr:
                 self.take_line(raw)
             reader.join()
+            if self.failure is not None:
+                raise self.failure
             return process.wait()
-        except KeyboardInterrupt:
+        except BaseException:
             process.terminate()
             process.wait()
             raise
 
     def read_stdout(self, pipe: IO[str]) -> None:
-        for raw in pipe:
-            if self.kind.diagnoses() and raw.startswith("{"):
-                try:
-                    message = json.loads(raw)
-                except json.JSONDecodeError:
-                    message = None
-                if isinstance(message, dict) and "reason" in message:
-                    if message["reason"] == "compiler-message":
-                        self.take_diagnostic(message["message"])
-                    continue
-            self.take_line(raw)
+        try:
+            for raw in pipe:
+                self.take_stdout(raw)
+        except BaseException as failure:
+            self.failure = failure
+            # The child blocks on a full pipe, and its step with it, unless the pipe drains.
+            for _ in pipe:
+                pass
+
+    def take_stdout(self, raw: str) -> None:
+        if self.kind.diagnoses() and raw.startswith("{"):
+            try:
+                message = json.loads(raw)
+            except json.JSONDecodeError:
+                message = None
+            if isinstance(message, dict) and "reason" in message:
+                if message["reason"] == "compiler-message":
+                    self.take_diagnostic(message["message"])
+                return
+        self.take_line(raw)
 
     def take_line(self, raw: str) -> None:
         line = ANSI.sub("", raw.rstrip("\r\n"))
@@ -433,9 +433,7 @@ class StepOutput:
                 self.summary = summary[1]
             if IN_CI:
                 print(raw.rstrip("\r\n"))
-            elif not (
-                summary or PROGRESS.match(line) or NEXTEST_PROGRESS.match(line) or TALLY.match(line)
-            ):
+            elif not (summary or HIDDEN.match(line)):
                 self.show(line)
 
     def take_diagnostic(self, diagnostic: dict) -> None:
@@ -447,8 +445,7 @@ class StepOutput:
             self.file.write(rendered + "\n")
             if IN_CI:
                 print(rendered)
-            # Each warning is an error in the lints, which print it; a step that warns is no
-            # step that lints.
+            # The lints print each warning, as an error.
             if not diagnostic["level"].startswith("error"):
                 return
             self.errors += 1
@@ -490,20 +487,18 @@ class StepOutput:
 
 
 def run_step(step: Step, shown: set[str], note: str = "") -> Outcome:
-    LOGS.mkdir(parents=True, exist_ok=True)
     log = step.log()
     start = time.monotonic()
     if IN_CI:
         print(f"::group::{step.name}")
     # Written aside and moved in whole, so a run beside this one leaves each log whole.
     written = log.with_name(f"{log.stem}-{os.getpid()}.tmp")
-    with written.open("w", encoding="utf-8") as file:
-        output = StepOutput(step.kind, file, shown)
-        try:
+    try:
+        with written.open("w", encoding="utf-8") as file:
+            output = StepOutput(step.kind, file, shown)
             code = output.run(step)
-        finally:
-            file.close()
-            written.replace(log)
+    finally:
+        written.replace(log)
     if IN_CI:
         print("::endgroup::")
     output.finish(log)
@@ -562,7 +557,6 @@ def record(command: str, outcome: Outcome) -> None:
         "reused": outcome.reused,
         "note": outcome.note,
     }
-    OWN.mkdir(parents=True, exist_ok=True)
     with HISTORY.open("a", encoding="utf-8") as history:
         history.write(json.dumps(entry) + "\n")
 
@@ -576,6 +570,12 @@ def git(*args: str, env: Mapping[str, str] | None = None) -> str | None:
 
 
 @functools.cache
+def git_index() -> Path | None:
+    index = git("rev-parse", "--path-format=absolute", "--git-path", "index")
+    return Path(index.strip()) if index else None
+
+
+@functools.cache
 def repository() -> Path | None:
     top = git("rev-parse", "--show-toplevel")
     return Path(top.strip()) if top else None
@@ -585,14 +585,13 @@ def working_tree() -> str | None:
     """The id of git's tree of the working files as they stand, tracked and new alike, as
     `.gitignore` leaves them; None outside git. It is written through a copy of the index, the
     process's own, so the index stays as it is and concurrent runs share no file."""
-    index = git("rev-parse", "--path-format=absolute", "--git-path", "index")
+    index = git_index()
     if index is None:
         return None
-    OWN.mkdir(parents=True, exist_ok=True)
     copy = OWN / f"tree-index-{os.getpid()}"
     try:
         try:
-            shutil.copyfile(index.strip(), copy)
+            shutil.copyfile(index, copy)
         except FileNotFoundError:
             copy.unlink(missing_ok=True)
         env = {"GIT_INDEX_FILE": str(copy)}
@@ -694,7 +693,6 @@ class Passes:
     def keep(self, key: str, tree: str) -> None:
         # Another run may have kept passes since this one started: keep theirs.
         self.trees = Passes.load() | {key: tree}
-        OWN.mkdir(parents=True, exist_ok=True)
         written = PASSES.with_name(f"passes-{os.getpid()}.tmp")
         written.write_text(json.dumps(self.trees, indent=1))
         written.replace(PASSES)
@@ -703,20 +701,23 @@ class Passes:
 def step_key(step: Step) -> str:
     env = {name: value for name, value in os.environ.items() if STEP_ENV.match(name)}
     env |= step.env
-    identity = [step.name, list(step.argv), sorted(env.items()), tools(step.kind)]
+    tools = [toolchain(), nextest()] if step.kind is Kind.TESTS else [toolchain()]
+    identity = [step.name, list(step.argv), sorted(env.items()), tools]
     return hashlib.sha256(json.dumps(identity).encode()).hexdigest()
 
 
 @functools.cache
-def tools(kind: Kind) -> list[str]:
-    """The versions of the tools a step of `kind` runs: the toolchain, and nextest."""
-    commands = [["rustc", "-V"]]
-    if kind is Kind.TESTS:
-        commands.append(["cargo", "nextest", "--version"])
-    return [
-        subprocess.run(command, cwd=SOURCE, capture_output=True, text=True).stdout.split("\n")[0]
-        for command in commands
-    ]
+def toolchain() -> str:
+    return version(["rustc", "-V"])
+
+
+@functools.cache
+def nextest() -> str:
+    return version(["cargo", "nextest", "--version"])
+
+
+def version(command: list[str]) -> str:
+    return subprocess.run(command, cwd=SOURCE, capture_output=True, text=True).stdout.split("\n")[0]
 
 
 def refuse_arguments(name: str, args: list[str]) -> None:
@@ -810,6 +811,7 @@ def stop(signum: int, frame: object) -> None:
 
 def main(argv: list[str]) -> int:
     sys.stdout.reconfigure(line_buffering=True, errors="replace")
+    LOGS.mkdir(parents=True, exist_ok=True)
     # A harness that ends the driver ends the step it runs too, which would hold cargo's lock.
     signal.signal(signal.SIGTERM, stop)
     if not argv or argv[0] in ("help", "-h", "--help"):
