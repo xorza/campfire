@@ -11,10 +11,10 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 
 use campfire_capabilities::{
-    Action, ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove,
-    Life, Match, ModifierId, MoveStep, Navigation, Number, Order, Owner, PackagePath, Param, Pools,
-    Projectile, RangeField, Rank, Ranked, Scalar, Scaling, SeenBy, SlotKind, SlotTimes, Stat,
-    Targeting, Team,
+    ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove, Life,
+    Match, ModifierId, MoveStep, Navigation, Number, Order, OrdersAction, Owner, PackagePath,
+    Param, Pools, Projectile, RangeField, Rank, Ranked, Scalar, Scaling, SeenBy, SlotKind,
+    SlotTimes, Stat, Targeting, Team,
 };
 use campfire_capabilities::{Combat, PoolMeters, Stats};
 use campfire_common::PlayerSlot;
@@ -196,13 +196,13 @@ fn pool(arena: &Arena, game: &Match, id: StableId, name: &str) -> Num {
     meters.current(arena.pool(name)).unwrap()
 }
 
-const fn attack(id: StableId, target: StableId) -> Order {
-    Order::one(id, Action::Attack { target })
+fn attack(id: StableId, target: StableId) -> Order {
+    Order::one(id, OrdersAction::Attack { target })
 }
 
 /// Player 0's order that `id` casts the action in its slot 0 at `target`.
-const fn cast(id: StableId, target: ActionTarget) -> Order {
-    Order::one(id, Action::Slot { slot: 0, target })
+fn cast(id: StableId, target: ActionTarget) -> Order {
+    Order::one(id, OrdersAction::Slot { slot: 0, target })
 }
 
 /// Player 0's unit of `kit` with `action` at `rank` in its one slot.

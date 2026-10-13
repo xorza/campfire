@@ -1,10 +1,11 @@
 use std::array;
 
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::Order;
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 
 use super::*;
+use campfire_capabilities::OrdersAction;
 
 fn at(sent: &SentInputs, stamp: u64) -> Vec<&[u8]> {
     sent.at(Tick::new(stamp)).collect()
@@ -14,7 +15,7 @@ fn at(sent: &SentInputs, stamp: u64) -> Vec<&[u8]> {
 fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     let mut ids = IdAllocator::default();
     let units: [_; 4] = array::from_fn(|_| ids.allocate());
-    let attack = |unit| Order::one(unit, Action::Attack { target: unit });
+    let attack = |unit| Order::one(unit, OrdersAction::Attack { target: unit });
     // Units 0 to 3, each id a 1-byte varint: 1 command, of capability 5, with its 4 body
     // bytes, the count of units, the unit, variant 1 and the target.
     let payload = |unit: u8| [1, 5, 4, 1, unit, 1, unit];
@@ -30,7 +31,7 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     // A coordinate of `i64::MAX` is a 10-byte varint, so the payload passes 7 bytes.
     let far = Order::one(
         units[0],
-        Action::Move {
+        OrdersAction::Move {
             x: Num::from_bits(i64::MAX),
             z: Num::from_bits(0),
         },
@@ -63,7 +64,7 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
 fn an_acknowledged_input_replays_where_the_server_applied_it() {
     let mut ids = IdAllocator::default();
     let units: [_; 6] = array::from_fn(|_| ids.allocate());
-    let attack = |unit| Order::one(unit, Action::Attack { target: unit });
+    let attack = |unit| Order::one(unit, OrdersAction::Attack { target: unit });
     let payload = |unit: u8| [1, 5, 4, 1, unit, 1, unit];
     let mut sent = SentInputs::default();
     // Seqs 10 to 15, stamped 1, 1, 2, 4, 4 and 5.

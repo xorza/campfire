@@ -3,7 +3,7 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
-use crate::orders::order::Action;
+use crate::production::production_action::ProductionAction;
 use crate::production::rally_target::RallyTarget;
 use crate::units::layer::Layer;
 use crate::units::map_book::MapBook;
@@ -53,7 +53,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
             shop.spawns(game).len(),
         )
     };
-    let cancel = |place| Action::CancelTrain { place };
+    let cancel = |place| ProductionAction::CancelTrain { place };
     // Tick 0: the entry behind the head gives back its 20; the head keeps its time. Another
     // player's cancel, and one past the queue's end, do nothing.
     Production::tick_ordering(&mut game, 0, producer, cancel(1));
@@ -134,7 +134,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         None,
         Some(half),
     );
-    let rally = |target| Action::Rally {
+    let rally = |target| ProductionAction::Rally {
         target: Some(target),
     };
     let point = |x: i64, z: i64| RallyTarget::Point {
@@ -161,7 +161,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         (None, halves(0, 0), None),
     ];
     for (at, (target, place, walks)) in cases.into_iter().enumerate() {
-        Production::tick_ordering(&mut game, 0, producer, Action::Rally { target });
+        Production::tick_ordering(&mut game, 0, producer, ProductionAction::Rally { target });
         Production::order_train(&mut game, producer);
         game.step();
         let spawned = Shop::spawned(&mut game, shop.grunt)[at];
@@ -222,7 +222,7 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
         let flag =
             Navigation::spawn_unit(game, halves(0, 12), Team::new(1), None, None, Some(form));
         game.insert_parts(flag, Unpredicted);
-        let rally = Action::Rally {
+        let rally = ProductionAction::Rally {
             target: Some(RallyTarget::Unit(flag)),
         };
         Production::tick_ordering(game, 0, producer, rally);

@@ -7,9 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{
-    Action, ActionSlots, DashTo, Dead, Destination, ForcedMove, Life, MapBook, MatchResult,
-    ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources, PlayersWorld, PoolId,
-    Projectile, Relation, Relations, ResourceId, Respawn, StateValue, StatsWorld, SyncAll,
+    ActionSlots, DashTo, Dead, Destination, ForcedMove, Life, MapBook, MatchResult, ModeState,
+    ModeWorld, Modifiers, MoveStep, Order, OrdersAction, Owner, PlayerResources, PlayersWorld,
+    PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue, StatsWorld, SyncAll,
     SyncNone, Team, UnitsWorld,
 };
 use campfire_capabilities::{DeclaredName, Names, Stats, Units};
@@ -33,8 +33,8 @@ use lightyear::prelude::{
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
-const fn move_to(x: i64, z: i64) -> Action {
-    Action::Move {
+const fn move_to(x: i64, z: i64) -> OrdersAction {
+    OrdersAction::Move {
         x: Num::int(x),
         z: Num::int(z),
     }
@@ -361,7 +361,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
     let attacking = |app: &App| slots(app)?.attacking();
     let start = hero(local.server());
-    local.order(0, Action::Attack { target: tower });
+    local.order(0, OrdersAction::Attack { target: tower });
     for _ in 0..lead(&local) + 2 {
         local.step();
         assert_eq!(attacking(local.server()), None);
@@ -380,7 +380,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         local.step();
         frames += 1;
     }
-    local.order(0, Action::Attack { target: tower });
+    local.order(0, OrdersAction::Attack { target: tower });
     // The client starts the walker's attack as the server does: the first windup each shows has
     // the same target, start and cooldowns.
     let mut windups = [None, None];

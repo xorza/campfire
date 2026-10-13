@@ -1,6 +1,8 @@
 use std::path::Path;
 
-use campfire_capabilities::{Action, ActionTarget, InputValue, ModeInput, Scalar};
+use campfire_capabilities::{
+    Action, ActionTarget, InputValue, ModeInput, OrdersAction, ProgressionAction, Scalar,
+};
 use campfire_codec::Toml;
 use campfire_common::Tick;
 use campfire_sim::StableId;
@@ -132,14 +134,18 @@ impl OrderScript {
                     let (Some(x), Some(z)) = (x, z) else {
                         return Err(OrderScriptError::Coordinate { tick });
                     };
-                    Action::Move { x, z }
+                    Action::Orders(OrdersAction::Move { x, z })
                 }
-                (None, Some(target), None, None, None) => Action::Attack { target },
-                (None, None, Some(slot), target, None) => Action::Slot {
+                (None, Some(target), None, None, None) => {
+                    Action::Orders(OrdersAction::Attack { target })
+                }
+                (None, None, Some(slot), target, None) => Action::Orders(OrdersAction::Slot {
                     slot,
                     target: target.map_or(ActionTarget::None, ActionTarget::Unit),
-                },
-                (None, None, None, None, Some(slot)) => Action::Learn { slot },
+                }),
+                (None, None, None, None, Some(slot)) => {
+                    Action::Progression(ProgressionAction::Learn { slot })
+                }
                 _ => return Err(OrderScriptError::Action { tick }),
             };
             let tick = Tick::new(tick);

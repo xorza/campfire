@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{EntityIndex, Position, SimTick, TickInputs};
+use campfire_sim::{EntityIndex, Position, SimTick};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
@@ -13,19 +13,16 @@ use crate::declare::scratch::Scratch;
 use crate::navigation::destination::Destination;
 use crate::navigation::group_box::GroupBox;
 use crate::navigation::party::{Party, PartyKey};
-use crate::orders::order::Action;
+use crate::orders::orders_action::OrdersAction;
 use crate::orders::resetting::Resetting;
-use crate::orders::seen_targets::SeenTargets;
-use crate::orders::tick_orders::TickOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
-use crate::players::out_of_play::OutOfPlay;
-use crate::players::player_rows::PlayerRows;
+use crate::players::tick_commands::TickCommands;
 use crate::production::build_target::BuildTarget;
 use crate::units::dead::Dead;
 use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
-use crate::visibility::OutView;
+use crate::vision::seen_targets::SeenTargets;
 use crate::vision::team_sight::TeamSight;
 
 /// The orders the tick's inputs give, in input order, each checked as a player's order needs, for
@@ -49,24 +46,11 @@ pub(super) struct Mover {
     pos: Position,
 }
 
-/// The orders of the tick's inputs: read once, and the units' orders checked and applied.
+/// The orders of `orders` among the tick's inputs: each unit's checked, then applied.
 #[derive(Debug)]
 pub(super) struct OrderInputs;
 
 impl OrderInputs {
-    /// Reads the orders of the tick's inputs, once, for each system of orders that applies them.
-    /// In a session whose players out of play see what a spectator sees, an order of a player
-    /// out of play is dropped: it would act on what its team does not see (design 14, D16).
-    pub(super) fn read_orders(
-        inputs: Res<'_, TickInputs>,
-        out_view: Res<'_, OutView>,
-        out: PlayerRows<'_, '_, OutOfPlay>,
-        mut orders: ResMut<'_, TickOrders>,
-    ) {
-        let spectating = *out_view == OutView::Spectators;
-        orders.read(&inputs, |slot| spectating && out.of_slot(slot).is_some());
-    }
-
     /// Checks each order of the tick, in input order, so a later order in the tick wins, for each
     /// of its units, by stable id. An order to a unit its player does not control, that is dead or
     /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit
@@ -76,23 +60,17 @@ impl OrderInputs {
     /// send anything. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
-        (tick, map, orders, index): (
-            Res<'_, SimTick>,
-            Res<'_, MapBook>,
-            Res<'_, TickOrders>,
-            Res<'_, EntityIndex>,
-        ),
+        (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
+        mut orders: TickCommands<'_, '_, OrdersAction>,
         book: Res<'_, ActionBook>,
         (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
         units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut movers: Local<'_, Vec<Mover>>,
     ) {
+        debug_assert!(checked.is_clear(), "the last tick applied its orders");
         let now = tick.start();
-        for order in orders.iter() {
-            if !order.action.to_units() {
-                continue;
-            }
+        orders.for_each(|order| {
             let controlled = order
                 .units
                 .iter()
@@ -100,8 +78,8 @@ impl OrderInputs {
                     let entity = index.get(id)?;
                     Some((entity, units.get(entity).ok()?))
                 })
-                .filter(|(_, (owner, ..))| owner.slot() == order.slot);
-            if let Action::Move { x, z } = order.action {
+                .filter(|(_, (owner, ..))| order.controls(**owner));
+            if let OrdersAction::Move { x, z } = order.action {
                 movers.clear();
                 movers.extend(
                     controlled
@@ -109,13 +87,13 @@ impl OrderInputs {
                         .map(|(entity, (_, _, &at, ..))| Mover { entity, pos: at }),
                 );
                 let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.pos)) else {
-                    continue;
+                    return;
                 };
                 if let &[Mover { entity, .. }] = movers.as_slice() {
                     checked
                         .0
                         .push((entity, UnitOrder::Move { x, z, party: None }));
-                    continue;
+                    return;
                 }
                 let goal = map.bounds.clamp_ground([x, z]);
                 let key = PartyKey::Order {
@@ -138,12 +116,12 @@ impl OrderInputs {
                         },
                     ));
                 }
-                continue;
+                return;
             }
             for (entity, (_, team, _, _, slots)) in controlled {
                 let sees = |target| team.is_some_and(|&team| visible.sees(team, target));
                 let unit_order = match order.action {
-                    Action::Attack { target } => {
+                    OrdersAction::Attack { target } => {
                         let selected = team.and_then(|&team| {
                             let unit = targets.enemy(team, target)?;
                             Some((targets.relation(team, unit.team), unit.tags))
@@ -153,7 +131,7 @@ impl OrderInputs {
                         });
                         (armed && sees(target)).then_some(UnitOrder::Attack { target })
                     }
-                    Action::Slot { slot, target } => {
+                    OrdersAction::Slot { slot, target } => {
                         let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
                         let hidden = matches!(target, ActionTarget::Unit(unit) if !sees(unit));
                         match (kind, target) {
@@ -167,27 +145,18 @@ impl OrderInputs {
                             _ => None,
                         }
                     }
-                    Action::Build { slot, target } => {
+                    OrdersAction::Build { slot, target } => {
                         let kind = slots.and_then(|slots| slots.kind_in(&book, slot));
                         let hidden = matches!(target, BuildTarget::Site(site) if !sees(site));
                         (kind == Some(ActionKind::Build) && !hidden)
                             .then_some(UnitOrder::Build { slot, target })
                     }
-                    Action::Stop => Some(UnitOrder::Stop),
-                    Action::Move { .. }
-                    | Action::Learn { .. }
-                    | Action::Buy { .. }
-                    | Action::Sell { .. }
-                    | Action::Swap { .. }
-                    | Action::CancelTrain { .. }
-                    | Action::Rally { .. }
-                    | Action::CancelBuild => {
-                        unreachable!("an action that goes to no unit was skipped")
-                    }
+                    OrdersAction::Stop => Some(UnitOrder::Stop),
+                    OrdersAction::Move { .. } => unreachable!("a move was checked as a group"),
                 };
                 checked.0.extend(unit_order.map(|order| (entity, order)));
             }
-        }
+        });
     }
 
     /// Applies the tick's checked player orders, in input order, each as every order applies; a

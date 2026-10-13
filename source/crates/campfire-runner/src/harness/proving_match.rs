@@ -1,4 +1,4 @@
-use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
+use campfire_capabilities::{ActionTarget, Order, OrdersAction, Team, TrainQueue};
 use campfire_math::{Num, Vec3};
 use campfire_package::internals::TestMode;
 use campfire_protocol::SlotPlan;
@@ -121,33 +121,33 @@ impl Plan for ProvingMatch {
         let (unit, action) = match self {
             ProvingMatch::Move { x, z } => (
                 hero,
-                Action::Move {
+                OrdersAction::Move {
                     x: Num::int(x),
                     z: Num::int(z),
                 },
             ),
             ProvingMatch::AttackBoulder => (
                 hero,
-                Action::Attack {
+                OrdersAction::Attack {
                     target: boulder(units),
                 },
             ),
             ProvingMatch::AttackHero { slot } => (
                 hero,
-                Action::Attack {
+                OrdersAction::Attack {
                     target: units.hero(slot),
                 },
             ),
             ProvingMatch::Train { barracks: at } => (
                 barracks(units, slot)[at],
-                Action::Slot {
+                OrdersAction::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
             ProvingMatch::Ward { barracks: at, x, z } => (
                 barracks(units, slot)[at],
-                Action::Slot {
+                OrdersAction::Slot {
                     slot: 1,
                     target: ActionTarget::Point(
                         Position::try_from(Vec3::from((Num::int(x), 0, Num::int(z)))).unwrap(),
@@ -156,7 +156,7 @@ impl Plan for ProvingMatch {
             ),
             ProvingMatch::Cast { slot, at } => (
                 hero,
-                Action::Slot {
+                OrdersAction::Slot {
                     slot,
                     target: at.target(units),
                 },

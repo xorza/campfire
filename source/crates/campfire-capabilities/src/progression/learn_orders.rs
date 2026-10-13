@@ -2,10 +2,10 @@ use bevy_ecs::system::{Query, Res};
 use campfire_sim::EntityIndex;
 
 use crate::actions::action_slots::ActionSlots;
-use crate::orders::learning::Learning;
-use crate::orders::order::Action;
-use crate::orders::tick_orders::TickOrders;
+use crate::players::tick_commands::TickCommands;
+use crate::progression::learning::Learning;
 use crate::progression::points::Points;
+use crate::progression::progression_action::ProgressionAction;
 use crate::stats::level::Level;
 use crate::units::owner::Owner;
 
@@ -20,15 +20,13 @@ impl LearnOrders {
     /// the one the slot's kind gives that rank. It changes nothing under way. An order that fails a
     /// check is dropped: a client can send anything.
     pub(super) fn learn_ranks(
-        orders: Res<'_, TickOrders>,
+        mut orders: TickCommands<'_, '_, ProgressionAction>,
         index: Res<'_, EntityIndex>,
         learning: Learning<'_>,
         mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
     ) {
-        for order in orders.iter() {
-            let Action::Learn { slot } = order.action else {
-                continue;
-            };
+        orders.for_each(|order| {
+            let ProgressionAction::Learn { slot } = order.action;
             for &unit in order.units {
                 let Some(Ok((owner, mut slots, mut points, &level))) =
                     index.get(unit).map(|entity| units.get_mut(entity))
@@ -38,12 +36,12 @@ impl LearnOrders {
                 let learnable = slots
                     .slot(slot)
                     .is_some_and(|held| learning.learnable(held, *points, level));
-                if owner.slot() != order.slot || !learnable {
+                if !order.controls(*owner) || !learnable {
                     continue;
                 }
                 points.spend();
                 slots.learn(slot);
             }
-        }
+        });
     }
 }

@@ -1,10 +1,19 @@
-use campfire_sim::Capability;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
+use crate::abilities::AbilitiesSet;
+use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
+use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
+use crate::items::ItemsSet;
+use crate::production::ProductionSet;
 use crate::progression::experience::Experience;
+use crate::progression::learn_orders::LearnOrders;
 use crate::progression::level_ups::LevelUps;
 use crate::progression::points::Points;
 use crate::progression::progression_api::ProgressionApi;
@@ -12,13 +21,17 @@ use crate::progression::progression_column::{ProgressionColumn, RowReads};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
+use crate::stats::StatsSet;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 
 pub(crate) mod error;
 pub(crate) mod experience;
+pub(crate) mod learn_orders;
+pub(crate) mod learning;
 pub(crate) mod level_ups;
 pub(crate) mod points;
+pub(crate) mod progression_action;
 pub(crate) mod progression_api;
 pub(crate) mod progression_column;
 pub(crate) mod progression_effect;
@@ -26,15 +39,56 @@ pub(crate) mod track_book;
 pub(crate) mod track_data;
 pub(crate) mod track_set;
 
-/// The `progression` capability: experience on tracks, and the levels it reaches.
+/// The `progression` capability: experience on tracks, the levels it reaches, and the ranks
+/// units learn for the points their levels give.
 #[derive(Debug)]
 pub struct Progression;
+
+campfire_common::enum_all! {
+    /// The steps of `progression`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ProgressionSet {
+        /// The tick's learn orders learn their ranks.
+        Commands,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ProgressionSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
+    const ALL: &'static [ProgressionSet] = &ProgressionSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            ProgressionSet::Commands => SimPlace::Stage(SimSet::Inputs),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            // A capability's orders apply after the pools regenerate, the dead respawn and the
+            // toggles pay, so an order finds its units as they stand this tick, and before the
+            // holds push their grants and the build orders are checked, which read what orders
+            // change; each after those of the capabilities before it in the module list.
+            ProgressionSet::Commands => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .after(AbilitiesSet::Toggles)
+                    .before(ActionsSet::HoldAtInputs)
+                    .before(ItemsSet::HoldAtInputs)
+                    .before(ProductionSet::CheckBuilds);
+            }
+        }
+    }
+}
 
 impl Module for Progression {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ProgressionSet>();
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();
@@ -64,8 +118,12 @@ impl Module for Progression {
         });
     }
 
-    /// Progression runs no system of its own: its effects queue through its callback.
-    fn install(_: &mut InstallCx<'_>) {}
+    /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
+    /// effects queue through its callback.
+    fn install(cx: &mut InstallCx<'_>) {
+        cx.schedule
+            .add_systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
+    }
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
-use campfire_capabilities::{Action, Destination, Leaver, Owner, PlayersData};
+use campfire_capabilities::{Destination, Leaver, OrdersAction, Owner, PlayersData};
 use campfire_common::PlayerSlot;
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -22,8 +22,8 @@ use lightyear::prelude::Unlinked;
 /// Steps a client and the server may take to link, offer, join and play again.
 const REJOIN_STEPS: usize = 300;
 
-const fn move_to(x: i64, z: i64) -> Action {
-    Action::Move {
+const fn move_to(x: i64, z: i64) -> OrdersAction {
+    OrdersAction::Move {
         x: Num::int(x),
         z: Num::int(z),
     }

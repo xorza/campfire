@@ -7,11 +7,11 @@ use crate::actions::slot_times::SlotTimes;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
+use crate::items::items_action::ItemsAction;
 use crate::items::shop_book::ShopBook;
-use crate::orders::order::Action;
-use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRowsMut;
+use crate::players::tick_commands::TickCommands;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
@@ -31,7 +31,7 @@ impl TradeOrders {
     /// keeps its action's cooldown. An order that fails a check is dropped: a client can send
     /// anything. A client predicts no trade, as its resources and slots come from the server.
     pub(super) fn trade_items(
-        (orders, index): (Res<'_, TickOrders>, Res<'_, EntityIndex>),
+        (mut orders, index): (TickCommands<'_, '_, ItemsAction>, Res<'_, EntityIndex>),
         (book, shop, mut resources): (
             Res<'_, ItemBook>,
             Option<Res<'_, ShopBook>>,
@@ -51,21 +51,15 @@ impl TradeOrders {
         >,
         (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
     ) {
-        for order in orders.iter() {
+        orders.for_each(|order| {
             let action = order.action;
-            if !matches!(
-                action,
-                Action::Buy { .. } | Action::Sell { .. } | Action::Swap { .. }
-            ) {
-                continue;
-            }
             for &unit in order.units {
                 let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
                     index.get(unit).map(|entity| units.get_mut(entity))
                 else {
                     continue;
                 };
-                if owner.slot() != order.slot {
+                if !order.controls(*owner) {
                     continue;
                 }
                 let Some(mut held) = resources.of_mut(Some(owner)) else {
@@ -77,14 +71,14 @@ impl TradeOrders {
                     .and_then(|book| book.0.as_ref())
                     .filter(|shop| dead || shop.serves(team, pos));
                 match (action, shop) {
-                    (Action::Swap { from, to }, _) => {
+                    (ItemsAction::Swap { from, to }, _) => {
                         let slots = slots
                             .as_mut()
                             .map(|(slots, times)| (&mut **slots, &mut **times));
                         inventory.swap_with(from, to, slots);
                         continue;
                     }
-                    (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
+                    (ItemsAction::Buy { item }, Some(shop)) if shop.sells(item) => {
                         let Some(price) =
                             inventory.purchase(&book, item, shop.resource, &mut given_up)
                         else {
@@ -97,7 +91,7 @@ impl TradeOrders {
                             .expect("a price the player affords takes nothing below zero");
                         inventory.complete(&book, item, &given_up);
                     }
-                    (Action::Sell { slot }, Some(shop)) => {
+                    (ItemsAction::Sell { slot }, Some(shop)) => {
                         let Some(carried) = inventory.take(slot) else {
                             continue;
                         };
@@ -116,6 +110,6 @@ impl TradeOrders {
                     inventory.follow(&book, (&mut **slots, &mut **times), &before);
                 }
             }
-        }
+        });
     }
 }

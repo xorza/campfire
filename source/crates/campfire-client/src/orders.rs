@@ -5,7 +5,7 @@ use bevy::input::ButtonInput;
 use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
-use campfire_capabilities::{Action, ActionTarget, Order};
+use campfire_capabilities::{Action, ActionTarget, Order, OrdersAction, ProgressionAction};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 
@@ -47,12 +47,12 @@ impl Orders {
             return;
         };
         let action = match pointer.unit_at(point) {
-            Some(unit) if unit.team != avatar.team => Action::Attack { target: unit.id },
+            Some(unit) if unit.team != avatar.team => OrdersAction::Attack { target: unit.id },
             _ => {
                 let (Some(x), Some(z)) = (meters(point.x), meters(point.z)) else {
                     return;
                 };
-                Action::Move { x, z }
+                OrdersAction::Move { x, z }
             }
         };
         orders.push(Order::one(avatar.id, action));
@@ -82,7 +82,7 @@ impl Orders {
 
     fn stop(pointer: Pointer<'_, '_>, mut orders: ResMut<'_, PendingOrders>) {
         if let Some(avatar) = pointer.own_avatar() {
-            orders.push(Order::one(avatar.id, Action::Stop));
+            orders.push(Order::one(avatar.id, OrdersAction::Stop));
         }
     }
 
@@ -94,9 +94,9 @@ impl Orders {
     /// What a cast key orders of `slot`: with Ctrl held, a learn, and else a cast at `target`.
     const fn slot_action(slot: u8, learn: bool, target: ActionTarget) -> Action {
         if learn {
-            Action::Learn { slot }
+            Action::Progression(ProgressionAction::Learn { slot })
         } else {
-            Action::Slot { slot, target }
+            Action::Orders(OrdersAction::Slot { slot, target })
         }
     }
 }
@@ -123,11 +123,11 @@ mod tests {
         let target = ActionTarget::None;
         assert_eq!(
             Orders::slot_action(2, false, target),
-            Action::Slot { slot: 2, target }
+            Action::Orders(OrdersAction::Slot { slot: 2, target })
         );
         assert_eq!(
             Orders::slot_action(2, true, target),
-            Action::Learn { slot: 2 }
+            Action::Progression(ProgressionAction::Learn { slot: 2 })
         );
     }
 }

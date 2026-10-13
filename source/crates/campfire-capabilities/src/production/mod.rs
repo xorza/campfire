@@ -1,12 +1,15 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_sim::{Capability, SimPlace, SimSet};
 
+use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
+use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
 use crate::declare::set_order::SetOrder;
+use crate::items::ItemsSet;
 use crate::navigation::NavigationSet;
 use crate::production::build_book::BuildBook;
 use crate::production::builder::Builder;
@@ -19,6 +22,7 @@ use crate::production::player_supply::PlayerSupply;
 use crate::production::production_api::ProductionApi;
 use crate::production::production_column::{ProductionColumn, RowReads};
 use crate::production::production_data::ProductionData;
+use crate::production::production_orders::ProductionOrders;
 use crate::production::rally::Rally;
 use crate::production::requirement_book::RequirementBook;
 use crate::production::site::Site;
@@ -26,6 +30,7 @@ use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
 use crate::production::train_queue::TrainQueue;
 use crate::production::trains::Trains;
+use crate::progression::ProgressionSet;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
 use crate::units::body_unit::BodyUnit;
@@ -51,10 +56,12 @@ pub(crate) mod node_book;
 pub(crate) mod node_data;
 pub(crate) mod placement;
 pub(crate) mod player_supply;
+pub(crate) mod production_action;
 pub(crate) mod production_api;
 pub(crate) mod production_books;
 pub(crate) mod production_column;
 pub(crate) mod production_data;
+pub(crate) mod production_orders;
 pub(crate) mod rally;
 pub(crate) mod rally_target;
 pub(crate) mod requirement_book;
@@ -76,6 +83,8 @@ campfire_common::enum_all! {
     /// The steps of `production`.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum ProductionSet {
+        /// The tick's orders cancel trains and builds, and set rally points.
+        Commands,
         /// The build orders that changed are checked, after the orders apply.
         CheckBuilds,
         /// After the actions start: trains start, builds start and workers gather.
@@ -95,7 +104,7 @@ impl ModuleSet for ProductionSet {
 
     fn place(self) -> SimPlace {
         SimPlace::Stage(match self {
-            ProductionSet::CheckBuilds => SimSet::Inputs,
+            ProductionSet::Commands | ProductionSet::CheckBuilds => SimSet::Inputs,
             ProductionSet::Start => SimSet::Act,
             ProductionSet::Finish => SimSet::Mode,
             ProductionSet::Supply => SimSet::Vision,
@@ -104,6 +113,15 @@ impl ModuleSet for ProductionSet {
 
     fn order(self, o: &mut SetOrder) {
         match self {
+            ProductionSet::Commands => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .after(AbilitiesSet::Toggles)
+                    .before(ActionsSet::HoldAtInputs)
+                    .before(ItemsSet::HoldAtInputs)
+                    .before(ProductionSet::CheckBuilds)
+                    .after(ProgressionSet::Commands);
+            }
             ProductionSet::CheckBuilds => {
                 o.after(StatsSet::Regenerate)
                     .after(NavigationSet::TrackStatics)
@@ -156,7 +174,9 @@ impl Module for Production {
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
     }
 
-    /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
+    /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and set
+    /// rally points, at the units the server's vision sees, or, on a predicting client, the units it
+    /// holds; in Act, after the other orders start, ordered trains pass their
     /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
     /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
     /// construction and gathering too: in Inputs, the build and gather orders that changed are
@@ -198,6 +218,9 @@ impl Production {
         let navigation = cx.has(Capability::Navigation);
         let predicting = cx.predicting();
         let schedule = &mut *cx.schedule;
+        schedule.add_systems(
+            ProductionOrders::apply_production_orders::<S>.in_set(ProductionSet::Commands),
+        );
         if !predicting {
             schedule.add_systems(PlayerSupply::refresh.in_set(ProductionSet::Supply));
         }
@@ -247,6 +270,7 @@ pub(crate) mod test_world {
     use crate::mode::Mode;
     use crate::navigation::Navigation;
     use crate::orders::order::{Action, Order};
+    use crate::orders::orders_action::OrdersAction;
     use crate::production::Production;
     use crate::production::build_target::BuildTarget;
     use crate::production::builder::Builder;
@@ -304,12 +328,21 @@ pub(crate) mod test_world {
         }
 
         /// Runs a tick in which player `slot` orders `action` to `id`.
-        pub(crate) fn tick_ordering(world: &mut World, slot: u32, id: StableId, action: Action) {
-            Production::give_orders(world, slot, &[(id, action)]);
+        pub(crate) fn tick_ordering(
+            world: &mut World,
+            slot: u32,
+            id: StableId,
+            action: impl Into<Action>,
+        ) {
+            Production::give_orders(world, slot, &[(id, action.into())]);
         }
 
         /// Runs a tick in which player `slot` gives `orders`, each an action to a unit, in order.
-        pub(crate) fn give_orders(world: &mut World, slot: u32, orders: &[(StableId, Action)]) {
+        pub(crate) fn give_orders<A: Into<Action> + Copy>(
+            world: &mut World,
+            slot: u32,
+            orders: &[(StableId, A)],
+        ) {
             let orders: Vec<Order> = orders
                 .iter()
                 .map(|&(unit, action)| Order::one(unit, action))
@@ -340,7 +373,7 @@ pub(crate) mod test_world {
                 z: Num::int(z),
                 angle: Num::ZERO,
             };
-            Production::tick_ordering(world, 0, builder, Action::Build { slot: 0, target });
+            Production::tick_ordering(world, 0, builder, OrdersAction::Build { slot: 0, target });
         }
 
         /// The depot `id`'s life, and its progress while a site.
@@ -361,9 +394,9 @@ pub(crate) mod test_world {
         /// Runs a tick in which player 0 orders each of `workers` to gather at `node`.
         pub(crate) fn gather_at(world: &mut World, workers: &[StableId], node: StableId) {
             let target = ActionTarget::Unit(node);
-            let orders: Vec<(StableId, Action)> = workers
+            let orders: Vec<(StableId, OrdersAction)> = workers
                 .iter()
-                .map(|&unit| (unit, Action::Slot { slot: 0, target }))
+                .map(|&unit| (unit, OrdersAction::Slot { slot: 0, target }))
                 .collect();
             Production::give_orders(world, 0, &orders);
         }

@@ -4,8 +4,8 @@ use bevy_ecs::world::World;
 use campfire_capabilities::Mode;
 use campfire_capabilities::internals::{Density, KernelScene};
 use campfire_capabilities::{
-    Action, ActionSlots, Dead, DeclaredName, InputValue, Inventory, ItemId, Life, ModeInput, Names,
-    Order, PathWalker, Team,
+    Action, ActionSlots, Dead, DeclaredName, InputValue, Inventory, ItemId, ItemsAction, Life,
+    ModeInput, Names, Order, OrdersAction, PathWalker, ProgressionAction, Team,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::Num;
@@ -373,38 +373,38 @@ impl Plan for Moba3v3 {
     fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
         let hero = units.hero(slot);
         let action = match self {
-            Moba3v3::Move { x, z } => Action::Move {
+            Moba3v3::Move { x, z } => Action::Orders(OrdersAction::Move {
                 x: Num::from(x),
                 z: Num::from(z),
-            },
-            Moba3v3::AttackSpawnedAt { x, z } => Action::Attack {
+            }),
+            Moba3v3::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
                 target: units.spawned_at((x, 0, z)),
-            },
-            Moba3v3::AttackHero { slot } => Action::Attack {
+            }),
+            Moba3v3::AttackHero { slot } => Action::Orders(OrdersAction::Attack {
                 target: units.hero(slot),
-            },
-            Moba3v3::Cast { slot, aim } => Action::Slot {
+            }),
+            Moba3v3::Cast { slot, aim } => Action::Orders(OrdersAction::Slot {
                 slot,
                 target: aim.target(units),
-            },
-            Moba3v3::Use { item, aim } => Action::Slot {
+            }),
+            Moba3v3::Use { item, aim } => Action::Orders(OrdersAction::Slot {
                 slot: INVENTORY + carried_at(units, hero, item),
                 target: aim.target(units),
-            },
-            Moba3v3::Learn { slot } => Action::Learn { slot },
-            Moba3v3::LearnBasic => Action::Learn {
+            }),
+            Moba3v3::Learn { slot } => Action::Progression(ProgressionAction::Learn { slot }),
+            Moba3v3::LearnBasic => Action::Progression(ProgressionAction::Learn {
                 slot: fewest_ranks(units, hero),
-            },
-            Moba3v3::Farm { x, z } => weakest_creep(units, hero).map_or_else(
-                || Action::Move {
+            }),
+            Moba3v3::Farm { x, z } => Action::Orders(weakest_creep(units, hero).map_or_else(
+                || OrdersAction::Move {
                     x: Num::from(x),
                     z: Num::from(z),
                 },
-                |target| Action::Attack { target },
-            ),
-            Moba3v3::Buy { item } => Action::Buy { item },
-            Moba3v3::Sell { slot } => Action::Sell { slot },
-            Moba3v3::Swap { from, to } => Action::Swap { from, to },
+                |target| OrdersAction::Attack { target },
+            )),
+            Moba3v3::Buy { item } => Action::Items(ItemsAction::Buy { item }),
+            Moba3v3::Sell { slot } => Action::Items(ItemsAction::Sell { slot }),
+            Moba3v3::Swap { from, to } => Action::Items(ItemsAction::Swap { from, to }),
         };
         Order::one(hero, action)
     }

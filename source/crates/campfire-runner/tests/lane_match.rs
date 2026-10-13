@@ -42,7 +42,7 @@ impl Progress {
 }
 
 /// Player 0 sends `action` for the walker, stamped for `tick`.
-fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, action: Action) {
+fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, action: impl Into<Action>) {
     let payload = Order::payload(&[Order::one(walker, action)]);
     fixed.send(0, Tick::new(tick), &payload);
 }
@@ -54,6 +54,8 @@ const MEET: u64 = 140;
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
 mod scripted_match {
     use super::*;
+    use campfire_capabilities::OrdersAction;
+    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_lane_match_plays_to_its_golden_record() {
@@ -73,14 +75,39 @@ mod scripted_match {
             // tries its ultimate, then a second rank of its first ability.
             let next = felled.len();
             match tick {
-                1 => order(&mut fixed, walker, tick, Action::Learn { slot: 0 }),
-                MEET => order(&mut fixed, walker, tick, Action::Attack { target: east[0] }),
+                1 => order(
+                    &mut fixed,
+                    walker,
+                    tick,
+                    ProgressionAction::Learn { slot: 0 },
+                ),
+                MEET => order(
+                    &mut fixed,
+                    walker,
+                    tick,
+                    OrdersAction::Attack { target: east[0] },
+                ),
                 _ if next == 1 && felled[0] + 1 == tick => {
-                    order(&mut fixed, walker, tick, Action::Attack { target: east[1] });
+                    order(
+                        &mut fixed,
+                        walker,
+                        tick,
+                        OrdersAction::Attack { target: east[1] },
+                    );
                 }
                 _ if next == 2 && felled[1] + 1 == tick => {
-                    order(&mut fixed, walker, tick, Action::Learn { slot: 3 });
-                    order(&mut fixed, walker, tick, Action::Learn { slot: 0 });
+                    order(
+                        &mut fixed,
+                        walker,
+                        tick,
+                        ProgressionAction::Learn { slot: 3 },
+                    );
+                    order(
+                        &mut fixed,
+                        walker,
+                        tick,
+                        ProgressionAction::Learn { slot: 0 },
+                    );
                 }
                 _ => {}
             }

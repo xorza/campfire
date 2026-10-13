@@ -30,12 +30,13 @@ mod tests {
     use campfire_log::internals::round_trip;
 
     use super::*;
+    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_event_reads_back_what_it_logs() {
         round_trip(&AvatarMissing {
             slot: PlayerSlot::new(1),
-            action: Action::Learn { slot: 0 },
+            action: Action::Progression(ProgressionAction::Learn { slot: 0 }),
         });
     }
 }

@@ -3,10 +3,12 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_sim::{Capability, SimPlace, SimSet};
 
+use crate::abilities::AbilitiesSet;
 use crate::abilities::cast_spends::CastSpends;
 use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_times::SlotTimes;
+use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
@@ -17,6 +19,10 @@ use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
 use crate::items::items_api::ItemsApi;
 use crate::items::shop_book::ShopBook;
+use crate::items::trade_orders::TradeOrders;
+use crate::production::ProductionSet;
+use crate::progression::ProgressionSet;
+use crate::stats::StatsSet;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 
@@ -26,10 +32,12 @@ pub(crate) mod item_book;
 pub(crate) mod item_data;
 pub(crate) mod item_holds;
 pub(crate) mod item_id;
+pub(crate) mod items_action;
 pub(crate) mod items_api;
 pub(crate) mod shop;
 pub(crate) mod shop_book;
 pub(crate) mod shop_data;
+pub(crate) mod trade_orders;
 
 /// The `items` capability: item types a mode package declares, the inventories its unit types
 /// carry them in, and its shop.
@@ -40,6 +48,8 @@ campfire_common::enum_all! {
     /// The steps of `items`.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum ItemsSet {
+        /// The tick's orders buy, sell and swap items.
+        Commands,
         /// Once the tick's trades are in: carried items push their grants.
         HoldAtInputs,
     }
@@ -53,14 +63,24 @@ impl ModuleSet for ItemsSet {
 
     fn place(self) -> SimPlace {
         match self {
-            ItemsSet::HoldAtInputs => SimPlace::Stage(SimSet::Inputs),
+            ItemsSet::Commands | ItemsSet::HoldAtInputs => SimPlace::Stage(SimSet::Inputs),
         }
     }
 
     fn order(self, o: &mut SetOrder) {
         match self {
+            ItemsSet::Commands => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .after(AbilitiesSet::Toggles)
+                    .before(ActionsSet::HoldAtInputs)
+                    .before(ItemsSet::HoldAtInputs)
+                    .before(ProductionSet::CheckBuilds)
+                    .after(ProgressionSet::Commands)
+                    .after(ProductionSet::Commands);
+            }
             ItemsSet::HoldAtInputs => {
-                o.before(ActionsSet::HoldAtInputs);
+                o.after(StatsSet::Expire).before(ActionsSet::HoldAtInputs);
             }
         }
     }
@@ -83,13 +103,19 @@ impl Module for Items {
 
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
-    /// starts once the trades are in, and in Resolve once a use may have spent an item.
+    /// starts once the trades are in, and in Resolve once a use may have spent an item. With the
+    /// core's scripts, as on the server, the tick's orders trade in Inputs; a client predicts no
+    /// trade.
     fn install(cx: &mut InstallCx<'_>) {
+        let scripts = cx.scripts();
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             ItemHolds::want_items.in_set(ItemsSet::HoldAtInputs),
             ItemHolds::want_items.in_set(ActionsSet::Resolve),
         ));
+        if scripts {
+            schedule.add_systems(TradeOrders::trade_items.in_set(ItemsSet::Commands));
+        }
     }
 }
 

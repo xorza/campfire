@@ -4,10 +4,7 @@
 
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
-use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::System;
-use campfire_common::SegmentSeed;
-use campfire_sim::SimUpdate;
 
 use super::*;
 use crate::release::client_holds::ClientHolds;

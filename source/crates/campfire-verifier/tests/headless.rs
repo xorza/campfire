@@ -9,7 +9,7 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_capabilities::{
-    Action, ActionSlots, Destination, Life, Match, Order, Projectile, Rank,
+    ActionSlots, Destination, Life, Match, Order, OrdersAction, Projectile, Rank,
 };
 use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_log::internals::LogCheck;
@@ -336,7 +336,7 @@ fn run_and_replay_agree_on_every_tick() {
 fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
         MatchUnits::of(fixed.game()).hero(slot),
-        Action::Move {
+        OrdersAction::Move {
             x: Num::int(x),
             z: Num::int(z),
         },

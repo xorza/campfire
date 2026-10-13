@@ -6,7 +6,7 @@
 use std::thread;
 use std::time::Duration;
 
-use campfire_capabilities::Action;
+use campfire_capabilities::OrdersAction;
 use campfire_math::Num;
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
@@ -166,7 +166,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     };
     local.order(
         0,
-        Action::Move {
+        OrdersAction::Move {
             x: Num::int(3),
             z: Num::int(-2),
         },

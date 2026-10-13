@@ -736,7 +736,7 @@ impl InProcessMatch {
     }
 
     /// Gives `client`'s avatar an order, sent in the client's next tick.
-    pub fn order(&mut self, client: usize, action: Action) {
+    pub fn order(&mut self, client: usize, action: impl Into<Action>) {
         let unit = self.avatar(client);
         self.clients[client]
             .world_mut()
@@ -997,7 +997,6 @@ pub(crate) mod bench {
     use std::time::Duration;
     use std::{env, process};
 
-    use campfire_capabilities::Action;
     use campfire_math::{Num, Vec3};
     use campfire_package::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
@@ -1009,6 +1008,7 @@ pub(crate) mod bench {
         CONNECT_FRAMES, End, InProcessMatch, MatchSetup, StepCost,
     };
     use crate::order_script::OrderScript;
+    use campfire_capabilities::OrdersAction;
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.
@@ -1135,7 +1135,7 @@ pub(crate) mod bench {
                     let side = Num::from_int(side).expect("a small integer");
                     for (client, point) in around.iter().enumerate() {
                         let (x, z) = (point.x, point.z + side);
-                        self.order(client, Action::Move { x, z });
+                        self.order(client, OrdersAction::Move { x, z });
                     }
                 }
                 self.timed_step();

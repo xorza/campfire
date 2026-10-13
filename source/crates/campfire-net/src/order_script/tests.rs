@@ -15,17 +15,17 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         [
             ScriptedOrder {
                 tick: Tick::new(30),
-                action: Action::Move {
+                action: Action::Orders(OrdersAction::Move {
                     x: num(4),
                     z: Num::ZERO
-                },
+                }),
             },
             ScriptedOrder {
                 tick: Tick::new(30),
-                action: Action::Move {
+                action: Action::Orders(OrdersAction::Move {
                     x: num(-3) + half,
                     z: num(1)
-                },
+                }),
             },
         ]
     );
@@ -63,25 +63,28 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
     };
     assert_eq!(
         (fourth.tick, fourth.action),
-        (Tick::new(10), Action::Learn { slot: 1 })
+        (
+            Tick::new(10),
+            Action::Progression(ProgressionAction::Learn { slot: 1 })
+        )
     );
     assert_eq!(
         (first.tick, first.action),
         (
             Tick::new(9),
-            Action::Slot {
+            Action::Orders(OrdersAction::Slot {
                 slot: 2,
                 target: ActionTarget::None
-            }
+            })
         )
     );
     assert!(matches!(
         (second.tick.get(), second.action),
-        (9, Action::Slot { slot: 0, target: ActionTarget::Unit(unit) }) if unit.get() == 7
+        (9, Action::Orders(OrdersAction::Slot { slot: 0, target: ActionTarget::Unit(unit) })) if unit.get() == 7
     ));
     assert!(matches!(
         (third.tick.get(), third.action),
-        (10, Action::Attack { target }) if target.get() == 3
+        (10, Action::Orders(OrdersAction::Attack { target })) if target.get() == 3
     ));
     for flawed in [
         "[[order]]\ntick = 9\n",

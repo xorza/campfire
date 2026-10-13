@@ -1,0 +1,20 @@
+use campfire_sim::Capability;
+use serde::{Deserialize, Serialize};
+
+use crate::items::item_id::ItemId;
+use crate::players::capability_action::CapabilityAction;
+
+/// What an order of `items` tells its units to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ItemsAction {
+    /// Buy one `item` at the mode's shop.
+    Buy { item: ItemId },
+    /// Sell the stack in inventory slot `slot` at the mode's shop.
+    Sell { slot: u8 },
+    /// Swap inventory slots `from` and `to`.
+    Swap { from: u8, to: u8 },
+}
+
+impl CapabilityAction for ItemsAction {
+    const CAPABILITY: Capability = Capability::Items;
+}

@@ -2,7 +2,10 @@ use std::any::type_name;
 use std::fmt::Debug;
 use std::path::Path;
 
-use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
+use Capability::{
+    Abilities, Combat, Items, Mode, Navigation, Orders, Production, Progression, Projectiles,
+    Stats, Vision,
+};
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_sim::internals::SimWorldInternals;
@@ -23,6 +26,9 @@ use crate::units::by_type::ByType;
 use crate::units::team::Team;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::view::View;
+use bevy_ecs::schedule::Schedules;
+use campfire_common::SegmentSeed;
+use campfire_sim::SimUpdate;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -642,6 +648,34 @@ fn a_unit_holds_only_parts_the_declarations_list() {
         Release::unlisted_components(set, &game),
         [type_name::<Unlisted>()]
     );
+}
+
+#[test]
+fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
+    // The learns are progression's, the cancels and rallies production's, the trades items'; a
+    // trade, as a server runs it. No match here declares `orders`.
+    let scheduled = |declared: &[Capability]| {
+        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+        let world = Match::new(
+            MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
+                .capabilities(Release::capability_set(declared).unwrap())
+                .script_budgets(budgets),
+        );
+        let schedules = world.resource::<Schedules>();
+        let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
+        let names: Vec<String> = systems
+            .map(|(_, system)| system.name().to_string())
+            .collect();
+        ["learn_ranks", "apply_production_orders", "trade_items"]
+            .map(|wanted| names.iter().any(|name| name.contains(wanted)))
+    };
+    let with = |extra: &[Capability]| [&[Stats][..], extra].concat();
+    assert_eq!(scheduled(&with(&[])), [false, false, false]);
+    assert_eq!(scheduled(&with(&[Progression])), [true, false, false]);
+    assert_eq!(scheduled(&with(&[Production])), [false, true, false]);
+    assert_eq!(scheduled(&with(&[Items])), [false, false, true]);
+    let all = [Progression, Production, Items];
+    assert_eq!(scheduled(&with(&all)), [true, true, true]);
 }
 
 mod declaration_audit;

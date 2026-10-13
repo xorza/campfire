@@ -1,15 +1,13 @@
 use crate::combat::Combat;
-use std::num::{NonZeroU8, NonZeroU32, NonZeroU64};
+use std::num::NonZeroU64;
 
 use bevy_ecs::change_detection::DetectChanges;
-use bevy_ecs::schedule::Schedules;
 use campfire_codec::Binary;
-use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptError;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Command, IdAllocator, Position, SimUpdate, StableId, Unpredicted};
-use serde::Deserialize;
+use campfire_sim::{Command, IdAllocator, Position, StableId, Unpredicted};
 
 use super::*;
 use crate::actions::Actions;
@@ -21,17 +19,11 @@ use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::test_world::TestWeapon;
-use crate::books::Books;
 use crate::combat::on_death::OnDeath;
 use crate::combat::test_world::Armed;
 use crate::deliveries::Deliveries;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
-use crate::items::inventory::Inventory;
-use crate::items::item_book::{ItemBook, ItemSpec};
-use crate::items::item_id::ItemId;
-use crate::items::shop::{Shop, ShopPlace};
-use crate::items::shop_book::ShopBook;
 use crate::mode::Mode;
 use crate::navigation::Navigation;
 use crate::navigation::destination::Destination;
@@ -43,16 +35,13 @@ use crate::navigation::route_planner::RoutePlanner;
 use crate::navigation::walker::Walker;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
-use crate::orders::order::{Action, Order};
+use crate::orders::order::Order;
+use crate::orders::orders_action::OrdersAction;
 use crate::players::Players;
 use crate::players::out_of_play::OutOfPlay;
 use crate::players::players_world::PlayersWorld;
-use crate::players::players_world::PlayersWorldCrate;
-use crate::players::resource_amount::ResourceAmount;
-use crate::players::resource_id::ResourceId;
 use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::match_spec::MatchSpec;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
@@ -78,7 +67,6 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::package_path::PackagePath;
 use crate::values::rank::Rank;
 use crate::values::scalar::Scalar;
-use crate::values::share::Share;
 use crate::visibility::OutView;
 use crate::vision::Vision;
 use crate::vision::seen_by::SeenBy;
@@ -251,21 +239,6 @@ fn orders_match_with(paths: Paths, limits: ScriptLimits) -> Match {
     game
 }
 
-/// A match with all four capabilities and items.
-fn orders_match_with_items() -> Match {
-    let scripts = ScriptBudgets::new(ScriptLimits::ROOMY, 2);
-    let declared = [
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Orders,
-        Capability::Items,
-    ];
-    let mut game = Match::server(&declared, scripts);
-    Combat::load_weapon_stats(&mut game);
-    game
-}
-
 /// Gives `unit_type` the combat `armed`.
 fn arm(game: &mut Match, unit_type: UnitType, armed: Armed) -> UnitType {
     armed.give(game, unit_type);
@@ -289,7 +262,7 @@ fn lone() -> StableId {
 fn move_to(id: StableId, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
         id,
-        Action::Move {
+        OrdersAction::Move {
             x: Num::int(x),
             z: Num::int(z),
         },
@@ -297,7 +270,7 @@ fn move_to(id: StableId, x: i64, z: i64) -> Vec<u8> {
 }
 
 fn attack(id: StableId, target: StableId) -> Vec<u8> {
-    Order::payload(&[Order::one(id, Action::Attack { target })])
+    Order::payload(&[Order::one(id, OrdersAction::Attack { target })])
 }
 
 /// The heroes of slots 0 and 1, a meter a tick: slot 0 at the origin, slot 1 at x = 4 and y = 2.
@@ -374,7 +347,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let slot = |slot| {
         Order::payload(&[Order::one(
             hero,
-            Action::Slot {
+            OrdersAction::Slot {
                 slot,
                 target: ActionTarget::None,
             },
@@ -402,7 +375,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let at_unit = |unit| {
         Order::payload(&[Order::one(
             hero,
-            Action::Slot {
+            OrdersAction::Slot {
                 slot: 1,
                 target: ActionTarget::Unit(unit),
             },
@@ -460,26 +433,26 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     // Past the world's bound, which bounds a match without a map: it clamps to the edge.
     let beyond = Order::payload(&[Order::one(
         first,
-        Action::Move {
+        OrdersAction::Move {
             x: Position::BOUND + Num::EPSILON,
             z: -Num::int(1),
         },
     )]);
     let edge = Order::payload(&[Order::one(
         second,
-        Action::Move {
+        OrdersAction::Move {
             x: Position::BOUND,
             z: Num::ZERO,
         },
     )]);
     let not_an_order = Command::encode(&[Command {
-        capability: Order::CAPABILITY,
+        capability: Capability::Orders,
         body: b"not an order",
     }]);
     // A valid order, sent to a capability the mode did not declare.
     let order = Order::one(
         first,
-        Action::Move {
+        OrdersAction::Move {
             x: Num::int(9),
             z: Num::int(9),
         },
@@ -1305,161 +1278,11 @@ fn every_orders_type_is_state_and_restores() {
     assert!(restored.try_part::<Resetting>(still).is_some());
 }
 
-/// A blade of 300 gold, an edge of 1000 built from two blades, a potion of 50, three to a slot,
-/// and a charm of 125 the shop does not sell; and team 0's shop from (−5, −5) to (5, 5), which
-/// gives 70% back on a sale.
-fn shop_match() -> Match {
-    let mut game = orders_match_with_items();
-    let gold = ResourceId::nth(0);
-    let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
-        cost: vec![ResourceAmount {
-            resource: gold,
-            amount: cost,
-        }],
-        components: components.iter().map(|&at| ItemId::nth(at)).collect(),
-        stack: NonZeroU32::new(stack).unwrap(),
-        uses: None,
-        modifiers: Vec::new(),
-        action: None,
-    };
-    let names = ["boots", "blade", "potion", "ward"].into_iter().collect();
-    let book = ItemBook::new(
-        names,
-        [
-            item(300, &[], 1),
-            item(1000, &[0, 0], 1),
-            item(50, &[], 3),
-            item(125, &[], 1),
-        ],
-    );
-    let share = Share::deserialize(toml::Value::String("0.7".to_owned())).unwrap();
-    let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
-    let places = vec![ShopPlace {
-        team: Team::new(0),
-        region,
-    }];
-    let sells = [0, 1, 2].map(ItemId::nth).to_vec();
-    game.insert_resource(book);
-    Books::load(
-        &mut game,
-        ShopBook(Some(Shop::new(sells, gold, places, share))),
-    );
-    Players::spawn(&mut game, 2, 1);
-    game.player_resources_mut(PlayerSlot::new(0))
-        .unwrap()
-        .add(gold, 2000)
-        .unwrap();
-    game
-}
-
-/// Player `slot`'s orders of `actions` to `id`.
-fn trades(id: StableId, actions: &[Action]) -> Vec<u8> {
-    let orders: Vec<Order> = actions
-        .iter()
-        .map(|&action| Order::one(id, action))
-        .collect();
-    Order::payload(&orders)
-}
-
-const fn buy(item: u32) -> Action {
-    Action::Buy {
-        item: ItemId::nth(item),
-    }
-}
-
-#[test]
-fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
-    let mut game = shop_match();
-    let three = NonZeroU8::new(3).unwrap();
-    let shopper = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    Units::give_type(&mut game, shopper, Inventory::new(three, SlotKind::new(0)));
-    let owner = Owner::new(PlayerSlot::new(0));
-    let hero = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(0), owner);
-    let step = |game: &mut Match, actions: &[Action]| {
-        game.step_with(&[(PlayerSlot::new(0), &trades(hero, actions))]);
-    };
-    let held = |game: &Match| (Orders::gold(game), Orders::carried(game, hero));
-    // Two blades, 300 each, from 2000: 1400.
-    step(&mut game, &[buy(0), buy(0)]);
-    assert_eq!(held(&game), (1400, vec![Some((0, 1)), Some((0, 1)), None]));
-    // The edge gives both blades up: 1000 − 300 − 300 = 400, and takes the first slot they left.
-    step(&mut game, &[buy(1)]);
-    assert_eq!(held(&game), (1000, vec![Some((1, 1)), None, None]));
-    // Three potions stack in the first empty slot, 50 each; a fourth needs the last slot.
-    step(&mut game, &[buy(2), buy(2), buy(2), buy(2)]);
-    let full = vec![Some((1, 1)), Some((2, 3)), Some((2, 1))];
-    assert_eq!(held(&game), (800, full.clone()));
-    // No room for a blade, and the charm is not sold: both dropped.
-    step(&mut game, &[buy(0), buy(3)]);
-    assert_eq!(held(&game), (800, full));
-    // Three potions sell for 70% of 150, 105; a swap moves the edge; it sells for 700.
-    step(
-        &mut game,
-        &[Action::Sell { slot: 1 }, Action::Swap { from: 0, to: 2 }],
-    );
-    assert_eq!(held(&game), (905, vec![Some((2, 1)), None, Some((1, 1))]));
-    step(
-        &mut game,
-        &[Action::Sell { slot: 2 }, Action::Sell { slot: 1 }],
-    );
-    assert_eq!(held(&game), (1605, vec![Some((2, 1)), None, None]));
-
-    // Out of its shop, it neither buys nor sells, but swaps; the other player's orders and those
-    // past its gold are dropped; dead, it buys and sells anywhere.
-    *game.part_mut::<Position>(hero) = Position::from((10, 0, 0));
-    step(
-        &mut game,
-        &[
-            buy(2),
-            Action::Sell { slot: 0 },
-            Action::Swap { from: 0, to: 1 },
-        ],
-    );
-    assert_eq!(held(&game), (1605, vec![None, Some((2, 1)), None]));
-    game.step_with(&[(PlayerSlot::new(1), &trades(hero, &[buy(2)]))]);
-    assert_eq!(Orders::gold(&game), 1605);
-    game.insert_parts(hero, Dead);
-    step(&mut game, &[buy(0), buy(0), buy(0), buy(0), buy(0), buy(0)]);
-    // 1605 buys a blade into slot 0 and a potion's stack in slot 1 has no room for a blade, so
-    // the next blade takes slot 2; then 1005 left, and slots are full: the rest are dropped.
-    assert_eq!(
-        held(&game),
-        (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
-    );
-    // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
-    let gold = ResourceId::nth(0);
-    let resources = game.player_resources_mut(PlayerSlot::new(0));
-    resources.unwrap().add(gold, -1000).unwrap();
-    step(&mut game, &[buy(1)]);
-    assert_eq!(
-        held(&game),
-        (5, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
-    );
-    game.player_resources_mut(PlayerSlot::new(0))
-        .unwrap()
-        .add(gold, 395)
-        .unwrap();
-    step(&mut game, &[buy(1)]);
-    assert_eq!(held(&game), (0, vec![Some((1, 1)), Some((2, 1)), None]));
-
-    // A unit of another team in the shop's region is out of a shop of its own.
-    let other = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(1), owner);
-    game.player_resources_mut(PlayerSlot::new(0))
-        .unwrap()
-        .add(gold, 300)
-        .unwrap();
-    game.step_with(&[(PlayerSlot::new(0), &trades(other, &[buy(0)]))]);
-    assert_eq!(
-        (Orders::gold(&game), Orders::carried(&game, other)),
-        (300, vec![None, None, None])
-    );
-}
-
 /// The payload of an order of `action` to `units`, in the order given, as a client may send it.
-fn order_to(units: &[StableId], action: Action) -> Vec<u8> {
+fn order_to(units: &[StableId], action: OrdersAction) -> Vec<u8> {
     let body = Binary::encode(&(units, action));
     Command::encode(&[Command {
-        capability: Order::CAPABILITY,
+        capability: Capability::Orders,
         body: &body,
     }])
 }
@@ -1498,7 +1321,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         .map(|at| Orders::hero(&mut game, hero, at, Team::new(0), 0));
         let other = Orders::hero(&mut game, hero, (3, 0, 3), Team::new(1), 1);
         let still = Orders::hero(&mut game, still, (0, 0, 0), Team::new(0), 0);
-        let action = Action::Move {
+        let action = OrdersAction::Move {
             x: Num::int(goal.0),
             z: Num::int(goal.1),
         };
@@ -1524,7 +1347,7 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
 fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
     let mut game = orders_match();
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
-    let to = Action::Move {
+    let to = OrdersAction::Move {
         x: Num::int(0),
         z: Num::int(5),
     };
@@ -1559,7 +1382,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
         .set_attack_target(Some(target));
     game.step_with(&[]);
     assert!(Orders::strikes_at(&game, walker).is_some());
-    let stop = order_to(&[walker], Action::Stop);
+    let stop = order_to(&[walker], OrdersAction::Stop);
     game.step_with(&[(PlayerSlot::new(1), &stop)]);
     assert!(Orders::strikes_at(&game, walker).is_some());
     game.step_with(&[(PlayerSlot::new(0), &stop)]);
@@ -1581,38 +1404,4 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     let before = changed(&game);
     game.step_with(&[(PlayerSlot::new(0), &stop)]);
     assert_eq!(changed(&game), before);
-}
-
-#[test]
-fn production_and_items_add_their_order_actions_only_where_they_are_declared() {
-    // The cancels and rallies are production's, the trades items'; a trade, as a server runs it.
-    let scheduled = |declared: &[Capability]| {
-        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
-        let world = Match::new(
-            MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
-                .capabilities(Release::capability_set(declared).unwrap())
-                .script_budgets(budgets),
-        );
-        let schedules = world.resource::<Schedules>();
-        let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
-        let names: Vec<String> = systems
-            .map(|(_, system)| system.name().to_string())
-            .collect();
-        ["apply_production_orders", "trade_items"]
-            .map(|wanted| names.iter().any(|name| name.contains(wanted)))
-    };
-    let orders = [
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Orders,
-    ];
-    assert_eq!(scheduled(&orders), [false, false]);
-    let with = |extra: &[Capability]| [&orders[..], extra].concat();
-    assert_eq!(scheduled(&with(&[Capability::Production])), [true, false]);
-    assert_eq!(scheduled(&with(&[Capability::Items])), [false, true]);
-    assert_eq!(
-        scheduled(&with(&[Capability::Production, Capability::Items])),
-        [true, true]
-    );
 }

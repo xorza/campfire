@@ -8,7 +8,8 @@ use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::navigation::Navigation;
 use crate::navigation::walker::Walker;
-use crate::orders::order::{Action, Order};
+use crate::orders::order::Order;
+use crate::orders::orders_action::OrdersAction;
 use crate::production::gatherer::{GatherStep, Gatherer, Load};
 use crate::production::node::Node;
 use crate::production::node_book::NodeBook;
@@ -267,7 +268,7 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
             game.insert_parts(first, Dead);
             game.step();
         } else {
-            let away = Action::Move {
+            let away = OrdersAction::Move {
                 x: Num::int(10),
                 z: Num::ZERO,
             };

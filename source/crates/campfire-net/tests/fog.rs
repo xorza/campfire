@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_capabilities::Units;
 use campfire_capabilities::{
-    Action, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
+    OrdersAction, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
 };
 use campfire_common::Tick;
 use campfire_math::Num;
@@ -19,8 +19,8 @@ use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
 /// A move along the hero's line from its spawn, z = −2.
-const fn move_to(x: i64) -> Action {
-    Action::Move {
+const fn move_to(x: i64) -> OrdersAction {
+    OrdersAction::Move {
         x: Num::int(x),
         z: Num::int(-2),
     }

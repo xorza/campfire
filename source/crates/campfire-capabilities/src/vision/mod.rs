@@ -23,6 +23,7 @@ pub(crate) mod fog;
 pub(crate) mod reveals;
 pub(crate) mod seeing;
 pub(crate) mod seen_by;
+pub(crate) mod seen_targets;
 pub(crate) mod sight;
 pub(crate) mod sight_cache;
 pub(crate) mod sight_maps;

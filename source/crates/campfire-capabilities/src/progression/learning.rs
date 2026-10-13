@@ -9,7 +9,7 @@ use crate::progression::points::Points;
 use crate::stats::level::Level;
 use crate::values::rank::Rank;
 
-/// The rule of the `learn` order, as the orders check it and a client's HUD shows it: how many
+/// The rule of the `learn` order, as `progression` checks it and a client's HUD shows it: how many
 /// ranks a slot's action has, and whether a unit may learn its next one; and, for the HUD, the
 /// charges its action holds.
 #[derive(SystemParam, Debug)]

@@ -69,9 +69,9 @@ pub struct Release;
 
 impl Release {
     /// Visits, with `v`, every module a match builds with, in the order they install: the core's,
-    /// then each capability after the ones it builds on, and orders after production and items,
-    /// whose actions it applies when they are installed. The mode installs above them, once the
-    /// books are in.
+    /// then each capability after the ones it builds on. Each capability's orders apply in this
+    /// order too, the orders of `orders` last. The mode installs above them, once the books are
+    /// in.
     fn modules<V: ModuleVisitor>(v: &mut V) {
         v.module::<Units>();
         v.module::<Players>();

@@ -3,13 +3,12 @@ use bevy_ecs::query::Has;
 use bevy_ecs::system::{Commands, Local, Query, Res};
 use campfire_sim::{EntityIndex, SimTick};
 
-use crate::orders::order::Action;
-use crate::orders::seen_targets::SeenTargets;
-use crate::orders::tick_orders::TickOrders;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::PlayerRowsMut;
 use crate::players::resource_amount::ResourceAmount;
+use crate::players::tick_commands::TickCommands;
 use crate::production::build_book::BuildBook;
+use crate::production::production_action::ProductionAction;
 use crate::production::rally::Rally;
 use crate::production::rally_target::RallyTarget;
 use crate::production::site::Site;
@@ -18,6 +17,7 @@ use crate::units::dead::Dead;
 use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
 use crate::units::team::Team;
+use crate::vision::seen_targets::SeenTargets;
 use crate::vision::team_sight::TeamSight;
 
 /// The tick's orders that cancel a train or a build, or set a rally.
@@ -36,13 +36,8 @@ impl ProductionOrders {
     /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
     /// unit its player's vision group sees, or clears it; a rally to another unit is ignored.
     pub(super) fn apply_production_orders<S: TeamSight>(
-        (tick, map, orders, index): (
-            Res<'_, SimTick>,
-            Res<'_, MapBook>,
-            Res<'_, TickOrders>,
-            Res<'_, EntityIndex>,
-        ),
-        builds: Res<'_, BuildBook>,
+        (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
+        (mut orders, builds): (TickCommands<'_, '_, ProductionAction>, Res<'_, BuildBook>),
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: Query<
             '_,
@@ -68,13 +63,7 @@ impl ProductionOrders {
                     .expect("an order that paid resources runs in a match with them")
                     .refund(amounts)
         };
-        for order in orders.iter() {
-            if !matches!(
-                order.action,
-                Action::CancelTrain { .. } | Action::Rally { .. } | Action::CancelBuild
-            ) {
-                continue;
-            }
+        orders.for_each(|order| {
             for &unit in order.units {
                 let Some(entity) = index.get(unit) else {
                     continue;
@@ -82,11 +71,11 @@ impl ProductionOrders {
                 let Ok((owner, team, queue, site, dead)) = units.get_mut(entity) else {
                     continue;
                 };
-                if owner.slot() != order.slot {
+                if !order.controls(*owner) {
                     continue;
                 }
                 match (order.action, queue, site) {
-                    (Action::CancelTrain { place }, Some(mut queue), _) => {
+                    (ProductionAction::CancelTrain { place }, Some(mut queue), _) => {
                         let place = usize::from(place);
                         let Some(paid) = queue.paid(place) else {
                             continue;
@@ -96,13 +85,13 @@ impl ProductionOrders {
                         }
                     }
                     (
-                        Action::Rally {
+                        ProductionAction::Rally {
                             target: Some(RallyTarget::Unit(unit)),
                         },
                         Some(_),
                         _,
                     ) if !team.is_some_and(|&team| visible.sees(team, unit)) => {}
-                    (Action::Rally { target }, Some(_), _) => {
+                    (ProductionAction::Rally { target }, Some(_), _) => {
                         let target = target.map(|target| match target {
                             RallyTarget::Point { x, z } => {
                                 let [x, z] = map.bounds.clamp_ground([x, z]);
@@ -115,7 +104,7 @@ impl ProductionOrders {
                             None => commands.entity(entity).remove::<Rally>(),
                         };
                     }
-                    (Action::CancelBuild, _, Some(site))
+                    (ProductionAction::CancelBuild, _, Some(site))
                         if !dead && !cancelled.contains(&entity) =>
                     {
                         let spec = builds
@@ -134,6 +123,6 @@ impl ProductionOrders {
                     _ => {}
                 }
             }
-        }
+        });
     }
 }

@@ -2,7 +2,9 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{Action, Body, Dead, Life, PoolId, Pools, SeenBy, SlotTimes, Team};
+use campfire_capabilities::{
+    Body, Dead, Life, OrdersAction, PoolId, Pools, SeenBy, SlotTimes, Team,
+};
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
@@ -480,7 +482,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     let order = |local: &mut InProcessMatch, targets: [Position; 2]| {
         for (client, &team) in teams.iter().enumerate() {
             let Vec3 { x, z, .. } = targets[team].get();
-            local.order(client, Action::Move { x, z });
+            local.order(client, OrdersAction::Move { x, z });
         }
     };
     // An order every 5 frames from before the stall on, so some go out as a timeline steps back.

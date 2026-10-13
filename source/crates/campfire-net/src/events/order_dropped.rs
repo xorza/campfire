@@ -34,13 +34,14 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_event_reads_back_what_it_logs() {
         round_trip(&OrderDropped {
             unit: IdAllocator::default().allocate(),
             units: 3,
-            action: Action::Learn { slot: 2 },
+            action: Action::Progression(ProgressionAction::Learn { slot: 2 }),
         });
     }
 }

@@ -53,12 +53,14 @@ use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
+use crate::orders::orders_action::OrdersAction;
 use crate::players::Players;
 use crate::players::players_world::{PlayersWorld, PlayersWorldCrate};
 use crate::players::resource_id::ResourceId;
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::points::Points;
+use crate::progression::progression_action::ProgressionAction;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::Projectiles;
@@ -1135,7 +1137,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
         let payload = Order::payload(&[Order::one(mover, action)]);
         game.step_with(&[(PlayerSlot::new(0), &payload)]);
     };
-    let jab = Action::Slot {
+    let jab = OrdersAction::Slot {
         slot: 0,
         target: ActionTarget::Unit(far),
     };
@@ -1146,7 +1148,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let back = Position::from((0, 0, -5));
     send(
         &mut game,
-        Action::Move {
+        OrdersAction::Move {
             x: back.get().x,
             z: back.get().z,
         },
@@ -2529,6 +2531,7 @@ fn on_damage_taken(ctx, m, d) {
 fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let declared = [
         Capability::Stats,
+        Capability::Progression,
         Capability::Combat,
         Capability::Navigation,
         Capability::Abilities,
@@ -2586,16 +2589,16 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
             shield,
         )
     };
-    let learn = Action::Learn { slot: 0 };
+    let learn = Action::from(ProgressionAction::Learn { slot: 0 });
 
     // Player 1 does not control the caster: nothing. Player 0 orders a walk, which a learn in the
     // next tick does not stop: rank 1 for a point, its shield in the same tick.
     send(&mut game, 1, &[learn]);
     assert_eq!(progress(&game), (0, 2, None));
-    let walk = Action::Move {
+    let walk = Action::from(OrdersAction::Move {
         x: Num::int(9),
         z: Num::ZERO,
-    };
+    });
     send(&mut game, 0, &[walk]);
     send(&mut game, 0, &[learn]);
     assert_eq!(progress(&game), (1, 1, Some(75)));
@@ -2604,10 +2607,10 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     // In tick 3, a cast ordered before two learns: the first learns rank 2 with the last point,
     // the second finds none, and the cast starts at rank 2, after the learns of its tick, with
     // rank 2's cooldown of 9000 ms, 270 ticks.
-    let cast = Action::Slot {
+    let cast = Action::from(OrdersAction::Slot {
         slot: 0,
         target: ActionTarget::None,
-    };
+    });
     send(&mut game, 0, &[cast, learn, learn]);
     assert_eq!(progress(&game), (2, 0, Some(100)));
     assert_eq!(Abilities::time(&game, caster).ready_at, Tick::new(3 + 270));

@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Capability, SimEdge, SimPlace, SimSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -15,17 +15,14 @@ use crate::declare::set_order::SetOrder;
 use crate::items::ItemsSet;
 use crate::orders::ai::Ai;
 use crate::orders::destinations::Destinations;
-use crate::orders::learn_orders::LearnOrders;
 use crate::orders::next_think::NextThink;
 use crate::orders::order_inputs::{OrderInputs, PlayerOrders};
 use crate::orders::orders_api::OrdersApi;
-use crate::orders::production_orders::ProductionOrders;
 use crate::orders::resetting::Resetting;
 use crate::orders::thinking::Thinking;
-use crate::orders::tick_orders::TickOrders;
-use crate::orders::trade_orders::TradeOrders;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::production::ProductionSet;
+use crate::progression::ProgressionSet;
 use crate::stats::StatsSet;
 use crate::units::by_type::ByType;
 use crate::units::map_book::MapBook;
@@ -35,34 +32,23 @@ pub(crate) mod ai;
 pub(crate) mod ai_data;
 pub(crate) mod destinations;
 pub(crate) mod error;
-pub(crate) mod learn_orders;
-pub(crate) mod learning;
 pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod order_inputs;
+pub(crate) mod orders_action;
 pub(crate) mod orders_api;
-pub(crate) mod production_orders;
 pub(crate) mod resetting;
-pub(crate) mod seen_targets;
 pub(crate) mod thinking;
-pub(crate) mod tick_orders;
-pub(crate) mod trade_orders;
 pub(crate) mod unit_order;
 
 campfire_common::enum_all! {
     /// The steps of `orders`.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
     pub(crate) enum OrdersSet {
-        /// The tick's orders become current, and the ranks they learn.
+        /// The tick's orders become each unit's current order.
         Orders,
-        /// After `Orders`: the tick's production orders apply.
-        Production,
-        /// After `Production`: the tick's trades apply.
-        Trade,
         /// Units follow their paths and chase their targets, before attacks start.
         Chase,
-        /// The tick's orders are dropped once its inputs ran.
-        Clear,
         /// AI of the units due this tick issues orders.
         Think,
     }
@@ -76,11 +62,8 @@ impl ModuleSet for OrdersSet {
 
     fn place(self) -> SimPlace {
         match self {
-            OrdersSet::Orders | OrdersSet::Production | OrdersSet::Trade => {
-                SimPlace::Stage(SimSet::Inputs)
-            }
+            OrdersSet::Orders => SimPlace::Stage(SimSet::Inputs),
             OrdersSet::Chase => SimPlace::Stage(SimSet::Act),
-            OrdersSet::Clear => SimPlace::Edge(SimEdge::After(SimSet::Inputs)),
             OrdersSet::Think => SimPlace::Stage(SimSet::Think),
         }
     }
@@ -90,21 +73,18 @@ impl ModuleSet for OrdersSet {
             OrdersSet::Orders => {
                 o.after(StatsSet::Regenerate)
                     .after(CombatSet::Respawn)
-                    .after(AbilitiesSet::Toggles);
-            }
-            OrdersSet::Production => {
-                o.after(OrdersSet::Orders);
-            }
-            OrdersSet::Trade => {
-                o.after(OrdersSet::Production)
+                    .after(AbilitiesSet::Toggles)
                     .before(ActionsSet::HoldAtInputs)
                     .before(ItemsSet::HoldAtInputs)
-                    .before(ProductionSet::CheckBuilds);
+                    .before(ProductionSet::CheckBuilds)
+                    .after(ProgressionSet::Commands)
+                    .after(ProductionSet::Commands)
+                    .after(ItemsSet::Commands);
             }
             OrdersSet::Chase => {
                 o.before(CombatSet::Attack);
             }
-            OrdersSet::Clear | OrdersSet::Think => {}
+            OrdersSet::Think => {}
         }
     }
 }
@@ -123,20 +103,17 @@ impl Module for Orders {
         d.component::<NextThink>();
         d.component::<Resetting>();
         d.scratch::<PlayerOrders>();
-        d.scratch::<TickOrders>();
         d.book::<ByType<Ai>>();
         d.api(OrdersApi::register);
     }
 
-    /// Adds orders to a match: in Inputs, the tick's orders are read, orders become current, ranks
-    /// are learned, and, with production, trains are cancelled and rally points set, and, with
-    /// items, on the server, items trade; in Think, the resets whose units arrived end, then the
-    /// units due this tick think; in Act, before combat starts attacks, units walk their paths and
-    /// chase their targets. It builds on the core `Units` installs, on combat and on navigation,
-    /// and installs after production and items, whose actions it applies only when they are
-    /// installed. Without the core's scripts, as on a client, no unit thinks and no item trades.
-    /// An order's targets are checked as the server's vision sees them, or, on a predicting
-    /// client, as the units it holds.
+    /// Adds orders to a match: in Inputs, after the orders of the capabilities before it, the
+    /// tick's orders are checked and become current; in Think, the resets whose units arrived
+    /// end, then the units due this tick think; in Act, before combat starts attacks, units walk
+    /// their paths and chase their targets. It builds on the core `Units` installs, on combat and
+    /// on navigation. Without the core's scripts, as on a client, no unit thinks. An order's
+    /// targets are checked as the server's vision sees them, or, on a predicting client, as the
+    /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
         if cx.predicting() {
             Orders::install_by::<ByHolding>(cx);
@@ -149,39 +126,25 @@ impl Module for Orders {
 impl Orders {
     /// `install`, each order's targets checked as `S` sees them.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        let production = cx.has(Capability::Production);
-        let items = cx.has(Capability::Items);
         let scripts = cx.scripts();
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             (
-                OrderInputs::read_orders,
                 OrderInputs::check_player_orders::<S>,
                 OrderInputs::apply_player_orders,
-                LearnOrders::learn_ranks,
             )
                 .chain()
                 .in_set(OrdersSet::Orders),
             (Destinations::follow_paths, Destinations::chase)
                 .chain()
                 .in_set(OrdersSet::Chase),
-            TickOrders::empty.in_set(OrdersSet::Clear),
         ));
-        if production {
+        if scripts {
             schedule.add_systems(
-                ProductionOrders::apply_production_orders::<S>.in_set(OrdersSet::Production),
+                (Thinking::end_dead_resets, Thinking::think)
+                    .chain()
+                    .in_set(OrdersSet::Think),
             );
-        }
-        if !scripts {
-            return;
-        }
-        schedule.add_systems(
-            (Thinking::end_dead_resets, Thinking::think)
-                .chain()
-                .in_set(OrdersSet::Think),
-        );
-        if items {
-            schedule.add_systems(TradeOrders::trade_items.in_set(OrdersSet::Trade));
         }
     }
 
@@ -243,12 +206,9 @@ pub(crate) mod test_world {
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::in_progress::InProgress;
     use crate::actions::slot_times::SlotTimes;
-    use crate::items::inventory::{Inventory, ItemStack};
     use crate::mode::Mode;
     use crate::orders::Orders;
     use crate::orders::ai_data::AiData;
-    use crate::players::players_world::PlayersWorld;
-    use crate::players::resource_id::ResourceId;
     use crate::scripts::script_failures::ScriptFailures;
     use crate::units::Units;
     use crate::units::owner::Owner;
@@ -298,22 +258,6 @@ pub(crate) mod test_world {
         /// When its weapon may attack again.
         pub(crate) fn ready_at(world: &World, id: StableId) -> Tick {
             world.part::<SlotTimes>(id).slot(0).unwrap().ready_at
-        }
-
-        /// Player 0's gold.
-        pub(crate) fn gold(world: &World) -> i64 {
-            let resources = world.player_resources(PlayerSlot::new(0));
-            let gold = ResourceId::nth(0);
-            resources.unwrap().amount(gold)
-        }
-
-        /// The items of `id`'s inventory, slot by slot, each by its book's index and its count.
-        pub(crate) fn carried(world: &World, id: StableId) -> Vec<Option<(usize, u32)>> {
-            let inventory = world.try_part::<Inventory>(id).unwrap();
-            let carried = |slot: &Option<ItemStack>| {
-                slot.map(|carried| (carried.item.index(), carried.count.get()))
-            };
-            inventory.slots().iter().map(carried).collect()
         }
 
         /// A hero of `slot`, of the type `hero`.
