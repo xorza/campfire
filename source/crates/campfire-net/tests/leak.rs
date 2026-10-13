@@ -9,14 +9,13 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Write};
 
-use bevy_ecs::component::{Component, ComponentId, Immutable, Mutable};
+use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    DataKind, Dead, Declared, HeldOut, HostVisibility, OutView, Owner, Player, PlayerResources,
-    PlayersWorld, Recipients, Release, Replication, SeenBy, SpectatorFog, StateTypes, Team,
-    TeamSet, Visibility,
+    DataKind, Dead, HeldOut, HostVisibility, OutView, Owner, Player, PlayerResources, PlayersWorld,
+    Recipients, Release, Replication, SeenBy, SpectatorFog, StateTypes, Team, TeamSet, Visibility,
 };
 use campfire_common::PlayerSlot;
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
@@ -59,23 +58,22 @@ enum Role {
 
 impl Role {
     /// Whether it holds an entity its team, or the teams it watches, see as `seen` says, in a
-    /// session of `visibility`: one with no `SeenBy` reaches every client, as the player and match
+    /// session of `visibility`: one with no `SeenBy`, or of which no Vision stage spoke, reaches
+    /// every client, as the player and match
     /// entities do (design 14, D1); a player out of play also sees what the spectators' fog
     /// shows, every unit or every team's view.
     fn sees(self, seen: Option<&SeenBy>, visibility: &Visibility) -> bool {
-        let Some(seen) = seen else {
+        let Some(seen) = seen.and_then(|seen| seen.get()) else {
             return true;
         };
-        let any = seen.get().teams().next().is_some();
+        let any = seen.teams().next().is_some();
         match self {
             Role::Player { team, out, .. } => {
-                seen.get().contains(team)
+                seen.contains(team)
                     || (out && (visibility.spectators() == SpectatorFog::All || any))
             }
             Role::Spectator { teams: None } => true,
-            Role::Spectator { teams: Some(teams) } => {
-                seen.get().teams().any(|team| teams.contains(team))
-            }
+            Role::Spectator { teams: Some(teams) } => seen.teams().any(|team| teams.contains(team)),
         }
     }
 
@@ -137,26 +135,7 @@ impl Lists {
 }
 
 impl StateTypes for Lists {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.push::<C>();
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.push::<C>();
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.push::<C>();
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-        self.push::<C>();
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {
+    fn component<C: Replication>(&mut self) {
         self.push::<C>();
     }
 
@@ -392,7 +371,10 @@ impl LeakCheck {
                 let sees = role.sees(shown.seen.as_ref(), &self.visibility);
                 if let Role::Player { team, .. } = role
                     && sees
-                    && shown.seen.is_some_and(|seen| !seen.get().contains(team))
+                    && shown
+                        .seen
+                        .and_then(SeenBy::get)
+                        .is_some_and(|seen| !seen.contains(team))
                 {
                     self.beyond_team[client] = true;
                 }

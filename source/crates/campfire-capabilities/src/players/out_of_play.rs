@@ -7,13 +7,13 @@ use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::players::held_out::HeldOut;
-use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::units::avatar::Avatar;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
+use crate::units::player::Player;
 
 /// Marks a player out of play, on its entity (design 14, D16): while it holds avatars and every
 /// one is dead, or while the mode's script holds it out. The server derives it as each tick ends

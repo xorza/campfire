@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 
 use bevy_ecs::change_detection::{ComponentTicks, Tick};
-use bevy_ecs::component::{Component, ComponentId, Immutable, Mutable};
+use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
@@ -14,10 +14,10 @@ use campfire_sim::{SimResource, StableId, Unpredicted};
 
 use crate::declare::capability_set::CapabilitySet;
 use crate::release::Release;
+use crate::state_types::StateTypes;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::recipients::Recipients;
 use crate::state_types::replication::Replication;
-use crate::state_types::{Declared, StateTypes};
 
 /// How a client comes to hold a state type: it derives it, or receives it as its kind's.
 #[derive(Debug, Clone, Copy)]
@@ -146,26 +146,7 @@ impl Classes<'_> {
 }
 
 impl StateTypes for Classes<'_> {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {
+    fn component<C: Replication>(&mut self) {
         self.of::<C>(Held::Of(C::KIND));
     }
 

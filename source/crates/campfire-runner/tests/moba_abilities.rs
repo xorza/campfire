@@ -632,6 +632,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
         game.get::<SeenBy>(entity)
             .unwrap()
             .get()
+            .unwrap()
             .contains(Team::new(0))
     };
     let owls = |game: &mut Match| -> Vec<Position> {
@@ -683,7 +684,7 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     let far = spawn(&arena, &mut game, 26, Team::new(1), ());
     let seen = |game: &Match, id: StableId| {
         let entity = game.entity_of(id).unwrap();
-        let teams = game.get::<SeenBy>(entity).unwrap().get();
+        let teams = game.get::<SeenBy>(entity).unwrap().get().unwrap();
         [0, 2].map(|team| teams.contains(Team::new(team)))
     };
     // It resolves at once, in tick 0, and reveals for 5000 ms, 150 ticks: ticks 0 to 149.

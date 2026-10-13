@@ -3,18 +3,16 @@
 
 pub(crate) mod capability_action;
 pub(crate) mod held_out;
-pub(crate) mod match_entity;
 pub(crate) mod on_match;
 pub(crate) mod order_units;
 pub(crate) mod out_of_play;
-pub(crate) mod player;
 pub(crate) mod player_resources;
 pub(crate) mod player_rows;
 pub(crate) mod players_world;
 pub(crate) mod resource_amount;
-pub(crate) mod resource_id;
 pub(crate) mod tick_commands;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_sim::{Breach, Capability, StableId};
@@ -25,12 +23,12 @@ use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::Module;
 use crate::players::held_out::HeldOut;
-use crate::players::match_entity::MatchEntity;
 use crate::players::out_of_play::OutOfPlay;
-use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
-use crate::players::players_world::PlayersWorld;
+use crate::units::match_entity::MatchEntity;
+use crate::units::player::Player;
 use crate::units::team::Team;
+use crate::units::units_world::UnitsWorld;
 use crate::units::view::View;
 
 /// The players and the match as entities: what spawns them, under every capability.
@@ -85,8 +83,21 @@ impl Players {
     pub(crate) fn spawn_match(world: &mut World, teams: impl Iterator<Item = Team>) {
         EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
         for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
-            MatchEntity::spawn_player_of(world, slot, team);
+            Players::spawn_player(world, slot, team);
         }
+    }
+
+    /// Spawns the entity of player `slot` on `team`, of its named id, with the parts the
+    /// installed modules declare for a player, in a match whose entity spawned: no player is of a
+    /// match that has none.
+    fn spawn_player(world: &mut World, slot: PlayerSlot, team: Team) -> Entity {
+        assert!(
+            world.match_entity().is_some(),
+            "players join a match that started, which holds its entity"
+        );
+        let mut player = world.spawn((StableId::of_player(slot), Player::new(slot), team));
+        EntityParts::<Player>::give(&mut player);
+        player.id()
     }
 }
 
@@ -96,11 +107,11 @@ pub(crate) mod internals {
     use campfire_common::PlayerSlot;
 
     use crate::players::Players;
-    use crate::players::match_entity::MatchEntity;
     use crate::players::player_resources::PlayerResources;
     use crate::players::players_world::PlayersWorld;
     use crate::units::relations::Relations;
     use crate::units::team::Team;
+    use crate::units::units_world::UnitsWorld;
 
     impl Players {
         /// Starts the match, as a mode's start does: the match's entity spawns, of teams that
@@ -130,7 +141,7 @@ pub(crate) mod internals {
         /// resources, as a mode's start does.
         pub fn spawn(world: &mut World, players: u32, resources: usize) {
             for slot in (0..players).map(PlayerSlot::new) {
-                let player = MatchEntity::spawn_player_of(world, slot, Team::new(0));
+                let player = Players::spawn_player(world, slot, Team::new(0));
                 world
                     .entity_mut(player)
                     .insert(PlayerResources::new(resources));

@@ -523,7 +523,12 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
     let enemy = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
     Projectiles::fire_line(&mut game, source, scout);
-    let seen = |game: &Match| game.part::<SeenBy>(enemy).get().contains(Team::new(0));
+    let seen = |game: &Match| {
+        game.part::<SeenBy>(enemy)
+            .get()
+            .unwrap()
+            .contains(Team::new(0))
+    };
     let mut seen_in = Vec::new();
     for tick in 0..14 {
         game.step();

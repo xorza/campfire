@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use crate::mode::error::{ModeList, ModeNamesError};
 use crate::mode::mode_data::ModeData;
-use crate::players::resource_id::ResourceId;
 use crate::scripts::error::UnknownName;
 use crate::scripts::name_kind::NameKind;
 use crate::stats::pool_id::PoolId;
 use crate::units::body_form::BodyForm;
 use crate::units::collision_data::CollisionData;
 use crate::units::layer::Layer;
+use crate::units::resource_id::ResourceId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::error::NamesError;

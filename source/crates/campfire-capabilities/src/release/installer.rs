@@ -1,7 +1,7 @@
 use std::any::type_name;
 use std::fmt::{self, Debug};
 
-use bevy_ecs::component::{Component, Immutable, Mutable};
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
@@ -22,8 +22,8 @@ use crate::declare::spawn_parts::SpawnParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
+use crate::state_types::StateTypes;
 use crate::state_types::replication::Replication;
-use crate::state_types::{Declared, StateTypes};
 use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::entity_kinds::EntityKinds;
@@ -76,30 +76,8 @@ impl Debug for Installer<'_> {
 }
 
 impl StateTypes for Installer<'_> {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, declared: Declared) {
-        self.registry.once::<C>(declared);
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(
-        &mut self,
-        declared: Declared,
-    ) {
-        self.registry.on_insert::<C>(declared);
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, declared: Declared) {
-        self.registry.on_change::<C>(declared);
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        declared: Declared,
-    ) {
-        self.registry.predicted::<C>(declared);
-    }
-
-    fn server<C: Replication>(&mut self, declared: Declared) {
-        self.registry.server::<C>(declared);
+    fn component<C: Replication>(&mut self) {
+        self.registry.component::<C>();
     }
 
     fn derived<C: Component>(&mut self) {}

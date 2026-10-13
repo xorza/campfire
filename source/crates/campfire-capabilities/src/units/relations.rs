@@ -7,10 +7,10 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::players::match_entity::MatchEntity;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::units::match_entity::MatchEntity;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::view::View;

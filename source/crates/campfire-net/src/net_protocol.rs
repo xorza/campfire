@@ -3,7 +3,9 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
-use campfire_capabilities::{CapabilitySet, Declared, Release, Replication, StateTypes};
+use campfire_capabilities::{
+    CapabilitySet, Declared, Release, Replication, Sending, SendingWays, StateTypes,
+};
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use lightyear::prelude::{
@@ -115,6 +117,26 @@ impl Plugin for NetProtocol {
 struct Replicated<'a>(&'a mut App);
 
 impl StateTypes for Replicated<'_> {
+    fn component<C: Replication>(&mut self) {
+        <C::Sending as Sending<C>>::visit(self);
+    }
+
+    fn sim_component<C: Replication>(&mut self) {
+        self.component::<C>();
+    }
+
+    fn derived<C: Component>(&mut self) {}
+
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.0
+            .component::<C>()
+            .replicate_with(WireCodec::component());
+    }
+
+    fn resource<R: SimResource + Default>(&mut self) {}
+}
+
+impl SendingWays for Replicated<'_> {
     fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
         self.0
             .component::<C>()
@@ -144,20 +166,6 @@ impl StateTypes for Replicated<'_> {
     }
 
     fn server<C: Replication>(&mut self, _: Declared) {}
-
-    fn derived<C: Component>(&mut self) {}
-
-    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.0
-            .component::<C>()
-            .replicate_with(WireCodec::component());
-    }
-
-    fn resource<R: SimResource + Default>(&mut self) {}
-
-    fn sim_component<C: Replication>(&mut self) {
-        self.component::<C>();
-    }
 }
 
 #[cfg(test)]

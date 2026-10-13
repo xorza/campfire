@@ -4,13 +4,13 @@ use bevy_ecs::world::World;
 use campfire_sim::{Either, SimComponent};
 use serde::{Deserialize, Serialize};
 
-use crate::players::player::Player;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_arg::name_script_arg;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnInsert;
 use crate::units::bits256::Bits256;
+use crate::units::player::Player;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::view::View;
 use crate::values::names::NameId;

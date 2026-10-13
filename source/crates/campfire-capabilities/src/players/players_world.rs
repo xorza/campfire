@@ -10,9 +10,6 @@ use crate::units::view::View;
 /// What the players module gives a world: the match's entity, and each player's entity and
 /// resources.
 pub trait PlayersWorld {
-    /// The match's entity, once it spawned.
-    fn match_entity(&self) -> Option<Entity>;
-
     /// The entity of player `slot`, once it spawned.
     fn player_entity(&self, slot: PlayerSlot) -> Option<Entity>;
 
@@ -22,10 +19,6 @@ pub trait PlayersWorld {
 }
 
 impl PlayersWorld for World {
-    fn match_entity(&self) -> Option<Entity> {
-        self.entity_of(StableId::MATCH)
-    }
-
     fn player_entity(&self, slot: PlayerSlot) -> Option<Entity> {
         self.entity_of(StableId::of_player(slot))
     }
@@ -73,11 +66,12 @@ mod tests {
 
     use super::*;
     use crate::players::Players;
-    use crate::players::player::Player;
     use crate::release::r#match::Match;
     use crate::stats::player_modifiers::PlayerModifiers;
+    use crate::units::player::Player;
     use crate::units::relations::Relations;
     use crate::units::team::Team;
+    use crate::units::units_world::UnitsWorld;
 
     #[test]
     fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_one_unstarted() {

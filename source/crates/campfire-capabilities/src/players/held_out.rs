@@ -4,10 +4,10 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
+use crate::units::player::Player;
 
 /// Marks a player the mode's script holds out of play, `ctx.set_out`, as an eliminated or a
 /// defeated player is, on its entity (design 14, D16). Clients receive `OutOfPlay`, which it

@@ -4,7 +4,7 @@
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
-use bevy_ecs::component::{Component, Immutable, Mutable};
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
@@ -29,19 +29,19 @@ use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::declare::set_order::{SetEdge, SetOrder};
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
-use crate::players::player::Player;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::frame::Frame;
+use crate::state_types::StateTypes;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::NotSent;
-use crate::state_types::{Declared, StateTypes};
 use crate::units::body_unit::BodyUnit;
 use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
+use crate::units::player::Player;
 use crate::units::row_reads::RowReads;
 use crate::units::tag_properties::TagProperties;
 use crate::units::unit_entity::UnitEntity;
@@ -310,26 +310,7 @@ impl DeclarationAudit {
 }
 
 impl StateTypes for DeclarationAudit {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.state::<C>();
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.state::<C>();
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.state::<C>();
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-        self.state::<C>();
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {
+    fn component<C: Replication>(&mut self) {
         self.state::<C>();
     }
 
@@ -450,9 +431,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 24 of a unit, and the 40 books, 12 of the core's.
+    // player, the mode's three of the match, the 25 of a unit, vision's `SeenBy` among them, and
+    // the 40 books, 12 of the core's.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 29);
+    assert_eq!(audit.parts.len(), 30);
     assert_eq!(audit.books.len(), 40);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 12);

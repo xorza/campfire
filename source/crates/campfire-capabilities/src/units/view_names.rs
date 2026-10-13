@@ -4,12 +4,12 @@ use std::sync::Arc;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::INT;
 
-use crate::players::resource_id::ResourceId;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_names::ScriptNames;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::path_id::PathId;
+use crate::units::resource_id::ResourceId;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;

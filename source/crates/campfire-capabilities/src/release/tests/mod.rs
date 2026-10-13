@@ -7,7 +7,10 @@ use Capability::{
     Stats, Vision,
 };
 use bevy_ecs::component::Component;
+use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::Mut;
+use campfire_common::SegmentSeed;
+use campfire_sim::SimUpdate;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StateRegistry};
 use campfire_store::InputFile;
@@ -17,18 +20,15 @@ use super::*;
 use crate::actions::action_book::ActionBook;
 use crate::declare::entity_parts::EntityParts;
 use crate::orders::ai::Ai;
-use crate::players::player::Player;
 use crate::players::player_resources::PlayerResources;
 use crate::release::r#match::Match;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::by_type::ByType;
+use crate::units::player::Player;
 use crate::units::team::Team;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::units::view::View;
-use bevy_ecs::schedule::Schedules;
-use campfire_common::SegmentSeed;
-use campfire_sim::SimUpdate;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -346,7 +346,6 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("mode/choice_id.rs", "named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
-    ("players/resource_id.rs", "named"),
     ("scripts/api_builder.rs", "named"),
     ("scripts/script_arg.rs", "named"),
     ("scripts/script_names.rs", "named"),
@@ -357,6 +356,7 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("units/action_id.rs", "named"),
     ("units/modifier_id.rs", "named"),
     ("units/path_id.rs", "named"),
+    ("units/resource_id.rs", "named"),
     ("units/tag.rs", "named"),
     ("units/team.rs", "named"),
     ("units/track_id.rs", "named"),

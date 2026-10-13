@@ -1,7 +1,8 @@
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{Position, SimTick};
 
 use crate::geometry::shape::Shape;
@@ -45,10 +46,9 @@ impl Seeing {
                 &Team,
                 Option<&Body>,
                 Option<&UnitTags>,
-                Option<&mut SeenBy>,
+                &mut SeenBy,
             ),
         >,
-        mut commands: Commands<'_, '_>,
         mut fog: Local<'_, Fog>,
     ) {
         let Some(grid) = vision.grid() else {
@@ -70,7 +70,7 @@ impl Seeing {
                 fog.reveal(grid, reveal.pos, reveal.team, reveal.radius);
             });
         }
-        for (entity, &pos, &team, body, tags, seen) in &mut units {
+        for (entity, &pos, &team, body, tags, mut seen) in &mut units {
             let hidden = UnitTags::properties_of(tags).hidden();
             let boxed = match Body::shape_of(body) {
                 Shape::Box(body) => Some(body),
@@ -78,13 +78,7 @@ impl Seeing {
             };
             let slot = entity.index_u32() as usize;
             let teams = fog.seen_by(grid, slot, pos, boxed, team, hidden);
-            match seen {
-                Some(mut seen) if seen.get() != teams => *seen = SeenBy::new(teams),
-                Some(_) => {}
-                None => {
-                    commands.entity(entity).insert(SeenBy::new(teams));
-                }
-            }
+            seen.set_if_neq(SeenBy::new(teams));
         }
     }
 }

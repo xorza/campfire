@@ -42,6 +42,7 @@ use crate::state_types::StateTypes;
 use crate::stats::Stats;
 use crate::units::Units;
 use crate::units::engine_tag::EngineTag;
+use crate::units::predicting::Predicting;
 use crate::vision::Vision;
 
 mod api_binder;
@@ -196,6 +197,7 @@ impl Release {
     pub fn build(world: &mut World, spec: MatchSpec) {
         if spec.predicting {
             Unpredicted::register(world);
+            world.insert_resource(Predicting);
         }
         let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
         #[cfg(feature = "internals")]
@@ -252,7 +254,7 @@ pub(crate) mod internals {
     use std::fmt::Debug;
 
     use bevy_ecs::archetype::Archetype;
-    use bevy_ecs::component::{Component, Immutable, Mutable};
+    use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
     use campfire_sim::{EntityIndex, SimResource, StableId};
@@ -261,8 +263,8 @@ pub(crate) mod internals {
     use crate::release::Release;
     use crate::release::module_sets::ModuleSets;
     use crate::release::resource_audit::DeclaredResources;
+    use crate::state_types::StateTypes;
     use crate::state_types::replication::Replication;
-    use crate::state_types::{Declared, StateTypes};
     use crate::units::entity_kinds::EntityKinds;
 
     /// The component types the lists declare, as state or as derived, by their ids.
@@ -276,28 +278,7 @@ pub(crate) mod internals {
     }
 
     impl StateTypes for ListedTypes {
-        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn predicted<
-            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
-        >(
-            &mut self,
-            _: Declared,
-        ) {
-            self.push::<C>();
-        }
-
-        fn server<C: Replication>(&mut self, _: Declared) {
+        fn component<C: Replication>(&mut self) {
             self.push::<C>();
         }
 
@@ -383,11 +364,11 @@ pub(crate) mod test_world {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, SnapshotError, StateCopy, StateRegistry};
 
-    use crate::players::players_world::PlayersWorld;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
     use crate::release::r#match::Match;
     use crate::units::Units;
+    use crate::units::units_world::UnitsWorld;
     use campfire_sim::Capability;
 
     impl Release {

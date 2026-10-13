@@ -2,15 +2,16 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use bevy_app::App;
-use bevy_ecs::component::{Component, Immutable, Mutable};
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::{Add, Insert, Remove};
+use bevy_ecs::lifecycle::{HookContext, Insert, Remove};
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Has, With};
+use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res};
+use bevy_ecs::world::DeferredWorld;
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
 use campfire_capabilities::{
-    Builder, CapabilitySet, DataKind, Declared, Experience, Gatherer, Inventory, Life, ModeState,
+    Builder, CapabilitySet, DataKind, Experience, Gatherer, Inventory, Life, ModeState,
     ModifierClocks, Modifiers, OnDeath, OnPath, Owner, PathWalker, Player, PlayerModifiers,
     PlayerResources, PlayerSupply, Points, Pools, Progress, Recipients, Release, Replication,
     Respawn, Route, Site, SlotTimes, SpawnPoint, StateTypes, SyncAll, SyncOwner, SyncTeam, Team,
@@ -32,18 +33,50 @@ pub(crate) trait FilteredKind: Send + Sync + Debug + 'static {
     type Scope: FilterScope;
 }
 
-/// Declares a filtered kind of each name, of its `DataKind` and its scope.
+/// Declares a filtered kind of each name, of its `DataKind` and its scope; the registration of
+/// every filter; the dispatch of a state type to its kind's filter, whose match is exhaustive, so
+/// a new `DataKind` is filtered or named as unfiltered; and the test's list of the kinds.
 macro_rules! filtered_kinds {
-    ($($(#[$doc:meta])* $name:ident: $kind:ident = $scope:ty;)+) => {$(
-        $(#[$doc])*
-        #[derive(Debug)]
-        pub(crate) struct $name;
+    ($($(#[$doc:meta])* $name:ident: $kind:ident = $scope:ty;)+) => {
+        $(
+            $(#[$doc])*
+            #[derive(Debug)]
+            pub(crate) struct $name;
 
-        impl FilteredKind for $name {
-            const KIND: DataKind = DataKind::$kind;
-            type Scope = $scope;
+            impl FilteredKind for $name {
+                const KIND: DataKind = DataKind::$kind;
+                type Scope = $scope;
+            }
+        )+
+
+        impl DataFilters {
+            /// Registers the filter of each filtered kind.
+            fn register_kinds(app: &mut App) {
+                $(DataFilter::<$name>::register_kind(app);)+
+            }
         }
-    )+};
+
+        impl FilterRequirements<'_> {
+            /// Makes `C` require the filter of its kind, when its kind has one.
+            fn require<C: Replication>(&mut self) {
+                match C::KIND {
+                    $(DataKind::$kind => DataFilter::<$name>::required_by::<C>(self.0),)+
+                    // Every client that holds the entity receives these, and vision decides who
+                    // holds it; the server's kind is never sent.
+                    DataKind::Unit | DataKind::Match | DataKind::Server => {
+                        debug_assert_eq!(C::KIND.settable(), Recipients::NONE);
+                    }
+                }
+            }
+        }
+
+        /// Each filtered kind's name, and the listed types of its kind its scope lacks with the
+        /// count of its scope's types no list gives it, as `tests::scope_of` finds them.
+        #[cfg(test)]
+        fn scopes(kinds: &tests::Kinds) -> Vec<(&'static str, (Vec<&'static str>, usize))> {
+            vec![$((stringify!($name), tests::scope_of::<$name>(kinds))),+]
+        }
+    };
 }
 
 filtered_kinds! {
@@ -82,8 +115,8 @@ filtered_kinds! {
     UnitStateAllKind: UnitStateAll = SingleComponent<UnitState<SyncAll>>;
 }
 
-/// Each entity's owner, a unit's or a player's entity's slot, its team, and whether it holds the
-/// filter of `K`.
+/// Each entity's owner, a unit's or a player's entity's slot, and its team, of the entities that
+/// hold the filter of `K`.
 type Owners<'w, 's, K> = Query<
     'w,
     's,
@@ -91,14 +124,16 @@ type Owners<'w, 's, K> = Query<
         Option<&'static Owner>,
         Option<&'static Player>,
         Option<&'static Team>,
-        Has<DataFilter<K>>,
     ),
+    With<DataFilter<K>>,
 >;
 
 /// On each entity that holds a type of kind `K`: the slot that owns it, if one does, a player's
 /// entity its own slot, its team, if it has one, and the recipients beside the owner that receive
 /// the kind in the match. Replicon reads it to send the kind's types to them alone. Immutable, as
-/// replicon requires: a change of owner or team inserts a new one.
+/// replicon requires: a change of owner or team inserts a new one. Each type of the kind requires
+/// it, so it comes in the move that gives an entity the type, closed, to no recipient, until the
+/// hook of its addition puts its value in place.
 #[derive(Component, Debug)]
 #[component(immutable)]
 pub(crate) struct DataFilter<K: FilteredKind> {
@@ -106,6 +141,17 @@ pub(crate) struct DataFilter<K: FilteredKind> {
     team: Option<Team>,
     audience: Recipients,
     kind: PhantomData<K>,
+}
+
+impl<K: FilteredKind> Default for DataFilter<K> {
+    fn default() -> DataFilter<K> {
+        DataFilter {
+            owner: None,
+            team: None,
+            audience: Recipients::NONE,
+            kind: PhantomData,
+        }
+    }
 }
 
 impl<K: FilteredKind> DataFilter<K> {
@@ -138,14 +184,44 @@ impl<K: FilteredKind> DataFilter<K> {
         DataFilter::new(owner.as_ref(), team, visibility)
     }
 
-    /// The filter of `K`, and the observers that follow its entity's owner and team.
+    /// The filter of `K`, as replicon reads it and as `keep` keeps it.
     fn register_kind(app: &mut App) {
         app.add_visibility_filter::<DataFilter<K>>();
+        DataFilter::<K>::keep(app);
+    }
+
+    /// The hook that gives a new filter of `K` its value, and the observers that follow its
+    /// entity's owner and team.
+    fn keep(app: &mut App) {
+        app.world_mut()
+            .register_component_hooks::<DataFilter<K>>()
+            .on_add(DataFilter::<K>::fill);
         DataFilter::<K>::follow(app);
     }
 
+    /// Makes `C`, one of `K`'s types, require the filter of `K`.
+    fn required_by<C: Replication>(app: &mut App) {
+        assert_eq!(C::KIND, K::KIND, "{} is of its filter's kind", C::NAME);
+        app.world_mut()
+            .register_required_components::<C, DataFilter<K>>();
+    }
+
+    /// The hook that gives a filter its entity's owner and team as it comes, closed, with a type of
+    /// its kind: a filter is immutable, so a hook cannot write it, and its insert replaces it in
+    /// place, with no move between archetypes, before replicon next reads it.
+    fn fill(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = world.entity(context.entity);
+        let filter = DataFilter::<K>::of(
+            entity.get::<Owner>(),
+            entity.get::<Player>(),
+            entity.get::<Team>(),
+            world.resource::<MatchVisibility>(),
+        );
+        world.commands().entity(context.entity).try_insert(filter);
+    }
+
     /// Inserts the filter of `K` again as its entity's owner or team changes, or as the entity
-    /// loses either, on an entity that holds a filter. Each insert of a filter keeps to an entity
+    /// loses either, on an entity that holds a filter, as it spawns too, beside the hook. Each insert of a filter keeps to an entity
     /// that still lives: it applies at the next flush, after a despawn queued before it, and a
     /// despawn removes the owner and team too.
     fn follow(app: &mut App) {
@@ -184,27 +260,9 @@ impl<K: FilteredKind> DataFilter<K> {
              units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
-                if let Ok((owner, player, team, true)) = units.get(inserted.entity) {
+                if let Ok((owner, player, team)) = units.get(inserted.entity) {
                     commands
                         .entity(inserted.entity)
-                        .try_insert(DataFilter::<K>::of(owner, player, team, &visibility));
-                }
-            },
-        );
-    }
-
-    /// Puts the filter of `K` on each entity that gains `C`, one of `K`'s types, unless it holds
-    /// it already.
-    fn observe<C: Replication>(app: &mut App) {
-        assert_eq!(C::KIND, K::KIND, "{} is of its filter's kind", C::NAME);
-        app.add_observer(
-            |added: On<'_, '_, Add, C>,
-             units: Owners<'_, '_, K>,
-             visibility: Res<'_, MatchVisibility>,
-             mut commands: Commands<'_, '_>| {
-                if let Ok((owner, player, team, false)) = units.get(added.entity) {
-                    commands
-                        .entity(added.entity)
                         .try_insert(DataFilter::<K>::of(owner, player, team, &visibility));
                 }
             },
@@ -230,86 +288,28 @@ pub(crate) struct DataFilters;
 
 impl DataFilters {
     /// Registers the filter of every kind whose audience a mode may set or that only its owner
-    /// receives, and, from the lists of `set`, the observers that put a data filter on each
-    /// entity that gains one of its types: no system adds a filter, so none can forget one.
+    /// receives, and makes each type the lists of `set` give such a kind require its filter: no
+    /// system adds a filter, so none can forget one, and a filter comes with the type it hides.
     pub(crate) fn register(app: &mut App, set: CapabilitySet) {
-        DataFilter::<LifeKind>::register_kind(app);
-        DataFilter::<PoolsKind>::register_kind(app);
-        DataFilter::<ModifiersKind>::register_kind(app);
-        DataFilter::<CooldownsKind>::register_kind(app);
-        DataFilter::<ProgressionKind>::register_kind(app);
-        DataFilter::<InventoryKind>::register_kind(app);
-        DataFilter::<ModeStateKind>::register_kind(app);
-        DataFilter::<ResourcesKind>::register_kind(app);
-        DataFilter::<SupplyKind>::register_kind(app);
-        DataFilter::<QueuesKind>::register_kind(app);
-        DataFilter::<PlayerModifiersKind>::register_kind(app);
-        DataFilter::<PredictionKind>::register_kind(app);
-        DataFilter::<UnitStateOwnerKind>::register_kind(app);
-        DataFilter::<UnitStateTeamKind>::register_kind(app);
-        DataFilter::<UnitStateAllKind>::register_kind(app);
-        Release::state_types(set, &mut FilterObservers(app));
+        DataFilters::register_kinds(app);
+        Release::state_types(set, &mut FilterRequirements(app));
     }
 }
 
 /// Reads the capabilities' lists for `DataFilters::register`: each type of a kind with a filter
-/// gets the observer that puts its data filter on it.
+/// requires its data filter.
 #[derive(Debug)]
-struct FilterObservers<'a>(&'a mut App);
+struct FilterRequirements<'a>(&'a mut App);
 
-impl FilterObservers<'_> {
-    fn filter<C: Replication>(&mut self) {
-        match C::KIND {
-            DataKind::Life => DataFilter::<LifeKind>::observe::<C>(self.0),
-            DataKind::Pools => DataFilter::<PoolsKind>::observe::<C>(self.0),
-            DataKind::Modifiers => DataFilter::<ModifiersKind>::observe::<C>(self.0),
-            DataKind::Cooldowns => DataFilter::<CooldownsKind>::observe::<C>(self.0),
-            DataKind::Progression => DataFilter::<ProgressionKind>::observe::<C>(self.0),
-            DataKind::Inventory => DataFilter::<InventoryKind>::observe::<C>(self.0),
-            DataKind::ModeState => DataFilter::<ModeStateKind>::observe::<C>(self.0),
-            DataKind::Resources => DataFilter::<ResourcesKind>::observe::<C>(self.0),
-            DataKind::Supply => DataFilter::<SupplyKind>::observe::<C>(self.0),
-            DataKind::Queues => DataFilter::<QueuesKind>::observe::<C>(self.0),
-            DataKind::PlayerModifiers => DataFilter::<PlayerModifiersKind>::observe::<C>(self.0),
-            DataKind::Prediction => DataFilter::<PredictionKind>::observe::<C>(self.0),
-            DataKind::UnitStateOwner => DataFilter::<UnitStateOwnerKind>::observe::<C>(self.0),
-            DataKind::UnitStateTeam => DataFilter::<UnitStateTeamKind>::observe::<C>(self.0),
-            DataKind::UnitStateAll => DataFilter::<UnitStateAllKind>::observe::<C>(self.0),
-            // Every client that holds the entity receives these, and vision decides who holds
-            // it; the server's kind is never sent.
-            DataKind::Unit | DataKind::Match | DataKind::Server => {
-                debug_assert_eq!(C::KIND.settable(), Recipients::NONE);
-            }
-        }
+impl StateTypes for FilterRequirements<'_> {
+    fn component<C: Replication>(&mut self) {
+        self.require::<C>();
     }
-}
-
-impl StateTypes for FilterObservers<'_> {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.filter::<C>();
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.filter::<C>();
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.filter::<C>();
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-        self.filter::<C>();
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {}
 
     fn derived<C: Component>(&mut self) {}
 
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.filter::<C>();
+        self.require::<C>();
     }
 
     fn resource<R: SimResource + Default>(&mut self) {}
@@ -352,7 +352,7 @@ mod tests {
     }
 
     /// A scope's types, by their `TypeId`s.
-    trait TypeList {
+    pub(super) trait TypeList {
         fn type_ids() -> Vec<TypeId>;
     }
 
@@ -392,7 +392,7 @@ mod tests {
 
     /// Every type of the capabilities' lists, with its kind.
     #[derive(Debug, Default)]
-    struct Kinds(Vec<(DataKind, TypeId, &'static str)>);
+    pub(super) struct Kinds(Vec<(DataKind, TypeId, &'static str)>);
 
     impl Kinds {
         fn of_every_capability() -> Kinds {
@@ -423,28 +423,7 @@ mod tests {
     }
 
     impl StateTypes for Kinds {
-        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-            self.push::<C>();
-        }
-
-        fn predicted<
-            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
-        >(
-            &mut self,
-            _: Declared,
-        ) {
-            self.push::<C>();
-        }
-
-        fn server<C: Replication>(&mut self, _: Declared) {
+        fn component<C: Replication>(&mut self) {
             self.push::<C>();
         }
 
@@ -463,7 +442,7 @@ mod tests {
 
     /// The listed types of `K`'s kind its scope lacks, and the types of its scope no list gives
     /// that kind, by the names of the first and the count of the second: both empty.
-    fn scope_of<K: FilteredKind>(kinds: &Kinds) -> (Vec<&'static str>, usize)
+    pub(super) fn scope_of<K: FilteredKind>(kinds: &Kinds) -> (Vec<&'static str>, usize)
     where
         K::Scope: TypeList,
     {
@@ -479,21 +458,13 @@ mod tests {
         // holds of another kind would go to the kind's clients alone: each fails here by its
         // name.
         let kinds = Kinds::of_every_capability();
-        assert_eq!(scope_of::<LifeKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<PoolsKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<ModifiersKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<CooldownsKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<ProgressionKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<InventoryKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<ResourcesKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<SupplyKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<QueuesKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<PlayerModifiersKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<PredictionKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<UnitStateOwnerKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<UnitStateTeamKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<UnitStateAllKind>(&kinds), (vec![], 0));
-        assert_eq!(scope_of::<ModeStateKind>(&kinds), (vec![], 0));
+        let flawed: Vec<_> = scopes(&kinds)
+            .into_iter()
+            .filter(|(_, scope)| *scope != (vec![], 0))
+            .collect();
+        assert_eq!(flawed, []);
+        // Every kind is filtered but the three the dispatch names as unfiltered.
+        assert_eq!(scopes(&kinds).len(), DataKind::ALL.len() - 3);
         // The check itself: `Stray`, of the kind, which the scope lacks, fails by its name, and
         // `Points`, of the scope, which this list does not give, counts once.
         let mut stray = Kinds::default();
@@ -509,8 +480,8 @@ mod tests {
         // nothing.
         let mut app = App::new();
         app.insert_resource(MatchVisibility(Visibility::DEFAULT));
-        DataFilter::<ProgressionKind>::follow(&mut app);
-        DataFilter::<ProgressionKind>::observe::<Stray>(&mut app);
+        DataFilter::<ProgressionKind>::keep(&mut app);
+        DataFilter::<ProgressionKind>::required_by::<Stray>(&mut app);
         let world = app.world_mut();
         let held = |world: &World, entity| {
             world

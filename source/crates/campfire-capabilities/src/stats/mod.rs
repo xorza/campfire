@@ -11,7 +11,6 @@ use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
 use crate::declare::set_order::SetOrder;
-use crate::players::player::Player;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::grant_pass::GrantPass;
@@ -42,6 +41,7 @@ use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
+use crate::units::player::Player;
 use crate::units::tag::Tag;
 use crate::values::rank::Rank;
 

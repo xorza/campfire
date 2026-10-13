@@ -37,7 +37,7 @@ name_script_arg!(ResourceId, NameKind::Resource, |ctx, name| {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use crate::players::resource_id::ResourceId;
+    use crate::units::resource_id::ResourceId;
 
     impl ResourceId {
         /// The resource at `index` of the mode's.

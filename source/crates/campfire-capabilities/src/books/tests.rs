@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::panic::{self, AssertUnwindSafe};
 
-use bevy_ecs::component::{Component, Immutable, Mutable};
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
@@ -22,8 +22,8 @@ use crate::release::r#match::Match;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::frame::Frame;
+use crate::state_types::StateTypes;
 use crate::state_types::replication::Replication;
-use crate::state_types::{Declared, StateTypes};
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::param_book::ParamBook;
 use crate::stats::stat_book::StatBook;
@@ -50,19 +50,7 @@ impl Book for StrayBook {
 struct EveryBook(BuiltBooks);
 
 impl StateTypes for EveryBook {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {}
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {}
+    fn component<C: Replication>(&mut self) {}
 
     fn derived<C: Component>(&mut self) {}
 

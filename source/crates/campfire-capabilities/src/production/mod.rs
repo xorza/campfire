@@ -36,6 +36,7 @@ use crate::units::block::Block;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
+use crate::units::player::Player;
 use crate::units::tag_properties::TagProperties;
 use crate::vision::team_sight::{ByHolding, ByVision, TeamSight};
 
@@ -184,11 +185,14 @@ impl Module for Production {
     /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn. A
     /// player's supply and a node's end are the server's: a predicting client derives neither,
     /// as it holds only the units its team sees. A build's placement tests the units the server's
-    /// vision sees, or, on a predicting client, the units it holds.
+    /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
+    /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
         if cx.predicting() {
             Production::install_by::<ByHolding>(cx);
         } else {
+            cx.world
+                .register_required_components::<Player, PlayerSupply>();
             Production::install_by::<ByVision>(cx);
         }
     }

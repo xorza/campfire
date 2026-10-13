@@ -73,7 +73,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         let world = local.server().world();
         let ticks_run = usize::try_from(world.resource::<SimTick>().start().get()).unwrap();
         if ticks_run > server.len() {
-            let seen = world.get::<SeenBy>(tower_entity).unwrap().get();
+            let seen = world.get::<SeenBy>(tower_entity).unwrap().get().unwrap();
             server.resize(ticks_run - 1, None);
             server.push(Some(Server {
                 seen: seen.contains(Team::new(0)),
@@ -177,7 +177,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
         local.step();
     }
     let seen = local.server().world().get::<SeenBy>(tower_entity).unwrap();
-    assert!(!seen.get().contains(west));
+    assert!(!seen.get().unwrap().contains(west));
     assert!(held(&mut local, 0).contains(&hero));
     assert!(!held(&mut local, 0).contains(&tower));
 

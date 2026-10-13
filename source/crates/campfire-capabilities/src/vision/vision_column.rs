@@ -94,8 +94,8 @@ impl VisionColumn {
     /// unit's vision group under `relations`, as that stage would give it at the least; every
     /// team for an entity with no team, as a match without vision sees.
     pub(super) fn seen_by(parts: ROQueryItem<'_, '_, RowReads>, relations: &Relations) -> TeamSet {
-        match parts {
-            (Some(seen), _) => seen.get(),
+        match (parts.0.and_then(|seen| seen.get()), parts.1) {
+            (Some(teams), _) => teams,
             (None, Some(&team)) => relations.vision_group(team),
             (None, None) => TeamSet::ALL,
         }

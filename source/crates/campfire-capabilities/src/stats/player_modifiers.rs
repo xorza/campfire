@@ -4,12 +4,12 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::players::player::Player;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::stats::Stats;
 use crate::units::modifier_id::ModifierId;
+use crate::units::player::Player;
 use crate::values::rank::Rank;
 
 /// The modifiers a player holds for the units it owns, as an RTS's upgrades, on its entity: each

@@ -1,5 +1,6 @@
 use super::*;
 use crate::units::map_book::MapBook;
+use crate::units::units_world::UnitsWorld;
 use crate::vision::vision_book::VisionBook;
 
 #[test]

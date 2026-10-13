@@ -1,7 +1,7 @@
 use std::any::type_name;
 use std::fmt::Debug;
 
-use bevy_ecs::component::{Component, Immutable, Mutable};
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 
@@ -19,8 +19,8 @@ use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
+use crate::state_types::StateTypes;
 use crate::state_types::replication::Replication;
-use crate::state_types::{Declared, StateTypes};
 use crate::units::engine_tag::EngineTag;
 use crate::units::entity_kind::EntityKind;
 use crate::units::row_reads::RowReads;
@@ -38,19 +38,7 @@ pub(super) struct BookFill<'a> {
 }
 
 impl StateTypes for BookFill<'_> {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {}
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {}
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {}
+    fn component<C: Replication>(&mut self) {}
 
     fn derived<C: Component>(&mut self) {}
 

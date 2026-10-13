@@ -1,12 +1,11 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Commands, Local, Query, Res};
+use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::players::player::Player;
 use crate::production::supply::{CountedUnit, Supply};
 use crate::production::supply_book::SupplyBook;
 use crate::production::supply_cost_book::SupplyCostBook;
@@ -14,6 +13,7 @@ use crate::production::trains::Counted;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::units::player::Player;
 
 /// A player's supply, on its entity, as its kind's audience sees it (design 14, D7): what its
 /// living units and queued trains use, and its cap. The server derives it as each tick ends,
@@ -41,9 +41,8 @@ impl PlayerSupply {
         rules: Res<'_, SupplyBook>,
         costs: Res<'_, SupplyCostBook>,
         units: Query<'_, '_, Counted>,
-        mut players: Query<'_, '_, (Entity, &Player, Option<&mut PlayerSupply>)>,
+        mut players: Query<'_, '_, (&Player, &mut PlayerSupply)>,
         mut supply: Local<'_, Supply>,
-        mut commands: Commands<'_, '_>,
     ) {
         let Some(rules) = rules.0 else {
             return;
@@ -58,19 +57,11 @@ impl PlayerSupply {
                 queue,
             });
         supply.count(&costs, rules, counted);
-        for (entity, player, held) in &mut players {
-            let now = PlayerSupply {
+        for (player, mut held) in &mut players {
+            held.set_if_neq(PlayerSupply {
                 used: supply.used(player.slot()),
                 cap: supply.cap(player.slot()),
-            };
-            match held {
-                Some(mut held) => {
-                    held.set_if_neq(now);
-                }
-                None => {
-                    commands.entity(entity).insert(now);
-                }
-            }
+            });
         }
     }
 }

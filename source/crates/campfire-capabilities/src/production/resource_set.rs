@@ -1,5 +1,5 @@
-use crate::players::resource_id::ResourceId;
 use crate::units::bits256::Bits256;
+use crate::units::resource_id::ResourceId;
 
 /// A set of the mode's player resources, one bit each.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -12,6 +12,7 @@ use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_state::{SyncOwner, SyncTeam, UnitState};
+use crate::units::units_world::UnitsWorld;
 
 /// Each state type's restore check lets the match's own values through, and refuses one that
 /// names what the match lacks or has another shape than the mode's.

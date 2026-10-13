@@ -7,10 +7,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::declare::per_type::PerType;
 use crate::players::players_world::PlayersWorldCrate;
-use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentPredicted;
+use crate::units::resource_id::ResourceId;
 use crate::units::unit_entity::UnitEntity;
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has

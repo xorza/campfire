@@ -4,12 +4,12 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::players::player::Player;
 use crate::players::resource_amount::ResourceAmount;
-use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
+use crate::units::player::Player;
+use crate::units::resource_id::ResourceId;
 use crate::units::view::View;
 
 /// A player's resources, such as gold, on its entity: an amount for each resource the mode

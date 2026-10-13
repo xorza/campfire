@@ -7,6 +7,7 @@ use crate::declare::module::Module;
 use crate::declare::module_set::ModuleSet;
 use crate::declare::set_order::SetOrder;
 use crate::units::by_type::ByType;
+use crate::units::predicting::Predicting;
 use crate::units::unit_entity::UnitEntity;
 use crate::vision::reveals::Reveals;
 use crate::vision::seeing::Seeing;
@@ -84,6 +85,10 @@ impl Module for Vision {
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
+        // What each team sees is the server's (design 14, D12): a predicting client holds none.
+        d.part::<UnitEntity, SeenBy>(|at| {
+            (!at.world().contains_resource::<Predicting>()).then_some(SeenBy::UNTOLD)
+        });
     }
 
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit

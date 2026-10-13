@@ -12,7 +12,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{
-    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, PlayersWorld, Release, TeamSet,
+    Dead, MatchEnd, MatchSpec, Order, PlayerUnits, Release, TeamSet, UnitsWorld,
 };
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::{ErrorReport, LogEvent};

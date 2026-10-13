@@ -8,10 +8,10 @@ use campfire_common::Tick;
 use campfire_sim::{SimComponent, SimEdge, SimSet, Unpredicted};
 use serde::{Deserialize, Serialize};
 
-use crate::players::match_entity::MatchEntity;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnce;
+use crate::units::match_entity::MatchEntity;
 use crate::units::team::Team;
 use crate::units::view::View;
 

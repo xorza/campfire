@@ -16,13 +16,12 @@ use crate::declare::capability_set::CapabilitySet;
 use crate::mode::mode_inputs::ModeInputs;
 use crate::navigation::error::MapProblem;
 use crate::navigation::walker::Walker;
-use crate::players::resource_id::ResourceId;
 use crate::release::Release;
 use crate::scripts::ctx::Ctx;
 use crate::units::body_form::BodyForm;
 use crate::units::by_type::ByType;
 use crate::units::map_book::MapBook;
-use crate::units::predicting::Predicting;
+use crate::units::resource_id::ResourceId;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::units::view::View;
@@ -157,7 +156,6 @@ impl Books {
     pub fn install_prediction(self, world: &mut World, set: CapabilitySet) {
         let ModeInputs { load, .. } = self.install(world, set, false);
         load.map.install_pathing(world, load.walkers);
-        world.insert_resource(Predicting);
     }
 }
 

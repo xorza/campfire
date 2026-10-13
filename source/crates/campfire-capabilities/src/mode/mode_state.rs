@@ -8,11 +8,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::mode::match_mode::MatchMode;
 use crate::mode::mode_data::ModeData;
-use crate::players::match_entity::MatchEntity;
 use crate::scripts::state_value::StateValue;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::{NotSent, Sending, SentOnChange};
+use crate::units::match_entity::MatchEntity;
 use crate::units::unit_state::{StateSync, SyncAll, SyncNone};
 
 /// The fields of the mode's script state whose `sync` is `S`'s, on the match's entity: a value

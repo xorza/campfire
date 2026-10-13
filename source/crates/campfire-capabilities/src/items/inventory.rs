@@ -12,11 +12,11 @@ use crate::actions::slot_times::SlotTimes;
 use crate::declare::per_type::PerType;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
-use crate::players::resource_id::ResourceId;
 use crate::state_types::data_kind::DataKind;
 use crate::state_types::replication::Replication;
 use crate::state_types::sending::SentOnChange;
 use crate::units::block::Block;
+use crate::units::resource_id::ResourceId;
 use crate::units::unit_entity::UnitEntity;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one

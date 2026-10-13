@@ -1,15 +1,23 @@
+use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
+use campfire_sim::{SimWorld, StableId};
 
-use crate::players::players_world::PlayersWorld;
 use crate::units::relations::Relations;
 
 /// What the units module gives a world, for every crate.
 pub trait UnitsWorld {
+    /// The match's entity, once it spawned.
+    fn match_entity(&self) -> Option<Entity>;
+
     /// The relations of the match, once its entity spawned, or reached a client.
     fn held_relations(&self) -> Option<&Relations>;
 }
 
 impl UnitsWorld for World {
+    fn match_entity(&self) -> Option<Entity> {
+        self.entity_of(StableId::MATCH)
+    }
+
     fn held_relations(&self) -> Option<&Relations> {
         self.get(self.match_entity()?)
     }

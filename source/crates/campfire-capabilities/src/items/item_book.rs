@@ -2,17 +2,17 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_sim::Capability;
 
 use crate::declare::book::Book;
 use crate::items::item_id::ItemId;
 use crate::players::resource_amount::ResourceAmount;
-use crate::players::resource_id::ResourceId;
 use crate::scripts::frame::Frame;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::resource_id::ResourceId;
 use crate::units::view::View;
 use crate::values::names::Names;
-use campfire_sim::Capability;
 
 /// The mode's item types, by id, as its package load checked them: package data, not state. A
 /// clone shares the items, as a write that reads them holds them.

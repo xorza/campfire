@@ -103,7 +103,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     if matches!(tick, 4 | 5 | 28 | 29) {
         let ((_, lancer), (sage, sage_unit)) = (hero(world, 0), hero(world, 1));
         let target = lancer.get::<ActionSlots>().unwrap().attack_target();
-        let north_sees = sage_unit.get::<SeenBy>().unwrap().get();
+        let north_sees = sage_unit.get::<SeenBy>().unwrap().get().unwrap();
         seen.sage_attacked.push((
             tick,
             target == Some(sage),
@@ -136,13 +136,13 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
                 seen.wisp.push((tick, pos));
             } else {
                 seen.ward
-                    .push((tick, pos, unit.get::<SeenBy>().unwrap().get()));
+                    .push((tick, pos, unit.get::<SeenBy>().unwrap().get().unwrap()));
             }
         }
         let north = Team::new(0);
         if unit.contains::<TrainQueue>()
             && unit.get::<Team>() == Some(&Team::new(1))
-            && unit.get::<SeenBy>().unwrap().get().contains(north)
+            && unit.get::<SeenBy>().unwrap().get().unwrap().contains(north)
         {
             seen.barracks_watched.push(tick);
         }

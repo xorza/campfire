@@ -2,7 +2,7 @@ use campfire_sim::Position;
 
 use crate::geometry::bounds::Bounds;
 use crate::items::item_id::ItemId;
-use crate::players::resource_id::ResourceId;
+use crate::units::resource_id::ResourceId;
 use crate::units::team::Team;
 use crate::values::share::Share;
 

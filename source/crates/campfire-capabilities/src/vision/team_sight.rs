@@ -25,7 +25,8 @@ impl TeamSight for ByVision {
     type Seen = Option<&'static SeenBy>;
 
     fn sees(seen: Option<&SeenBy>, team: Team) -> Option<bool> {
-        seen.map(|seen| seen.get().contains(team))
+        let teams = seen.and_then(|seen| seen.get())?;
+        Some(teams.contains(team))
     }
 }
 

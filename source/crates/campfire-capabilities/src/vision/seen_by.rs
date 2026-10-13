@@ -11,17 +11,23 @@ use crate::units::team_set::TeamSet;
 use crate::units::unit_entity::UnitEntity;
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
-/// vision group, and of each group with a living unit that sees the grid cell it stands in.
+/// vision group, and of each group with a living unit that sees the grid cell it stands in. A
+/// unit spawns with it on the server, before any Vision stage speaks of it, `SeenBy::UNTOLD`.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct SeenBy(TeamSet);
+pub struct SeenBy(Option<TeamSet>);
 
 impl SeenBy {
+    /// Of a unit no Vision stage has spoken of: one that spawned after the last, or in a match
+    /// whose map gives no grid. Each reader decides who sees it.
+    pub(crate) const UNTOLD: SeenBy = SeenBy(None);
+
     pub(crate) const fn new(teams: TeamSet) -> SeenBy {
-        SeenBy(teams)
+        SeenBy(Some(teams))
     }
 
-    pub const fn get(self) -> TeamSet {
+    /// The teams that see the unit; `None` while no Vision stage has spoken of it.
+    pub const fn get(self) -> Option<TeamSet> {
         self.0
     }
 }

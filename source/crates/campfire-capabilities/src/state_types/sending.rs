@@ -3,15 +3,19 @@ use std::fmt::Debug;
 use bevy_ecs::component::{Component, Immutable, Mutable};
 
 use crate::state_types::replication::Replication;
-use crate::state_types::{Declared, StateTypes};
+use crate::state_types::{Declared, SendingWays};
 
-/// How a state type is sent: each way is a type, which gives the reader of the lists the
+/// How a state type is sent: each way is a type, which gives a reader of `SendingWays` the
 /// method of that way and the bounds it takes. A type whose kind no client receives is
 /// `NotSent`, and every other type is sent, or its list does not build: that check runs as the
 /// build makes the code of a list, so a build or a test run reports it, and `cargo check` and
 /// clippy, which make none, do not.
 pub trait Sending<C: ?Sized> {
-    fn visit<T: StateTypes>(types: &mut T);
+    /// Fails the build of a list whose type's kind and way of sending disagree, as the build
+    /// evaluates it for the type.
+    const CHECK: ();
+
+    fn visit<T: SendingWays>(ways: &mut T);
 }
 
 /// Sent once, as its entity spawns: the type is immutable, so no code writes it after.
@@ -36,63 +40,63 @@ pub struct SentPredicted;
 pub struct NotSent;
 
 impl<C: Replication + Component<Mutability = Immutable>> Sending<C> for SentOnce {
-    fn visit<T: StateTypes>(types: &mut T) {
-        const {
-            assert!(
-                C::KIND.is_sent(),
-                "a type sent once is of a kind a client receives"
-            );
-        }
-        types.once::<C>(Declared(()));
+    const CHECK: () = assert!(
+        C::KIND.is_sent(),
+        "a type sent once is of a kind a client receives"
+    );
+
+    fn visit<T: SendingWays>(ways: &mut T) {
+        let () = <Self as Sending<C>>::CHECK;
+        ways.once::<C>(Declared(()));
     }
 }
 
 impl<C: Replication + Component<Mutability = Immutable>> Sending<C> for SentOnInsert {
-    fn visit<T: StateTypes>(types: &mut T) {
-        const {
-            assert!(
-                C::KIND.is_sent(),
-                "a type sent on insert is of a kind a client receives"
-            );
-        }
-        types.on_insert::<C>(Declared(()));
+    const CHECK: () = assert!(
+        C::KIND.is_sent(),
+        "a type sent on insert is of a kind a client receives"
+    );
+
+    fn visit<T: SendingWays>(ways: &mut T) {
+        let () = <Self as Sending<C>>::CHECK;
+        ways.on_insert::<C>(Declared(()));
     }
 }
 
 impl<C: Replication + Component<Mutability = Mutable>> Sending<C> for SentOnChange {
-    fn visit<T: StateTypes>(types: &mut T) {
-        const {
-            assert!(
-                C::KIND.is_sent(),
-                "a type sent is of a kind a client receives"
-            );
-        }
-        types.on_change::<C>(Declared(()));
+    const CHECK: () = assert!(
+        C::KIND.is_sent(),
+        "a type sent is of a kind a client receives"
+    );
+
+    fn visit<T: SendingWays>(ways: &mut T) {
+        let () = <Self as Sending<C>>::CHECK;
+        ways.on_change::<C>(Declared(()));
     }
 }
 
 impl<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug> Sending<C>
     for SentPredicted
 {
-    fn visit<T: StateTypes>(types: &mut T) {
-        const {
-            assert!(
-                C::KIND.is_sent(),
-                "a predicted type is of a kind a client receives"
-            );
-        }
-        types.predicted::<C>(Declared(()));
+    const CHECK: () = assert!(
+        C::KIND.is_sent(),
+        "a predicted type is of a kind a client receives"
+    );
+
+    fn visit<T: SendingWays>(ways: &mut T) {
+        let () = <Self as Sending<C>>::CHECK;
+        ways.predicted::<C>(Declared(()));
     }
 }
 
 impl<C: Replication> Sending<C> for NotSent {
-    fn visit<T: StateTypes>(types: &mut T) {
-        const {
-            assert!(
-                !C::KIND.is_sent(),
-                "a type not sent is of the server's kind"
-            );
-        }
-        types.server::<C>(Declared(()));
+    const CHECK: () = assert!(
+        !C::KIND.is_sent(),
+        "a type not sent is of the server's kind"
+    );
+
+    fn visit<T: SendingWays>(ways: &mut T) {
+        let () = <Self as Sending<C>>::CHECK;
+        ways.server::<C>(Declared(()));
     }
 }

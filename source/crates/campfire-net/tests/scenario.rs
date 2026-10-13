@@ -309,7 +309,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
     for id in [walker, runner] {
         let world = local.server().world();
         let unit = world.entity_ref_of(id).unwrap();
-        let seen = unit.get::<SeenBy>().unwrap().get();
+        let seen = unit.get::<SeenBy>().unwrap().get().unwrap();
         let teams = [0, 1].map(|team| seen.contains(Team::new(team)));
         assert_eq!(teams, [true, true], "{id:?}");
     }

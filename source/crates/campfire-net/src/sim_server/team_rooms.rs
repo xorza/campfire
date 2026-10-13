@@ -67,10 +67,10 @@ impl TeamRooms {
         Rooms::from(teams.teams().map(|team| self.rooms[team.index()]))
     }
 
-    /// The rooms of a unit that `seen` says which teams see: every team's for a unit with none,
-    /// as in a match with no vision.
+    /// The rooms of a unit that `seen` says which teams see: every team's for a unit of which
+    /// no Vision stage spoke, or that has no `SeenBy`, as in a match with no vision.
     pub(crate) fn seeing(&self, seen: Option<&SeenBy>) -> Rooms {
-        let teams = seen.map_or(TeamSet::ALL, |seen| seen.get());
+        let teams = seen.and_then(|seen| seen.get()).unwrap_or(TeamSet::ALL);
         let everything = self.spectators_see_everything.then_some(self.everything);
         let rooms = teams.teams().map(|team| self.rooms[team.index()]);
         Rooms::from(rooms.chain(everything))
