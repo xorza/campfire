@@ -1,4 +1,3 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
@@ -17,8 +16,6 @@ use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::stat_books::StatBooks;
-use crate::units::body::Body;
-use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::dead::Dead;
 use crate::units::map_book::MapBook;
 use crate::units::owner::Owner;
@@ -27,6 +24,7 @@ use crate::units::relations::Relations;
 use crate::units::tag_effect::TagEffect;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::unit_grid::UnitsNear;
 use crate::units::unit_tags::UnitTags;
 use crate::values::rank::Rank;
 use crate::values::relation::Relation;
@@ -43,8 +41,6 @@ type HeldUnits<'w, 's> = Query<
         Option<&'static UnitTags>,
         Option<&'static Owner>,
         (&'static mut Modifiers, &'static mut ModifierClocks),
-        Option<&'static Body>,
-        Entity,
     ),
     (Without<Dead>, Without<Unpredicted>),
 >;
@@ -106,7 +102,7 @@ impl HeldPass {
         carriers: HeldCarriers<'_, '_>,
         unseen: UnseenSources<'_, '_>,
         mut held: Local<'_, Vec<Held>>,
-        mut grid: Local<'_, BodyGrid<Entity>>,
+        mut near: UnitsNear<'_, '_>,
     ) {
         let StatBooks {
             modifiers: book,
@@ -119,7 +115,6 @@ impl HeldPass {
         held.extend(others.0.drain(..));
         HeldPass::hold_player_modifiers(&mut held, &book, &players, &units);
         let granting = tag_book.granting();
-        let mut indexed = false;
         let written = units
             .iter()
             .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
@@ -135,20 +130,11 @@ impl HeldPass {
                 if instance.stacks == 0 || !takes_effect.takes(book.tags(instance.id)) {
                     continue;
                 }
-                if !indexed {
-                    let placed = units.iter().map(|(&id, &at, .., body, entity)| Placed {
-                        id,
-                        key: entity,
-                        pos: at,
-                        shape: Body::shape_of(body),
-                    });
-                    grid.rebuild(placed);
-                    indexed = true;
-                }
                 let (filter, modifier) = (aura.affects, aura.modifier);
-                grid.visit_near(at, radius, |body| {
-                    let (&target, _, &other, tags, ..) =
-                        units.get(body.key).expect("an indexed unit");
+                near.current().visit_near(at, radius, |body| {
+                    let Ok((&target, _, &other, tags, ..)) = units.get(body.key) else {
+                        return;
+                    };
                     let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
                     let relation = relations.between(team, other);
                     let reaches =

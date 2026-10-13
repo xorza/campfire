@@ -26,26 +26,17 @@ Every batch moves the engine toward one shape, and each item names the part it b
 - **A kind is a marker,** one on each entity; a kind's parts are declared; a derived part comes by a hook of the part it derives from.
 - **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
-- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (F33, I1), and a fact fixed at install is a fact of the schedule (F39).
+- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (I1), and a fact fixed at install is a fact of the schedule (F39).
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. One grid of units
+## 1. The broadphase in the grid's form
 
-`capabilities`: `units`, `actions`' targets, `projectiles`, `areas`, `stats`' held pass, `navigation`'s `make_room`. The grid is a cache, `d.cache`.
+`capabilities`: `navigation`'s broadphase. It measures, so it runs in a session where the user asks for the benches.
 
-### F33. One grid of units, rebuilt when units move
+### F46. The broadphase in the grid's form, measured
 
-(`capabilities`.) `Flying::fly` (`projectiles/flying.rs:64`), `AreaLife::trigger` (`areas/area_life.rs:62`), `AreaHolds::hold_inside` (`areas/area_holds.rs:41`) and `HeldPass::run` (`stats/held_pass.rs:152`) each keep a `Local<BodyGrid>` and rebuild it, a sort of every living unit (`units/body_grid/mod.rs:126-160`), all after Collide, the last stage that moves a unit: up to four sorts a tick. `StaticTracking` (`navigation/static_tracking.rs:59`) already rebuilds only on change. One derived `UnitGrid` in `units`, of every unit with a place, the dead among them, keyed by `Entity`, rebuilds when a unit came, went, moved or changed its body since its last build, by change ticks and an observer's mark as `StaticsDirty` keeps them; each reader checks team, tags, life and death as it visits, through its own query:
-
-```rust
-grid.current(&units, this_run).visit_near(pos, radius, |body| {
-    let Some(unit) = targets.unit(body.key) else { return };
-    // the existing exact test of reach
-});
-```
-
-`Navigation::make_room` asks the grid for the walkers a new box overlaps, in place of the scan of every walker that `RoomMaking::make_room` runs. Each reader already runs an exact test of reach and sorts its results (`area_life.rs:90`, `held_pass.rs:174`, `flights.rs`), so a wider set of candidates adds only ones the exact test refuses, and the result is the same bit for bit. `TargetIndex`, the script view's index over rows, stays apart, as its order of visits is the grid's. The broadphase (`navigation/broadphase.rs:28-41`) sorts a four-field entry where `BodyGrid` packs one number per entry: the step takes `BodyGrid`'s form for both, and measures again on it the levels by size that make Collide slower for walkers of ordinary sizes (**Navigation**). Check: the goldens do not move.
+(`capabilities`.) The broadphase (`navigation/broadphase.rs:26-41`) sorts a four-field entry, a `Place` of layer, level, row and column beside the collider's index, where `BodyGrid` packs one number per entry, a `CellKey` of level, row and column above the stable id: the step takes `BodyGrid`'s form for the broadphase, and measures again on it the levels by size that make Collide slower for walkers of ordinary sizes (**Navigation**). Check: the goldens do not move, and `./drive.py bench -- integration/collision/` runs before and after.
 
 ## 2. State types and their lists
 
@@ -167,7 +158,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 **Slice 2, wide bodies, uses, the shop and gravity,** batches 8 to 12. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 6 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 2 to 6 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 
@@ -191,7 +182,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 ## 10. Use and the graph
 
-`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F44 comes after batch 1, which leaves only the true edges; M2 reads the code as F44's graph test does.
+`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 moves the group of an inventory's slots into `actions`, and U1 adds the `use` kind, whose actions block as `use` too: one batch settles which actions a `use` block stops. F44 reads the edges the code holds, which the moves of the commands and of the grid of units to their owners left true; M2 reads the code as F44's graph test does.
 
 ### F44. The capability graph in one table
 

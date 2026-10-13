@@ -1,14 +1,14 @@
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_sim::Position;
 
-use crate::actions::targets::{TargetKey, Targets};
+use crate::actions::targets::Targets;
 use crate::areas::area::Area;
 use crate::areas::area_spec::{AreaSpec, Inside};
 use crate::geometry::shape::Shape;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
-use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
+use crate::units::unit_grid::UnitsNear;
 use crate::units::unit_type::UnitType;
 use crate::values::relation::Relation;
 
@@ -26,7 +26,7 @@ impl AreaHolds {
         specs: Res<'_, ByType<AreaSpec>>,
         mut held: ResMut<'_, HeldModifiers>,
         areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
-        mut grid: Local<'_, BodyGrid<TargetKey>>,
+        mut near: UnitsNear<'_, '_>,
     ) {
         let holding = |unit_type| {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
@@ -38,13 +38,15 @@ impl AreaHolds {
         {
             return;
         }
-        grid.rebuild(targets.placed());
+        let grid = near.current();
         for (&pos, &team, &unit_type, area) in &areas {
             let Some(spec) = holding(unit_type) else {
                 continue;
             };
             grid.visit_near(pos, spec.radius, |body| {
-                let unit = Targets::unit_of(body);
+                let Some(unit) = targets.living_at(body.key) else {
+                    return;
+                };
                 if !targets.reaches(pos, Shape::POINT, spec.radius, &unit) {
                     return;
                 }

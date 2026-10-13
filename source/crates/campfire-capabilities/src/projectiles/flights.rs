@@ -2,7 +2,7 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::actions::shot_hits::{ShotHit, ShotHits};
-use crate::actions::targets::{TargetKey, Targets};
+use crate::actions::targets::Targets;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
@@ -15,6 +15,7 @@ use crate::projectiles::struck_units::{Struck, StruckUnits};
 use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
 use crate::values::hit::Hit;
+use bevy_ecs::entity::Entity;
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
 /// flies, the bodies a line may meet, indexed as the stage began, and a scratch list
@@ -24,7 +25,8 @@ pub(crate) struct Flights<'a> {
     pub(crate) hits: &'a mut ShotHits,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
-    pub(crate) grid: &'a BodyGrid<TargetKey>,
+    /// The units near, when a line flies.
+    pub(crate) grid: Option<&'a BodyGrid<Entity>>,
     pub(crate) met: &'a mut Vec<(Fraction, StableId)>,
 }
 
@@ -164,11 +166,11 @@ impl Flights<'_> {
             let high = [start.x.max(end.x), start.z.max(end.z)]
                 .map(|axis| axis.checked_add(half).unwrap_or(Num::MAX));
             let (met, struck) = (&mut *self.met, &*self.struck);
-            self.grid.visit(low, high, |body| {
-                if !body.key.targetable {
+            let grid = self.grid.expect("a line finds the units near");
+            grid.visit(low, high, |body| {
+                let Some(unit) = targets.target_at(body.key) else {
                     return;
-                }
-                let unit = Targets::unit_of(body);
+                };
                 let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
                 if !selects || struck.contains(Struck { by, id: unit.id }) {
                     return;

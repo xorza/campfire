@@ -45,6 +45,7 @@ use crate::units::team::Team;
 use crate::units::type_origin_book::TypeOriginBook;
 use crate::units::unit::Unit;
 use crate::units::unit_entity::UnitEntity;
+use crate::units::unit_grid::UnitGrid;
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
@@ -118,6 +119,7 @@ pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_core;
 pub(crate) mod unit_entity;
+pub(crate) mod unit_grid;
 pub(crate) mod unit_row;
 pub(crate) mod unit_rows;
 pub(crate) mod unit_state;
@@ -209,6 +211,7 @@ impl Module for Units {
         d.derived::<Avatar>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
+        d.cache::<UnitGrid>();
         d.check::<Position>(Units::within_bounds);
         d.host::<Position, UnitEntity>();
         d.require::<UnitEntity, Position>();
@@ -236,7 +239,7 @@ impl Module for Units {
         d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
     }
 
-    /// Adds the core to a match. With scripts, in
+    /// Adds the core to a match: the grid of its body units, which its readers build. With scripts, in
     /// Inputs, every pool starts full and the last tick's failures clear, and as the tick ends,
     /// its writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_>) {
@@ -244,6 +247,7 @@ impl Module for Units {
         world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
             view.refill_next();
         });
+        UnitGrid::install(world);
         if cx.scripts() {
             cx.schedule.add_systems((
                 UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),

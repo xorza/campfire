@@ -4,7 +4,7 @@ use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 
-use crate::actions::targets::{TargetKey, Targets};
+use crate::actions::targets::Targets;
 use crate::areas::area::Area;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::AreaSpec;
@@ -13,9 +13,9 @@ use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::geometry::shape::Shape;
-use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 use crate::units::team::Team;
+use crate::units::unit_grid::UnitsNear;
 use crate::units::unit_type::UnitType;
 use crate::values::hit::Hit;
 
@@ -48,19 +48,17 @@ impl AreaLife {
                 Option<&AreaTrigger>,
             ),
         >,
-        (mut order, mut reached, mut grid): (
+        (mut order, mut reached, mut near): (
             Local<'_, Ordered>,
             Local<'_, Vec<StableId>>,
-            Local<'_, BodyGrid<TargetKey>>,
+            UnitsNear<'_, '_>,
         ),
     ) {
         let now = tick.start();
         let triggers = areas
             .iter()
             .any(|(.., trigger)| trigger.is_some_and(|trigger| trigger.get() <= now));
-        if triggers {
-            grid.rebuild(targets.placed());
-        }
+        let grid = triggers.then(|| near.current());
         let placed = areas.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { id, entity } in order.sort(placed) {
             let (_, _, &pos, &team, &unit_type, area, trigger) =
@@ -78,8 +76,11 @@ impl AreaLife {
             if triggers_at.is_some_and(|at| at <= now) {
                 let spec = specs.get(unit_type).expect("an area's type has a spec");
                 reached.clear();
+                let grid = grid.expect("a trigger finds the units near");
                 grid.visit_near(pos, spec.radius, |body| {
-                    let unit = Targets::unit_of(body);
+                    let Some(unit) = targets.living_at(body.key) else {
+                        return;
+                    };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
                         && targets.reaches(pos, Shape::POINT, spec.radius, &unit)

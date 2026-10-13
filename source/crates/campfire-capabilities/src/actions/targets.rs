@@ -9,7 +9,6 @@ use crate::players::on_match::OnMatch;
 use crate::stats::life::Life;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
 use crate::units::map_book::MapBook;
@@ -18,6 +17,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::relation::Relation;
+use bevy_ecs::entity::Entity;
 
 /// The units an attack may target: living units with a life whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had
@@ -41,15 +41,6 @@ pub(crate) struct Targets<'w, 's> {
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
-}
-
-/// What a body of the grid of `Targets::placed` holds of its unit: its team, its tags, and
-/// whether they let it be a target.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TargetKey {
-    pub(crate) team: Team,
-    pub(crate) tags: TagSet,
-    pub(crate) targetable: bool,
 }
 
 /// A row of the units `Targets` holds.
@@ -113,9 +104,7 @@ impl Targets<'_, '_> {
 
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
-        let row = self.units.get(self.index.get(target)?).ok()?;
-        let (_, _, _, life, _, tags) = row;
-        Targets::targetable(Some(life), tags).then(|| Targets::body(row))
+        self.target_at(self.index.get(target)?)
     }
 
     /// Whether a unit that has not died, with `life` and `tags`, may be a target: it has a life,
@@ -125,32 +114,17 @@ impl Targets<'_, '_> {
         life.is_some() && !UnitTags::properties_of(tags).blocks(Block::Target)
     }
 
-    /// Every living unit with the life pool, those whose tags block it as a target among them,
-    /// as a body to index, with what a visit needs of it: the units an area reaches, in no order.
-    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed<TargetKey>> + '_ {
-        self.units
-            .iter()
-            .map(|(&id, &at, &team, life, body, tags)| Placed {
-                id,
-                key: TargetKey {
-                    team,
-                    tags: tags.map_or_else(TagSet::default, |tags| tags.tags),
-                    targetable: Targets::targetable(Some(life), tags),
-                },
-                pos: at,
-                shape: Body::shape_of(body),
-            })
+    /// The unit of `entity`, when a living unit with the life pool, whose tags may block it as a
+    /// target: one an area reaches.
+    pub(crate) fn living_at(&self, entity: Entity) -> Option<LivingUnit> {
+        self.units.get(entity).ok().map(Targets::body)
     }
 
-    /// The unit of `body`, a body of the grid `placed` built, as it was when the grid was built.
-    pub(crate) const fn unit_of(body: &Placed<TargetKey>) -> LivingUnit {
-        LivingUnit {
-            id: body.id,
-            pos: body.pos,
-            team: body.key.team,
-            shape: body.shape,
-            tags: body.key.tags,
-        }
+    /// The unit of `entity`, when a living unit that may be a target.
+    pub(crate) fn target_at(&self, entity: Entity) -> Option<LivingUnit> {
+        let row = self.units.get(entity).ok()?;
+        let (_, _, _, life, _, tags) = row;
+        Targets::targetable(Some(life), tags).then(|| Targets::body(row))
     }
 
     /// The unit of `row`.
