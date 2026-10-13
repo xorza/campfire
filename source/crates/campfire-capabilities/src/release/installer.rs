@@ -18,6 +18,7 @@ use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::declare::set_order::{SetOrder, Side};
+use crate::declare::spawn_parts::SpawnParts;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::call_part::CallPart;
 use crate::scripts::ctx::Ctx;
@@ -206,9 +207,11 @@ impl Declarations for Installer<'_> {
         &mut self,
         start: fn(&KindSpawn<'_, H>) -> Option<C>,
     ) {
+        let id = self.world.register_component::<C>();
+        self.world.init_resource::<SpawnParts>();
         self.world
             .get_resource_or_init::<EntityParts<H>>()
-            .add(start);
+            .add(id, start);
         self.registry.add_check::<C>(EntityParts::<H>::check::<C>);
     }
 

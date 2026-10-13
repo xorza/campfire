@@ -478,14 +478,9 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 
     // An enemy with a box of 2 by 1 m at (3.5, 0.3), whose near edge, x = 2.5, the dart's path
     // enters before it comes to a point enemy at 2.6: the box is met first, where the path enters
-    // it, though its center lies past the point, in tick 6, and the dart ends on it. Its spawn
-    // makes room for it, as a box's does, which navigation does.
-    let mut game = volley_match_of(&[
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Projectiles,
-    ]);
+    // it, though its center lies past the point, in tick 6, and the dart ends on it. A match
+    // with no navigation spawns the box, which makes room for none.
+    let mut game = volley_match();
     let volley = Volley::place(&mut game);
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
     let near = |x: &str, z: &str| point(x.parse().unwrap(), z.parse().unwrap());

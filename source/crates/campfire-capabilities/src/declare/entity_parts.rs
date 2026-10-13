@@ -1,21 +1,25 @@
+use std::alloc::Layout;
 use std::any::TypeId;
 use std::fmt;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use bevy_ecs::component::Component;
+use bevy_ecs::bundle::BundleWriter;
+use bevy_ecs::component::{Component, ComponentId};
 use bevy_ecs::entity::Entity;
+use bevy_ecs::ptr::OwningPtr;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_sim::Breach;
 
 use crate::declare::kind_spawn::KindSpawn;
+use crate::declare::spawn_parts::SpawnParts;
 
-/// A part as `EntityParts` holds it: its type, how it goes on a spawning entity, and whether an
-/// entity as it stands lacks it.
+/// A part as `EntityParts` holds it: its type, how it joins the parts of a spawning entity, and
+/// whether an entity as it stands lacks it.
 struct Part<H> {
     ty: TypeId,
-    give: Box<dyn Fn(&mut EntityWorldMut<'_>) + Send + Sync>,
+    push: Box<dyn Fn(&KindSpawn<'_, H>, &mut BundleWriter<'_>) + Send + Sync>,
     missing: Box<dyn Fn(&KindSpawn<'_, H>) -> bool + Send + Sync>,
 }
 
@@ -39,9 +43,14 @@ impl<H: Send + Sync + 'static> Default for EntityParts<H> {
 }
 
 impl<H: Component> EntityParts<H> {
-    /// Adds the part `start` makes, which an entity of the host gets as it spawns, when `start`
-    /// gives one; the host has one part of each type.
-    pub(crate) fn add<C: Component>(&mut self, start: fn(&KindSpawn<'_, H>) -> Option<C>) {
+    /// Adds the part `start` makes, of the component `id` of the world that holds the parts,
+    /// which an entity of the host gets as it spawns, when `start` gives one; the host has one
+    /// part of each type.
+    pub(crate) fn add<C: Component>(
+        &mut self,
+        id: ComponentId,
+        start: fn(&KindSpawn<'_, H>) -> Option<C>,
+    ) {
         let parts = Arc::get_mut(&mut self.parts).expect("the install adds parts before a spawn");
         let ty = TypeId::of::<C>();
         assert!(
@@ -50,10 +59,21 @@ impl<H: Component> EntityParts<H> {
         );
         parts.push(Part {
             ty,
-            give: Box::new(move |entity| {
-                let at = KindSpawn::of(entity.world(), entity.id());
-                if let Some(part) = start(&at) {
-                    entity.insert_if_new(part);
+            push: Box::new(move |at, writer| {
+                debug_assert_eq!(
+                    at.world().components().component_id::<C>(),
+                    Some(id),
+                    "a part's component is of the world that holds the parts"
+                );
+                if at.world().get::<C>(at.entity()).is_some() {
+                    return;
+                }
+                if let Some(part) = start(at) {
+                    OwningPtr::make(part, |part| {
+                        // SAFETY: `part` holds a `C`, of the component `id`, of the world that
+                        // holds these parts, which `SpawnParts` writes the entity of.
+                        unsafe { writer.push_component_by_id(id, part, Layout::new::<C>()) };
+                    });
                 }
             }),
             missing: Box::new(move |at| {
@@ -63,16 +83,23 @@ impl<H: Component> EntityParts<H> {
         });
     }
 
-    /// Puts each part the modules declare for the host on `entity`, which spawns, in the order
-    /// they declared them, but a part it holds, which its spawn's caller gave; none in a match
-    /// whose modules declare none.
+    /// Puts each part the modules declare for the host on `entity`, which spawns, as `push`
+    /// makes them, in one move.
     pub(crate) fn give(entity: &mut EntityWorldMut<'_>) {
-        let Some(parts) = entity.world().get_resource::<EntityParts<H>>() else {
+        SpawnParts::give(entity, EntityParts::<H>::push);
+    }
+
+    /// Pushes onto `writer` each part the modules declare for the host that `entity` of `world`,
+    /// which spawns, lacks, but a part it holds, which its spawn's caller gave; none in a match
+    /// whose modules declare none. Each part is made from the entity's core, its facing and its
+    /// type's books, never from another declared part, so their order changes none.
+    pub(crate) fn push(world: &World, entity: Entity, writer: &mut BundleWriter<'_>) {
+        let Some(parts) = world.get_resource::<EntityParts<H>>() else {
             return;
         };
-        let parts = Arc::clone(&parts.parts);
-        for part in parts.iter() {
-            (part.give)(entity);
+        let at = KindSpawn::of(world, entity);
+        for part in parts.parts.iter() {
+            (part.push)(&at, writer);
         }
     }
 

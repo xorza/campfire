@@ -4,11 +4,9 @@ use campfire_sim::StableId;
 use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
 use crate::mode::unit_type_setup::UnitTypeSetup;
-use crate::navigation::Navigation;
 use crate::stats::Stats;
 use crate::stats::grants::Grant;
 use crate::stats::lifetime::Hold;
-use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::modifier_id::ModifierId;
 use crate::units::spawner::Spawner;
@@ -26,8 +24,7 @@ pub struct ModeUnits {
 }
 
 impl ModeUnits {
-    /// The spawner of the mode's unit types: a unit takes its type's passive, applied by itself,
-    /// then its box body, if it has one, moves the walkers it lands on out of it.
+    /// The spawner of the mode's unit types: a unit takes its type's passive, applied by itself.
     pub(crate) fn spawner(&self) -> Spawner {
         let mut passives = ByType::default();
         for setup in &self.unit_types {
@@ -38,14 +35,8 @@ impl ModeUnits {
             let unit = world.entity(entity);
             let unit_type = unit.get::<UnitType>().expect("a unit has a type");
             let id = *unit.get::<StableId>().expect("a unit has a stable id");
-            let boxed = unit
-                .get::<Body>()
-                .is_some_and(|body| body.half_edges().is_some());
             if let Some(&passive) = passives.get(*unit_type) {
                 ModeUnits::apply_passive(world, id, passive);
-            }
-            if boxed {
-                Navigation::make_room(world, entity);
             }
         })
     }

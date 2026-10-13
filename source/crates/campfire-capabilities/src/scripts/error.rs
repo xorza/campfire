@@ -41,9 +41,6 @@ pub enum ApiError {
     /// Experience on a track the unit does not have.
     #[error("the unit does not have the track")]
     NoTrack,
-    /// A reset of a unit with no spawn place to walk to.
-    #[error("the unit has no spawn place")]
-    NoSpawnPlace,
     /// A projectile or an area of an action that delivers none of that kind.
     #[error("the action delivers no unit of that kind")]
     NoDelivery,

@@ -41,15 +41,10 @@ fn vision_match_of_teams(teams: usize) -> Match {
 /// A match of `teams` teams whose map has the brush of `brush`'s areas, in order, with the
 /// tests' seers.
 fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
-    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-    vision_match_of(&declared, teams, brush)
-}
-
-/// A match of `declared`, with vision among them, as `vision_match_with_brush` gives one.
-fn vision_match_of(declared: &[Capability], teams: usize, brush: &[Polygon]) -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = Match::server(declared, scripts);
+    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
+    let mut game = Match::server(&declared, scripts);
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
     let grid = Grid::new(Num::int(1), bounds).unwrap();
     Vision::load_grid(&mut game, grid, brush, teams);
@@ -300,15 +295,8 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     // own cell, (5, 0), lies 5.5 m and more from (-1, 0). A seer of team 0 there sees 4 m: the
     // center of cell (2, 0), (2.5, 0.5), lies √12.5 ≈ 3.54 m off, in sight, and that of (3, 0),
     // (3.5, 0.5), √20.5 ≈ 4.53 m off, out of it. So team 0 sees the box by its edge's cells alone,
-    // where a unit seen by the cell of its position would stay hidden. Its spawn makes room for
-    // it, as a box's does, which navigation does.
-    let declared = [
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Vision,
-    ];
-    let mut game = vision_match_of(&declared, 3, &[]);
+    // where a unit seen by the cell of its position would stay hidden.
+    let mut game = vision_match();
     let team = |index| TeamSet::of(Team::new(index));
     let core = UnitTypeCore::default();
     let building = Units::load_type(&mut game, TypeScope::Mode, "building", &core);

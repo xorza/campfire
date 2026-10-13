@@ -147,7 +147,11 @@ impl UnitOrder {
                 return false;
             }
             UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
-            UnitOrder::Reset => Some(spawn.expect("the call checked the spawn place").get()),
+            UnitOrder::Reset => Some(
+                spawn
+                    .expect("a unit the mode spawned holds its spawn place")
+                    .get(),
+            ),
             UnitOrder::Stop => {
                 if let Some(slots) = &mut slots {
                     slots.stop();

@@ -39,6 +39,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
+use bevy_ecs::component::ComponentId;
 use campfire_sim::StableId;
 use std::collections::BTreeMap;
 
@@ -642,4 +643,27 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
     assert!(game.entity(received).contains::<Avatar>());
     game.entity_mut(received).insert(creep);
     assert!(!game.entity(received).contains::<Avatar>());
+}
+
+#[test]
+fn a_spawn_gives_its_declared_parts_in_one_move() {
+    // A melee unit spawns with the parts combat, stats and actions declare for it, `Life`,
+    // `Level` and `ActionSlots` among them: written at once, they reach one archetype only, the
+    // unit's, where a part put on alone would leave an archetype of each part before the last.
+    let mut game = units_match();
+    melee(&mut game, (0, 0, 0), Team::new(0), ());
+    let holding = |game: &Match, id: Option<ComponentId>| {
+        let id = id.expect("a declared part's component");
+        let archetypes = game.archetypes().iter();
+        archetypes
+            .filter(|archetype| archetype.contains(id))
+            .count()
+    };
+    let components = game.components();
+    let parts = [
+        components.component_id::<Life>(),
+        components.component_id::<Level>(),
+        components.component_id::<ActionSlots>(),
+    ];
+    assert_eq!(parts.map(|id| holding(&game, id)), [1, 1, 1]);
 }

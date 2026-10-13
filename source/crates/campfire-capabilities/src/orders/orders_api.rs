@@ -61,10 +61,14 @@ impl OrdersApi {
                 "`unit` drops its target and walks home, taking no order until there, where its pools fill",
             ),
             |ctx: &mut Ctx, unit: Unit| {
-                if unit.read(|row| row.spawn.is_none()) {
-                    return Err(ApiError::NoSpawnPlace.fail().into());
-                }
-                OrdersApi::order(ctx, &unit, UnitOrder::Reset)
+                let reset = OrdersApi::order(ctx, &unit, UnitOrder::Reset);
+                // The acting unit, which only a unit the mode spawned is, holds its spawn place
+                // as a part the modules declare.
+                debug_assert!(
+                    reset.is_err() || unit.read(|row| row.spawn.is_some()),
+                    "the acting unit holds its spawn place"
+                );
+                reset
             },
         )
         .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))

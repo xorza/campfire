@@ -36,6 +36,7 @@ use crate::units::new_unit::NewUnit;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
+use crate::units::spawn_hooks::SpawnHooks;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
@@ -95,6 +96,7 @@ pub(crate) mod row_reads;
 
 mod source_reads;
 pub(crate) mod spawn_at;
+pub(crate) mod spawn_hooks;
 pub(crate) mod spawn_point;
 pub(crate) mod spawn_target;
 pub(crate) mod spawner;
@@ -181,6 +183,7 @@ impl Module for Units {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<UnitsSet>();
+        d.calls::<SpawnHooks>();
         d.engine_tags(&[Units::AVATAR]);
         Units::kinds(d);
         d.component::<Body>();

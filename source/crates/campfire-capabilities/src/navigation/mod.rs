@@ -35,9 +35,11 @@ use crate::navigation::statics_dirty::StaticsDirty;
 use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::navigation::walking::Walking;
+use crate::units::body::Body;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::move_step::MoveStep;
+use crate::units::spawn_hooks::SpawnHooks;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -127,6 +129,7 @@ impl Module for Navigation {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<NavigationSet>();
+        d.callback::<SpawnHooks>(Capability::Navigation, Navigation::make_room);
         d.component::<Destination>();
         d.component::<PathWalker>();
         d.component::<OnPath>();
@@ -226,13 +229,19 @@ impl Navigation {
         world.resource_mut::<StaticsDirty>().set();
     }
 
-    /// Makes room for the box of `entity`, which just spawned: each walker of its layer whose
-    /// body the box overlaps goes at once to the nearest cell its walker may stand in, by stable
-    /// id, as a teleport places a unit but with no disjoint. The static index and the pathing
-    /// grid take the box first, so the cell is clear of every static body, and no push of
-    /// collision can hold the walker between two. With no pathing grid, the box pushes it out
-    /// as collision would.
-    pub(crate) fn make_room(world: &mut World, entity: Entity) {
+    /// The spawn hook that makes room for the body of `entity`, which the mode's spawner just
+    /// spawned, when a box: each walker of its layer whose body the box overlaps goes at once to
+    /// the nearest cell its walker may stand in, by stable id, as a teleport places a unit but
+    /// with no disjoint. The static index and the pathing grid take the box first, so the cell
+    /// is clear of every static body, and no push of collision can hold the walker between two.
+    /// With no pathing grid, the box pushes it out as collision would.
+    fn make_room(world: &mut World, entity: Entity) {
+        let boxed = world
+            .get::<Body>(entity)
+            .is_some_and(|body| body.half_edges().is_some());
+        if !boxed {
+            return;
+        }
         let run = world.resource::<RoomMakingRun>().0;
         world
             .run_system_with(run, entity)

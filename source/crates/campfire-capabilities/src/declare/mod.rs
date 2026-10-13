@@ -17,3 +17,4 @@ pub(crate) mod per_type;
 pub(crate) mod report;
 pub(crate) mod scratch;
 pub(crate) mod set_order;
+pub(crate) mod spawn_parts;

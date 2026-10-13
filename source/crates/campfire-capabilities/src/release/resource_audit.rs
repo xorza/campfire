@@ -16,6 +16,7 @@ use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
+use crate::declare::spawn_parts::SpawnParts;
 use crate::mode::mode_world::ModeWorld;
 use crate::release::Release;
 use crate::scripts::api_builder::ApiBuilder;
@@ -167,6 +168,7 @@ impl Declarations for DeclaredResources {
         _: fn(&KindSpawn<'_, H>) -> Option<C>,
     ) {
         self.ids.push(TypeId::of::<EntityParts<H>>());
+        self.ids.push(TypeId::of::<SpawnParts>());
     }
 
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}

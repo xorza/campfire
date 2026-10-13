@@ -24,6 +24,7 @@ use crate::actions::test_world::TestWeapon;
 use crate::books::Books;
 use crate::combat::on_death::OnDeath;
 use crate::combat::test_world::Armed;
+use crate::deliveries::Deliveries;
 use crate::geometry::bounds::Bounds;
 use crate::geometry::grid::Grid;
 use crate::items::inventory::Inventory;
@@ -52,6 +53,7 @@ use crate::players::resource_id::ResourceId;
 use crate::release::Release;
 use crate::release::r#match::Match;
 use crate::release::match_spec::MatchSpec;
+use crate::scripts::error::internals::FailureKind;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -62,6 +64,7 @@ use crate::stats::life::Life;
 use crate::units::Units;
 use crate::units::body_form::BodyForm;
 use crate::units::dead::Dead;
+use crate::units::delivery_entity::DeliveryEntity;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::move_step::MoveStep;
@@ -941,6 +944,11 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         (Some(unit), CallError::Api(ApiError::NoAttack)) if unit == friendly
     ));
     assert_eq!(game.part::<ActionSlots>(friendly).attack_target(), None);
+    // A reset of another unit fails as the unit's own does not: of a delivery, which holds no
+    // spawn place, as of any.
+    let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), DeliveryEntity);
+    let reset = Units::read(&mut game, "ctx.order_reset(of)", delivery).unwrap_err();
+    assert_eq!(reset.kind(), FailureKind::Api(ApiError::OtherUnit));
 }
 
 #[test]
