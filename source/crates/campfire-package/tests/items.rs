@@ -6,8 +6,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 use campfire_capabilities::{DeclaredName, NameKind, UnitTypeData};
 use campfire_codec::Toml;
 use campfire_package::{
-    ChoiceProblem, ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef,
-    Place,
+    ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
 };
 use campfire_sim::Capability;
 
@@ -168,7 +167,7 @@ const FLAWS: [Flaw; 20] = [
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""bag""#))],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "bag"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, name, .. } if name == "bag"),
     },
     Flaw {
         edits: &[

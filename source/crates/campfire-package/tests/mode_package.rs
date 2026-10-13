@@ -2369,7 +2369,7 @@ static FLAWS: [Flaw; 276] = [
             r#"ultimates = ["tomb_bind"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Avatar(name), kind }) if name == "hero-husk" && kind == "ultimates"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Avatar(avatar), name } if avatar == "hero-husk" && name == "ultimates"),
     ),
     flaw(
         HUSK,
@@ -2405,7 +2405,7 @@ static FLAWS: [Flaw; 276] = [
         MODE_DATA,
         Edit::Replace("slot = \"spell\"", "slot = \"spells\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Choice(name), kind }) if name.as_str() == "spells" && kind == "spells"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Choice(choice), name } if choice.as_str() == "spells" && name == "spells"),
     ),
     flaw(
         MODE_DATA,
@@ -2423,7 +2423,7 @@ static FLAWS: [Flaw; 276] = [
             r#"ctx.chosen(player, "spell")"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownChoice { name, .. }) if name == "spell"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Choice, name, .. } if name == "spell"),
     ),
     flaw(
         "modes/3v3/scripts/mode.rhai",
@@ -2432,7 +2432,7 @@ static FLAWS: [Flaw; 276] = [
             r#"ctx.grant(unit, "spells","#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, name, .. } if name == "spells"),
     ),
     // A train is production's, names a unit type of the mode and takes no target, and sits on a
     // unit type with a queue; no other kind names a unit type.

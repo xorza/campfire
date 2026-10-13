@@ -9,7 +9,7 @@ use campfire_capabilities::{
     ModifierFields, ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param,
     ParamProblem, ProjectileHits, PurgeFields, RangeField, Release, RestoreFields, ScriptApi,
     ScriptRole, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackError, TypePlace,
-    UnitTypeCore, UnitTypeData, UnknownName, XpFields,
+    TypesError, UnitTypeCore, UnitTypeData, UnknownName, XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -227,6 +227,14 @@ impl<'a> LoadCheck<'a> {
             } => (package, LoadProblem::Modifier { modifier, problem }),
             BookError::Mode(error) => (0, LoadProblem::Mode(error)),
             BookError::Names(error) => (0, LoadCheck::names_problem(error)),
+            BookError::Types(error) => (0, LoadCheck::types_problem(error)),
+            BookError::Script { package, path } => (
+                package,
+                LoadProblem::Script {
+                    path,
+                    problem: ScriptProblem::Missing,
+                },
+            ),
             BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
             BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
             BookError::ShopMarker(marker) => {
@@ -250,14 +258,8 @@ impl<'a> LoadCheck<'a> {
                     BookPlace::Combat => Place::Combat,
                     BookPlace::Shop => Place::Shop,
                 };
-                let problem = match name {
-                    UnknownName {
-                        of: NameKind::SlotKind,
-                        name: kind,
-                    } => LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at, kind }),
-                    UnknownName { of, name } => LoadProblem::Unknown { at, name, of },
-                };
-                (package, problem)
+                let UnknownName { of, name } = name;
+                (package, LoadProblem::Unknown { at, name, of })
             }
         };
         let view = packages.packages().nth(usize::from(package));
@@ -265,6 +267,18 @@ impl<'a> LoadCheck<'a> {
             &view.expect("the books name a package").package.header.name,
             problem,
         )
+    }
+
+    /// The problem of `error`, the unit types or tags that the book build refused.
+    fn types_problem(error: TypesError) -> LoadProblem {
+        match error {
+            TypesError::TooManyTags => LoadProblem::TooMany(Limit::Tags),
+            TypesError::TooManyTypes => LoadProblem::TooMany(Limit::UnitTypes),
+            TypesError::Repeated(name) => LoadProblem::Repeated {
+                at: Place::UnitTypes,
+                name,
+            },
+        }
     }
 
     /// The problem of `error`, a list of the mode's names that the book build refused.
@@ -938,24 +952,7 @@ impl<'a> LoadCheck<'a> {
                 let stat = Stat::named(name).ok_or_else(|| named.unknown(at))?;
                 return self.stats_declared([&stat], at);
             }
-            NameKind::Choice => {
-                if declares(data.choices.keys(), name) {
-                    return Ok(());
-                }
-                return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
-                    at: at.clone(),
-                    name: named.name.clone(),
-                }));
-            }
-            NameKind::SlotKind => {
-                if self.names.has(NameKind::SlotKind, name) {
-                    return Ok(());
-                }
-                return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                    at: at.clone(),
-                    kind: named.name.clone(),
-                }));
-            }
+            NameKind::Choice => declares(data.choices.keys(), name),
             NameKind::MarkerTag => packages
                 .map
                 .markers
@@ -968,6 +965,7 @@ impl<'a> LoadCheck<'a> {
             | NameKind::Tag
             | NameKind::Team
             | NameKind::Path
+            | NameKind::SlotKind
             | NameKind::UnitType => self.names.has(named.kind, name),
             NameKind::Param
             | NameKind::Cost
@@ -1404,12 +1402,10 @@ impl<'a> LoadCheck<'a> {
         let kinds = &self.packages.data.slots;
         let mut slotted = BTreeSet::new();
         for (kind, ids) in &unit_type.slots {
-            kinds.names().named(kind.as_str()).ok_or_else(|| {
-                LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                    at: at.clone(),
-                    kind: kind.to_string(),
-                })
-            })?;
+            kinds
+                .names()
+                .named(kind.as_str())
+                .ok_or_else(|| unknown(at, kind, NameKind::SlotKind))?;
             for id in ids {
                 if !actions.contains_key(id) {
                     return Err(LoadProblem::UnknownSlot(id.clone()));
@@ -1667,12 +1663,11 @@ impl<'a> LoadCheck<'a> {
         let mut ranks = None;
         for (name, choice) in &data.choices {
             let fills = |kind: &DeclaredName| {
-                data.slots.names().named(kind.as_str()).ok_or_else(|| {
-                    LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                        at: Place::Choice(name.clone()),
-                        kind: kind.to_string(),
-                    })
-                })
+                let at = Place::Choice(name.clone());
+                data.slots
+                    .names()
+                    .named(kind.as_str())
+                    .ok_or_else(|| unknown(&at, kind, NameKind::SlotKind))
             };
             match (choice.offers, &choice.slot) {
                 (Offers::Loadout, Some(kind)) => {

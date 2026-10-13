@@ -110,7 +110,10 @@ impl ModifierBook {
         let tags: Vec<TagSet> = modifiers
             .iter()
             .map(|modifier| {
-                let declare = |name: &DeclaredName| types.declare(name.as_str());
+                let declare = |name: &DeclaredName| {
+                    let tag = types.declare(name.as_str());
+                    tag.expect("a match declares each tag its packages name before their modifiers")
+                };
                 modifier.data.tags.iter().map(declare).collect()
             })
             .collect();

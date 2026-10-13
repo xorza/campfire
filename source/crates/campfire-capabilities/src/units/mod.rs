@@ -68,6 +68,7 @@ pub(crate) mod engine_tag;
 pub(crate) mod entity_filters;
 pub(crate) mod entity_kind;
 pub(crate) mod entity_kinds;
+pub(crate) mod error;
 pub(crate) mod facing;
 pub(crate) mod filter;
 pub(crate) mod forced_move;
@@ -531,7 +532,7 @@ pub(crate) mod test_world {
             let view = world.non_send::<View>();
             let mut types = view.types_mut();
             for name in names {
-                types.declare(name);
+                types.declare(name).unwrap();
             }
         }
 
@@ -550,7 +551,7 @@ pub(crate) mod test_world {
                 TypeScope::Mode => 0,
                 TypeScope::Package(package) => package,
             };
-            let unit_type = view.types_mut().load(scope, package, name, data);
+            let unit_type = view.types_mut().load(scope, package, name, data).unwrap();
             view.names_mut().share_type_names();
             let states = view.types_mut().state_book();
             Books::load(world, states);

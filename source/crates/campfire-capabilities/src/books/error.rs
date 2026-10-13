@@ -8,7 +8,9 @@ use crate::orders::error::AiError;
 use crate::progression::error::TrackError;
 use crate::scripts::error::UnknownName;
 use crate::stats::error::ModifierProblem;
+use crate::units::error::TypesError;
 use crate::values::declared_name::DeclaredName;
+use crate::values::package_path::PackagePath;
 use crate::values::stat::Stat;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
@@ -65,6 +67,12 @@ pub enum BookError {
     /// The mode's tracks do not load.
     #[error(transparent)]
     Tracks(TrackError),
+    /// The match's unit types or tags do not load.
+    #[error(transparent)]
+    Types(TypesError),
+    /// Data names a script at `path` that the package does not hold.
+    #[error("no script {path}")]
+    Script { package: u16, path: PackagePath },
     /// The shop's marker of that name has no region or no team it serves.
     #[error("shop marker {0}: no region or no team")]
     ShopMarker(DeclaredName),

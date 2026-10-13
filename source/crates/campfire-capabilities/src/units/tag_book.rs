@@ -147,7 +147,7 @@ mod tests {
     fn a_units_tags_take_their_properties_from_the_modes_data() {
         let mut types = UnitTypes::new(Release::engine_tags());
         let names = ["stunned", "slowed", "slow_immune", "true_sight"];
-        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name));
+        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name).unwrap());
         // The engine's tags hold the first places, and to declare one finds it.
         assert_eq!(
             [stunned, slowed, slow_immune, sight].map(Tag::index),
@@ -156,7 +156,7 @@ mod tests {
         let release = Release::engine_tags();
         let engine: Vec<Tag> = release
             .iter()
-            .map(|tag| types.declare(tag.name()))
+            .map(|tag| types.declare(tag.name()).unwrap())
             .collect();
         let numbers: Vec<Tag> = release.iter().map(|tag| tag.tag()).collect();
         assert_eq!(engine, numbers);
@@ -164,13 +164,13 @@ mod tests {
             engine.iter().map(|tag| tag.index()).collect::<Vec<_>>(),
             [0, 1, 2, 3, 4, 5, 6]
         );
-        assert_eq!(types.declare("tower").index(), 11);
+        assert_eq!(types.declare("tower").unwrap().index(), 11);
         let tower = UnitTypeCore {
             tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),
             state: BTreeMap::new(),
         };
-        let tower = types.load(TypeScope::Mode, 0, "tower", &tower);
+        let tower = types.load(TypeScope::Mode, 0, "tower", &tower).unwrap();
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
             blocks: blocks.to_vec(),
             hidden: false,
@@ -219,7 +219,9 @@ mod tests {
             panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
         };
         assert!(fails(&mut |types| {
-            types.load(TypeScope::Mode, 0, "late", &UnitTypeCore::default());
+            types
+                .load(TypeScope::Mode, 0, "late", &UnitTypeCore::default())
+                .unwrap();
         }));
         assert!(fails(&mut |types| types.give_tag(tower, stunned)));
         assert!(fails(&mut |types| drop(types.tag_book(&data))));

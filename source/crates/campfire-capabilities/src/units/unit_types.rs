@@ -4,6 +4,7 @@ use std::sync::Arc;
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::units::body_form::BodyForm;
 use crate::units::engine_tag::EngineTag;
+use crate::units::error::TypesError;
 use crate::units::layer::Layer;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
@@ -16,6 +17,7 @@ use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_core::UnitTypeCore;
 use crate::values::declared_name::DeclaredName;
+use crate::values::error::NamesError;
 use crate::values::name_table::NameTable;
 use crate::values::names::Names;
 use crate::values::scalar::Scalar;
@@ -72,25 +74,29 @@ impl UnitTypes {
         named_only.map(|tag| tag.tag()).collect()
     }
 
-    /// Loads `data` as the type `name` of `scope`, declared by the package at `package`, which the
-    /// package load checked names no other type there, within the most types a match loads: its
-    /// tags join the match's, and its params are kept for `unit.params`.
+    /// Loads `data` as the type `name` of `scope`, declared by the package at `package`: its tags
+    /// join the match's, and its params are kept for `unit.params`; an error for a type its scope
+    /// names already, or past the most types or tags a match holds.
     pub(crate) fn load(
         &mut self,
         scope: TypeScope,
         package: u16,
         name: &str,
         data: &UnitTypeCore,
-    ) -> UnitType {
+    ) -> Result<UnitType, TypesError> {
         let mut tags = TagSet::default();
         for name in &data.tags {
-            tags = tags.with(self.declare(name.as_str()));
+            tags = tags.with(self.declare(name.as_str())?);
         }
         let params = data
             .params
             .iter()
             .map(|(name, &value)| (name.as_str(), value));
-        let unit_type = Arc::make_mut(&mut self.types).add((scope, name));
+        let added = Arc::make_mut(&mut self.types).try_add((scope, name));
+        let unit_type = added.map_err(|error| match error {
+            NamesError::Full => TypesError::TooManyTypes,
+            NamesError::Repeated => TypesError::Repeated(name.to_owned()),
+        })?;
         let run = self.params.push(params);
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
         let fields = data
@@ -104,13 +110,19 @@ impl UnitTypes {
             package,
             name: name.into(),
         });
-        unit_type
+        Ok(unit_type)
     }
 
-    /// The tag `name`, which joins the match's tags if it is new, within the most tags a match
-    /// has, which the package load counted.
-    pub(crate) fn declare(&mut self, name: &str) -> Tag {
-        self.tags.named(name).unwrap_or_else(|| self.tags.add(name))
+    /// The tag `name`, which joins the match's tags if it is new; an error past the most tags a
+    /// match holds.
+    pub(crate) fn declare(&mut self, name: &str) -> Result<Tag, TypesError> {
+        if let Some(tag) = self.tags.named(name) {
+            return Ok(tag);
+        }
+        self.tags.try_add(name).map_err(|error| match error {
+            NamesError::Full => TypesError::TooManyTags,
+            NamesError::Repeated => unreachable!("the match names no tag {name} yet"),
+        })
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
@@ -219,5 +231,48 @@ pub(crate) mod internals {
         pub(crate) fn count(&self) -> usize {
             self.types.len()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::release::Release;
+    use crate::units::error::TypesError;
+    use crate::units::tag::Tag;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type_core::UnitTypeCore;
+    use crate::units::unit_types::UnitTypes;
+    use crate::values::declared_name::DeclaredName;
+
+    #[test]
+    fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
+        let mut types = UnitTypes::new(Release::engine_tags());
+        // The engine's 7 tags and 249 more fill the 256 a match holds.
+        for at in Release::engine_tags().len()..Tag::LIMIT {
+            types.declare(&format!("tag{at}")).unwrap();
+        }
+        assert_eq!(types.declare("one_more"), Err(TypesError::TooManyTags));
+        // A full match still finds the tags it holds, and a type that names a new one fails.
+        assert_eq!(types.declare("tag255").unwrap().index(), 255);
+        let named = |name: &str| UnitTypeCore {
+            tags: vec![DeclaredName::new(name).unwrap()],
+            ..UnitTypeCore::default()
+        };
+        let load = |types: &mut UnitTypes, name: &str, data: &UnitTypeCore| {
+            types.load(TypeScope::Mode, 0, name, data)
+        };
+        assert_eq!(
+            load(&mut types, "tower", &named("one_more")),
+            Err(TypesError::TooManyTags)
+        );
+        // 65,536 types fill a match, and one more fails. The names sort in the order they load.
+        let plain = UnitTypeCore::default();
+        for at in 0..UnitTypeCore::TYPE_LIMIT {
+            load(&mut types, &format!("type{at:05}"), &plain).unwrap();
+        }
+        assert_eq!(
+            load(&mut types, "type65536", &named("tag255")),
+            Err(TypesError::TooManyTypes)
+        );
     }
 }

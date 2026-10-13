@@ -71,6 +71,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
+use crate::units::error::TypesError;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
@@ -86,9 +87,6 @@ use crate::values::names::Names;
 use crate::values::package_path::PackagePath;
 use crate::values::share::Share;
 use crate::values::stat::Stat;
-
-/// What the package load checked, which the builder trusts.
-const CHECKED: &str = "the load checked it";
 
 /// A unit type the builder looks up by the name it declared it by.
 const DECLARED: &str = "the builder declared each unit type";
@@ -190,10 +188,14 @@ impl<'a> BookBuilder<'a> {
             ..BookParts::default()
         };
         for name in input.tag_names {
-            books.types.declare(name.as_str());
+            books
+                .types
+                .declare(name.as_str())
+                .map_err(BookError::Types)?;
         }
         for (index, package) in (0..).zip(&input.packages) {
-            BookBuilder::declare_types(&mut books.types, index, package);
+            BookBuilder::declare_types(&mut books.types, index, package)
+                .map_err(BookError::Types)?;
         }
         let names = ModeNames::of(data).map_err(BookError::Names)?;
         let life = data.combat.life_pool(&names.pools);
@@ -513,7 +515,11 @@ impl<'a> BookBuilder<'a> {
     /// which numbers them: its types by name, each a delivery type or one that stands, then an
     /// avatar package's avatar. The mode's types that stand are in the mode's scope, with the
     /// avatars; every other type is in its package's own.
-    fn declare_types(types: &mut UnitTypes, index: u16, package: &BookPackage<'_>) {
+    fn declare_types(
+        types: &mut UnitTypes,
+        index: u16,
+        package: &BookPackage<'_>,
+    ) -> Result<(), TypesError> {
         for (name, file) in &package.content.units {
             let scope = match package.kind {
                 BookKind::Mode if !file.delivers() => TypeScope::Mode,
@@ -521,11 +527,12 @@ impl<'a> BookBuilder<'a> {
                     TypeScope::of_package(index)
                 }
             };
-            types.load(scope, index, name.as_str(), &file.core());
+            types.load(scope, index, name.as_str(), &file.core())?;
         }
         if let BookKind::Avatar(unit) = package.kind {
-            types.load(TypeScope::Mode, index, package.name, &unit.core());
+            types.load(TypeScope::Mode, index, package.name, &unit.core())?;
         }
+        Ok(())
     }
 
     /// The modifiers of the package at `index`, by name.
@@ -534,12 +541,15 @@ impl<'a> BookBuilder<'a> {
             .content
             .modifiers
             .iter()
-            .map(|(name, data)| PackageModifier {
-                name,
-                data,
-                script: data.script.as_ref().map(|path| self.script(index, path)),
+            .map(|(name, data)| {
+                let script = data.script.as_ref().map(|path| self.script(index, path));
+                Ok(PackageModifier {
+                    name,
+                    data,
+                    script: script.transpose()?,
+                })
             })
-            .collect();
+            .collect::<Result<_, BookError>>()?;
         let input = self.input;
         let stats = &self.stats;
         let books = &mut self.books;
@@ -602,7 +612,11 @@ impl<'a> BookBuilder<'a> {
         data: &'a ActionData,
         ranks: u8,
     ) -> Result<ActionId, BookError> {
-        let script = data.script.as_ref().map(|path| self.script(index, path));
+        let script = data
+            .script
+            .as_ref()
+            .map(|path| self.script(index, path))
+            .transpose()?;
         let names = self.names(index, None);
         let at = || BookPlace::Action(id.clone());
         let parts = ActionParts::of(data, index, ranks, self.input.rate, &names)
@@ -842,7 +856,7 @@ impl<'a> BookBuilder<'a> {
         let Some(orders) = &at.unit.file.orders else {
             return Ok(());
         };
-        let script = self.script(at.package, &orders.ai);
+        let script = self.script(at.package, &orders.ai)?;
         let ai = Ai::of(orders, script, self.input.scripts, self.input.rate).map_err(|error| {
             BookError::Ai {
                 package: at.package,
@@ -1065,15 +1079,15 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The script at `path` of the package at `index`, by its place in the order a match
-    /// compiles its scripts.
-    fn script(&self, index: u16, path: &PackagePath) -> ScriptId {
+    /// compiles its scripts; an error for a path the package does not hold.
+    fn script(&self, index: u16, path: &PackagePath) -> Result<ScriptId, BookError> {
         let package = &self.input.packages[usize::from(index)];
-        let at = package
-            .scripts
-            .iter()
-            .position(|held| *held == path)
-            .expect(CHECKED);
-        ScriptId::nth(self.script_starts[usize::from(index)] + at)
+        let at = package.scripts.iter().position(|held| *held == path);
+        let at = at.ok_or_else(|| BookError::Script {
+            package: index,
+            path: path.clone(),
+        })?;
+        Ok(ScriptId::nth(self.script_starts[usize::from(index)] + at))
     }
 }
 

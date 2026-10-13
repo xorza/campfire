@@ -71,8 +71,11 @@ fn two_fields() -> Match {
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypes::new(Release::engine_tags());
-    let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"]
-        .map(|name| types.load(TypeScope::Mode, 0, name, &UnitTypeCore::default()));
+    let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
+        types
+            .load(TypeScope::Mode, 0, name, &UnitTypeCore::default())
+            .unwrap()
+    });
     world.insert_resource(types.tag_book(&BTreeMap::new()));
     world.insert_resource(types.state_book());
     world.non_send::<View>().names_mut().set_types(types);

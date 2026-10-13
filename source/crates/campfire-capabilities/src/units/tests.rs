@@ -30,6 +30,7 @@ use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::entity_kinds::EntityKinds;
+use crate::units::error::TypesError;
 use crate::units::path_id::PathId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_core::UnitTypeCore;
@@ -505,6 +506,12 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
     let theirs = load(TypeScope::Package(1), "grunt");
     let view = game.non_send::<View>();
+    // A scope names a type once.
+    assert_eq!(
+        view.types_mut()
+            .load(TypeScope::Package(1), 1, "grunt", &data),
+        Err(TypesError::Repeated("grunt".to_owned()))
+    );
     assert_eq!(
         (
             view.names().unit_types().named((TypeScope::Mode, "grunt")),
@@ -533,15 +540,6 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     );
     let every: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
     assert_eq!(every, [first, second, theirs]);
-}
-
-#[test]
-#[should_panic(expected = "a scope names an id once: grunt")]
-fn a_type_named_twice_in_one_scope_is_a_logic_error() {
-    let mut game = units_match();
-    let data = UnitTypeCore::default();
-    Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
-    Units::load_type(&mut game, TypeScope::Package(1), "grunt", &data);
 }
 
 #[test]

@@ -246,6 +246,7 @@ pub use crate::units::delivery_entity::DeliveryEntity;
 pub use crate::units::engine_tag::EngineTag;
 pub use crate::units::entity_filters::UnitFilter;
 pub use crate::units::entity_kind::{EntityKind, KindAudience};
+pub use crate::units::error::TypesError;
 pub use crate::units::facing::Facing;
 pub use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
 pub use crate::units::layer::Layer;

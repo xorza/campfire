@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         let mut types = UnitTypes::new(Release::engine_tags());
-        types.declare("rooted");
+        types.declare("rooted").unwrap();
         let one = Param::Ranked(Ranked::One(Scalar::Int(1)));
         let mut data = ModifierData {
             script: None,
@@ -382,7 +382,7 @@ mod tests {
     fn a_spec_fails_on_a_name_the_match_does_not_have() {
         // The match has the stat armor, the tag rooted and the modifier chill.
         let mut types = UnitTypes::new(Release::engine_tags());
-        types.declare("rooted");
+        types.declare("rooted").unwrap();
         let armor = Stat::named("armor").unwrap();
         let names = SpecNames {
             stat: |stat: &Stat| {
