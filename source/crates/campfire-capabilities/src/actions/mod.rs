@@ -610,15 +610,16 @@ pub(crate) mod test_world {
                 .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
         }
 
-        fn homes(&self, package: u16, name: &DeclaredName) -> bool {
+        fn homes(&self, package: u16, name: &DeclaredName) -> Option<bool> {
             let unit_type = self
                 .unit_type(package, name)
                 .expect("a test loads it first");
             let specs = self.world.resource::<ByType<ProjectileSpec>>();
-            specs
-                .get(unit_type)
-                .expect("a test loads a projectile type's spec before its action")
-                .homing
+            let spec = specs.get(unit_type);
+            Some(
+                spec.expect("a test loads a projectile type's spec before its action")
+                    .homing,
+            )
         }
 
         fn unit_type(&self, package: u16, name: &DeclaredName) -> Result<UnitType, UnknownName> {

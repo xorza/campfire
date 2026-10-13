@@ -394,7 +394,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 275] = [
+static FLAWS: [Flaw; 276] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -997,6 +997,26 @@ static FLAWS: [Flaw; 275] = [
                     problem: EffectProblem::Negative,
                     ..
                 }
+            )
+        },
+    ),
+    // An amount of i64::MAX, 2⁶³ − 1, is past what a sim number holds, whose most is
+    // (2⁶³ − 1) / 2²⁴.
+    flaw(
+        RIME,
+        Edit::Set(
+            "actions.fan_of_frost.on_hit",
+            r#"[{ damage = { amount = 9223372036854775807, kind = "true" } }]"#,
+        ),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    action,
+                    list: Hook::OnHit,
+                    problem: EffectProblem::Overflow,
+                } if action == "fan_of_frost"
             )
         },
     ),
@@ -2903,6 +2923,26 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     let error = kinds(254).unwrap_err();
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
+        "{error:?}"
+    );
+    // Gold and 255 more are 256, all a resource id counts; one more fails.
+    let resources = |count: usize| {
+        let mut more = String::new();
+        for at in 0..count {
+            write!(more, ", \"r{at}\"").unwrap();
+        }
+        let text = PackageTree::of(TestMode::Moba3v3).text(MODE_DATA).replacen(
+            r#"resources = ["gold"]"#,
+            &format!(r#"resources = ["gold"{more}]"#),
+            1,
+        );
+        let text: &'static str = Box::leak(text.into_boxed_str());
+        load(&edited([(MODE_DATA, Edit::Create(text))]))
+    };
+    assert!(resources(255).is_ok());
+    let error = resources(256).unwrap_err();
+    assert!(
+        matches!(*error.problem, LoadProblem::TooMany(Limit::Resources)),
         "{error:?}"
     );
 

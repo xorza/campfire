@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
+use std::slice;
 
 use campfire_math::Num;
 use serde::Deserialize;
@@ -11,7 +12,7 @@ use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
-use crate::actions::error::ActionField;
+use crate::actions::error::{ActionField, EffectRule};
 use crate::actions::kind_data::KindData;
 use crate::actions::placement_data::PlacementData;
 use crate::actions::range_field::RangeField;
@@ -215,6 +216,40 @@ impl ActionData {
     }
 
     /// Whether every per-rank array it holds has an entry for each of `ranks` ranks.
+    /// The rule `number`, a number of one of its effects, breaks: a value at some rank, its own or
+    /// its param's, past what a sim number holds, or below 0. A param it does not declare gives
+    /// none, which its effects' names refuse.
+    pub(crate) fn number_rule(&self, number: &Number) -> Result<(), EffectRule> {
+        let (value, param) = match number {
+            Number::Value(value) => (Some(value.to_num()), None),
+            Number::Param(reference) => (None, self.params.get(&reference.param)),
+        };
+        let values = value
+            .into_iter()
+            .chain(param.into_iter().flat_map(Param::numbers));
+        for value in values {
+            if value.ok_or(EffectRule::Overflow)? < Num::ZERO {
+                return Err(EffectRule::Negative);
+            }
+        }
+        Ok(())
+    }
+
+    /// Whether `duration`, a duration of one of its effects, is whole milliseconds within a
+    /// `u32` at every rank, and reads no scaling param, whose value only a call knows.
+    pub(crate) fn whole_ms(&self, duration: &Number) -> bool {
+        let values = match duration {
+            Number::Value(value) => slice::from_ref(value),
+            Number::Param(reference) => match self.params.get(&reference.param) {
+                Some(Param::Ranked(ranked)) => ranked.values(),
+                Some(Param::Scaling(_)) => return false,
+                None => &[],
+            },
+        };
+        let whole = |value: &Scalar| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok());
+        values.iter().all(whole)
+    }
+
     pub fn check_ranks(&self, ranks: usize) -> bool {
         self.rank_counts().all(|count| count == ranks)
     }

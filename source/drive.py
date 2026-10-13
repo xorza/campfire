@@ -50,6 +50,12 @@ QUIET_NEXTEST = (
     "--show-progress", "none", "--status-level", "fail",
     "--final-status-level", "slow", "--failure-output", "final", "--success-output", "never",
 )
+# The one test that compares each workspace package to its `package.index`, and writes the index
+# again from the package's files when the run blesses: the format stays with `package` alone.
+INDEX_TEST = (
+    "package(campfire-package) & "
+    "test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)"
+)
 LAN_PACKAGES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
 )
@@ -194,6 +200,12 @@ def cargo(*args: str) -> list[str]:
 
 def nextest_output() -> tuple[str, ...]:
     return ("--profile", "ci") if IN_CI else QUIET_NEXTEST
+
+
+def index_step() -> Step:
+    return Step(
+        "index", cargo(*TESTS, *nextest_output(), "-E", INDEX_TEST), {"CAMPFIRE_BLESS": "1"}
+    )
 
 
 def fmt_step() -> Step:
@@ -483,6 +495,7 @@ def record(command: str, step: str, status: str, outcome: Outcome | None, warm: 
     entry = {
         "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
         "command": command,
+        "pid": os.getpid(),
         "step": step,
         "status": status,
         "seconds": round(outcome.seconds, 1) if outcome else None,
@@ -547,7 +560,8 @@ def refuse_arguments(name: str, args: list[str]) -> None:
 
 def check(args: list[str]) -> int:
     refuse_arguments("check", args)
-    return run_steps("check", [fmt_step(), lint_step(), ship_step(), tests_step()])
+    # The index first, as a stale one fails every test that loads its package.
+    return run_steps("check", [index_step(), fmt_step(), lint_step(), ship_step(), tests_step()])
 
 
 def test(args: list[str]) -> int:
@@ -556,6 +570,11 @@ def test(args: list[str]) -> int:
     env = {"CAMPFIRE_BLESS": "1"} if "--bless" in own else {}
     own = [arg for arg in own if arg != "--bless"]
     return run_steps("test", [tests_step(own + rest, env)])
+
+
+def index(args: list[str]) -> int:
+    refuse_arguments("index", args)
+    return run_steps("index", [index_step()])
 
 
 def doc(args: list[str]) -> int:
@@ -633,8 +652,9 @@ def warm(args: list[str]) -> int:
 
 
 COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
-    "check": (check, "", "fmt, lint, ship, tests: the check after a change"),
+    "check": (check, "", "index, fmt, lint, ship, tests: the check after a change"),
     "test": (test, "[--bless] [nextest args]", "the tests, all or filtered"),
+    "index": (index, "", "writes each workspace package's package.index from its files"),
     "doc": (doc, "", "the doc tests, and rustdoc with -D warnings"),
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
     "lan": (lan, "", "the LAN check"),

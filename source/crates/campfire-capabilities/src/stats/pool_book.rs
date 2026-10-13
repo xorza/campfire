@@ -70,7 +70,7 @@ impl PoolBook {
     /// Each pool, with its stats.
     pub(crate) fn iter(&self) -> impl Iterator<Item = (PoolId, PoolStats)> + '_ {
         (0..).zip(&self.pools).map(|(at, &stats)| {
-            let pool = PoolId::new(at).expect("the load kept the pools within the limit");
+            let pool = PoolId::new(at).expect("the mode's names hold its pools within the limit");
             (pool, stats)
         })
     }

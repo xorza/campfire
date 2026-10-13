@@ -160,11 +160,11 @@ impl ActionBook {
             .range
     }
 
-    /// The range in meters of the action in `slot` of `slots`, one whose load checked that it
-    /// reaches in meters, as a build's and a gather's do.
+    /// The range in meters of the action in `slot` of `slots`, one that reaches in meters at
+    /// every rank, as a build's and a gather's do.
     pub(crate) fn meters(&self, slots: &ActionSlots, slot: u8) -> Num {
         let ActionRange::Meters(range) = self.range(slots, slot) else {
-            panic!("the load checked the action's range in meters");
+            panic!("a build's and a gather's ranks reach in meters, as their book checked");
         };
         range
     }

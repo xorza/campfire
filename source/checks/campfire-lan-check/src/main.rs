@@ -1,7 +1,8 @@
 //! LAN check on request: builds and starts the real `campfire-server` and two
 //! `campfire-client --bot` processes over QUIC on `127.0.0.1`, for a match of about 11 s
 //! of the test lane mode, and a third bot that pins the wrong TLS key; once the server logged
-//! the second bot's first order, it stops that bot and starts it again with its key file; once it
+//! the second bot's first order and the first bot's order of that stamp, it stops the second bot
+//! and starts it again with its key file; once it
 //! logged an input stamped 50 or later, it kills the server and starts it again on its data
 //! directory, which restores the session, and the bots come back to it. Then it
 //! plays a client bot of the first script against a server bot of the second on a local server,

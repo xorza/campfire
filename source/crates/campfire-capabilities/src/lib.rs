@@ -61,7 +61,7 @@ pub use crate::actions::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
     MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
-pub use crate::actions::error::ActionField;
+pub use crate::actions::error::{ActionField, ActionProblem, EffectRule};
 pub use crate::actions::kind_data::KindData;
 pub use crate::actions::placement_data::{PlacementData, PlacementRule};
 pub use crate::actions::range_field::RangeField;
@@ -111,7 +111,7 @@ pub use crate::items::item_id::ItemId;
 pub use crate::items::shop_data::ShopData;
 pub use crate::mode::Mode;
 pub use crate::mode::choice_data::{ChoiceData, Offers};
-pub use crate::mode::error::ModeError;
+pub use crate::mode::error::{ModeError, ModeList, ModeNamesError};
 pub use crate::mode::height_grid::HeightGrid;
 pub use crate::mode::map_data::{
     BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
@@ -172,6 +172,7 @@ pub use crate::production::site::Site;
 pub use crate::production::supply_data::SupplyData;
 pub use crate::production::train_queue::{Queued, TrainQueue};
 pub use crate::progression::Progression;
+pub use crate::progression::error::TrackError;
 pub use crate::progression::experience::{Experience, TrackXp};
 pub use crate::progression::points::Points;
 pub use crate::progression::track_data::{Thresholds, TrackData};

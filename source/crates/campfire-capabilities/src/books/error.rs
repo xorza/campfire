@@ -1,13 +1,14 @@
 use thiserror::Error;
 
+use crate::actions::error::{ActionError, ActionProblem};
 use crate::books::book_place::BookPlace;
 use crate::books::type_place::TypePlace;
-use crate::mode::error::ModeError;
+use crate::mode::error::{ModeError, ModeNamesError};
 use crate::orders::error::AiError;
+use crate::progression::error::TrackError;
 use crate::scripts::error::UnknownName;
 use crate::stats::error::ModifierProblem;
 use crate::values::declared_name::DeclaredName;
-use crate::values::error::TimeTooLarge;
 use crate::values::stat::Stat;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
@@ -22,6 +23,9 @@ pub enum BookError {
         #[source]
         error: UnitStartError,
     },
+    /// The unit type walks and has a box body, which only a type that stands has.
+    #[error("{unit_type}: a box body on a type that walks")]
+    BoxWalks { package: u16, unit_type: TypePlace },
     /// The unit type's AI does not load.
     #[error("{unit_type}")]
     Ai {
@@ -30,13 +34,13 @@ pub enum BookError {
         #[source]
         error: AiError,
     },
-    /// A time of the action does not count in ticks.
+    /// The action's data breaks a rule.
     #[error("action {action}")]
     Action {
         package: u16,
         action: DeclaredName,
         #[source]
-        error: TimeTooLarge,
+        problem: ActionProblem,
     },
     /// The modifier does not load.
     #[error("modifier {modifier}")]
@@ -55,6 +59,15 @@ pub enum BookError {
     /// The mode's teams, relations or map name what the mode does not have.
     #[error(transparent)]
     Mode(ModeError),
+    /// A list of the mode's names does not load.
+    #[error(transparent)]
+    Names(ModeNamesError),
+    /// The mode's tracks do not load.
+    #[error(transparent)]
+    Tracks(TrackError),
+    /// The shop's marker of that name has no region or no team it serves.
+    #[error("shop marker {0}: no region or no team")]
+    ShopMarker(DeclaredName),
     /// Data at `at` names what the mode or its packages do not have.
     #[error("{at}")]
     Unknown {
@@ -69,6 +82,20 @@ impl BookError {
     /// The error of `name`, which data at `at` of the package at `package` gives.
     pub(crate) const fn unknown(package: u16, at: BookPlace, name: UnknownName) -> BookError {
         BookError::Unknown { package, at, name }
+    }
+
+    /// The error of `error`, which the data of `action` of the package at `package` gives.
+    pub(crate) fn of_action(package: u16, action: &DeclaredName, error: ActionError) -> BookError {
+        match error {
+            ActionError::Problem(problem) => BookError::Action {
+                package,
+                action: action.clone(),
+                problem,
+            },
+            ActionError::Unknown(name) => {
+                BookError::unknown(package, BookPlace::Action(action.clone()), name)
+            }
+        }
     }
 }
 

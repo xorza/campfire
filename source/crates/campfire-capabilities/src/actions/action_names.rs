@@ -22,6 +22,7 @@ pub(crate) trait ActionNames {
     fn modifier(&self, package: u16, name: &DeclaredName) -> Result<ModifierId, UnknownName>;
     /// The unit type `name` in the scope that `package` names types in.
     fn unit_type(&self, package: u16, name: &DeclaredName) -> Result<UnitType, UnknownName>;
-    /// Whether the projectile type `name` of `package`, which resolved, homes on a unit.
-    fn homes(&self, package: u16, name: &DeclaredName) -> bool;
+    /// Whether the projectile type `name` of `package`, which resolved, homes on a unit; none
+    /// when it has no `projectile` section.
+    fn homes(&self, package: u16, name: &DeclaredName) -> Option<bool>;
 }

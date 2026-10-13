@@ -23,7 +23,7 @@ impl Fan {
         self.spread_deg
             .checked_mul_int(2 * i64::from(at) - (count - 1))
             .and_then(|turn| turn.checked_mul_div_int(Num::PI, 360 * (count - 1)))
-            .expect("the load bounds a fan's spread to a full turn")
+            .expect("a delivery's data bounds a fan's spread to a full turn")
     }
 }
 

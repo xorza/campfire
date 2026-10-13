@@ -17,11 +17,11 @@ use crate::actions::effect_data::{
 };
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
+use crate::actions::error::{ActionError, ActionProblem, EffectRule};
 use crate::actions::launch_id::LaunchId;
 use crate::actions::lists_of::ListsOf;
 use crate::declare::book::Book;
 use crate::scripts::error::CallError;
-use crate::scripts::error::UnknownName;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::stats_effect::StatsEffect;
@@ -49,58 +49,84 @@ pub(crate) struct EffectSpec {
 }
 
 impl EffectListBook {
-    /// Adds the lists of `action`, which loaded last, from `data`, which the package load
-    /// checked, their names resolved by `names`: `on_resolve`, `on_hit` and `on_end`, and the
-    /// lists each launch of them holds, however deep; an error for a name the match does not
-    /// have, which fails the whole load.
+    /// Adds the lists of `action`, which loaded last, from `data`, their names resolved by
+    /// `names`: `on_resolve`, `on_hit` and `on_end`, and the lists each launch of them holds,
+    /// however deep; an error for a name the match does not have, or a number or a duration that
+    /// breaks its rule, which fails the whole load.
     pub(crate) fn push(
         &mut self,
         action: ActionId,
         data: &ActionData,
         names: &impl EffectNames,
-    ) -> Result<(), UnknownName> {
+    ) -> Result<(), ActionError> {
         if self.runs.len() <= action.index() {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
         }
         let mut runs = [0..0, 0..0, 0..0];
-        for (run, list) in runs
-            .iter_mut()
-            .zip([&data.on_resolve, &data.on_hit, &data.on_end])
-        {
-            *run = self.append(list, names)?;
+        let lists = [
+            (Hook::OnResolve, &data.on_resolve),
+            (Hook::OnHit, &data.on_hit),
+            (Hook::OnEnd, &data.on_end),
+        ];
+        for (run, (hook, list)) in runs.iter_mut().zip(lists) {
+            *run = self.append(data, hook, list, names)?;
         }
         self.runs[action.index()] = runs;
         Ok(())
     }
 
-    /// Appends `list`, its names resolved by `names`, after the lists its launches hold, so its
-    /// own effects lie together; its run.
+    /// Appends `list`, the action `data`'s list `hook`, its names resolved by `names`, after the
+    /// lists its launches hold, so its own effects lie together; its run.
     fn append(
         &mut self,
+        data: &ActionData,
+        hook: Hook,
         list: &[EffectData],
         names: &impl EffectNames,
-    ) -> Result<Range<u32>, UnknownName> {
+    ) -> Result<Range<u32>, ActionError> {
         let resolved: Vec<EffectSpec> = list
             .iter()
             .map(|effect| {
+                EffectListBook::holds(data, hook, &effect.does)?;
                 Ok(EffectSpec {
-                    does: self.resolve(&effect.does, names)?,
+                    does: self.resolve(data, &effect.does, names)?,
                     to: effect.to,
                 })
             })
-            .collect::<Result<_, UnknownName>>()?;
+            .collect::<Result<_, ActionError>>()?;
         let start = position(self.effects.len());
         self.effects.extend(resolved);
         Ok(start..position(self.effects.len()))
     }
 
-    /// What `does` does, its names resolved by `names`; a launch's lists appended first.
+    /// Whether the numbers of `does`, an effect of the action `data`'s list `hook`, hold their
+    /// rules: its duration whole milliseconds, then each number a sim number at least 0.
+    fn holds(data: &ActionData, hook: Hook, does: &DoesData) -> Result<(), ActionProblem> {
+        let broken = |rule| ActionProblem::Effect { list: hook, rule };
+        let duration = match does {
+            DoesData::Modifier(ModifierFields { duration_ms, .. })
+            | DoesData::Spawn(SpawnFields { duration_ms, .. }) => duration_ms.as_ref(),
+            DoesData::Move(MoveData::KnockBack { ms, .. }) => Some(ms),
+            _ => None,
+        };
+        if duration.is_some_and(|duration| !data.whole_ms(duration)) {
+            return Err(broken(EffectRule::Duration));
+        }
+        for number in does.numbers() {
+            data.number_rule(number).map_err(broken)?;
+        }
+        Ok(())
+    }
+
+    /// What `does`, an effect of the action `data`, does, its names resolved by `names`; a
+    /// launch's lists appended first.
     fn resolve(
         &mut self,
+        data: &ActionData,
         does: &DoesData,
         names: &impl EffectNames,
-    ) -> Result<DoesSpec, UnknownName> {
-        let amount = |number: &Number| Amount::of(number, names);
+    ) -> Result<DoesSpec, ActionError> {
+        let amount = |number: &Number| Ok::<_, ActionError>(Amount::of(number, names)?);
         let maybe = |number: &Option<Number>| number.as_ref().map(amount).transpose();
         let of_capability = match does {
             DoesData::Modifier(ModifierFields { id, duration_ms }) => {
@@ -153,7 +179,10 @@ impl EffectListBook {
                 on_end,
             }) => {
                 let area = names.package_type(area)?;
-                let lists = [self.append(on_hit, names)?, self.append(on_end, names)?];
+                let lists = [
+                    self.append(data, Hook::OnHit, on_hit, names)?,
+                    self.append(data, Hook::OnEnd, on_end, names)?,
+                ];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
                 CapabilityDoesSpec::Launch { area, launch }
@@ -228,9 +257,9 @@ impl EffectListBook {
         let duration = |ms: Amount, frame: &Frame| {
             // Whole, as the load checked, so the floor is exact.
             let ms = ms.number(frame).floor();
-            let ms = u64::try_from(ms).expect("the load checked a duration not negative");
+            let ms = u64::try_from(ms).expect("a duration's book holds it not negative");
             rate.duration(ms)
-                .expect("the load checked a duration within reach")
+                .expect("a duration's book holds it within a u32 of milliseconds")
         };
         for &listed in list {
             let unit = || match listed.to {

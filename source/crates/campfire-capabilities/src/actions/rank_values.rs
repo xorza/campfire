@@ -4,6 +4,8 @@ use campfire_common::Ticks;
 use campfire_sim::TickRate;
 
 use crate::actions::action_data::ActionData;
+use crate::actions::action_kind::ActionKind;
+use crate::actions::error::ActionProblem;
 
 use crate::actions::rank_fields::RankToggle;
 
@@ -53,20 +55,21 @@ pub struct ChargeRule {
 }
 
 impl RankValues {
-    /// The fields of `data`, which the package load checked, at each of its `ranks` ranks,
-    /// times in ticks at `rate`, what its cost's names take from by `target`; an error when a
-    /// time does not count in ticks.
+    /// The fields of `data` at each of its `ranks` ranks, times in ticks at `rate`, what its
+    /// cost's names take from by `target`; an error for a per-rank array of another length, a
+    /// field that does not hold at a rank, a build's or a gather's range that is global at a
+    /// rank, or a time that does not count in ticks.
     pub(crate) fn all(
         data: &ActionData,
         ranks: u8,
         rate: TickRate,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
-    ) -> Result<LoadedRanks, TimeTooLarge> {
-        assert!(
-            data.check_ranks(usize::from(ranks)),
-            "the load checked the ranks"
-        );
+    ) -> Result<LoadedRanks, ActionProblem> {
+        if !data.check_ranks(usize::from(ranks)) {
+            return Err(ActionProblem::RankCount(ranks));
+        }
         let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
+        let meters = matches!(data.kind, ActionKind::Build | ActionKind::Gather);
         let mut loaded = LoadedRanks {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
@@ -74,7 +77,10 @@ impl RankValues {
         for rank in (1..=ranks).filter_map(Rank::new) {
             let fields = data
                 .fields_at(rank, &target)
-                .expect("the load checked the fields");
+                .map_err(ActionProblem::Field)?;
+            if meters && fields.range == ActionRange::Global {
+                return Err(ActionProblem::Global(data.kind));
+            }
             loaded.values.push(RankValues {
                 range: fields.range,
                 cooldown: ticks(fields.cooldown_ms)?,
@@ -83,7 +89,7 @@ impl RankValues {
                 charges: fields
                     .charges
                     .map(|charges| {
-                        Ok(ChargeRule {
+                        Ok::<_, TimeTooLarge>(ChargeRule {
                             max: charges.max,
                             recharge: ticks(charges.recharge_ms)?,
                         })
@@ -93,7 +99,7 @@ impl RankValues {
                 channel: fields
                     .channel
                     .map(|channel| {
-                        Ok(ChannelRule {
+                        Ok::<_, TimeTooLarge>(ChannelRule {
                             duration: ticks(channel.duration_ms)?,
                             tick: ticks(channel.tick_ms)?,
                         })

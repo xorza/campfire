@@ -25,8 +25,8 @@ pub(crate) const SERVER_DATA: &str = "server-data";
 /// The local client's data directory, in the run's directory; its local server's is `server`
 /// under it.
 pub(crate) const LOCAL_DATA: &str = "local-data";
-/// The bot the check stops once the server logged its first order, and starts again with its key
-/// file.
+/// The bot the check stops once the server logged its first order and each other bot's order of
+/// that stamp, and starts again with its key file.
 pub(crate) const RESTARTED: usize = 1;
 /// The check stops the server once it logged an input of this stamp or a later one, which the
 /// second orders of the scripts are, and starts it again on its data directory.
@@ -86,8 +86,8 @@ impl Played {
 
 impl LanMatch<'_> {
     /// Starts the server, waits until it listens, starts the bots and the impostor; once the
-    /// server logged the first order of bot `RESTARTED`, stops that bot and starts it again with
-    /// its key file; once it logged an input stamped `SERVER_STOP` or later, stops the server
+    /// server logged the first order of bot `RESTARTED` and each other bot's order of that stamp,
+    /// stops that bot and starts it again with its key file; once it logged an input stamped `SERVER_STOP` or later, stops the server
     /// and starts it again on its data directory; and waits until every process ended or the
     /// deadline passed.
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
@@ -129,7 +129,7 @@ impl LanMatch<'_> {
             children.push(process, bot(process, process, script, &tls_key)?);
         }
         let restarted = Process::Bot(RESTARTED);
-        let stopped = if self.first_order_logged(restarted, deadline)? {
+        let stopped = if self.first_orders_logged(deadline)? {
             let again = Process::Rejoined(RESTARTED);
             let script = &self.scripts[RESTARTED];
             children.replace(1 + RESTARTED, again, || {
@@ -222,17 +222,38 @@ impl LanMatch<'_> {
         Ok(false)
     }
 
-    /// Waits until the server logged an input of the slot that `bot` learned it plays, or the
-    /// deadline passed; whether it did.
-    fn first_order_logged(&self, bot: Process, deadline: Instant) -> Result<bool, CheckError> {
+    /// Waits until the server logged the first input of the slot that bot `RESTARTED` learned it
+    /// plays, and an input of each bot's slot stamped as late or later, or the deadline passed;
+    /// whether it did. A bot's order of that stamp still on its way would share the machine with
+    /// the restarted bot's new process as it starts, and could miss its stamp tick.
+    fn first_orders_logged(&self, deadline: Instant) -> Result<bool, CheckError> {
+        let mut slots = Vec::with_capacity(self.scripts.len());
         while Instant::now() < deadline {
-            let started =
-                ProcessLog::read(bot, &bot.log_path(self.dir))?.first::<MatchStarted>()?;
-            if let Some(MatchStarted { slot, .. }) = started {
+            slots.clear();
+            for bot in (0..self.scripts.len()).map(Process::Bot) {
+                let log = ProcessLog::read(bot, &bot.log_path(self.dir))?;
+                let Some(MatchStarted { slot, .. }) = log.first::<MatchStarted>()? else {
+                    break;
+                };
+                slots.push(slot);
+            }
+            if slots.len() == self.scripts.len() {
                 let server =
                     ProcessLog::read(Process::Server, &Process::Server.log_path(self.dir))?;
                 let logged = server.read_all::<InputLogged>()?;
-                if logged.iter().any(|input| input.slot == slot) {
+                let first = logged
+                    .iter()
+                    .filter(|input| input.slot == slots[RESTARTED])
+                    .map(|input| input.stamp)
+                    .min();
+                let reached = |stamp: Tick| {
+                    slots.iter().all(|&slot| {
+                        logged
+                            .iter()
+                            .any(|input| input.slot == slot && input.stamp >= stamp)
+                    })
+                };
+                if first.is_some_and(reached) {
                     return Ok(true);
                 }
             }

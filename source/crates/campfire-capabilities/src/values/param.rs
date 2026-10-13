@@ -33,6 +33,17 @@ pub struct Scaling {
 }
 
 impl Param {
+    /// The values it can have, each rank's, as numbers, `None` for one past what a number holds;
+    /// a scaling param's base's, as its source's stats add to it only as it applies.
+    pub fn numbers(&self) -> impl Iterator<Item = Option<Num>> + '_ {
+        let (ranked, base): (&[Scalar], &[Num]) = match self {
+            Param::Ranked(ranked) => (ranked.values(), &[]),
+            Param::Scaling(scaling) => (&[], scaling.base.values()),
+        };
+        let ranked = ranked.iter().map(|value| value.to_num());
+        ranked.chain(base.iter().copied().map(Some))
+    }
+
     /// Every stat its scaling table names, its bonus ratios' among them.
     pub fn stats(&self) -> impl Iterator<Item = &Stat> {
         let scaling = match self {

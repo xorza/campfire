@@ -15,6 +15,7 @@ use crate::progression::track_set::TrackSet;
 use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 
+pub(crate) mod error;
 pub(crate) mod experience;
 pub(crate) mod level_ups;
 pub(crate) mod points;
@@ -80,9 +81,9 @@ pub(crate) mod test_world {
     use crate::values::declared_name::DeclaredName;
 
     impl Progression {
-        /// Loads the mode's `tracks`, which the package load checked, into the match.
+        /// Loads the mode's `tracks`, which hold its rules, into the match.
         pub(crate) fn load_tracks(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
-            Books::load(world, TrackBook::new(tracks));
+            Books::load(world, TrackBook::new(tracks).unwrap());
         }
     }
 }

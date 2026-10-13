@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::declare::book::Book;
+use crate::progression::error::TrackError;
 use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::track_data::TrackData;
 use crate::scripts::frame::Frame;
@@ -33,13 +34,12 @@ struct Tracks {
 }
 
 impl TrackBook {
-    /// The book of `tracks`, which the package load checked: at most `TrackId::LIMIT`, and at
-    /// most one the `level` track.
-    pub(crate) fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> TrackBook {
-        assert!(
-            tracks.len() <= TrackId::LIMIT,
-            "the load checked the tracks"
-        );
+    /// The book of `tracks`; an error for more than `TrackId::LIMIT`, or more than one the
+    /// `level` track.
+    pub(crate) fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> Result<TrackBook, TrackError> {
+        if tracks.len() > TrackId::LIMIT {
+            return Err(TrackError::TooMany);
+        }
         let mut names = Names::default();
         let mut book = Tracks {
             names: Arc::default(),
@@ -52,13 +52,15 @@ impl TrackBook {
             book.starts.push(Tracks::start(book.thresholds.len()));
             book.thresholds.extend_from_slice(track.levels.get());
             if track.level {
-                assert!(book.level.is_none(), "the load checked the level tracks");
+                if book.level.is_some() {
+                    return Err(TrackError::LevelTracks);
+                }
                 book.level = Some(id);
             }
         }
         book.starts.push(Tracks::start(book.thresholds.len()));
         book.names = Arc::new(names);
-        TrackBook(Arc::new(book))
+        Ok(TrackBook(Arc::new(book)))
     }
 
     /// The tracks' names.
@@ -89,7 +91,7 @@ impl Tracks {
 
 impl Default for TrackBook {
     fn default() -> TrackBook {
-        TrackBook::new(&BTreeMap::new())
+        TrackBook::new(&BTreeMap::new()).expect("no tracks break no rule")
     }
 }
 

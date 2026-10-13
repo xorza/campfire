@@ -9,7 +9,7 @@ use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery::Delivery;
 use crate::actions::delivery::DeliveryShape;
 use crate::actions::delivery_data::DeliveryData;
-use crate::actions::error::ActionError;
+use crate::actions::error::{ActionError, ActionProblem};
 use crate::actions::fan::Fan;
 use crate::actions::gather_spec::GatherSpec;
 use crate::actions::kind_data::KindData;
@@ -62,8 +62,7 @@ impl ActionParts {
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)?),
         };
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
-        let checked = "the load checked the fields of its kind";
-        let kind = match data.kind_data().expect(checked) {
+        let kind = match data.kind_data().map_err(ActionProblem::KindField)? {
             KindData::Cast => KindSpec::Cast,
             KindData::Attack {
                 rate,
@@ -84,9 +83,10 @@ impl ActionParts {
                 let Some(CostTarget::Resource(resource)) = names.cost_target(resource) else {
                     return Err(UnknownName::new(NameKind::Resource, resource).into());
                 };
+                let bounce = bounce.map_or(Some(Num::ZERO), Scalar::to_num);
                 let bounce = bounce
-                    .map_or(Some(Num::ZERO), Scalar::to_num)
-                    .expect(checked);
+                    .filter(|&bounce| bounce >= Num::ZERO)
+                    .ok_or(ActionProblem::Bounce)?;
                 KindSpec::Gather(GatherSpec {
                     resource,
                     take,
@@ -95,17 +95,20 @@ impl ActionParts {
             }
         };
         let delivery = data.delivery.as_ref().map(|delivery| {
-            let unit_type = names.unit_type(package, delivery.unit_type())?;
+            let name = delivery.unit_type();
+            let unit_type = names.unit_type(package, name)?;
             let shape = match *delivery {
                 DeliveryData::Projectile {
                     count, spread_deg, ..
                 } => DeliveryShape::Projectile {
                     fan: Fan { count, spread_deg },
-                    homes: names.homes(package, delivery.unit_type()),
+                    homes: names
+                        .homes(package, name)
+                        .ok_or_else(|| ActionProblem::Section(name.clone()))?,
                 },
                 DeliveryData::Area { .. } => DeliveryShape::Area,
             };
-            Ok::<_, UnknownName>(Delivery { unit_type, shape })
+            Ok::<_, ActionError>(Delivery { unit_type, shape })
         });
         let delivery = delivery.transpose()?;
         let hold = data.hold.as_ref().map(|name| names.modifier(package, name));

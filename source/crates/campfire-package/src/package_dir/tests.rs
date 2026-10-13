@@ -370,7 +370,7 @@ fn every_workspace_package_holds_the_index_of_its_files() {
         let held = InputFile::read_if_present(&at, INDEX_LEN).unwrap();
         assert!(
             held.as_deref() == Some(index.bytes()),
-            "{} differs from its files: run this test with CAMPFIRE_BLESS=1",
+            "{} differs from its files: write it again with `./drive.py index`",
             at.display()
         );
     }

@@ -216,7 +216,8 @@ impl Construction {
         let mut gain = Num::ZERO;
         if let Some(mut life) = world.get_mut::<Life>(site) {
             let max = life.max();
-            let share = start_life.expect("the load checked a site's start life");
+            let share =
+                start_life.expect("a building with life has its start life, as its book checked");
             let starts = share.of_num(max).max(Num::EPSILON).min(max);
             gain = max - starts;
             life.take(gain);

@@ -777,7 +777,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     }
     // The mode's books, each loaded as the install loads it.
     let data = &files.data;
-    let mode_names = ModeNames::of(data);
+    let mode_names = ModeNames::of(data).unwrap();
     let resolved = {
         let view = game.non_send::<View>();
         let relations = &data.relations;

@@ -12,7 +12,7 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::construct_data::ConstructData;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::effect_names::EffectNames;
-use crate::actions::error::ActionError;
+use crate::actions::error::ActionProblem;
 use crate::actions::placement_data::{PlacementData, PlacementRule};
 use crate::actions::slot_kind_book::SlotKindBook;
 use crate::areas::Areas;
@@ -195,7 +195,7 @@ impl<'a> BookBuilder<'a> {
         for (index, package) in (0..).zip(&input.packages) {
             BookBuilder::declare_types(&mut books.types, index, package);
         }
-        let names = ModeNames::of(data);
+        let names = ModeNames::of(data).map_err(BookError::Names)?;
         let life = data.combat.life_pool(&names.pools);
         let life = life.map_err(|name| BookError::unknown(0, BookPlace::Combat, name))?;
         let stats = BookBuilder::stat_book(input, &books.types)?;
@@ -230,7 +230,7 @@ impl<'a> BookBuilder<'a> {
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
         if input.progression {
-            self.books.tracks = TrackBook::new(&input.data.tracks);
+            self.books.tracks = TrackBook::new(&input.data.tracks).map_err(BookError::Tracks)?;
         }
         for (index, package) in (0..).zip(&input.packages) {
             self.modifiers(index, package)?;
@@ -239,14 +239,14 @@ impl<'a> BookBuilder<'a> {
             let units = &package.content.units;
             match package.kind {
                 BookKind::Mode => {
-                    let ranks = self.slotted_ranks(units.values());
+                    let ranks = self.slotted_ranks(index, units.values())?;
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
                     self.books.items = self.item_book(index, package, &actions)?;
                     self.package_units(index, units, &actions)?;
                 }
                 BookKind::Avatar(unit) => {
                     let standing = units.values().filter(|file| !file.delivers());
-                    let ranks = self.slotted_ranks(standing.chain([unit]));
+                    let ranks = self.slotted_ranks(index, standing.chain([unit]))?;
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
                     self.package_units(index, units, &actions)?;
                     let unit = Standing::avatar(package.name, unit);
@@ -286,8 +286,7 @@ impl<'a> BookBuilder<'a> {
                     &resolved.map,
                 )
             })
-            .transpose()
-            .map_err(|name| BookError::unknown(0, BookPlace::Shop, name))?;
+            .transpose()?;
         let stats = &self.stats;
         let bindings = CombatBindings::new(&data.combat, |stat| {
             BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
@@ -448,35 +447,37 @@ impl<'a> BookBuilder<'a> {
 
     /// The mode's shop of `data`, selling `items` by id, for one of `resources`, at the regions of
     /// `map`'s markers with its tag, each for the marker's team; an error for a name the mode
-    /// does not have.
+    /// does not have, or for a marker with no region or no team.
     fn shop(
         data: &ShopData,
         items: &Names<ItemId>,
         resources: &Names<ResourceId>,
         map: &ModeMap,
-    ) -> Result<Shop, UnknownName> {
+    ) -> Result<Shop, BookError> {
+        let unknown = |name| BookError::unknown(0, BookPlace::Shop, name);
         let sells = data.items.iter().map(|name| {
             items
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::Item, name))
         });
-        let sells = sells.collect::<Result<_, UnknownName>>()?;
-        let places = map
+        let sells = sells.collect::<Result<_, UnknownName>>().map_err(unknown)?;
+        let found = resources.named(data.resource.as_str());
+        let resource = found
+            .ok_or_else(|| UnknownName::new(NameKind::Resource, &data.resource))
+            .map_err(unknown)?;
+        let mut places = Vec::new();
+        for marker in map
             .markers
             .iter()
             .filter(|marker| marker.tags.contains(&data.at))
-            .map(|marker| ShopPlace {
-                team: marker.team.expect(CHECKED),
-                region: marker.region.expect(CHECKED),
-            });
-        let found = resources.named(data.resource.as_str());
-        let resource = found.ok_or_else(|| UnknownName::new(NameKind::Resource, &data.resource))?;
-        Ok(Shop::new(
-            sells,
-            resource,
-            places.collect(),
-            data.sell_share,
-        ))
+        {
+            let (Some(team), Some(region)) = (marker.team, marker.region) else {
+                let name = DeclaredName::new(&marker.name).expect("a marker's name was declared");
+                return Err(BookError::ShopMarker(name));
+            };
+            places.push(ShopPlace { team, region });
+        }
+        Ok(Shop::new(sells, resource, places, data.sell_share))
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
@@ -604,17 +605,8 @@ impl<'a> BookBuilder<'a> {
         let script = data.script.as_ref().map(|path| self.script(index, path));
         let names = self.names(index, None);
         let at = || BookPlace::Action(id.clone());
-        let parts =
-            ActionParts::of(data, index, ranks, self.input.rate, &names).map_err(|error| {
-                match error {
-                    ActionError::Time(error) => BookError::Action {
-                        package: index,
-                        action: id.clone(),
-                        error,
-                    },
-                    ActionError::Unknown(name) => BookError::unknown(index, at(), name),
-                }
-            })?;
+        let parts = ActionParts::of(data, index, ranks, self.input.rate, &names)
+            .map_err(|error| BookError::of_action(index, id, error))?;
         let action =
             self.books
                 .actions
@@ -631,7 +623,7 @@ impl<'a> BookBuilder<'a> {
             let mut effects = mem::take(&mut self.books.effects);
             let pushed = effects.push(action, data, &self.names(index, Some(action)));
             self.books.effects = effects;
-            pushed.map_err(|name| BookError::unknown(index, at(), name))?;
+            pushed.map_err(|error| BookError::of_action(index, id, error))?;
         }
         Ok(action)
     }
@@ -670,18 +662,41 @@ impl<'a> BookBuilder<'a> {
             ConstructData::Builder => Style::Builder,
             ConstructData::Builders(rates) => Style::Builders(rates),
         };
-        let package = &self.input.packages[usize::from(index)];
-        let building = data.unit_type.as_ref().expect(CHECKED);
-        let collision = package.content.units[building].collision.as_ref();
+        let input = self.input;
+        let package = &input.packages[usize::from(index)];
+        let building = data
+            .unit_type
+            .as_ref()
+            .expect("a build's kind fields hold, as its parts checked");
+        let file = &package.content.units[building];
         let place = BookPlace::UnitType(TypePlace::Declared(building.clone()));
+        let problem = |problem| BookError::Action {
+            package: index,
+            action: id.clone(),
+            problem,
+        };
+        let form = self
+            .names
+            .form(file.collision.as_ref())
+            .map_err(at(place))?;
+        let form = form
+            .filter(|form| form.is_box())
+            .ok_or_else(|| problem(ActionProblem::NoBox))?;
+        let alive = input
+            .data
+            .combat
+            .life
+            .as_ref()
+            .is_some_and(|life| file.pools.contains(life));
+        let start_life = data.start_life;
+        let starts = start_life.is_some_and(|share| !share.is_zero());
+        if (alive && !starts) || start_life.is_some_and(Share::is_zero) {
+            return Err(problem(ActionProblem::StartLife));
+        }
         let build = NewBuild {
-            form: self
-                .names
-                .form(collision)
-                .map_err(at(place))?
-                .expect(CHECKED),
+            form,
             style,
-            start_life: data.start_life,
+            start_life,
             refund: data.cancel_refund.unwrap_or(Share::ALL),
             near: rules(|placement| &placement.near).map_err(at(BookPlace::Action(id.clone())))?,
             away: rules(|placement| &placement.away).map_err(at(BookPlace::Action(id.clone())))?,
@@ -813,7 +828,7 @@ impl<'a> BookBuilder<'a> {
         self.parts(at, combat.as_ref(), actions)?;
         let unknown = |name| at.unknown(name);
         self.production(unit_type, file).map_err(unknown)?;
-        self.walker(unit_type, file);
+        self.walker(at)?;
         let setup = UnitTypeSetup {
             unit_type,
             passive: self.passive(index, file).map_err(unknown)?,
@@ -934,13 +949,18 @@ impl<'a> BookBuilder<'a> {
         Ok(())
     }
 
-    /// The kind of walker of `unit_type`, of `file` and of its body, when it walks.
-    fn walker(&mut self, unit_type: UnitType, file: &UnitTypeData) {
-        if file.walks() {
-            let body = self.books.bodies.get(unit_type).copied();
-            let walker = Walker::of_form(body).expect("a unit type that walks has no box");
-            self.books.walkers.set(unit_type, walker);
+    /// The kind of walker of `at`, of its file and its body, when it walks; an error for a box
+    /// body, which only a type that stands has.
+    fn walker(&mut self, at: TypeAt<'_>) -> Result<(), BookError> {
+        if at.unit.file.walks() {
+            let body = self.books.bodies.get(at.unit_type).copied();
+            let walker = Walker::of_form(body).ok_or_else(|| BookError::BoxWalks {
+                package: at.package,
+                unit_type: at.unit.place(),
+            })?;
+            self.books.walkers.set(at.unit_type, walker);
         }
+        Ok(())
     }
 
     /// The slots of `file`: the package's `actions` it names, kind after kind, each at its kind's
@@ -1028,13 +1048,20 @@ impl<'a> BookBuilder<'a> {
         Ok(())
     }
 
-    /// The ranks `types` give each action they place, which the load checked agree.
+    /// The ranks `types`, of the package at `index`, give each action they place; an error for
+    /// an action placed in slot kinds of different ranks.
     fn slotted_ranks<'u>(
         &self,
+        index: u16,
         types: impl IntoIterator<Item = &'u UnitTypeData>,
-    ) -> BTreeMap<&'u str, u8> {
+    ) -> Result<BTreeMap<&'u str, u8>, BookError> {
         let slots = types.into_iter().map(|unit_type| &unit_type.slots);
-        self.input.data.slots.slotted_ranks(slots).expect(CHECKED)
+        let ranks = self.input.data.slots.slotted_ranks(slots);
+        ranks.map_err(|action| BookError::Action {
+            package: index,
+            action: action.clone(),
+            problem: ActionProblem::SlottedRanks,
+        })
     }
 
     /// The script at `path` of the package at `index`, by its place in the order a match
@@ -1098,10 +1125,10 @@ impl ActionNames for BuildNames<'_> {
         unit_type.ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
     }
 
-    fn homes(&self, package: u16, name: &DeclaredName) -> bool {
+    fn homes(&self, package: u16, name: &DeclaredName) -> Option<bool> {
         let units = &self.input.packages[usize::from(package)].content.units;
         let projectile = units.get(name).and_then(|file| file.projectile.as_ref());
-        projectile.expect(CHECKED).homing
+        projectile.map(|projectile| projectile.homing)
     }
 }
 

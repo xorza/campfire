@@ -25,8 +25,7 @@ use crate::actions::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, LaunchFields, ModifierFields, MoveData,
     PurgeFields, RestoreFields, XpFields,
 };
-use crate::actions::error::ActionError;
-use crate::actions::error::ActionField;
+use crate::actions::error::{ActionError, ActionField, ActionProblem};
 use crate::actions::in_progress::{InProgress, OrderPhase};
 use crate::actions::kind_data::KindData;
 use crate::actions::range_field::RangeField;
@@ -1758,19 +1757,26 @@ fn an_ability_loads_only_when_its_data_holds() {
     unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
         param: DeclaredName::new("reach").unwrap(),
     })));
-    // The data's rules, which the package load checks: two costs for five ranks, and the field
-    // that does not hold at rank 1. A scaling param is the caster's value, which no cooldown may
-    // take.
+    // The data's rules, which its load holds: two costs for five ranks, and the field that does
+    // not hold at rank 1. A scaling param is the caster's value, which no cooldown may take.
+    let refused = |problem| Err(ActionError::Problem(problem));
     assert_eq!(
         [lash_out().check_ranks(5), uneven.check_ranks(5)],
         [true, false]
     );
-    for (data, field) in [
+    assert_eq!(
+        load(&mut game, "uneven", &uneven, LASH_OUT),
+        refused(ActionProblem::RankCount(5))
+    );
+    for (at, (data, field)) in [
         (scaled, ActionField::Cooldown),
         (negative, ActionField::Cost),
         (poolless, ActionField::Cost),
         (unknown, ActionField::Range),
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         let pool = |name: &DeclaredName| {
             let at = POOLS.iter().position(|pool| *pool == name.as_str())?;
             PoolId::new(u8::try_from(at).unwrap()).map(CostTarget::Pool)
@@ -1780,10 +1786,12 @@ fn an_ability_loads_only_when_its_data_holds() {
             Some(field),
             "{field:?}"
         );
+        let loaded = load(&mut game, &format!("field_{at}"), &data, LASH_OUT);
+        assert_eq!(loaded, refused(ActionProblem::Field(field)), "{field:?}");
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
     let forever = load(&mut game, "forever", &forever, LASH_OUT);
-    assert_eq!(forever, Err(ActionError::Time(TimeTooLarge)));
+    assert_eq!(forever, refused(ActionProblem::Time(TimeTooLarge)));
     assert_eq!(
         load(&mut game, "lash_out", &lash_out(), LASH_OUT),
         Ok(ActionId::new(0))

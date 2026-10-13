@@ -61,7 +61,8 @@ Every check, test, doc build and bench runs through `source/drive.py` ([The driv
 
 | Command | Runs |
 | --- | --- |
-| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, and the whole suite: a step's check |
+| `./drive.py check` | each package's index written again, `cargo fmt`, the lint of every target, the lint of the build that ships, and the whole suite: a step's check |
+| `./drive.py index` | each workspace package's `package.index` written again from its files, after a change to a package |
 | `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again |
 | `./drive.py doc` | the doc tests, and rustdoc with `-D warnings` |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |

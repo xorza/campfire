@@ -3,6 +3,27 @@ use thiserror::Error;
 use crate::geometry::polygon::error::PolygonError;
 use crate::values::declared_name::DeclaredName;
 
+/// A list of the mode's names, as its data gives it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModeList {
+    Pools,
+    Resources,
+    DamageKinds,
+    Layers,
+}
+
+/// Why a list of the mode's names does not load. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModeNamesError {
+    /// More names than the ids of their kind count.
+    #[error("more {0:?} than a match holds")]
+    TooMany(ModeList),
+    /// A name twice.
+    #[error("{list:?}: {name} twice")]
+    Repeated { list: ModeList, name: DeclaredName },
+}
+
 /// Why the mode's teams, relations or map do not load: they name what the mode does not have.
 /// Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

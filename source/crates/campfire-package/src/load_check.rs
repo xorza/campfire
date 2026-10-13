@@ -2,13 +2,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::slice;
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionRange, ActionSlots, ApiOwner, ApiVersion, BookError, BookPlace,
-    Books, DamageFields, DataTable, DeclaredName, DeliveryData, DoesData, EffectData, EffectTo,
-    EngineTag, EnumRecord, FilterData, HealFields, Hook, ItemData, KindData, LaunchFields,
-    MemberKind, Metric, ModeCombatData, ModifierData, ModifierFields, ModifierProblem, MoveData,
-    NameKind, Number, Offers, PackagePath, Param, ParamProblem, PoolId, ProjectileHits,
-    PurgeFields, RangeField, Rank, Release, ResourceId, RestoreFields, Scalar, ScriptApi,
-    ScriptRole, Share, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackId, TypePlace,
+    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, ApiOwner, ApiVersion,
+    BookError, BookPlace, Books, DamageFields, DataTable, DeclaredName, DeliveryData, DoesData,
+    EffectData, EffectRule, EffectTo, EngineTag, EnumRecord, FilterData, HealFields, Hook,
+    ItemData, KindData, LaunchFields, MemberKind, Metric, ModeList, ModeNamesError, ModifierData,
+    ModifierFields, ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param,
+    ParamProblem, ProjectileHits, PurgeFields, RangeField, Release, RestoreFields, ScriptApi,
+    ScriptRole, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackError, TypePlace,
     UnitTypeCore, UnitTypeData, UnknownName, XpFields,
 };
 use campfire_math::Num;
@@ -197,6 +197,13 @@ impl<'a> LoadCheck<'a> {
                     error,
                 },
             ),
+            BookError::BoxWalks { package, unit_type } => (
+                package,
+                LoadProblem::BoxBody {
+                    at: at(package, unit_type),
+                    problem: BoxProblem::Walks,
+                },
+            ),
             BookError::Ai {
                 package,
                 unit_type,
@@ -211,14 +218,20 @@ impl<'a> LoadCheck<'a> {
             BookError::Action {
                 package,
                 action,
-                error,
-            } => (package, LoadProblem::Action { action, error }),
+                problem,
+            } => (package, LoadCheck::action_problem(action, problem)),
             BookError::Modifier {
                 package,
                 modifier,
                 problem,
             } => (package, LoadProblem::Modifier { modifier, problem }),
             BookError::Mode(error) => (0, LoadProblem::Mode(error)),
+            BookError::Names(error) => (0, LoadCheck::names_problem(error)),
+            BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
+            BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
+            BookError::ShopMarker(marker) => {
+                (0, LoadProblem::Item(ItemProblem::ShopMarker(marker)))
+            }
             BookError::AreaTime { package, unit_type } => (
                 package,
                 LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
@@ -254,23 +267,70 @@ impl<'a> LoadCheck<'a> {
         )
     }
 
+    /// The problem of `error`, a list of the mode's names that the book build refused.
+    fn names_problem(error: ModeNamesError) -> LoadProblem {
+        match error {
+            ModeNamesError::TooMany(list) => LoadProblem::TooMany(match list {
+                ModeList::Pools => Limit::Pools,
+                ModeList::Resources => Limit::Resources,
+                ModeList::DamageKinds => Limit::DamageKinds,
+                // Each layer is a tag of the match.
+                ModeList::Layers => Limit::Tags,
+            }),
+            ModeNamesError::Repeated { list, name } => {
+                let at = match list {
+                    ModeList::Pools => Place::Pool(name.clone()),
+                    ModeList::Resources => Place::Resources,
+                    ModeList::DamageKinds => Place::Combat,
+                    ModeList::Layers => Place::Navigation,
+                };
+                let name = name.to_string();
+                LoadProblem::Repeated { at, name }
+            }
+        }
+    }
+
+    /// The problem of `problem`, a rule the data of `action` breaks, as the book build found it.
+    fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
+        match problem {
+            ActionProblem::Time(error) => LoadProblem::Action { action, error },
+            ActionProblem::RankCount(ranks) => LoadProblem::RankCount { action, ranks },
+            ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
+            ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
+            ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
+            ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
+            ActionProblem::Global(ActionKind::Gather) => {
+                LoadProblem::Gather(GatherProblem::Global(action))
+            }
+            ActionProblem::Global(ActionKind::Build) => {
+                LoadProblem::Build(BuildProblem::Global(action))
+            }
+            ActionProblem::Global(kind) => {
+                unreachable!("only a build and a gather need meters, not a {kind:?}")
+            }
+            ActionProblem::Section(unit_type) => {
+                LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type })
+            }
+            ActionProblem::NoBox => LoadProblem::Build(BuildProblem::NoBox(action)),
+            ActionProblem::StartLife => LoadProblem::Build(BuildProblem::StartLife(action)),
+            ActionProblem::Effect { list, rule } => LoadProblem::Effect {
+                action,
+                list,
+                problem: match rule {
+                    EffectRule::Overflow => EffectProblem::Overflow,
+                    EffectRule::Negative => EffectProblem::Negative,
+                    EffectRule::Duration => EffectProblem::Duration,
+                },
+            },
+        }
+    }
+
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
     fn mode(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let data = &packages.data;
         let content = &packages.content;
         let units = &content.units;
-        for (list, at) in [
-            (&data.combat.damage_kinds, Place::Combat),
-            (&data.resources, Place::Resources),
-            (&data.navigation.layers, Place::Navigation),
-        ] {
-            let mut seen = BTreeSet::new();
-            if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
-                let name = name.to_string();
-                return Err(LoadProblem::Repeated { at, name });
-            }
-        }
         if data.players.bot_takeover && !data.players.late_join {
             return Err(LoadProblem::BotTakeoverWithoutLateJoin);
         }
@@ -284,7 +344,6 @@ impl<'a> LoadCheck<'a> {
         self.sections_owned()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
-        self.tracks()?;
         self.slot_kinds()?;
         self.choices()?;
         self.items()?;
@@ -321,7 +380,7 @@ impl<'a> LoadCheck<'a> {
         }
         let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
-        self.actions(&content.actions, units, ranks, &mut names)?;
+        self.actions(&content.actions, units, &mut names)?;
         let view = packages.packages().next().expect("the mode, first");
         let ways = packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, &content.actions, ranks)?;
@@ -429,7 +488,7 @@ impl<'a> LoadCheck<'a> {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
-        self.actions(actions, &content.units, ranks, &mut names)?;
+        self.actions(actions, &content.units, &mut names)?;
         let ways = self.packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, actions, ranks)?;
         self.scripts(&names)
@@ -453,14 +512,13 @@ impl<'a> LoadCheck<'a> {
         &self,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
         units: &BTreeMap<DeclaredName, UnitTypeData>,
-        ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
         for (id, action) in actions {
             let at = Place::Action(id.clone());
             self.kind(id, action, units)?;
             requires(id, action, units)?;
-            self.ranked(id, action, ranks(id.as_str()))?;
+            self.cost_names(id, action)?;
             let scope = EffectScope { units };
             self.effects(id, action, scope)?;
             if let Some(delivery) = &action.delivery {
@@ -612,7 +670,7 @@ impl<'a> LoadCheck<'a> {
             if !number {
                 return Ok(());
             }
-            let numbers: Option<Vec<Num>> = param_numbers(param).collect();
+            let numbers: Option<Vec<Num>> = param.numbers().collect();
             let numbers = numbers.ok_or(ParamProblem::Overflow)?;
             if time && matches!(param, Param::Scaling(_)) {
                 return Err(ParamProblem::ScalingTime);
@@ -926,13 +984,10 @@ impl<'a> LoadCheck<'a> {
         }
     }
 
-    /// The mode's damage kinds: with `combat`, at least one; never more than a match holds.
+    /// The mode's damage kinds: with `combat`, at least one.
     const fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
-        if kinds.len() > ModeCombatData::DAMAGE_KIND_LIMIT {
-            return Err(LoadProblem::TooMany(Limit::DamageKinds));
-        }
         if !self
             .packages
             .manifest
@@ -947,37 +1002,18 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A `gather` of `production`, `id`: aimed at a unit, of a range in meters, its `bounce` a
-    /// distance from 0.
-    fn gather(
-        &self,
-        id: &DeclaredName,
-        action: &ActionData,
-        bounce: Option<Scalar>,
-    ) -> Result<(), LoadProblem> {
+    /// A `gather` of `production`, `id`: aimed at a unit.
+    fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
         if !matches!(action.targeting, Targeting::Unit(_)) {
             return Err(LoadProblem::Gather(GatherProblem::Aims(id.to_owned())));
         }
-        let global = action.range.as_ref().is_some_and(|range| {
-            range
-                .values()
-                .contains(&RangeField::Range(ActionRange::Global))
-        });
-        if global {
-            return Err(LoadProblem::Gather(GatherProblem::Global(id.to_owned())));
-        }
-        let bounce = bounce.map_or(Some(Num::ZERO), Scalar::to_num);
-        if bounce.is_none_or(|bounce| bounce < Num::ZERO) {
-            return Err(LoadProblem::Gather(GatherProblem::Bounce(id.to_owned())));
-        }
         Ok(())
     }
 
-    /// A `build` of `production`, `id`: aimed at a point, of a range in meters, of a unit type of
-    /// its package, `units`, `name`, with a box body, and with a `start_life` above 0 when that
-    /// type has the mode's life pool.
+    /// A `build` of `production`, `id`: aimed at a point, of a unit type of its package, `units`,
+    /// `name`, that stands.
     fn build(
         &self,
         id: &DeclaredName,
@@ -990,34 +1026,8 @@ impl<'a> LoadCheck<'a> {
         if action.targeting != Targeting::Point {
             return Err(LoadProblem::Build(BuildProblem::Aims(id.to_owned())));
         }
-        let global = action.range.as_ref().is_some_and(|range| {
-            range
-                .values()
-                .contains(&RangeField::Range(ActionRange::Global))
-        });
-        if global {
-            return Err(LoadProblem::Build(BuildProblem::Global(id.to_owned())));
-        }
-        let Some(building) = units.get(name).filter(|unit_type| !unit_type.delivers()) else {
+        if units.get(name).is_none_or(UnitTypeData::delivers) {
             return Err(unknown(&at, name, NameKind::UnitType));
-        };
-        let boxed = building
-            .collision
-            .as_ref()
-            .is_some_and(|collision| collision.form.is_box());
-        if !boxed {
-            return Err(LoadProblem::Build(BuildProblem::NoBox(id.to_owned())));
-        }
-        let data = &self.packages.data;
-        let alive = data
-            .combat
-            .life
-            .as_ref()
-            .is_some_and(|life| building.pools.contains(life));
-        let starts = action.start_life.is_some_and(|share| !share.is_zero());
-        let zero = action.start_life.is_some_and(Share::is_zero);
-        if (alive && !starts) || zero {
-            return Err(LoadProblem::Build(BuildProblem::StartLife(id.to_owned())));
         }
         Ok(())
     }
@@ -1079,7 +1089,7 @@ impl<'a> LoadCheck<'a> {
                 }
             }
             KindData::Build { unit_type } => self.build(id, action, unit_type, units)?,
-            KindData::Gather { bounce, .. } => self.gather(id, action, bounce)?,
+            KindData::Gather { .. } => self.gather(id, action)?,
             KindData::Attack { .. } => {
                 self.require(Capability::Combat, &at)?;
                 let global = action.range.as_ref().is_some_and(|range| {
@@ -1125,37 +1135,31 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A forced move `moves` of `action`, at `at`, in a list that reaches a unit when `reaches`:
-    /// its other unit one the list reaches, and a knock back's time whole milliseconds; `fail`
-    /// makes the problem of the effect's list.
+    /// A forced move `moves`, at `at`, in a list that reaches a unit when `reaches`: its other
+    /// unit one the list reaches; `fail` makes the problem of the effect's list.
     fn forced_move(
         &self,
-        action: &ActionData,
         moves: &MoveData,
         reaches: bool,
         at: &Place,
         fail: impl Fn(EffectProblem) -> LoadProblem,
     ) -> Result<(), LoadProblem> {
         self.require(Capability::Navigation, at)?;
-        let (other, ms) = match moves {
-            MoveData::Dash { to, .. } => (to, None),
-            MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
+        let other = match moves {
+            MoveData::Dash { to, .. } => to,
+            MoveData::KnockBack { from, .. } => from,
         };
         if *other == EffectTo::Reached && !reaches {
             return Err(fail(EffectProblem::NoUnit));
-        }
-        if ms.is_some_and(|ms| !whole_ms(action, ms)) {
-            return Err(fail(EffectProblem::Duration));
         }
         Ok(())
     }
 
     /// The list `effects` of `action`, whose id is `id`, which runs before `list` and reaches a
     /// unit when `reaches`: each effect one the release runs, of a capability the mode declares,
-    /// to a unit the list reaches; each number at least 0 and a sim number at every rank, a
-    /// duration whole milliseconds within a `u32`; a launch of an area type of `units`, whose
-    /// `on_hit` reaches a unit and whose `on_end` does not. The other names they give, the book
-    /// build resolves.
+    /// to a unit the list reaches; a launch of an area type of `units`, whose `on_hit` reaches a
+    /// unit and whose `on_end` does not. The other names they give, and the rules of their
+    /// numbers and durations, the book build holds.
     fn effect_list(
         &self,
         id: &DeclaredName,
@@ -1193,20 +1197,15 @@ impl<'a> LoadCheck<'a> {
                 | DoesData::Restore(RestoreFields { .. }) => {
                     self.require(Capability::Combat, &at)?;
                 }
-                DoesData::Modifier(ModifierFields { duration_ms, .. }) => {
+                DoesData::Modifier(ModifierFields { .. }) => {
                     self.require(Capability::Stats, &at)?;
-                    if let Some(duration) = duration_ms
-                        && !whole_ms(action, duration)
-                    {
-                        return Err(fail(EffectProblem::Duration));
-                    }
                 }
                 DoesData::Xp(XpFields { .. }) => self.require(Capability::Progression, &at)?,
                 DoesData::Purge(PurgeFields { tag }) => {
                     self.require(Capability::Stats, &at)?;
                     self.own_tags(slice::from_ref(tag), &at)?;
                 }
-                DoesData::Move(moves) => self.forced_move(action, moves, reaches, &at, fail)?,
+                DoesData::Move(moves) => self.forced_move(moves, reaches, &at, fail)?,
                 DoesData::Launch(LaunchFields {
                     area,
                     on_hit,
@@ -1226,26 +1225,10 @@ impl<'a> LoadCheck<'a> {
                     self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
                     self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
                 }
-                DoesData::Spawn(SpawnFields {
-                    unit_type,
-                    duration_ms,
-                }) => scope.spawn(action, unit_type, duration_ms.as_ref(), &at, fail)?,
+                DoesData::Spawn(SpawnFields { unit_type, .. }) => {
+                    scope.spawn(unit_type, &at, fail)?;
+                }
             }
-            for number in effect.does.numbers() {
-                number_holds(action, number).map_err(fail)?;
-            }
-        }
-        Ok(())
-    }
-
-    /// The mode's tracks: no more than a unit holds, and at most one the `level` track.
-    fn tracks(&self) -> Result<(), LoadProblem> {
-        let tracks = &self.packages.data.tracks;
-        if tracks.len() > TrackId::LIMIT {
-            return Err(LoadProblem::TooMany(Limit::Tracks));
-        }
-        if tracks.values().filter(|track| track.level).count() > 1 {
-            return Err(LoadProblem::LevelTracks);
         }
         Ok(())
     }
@@ -1312,17 +1295,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's pools and player resources: at most `PoolId::LIMIT` pools and
-    /// `ResourceId::LIMIT` resources, no pool named as a resource, a pool only with `stats`; and
-    /// with `combat`, a life pool.
+    /// The mode's pools and player resources: no pool named as a resource, a pool only with
+    /// `stats`; and with `combat`, a life pool.
     fn pools_and_resources(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        if data.pools.len() > PoolId::LIMIT {
-            return Err(LoadProblem::TooMany(Limit::Pools));
-        }
-        if data.resources.len() > ResourceId::LIMIT {
-            return Err(LoadProblem::TooMany(Limit::Resources));
-        }
         if let Some(name) = data
             .resources
             .iter()
@@ -1347,25 +1323,20 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A box body only on a type that does not walk, on a planar map.
+    /// A box body only on a planar map.
     fn body_box(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let boxed = unit_type
             .collision
             .as_ref()
             .is_some_and(|collision| collision.form.is_box());
-        let problem = if !boxed {
-            None
-        } else if unit_type.walks() {
-            Some(BoxProblem::Walks)
-        } else if self.packages.map.metric == Metric::Spatial {
-            Some(BoxProblem::Spatial)
-        } else {
-            None
-        };
-        problem.map_or(Ok(()), |problem| {
+        if boxed && self.packages.map.metric == Metric::Spatial {
             let at = at.clone();
-            Err(LoadProblem::BoxBody { at, problem })
-        })
+            return Err(LoadProblem::BoxBody {
+                at,
+                problem: BoxProblem::Spatial,
+            });
+        }
+        Ok(())
     }
 
     /// The capability of each section `unit_type` holds, at `at`, the mode declares; and a
@@ -1549,8 +1520,7 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The mode's shop: it sells the mode's items, each costing only in the one player resource
-    /// it takes, at a tag of the map's markers, each marker of which has a region and a team it
-    /// serves.
+    /// it takes, at a tag of the map's markers.
     fn shop(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let (data, items) = (&packages.data, &packages.content.items);
@@ -1571,18 +1541,7 @@ impl<'a> LoadCheck<'a> {
             return Err(unknown(&at, &shop.resource, NameKind::Resource));
         }
         let markers = &packages.map.markers;
-        let shops = markers
-            .iter()
-            .filter(|marker| marker.tags.contains(&shop.at));
-        let mut places = 0;
-        for marker in shops {
-            if marker.region.is_none() || marker.team.is_none() {
-                let marker = marker.name.clone();
-                return Err(LoadProblem::Item(ItemProblem::ShopMarker(marker)));
-            }
-            places += 1;
-        }
-        if places == 0 {
+        if !markers.iter().any(|marker| marker.tags.contains(&shop.at)) {
             return Err(unknown(&at, &shop.at, NameKind::MarkerTag));
         }
         let other = |item: &&DeclaredName| {
@@ -1761,9 +1720,8 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Every per-rank array of `action` has `ranks` entries, each pool its cost names is one
-    /// the mode declares, and each capability field holds at every rank.
-    fn ranked(&self, id: &DeclaredName, action: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
+    /// Each name of `action`'s cost is a pool or a player resource the mode declares.
+    fn cost_names(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         if let Some(name) = action
             .cost_names()
             .find(|name| self.names.cost_target(name).is_none())
@@ -1773,20 +1731,6 @@ impl<'a> LoadCheck<'a> {
                 at: Place::Action(id.clone()),
                 name: name.to_string(),
             });
-        }
-        if !action.check_ranks(usize::from(ranks)) {
-            return Err(LoadProblem::RankCount {
-                action: id.clone(),
-                ranks,
-            });
-        }
-        for rank in (1..=ranks).filter_map(Rank::new) {
-            action
-                .fields_at(rank, |name| self.names.cost_target(name))
-                .map_err(|field| LoadProblem::ActionField {
-                    action: id.clone(),
-                    field,
-                })?;
         }
         Ok(())
     }
@@ -1851,14 +1795,11 @@ impl<'a> LoadCheck<'a> {
 }
 
 impl EffectScope<'_> {
-    /// A spawn of `unit_type` for `duration_ms` by `action`, at `at`: a unit type of the
-    /// action's package that stands and has no box, for whole milliseconds; `fail` makes the
-    /// problem of the effect's list.
+    /// A spawn of `unit_type`, at `at`: a unit type of the action's package that stands and has
+    /// no box; `fail` makes the problem of the effect's list.
     fn spawn(
         self,
-        action: &ActionData,
         unit_type: &DeclaredName,
-        duration_ms: Option<&Number>,
         at: &Place,
         fail: impl Fn(EffectProblem) -> LoadProblem,
     ) -> Result<(), LoadProblem> {
@@ -1875,9 +1816,6 @@ impl EffectScope<'_> {
             .is_some_and(|collision| collision.form.is_box())
         {
             return Err(fail(EffectProblem::SpawnBox));
-        }
-        if duration_ms.is_some_and(|duration| !whole_ms(action, duration)) {
-            return Err(fail(EffectProblem::Duration));
         }
         Ok(())
     }
@@ -1910,33 +1848,6 @@ impl<'a> PackageNames<'a> {
     }
 }
 
-/// The values `number` of `action` can have, each rank's, as numbers, `None` for one past what
-/// a number holds: its own, or its param's. None for a param the action does not declare, which
-/// the action's checks refuse.
-fn number_values<'n>(
-    action: &'n ActionData,
-    number: &'n Number,
-) -> impl Iterator<Item = Option<Num>> + 'n {
-    let (value, param) = match number {
-        Number::Value(value) => (Some(value.to_num()), None),
-        Number::Param(reference) => (None, action.params.get(&reference.param)),
-    };
-    value
-        .into_iter()
-        .chain(param.into_iter().flat_map(param_numbers))
-}
-
-/// The values `param` can have, each rank's, as numbers, `None` for one past what a number
-/// holds; a scaling param's base's, as its source's stats add to it only as it applies.
-fn param_numbers(param: &Param) -> impl Iterator<Item = Option<Num>> + '_ {
-    let (ranked, base): (&[Scalar], &[Num]) = match param {
-        Param::Ranked(ranked) => (ranked.values(), &[]),
-        Param::Scaling(scaling) => (&[], scaling.base.values()),
-    };
-    let ranked = ranked.iter().map(|value| value.to_num());
-    ranked.chain(base.iter().copied().map(Some))
-}
-
 /// Whether the aura radius or the shield of `modifier` is negative: as a value, or at a rank of
 /// its own param, or, for a param it does not declare, of the param of an action `by` that
 /// applies it.
@@ -1949,38 +1860,13 @@ fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> boo
     numbers.into_iter().flatten().any(|number| match number {
         Number::Value(value) => negative(value.to_num()),
         Number::Param(reference) => match modifier.params.get(&reference.param) {
-            Some(param) => param_numbers(param).any(negative),
+            Some(param) => param.numbers().any(negative),
             None => by
                 .iter()
                 .filter_map(|action| action.params.get(&reference.param))
-                .any(|param| param_numbers(param).any(negative)),
+                .any(|param| param.numbers().any(negative)),
         },
     })
-}
-
-/// An effect's number: at least 0 and a sim number at every rank.
-fn number_holds(action: &ActionData, number: &Number) -> Result<(), EffectProblem> {
-    for value in number_values(action, number) {
-        if value.ok_or(EffectProblem::Overflow)? < Num::ZERO {
-            return Err(EffectProblem::Negative);
-        }
-    }
-    Ok(())
-}
-
-/// A modifier's duration: whole milliseconds within a `u32` at every rank, and no scaling param,
-/// whose value only a call knows.
-fn whole_ms(action: &ActionData, duration: &Number) -> bool {
-    let values = match duration {
-        Number::Value(value) => slice::from_ref(value),
-        Number::Param(reference) => match action.params.get(&reference.param) {
-            Some(Param::Ranked(ranked)) => ranked.values(),
-            Some(Param::Scaling(_)) => return false,
-            None => &[],
-        },
-    };
-    let whole = |value: &Scalar| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok());
-    values.iter().all(whole)
 }
 
 /// The passive of each of `actions`, by its place.

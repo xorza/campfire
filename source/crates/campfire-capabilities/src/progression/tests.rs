@@ -31,7 +31,7 @@ fn book() -> TrackBook {
         ("valor", data(&[50], false)),
     ]
     .map(|(name, data)| (DeclaredName::new(name).unwrap(), data));
-    TrackBook::new(&tracks.into())
+    TrackBook::new(&tracks.into()).unwrap()
 }
 
 #[test]

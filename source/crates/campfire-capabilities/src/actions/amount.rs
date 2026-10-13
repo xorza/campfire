@@ -15,14 +15,14 @@ pub(crate) enum Amount {
 }
 
 impl Amount {
-    /// `number`, which the load checked a sim number, its param resolved by `names`; an error
-    /// for a param its action does not declare.
+    /// `number`, which its effect list's book holds a sim number, its param resolved by
+    /// `names`; an error for a param its action does not declare.
     pub(super) fn of(number: &Number, names: &impl EffectNames) -> Result<Amount, UnknownName> {
         Ok(match number {
             Number::Value(value) => Amount::Value(
                 value
                     .to_num()
-                    .expect("the load checked each number of an effect list"),
+                    .expect("an effect list's book holds each number a sim number"),
             ),
             Number::Param(reference) => Amount::Param(names.param(&reference.param)?),
         })
@@ -35,7 +35,7 @@ impl Amount {
             Amount::Value(value) => value,
             Amount::Param(at) => StatsCall::ability_value(frame, at)
                 .to_num()
-                .expect("the load checked that an effect's param is a number")
+                .expect("an effect list's book holds each param it reads a number")
                 .max(Num::ZERO),
         }
     }
