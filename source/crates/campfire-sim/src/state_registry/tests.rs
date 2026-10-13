@@ -398,7 +398,8 @@ fn flawed_snapshots_are_refused() {
     }
 
     // "test.extra" sorts between the others; "zz.last" sorts after all of them.
-    for extra in [Extra::register as fn(&mut StateRegistry), Last::register] {
+    let registers: [fn(&mut StateRegistry); 2] = [Extra::register, Last::register];
+    for extra in registers {
         let mut wider = registry();
         extra(&mut wider);
         let mut world = World::new();

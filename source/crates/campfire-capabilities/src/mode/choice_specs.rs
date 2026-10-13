@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use campfire_common::PlayerSlot;
@@ -39,7 +40,7 @@ impl ChoiceSpecs {
             .values()
             .map(|data| {
                 let start = width;
-                width += usize::from(data.count.get());
+                width += NonZeroUsize::from(data.count).get();
                 ChoiceSpec {
                     offers: data.offers,
                     unique: data.unique,

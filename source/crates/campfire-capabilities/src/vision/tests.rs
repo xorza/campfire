@@ -84,7 +84,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(read(&mut game, visible, seer), [near]);
     let nearest = r#"ctx.nearest_visible(of, 10, "enemies")"#;
     assert_eq!(read(&mut game, nearest, seer), [near]);
-    assert_eq!(read(&mut game, nearest, far), [] as [StableId; 0]);
+    assert_eq!(read(&mut game, nearest, far), <[StableId; 0]>::default());
     // Over itself, near and far, by stable id: the seer sees itself and near.
     let can_see = r#"let seen = [];
         for unit in ctx.find(of, of.pos, 10, "all") { seen.push(of.can_see(unit)); }
@@ -307,7 +307,7 @@ fn a_box_is_seen_and_detected_by_any_cell_it_covers() {
     let short = find("3 - num(1) / 16777216");
     assert_eq!(
         Unit::ids(read(&mut game, &short, seer)),
-        [] as [StableId; 0]
+        <[StableId; 0]>::default()
     );
     assert!(read(&mut game, "of.radius", building).is_unit());
     // A step west, to (-2, 0), and the edge's centers lie √20.5 m off: no cell of it is seen.

@@ -99,14 +99,12 @@ fn the_audits_own_bookkeeping_is_not_counted_and_backtraces_stop_at_their_cap() 
 
 #[test]
 fn a_panic_or_a_misplaced_window_leaves_the_thread_clean() {
+    let panics: fn() = || panic!("the fixture panicked");
     let nested: fn() = || {
         CountingAllocator::window(|| {});
     };
     for (body, message) in [
-        (
-            (|| panic!("the fixture panicked")) as fn(),
-            "the fixture panicked",
-        ),
+        (panics, "the fixture panicked"),
         (nested, "an allocation window opened inside an open one"),
     ] {
         assert_eq!(panic_of(|| drop(CountingAllocator::window(body))), message);

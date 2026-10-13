@@ -11,7 +11,7 @@ fn set_bits_fills_a_run_within_one_word_and_across_words_and_notes_them() {
     set_bits(&mut words, &mut set, 0, 3..5);
     assert_eq!(words, [0b11000, 0, 0]);
     set_bits(&mut words, &mut set, 0, 63..64);
-    assert_eq!(words, [0b11000 | 1 << 63, 0, 0]);
+    assert_eq!(words, [0b11000 | (1 << 63), 0, 0]);
     assert_eq!(set, [0b1]);
     // Bits 60 to 130: the top 4 of word 0, all of word 1, and the low 3 of word 2; at run
     // 1, word 0 of the map is word 1.

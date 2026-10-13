@@ -13,7 +13,6 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CheckpointFailed, SeedsRanOut, ServerDir, SessionDir, SimServerWorld, TickHashes,
 };
-use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
@@ -81,7 +80,7 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
-    let packages: &ModePackages = local.packages();
+    let packages = local.packages();
     for record in published.checkpoints() {
         let file = snapshots.join(record.snapshot.to_string());
         let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();

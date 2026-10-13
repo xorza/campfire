@@ -538,7 +538,7 @@ pub(crate) mod test_world {
             let time = world.part::<SlotTimes>(id).slot(0).unwrap();
             let book = world.resource::<ActionBook>();
             let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
-            let started = slots.attacking().and(slots.in_progress());
+            let started = slots.attacking().and_then(|_| slots.in_progress());
             let started = started.and_then(InProgress::resolves_at);
             Attack {
                 target: slots.attack_target(),

@@ -1,7 +1,6 @@
 //! The mode: its script, its state, its players' choices, and the units it spawns. It runs the
 //! mode's hooks on the capabilities below it.
 
-use std::any::Any;
 use std::rc::Rc;
 
 use bevy_ecs::schedule::IntoScheduleConfigs;
@@ -219,7 +218,7 @@ impl Mode {
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
         ctx.frame().add_part(ModeCall::new(Rc::clone(&book)));
-        ctx.set_mode(Rc::clone(&book) as Rc<dyn Any>);
+        ctx.set_mode(Rc::<ModeSpec>::clone(&book));
         world.insert_non_send(MatchMode(Rc::clone(&book)));
         // A mode that defines either hook declares combat, as the load checks.
         if hooks.contains(Hook::CalcDamage) {

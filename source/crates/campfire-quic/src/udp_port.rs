@@ -48,10 +48,6 @@ impl UdpPort {
         })
     }
 
-    #[expect(
-        unsafe_code,
-        reason = "polling's add, whose contract the port keeps: it deletes each socket from the poller in its drop, before either closes"
-    )]
     fn watch(poller: &Poller, socket: &UdpSocket, key: usize) -> io::Result<()> {
         // SAFETY: `UdpPort::drop` deletes each socket from this poller before the socket drops.
         unsafe { poller.add(socket, Event::readable(key)) }

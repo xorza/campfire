@@ -39,7 +39,7 @@ impl StatusTags {
     /// It with `tag` when `on`, else without it; every other tag stays, as each belongs to the
     /// capability that gives it.
     #[must_use]
-    pub(crate) fn turned(self, tag: EngineTag, on: bool) -> StatusTags {
+    pub(crate) const fn turned(self, tag: EngineTag, on: bool) -> StatusTags {
         let tag = tag.tag();
         StatusTags(if on {
             self.0.with(tag)

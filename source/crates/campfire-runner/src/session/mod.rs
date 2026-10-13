@@ -1,3 +1,5 @@
+use std::num::NonZeroU64;
+
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::Mode;
@@ -87,9 +89,10 @@ impl Session {
         Release::build(world, spec);
         MatchBuild::install_mode(packages, world, players);
         let saves = packages.data().saves;
-        let autosave = saves
-            .autosave_ms
-            .map(|ms| rate.ticks(u64::from(ms.get())).expect("a tick at least"));
+        let autosave = saves.autosave_ms.map(|ms| {
+            rate.ticks(NonZeroU64::from(ms).get())
+                .expect("a tick at least")
+        });
         Ok(Session {
             seeds,
             segment,

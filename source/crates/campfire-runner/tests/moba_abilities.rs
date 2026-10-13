@@ -853,7 +853,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let ally = unit(&mut game, 0, 1);
     let held = |game: &Match| [caster, near, edge, far, ally].map(|unit| carried(game, unit));
     let from_veil = |id| vec![(id, Some(caster))];
-    let inside = [
+    let mut expected = [
         from_veil(cover),
         from_veil(slow),
         from_veil(slow),
@@ -864,7 +864,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     // The cast resolves at once and the ring lands in tick 0; it holds its modifiers from that
     // tick's Resolve. It lasts 8000 ms, 240 ticks, and ends in tick 240.
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::None)]);
-    assert_eq!(held(&game), inside);
+    assert_eq!(held(&game), expected);
     assert_eq!(pool(&arena, &game, caster, "energy"), Num::int(20));
     // The near enemy steps out to 4 m: its slow ends in the next tick's Resolve.
     for _ in 1..100 {
@@ -873,13 +873,12 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let entity = game.entity_of(near).unwrap();
     *game.get_mut::<Position>(entity).unwrap() = Position::from((4, 0, 0));
     arena.step(&mut game);
-    let mut left = inside.clone();
-    left[1] = vec![];
-    assert_eq!(held(&game), left);
+    expected[1] = vec![];
+    assert_eq!(held(&game), expected);
     for _ in 101..240 {
         arena.step(&mut game);
     }
-    assert_eq!(held(&game), left);
+    assert_eq!(held(&game), expected);
     assert_eq!(areas(&mut game), 1);
     arena.step(&mut game);
     assert_eq!(held(&game), [vec![], vec![], vec![], vec![], vec![]]);

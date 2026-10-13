@@ -98,7 +98,7 @@ pub(crate) mod internals {
         }
 
         /// A full life of `max`, which is positive.
-        pub fn full(max: Num) -> Life {
+        pub const fn full(max: Num) -> Life {
             Life(Meter::new(max).expect("a positive maximum"))
         }
     }

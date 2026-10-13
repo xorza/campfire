@@ -53,9 +53,7 @@ impl Route {
 
     /// The party whose route search the waiting ask shares.
     pub(crate) fn party(&self) -> Option<Party> {
-        self.goal
-            .and_then(|goal| goal.asked)
-            .and_then(|ask| ask.party)
+        self.goal?.asked?.party
     }
 
     pub(crate) const fn reached(&self) -> bool {

@@ -2025,7 +2025,9 @@ fn component_loop(items: &BTreeMap<DeclaredName, ItemData>) -> Option<&DeclaredN
             Mark::Open => {}
         }
         marks.insert(id, Mark::OnPath);
-        let components = items.get(id).map_or(&[][..], |item| &item.components[..]);
+        let components = items
+            .get(id)
+            .map_or(&[][..], |item| item.components.as_slice());
         for component in components {
             if let Some(looped) = walk(component, items, marks) {
                 return Some(looped);

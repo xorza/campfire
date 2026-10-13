@@ -286,7 +286,7 @@ impl ActionSlots {
 
     /// Starts the ordered cast that passed its checks as `checked`, from `pos` at `now`: a
     /// charged action charges until its most; any other winds up, to resolve as its windup ends.
-    pub(crate) fn begin(&mut self, checked: &CheckedAction<'_>, pos: Position, now: Tick) {
+    pub(crate) const fn begin(&mut self, checked: &CheckedAction<'_>, pos: Position, now: Tick) {
         let values = checked.values;
         if let Some(most) = values.charge {
             self.charge(checked.target, pos, now, now.after(most));

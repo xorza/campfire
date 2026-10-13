@@ -101,7 +101,7 @@ fn a_class_s_tiles_lie_upright_in_its_block_wrapped_by_its_border_at_each_level(
     let textures = [Some(ClassTexture {
         width: 128,
         height: 128,
-        data: data.clone(),
+        data,
     })];
     let atlas = TerrainAtlas::new(&parts, &textures);
     let [x, y] = atlas.class(0);
@@ -149,7 +149,7 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     let textures = [Some(ClassTexture {
         width: 128,
         height: 128,
-        data: data.clone(),
+        data,
     })];
     let atlas = TerrainAtlas::new(&three, &textures);
     assert_eq!(atlas.tile(0), Some([4, 68]));

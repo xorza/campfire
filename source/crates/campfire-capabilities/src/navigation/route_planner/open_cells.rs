@@ -46,7 +46,7 @@ impl OpenCells {
             total >= least && total - least <= OpenCells::SPREAD,
             "a consistent estimate keeps every total near the least"
         );
-        let key = u64::from(estimate) << 32 | u64::from(cell);
+        let key = (u64::from(estimate) << 32) | u64::from(cell);
         self.buckets[(total % OpenCells::RING) as usize].push(Reverse(key));
         self.len += 1;
     }

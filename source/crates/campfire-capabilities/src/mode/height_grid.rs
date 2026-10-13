@@ -85,9 +85,7 @@ impl HeightGrid {
 
     fn checked_far_corner(&self) -> Option<[Num; 2]> {
         let at = |origin: Num, count: u32| {
-            self.cell
-                .checked_mul_int(i64::from(count) - 1)
-                .and_then(|span| origin.checked_add(span))
+            origin.checked_add(self.cell.checked_mul_int(i64::from(count) - 1)?)
         };
         Some([
             at(self.origin[0], self.columns)?,
@@ -178,7 +176,7 @@ mod tests {
         ));
         // The same grid with its column count over-long, 2 as 0x82 0x00, or a byte past its end.
         let long = [&bytes[..13], &[0x82, 0x00], &bytes[14..]].concat();
-        let trailing = [&bytes[..], &[0]].concat();
+        let trailing = [bytes.as_slice(), &[0]].concat();
         assert_eq!(
             Binary::decode::<HeightGrid>(&long),
             Err(BinaryError::NotCanonical)

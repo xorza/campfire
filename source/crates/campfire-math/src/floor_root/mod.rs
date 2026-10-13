@@ -139,7 +139,7 @@ impl Near {
         clippy::cast_sign_loss,
         reason = "an estimate below 2⁵¹ + 1, which the cast truncates exactly"
     )]
-    fn floor(self) -> u64 {
+    const fn floor(self) -> u64 {
         let mut root = self.estimate as i64 as u64;
         while self.residual(root) < 0 {
             root -= 1;

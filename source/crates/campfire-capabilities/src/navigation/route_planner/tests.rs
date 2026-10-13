@@ -323,7 +323,7 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
             });
         }
         let marked: Vec<bool> = (0..window.cells())
-            .map(|local| planner.overlay[local / 64] & 1 << (local % 64) != 0)
+            .map(|local| planner.overlay[local / 64] & (1 << (local % 64)) != 0)
             .collect();
         assert_eq!(marked, spanned, "{window:?}");
         assert!(marked.contains(&true), "{window:?}");

@@ -84,8 +84,8 @@ impl F64x4 {
     }
 
     const fn rounded(lane: u64) -> f64 {
-        let high = f64::from_bits(TWO_84.to_bits() | lane >> 32) - TWO_84;
-        let low = f64::from_bits(TWO_52.to_bits() | lane & 0xFFFF_FFFF) - TWO_52;
+        let high = f64::from_bits(TWO_84.to_bits() | (lane >> 32)) - TWO_84;
+        let low = f64::from_bits(TWO_52.to_bits() | (lane & 0xFFFF_FFFF)) - TWO_52;
         high + low
     }
 

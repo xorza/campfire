@@ -131,9 +131,10 @@ impl BucketKey {
         } else {
             row + BucketKey::ROWS
         };
-        let high = (at.layer.index() as u64) << 56 | (at.level as u64) << 50 | row.cast_unsigned();
-        let low = column.cast_unsigned() ^ 1 << 63;
-        BucketKey((high as u128) << 64 | low as u128)
+        let high =
+            ((at.layer.index() as u64) << 56) | ((at.level as u64) << 50) | row.cast_unsigned();
+        let low = column.cast_unsigned() ^ (1 << 63);
+        BucketKey(((high as u128) << 64) | low as u128)
     }
 }
 

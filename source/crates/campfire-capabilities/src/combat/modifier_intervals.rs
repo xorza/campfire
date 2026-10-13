@@ -42,7 +42,7 @@ impl ModifierIntervals {
         let book = world.resource::<ModifierBook>().clone();
         due.clear();
         for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {
-            let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
+            let immune = tags.map_or_else(TagSet::default, |tags| tags.immune);
             let takes_effect = TagEffect::new(granting, immune);
             let push = |id, source| {
                 due.push(IntervalDue {

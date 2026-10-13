@@ -424,7 +424,7 @@ mod tests {
             },
             ModifierData {
                 affects: Some(FilterData::parse("allies:frozen").unwrap()),
-                ..known.clone()
+                ..known
             },
         ];
         let unknown = [

@@ -21,7 +21,7 @@ impl RefPack {
         let len = reader
             .take(width)?
             .iter()
-            .fold(0_usize, |len, &byte| len << 8 | usize::from(byte));
+            .fold(0_usize, |len, &byte| (len << 8) | usize::from(byte));
         // The header's length is untrusted, so the output grows as it is written, and no header
         // reserves more than its stream writes.
         let mut out = Vec::new();

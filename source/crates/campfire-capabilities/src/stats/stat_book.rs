@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
@@ -198,7 +199,7 @@ impl StatBook {
         let speed = self
             .engine(values, EngineStat::MoveSpeed)?
             .clamp(Num::ZERO, self.max_move_speed);
-        let hz = i64::from(rate.hz().get());
+        let hz = NonZeroI64::from(rate.hz()).get();
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
     }
 }

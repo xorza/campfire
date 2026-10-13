@@ -10,7 +10,8 @@ mod zero_hour;
 pub use crate::error::ImportError;
 pub use crate::texture::error::TextureError;
 pub use crate::zero_hour::error::{
-    ArchiveError, Chunk, MapError, Packing, RefPackError, VersionDifference, ZeroHourError,
+    ArchiveError, Chunk, IniError, MapError, ModelError, Packing, RefPackError, VersionDifference,
+    W3dError, ZeroHourError,
 };
 pub use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
 pub use crate::zero_hour::{Imported, SkipReason, SkippedModel, ZeroHour};

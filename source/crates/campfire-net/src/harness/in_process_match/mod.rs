@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_types,
+    reason = "a clock is a `fn` with no state of its own, so the time a test sets is its thread's"
+)]
+
 use std::cell::Cell;
 use std::fmt::Write as _;
 use std::mem;

@@ -231,8 +231,7 @@ impl Modifiers {
         while at < self.instances.len() {
             let ends = starts.ends..starts.ends + usize::from(self.instances[at].ends);
             let ended = self.ends[ends].partition_point(|end| end.until <= now);
-            let mut emptied = false;
-            if ended > 0 {
+            let emptied = if ended > 0 {
                 let count: u32 = self
                     .ends
                     .drain(starts.ends..starts.ends + ended)
@@ -241,8 +240,10 @@ impl Modifiers {
                 let instance = &mut self.instances[at];
                 instance.ends -= u16::try_from(ended).expect("a run's length fits u16");
                 instance.stacks -= count;
-                emptied = instance.stacks == 0;
-            }
+                instance.stacks == 0
+            } else {
+                false
+            };
             let instance = &mut self.instances[at];
             let keeps = if emptied {
                 instance.lifetime.held_by(Hold::Passive)

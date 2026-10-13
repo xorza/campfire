@@ -231,7 +231,11 @@ mod tests {
             };
             BTreeMap::from([(DeclaredName::new("p").unwrap(), Param::Scaling(scaling))])
         };
-        let at = |stat: &Stat| (*stat == armor).then(|| StatId::new(0)).ok_or(stat.clone());
+        let at = |stat: &Stat| {
+            (*stat == armor)
+                .then(|| StatId::new(0))
+                .ok_or_else(|| stat.clone())
+        };
         let mut table = ParamTable::default();
         assert_eq!(table.push(&run(&[&armor]), at), Ok(0));
         assert_eq!(table.push(&run(&[&armor, &power]), at), Err(power));

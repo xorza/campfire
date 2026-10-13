@@ -273,16 +273,19 @@ fn modifiers_decode_only_with_ordered_ends_that_count_their_stacks() {
         },
     ];
     assert!(decode(&instance));
-    let mut uncounted = instance.clone();
-    uncounted.stacks = 4;
-    let mut unordered = instance.clone();
-    unordered.stack_ends.swap(0, 1);
-    let mut empty = instance.clone();
-    empty.stack_ends[0].count = 0;
-    empty.stacks = 2;
-    let mut lifeless = instance.clone();
-    lifeless.stack_life = None;
-    for bad in [uncounted, unordered, empty, lifeless] {
+    // Uncounted, unordered, with an empty end, and lifeless.
+    let flaws: [fn(&mut NewInstance); 4] = [
+        |bad| bad.stacks = 4,
+        |bad| bad.stack_ends.swap(0, 1),
+        |bad| {
+            bad.stack_ends[0].count = 0;
+            bad.stacks = 2;
+        },
+        |bad| bad.stack_life = None,
+    ];
+    for flaw in flaws {
+        let mut bad = instance.clone();
+        flaw(&mut bad);
         assert!(!decode(&bad), "{bad:?}");
     }
 }

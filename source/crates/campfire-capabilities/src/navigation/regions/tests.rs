@@ -15,7 +15,7 @@ fn grid(columns: i64, rows: i64) -> Grid {
 }
 
 fn blocked_at(blocked: &[u64], cell: usize) -> bool {
-    blocked[cell / 64] & 1 << (cell % 64) != 0
+    blocked[cell / 64] & (1 << (cell % 64)) != 0
 }
 
 /// Cells blocked at random, one in `odds` on average, from `seed`.

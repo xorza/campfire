@@ -184,7 +184,7 @@ impl PathingGrid {
     /// column: the cell at `column` and `row` at `column × rows + row`.
     fn by_column(grid: &Grid, cells: &[u64], columns: &mut [u64]) {
         let (width, rows) = (grid.columns(), grid.rows());
-        for cell in (0..grid.cells()).filter(|&cell| cells[cell / 64] & 1 << (cell % 64) != 0) {
+        for cell in (0..grid.cells()).filter(|&cell| cells[cell / 64] & (1 << (cell % 64)) != 0) {
             let at = cell % width * rows + cell / width;
             columns[at / 64] |= 1 << (at % 64);
         }
@@ -212,7 +212,7 @@ impl PathingGrid {
             widths.push(width);
         }
         let (columns, rows) = (grid.columns(), grid.rows());
-        for cell in (0..grid.cells()).filter(|&cell| blocked[cell / 64] & 1 << (cell % 64) != 0) {
+        for cell in (0..grid.cells()).filter(|&cell| blocked[cell / 64] & (1 << (cell % 64)) != 0) {
             cells[cell / 64] |= 1 << (cell % 64);
             let (column, row) = (cell % columns, cell / columns);
             for (off, &width) in widths.iter().enumerate() {
@@ -282,7 +282,7 @@ impl Clearance<'_> {
     }
 
     /// The first of `cells` set in `words`.
-    fn first_set(words: &[u64], cells: Range<usize>) -> Option<usize> {
+    const fn first_set(words: &[u64], cells: Range<usize>) -> Option<usize> {
         let mut at = cells.start;
         while at < cells.end {
             let shift = at % 64;
@@ -304,14 +304,15 @@ impl Clearance<'_> {
     pub(crate) fn walls_block_step(&self, segment: Segment) -> bool {
         self.walled.is_some_and(|walled| {
             let start = self.grid.nearest_cell(segment.start());
-            let blocked = |cell: usize| cell != start && walled[cell / 64] & 1 << (cell % 64) != 0;
+            let blocked =
+                |cell: usize| cell != start && walled[cell / 64] & (1 << (cell % 64)) != 0;
             self.grid.touches(segment.start(), segment.end(), blocked)
         })
     }
 
     /// Whether a walker may stand in `cell`.
     pub(crate) const fn open(&self, cell: usize) -> bool {
-        self.words[cell / 64] & 1 << (cell % 64) == 0
+        self.words[cell / 64] & (1 << (cell % 64)) == 0
     }
 }
 

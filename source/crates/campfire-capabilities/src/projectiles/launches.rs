@@ -62,7 +62,7 @@ impl Launches {
         self.casts
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.launches.len()
     }
 

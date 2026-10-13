@@ -525,10 +525,7 @@ pub(crate) mod test_world {
         /// Declares every tag the match's packages name, in their order, after the engine's tags,
         /// before any type, modifier or filter names one, so the tags are numbered the same however
         /// the packages load.
-        pub(crate) fn declare_tags<'a>(
-            world: &mut World,
-            names: impl IntoIterator<Item = &'a str>,
-        ) {
+        pub(crate) fn declare_tags<'a>(world: &World, names: impl IntoIterator<Item = &'a str>) {
             let view = world.non_send::<View>();
             let mut types = view.types_mut();
             for name in names {

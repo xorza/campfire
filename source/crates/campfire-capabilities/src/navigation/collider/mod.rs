@@ -83,7 +83,10 @@ impl Collider {
 
     /// The box of the two, where it stands, and the other, which may be pushed: none when
     /// neither is a box. Only a body that may not be pushed is one.
-    fn boxed<'a>(a: &'a Collider, b: &'a Collider) -> Option<(BodyBox, Position, &'a Collider)> {
+    const fn boxed<'a>(
+        a: &'a Collider,
+        b: &'a Collider,
+    ) -> Option<(BodyBox, Position, &'a Collider)> {
         let (body, at, mover) = match (a.shape, b.shape) {
             (Shape::Box(body), _) => (body, a.point, b),
             (_, Shape::Box(body)) => (body, b.point, a),

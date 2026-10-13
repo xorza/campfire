@@ -20,9 +20,7 @@ impl fmt::Display for Step {
 
 impl Error for Step {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
-        self.source
-            .as_ref()
-            .map(|error| error as &(dyn Error + 'static))
+        Some(self.source.as_ref()?)
     }
 }
 
@@ -159,6 +157,10 @@ fn production(file: &SourceFile) -> Option<String> {
 }
 
 #[test]
+#[expect(
+    clippy::literal_string_with_formatting_args,
+    reason = "the samples are lines of source the scan reads, not format strings"
+)]
 fn every_error_the_workspace_writes_goes_through_its_report() {
     let workspace = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let mut found = Vec::new();

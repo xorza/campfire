@@ -481,16 +481,16 @@ fn record_inputs(
     order.extend(links.iter().map(|(entity, link, ..)| (link.slot(), entity)));
     order.sort_unstable();
     for (_, entity) in order.drain(..) {
-        let (entity, &held, mut receiver, mut acks) =
+        let (entity, &(mut link), mut receiver, mut acks) =
             links.get_mut(entity).expect("a link the query just gave");
-        let mut link = held;
         for message in receiver.receive() {
             if link.refused() {
                 continue;
             }
             let next_tick = session.log().next_tick();
-            let Some(inputs) = message.inputs(link.slot()) else {
-                InputMessageUnfit { slot: link.slot() }.log();
+            let slot = link.slot();
+            let Some(inputs) = message.inputs(slot) else {
+                InputMessageUnfit { slot }.log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
                 commands.trigger(CloseLink {

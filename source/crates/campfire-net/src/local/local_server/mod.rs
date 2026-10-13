@@ -230,7 +230,7 @@ impl LocalServer {
     }
 
     /// The client's end of the link, once, with the binding both ends take.
-    pub fn take_link(&mut self) -> LocalLink {
+    pub const fn take_link(&mut self) -> LocalLink {
         LocalLink {
             io: self.link.take().expect("the client takes the link once"),
             binding: LinkBinding(LocalServer::BINDING),

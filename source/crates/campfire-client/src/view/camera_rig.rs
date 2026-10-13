@@ -156,7 +156,7 @@ impl CameraRig {
     }
 
     /// Sets the yaw and the height back to their start.
-    pub(crate) fn reset(&mut self) {
+    pub(crate) const fn reset(&mut self) {
         self.yaw = self.file.yaw.to_radians();
         self.height = self.file.height.most;
     }

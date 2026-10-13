@@ -18,7 +18,7 @@ use lightyear::prelude::Replicate;
 const JOIN_STEPS: usize = 300;
 
 /// A duo of the lane mode whose host gives `visibility` and admits `spectators`.
-fn duo(visibility: &'static [&'static str], spectators: u32) -> MatchSetup {
+const fn duo(visibility: &'static [&'static str], spectators: u32) -> MatchSetup {
     MatchSetup {
         visibility,
         max_spectators: spectators,

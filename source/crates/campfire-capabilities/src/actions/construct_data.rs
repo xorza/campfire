@@ -85,7 +85,7 @@ mod tests {
         );
         for flawed in [
             r#"construct = "crew""#,
-            r"construct = { builders = [] }",
+            "construct = { builders = [] }",
             r#"construct = { builders = ["0"] }"#,
             r#"construct = { builders = ["-1"] }"#,
             r#"construct = { builders = ["1"], rest = 2 }"#,

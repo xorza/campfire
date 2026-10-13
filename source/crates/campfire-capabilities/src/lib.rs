@@ -302,6 +302,10 @@ pub use crate::vision::vision_data::VisionData;
 pub mod internals {
     pub use crate::geometry::kernel_scene::{Density, KernelScene};
     pub use crate::players::Players;
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
     pub use crate::scripts::scripts_world::internals::ScriptsWorldInternals;
 }
 

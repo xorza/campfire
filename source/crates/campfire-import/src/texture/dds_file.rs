@@ -215,7 +215,7 @@ mod tests {
             Err(TextureError::Levels(5))
         );
         assert_eq!(
-            read(&[&dds(*b"DXT1", 8, 8, 4, &blocks)[..], &[0]].concat()),
+            read(&[dds(*b"DXT1", 8, 8, 4, &blocks).as_slice(), &[0]].concat()),
             Err(TextureError::Length {
                 expected: 56,
                 found: 57

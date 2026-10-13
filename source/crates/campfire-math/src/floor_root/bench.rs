@@ -57,7 +57,7 @@ pub(crate) fn values(seed: u64, widest: u32) -> Vec<u128> {
         .map(|at| {
             let width = u32::try_from(at).expect("a count below 2³²") % widest + 1;
             let bits = (u128::from(words.next_u64()) << 64) | u128::from(words.next_u64());
-            (bits >> (128 - width)) | 1 << (width - 1)
+            (bits >> (128 - width)) | (1 << (width - 1))
         })
         .collect()
 }

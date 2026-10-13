@@ -45,7 +45,7 @@ impl Teams {
     }
 
     /// The teams' names.
-    pub(crate) fn names(&self) -> &Arc<Names<Team>> {
+    pub(crate) const fn names(&self) -> &Arc<Names<Team>> {
         &self.names
     }
 

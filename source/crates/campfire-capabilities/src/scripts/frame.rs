@@ -56,11 +56,11 @@ impl Frame {
     }
 
     pub(crate) fn acting(&self) -> Option<StableId> {
-        self.call.and_then(|call| call.acting)
+        self.call?.acting
     }
 
     pub(crate) fn action(&self) -> Option<ActionId> {
-        self.call.and_then(|call| call.action)
+        self.call?.action
     }
 
     pub(crate) const fn rank(&self) -> Rank {
@@ -76,15 +76,15 @@ impl Frame {
     }
 
     pub(crate) fn hit(&self) -> Option<Hit> {
-        self.call.and_then(|call| call.hit)
+        self.call?.hit
     }
 
     pub(crate) fn start(&self) -> Option<ActionStart> {
-        self.call.and_then(|call| call.start)
+        self.call?.start
     }
 
     pub(crate) fn dash_delivers(&self) -> Option<DashDelivery> {
-        self.call.and_then(|call| call.dash_delivers)
+        self.call?.dash_delivers
     }
 
     /// Whether the running call is a pure hook's, whose `ctx` only reads.

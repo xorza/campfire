@@ -29,7 +29,7 @@ impl Bits256 {
     }
 
     pub(crate) const fn contains(self, index: usize) -> bool {
-        self.0[index / 64] & 1 << (index % 64) != 0
+        self.0[index / 64] & (1 << (index % 64)) != 0
     }
 
     /// The bits set in either.

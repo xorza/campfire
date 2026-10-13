@@ -30,7 +30,7 @@ pub(crate) struct UnitRow {
 }
 
 impl UnitRow {
-    pub(crate) fn is_avatar(&self) -> bool {
+    pub(crate) const fn is_avatar(&self) -> bool {
         self.tags.tags.contains(Units::AVATAR.tag())
     }
 }

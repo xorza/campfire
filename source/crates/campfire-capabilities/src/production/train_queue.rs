@@ -1,4 +1,4 @@
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroUsize};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -66,9 +66,8 @@ impl TrainQueue {
 
     /// The head, when its time ended by `now`.
     pub(crate) fn done(&self, now: Tick) -> Option<Queued> {
-        self.head_done
-            .filter(|&done| done <= now)
-            .and(self.entries.first().copied())
+        let ended = self.head_done.is_some_and(|done| done <= now);
+        self.entries.first().copied().filter(|_| ended)
     }
 
     /// The player resources the entry at `place` paid; `None` past the queue's end.
@@ -116,7 +115,7 @@ impl SimComponent for TrainQueue {
         let capacity = world
             .get::<UnitType>(entity)
             .and_then(|&unit_type| producers.get(unit_type))
-            .map(|production| usize::from(production.queue.get()));
+            .map(|production| NonZeroUsize::from(production.queue).get());
         let resources = world.declared_resources();
         let paid = self
             .paid

@@ -70,10 +70,8 @@ impl ModelParts {
         let mut flashes = Vec::new();
         let mut barrels = 0;
         for number in 1..=99 {
-            let numbered = |bone: &Option<String>| {
-                bone.as_ref()
-                    .and_then(|bone| self.pivot(&format!("{bone}{number:02}")))
-            };
+            let numbered =
+                |bone: &Option<String>| self.pivot(&format!("{}{number:02}", bone.as_ref()?));
             if bones.iter().all(|bone| numbered(bone).is_none()) {
                 break;
             }

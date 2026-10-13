@@ -44,7 +44,7 @@ impl<T> PagedVec<T> {
     }
 
     pub(crate) fn last(&self) -> Option<&T> {
-        self.len.checked_sub(1).and_then(|at| self.get(at))
+        self.get(self.len.checked_sub(1)?)
     }
 
     pub(crate) fn iter(&self) -> impl Iterator<Item = &T> {

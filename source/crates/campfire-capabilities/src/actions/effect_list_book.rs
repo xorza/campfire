@@ -228,7 +228,7 @@ impl EffectListBook {
     }
 
     /// Whether the match loaded `launch`.
-    pub(crate) fn has_launch(&self, launch: LaunchId) -> bool {
+    pub(crate) const fn has_launch(&self, launch: LaunchId) -> bool {
         (launch.0 as usize) < self.launches.len()
     }
 

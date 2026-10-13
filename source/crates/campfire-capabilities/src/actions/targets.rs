@@ -134,7 +134,7 @@ impl Targets<'_, '_> {
                 id,
                 key: TargetKey {
                     team,
-                    tags: tags.map_or(TagSet::default(), |tags| tags.tags),
+                    tags: tags.map_or_else(TagSet::default, |tags| tags.tags),
                     targetable: Targets::targetable(Some(life), tags),
                 },
                 pos: at,
@@ -160,7 +160,7 @@ impl Targets<'_, '_> {
             pos,
             team,
             shape: Body::shape_of(body),
-            tags: tags.map_or(TagSet::default(), |tags| tags.tags),
+            tags: tags.map_or_else(TagSet::default, |tags| tags.tags),
         }
     }
 }

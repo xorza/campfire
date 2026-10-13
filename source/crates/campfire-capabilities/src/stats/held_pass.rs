@@ -124,7 +124,7 @@ impl HeldPass {
             .iter()
             .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
         for (&source, &at, &team, carrier, modifiers) in written.chain(&carriers) {
-            let immune = carrier.map_or(TagSet::default(), |tags| tags.immune);
+            let immune = carrier.map_or_else(TagSet::default, |tags| tags.immune);
             let takes_effect = TagEffect::new(granting, immune);
             for instance in modifiers.iter() {
                 let (Some(aura), Some(radius)) =
@@ -149,7 +149,7 @@ impl HeldPass {
                 grid.visit_near(at, radius, |body| {
                     let (&target, _, &other, tags, ..) =
                         units.get(body.key).expect("an indexed unit");
-                    let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
+                    let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
                     let relation = relations.between(team, other);
                     let reaches =
                         map.metric
@@ -216,7 +216,7 @@ impl HeldPass {
             let Some(held_by) = players.of(owner) else {
                 continue;
             };
-            let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
+            let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
             for modifier in held_by.iter() {
                 let affects = book.get(modifier).spec.affects;
                 if affects.is_none_or(|filter| filter.selects(Relation::Friendly, tags)) {

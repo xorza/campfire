@@ -1,4 +1,4 @@
-use std::num::NonZeroU8;
+use std::num::{NonZeroI64, NonZeroU8};
 
 use campfire_math::Num;
 
@@ -15,7 +15,7 @@ impl Fan {
     /// (count − 1)) / (2 · (count − 1))` degrees, so the fan spreads evenly about the aim, rounded
     /// once; none for a fan of one.
     pub(crate) fn turn(self, at: u8) -> Num {
-        let count = i64::from(self.count.get());
+        let count = NonZeroI64::from(self.count).get();
         if count == 1 {
             return Num::ZERO;
         }

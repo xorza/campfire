@@ -108,10 +108,16 @@ impl UnitsColumn {
                 .expect("a unit holds each field its type declares");
             rows.values.push(value.clone());
         }
-        debug_assert!(
-            classes.iter_mut().all(|class| class.next().is_none()),
-            "a unit holds only the fields its type declares"
-        );
+        #[expect(
+            clippy::debug_assert_with_mut_call,
+            reason = "the check drains what is left of each class, which nothing reads after it"
+        )]
+        {
+            debug_assert!(
+                classes.iter_mut().all(|class| class.next().is_none()),
+                "a unit holds only the fields its type declares"
+            );
+        }
         rows.rows.push(start..len(rows.values.len()));
     }
 

@@ -19,6 +19,11 @@ where
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    #![expect(
+        clippy::disallowed_types,
+        reason = "tracing's default subscriber is the thread's own, so the check its fixtures share is too"
+    )]
+
     use std::cell::RefCell;
     use std::io::{self, Write};
     use std::mem;

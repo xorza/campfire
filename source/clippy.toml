@@ -1,11 +1,14 @@
-# Protocol names a doc comment writes as words, not code; `..` keeps clippy's own list.
-doc-valid-idents = ["UPnP", ".."]
-
-# The bans fall in groups. A group with a proxy crate is called there alone: the proxy's crate
-# root exempts the lint, and every other crate goes through the proxy, which gives what it
-# needs. A group with no proxy is banned everywhere, and its reason names what to call instead.
-# `campfire-common`'s tests hold each group and each exemption (design 02, Structural rules).
+allow-print-in-tests = true
+allowed-wildcard-imports = ["x86_64", "aarch64", "arch"]
+absolute-paths-allowed-crates = ["std", "core", "alloc"]
 disallowed-types = [
+    { path = "std::thread::LocalKey", reason = "state lives on an owner and travels by parameter" },
+    # The bans fall in groups. A group with a proxy crate is called there alone: the proxy's crate
+    # root exempts the lint, and every other crate goes through the proxy, which gives what it
+    # needs. A group with no proxy is banned everywhere, and its reason names what to call
+    # instead; only `LocalKey` above is exempt, at the head of a module whose state an outside API
+    # keeps per thread. `campfire-common`'s tests hold each group and each exemption (design 02,
+    # Structural rules).
     # campfire-store alone touches the file system (design 02, Storage): it reads, lists, checks and writes every file, so each read has its bound and each write its durability, and each failure names its path.
     { path = "std::fs::File", reason = "touch files through campfire-store" },
     { path = "std::fs::OpenOptions", reason = "touch files through campfire-store" },

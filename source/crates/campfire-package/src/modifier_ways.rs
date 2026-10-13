@@ -131,6 +131,10 @@ impl<'a> ModifierWays<'a> {
                 given.clear();
                 given.extend(self.of_modifier(from).cloned());
                 let ways = self.ways.entry(to).or_default();
+                #[expect(
+                    clippy::iter_with_drain,
+                    reason = "`given` is the pass's buffer, kept for the next `from`"
+                )]
                 for way in given.drain(..) {
                     added |= ways.insert(way);
                 }

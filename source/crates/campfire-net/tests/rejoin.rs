@@ -229,7 +229,7 @@ fn an_expiring_delegation_is_renewed_as_the_client_comes_back() {
     let inputs = local.server_inputs();
     assert!(
         matches!(
-            &inputs[..],
+            inputs.as_slice(),
             [
                 ServerInput::Disconnected { slot: a },
                 ServerInput::Renew { slot: b, .. },

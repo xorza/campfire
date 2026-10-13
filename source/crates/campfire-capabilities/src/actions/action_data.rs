@@ -448,11 +448,11 @@ impl ActionData {
     }
 
     /// Its effect lists, each with the hook it runs before: `on_resolve`, `on_hit`, `on_end`.
-    pub fn effect_lists(&self) -> [(Hook, &[EffectData]); 3] {
+    pub const fn effect_lists(&self) -> [(Hook, &[EffectData]); 3] {
         [
-            (Hook::OnResolve, &self.on_resolve[..]),
-            (Hook::OnHit, &self.on_hit[..]),
-            (Hook::OnEnd, &self.on_end[..]),
+            (Hook::OnResolve, self.on_resolve.as_slice()),
+            (Hook::OnHit, self.on_hit.as_slice()),
+            (Hook::OnEnd, self.on_end.as_slice()),
         ]
     }
 

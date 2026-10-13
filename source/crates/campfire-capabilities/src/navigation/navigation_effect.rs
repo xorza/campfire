@@ -1,3 +1,5 @@
+use std::num::NonZeroI64;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
@@ -60,7 +62,7 @@ impl NavigationEffect {
         speed: Num,
     ) -> Result<NavigationEffect, ApiError> {
         NavigationEffect::walker(view, id)?;
-        let hz = i64::from(view.rate().hz().get());
+        let hz = NonZeroI64::from(view.rate().hz()).get();
         let step = speed
             .checked_div_int(hz)
             .filter(|&step| step > Num::ZERO)

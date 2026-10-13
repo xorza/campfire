@@ -61,7 +61,7 @@ Every check, test, doc build and bench runs through `source/drive.py` ([The driv
 
 | Command | Runs |
 | --- | --- |
-| `./drive.py check` | each package's index written again, `cargo fmt`, the lint of every target, the lint of the build that ships, and the whole suite: a step's check |
+| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index written again, and the whole suite: a step's check |
 | `./drive.py index` | each workspace package's `package.index` written again from its files, after a change to a package |
 | `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again |
 | `./drive.py doc` | the doc tests, and rustdoc with `-D warnings` |
@@ -74,7 +74,7 @@ Each step prints one line, its result and its time, after its diagnostics in sho
 
 ## Code
 
-- **Banned calls go through their proxy crate**: files and threads through `store`, the formats through `codec`, a schedule's build settings through `schedule` ([Structural rules](docs/design/02-engine-core.md#structural-rules)). Only a proxy's crate root `expect`s `clippy::disallowed_methods` or `clippy::disallowed_types`; nothing else exempts a banned call. When a proxy lacks what a caller needs, the proxy gains it.
+- **Banned calls go through their proxy crate**: files and threads through `store`, the formats through `codec`, a schedule's build settings through `schedule` ([Structural rules](docs/design/02-engine-core.md#structural-rules)). Only a proxy's crate root `expect`s `clippy::disallowed_methods` or `clippy::disallowed_types`; nothing else exempts a banned call, but a `thread_local!` that an outside API forces, whose module `expect`s `clippy::disallowed_types` at its head and names no other banned type. When a proxy lacks what a caller needs, the proxy gains it.
 - **Each operation has one home, by what it acts on.** The whole match and the fast access to a module's singleton or index are methods of its module's trait on `World`: `<Module>World`, `<Module>WorldCrate` or `<Module>WorldInternals`, by who calls it. The match's content, what a module loads, spawns, gives, queues or finds by name, is an associated function of the module's type, its capability type where it has one, the world first: `Stats::give_modifier(world, …)`. A value or a view made from the world is a constructor of its own type, `PoolMeters::of(world, entity)`, and a match a module builds is an associated function of the module's type that returns it ([Structural rules](docs/design/02-engine-core.md#structural-rules)); the world rule test of `common` holds it. A test fixture is a struct of the ids it places into a match, whose verbs take the match.
 - **Native only.** Campfire runs natively on Linux, macOS and Windows: no browser and no WebAssembly. Code, features, dependencies and design choices that exist only for a browser or a WebAssembly target are dropped, and the simpler native form takes their place.
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.

@@ -819,7 +819,8 @@ fn load_damage_stats(world: &mut World) {
     };
     let pools = Names::<PoolId>::from([health.as_str()]);
     let life = combat.life_pool(&pools).unwrap();
-    let bindings = CombatBindings::new(&combat, |stat| book.named(stat).ok_or(stat.clone()));
+    let bindings =
+        CombatBindings::new(&combat, |stat| book.named(stat).ok_or_else(|| stat.clone()));
     world.resource_mut::<CombatBook>().bindings = bindings.unwrap();
     Stats::load_book(world, book);
     world.resource_mut::<PoolBook>().set_life(life);

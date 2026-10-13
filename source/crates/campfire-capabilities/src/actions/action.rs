@@ -65,7 +65,7 @@ impl Action {
     }
 
     /// Whether `rank` is one of its ranks, from 1 to its last.
-    pub(crate) fn has_rank(&self, rank: Rank) -> bool {
+    pub(crate) const fn has_rank(&self, rank: Rank) -> bool {
         rank.index() < self.ranks.len()
     }
 

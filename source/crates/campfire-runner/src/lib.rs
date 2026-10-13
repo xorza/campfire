@@ -49,6 +49,7 @@ pub mod internals {
     pub use crate::harness::match_units::MatchUnits;
     pub use crate::harness::moba_3v3::Moba3v3;
     pub use crate::harness::proving_match::ProvingMatch;
+    pub use crate::harness::scripted::{Aim, Plan};
     pub use crate::harness::scripted_mode::ScriptedMode;
     pub use crate::match_build::MatchBuild;
 }

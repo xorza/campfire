@@ -353,7 +353,7 @@ impl StatsColumn {
                         spec.reapply.stacks(held.stacks, spec.max_stacks),
                         column.rows.now().state(held),
                     ),
-                    None => (1, &spec.initial[..]),
+                    None => (1, &*spec.initial),
                 };
                 let of = HandleOf {
                     carrier,

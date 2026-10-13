@@ -126,7 +126,7 @@ impl Gateway {
     /// Deletes `mapping` of `internal_port`, which PCP or NAT-PMP granted: one request, its answer
     /// awaited `wait`.
     pub(crate) fn delete(
-        &mut self,
+        &self,
         internal_port: u16,
         mapping: &Mapping,
         wait: Duration,

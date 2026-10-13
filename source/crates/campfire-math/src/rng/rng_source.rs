@@ -6,13 +6,6 @@ use crate::rng::rng_stream::RngStream;
 
 /// Opens the random sequences of one log segment, one per (stream, entity) in each tick.
 #[derive(Debug)]
-#[cfg_attr(
-    debug_assertions,
-    expect(
-        clippy::absolute_paths,
-        reason = "the debug-only field names its types in full; a cfg'd import may not open the file"
-    )
-)]
 pub struct RngSource {
     seed: SegmentSeed,
     tick: u64,
@@ -23,13 +16,6 @@ pub struct RngSource {
 }
 
 impl RngSource {
-    #[cfg_attr(
-        debug_assertions,
-        expect(
-            clippy::absolute_paths,
-            reason = "the debug-only field names its types in full; a cfg'd import may not open the file"
-        )
-    )]
     pub const fn new(seed: SegmentSeed) -> RngSource {
         RngSource {
             seed,

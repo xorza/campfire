@@ -17,7 +17,10 @@ impl Mask64x4 {
     /// Bit `i` set where lane `i` holds.
     pub const fn to_bits(self) -> u8 {
         let [a, b, c, d] = self.0;
-        Mask64x4::sign(a) | Mask64x4::sign(b) << 1 | Mask64x4::sign(c) << 2 | Mask64x4::sign(d) << 3
+        Mask64x4::sign(a)
+            | (Mask64x4::sign(b) << 1)
+            | (Mask64x4::sign(c) << 2)
+            | (Mask64x4::sign(d) << 3)
     }
 
     const fn lane(holds: bool) -> i64 {

@@ -366,7 +366,7 @@ impl LeakCheck {
             .map(|(entity, &id, owner, player, team, seen)| {
                 let owner = owner
                     .map(|owner| owner.slot())
-                    .or(player.map(|player| player.slot()));
+                    .or_else(|| player.map(|player| player.slot()));
                 let shown = Shown {
                     entity,
                     owner,

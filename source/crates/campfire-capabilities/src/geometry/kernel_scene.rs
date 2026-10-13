@@ -132,7 +132,7 @@ mod tests {
                 Num::int(z) + Num::HALF,
             ));
             let cell = grid.cell_of(pos.unwrap()).unwrap();
-            blocked[cell / 64] & 1 << (cell % 64) != 0
+            blocked[cell / 64] & (1 << (cell % 64)) != 0
         };
         // Inside each of the four pieces.
         for (x, z) in [(-30, -20), (-30, 20), (30, -20), (30, 20)] {

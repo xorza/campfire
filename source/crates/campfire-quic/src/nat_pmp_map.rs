@@ -116,7 +116,7 @@ impl NatPmpMap {
         })
     }
 
-    fn require(bytes: &[u8], needed: usize) -> Result<(), ReplyError> {
+    const fn require(bytes: &[u8], needed: usize) -> Result<(), ReplyError> {
         if bytes.len() < needed {
             return Err(ReplyError::TooShort {
                 len: bytes.len(),
@@ -126,7 +126,7 @@ impl NatPmpMap {
         Ok(())
     }
 
-    fn u32_at(bytes: &[u8], at: usize) -> u32 {
+    const fn u32_at(bytes: &[u8], at: usize) -> u32 {
         u32::from_be_bytes([bytes[at], bytes[at + 1], bytes[at + 2], bytes[at + 3]])
     }
 }

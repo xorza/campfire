@@ -162,7 +162,7 @@ fn defend_hero(ctx, tower, range) {
 }
 "#;
 
-const CAMP_AI: &str = r"
+const CAMP_AI: &str = "
 fn on_think(ctx, unit) {
     let away = unit.pos.distance_to(unit.spawn_pos);
     if away > unit.params.leash_range {

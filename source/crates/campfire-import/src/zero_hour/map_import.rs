@@ -233,7 +233,7 @@ mod tests {
 
     #[test]
     fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
-        let file = MapFile::read(&map(8)).unwrap();
+        let mut file = MapFile::read(&map(8)).unwrap();
         let mut types = UnitTypes::default();
         let imported = MapImport::new(&file, &mut types, 3).unwrap();
         let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
@@ -271,11 +271,10 @@ mod tests {
             2
         );
         // An object light it draws that goes no way is refused; one it does not draw is not.
-        let mut still = file;
-        still.lighting.objects[1].position = [0.0; 3];
-        let refused = MapImport::new(&still, &mut types, 3).map(drop);
+        file.lighting.objects[1].position = [0.0; 3];
+        let refused = MapImport::new(&file, &mut types, 3).map(drop);
         assert_eq!(refused, Err(MapError::Lighting));
-        assert!(MapImport::new(&still, &mut types, 1).is_ok());
+        assert!(MapImport::new(&file, &mut types, 1).is_ok());
     }
 
     #[test]

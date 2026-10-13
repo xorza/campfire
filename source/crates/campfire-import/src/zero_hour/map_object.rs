@@ -147,13 +147,12 @@ impl MapObject {
 
     /// `angle` as the game's `normalizeAngle` gives it, in `f32` steps: a NaN as 0, and any other
     /// in (−π, π] by whole turns; `None` for one no turn moves.
-    fn normalized(angle: f32) -> Option<f32> {
+    fn normalized(mut angle: f32) -> Option<f32> {
         // The source's `PI`, 3.14159265359f, is the `f32` nearest π, as `PI` is.
         let turn = 2.0 * PI;
         if angle.is_nan() {
             return Some(0.0);
         }
-        let mut angle = angle;
         while angle > PI {
             let next = angle - turn;
             (next.to_bits() != angle.to_bits()).then_some(())?;

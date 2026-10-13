@@ -224,7 +224,7 @@ fn calls_fail_at_their_limits_the_same_way_in_every_build() {
 struct Bag(Rc<RefCell<Vec<(String, INT)>>>);
 
 impl Bag {
-    fn get(&mut self, name: &str) -> Result<Dynamic, Box<EvalAltResult>> {
+    fn get(&self, name: &str) -> Result<Dynamic, Box<EvalAltResult>> {
         if name == "z" {
             return Err(Raised::error(NumError::Overflow).into());
         }
@@ -235,11 +235,11 @@ impl Bag {
             .find(|(at, _)| at == name)
             .map(|&(_, v)| v);
         Ok(Dynamic::from(
-            written.unwrap_or(INT::try_from(name.len()).unwrap()),
+            written.unwrap_or_else(|| INT::try_from(name.len()).unwrap()),
         ))
     }
 
-    fn set(&mut self, name: &str, value: INT) {
+    fn set(&self, name: &str, value: INT) {
         self.0.borrow_mut().push((name.to_owned(), value));
     }
 

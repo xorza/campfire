@@ -1983,7 +1983,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     // Package 1 names its own `mark`, of no shield.
     let other = ModifierData {
         shield: None,
-        ..mark.clone()
+        ..mark
     };
     Stats::load_modifier(&mut game, 1, "mark", &other, None);
     let marker = r#"

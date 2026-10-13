@@ -178,7 +178,7 @@ impl PortMapper {
             return;
         };
         let deleted = match held.by {
-            Mapper::Pmp(mut gateway) => {
+            Mapper::Pmp(gateway) => {
                 gateway.delete(self.internal_port, &held.mapping, self.times.delete)
             }
             Mapper::Upnp(router) => router.delete(&held.mapping),
@@ -236,7 +236,7 @@ impl PortMapper {
     /// Whether a router's external address is one the internet routes to: none of the private
     /// ranges of RFC 1918, carrier-grade NAT's 100.64.0.0/10 of RFC 6598, link-local, loopback or
     /// unspecified.
-    fn public(address: Ipv4Addr) -> bool {
+    const fn public(address: Ipv4Addr) -> bool {
         let [first, second, ..] = address.octets();
         let carrier_grade = first == 100 && second & 0xc0 == 64;
         !(address.is_private()

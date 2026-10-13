@@ -180,8 +180,7 @@ pub(crate) fn assert_shop(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase) {
             .collect()
     };
     let one = |name| Some(item(moba, name));
-    let empty = |taken: Vec<Option<ItemId>>| {
-        let mut slots = taken;
+    let empty = |mut slots: Vec<Option<ItemId>>| {
         slots.resize(6, None);
         slots
     };

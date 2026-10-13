@@ -30,7 +30,7 @@ impl RowMarks {
     /// Whether `entity`'s row is marked for `source`.
     pub(crate) fn marked(&self, entity: Entity, source: usize) -> bool {
         let bits = self.bits.get(entity.index_u32() as usize).copied();
-        bits.unwrap_or(0) & 1 << source != 0
+        bits.unwrap_or(0) & (1 << source) != 0
     }
 
     /// Whether `entity`'s row is marked for any source.

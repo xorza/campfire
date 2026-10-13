@@ -33,7 +33,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         );
     }
     assert!(terms(20).is_ok());
-    let fixed = terms(60).unwrap();
+    let mut fixed = terms(60).unwrap();
     let dependencies: Vec<_> = packages.dependency_fingerprints().collect();
     assert_eq!(
         fixed,
@@ -98,9 +98,8 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // What the mode leaves its host, and the spectators the host admits, any terms may set:
     // after the 14 kinds' bytes, the fog to `teams`, what a player out of play sees to
     // `spectators`, and 3 spectators.
-    let mut hosted = fixed.clone();
-    hosted.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
-    assert_eq!(rules.check(&hosted), Ok(()));
-    let visibility = SessionRules::visibility_of(&hosted).unwrap();
+    fixed.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
+    assert_eq!(rules.check(&fixed), Ok(()));
+    let visibility = SessionRules::visibility_of(&fixed).unwrap();
     assert_eq!(visibility.max_spectators(), 3);
 }

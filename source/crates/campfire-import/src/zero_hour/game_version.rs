@@ -35,7 +35,7 @@ impl ArchiveHash {
         let mut sha256 = [0; 32];
         let mut at = 0;
         while at < 32 {
-            sha256[at] = digit(hex[2 * at]) << 4 | digit(hex[2 * at + 1]);
+            sha256[at] = (digit(hex[2 * at]) << 4) | digit(hex[2 * at + 1]);
             at += 1;
         }
         ArchiveHash { path, sha256 }

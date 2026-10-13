@@ -359,7 +359,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     // The tower, at (8, -3), stands out of the walker's sight at (0, -2): an attack on it does
     // nothing, on the server and on the client, which does not hold it.
     let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
-    let attacking = |app: &App| slots(app).and_then(|slots| slots.attacking());
+    let attacking = |app: &App| slots(app)?.attacking();
     let start = hero(local.server());
     local.order(0, Action::Attack { target: tower });
     for _ in 0..lead(&local) + 2 {

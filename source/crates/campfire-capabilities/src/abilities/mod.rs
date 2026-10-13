@@ -119,7 +119,7 @@ impl Abilities {
     }
 
     /// A second at `rate`, the time a toggle pays its cost each.
-    fn second(rate: TickRate) -> Ticks {
+    const fn second(rate: TickRate) -> Ticks {
         rate.ticks(1000)
             .expect("a second counts in ticks at every rate")
     }

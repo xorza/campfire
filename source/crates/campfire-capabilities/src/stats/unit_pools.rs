@@ -41,7 +41,7 @@ pub(crate) struct PoolMetersMut<'a> {
 
 impl<'w> UnitPoolsItem<'w, '_> {
     /// Its pools, the life pool `life_pool`.
-    pub(crate) fn of(self, life_pool: Option<PoolId>) -> PoolMetersMut<'w> {
+    pub(crate) const fn of(self, life_pool: Option<PoolId>) -> PoolMetersMut<'w> {
         PoolMetersMut {
             life_pool,
             life: self.life,

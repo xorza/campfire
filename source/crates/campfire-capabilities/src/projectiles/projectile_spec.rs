@@ -1,3 +1,5 @@
+use std::num::NonZeroI64;
+
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
@@ -37,7 +39,7 @@ impl ProjectileSpec {
         Ok(ProjectileSpec {
             speed: data
                 .speed
-                .checked_div_int(i64::from(rate.hz().get()))
+                .checked_div_int(NonZeroI64::from(rate.hz()).get())
                 .expect("a speed over a tick rate fits"),
             width: data.width,
             range: data.range,

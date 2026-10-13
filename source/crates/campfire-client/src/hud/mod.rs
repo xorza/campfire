@@ -473,7 +473,7 @@ impl Hud {
                         let learned = slots
                             .and_then(|slots| slots.slot(*slot))
                             .filter(|held| held.rank.is_some());
-                        let time = learned.and(times.and_then(|times| times.slot(*slot)));
+                        let time = learned.and(times).and_then(|times| times.slot(*slot));
                         time.zip(now).map(|(time, now)| {
                             if cooling.is_none_or(|cooling| cooling.ready_at != time.ready_at) {
                                 *cooling = Some(Cooling {
@@ -502,7 +502,7 @@ impl Hud {
                         let time = times.and_then(|times| times.slot(*slot));
                         time.zip(rule).zip(now).map(|((time, rule), now)| {
                             // A slot that spent none yet holds every charge.
-                            let charges = time.charges.unwrap_or(SlotCharges {
+                            let charges = time.charges.unwrap_or_else(|| SlotCharges {
                                 count: rule.max.get(),
                                 next: now,
                             });

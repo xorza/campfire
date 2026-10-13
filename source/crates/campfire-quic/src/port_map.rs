@@ -36,14 +36,14 @@ impl PortMap {
     /// Whether a router forwards to a socket at `local`: one bound to IPv4, all of the host's
     /// addresses or one not loopback. A socket bound to IPv6 takes IPv4 only where its OS makes
     /// it dual-stack by default, as Linux does and Windows does not.
-    fn forwardable(local: SocketAddr) -> bool {
+    const fn forwardable(local: SocketAddr) -> bool {
         matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())
     }
 
     fn of(mut mapper: PortMapper) -> PortMap {
         let (stop, stopped) = mpsc::channel::<()>();
         let worker = Worker::start("campfire-port-map", move || {
-            while let Err(RecvTimeoutError::Timeout) = stopped.recv_timeout(mapper.turn()) {}
+            while stopped.recv_timeout(mapper.turn()) == Err(RecvTimeoutError::Timeout) {}
             mapper.end();
         });
         PortMap {

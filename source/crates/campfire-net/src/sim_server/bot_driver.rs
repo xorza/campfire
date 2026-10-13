@@ -227,7 +227,7 @@ mod tests {
             fixed.game().session().log().controller(slot),
             Some(Controller::Bot)
         );
-        assert_eq!(planned(fixed.game().session().log()), [] as [u32; 0]);
+        assert_eq!(planned(fixed.game().session().log()), <[u32; 0]>::default());
     }
 
     #[test]

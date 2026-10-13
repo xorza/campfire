@@ -10,7 +10,7 @@ use crate::production::supply_data::SupplyData;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
-    let picker = r"
+    let picker = "
 fn on_mode_input(ctx, player, name, value) {
     pick(ctx, player, value);
 }

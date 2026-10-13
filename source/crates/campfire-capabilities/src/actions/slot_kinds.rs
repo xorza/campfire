@@ -69,7 +69,7 @@ impl SlotKinds {
                     continue;
                 };
                 for id in ids {
-                    let held = *ranks.entry(id.as_str()).or_insert(self.ranks(kind));
+                    let held = *ranks.entry(id.as_str()).or_insert_with(|| self.ranks(kind));
                     if held != self.ranks(kind) {
                         return Err(id);
                     }

@@ -74,7 +74,7 @@ impl CellKey {
     const MASK: u64 = (1 << 28) - 1;
 
     const fn new(level: u8, row: i64, column: i64) -> CellKey {
-        CellKey((level as u64) << 56 | CellKey::place(row) << 28 | CellKey::place(column))
+        CellKey(((level as u64) << 56) | (CellKey::place(row) << 28) | CellKey::place(column))
     }
 
     /// A row or a column, clamped to its 28 bits and offset into them.
@@ -143,7 +143,7 @@ impl<K: Copy> BodyGrid<K> {
                 debug_assert!(row.abs() < CellKey::MIDDLE && column.abs() < CellKey::MIDDLE);
                 let cell = CellKey::new(level, row, column);
                 Order {
-                    key: u128::from(cell.0) << 64 | u128::from(body.id.get()),
+                    key: (u128::from(cell.0) << 64) | u128::from(body.id.get()),
                     placed: u32::try_from(placed).expect("bodies fit u32"),
                 }
             }));

@@ -249,7 +249,7 @@ fn schoolbook(a: u128, b: u128) -> U256 {
     let join = |half: &[u64]| {
         half.iter()
             .rev()
-            .fold(0_u128, |acc, &limb| acc << 32 | u128::from(limb))
+            .fold(0_u128, |acc, &limb| (acc << 32) | u128::from(limb))
     };
     U256 {
         high: join(&out[4..]),

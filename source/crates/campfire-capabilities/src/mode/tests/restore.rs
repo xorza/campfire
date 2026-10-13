@@ -38,12 +38,11 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
 
     // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
-    let choices = game.resource::<Choices>().clone();
+    let mut choices = game.resource::<Choices>().clone();
     assert!(choices.check(&game));
     assert!(!Choices(vec![None; 3]).check(&game));
-    let mut past = choices.clone();
-    past.0[0] = Some(Offer::new(99));
-    assert!(!past.check(&game));
+    choices.0[0] = Some(Offer::new(99));
+    assert!(!choices.check(&game));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
     let owner_state = game.get::<UnitState<SyncOwner>>(grunt).unwrap();

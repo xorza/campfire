@@ -74,6 +74,10 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
             }
 
+            #[expect(
+                clippy::allow_attributes,
+                reason = "`expect` fails the arities whose expansion gives no case of the lints below"
+            )]
             #[allow(
                 non_snake_case,
                 unused_variables,
@@ -114,6 +118,10 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
             }
 
+            #[expect(
+                clippy::allow_attributes,
+                reason = "`expect` fails the arities whose expansion gives no case of the lints below"
+            )]
             #[allow(
                 non_snake_case,
                 reason = "each argument takes its type parameter's name; `expect` fails the arity with none"
@@ -155,6 +163,10 @@ macro_rules! script_fn {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
             }
 
+            #[expect(
+                clippy::allow_attributes,
+                reason = "`expect` fails the arities whose expansion gives no case of the lints below"
+            )]
             #[allow(
                 non_snake_case,
                 reason = "each argument takes its type parameter's name; `expect` fails the arity with none"

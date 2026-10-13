@@ -12,7 +12,7 @@ impl ReadyWaits {
         let at = entity.index_u32() as usize;
         self.bits
             .get(at / 64)
-            .is_some_and(|word| word & 1 << (at % 64) != 0)
+            .is_some_and(|word| word & (1 << (at % 64)) != 0)
     }
 
     /// Notes whether `entity` waits.

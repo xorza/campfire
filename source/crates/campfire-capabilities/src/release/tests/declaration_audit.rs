@@ -161,10 +161,7 @@ impl DeclarationAudit {
         let kinds_declared = |kinds: &[TypeId]| kinds.iter().all(|kind| self.kinds.contains(kind));
         for state in &self.states {
             let hosted = self.hosts.iter().find(|(ty, _)| ty.id == state.ty.id);
-            let kinds = state
-                .kinds
-                .as_ref()
-                .or(hosted.and_then(|(_, kinds)| kinds.as_ref()));
+            let kinds = state.kinds.as_ref().or_else(|| hosted?.1.as_ref());
             let sits = match kinds {
                 Some(kinds) => kinds_declared(kinds),
                 None => self.kinds.contains(&state.ty.id),

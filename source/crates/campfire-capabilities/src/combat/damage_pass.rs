@@ -59,14 +59,14 @@ enum PassRun<'a, 'w> {
 }
 
 impl<'w> PassRun<'_, 'w> {
-    fn world(&mut self) -> &mut World {
+    const fn world(&mut self) -> &mut World {
         match self {
             PassRun::Plain(world) => world,
             PassRun::Scripted(batch) => batch.world(),
         }
     }
 
-    fn batch(&mut self) -> Option<&mut ScriptBatch<'w>> {
+    const fn batch(&mut self) -> Option<&mut ScriptBatch<'w>> {
         match self {
             PassRun::Plain(_) => None,
             PassRun::Scripted(batch) => Some(batch),

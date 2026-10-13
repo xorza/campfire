@@ -168,7 +168,7 @@ impl Layout {
     }
 
     /// The gauge's transform on its unit's stand, which faces the camera.
-    pub(crate) fn place(self) -> Transform {
+    pub(crate) const fn place(self) -> Transform {
         Transform::from_translation(self.center)
     }
 }

@@ -560,8 +560,9 @@ def refuse_arguments(name: str, args: list[str]) -> None:
 
 def check(args: list[str]) -> int:
     refuse_arguments("check", args)
-    # The index first, as a stale one fails every test that loads its package.
-    return run_steps("check", [index_step(), fmt_step(), lint_step(), ship_step(), tests_step()])
+    # The lints first, as they answer in seconds where `index` waits for every test binary; the
+    # index before the tests, as a stale one fails every test that loads its package.
+    return run_steps("check", [fmt_step(), lint_step(), ship_step(), index_step(), tests_step()])
 
 
 def test(args: list[str]) -> int:
@@ -652,7 +653,7 @@ def warm(args: list[str]) -> int:
 
 
 COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
-    "check": (check, "", "index, fmt, lint, ship, tests: the check after a change"),
+    "check": (check, "", "fmt, lint, ship, index, tests: the check after a change"),
     "test": (test, "[--bless] [nextest args]", "the tests, all or filtered"),
     "index": (index, "", "writes each workspace package's package.index from its files"),
     "doc": (doc, "", "the doc tests, and rustdoc with -D warnings"),

@@ -31,7 +31,7 @@ fn the_lane_ops_are_their_scalar_ops_at_the_edges() {
     each_pair(I64x4::min, i64::min);
     let le = |a: I64x4, b: I64x4| {
         let bits = a.simd_le(b).to_bits();
-        I64x4([0, 1, 2, 3].map(|lane| i64::from(bits >> lane & 1)))
+        I64x4([0, 1, 2, 3].map(|lane| i64::from((bits >> lane) & 1)))
     };
     each_pair(le, |a, b| i64::from(a <= b));
     assert_eq!(I64x4::splat(-5).0, [-5; 4]);

@@ -189,7 +189,7 @@ fn on_level_up(ctx, unit, track, level) {
 #[test]
 fn a_join_or_a_leave_whose_call_finds_the_mode_pool_spent_waits() {
     // Each call spins 50 additions: a mode pool of 500 operations holds two of them, not three.
-    let script = r"
+    let script = "
 fn on_player_join(ctx, player) {
     ctx.state.kind += `join ${player};`;
     let spun = 0;

@@ -1,8 +1,3 @@
-#![expect(
-    unsafe_code,
-    reason = "the Win32 calls of the platform layer, the one module of the workspace that makes them"
-)]
-
 use std::fs::{File, OpenOptions};
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::fs::OpenOptionsExt;
@@ -263,11 +258,16 @@ impl Os {
             event,
             CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT
         ) {
-            loop {
-                thread::park();
-            }
+            Os::wait_for_exit();
         }
         true.into()
+    }
+
+    /// Parks the thread until the process ends.
+    fn wait_for_exit() -> ! {
+        loop {
+            thread::park();
+        }
     }
 }
 

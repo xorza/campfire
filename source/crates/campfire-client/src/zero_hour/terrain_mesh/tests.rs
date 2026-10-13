@@ -89,7 +89,7 @@ fn meshes_in(game: GameData, lighting: &TerrainLighting) -> TerrainMeshes {
     let textures = [Some(ClassTexture {
         width: 128,
         height: 128,
-        data: texture.clone(),
+        data: texture,
     })];
     let atlas = TerrainAtlas::new(&parts, &textures);
     let cells = TerrainCells::new(&parts, grid.samples(), &atlas, game);

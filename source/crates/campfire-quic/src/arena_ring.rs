@@ -74,7 +74,7 @@ mod tests {
         let first = ring.copy(&chunk);
         let second = ring.copy(&chunk);
         assert_eq!(base(&second, chunk.len()), base(&first, 0));
-        assert_eq!(&second[..], &chunk[..]);
+        assert_eq!(*second, *chunk);
         let third = ring.copy(&chunk);
         assert_eq!(ring.current, 1);
         let arena_0 = base(&first, 0);
@@ -98,6 +98,6 @@ mod tests {
         let replaced = ring.copy(&chunk);
         assert_eq!(ring.current, 1);
         assert_ne!(base(&replaced, 0), arena_1);
-        assert_eq!(&held[0][..], &chunk[..]);
+        assert_eq!(*held[0], *chunk);
     }
 }

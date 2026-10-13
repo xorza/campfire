@@ -786,10 +786,10 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap()
     };
     let stats = StatBook::new(&data.stats, Num::int(10));
-    let stat = |stat: &Stat| stats.named(stat).ok_or(stat.clone());
+    let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
     // The test mode names no life pool: the one the test match binds stays.
     let life = data.combat.life_pool(&mode_names.pools).unwrap();
-    let life = life.or(game.resource::<PoolBook>().life());
+    let life = life.or_else(|| game.resource::<PoolBook>().life());
     let pools = Arc::clone(&mode_names.pools);
     let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
     let bindings = CombatBindings::new(&data.combat, stat).unwrap();
@@ -862,7 +862,7 @@ fn start_match_setup(
         .collect();
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
     let layers = files.data.navigation.layers.iter();
-    Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
+    Units::declare_tags(&game, layers.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
         let data = UnitTypeCore::tagged(&[tag]);

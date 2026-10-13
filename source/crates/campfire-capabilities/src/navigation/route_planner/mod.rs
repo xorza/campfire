@@ -241,12 +241,11 @@ impl RoutePlanner {
                 reached: false,
             };
         };
-        let mut replaced = false;
-        if long && !leaves.meets(regions.reach(target)) {
+        let replaced = long && !leaves.meets(regions.reach(target));
+        if replaced {
             target = regions
                 .nearest(grid, leaves, goal, &mut self.candidates, &mut work)
                 .expect("a start with a reachable set has a cell in it");
-            replaced = true;
         }
         self.routes += 1;
         let search = Search {
@@ -401,7 +400,7 @@ impl RoutePlanner {
                 return false;
             }
             let local = short.window.local(column, row);
-            if overlay[local / 64] & 1 << (local % 64) != 0 {
+            if overlay[local / 64] & (1 << (local % 64)) != 0 {
                 return false;
             }
         }
@@ -422,11 +421,10 @@ impl RoutePlanner {
     ) -> Option<usize> {
         let grid = walkable.clearance.grid();
         let columns = grid.columns();
-        let (low, high) = walkable
-            .short
-            .map_or(([0, 0], [columns - 1, grid.rows() - 1]), |short| {
-                (short.window.low, short.window.high)
-            });
+        let (low, high) = walkable.short.map_or_else(
+            || ([0, 0], [columns - 1, grid.rows() - 1]),
+            |short| (short.window.low, short.window.high),
+        );
         let middle = grid.nearest_cell(goal);
         let (column, row) = (middle % columns, middle / columns);
         let rings = [

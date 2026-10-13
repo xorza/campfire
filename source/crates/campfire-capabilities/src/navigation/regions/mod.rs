@@ -135,10 +135,9 @@ impl Regions {
             return;
         }
         let row = cells.start / self.columns;
-        let first = cells.start % self.columns / Regions::CHUNK;
+        let mut chunk = cells.start % self.columns / Regions::CHUNK;
         let last = (cells.end - 1) % self.columns / Regions::CHUNK;
         let base = row / Regions::CHUNK * self.chunk_columns;
-        let mut chunk = first;
         while chunk <= last {
             dirty[base + chunk] = true;
             chunk += 1;
@@ -289,7 +288,7 @@ impl Regions {
         self.runs.clear();
         self.run_parents.clear();
         let mut before = 0..0;
-        for row in rows.clone() {
+        for row in rows {
             let first = row * self.columns + columns.start;
             self.local[first..first + width].fill(0);
             let mut open = !Regions::bits(blocked, first) & full;

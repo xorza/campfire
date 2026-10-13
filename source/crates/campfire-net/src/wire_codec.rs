@@ -107,7 +107,7 @@ mod tests {
         WireCodec::write_message(&"ab".to_owned(), &mut writer).unwrap();
         WireCodec::write_message(&300_u32, &mut writer).unwrap();
         let written = writer.take_written();
-        assert_eq!(&written[..], [2, b'a', b'b', 0xAC, 0x02]);
+        assert_eq!(&*written, [2, b'a', b'b', 0xAC, 0x02]);
         let mut reader = Reader::from(written);
         assert_eq!(
             WireCodec::read_message::<String>(&mut reader).unwrap(),

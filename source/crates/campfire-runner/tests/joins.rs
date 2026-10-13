@@ -9,7 +9,7 @@ use campfire_sim::{SimWorld, StableId};
 use crate::moba::run_to;
 
 /// The MOBA's slots with slot 5 opened as `last`.
-fn plan(last: SlotPlan) -> [SlotPlan; 6] {
+const fn plan(last: SlotPlan) -> [SlotPlan; 6] {
     let mut plan = [SlotPlan::Player; 6];
     plan[5] = last;
     plan

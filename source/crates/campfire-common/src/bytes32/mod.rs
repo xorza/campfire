@@ -54,7 +54,7 @@ impl FromStr for Bytes32 {
         let mut bytes = [0; 32];
         let (pairs, _) = digits.as_chunks::<2>();
         for (byte, &[high, low]) in bytes.iter_mut().zip(pairs) {
-            *byte = digit(high).ok_or(NotHex)? << 4 | digit(low).ok_or(NotHex)?;
+            *byte = (digit(high).ok_or(NotHex)? << 4) | digit(low).ok_or(NotHex)?;
         }
         Ok(Bytes32(bytes))
     }

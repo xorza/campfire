@@ -82,7 +82,7 @@ impl ActionBook {
     }
 
     /// Each action's name in its package.
-    pub(crate) fn names(&self) -> &Arc<Names<ActionId>> {
+    pub(crate) const fn names(&self) -> &Arc<Names<ActionId>> {
         &self.names
     }
 

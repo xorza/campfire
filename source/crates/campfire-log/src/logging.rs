@@ -244,7 +244,7 @@ mod tests {
 
         let (refused, lines) = read(&["300"]);
         assert_eq!(refused, Err(ExitStatus::Usage));
-        let [logged] = &lines[..] else {
+        let [logged] = lines.as_slice() else {
             panic!("{lines:?}");
         };
         let logged = LogLine::parse(logged).unwrap();

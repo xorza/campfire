@@ -40,7 +40,7 @@ impl UnitTags {
     /// with no tag book, as a copy of a match's state. Its modifiers' grants join them as stats
     /// derive them.
     pub(crate) fn at_spawn(book: Option<&TagBook>, unit_type: UnitType) -> UnitTags {
-        book.map_or(UnitTags::default(), |book| {
+        book.map_or_else(UnitTags::default, |book| {
             book.unit_tags(unit_type, iter::empty())
         })
     }

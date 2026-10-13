@@ -131,7 +131,7 @@ pub enum RefPackError {
 }
 
 /// Why a map's bytes are no map the game reads, or none the importer turns into a package's.
-#[derive(Debug, Clone, PartialEq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MapError {
     /// It is packed in a form the game reads but no shipped map uses.
     #[error("it is packed as {0}, which the importer does not read")]

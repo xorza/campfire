@@ -440,7 +440,7 @@ impl MapFile {
         }
     }
 
-    fn ended(body: &ChunkReader<'_>, kind: Chunk) -> Result<(), MapError> {
+    const fn ended(body: &ChunkReader<'_>, kind: Chunk) -> Result<(), MapError> {
         if body.is_empty() {
             Ok(())
         } else {
@@ -455,13 +455,11 @@ impl MapFile {
 
     /// An `i32` index the game keeps in an `i16`.
     fn i16(value: i32) -> Result<i16, MapError> {
-        i16::try_from(value).ok().ok_or(MapError::Index(value))
+        i16::try_from(value).map_err(|_| MapError::Index(value))
     }
 
     fn index(value: i16) -> Result<u16, MapError> {
-        u16::try_from(value)
-            .ok()
-            .ok_or(MapError::Index(value.into()))
+        u16::try_from(value).map_err(|_| MapError::Index(value.into()))
     }
 
     /// An index into a list past its unused entry 0: `None` for 0.
@@ -692,7 +690,7 @@ mod tests {
             terrain
                 .classes
                 .iter()
-                .map(|class| &class.name[..])
+                .map(|class| class.name.as_str())
                 .collect::<Vec<_>>(),
             ["Sand", "Grass"]
         );
@@ -719,7 +717,7 @@ mod tests {
         let templates: Vec<&[u8]> = read
             .objects
             .iter()
-            .map(|object| &object.template[..])
+            .map(|object| object.template.as_slice())
             .collect();
         assert_eq!(
             templates,
@@ -837,7 +835,7 @@ mod tests {
             Err(MapError::Missing(Chunk::BlendTileData))
         );
         assert_eq!(
-            file(&writer, &[good.clone(), good.clone()]),
+            file(&writer, &[good.clone(), good]),
             Err(MapError::Twice(Chunk::HeightMapData))
         );
         let blend = writer.chunk("BlendTileData", 8, &[]);

@@ -37,7 +37,7 @@ impl TagProperties {
     }
 
     pub(crate) const fn with_block(self, block: Block) -> TagProperties {
-        TagProperties(self.0 | 1 << block as u8)
+        TagProperties(self.0 | (1 << block as u8))
     }
 
     pub(crate) const fn with_hidden(self) -> TagProperties {
@@ -64,7 +64,7 @@ impl TagProperties {
     }
 
     pub(crate) const fn blocks(self, block: Block) -> bool {
-        self.0 & 1 << block as u8 != 0
+        self.0 & (1 << block as u8) != 0
     }
 
     pub(crate) const fn hidden(self) -> bool {

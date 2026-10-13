@@ -475,7 +475,7 @@ impl Stage {
 impl Shader {
     /// Its blend, as a material file names it; `None` for a pair of factors no shipped shader
     /// uses.
-    pub(crate) fn blend(self) -> Option<Blend> {
+    pub(crate) const fn blend(self) -> Option<Blend> {
         Some(match (self.src_blend, self.dest_blend, self.alpha_test) {
             (ONE, ZERO, false) => Blend::Opaque,
             (ONE, ZERO, true) => Blend::Mask { cutoff: CUTOFF },

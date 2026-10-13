@@ -1,5 +1,6 @@
 use std::any::TypeId;
-use std::{fmt, mem, thread};
+use std::mem::ManuallyDrop;
+use std::{fmt, thread};
 
 use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::schedule::{Schedule, Schedules};
@@ -49,7 +50,7 @@ impl SimWorldBuilder<'_> {
     /// The resources a match holds of its own, whatever its modules install: the sim's, those a
     /// server's state registry puts in as it tracks the state's changes, and Bevy's world and
     /// schedules.
-    pub fn sim_resources() -> [TypeId; 11] {
+    pub const fn sim_resources() -> [TypeId; 11] {
         [
             TypeId::of::<SimTick>(),
             TypeId::of::<TickRate>(),
@@ -101,7 +102,7 @@ impl<'w> SimWorldBuilder<'w> {
     }
 
     /// The world, the schedule and the registry at once, for an install that fills all three.
-    pub fn parts(&mut self) -> SimParts<'_> {
+    pub const fn parts(&mut self) -> SimParts<'_> {
         SimParts {
             world: self.world,
             schedule: &mut self.schedule,
@@ -136,8 +137,8 @@ impl<'w> SimWorldBuilder<'w> {
 
 impl Unbuilt {
     /// Ends the build: the mark goes with no panic.
-    fn defuse(self) {
-        mem::forget(self);
+    const fn defuse(self) {
+        let _ = ManuallyDrop::new(self);
     }
 }
 

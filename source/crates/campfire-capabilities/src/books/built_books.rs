@@ -41,7 +41,7 @@ impl BuiltBooks {
         Some(*built.downcast().expect("the book is of its type"))
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    pub(crate) const fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }

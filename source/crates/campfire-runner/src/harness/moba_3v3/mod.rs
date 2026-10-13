@@ -395,8 +395,8 @@ impl Plan for Moba3v3 {
             Moba3v3::LearnBasic => Action::Learn {
                 slot: fewest_ranks(units, hero),
             },
-            Moba3v3::Farm { x, z } => weakest_creep(units, hero).map_or(
-                Action::Move {
+            Moba3v3::Farm { x, z } => weakest_creep(units, hero).map_or_else(
+                || Action::Move {
                     x: Num::from(x),
                     z: Num::from(z),
                 },

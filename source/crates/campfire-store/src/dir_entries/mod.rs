@@ -63,6 +63,10 @@ impl DirEntries {
 }
 
 impl EntryKind {
+    #[expect(
+        clippy::filetype_is_file,
+        reason = "the kind names a regular file, and every other kind is `Other`"
+    )]
     pub(crate) fn of(kind: FileType) -> EntryKind {
         if kind.is_symlink() {
             EntryKind::Link

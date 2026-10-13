@@ -333,7 +333,7 @@ impl Grid {
             let open = zero.simd_le(rest).to_bits();
             let (low, high) = (low.to_array(), high.to_array());
             for (lane, row) in (z..=last).take(4).enumerate() {
-                if open >> lane & 1 == 1 {
+                if (open >> lane) & 1 == 1 {
                     self.reveal_run(row, low[lane], high[lane], reveal);
                 }
             }

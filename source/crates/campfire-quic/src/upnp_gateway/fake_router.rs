@@ -46,12 +46,11 @@ impl Call {
     }
 
     fn of(action: &str, body: &str) -> Call {
-        let inner = body
+        let mut rest = body
             .split_once(&format!("{action} xmlns"))
             .and_then(|(_, rest)| rest.split_once('>'))
             .map_or("", |(_, rest)| rest);
         let mut args = Vec::new();
-        let mut rest = inner;
         while let Some((_, after)) = rest.split_once('<') {
             let Some((name, after)) = after.split_once('>') else {
                 break;

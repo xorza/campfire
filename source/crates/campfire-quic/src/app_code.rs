@@ -31,7 +31,7 @@ impl AppCode {
         self.0
     }
 
-    pub(crate) fn of(code: VarInt) -> AppCode {
+    pub(crate) const fn of(code: VarInt) -> AppCode {
         AppCode(code.into_inner())
     }
 

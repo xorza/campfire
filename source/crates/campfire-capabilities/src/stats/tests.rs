@@ -134,7 +134,7 @@ fn stat_match(types: &[StatsData]) -> Match {
     let pools = pools();
     let names = Arc::new(pools.keys().map(DeclaredName::as_str).collect());
     let pools = PoolBook::new(&pools, names, None, |_, stat| {
-        book.named(stat).ok_or(stat.clone())
+        book.named(stat).ok_or_else(|| stat.clone())
     });
     let pools = pools.unwrap();
     Books::load(&mut game, book);
@@ -592,7 +592,6 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
 
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
-    let data = modifier_data;
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = Match::server(&[Capability::Stats], scripts);
@@ -607,8 +606,14 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         affects: FilterData::parse("allies").unwrap(),
         modifier: DeclaredName::new("inspired").unwrap(),
     };
-    Stats::load_modifier(&mut game, 0, "inspired", &data(None), None);
-    Stats::load_modifier(&mut game, 0, "presence", &data(Some(presence)), None);
+    Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
+    Stats::load_modifier(
+        &mut game,
+        0,
+        "presence",
+        &modifier_data(Some(presence)),
+        None,
+    );
     let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn = |game: &mut Match, x: i64, team: u8| {
         Units::spawn(

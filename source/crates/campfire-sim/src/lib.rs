@@ -60,8 +60,12 @@ pub use crate::unpredicted::Unpredicted;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::sim_update::stage_clock::StageClock;
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
     pub use crate::sim_world::internals::SimWorldInternals;
-    pub use crate::state_registry::internals::{Draws, Mutation};
+    pub use crate::state_registry::internals::{DrawError, Draws, Mutation};
 }
 
 #[cfg(feature = "internals")]

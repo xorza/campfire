@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_types,
+    reason = "a global allocator gets no state of its caller, so a window's state is the thread's own"
+)]
+
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::{Cell, RefCell};
 use std::{mem, thread};
@@ -23,7 +28,6 @@ pub struct AllocWindow {
     pub(crate) traces: Vec<AllocTrace>,
 }
 
-// A global allocator gets no state of its caller, so a window's state is the thread's own.
 thread_local! {
     static IN_WINDOW: Cell<bool> = const { Cell::new(false) };
     static EXCLUDED: Cell<bool> = const { Cell::new(false) };
@@ -108,10 +112,6 @@ impl CountingAllocator {
     }
 }
 
-#[expect(
-    unsafe_code,
-    reason = "a global allocator is an unsafe trait; each call goes to `System` unchanged"
-)]
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         CountingAllocator::track(layout.size());

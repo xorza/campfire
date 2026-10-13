@@ -33,7 +33,7 @@ impl Walker {
 
     /// The walker of a unit that walks, with `body`: a circle or none, as a box never walks,
     /// which `MoveStep`'s check holds of a snapshot too.
-    pub(crate) fn walking(body: Option<&Body>) -> Walker {
+    pub(crate) const fn walking(body: Option<&Body>) -> Walker {
         Walker::of(body).expect("a unit that walks has a circle for a body, or none")
     }
 

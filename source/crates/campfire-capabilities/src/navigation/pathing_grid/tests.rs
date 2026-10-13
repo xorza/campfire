@@ -185,7 +185,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     };
     let open = ["......"; 6].map(str::to_owned).to_vec();
     let lines = |rows: [&str; 6]| rows.map(str::to_owned).to_vec();
-    let expected = [lines(walled), lines(walled), lines(ringed), open.clone()];
+    let expected = [lines(walled), lines(walled), lines(ringed), open];
     assert_eq!(drawn_all(&grid), expected);
     // A tower of 1 m at the origin blocks for the walker of 1 m the cells within 2 m of it, which
     // the ring holds; once it is gone, the wall's cells stay blocked.
@@ -268,7 +268,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
             .grid
             .touches(segment.start(), segment.end(), |cell| {
                 expected_work += 1;
-                walled[cell / 64] & 1 << (cell % 64) != 0
+                walled[cell / 64] & (1 << (cell % 64)) != 0
             });
         let mut work = 0;
         assert_eq!(

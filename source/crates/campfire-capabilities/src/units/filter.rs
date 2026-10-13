@@ -46,8 +46,8 @@ impl Filter {
         data: Option<&FilterData>,
         types: &UnitTypes,
     ) -> Result<Filter, UnknownName> {
-        data.map_or(
-            Ok(Filter::of_relations(RelationSet::Enemies, types)),
+        data.map_or_else(
+            || Ok(Filter::of_relations(RelationSet::Enemies, types)),
             |data| Filter::resolve(data, types),
         )
     }

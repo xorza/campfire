@@ -748,7 +748,7 @@ impl<'a> BookBuilder<'a> {
 
     /// The names an action of the package at `package` resolves, with `action`'s params when it
     /// resolves effect lists.
-    fn names(&self, package: u16, action: Option<ActionId>) -> BuildNames<'_> {
+    const fn names(&self, package: u16, action: Option<ActionId>) -> BuildNames<'_> {
         BuildNames {
             input: self.input,
             names: &self.names,

@@ -134,7 +134,7 @@ impl<K: FilteredKind> DataFilter<K> {
     ) -> DataFilter<K> {
         let owner = owner
             .copied()
-            .or(player.map(|player| Owner::new(player.slot())));
+            .or_else(|| player.map(|player| Owner::new(player.slot())));
         DataFilter::new(owner.as_ref(), team, visibility)
     }
 

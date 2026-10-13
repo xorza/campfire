@@ -76,7 +76,7 @@ impl DeclaredResources {
 
     /// What the release puts in a match itself: its capabilities, what a client's view of it
     /// leaves out, its script budgets and the mark of a client's.
-    fn release_own() -> [TypeId; 4] {
+    const fn release_own() -> [TypeId; 4] {
         [
             TypeId::of::<CapabilitySet>(),
             TypeId::of::<OutView>(),

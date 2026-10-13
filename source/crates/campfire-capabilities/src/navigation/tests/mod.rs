@@ -874,11 +874,14 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let half = Num::HALF;
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
-    let map = corridor;
-    let body_of = corridor_body;
     let rules = ModeNavigationData::default();
     let check = |towers: &[(i64, i64)], neutral| {
-        check_walkable(&map(towers, neutral), &[ground(half)], &rules, body_of)
+        check_walkable(
+            &corridor(towers, neutral),
+            &[ground(half)],
+            &rules,
+            corridor_body,
+        )
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
@@ -908,26 +911,29 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
         radius: half,
     };
     let both = [ground(half), flyer];
-    let closed = map(&[(5, 0), (5, 2), (5, 4)], (8, 3));
-    assert_eq!(check_walkable(&closed, &[flyer], &rules, body_of), Ok(()));
+    let closed = corridor(&[(5, 0), (5, 2), (5, 4)], (8, 3));
     assert_eq!(
-        check_walkable(&closed, &both, &rules, body_of),
+        check_walkable(&closed, &[flyer], &rules, corridor_body),
+        Ok(())
+    );
+    assert_eq!(
+        check_walkable(&closed, &both, &rules, corridor_body),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
         })
     );
-    let mut clouded = map(&[(5, 0), (5, 4)], (8, 3));
+    let mut clouded = corridor(&[(5, 0), (5, 4)], (8, 3));
     clouded.units.push(placed("cloud", (7, 3)));
     assert_eq!(
-        check_walkable(&clouded, &[ground(half)], &rules, body_of),
+        check_walkable(&clouded, &[ground(half)], &rules, corridor_body),
         Ok(())
     );
     assert_eq!(
-        check_walkable(&clouded, &both, &rules, body_of),
+        check_walkable(&clouded, &both, &rules, corridor_body),
         blocked("camp")
     );
-    assert_eq!(check_walkable(&clouded, &[], &rules, body_of), Ok(()));
+    assert_eq!(check_walkable(&clouded, &[], &rules, corridor_body), Ok(()));
 }
 
 #[test]
@@ -940,7 +946,6 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         radius: half,
     };
     let both = [ground(half), flyer];
-    let body_of = corridor_body;
     // A wall on the ground across the map from x = 5 to 6 closes the lane as the towers do, and
     // the air walker flies over it; a wall round the spawn marker leaves the walker no place
     // there. A wall's points must be in the map's bounds, on a layer the mode declares, and make
@@ -955,9 +960,12 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         walled
     };
     let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);
-    assert_eq!(check_walkable(&across, &[flyer], &rules, body_of), Ok(()));
     assert_eq!(
-        check_walkable(&across, &both, &rules, body_of),
+        check_walkable(&across, &[flyer], &rules, corridor_body),
+        Ok(())
+    );
+    assert_eq!(
+        check_walkable(&across, &both, &rules, corridor_body),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
@@ -966,7 +974,10 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     let round = walled(vec![wall(None, &[(0, 0), (2, 0), (2, 2), (0, 2)])]);
     let spawn = DeclaredName::new("spawn").unwrap();
     let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
-    assert_eq!(check_walkable(&round, &both, &rules, body_of), blocked);
+    assert_eq!(
+        check_walkable(&round, &both, &rules, corridor_body),
+        blocked
+    );
     let air = DeclaredName::new("air").unwrap();
     let layered = ModeNavigationData {
         layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],

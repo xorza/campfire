@@ -352,7 +352,7 @@ fn standing(x: i16, z: i16) -> Hero {
 }
 
 /// Player 0's leave of slot 0, the slot becoming `becomes`.
-fn leave(becomes: AfterLeave) -> ServerInput<'static> {
+const fn leave(becomes: AfterLeave) -> ServerInput<'static> {
     ServerInput::Leave {
         slot: PlayerSlot::new(0),
         reason: LeaveReason::Asked,

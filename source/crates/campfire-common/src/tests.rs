@@ -317,6 +317,23 @@ const UNOWNED_NAMES: [&str; 9] = [
     "RandomState",
 ];
 
+/// The thread-local ban, the one ban an `expect` may exempt outside a proxy: a module whose state
+/// an outside API keeps per thread, as a global allocator or tracing's default subscriber does,
+/// holds a `thread_local!`, and names no other banned type, which its exemption would cover too.
+const THREAD_LOCAL: &str = "std::thread::LocalKey";
+
+/// What names a banned type in source, other than the thread-local one.
+const TYPE_NAMES: [&str; 8] = [
+    "std::fs",
+    "tempfile::",
+    "postcard::",
+    "toml::",
+    "serde_json::",
+    "HashMap",
+    "HashSet",
+    "RandomState",
+];
+
 /// The paths of `rules` that the list `list`, `disallowed-methods` or `disallowed-types`, of
 /// `clippy`, a `clippy.toml`, does not name.
 fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
@@ -330,8 +347,9 @@ fn unlisted<'a>(clippy: &str, list: &str, rules: &[&'a str]) -> Vec<&'a str> {
 
 /// The lines of `text`, the source at `path` under `source/`, whose attribute exempts code from
 /// either lint other than as the proxies let it: only an `expect`, at a proxy's crate root, of a
-/// lint that proxy exempts; never `allow`, a `cfg_attr`, a group that holds the lint, or an
-/// attribute on an item or a statement, so a stale one fails and none hides.
+/// lint that proxy exempts, or of the types' lint at the head of a module that holds a
+/// `thread_local!` and names no other banned type; never `allow`, a `cfg_attr`, a group that
+/// holds the lint, or an attribute on an item or a statement, so a stale one fails and none hides.
 fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
     let line_of = |at: usize| text[..at].matches('\n').count() + 1;
     let mut misplaced = Vec::new();
@@ -359,11 +377,13 @@ fn misplaced_exemptions(path: &str, text: &str) -> Vec<usize> {
             if ["warn", "deny", "forbid"].contains(&kind) {
                 continue;
             }
-            let allowed = inner
-                && kind == "expect"
-                && PROXIES
-                    .iter()
-                    .any(|proxy| proxy.root() == path && proxy.lints.contains(name));
+            let proxied = PROXIES
+                .iter()
+                .any(|proxy| proxy.root() == path && proxy.lints.contains(name));
+            let thread_state = *name == LINTS[1]
+                && text.contains("thread_local!")
+                && !TYPE_NAMES.iter().any(|banned| text.contains(banned));
+            let allowed = inner && kind == "expect" && (proxied || thread_state);
             if !allowed {
                 misplaced.push(line_of(at));
             }
@@ -562,6 +582,20 @@ fn each_banned_call_goes_through_its_proxy_alone() {
     assert_eq!(methods, Vec::<&str>::new());
     let types = unlisted(&clippy, "disallowed-types", &UNOWNED_TYPES);
     assert_eq!(types, Vec::<&str>::new());
+    assert_eq!(
+        unlisted(&clippy, "disallowed-types", &[THREAD_LOCAL]),
+        Vec::<&str>::new()
+    );
+    // A thread-local module's exemption covers every banned type, so each has a name it shows.
+    let types = STORAGE_TYPES
+        .iter()
+        .chain(&CODEC_TYPES)
+        .chain(&UNOWNED_TYPES);
+    let unnamed: Vec<&str> = types
+        .copied()
+        .filter(|ty| !TYPE_NAMES.iter().any(|name| ty.contains(name)))
+        .collect();
+    assert_eq!(unnamed, Vec::<&str>::new());
     let misplaced: Vec<String> = sources
         .iter()
         .flat_map(|file| {
@@ -768,6 +802,31 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         (
             "crates/campfire-sim/src/sim_update/mod.rs",
             format!("{}let x = 1;\n", expect(methods)),
+            vec![1],
+        ),
+        // A module that holds a thread-local: an `expect` of the types' lint at its head, while it
+        // names no other banned type; of the methods' lint, or on an item, it is found.
+        (
+            "crates/x/src/a.rs",
+            format!("{}thread_local! {{}}\n", inner(types)),
+            vec![],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!("{}thread_local! {{}}\n", inner(methods)),
+            vec![1],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!("{}thread_local! {{}}\n", expect(types)),
+            vec![1],
+        ),
+        (
+            "crates/x/src/a.rs",
+            format!(
+                "{}use std::collections::HashMap;\nthread_local! {{}}\n",
+                inner(types)
+            ),
             vec![1],
         ),
         // An `allow`, even in `store`; a mention is no attribute.

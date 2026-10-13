@@ -142,7 +142,7 @@ impl Projectiles {
 
     /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at
     /// its rank; `None` for a global range.
-    fn range(spec: &ProjectileSpec, range: ActionRange) -> Option<Num> {
+    const fn range(spec: &ProjectileSpec, range: ActionRange) -> Option<Num> {
         match (spec.range, range) {
             (Some(meters), _) | (None, ActionRange::Meters(meters)) => Some(meters),
             (None, ActionRange::Global) => None,

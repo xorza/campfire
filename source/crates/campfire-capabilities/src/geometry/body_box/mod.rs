@@ -446,7 +446,7 @@ impl<'de> Deserialize<'de> for BodyBox {
 
 impl Frame {
     /// The cross product of the half edges, positive: a quarter of the box's area.
-    fn quarter_area(&self) -> i128 {
+    const fn quarter_area(&self) -> i128 {
         let [a, b] = self.halves;
         a.cross(b)
     }
@@ -459,7 +459,7 @@ impl Frame {
 
     /// The two slab values of `off`, each `cross` of it with a half edge: it lies within the
     /// box when both are within `quarter_area` of 0.
-    fn slabs(&self, off: Flat) -> [i128; 2] {
+    const fn slabs(&self, off: Flat) -> [i128; 2] {
         let [a, b] = self.halves;
         [off.cross(b), a.cross(off)]
     }
@@ -716,7 +716,7 @@ impl Closer {
 }
 
 /// The values of `t` for which `value + t·along` lies within `bound` of 0, `open` or closed.
-fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
+const fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
     if along == 0 {
         let within = if open {
             value.abs() < bound
@@ -741,11 +741,11 @@ fn span(value: i128, along: i128, bound: i128, open: bool) -> Span {
 }
 
 /// Where `pos` stands on the ground plane, in a `Num`'s bits.
-fn flat(pos: Position) -> Flat {
+const fn flat(pos: Position) -> Flat {
     Flat::ground(pos.get())
 }
 
-fn square(off: Flat) -> SquaredDistance {
+const fn square(off: Flat) -> SquaredDistance {
     SquaredDistance::whole(off.length_squared())
 }
 

@@ -523,7 +523,7 @@ fn a_warning_of_bevy_fails_the_log_check() {
         .lines()
         .map(|line| LogLine::parse(line).unwrap())
         .collect();
-    let [line] = &lines[..] else {
+    let [line] = lines.as_slice() else {
         panic!("one line: {lines:?}");
     };
     assert_eq!(

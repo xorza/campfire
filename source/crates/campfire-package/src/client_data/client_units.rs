@@ -61,7 +61,7 @@ models = [{ model = "../x.glb" }]"#
         );
         assert!(
             Toml::parse::<ClientUnits>(
-                r"[units.A]
+                "[units.A]
 models = []"
             )
             .is_err()

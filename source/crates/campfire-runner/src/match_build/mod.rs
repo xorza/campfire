@@ -108,7 +108,7 @@ pub(crate) mod internals {
         }
 
         /// The default tick rate of the mode `packages` holds.
-        fn rate(packages: &ModePackages) -> TickRate {
+        const fn rate(packages: &ModePackages) -> TickRate {
             TickRate::new(packages.manifest().tick_hz.default())
         }
 

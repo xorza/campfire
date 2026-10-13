@@ -132,7 +132,7 @@ impl UnitTypes {
     }
 
     /// The types' own tags, which the tag book has not taken yet.
-    fn staged_mut(&mut self) -> &mut Vec<TagSet> {
+    const fn staged_mut(&mut self) -> &mut Vec<TagSet> {
         self.staged_tags
             .as_mut()
             .expect("a type's tags change only before the tag book takes them")
@@ -144,7 +144,7 @@ impl UnitTypes {
     }
 
     /// The types' names, each in its scope.
-    pub(crate) fn types(&self) -> &Arc<Names<UnitType>> {
+    pub(crate) const fn types(&self) -> &Arc<Names<UnitType>> {
         &self.types
     }
 

@@ -292,7 +292,7 @@ mod tests {
         let terrain = Terrain::new(parts.clone(), lighting.clone()).unwrap();
         let bytes = Binary::encode(&terrain);
         assert_eq!(Binary::decode::<Terrain>(&bytes).unwrap(), terrain);
-        let trailing = [&bytes[..], &[0]].concat();
+        let trailing = [bytes.as_slice(), &[0]].concat();
         assert_eq!(
             Binary::decode::<Terrain>(&trailing),
             Err(BinaryError::NotCanonical)

@@ -94,7 +94,7 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         mode: 1,
     };
     let scripts = ScriptBudgets::new(limits, 1);
-    let scripted = installed(&all, Some(scripts.clone()));
+    let mut scripted = installed(&all, Some(scripts.clone()));
     let client = installed(&all, None);
     for (world, scripts) in [(&scripted, true), (&client, false)] {
         assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
@@ -117,7 +117,6 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
             assert!(names.contains(&name), "{name}");
         }
     }
-    let mut scripted = scripted;
     {
         let mut player = scripted.spawn_empty();
         EntityParts::<Player>::give(&mut player);

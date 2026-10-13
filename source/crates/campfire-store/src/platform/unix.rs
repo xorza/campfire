@@ -1,8 +1,3 @@
-#![expect(
-    unsafe_code,
-    reason = "the calls for the effective user and a signal's disposition, which std does not give"
-)]
-
 use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
 use std::mem::MaybeUninit;
 use std::os::unix::fs::{DirBuilderExt, MetadataExt, OpenOptionsExt};

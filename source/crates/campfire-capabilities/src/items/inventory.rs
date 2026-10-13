@@ -1,4 +1,4 @@
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::{NonZeroU8, NonZeroU32, NonZeroUsize};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -41,7 +41,7 @@ impl Inventory {
     pub(crate) fn new(slots: NonZeroU8, kind: SlotKind) -> Inventory {
         Inventory {
             kind,
-            slots: vec![None; usize::from(slots.get())],
+            slots: vec![None; NonZeroUsize::from(slots).get()],
         }
     }
 

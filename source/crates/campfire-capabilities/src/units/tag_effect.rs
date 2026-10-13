@@ -30,7 +30,7 @@ impl TagEffect {
         let granting = world.resource::<TagBook>().granting();
         let immune = world
             .get::<UnitTags>(entity)
-            .map_or(TagSet::default(), |tags| tags.immune);
+            .map_or_else(TagSet::default, |tags| tags.immune);
         TagEffect::new(granting, immune)
     }
 }

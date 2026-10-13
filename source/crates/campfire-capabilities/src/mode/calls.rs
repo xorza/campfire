@@ -98,7 +98,7 @@ impl Calls<'_, '_> {
         };
         calls.begin(true);
         let script = calls.book().schema.script;
-        let returned = calls.batch.call_pure(script, hook, (ctx.clone(), handle));
+        let returned = calls.batch.call_pure(script, hook, (ctx, handle));
         let value = returned.map_err(CallError::from_script)?;
         let amount = match value.as_int() {
             Ok(int) => Num::from_int(int),

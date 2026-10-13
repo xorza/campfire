@@ -13,7 +13,7 @@ pub(crate) struct ChainHistory {
 
 impl ChainHistory {
     /// The history of `chain` from where it stands.
-    pub(crate) fn of(chain: &InputChain) -> ChainHistory {
+    pub(crate) const fn of(chain: &InputChain) -> ChainHistory {
         ChainHistory {
             first_seq: chain.next_seq(),
             base: chain.head(),
