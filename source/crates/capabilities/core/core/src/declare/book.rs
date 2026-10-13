@@ -5,8 +5,6 @@ use bevy_ecs::world::World;
 use campfire_sim::Capability;
 
 use crate::declare::capability_set::CapabilitySet;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::frame::Frame;
 use crate::units::view::View;
 
 /// Package data a module reads, which its declaration puts in a match empty, and the install
@@ -18,9 +16,9 @@ pub trait Book: Resource + Default {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 
-    /// Gives the script view and, in a match that runs scripts, the call frame what they copy
-    /// of it.
-    fn share(&self, view: &View, frame: Option<&mut Frame>);
+    /// Gives the script view what it copies of it: a call part or a view column takes its book
+    /// from the match as it begins.
+    fn share(&self, view: &View);
 
     /// Whether a match of the capabilities `set`, which runs scripts when `scripts` says, holds
     /// it: one of its owner's, as it reads it.
@@ -29,8 +27,8 @@ pub trait Book: Resource + Default {
     }
 
     /// Puts the book in place of the empty one its owner's declaration put in `world`, and gives
-    /// the script view and, in a match that runs scripts, the call frame what they copy of it:
-    /// the step of the install for each book, which a test that loads a book alone takes too.
+    /// the script view what it copies of it: the step of the install for each book, which a test
+    /// that loads a book alone takes too.
     fn load_into(self, world: &mut World) {
         assert!(
             world.contains_resource::<Self>(),
@@ -41,12 +39,8 @@ pub trait Book: Resource + Default {
         Self::share_in(world);
     }
 
-    /// Gives the script view and, in a match that runs scripts, the call frame what they copy of
-    /// `world`'s book, as it stands.
+    /// Gives the script view what it copies of `world`'s book, as it stands.
     fn share_in(world: &World) {
-        let view = world.non_send::<View>();
-        let ctx = world.get_non_send::<Ctx>();
-        let mut frame = ctx.map(Ctx::frame);
-        world.resource::<Self>().share(view, frame.as_deref_mut());
+        world.resource::<Self>().share(world.non_send::<View>());
     }
 }

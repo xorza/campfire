@@ -98,7 +98,7 @@ impl AssetReader for PackageSource {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_package::{PackageDir, PackageReader, PackageWriter};
+    use campfire_package::{PackageDir, PackageFiles, PackageReader, PackageWriter};
     use campfire_store::internals::Scratch;
     use campfire_values::PackagePath;
 
@@ -111,8 +111,7 @@ pub(crate) mod internals {
                 .unwrap();
         }
         writer.finish().unwrap();
-        PackageDir::new(scratch.path(dir))
-            .read()
+        PackageFiles::read(&PackageDir::new(scratch.path(dir)))
             .unwrap()
             .reader()
             .clone()

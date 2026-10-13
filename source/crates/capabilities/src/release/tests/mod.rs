@@ -381,7 +381,7 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
-    ("visibility/setting.rs", "named"),
+    ("visibility/setting/mod.rs", "named"),
     // The load, and a filter a script names.
     ("units/filter.rs", "named"),
     ("values/filter_data.rs", "named"),

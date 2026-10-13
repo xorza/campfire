@@ -10,9 +10,9 @@ use campfire_core::{Hook, PendingCalls, Pool, ScriptList, ScriptText, ScriptValu
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{EntityIndex, SimTick, SlotEvent, SlotEventKind, TickInputs};
 
+use crate::calls::Calls;
 use crate::match_mode::MatchMode;
 use crate::mode_input::{InputValue, ModeInput};
-use crate::mode_world::ModeWorldCrate;
 use crate::timers::Timers;
 use crate::unanswered_deaths::UnansweredDeaths;
 use crate::unanswered_slot_events::UnansweredSlotEvents;
@@ -64,7 +64,7 @@ impl ModeHooks {
         }
         let now = world.resource::<SimTick>().start();
         let bodies = &*bodies;
-        world.mode_calls(now, |call| {
+        Calls::scope(world, now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
                     call.book().schema.input_type(name)
@@ -111,7 +111,7 @@ impl ModeHooks {
         pending.extend(world.resource::<TickInputs>().slot_events().iter().copied());
         let hooks = world.non_send::<MatchMode>().schema.hooks;
         let now = world.resource::<SimTick>().end();
-        let answered = world.mode_calls(now, |call| {
+        let answered = Calls::scope(world, now, |call| {
             let mut answered = 0;
             for event in &pending {
                 let hook = match event.kind {
@@ -142,7 +142,7 @@ impl ModeHooks {
         if world.resource::<Timers>().due(now).is_none() {
             return;
         }
-        world.mode_calls(now, |call| {
+        Calls::scope(world, now, |call| {
             let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
             while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
                 let name = ScriptText::from(timer.name.as_str());
@@ -190,7 +190,7 @@ impl ModeHooks {
             &mut *world.resource_mut::<UnansweredDeaths>(),
         );
         pending.extend(world.resource::<Deaths>().iter());
-        let answered = world.mode_calls(now, |call| {
+        let answered = Calls::scope(world, now, |call| {
             let view = call.ctx.view().clone();
             let mut answered = 0;
             for death in pending.iter() {
@@ -258,7 +258,7 @@ impl ModeHooks {
             }
             due.clear();
             mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
-            let answered = world.mode_calls(now, |call| {
+            let answered = Calls::scope(world, now, |call| {
                 let view = call.ctx.view().clone();
                 let mut answered = 0;
                 for &LevelUp { id, track, level } in &due {

@@ -5,6 +5,7 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod approach;
+mod body_bound;
 mod body_box;
 mod bounds;
 mod cell_levels;
@@ -20,6 +21,7 @@ mod squared_distance;
 mod kernel_scene;
 
 pub use crate::approach::Approach;
+pub use crate::body_bound::MAX_BOUND;
 pub use crate::body_box::BodyBox;
 pub use crate::bounds::Bounds;
 pub use crate::cell_levels::CellLevels;

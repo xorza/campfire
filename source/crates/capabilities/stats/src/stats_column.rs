@@ -9,15 +9,15 @@ use campfire_core::{
 };
 use campfire_math::Num;
 use campfire_sim::StableId;
-use campfire_values::{Names, Rank};
+use campfire_values::Rank;
 
 use crate::level::Level;
 use crate::life::Life;
 use crate::meter::Meter;
 use crate::modifier_book::ModifierBook;
-use crate::modifier_clocks::ModifierClocks;
 use crate::modifier_handle::{HandleOf, ModifierHandle};
 use crate::modifiers::Modifiers;
+use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::pool_book::PoolBook;
 use crate::pool_id::PoolId;
 use crate::pools::Pools;
@@ -41,10 +41,6 @@ pub type RowReads = (
 /// state, a row each.
 #[derive(Debug, Default)]
 pub struct StatsColumn {
-    /// The stats the mode declares, by id, the order units' runs of stats hold them in.
-    stat_names: Arc<Names<StatId>>,
-    /// The pools the mode declares, by id.
-    pool_names: Arc<Names<PoolId>>,
     /// The mode's life pool, as the read found it.
     life_pool: Option<PoolId>,
     modifier_book: ModifierBook,
@@ -84,7 +80,11 @@ struct ModifierRow {
 impl ViewColumn for StatsColumn {
     fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
-        self.life_pool = world.get_resource::<PoolBook>().and_then(PoolBook::life);
+        self.life_pool = world.resource::<PoolBook>().life();
+        let book = world.resource::<ModifierBook>();
+        if !book.same(&self.modifier_book) {
+            self.modifier_book = book.clone();
+        }
         false
     }
 
@@ -212,32 +212,6 @@ impl StatsColumn {
         self.rows
             .now_mut()
             .push(level, pools, stats, modifiers, clocks);
-    }
-
-    /// Names the stats the mode declares to scripts, in the order units' runs hold them.
-    pub(crate) fn share_stat_names(view: &View, names: Arc<Names<StatId>>) {
-        view.column_mut(|column: &mut StatsColumn| column.stat_names = names);
-    }
-
-    /// Names the pools the mode declares to scripts, by pool id.
-    pub fn share_pool_names(view: &View, names: Arc<Names<PoolId>>) {
-        view.column_mut(|column: &mut StatsColumn| column.pool_names = names);
-    }
-
-    /// Shares the match's modifiers, as the load built them, and names them to scripts.
-    pub(crate) fn share_modifiers(view: &View, book: ModifierBook) {
-        view.names_mut().modifiers = Arc::clone(book.names());
-        view.column_mut(|column: &mut StatsColumn| column.modifier_book = book);
-    }
-
-    /// The stats the mode declares, by id.
-    pub(crate) fn stat_names(&self) -> &Names<StatId> {
-        &self.stat_names
-    }
-
-    /// The pools the mode declares, by id.
-    pub fn pool_names(&self) -> &Names<PoolId> {
-        &self.pool_names
     }
 
     /// What `read` gives of the column; an error for a match with no stats.
@@ -418,20 +392,4 @@ impl StatsColumn {
 /// A length of one of the column's buffers, as its runs count it.
 fn len(len: usize) -> u32 {
     u32::try_from(len).expect("a view's runs fit u32")
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use campfire_values::Stat;
-
-    use crate::stat_id::StatId;
-    use crate::stats_column::StatsColumn;
-
-    impl StatsColumn {
-        /// The place of `stat` among the stats the mode declares; `None` when it does not
-        /// declare it.
-        pub fn stat_index(&self, stat: &Stat) -> Option<StatId> {
-            self.stat_names.named(stat.name())
-        }
-    }
 }

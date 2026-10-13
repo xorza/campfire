@@ -5,19 +5,25 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, UnitEntity};
+use campfire_core::{ActionId, LivingUnit, Team, UnitEntity};
 use campfire_math::Num;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_stats::PoolMetersMut;
+use campfire_values::Relation;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::action::Aim;
 use crate::action_book::ActionBook;
 use crate::action_call::ResolvedCast;
 use crate::action_slots::ActionSlots;
+use crate::action_target::ActionTarget;
+use crate::checked_action::CheckedAction;
+use crate::purse::Purse;
 use crate::rank_fields::TogglePer;
 use crate::rank_values::ChargeRule;
+use crate::slot_aim::SlotAim;
 use crate::slot_kind::SlotKind;
 
 /// The times of a unit's action slots, one for each slot of its `ActionSlots`, in their order:
@@ -42,6 +48,20 @@ pub struct SlotTime {
 pub struct SlotCharges {
     pub count: u8,
     pub next: Tick,
+}
+
+/// What `SlotTimes::checked_action` reads besides the times: the match's book of actions, the
+/// tick `now`, the unit's slots and what its purse affords, the slot and target `aim` names, how
+/// the unit regards a team, `relation`, and the living unit of a stable id, `living`.
+#[derive(Debug)]
+pub struct ActionCheck<'b, 'a, R, L> {
+    pub book: &'b ActionBook,
+    pub now: Tick,
+    pub slots: &'a ActionSlots,
+    pub purse: Purse<'a>,
+    pub aim: SlotAim,
+    pub relation: R,
+    pub living: L,
 }
 
 /// A unit's slots with their times, each ready at once, as a unit gains slots.
@@ -92,6 +112,61 @@ impl TimedSlots {
 }
 
 impl SlotTimes {
+    /// The action that `check`'s aim names, of a unit with `check`'s slots and these times, when it
+    /// may go on: its slot holds a learned action that is ready and, with charges, holds one, the
+    /// purse affords its cost in each pool and player resource, and its target is a living unit
+    /// the action's filter selects, or the action takes none, which drops any target the order
+    /// named.
+    pub fn checked_action<'b>(
+        &self,
+        check: ActionCheck<
+            'b,
+            '_,
+            impl Fn(Team) -> Relation,
+            impl Fn(StableId) -> Option<LivingUnit>,
+        >,
+    ) -> Option<CheckedAction<'b>> {
+        let ActionCheck {
+            book,
+            now,
+            slots,
+            purse,
+            aim,
+            relation,
+            living,
+        } = check;
+        let (slot, time) = (slots.slot(aim.slot)?, self.slot(aim.slot)?);
+        let (id, rank) = (slot.action?, slot.rank?);
+        let action = book.get(id)?;
+        let values = *action.values(rank);
+        let affords = purse.affords(&values.cost, action.resource_cost(rank));
+        let charged =
+            values.charges.is_none() || time.charges.is_some_and(|charges| charges.count > 0);
+        if now < time.ready_at || !affords || !charged {
+            return None;
+        }
+        let target = match (action.aim, aim.target) {
+            (Aim::None, _) => ActionTarget::None,
+            (Aim::Point { .. } | Aim::Direction, ActionTarget::Point(at)) => {
+                ActionTarget::Point(at)
+            }
+            (Aim::Unit(filter), ActionTarget::Unit(target))
+                if living(target)
+                    .is_some_and(|unit| filter.selects(relation(unit.team), unit.tags)) =>
+            {
+                ActionTarget::Unit(target)
+            }
+            _ => return None,
+        };
+        Some(CheckedAction {
+            id,
+            target,
+            action,
+            rank,
+            values,
+        })
+    }
+
     /// The times of `slots`, each ready at once, with no charges and no toggle on.
     pub fn ready(slots: &ActionSlots) -> SlotTimes {
         SlotTimes(vec![SlotTime::READY; slots.len()])

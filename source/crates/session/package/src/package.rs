@@ -7,12 +7,10 @@ use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_header::PackageHeader;
+use crate::package_dir::SCRIPTS;
 use crate::package_files::PackageFiles;
 use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
-
-/// Where a package holds its game scripts.
-pub(crate) const SCRIPTS: &str = "scripts";
 
 /// A package as the load read it: its header, its fingerprint, each of its scripts, and its
 /// human text.

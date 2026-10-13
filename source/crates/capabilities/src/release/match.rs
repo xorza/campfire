@@ -69,6 +69,7 @@ impl DerefMut for Match {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::num::NonZeroU32;
+    use std::sync::Arc;
 
     use bevy_ecs::world::World;
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
@@ -146,7 +147,7 @@ pub(crate) mod internals {
                 name: DeclaredName::new("basic").unwrap(),
                 ranks: None,
             };
-            SlotKindBook(SlotKinds::from([basic])).load_into(&mut world);
+            SlotKindBook(Arc::new(SlotKinds::from([basic]))).load_into(&mut world);
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }

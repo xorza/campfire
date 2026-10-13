@@ -10,7 +10,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use campfire_actions::{
-    ActionRange, ActionSlots, ActionTarget, RangeField, SlotKind, SlotTimes, Targeting,
+    ActionRange, ActionSlots, ActionTarget, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_areas::Area;
 use campfire_capabilities::{Match, Order};
@@ -38,7 +38,7 @@ const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
 fn hero(name: &str) -> PackageFiles {
     let dir = PackageDir::new(PackageDir::workspace(&format!("test/moba/heroes/{name}")));
-    dir.read().unwrap()
+    PackageFiles::read(&dir).unwrap()
 }
 
 /// The hero `name`, as its data file declares it.
@@ -221,7 +221,11 @@ fn caster(
     kit: Kit,
     parts: impl Bundle,
 ) -> StableId {
-    let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(
+        action,
+        SlotKind::new(0),
+        Rank::new(rank),
+    )]));
     let player = Owner::new(PlayerSlot::new(0));
     spawn_with(arena, game, 0, Team::new(0), kit, (player, slots, parts))
 }
@@ -370,7 +374,7 @@ fn arm_with(game: &mut Match, id: StableId, action: ActionId) {
         (action, SlotKind::new(0), Some(Rank::FIRST)),
         (weapon.action.unwrap(), weapon.kind, weapon.rank),
     ]);
-    game.entity_mut(entity).insert(slots.timed());
+    game.entity_mut(entity).insert(TimedSlots::new(slots));
 }
 
 /// Whether `id` has the toggle of its slot 0 on.

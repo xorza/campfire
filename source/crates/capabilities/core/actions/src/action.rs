@@ -103,7 +103,7 @@ impl Action {
 
     /// Whether a slot at `rank` whose action has the weapon filter `weapon` arms its unit
     /// against a unit of `tags` it regards with `relation`, or with `None`, against any: the one
-    /// rule of `ActionBook::weapon_for` and of the script view.
+    /// rule of `ActionSlots::weapon_in` and of the script view.
     pub(crate) fn arms(
         rank: Option<Rank>,
         weapon: Option<Filter>,

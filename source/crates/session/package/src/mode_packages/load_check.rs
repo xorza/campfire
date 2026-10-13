@@ -35,10 +35,11 @@ use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
+use crate::error::way::Way;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
-use crate::modifier_ways::{ModifierWays, Way};
-use crate::name_tables::NameTables;
+use crate::mode_packages::name_tables::NameTables;
+use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 
@@ -1056,7 +1057,7 @@ impl<'a> LoadCheck<'a> {
                 | ActionKind::Build
                 | ActionKind::Gather
         );
-        let kind = run.then(|| action.kind_data()).transpose();
+        let kind = run.then(|| KindData::of(action)).transpose();
         let kind = kind.map_err(|field| LoadProblem::KindField {
             action: id.to_owned(),
             field,

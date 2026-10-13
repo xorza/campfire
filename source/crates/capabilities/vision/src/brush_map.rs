@@ -33,7 +33,7 @@ impl BrushMap {
             let brush = u32::try_from(at + 1).expect("a map's brush count fits u32");
             let (any, own) = cells.split_at_mut(words * (at + 1));
             let own = &mut own[..words];
-            area.cells(grid, |cell| {
+            grid.polygon_cells(area, |cell| {
                 if of_cell[cell] == 0 {
                     of_cell[cell] = brush;
                     let bit = 1 << (cell % 64);

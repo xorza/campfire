@@ -285,7 +285,7 @@ impl Construction {
             else {
                 continue;
             };
-            let range = book.meters(slots, slot);
+            let range = slots.meters_in(&book, slot);
             let placed = Placed {
                 pos: at,
                 body: *site_body,

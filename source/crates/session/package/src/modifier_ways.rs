@@ -4,19 +4,9 @@ use campfire_actions::{ActionData, DeliveryData};
 use campfire_capabilities::UnitTypeData;
 use campfire_core::Applies;
 use campfire_values::{DeclaredName, PackagePath};
-use derive_more::Display;
 
+use crate::error::way::Way;
 use crate::package_view::{PackageView, ViewKind};
-
-/// A way a modifier is applied, by design 04's list: with an action of its package, at each of
-/// the action's ranks, or with no action, at rank 1.
-#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Way {
-    #[display("action {_0}")]
-    Action(DeclaredName),
-    #[display("no action")]
-    NoAction,
-}
 
 /// The ways each modifier of a package is applied: an action's `hold`, `passive_modifier` and
 /// effect lists, the `inside` of the area it delivers, and its script's `ctx.add_modifier`, with

@@ -24,6 +24,7 @@ pub(crate) mod load_problem;
 pub(crate) mod locale_problem;
 pub(crate) mod place;
 pub(crate) mod script_problem;
+pub(crate) mod way;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Error)]

@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_geometry::{BodyBox, Shape};
+use campfire_geometry::{BodyBox, MAX_BOUND, Shape};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
@@ -23,9 +23,9 @@ pub struct Body {
 
 impl Body {
     /// A circle on the first layer; `None` unless `radius` is positive and at most
-    /// `Shape::MAX_BOUND`.
+    /// `MAX_BOUND`.
     pub const fn new(radius: Num) -> Option<Body> {
-        if radius.to_bits() <= 0 || radius.to_bits() > Shape::MAX_BOUND.to_bits() {
+        if radius.to_bits() <= 0 || radius.to_bits() > MAX_BOUND.to_bits() {
             return None;
         }
         Some(Body {

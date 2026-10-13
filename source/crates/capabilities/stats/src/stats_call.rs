@@ -28,6 +28,10 @@ pub struct StatsCall {
 
 impl CallPart for StatsCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
+        let params = world.resource::<ParamBook>();
+        if !params.same(&self.params) {
+            self.params = params.clone();
+        }
         self.action = start.action;
         self.modifier = start.modifier;
         let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);
@@ -87,14 +91,6 @@ impl StatsCall {
     /// A handle of an earlier call that no script holds, to fill again.
     pub fn spare(&mut self) -> Option<ModifierHandle> {
         self.spare.pop()
-    }
-
-    /// Shares the params of every ability and every modifier, as the load built them, with
-    /// `frame`.
-    pub(crate) fn share_params(frame: &mut Frame, params: ParamBook) {
-        if let Some(part) = frame.part_mut::<StatsCall>() {
-            part.params = params;
-        }
     }
 
     /// The stats' part of `frame`; stats adds it as it installs.

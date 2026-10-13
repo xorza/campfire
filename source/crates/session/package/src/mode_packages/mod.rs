@@ -26,7 +26,7 @@ use crate::files::mode_manifest::ModeManifest;
 use crate::files::mode_script::ModeScript;
 use crate::files::package_name::PackageName;
 use crate::files::units_file::UnitsFile;
-use crate::load_check::LoadCheck;
+use crate::mode_packages::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
@@ -34,6 +34,9 @@ use crate::package_files::PackageFiles;
 use crate::package_index::PackageIndex;
 use crate::package_store::PackageStore;
 use crate::package_view::{PackageView, ViewKind};
+
+mod load_check;
+mod name_tables;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
@@ -90,7 +93,7 @@ impl ModePackages {
     /// gives from it, each read once.
     pub fn from_package_dir(mode: &PackageDir, map: &MapName) -> Result<ModePackages, LoadError> {
         let read = |dir: &PackageDir, package: PackageRef| {
-            dir.read()
+            PackageFiles::read(dir)
                 .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
         };
         let at = PackageRef::Dir(mode.root().to_owned());

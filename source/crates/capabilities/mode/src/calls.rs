@@ -1,8 +1,11 @@
 use std::ops::ControlFlow;
 
+use bevy_ecs::world::World;
 use campfire_combat::{Damage, DamageHandle, Heal, HealHandle};
 use campfire_common::Tick;
-use campfire_core::{ApiError, CallError, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptValue};
+use campfire_core::{
+    ApiError, CallError, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptValue, ScriptsWorldCrate,
+};
 use campfire_math::Num;
 use campfire_script::ScriptError;
 use campfire_sim::{SimTick, StableId};
@@ -16,10 +19,23 @@ use crate::mode_spec::ModeSpec;
 pub struct Calls<'a, 'w> {
     pub(crate) batch: &'a mut ScriptBatch<'w>,
     pub(crate) ctx: Ctx,
-    pub(super) now: Tick,
+    now: Tick,
 }
 
 impl Calls<'_, '_> {
+    /// Runs `calls` in one script batch of `world` at the time `now`, and gives what `calls`
+    /// gave.
+    pub(crate) fn scope<T>(
+        world: &mut World,
+        now: Tick,
+        calls: impl FnOnce(&mut Calls<'_, '_>) -> T,
+    ) -> T {
+        world.script_batch(|batch| {
+            let ctx = batch.ctx().clone();
+            calls(&mut Calls { batch, ctx, now })
+        })
+    }
+
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeSpec {
         ModeSpec::of_match(&self.ctx)

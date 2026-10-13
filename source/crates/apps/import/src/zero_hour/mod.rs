@@ -11,7 +11,6 @@ use campfire_package::{
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
 
-use crate::error::ImportError;
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::TgaFile;
 use crate::zero_hour::archive_path::ArchivePath;
@@ -94,7 +93,7 @@ pub struct ZeroHour<'a> {
 
 impl<'a> ZeroHour<'a> {
     /// The install under `root`, refused unless its archives are a version of `known`.
-    pub fn open(root: &Path, known: &'a [GameVersion]) -> Result<ZeroHour<'a>, ImportError> {
+    pub fn open(root: &Path, known: &'a [GameVersion]) -> Result<ZeroHour<'a>, ZeroHourError> {
         let install = Install::open(root)?;
         let version = GameVersion::identify(&install.hashed()?, known)?;
         Ok(ZeroHour { install, version })
@@ -111,16 +110,16 @@ impl<'a> ZeroHour<'a> {
     /// the install's, its name its folder's, and every template its objects name a unit type of
     /// `data/units.toml`; each texture becomes a KTX2 file of `client/textures/`, at its path in
     /// the archives.
-    pub fn write(&self, out: &Path) -> Result<Imported, ImportError> {
+    pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
         DurableFile::create_new_dir(out)
             .map_err(WriteError::CreateDir)
-            .map_err(ImportError::Write)?;
+            .map_err(ZeroHourError::Write)?;
         let rules = ZeroHour::write_rules(&out.join(ZeroHour::RULES))?;
         let mut writer =
-            PackageWriter::create(&out.join(ZeroHour::GAME)).map_err(ImportError::Write)?;
+            PackageWriter::create(&out.join(ZeroHour::GAME)).map_err(ZeroHourError::Write)?;
         let mut write = |path: &str, bytes: &[u8]| {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
-            writer.write(path, bytes).map_err(ImportError::Write)
+            writer.write(path, bytes).map_err(ZeroHourError::Write)
         };
         write("manifest.toml", MODE_MANIFEST.as_bytes())?;
         write("data/mode.toml", MODE_DATA.as_bytes())?;
@@ -128,9 +127,7 @@ impl<'a> ZeroHour<'a> {
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
         let text = Toml::write(&game_data.game_data());
         write(GameData::PATH, text.as_bytes())?;
-        let camera = game_data
-            .camera_file()
-            .ok_or(ImportError::ZeroHour(ZeroHourError::Camera))?;
+        let camera = game_data.camera_file().ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
         write(CameraFile::PATH, text.as_bytes())?;
         let mut unit_types = UnitTypes::default();
@@ -138,10 +135,10 @@ impl<'a> ZeroHour<'a> {
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
             if let Some(first) = names.insert(name.clone(), map.path.to_string()) {
-                return Err(ImportError::ZeroHour(ZeroHourError::MapNameClash {
+                return Err(ZeroHourError::MapNameClash {
                     first,
                     second: map.path.to_string(),
-                }));
+                });
             }
             let bytes = self.install.read(&map.path)?;
             let imported = MapFile::read(&bytes)
@@ -152,11 +149,9 @@ impl<'a> ZeroHour<'a> {
                     }
                     MapImport::new(&file, &mut unit_types, game_data.global_lights())
                 })
-                .map_err(|error| {
-                    ImportError::ZeroHour(ZeroHourError::Map {
-                        map: map.path.to_string(),
-                        error,
-                    })
+                .map_err(|error| ZeroHourError::Map {
+                    map: map.path.to_string(),
+                    error,
                 })?;
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
             write(&format!("map/{name}/heights.bin"), &imported.heights)?;
@@ -168,11 +163,9 @@ impl<'a> ZeroHour<'a> {
         }
         for InstallTexture { path, kind } in self.install.textures() {
             let bytes = self.install.read(&path)?;
-            let texture = |error| {
-                ImportError::ZeroHour(ZeroHourError::Texture {
-                    path: path.to_string(),
-                    error,
-                })
+            let texture = |error| ZeroHourError::Texture {
+                path: path.to_string(),
+                error,
             };
             let ktx2 = match kind {
                 TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
@@ -185,7 +178,7 @@ impl<'a> ZeroHour<'a> {
         let mut missing_textures = BTreeSet::new();
         self.write_models(&mut write, &mut skipped_models, &mut missing_textures)?;
         Ok(Imported {
-            fingerprint: writer.finish().map_err(ImportError::Write)?,
+            fingerprint: writer.finish().map_err(ZeroHourError::Write)?,
             rules,
             skipped_models,
             missing_textures: missing_textures.into_iter().collect(),
@@ -198,12 +191,12 @@ impl<'a> ZeroHour<'a> {
     /// `skipped`, and the textures the models name that no archive holds to `missing_textures`.
     fn write_models(
         &self,
-        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ImportError>,
+        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
         skipped: &mut Vec<SkippedModel>,
         missing_textures: &mut BTreeSet<String>,
-    ) -> Result<(), ImportError> {
+    ) -> Result<(), ZeroHourError> {
         let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
-        let mut assets = ModelAssets::new(&self.install).map_err(ImportError::ZeroHour)?;
+        let mut assets = ModelAssets::new(&self.install)?;
         let mut models: BTreeMap<String, Option<ModelParts>> = BTreeMap::new();
         let mut units = ClientUnits::default();
         let mut types = BTreeMap::<String, String>::new();
@@ -236,10 +229,10 @@ impl<'a> ZeroHour<'a> {
             }
             let unit_type = ImportName::of(object.name.as_bytes());
             if let Some(first) = types.insert(unit_type.as_str().to_owned(), object.name.clone()) {
-                return Err(ImportError::ZeroHour(ZeroHourError::UnitTypeClash {
+                return Err(ZeroHourError::UnitTypeClash {
                     first,
                     second: object.name.clone(),
-                }));
+                });
             }
             units
                 .units
@@ -254,10 +247,10 @@ impl<'a> ZeroHour<'a> {
     fn write_model(
         name: &str,
         assets: &mut ModelAssets<'_>,
-        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ImportError>,
+        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
         skipped: &mut Vec<SkippedModel>,
         missing_textures: &mut BTreeSet<String>,
-    ) -> Result<Option<ModelParts>, ImportError> {
+    ) -> Result<Option<ModelParts>, ZeroHourError> {
         let reason = match ModelImport::convert(name, assets)? {
             Converted::Model(import) => {
                 write(ZeroHour::model_path(name).as_str(), &import.glb.encode())?;
@@ -289,14 +282,14 @@ impl ZeroHour<'_> {
     pub const GAME: &'static str = "game";
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
-    fn write_rules(dir: &Path) -> Result<Fingerprint, ImportError> {
-        let mut writer = PackageWriter::create(dir).map_err(ImportError::Write)?;
+    fn write_rules(dir: &Path) -> Result<Fingerprint, ZeroHourError> {
+        let mut writer = PackageWriter::create(dir).map_err(ZeroHourError::Write)?;
         for (path, bytes) in RULES_FILES {
             let path =
                 PackagePath::parse(path).expect("the rules package's paths are package paths");
-            writer.write(path, bytes).map_err(ImportError::Write)?;
+            writer.write(path, bytes).map_err(ZeroHourError::Write)?;
         }
-        writer.finish().map_err(ImportError::Write)
+        writer.finish().map_err(ZeroHourError::Write)
     }
 
     /// `into` after `read` read each INI file of `name`, in the game's order.
@@ -305,14 +298,12 @@ impl ZeroHour<'_> {
         name: &str,
         mut into: T,
         read: fn(&mut T, &[u8]) -> Result<(), IniError>,
-    ) -> Result<T, ImportError> {
+    ) -> Result<T, ZeroHourError> {
         for path in self.install.inis(name) {
             let bytes = self.install.read(&path)?;
-            read(&mut into, &bytes).map_err(|error| {
-                ImportError::ZeroHour(ZeroHourError::Ini {
-                    path: path.to_string(),
-                    error,
-                })
+            read(&mut into, &bytes).map_err(|error| ZeroHourError::Ini {
+                path: path.to_string(),
+                error,
             })?;
         }
         Ok(into)
@@ -348,7 +339,7 @@ impl ZeroHour<'_> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_package::{ModePackages, PackageDir};
+    use campfire_package::{ModePackages, PackageDir, PackageFiles};
     use campfire_store::internals::Scratch;
     use campfire_values::DeclaredName;
     use sha2::{Digest, Sha256};
@@ -469,8 +460,7 @@ mod tests {
             scratch.read("one/game/package.index")
         );
         assert_eq!(
-            PackageDir::new(scratch.path("one/game"))
-                .read()
+            PackageFiles::read(&PackageDir::new(scratch.path("one/game")))
                 .unwrap()
                 .fingerprint(),
             fingerprint
@@ -493,7 +483,7 @@ mod tests {
         let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("three")),
-            Err(ImportError::ZeroHour(ZeroHourError::MapNameClash { first, second }))
+            Err(ZeroHourError::MapNameClash { first, second })
                 if first == "maps\\fixture map\\fixture map.map"
                     && second == "maps\\fixture_map\\fixture_map.map"
         ));
@@ -502,15 +492,15 @@ mod tests {
         scratch.write("zh/c.BIG", b"BIGF");
         assert!(matches!(
             ZeroHour::open(&scratch.path("zh"), &known),
-            Err(ImportError::ZeroHour(ZeroHourError::Archive { .. }))
+            Err(ZeroHourError::Archive { .. })
         ));
         scratch.write("zh/c.BIG", big(&[("c.ini", b"C")]));
         assert!(matches!(
             ZeroHour::open(&scratch.path("zh"), &known),
-            Err(ImportError::ZeroHour(ZeroHourError::UnknownVersion {
+            Err(ZeroHourError::UnknownVersion {
                 archive,
                 difference: VersionDifference::OtherBytes,
-            })) if archive == "c.big"
+            }) if archive == "c.big"
         ));
     }
 
@@ -593,7 +583,7 @@ mod tests {
         let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("two")),
-            Err(ImportError::ZeroHour(ZeroHourError::UnitTypeClash { first, second }))
+            Err(ZeroHourError::UnitTypeClash { first, second })
                 if first == "Rock!" && second == "Rock?"
         ));
     }

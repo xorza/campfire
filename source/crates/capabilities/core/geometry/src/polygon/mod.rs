@@ -2,7 +2,6 @@ use std::cmp::Ordering;
 
 use campfire_math::{Flat, Num};
 
-use crate::grid::Grid;
 use crate::halves::Halves;
 use crate::polygon::error::PolygonError;
 
@@ -66,31 +65,6 @@ impl Polygon {
 
     pub fn points(&self) -> &[[Num; 2]] {
         &self.points
-    }
-
-    /// Calls `mark` with each cell of `grid` whose center the polygon holds, in order; the
-    /// polygon lies within the grid's bounds.
-    pub fn cells(&self, grid: &Grid, mut mark: impl FnMut(usize)) {
-        let first = self.points[0];
-        let (low, high) = self
-            .points
-            .iter()
-            .fold((first, first), |(low, high), point| {
-                (
-                    [0, 1].map(|axis| low[axis].min(point[axis])),
-                    [0, 1].map(|axis| high[axis].max(point[axis])),
-                )
-            });
-        let columns = grid.index(0, low[0])..=grid.index(0, high[0]);
-        let rows = grid.index(1, low[1])..=grid.index(1, high[1]);
-        for row in rows {
-            for column in columns.clone() {
-                let cell = row * grid.columns() + column;
-                if self.holds(grid.center_twice(cell)) {
-                    mark(cell);
-                }
-            }
-        }
     }
 
     /// The edge from point `at` to the next, in halves of a bit.

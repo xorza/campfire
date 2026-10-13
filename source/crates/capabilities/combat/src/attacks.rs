@@ -3,8 +3,8 @@ use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionSlots, ActionTarget, InProgress, Payer, Purse, Shot, ShotHits, Shots,
-    SlotAim, SlotTimes, Targets,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, InProgress, Payer, Purse, Shot, ShotHits,
+    Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
 use campfire_core::{
@@ -118,7 +118,7 @@ impl Attacks {
                         continue;
                     }
                     let selects = (targets.relation(team, unit.team), unit.tags);
-                    let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
+                    let Some(slot) = slots.weapon_in(&book, Some(selects)) else {
                         continue;
                     };
                     let aim = SlotAim {
@@ -128,9 +128,15 @@ impl Attacks {
                     let purse = Purse::of(pools.of(life), resources.of(owner));
                     let relation = |other| targets.relation(team, other);
                     let shape = Body::shape_of(body);
-                    let started = book
-                        .check(now, (&slots, times), purse, aim, relation, |id| {
-                            targets.living(id)
+                    let started = times
+                        .checked_action(ActionCheck {
+                            book: &book,
+                            now,
+                            slots: &slots,
+                            purse,
+                            aim,
+                            relation,
+                            living: |id| targets.living(id),
                         })
                         .filter(|checked| checked.in_range(position, shape, &targets))
                         .map(|checked| now.after(checked.values.windup));

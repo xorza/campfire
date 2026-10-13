@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Book, Frame, ModifierId, ParamProblem, View};
+use campfire_core::{ActionId, Book, ModifierId, ParamProblem, View};
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 use campfire_values::{DeclaredName, Param, Rank, Stat};
@@ -14,7 +14,6 @@ use crate::param_read::ParamRead;
 use crate::param_source::ParamSource;
 use crate::param_table::ParamTable;
 use crate::stat_id::StatId;
-use crate::stats_call::StatsCall;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
@@ -36,6 +35,11 @@ struct TableRun<'a> {
 }
 
 impl ParamBook {
+    /// Whether `other` is this book as one load made it, not a book of another load.
+    pub(crate) fn same(&self, other: &ParamBook) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     /// The book of `tables`, which the load built.
     pub fn new(tables: ParamTables) -> ParamBook {
         ParamBook(Arc::new(tables))
@@ -178,11 +182,9 @@ impl Book for ParamBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, frame: Option<&mut Frame>) {
-        if let Some(frame) = frame {
-            StatsCall::share_params(frame, self.clone());
-        }
-    }
+    /// Shares nothing: the stats' part of the call frame takes the book from the match as each
+    /// call begins.
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(feature = "internals")]

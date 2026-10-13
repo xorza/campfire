@@ -4,8 +4,7 @@ use std::sync::Arc;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_core::{
-    ActionId, ColumnRows, Filter, KeptRows, RowFill, RunMove, ScriptNames, UnitRow, View,
-    ViewColumn,
+    ActionId, ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
 };
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -17,6 +16,7 @@ use crate::action_range::ActionRange;
 use crate::action_slots::ActionSlots;
 use crate::delivery::Delivery;
 use crate::slot_kind::SlotKind;
+use crate::slot_kind_book::SlotKindBook;
 use crate::slot_kinds::SlotKinds;
 
 /// The part of a unit the actions read into its row: its slots.
@@ -28,7 +28,7 @@ pub(super) type RowReads = Option<&'static ActionSlots>;
 #[derive(Debug, Default)]
 pub struct ActionsColumn {
     book: ActionBook,
-    kinds: SlotKinds,
+    kinds: Arc<SlotKinds>,
     rows: KeptRows<ActionsRows>,
 }
 
@@ -59,9 +59,20 @@ pub struct SlotRow {
 }
 
 impl ViewColumn for ActionsColumn {
-    fn begin(&mut self, _: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
-        false
+        let kinds = &world.resource::<SlotKindBook>().0;
+        if !Arc::ptr_eq(kinds, &self.kinds) {
+            self.kinds = Arc::clone(kinds);
+        }
+        // A row holds what its unit's actions give by the book, so another book fills every row
+        // again; the kinds fill no row.
+        let book = world.resource::<ActionBook>();
+        if book.same(&self.book) {
+            return false;
+        }
+        self.book = book.clone();
+        true
     }
 
     fn keep(&mut self, rows: Range<usize>) {
@@ -126,8 +137,8 @@ impl ActionsColumn {
             });
             return;
         };
-        let attack_range = book.weapon_for(slots, None).map(|slot| {
-            let ActionRange::Meters(range) = book.range(slots, slot) else {
+        let attack_range = slots.weapon_in(book, None).map(|slot| {
+            let ActionRange::Meters(range) = slots.range_in(book, slot) else {
                 panic!("the load gives every attack a range in meters");
             };
             range
@@ -151,27 +162,6 @@ impl ActionsColumn {
             attack_range,
             slots: start..end,
         });
-    }
-
-    /// Shares the match's actions, as the load built them, with the view, which names them to
-    /// scripts.
-    pub fn share(view: &View, book: ActionBook) {
-        view.names_mut().actions = ScriptNames::new(Arc::clone(book.names()));
-        view.column_mut(|column: &mut ActionsColumn| {
-            column.book = book;
-        });
-    }
-
-    /// Shares the mode's slot kinds with the view, which names them to scripts.
-    pub(crate) fn share_kinds(view: &View, kinds: SlotKinds) {
-        view.column_mut(|column: &mut ActionsColumn| {
-            column.kinds = kinds;
-        });
-    }
-
-    /// What `read` gives of the mode's slot kinds.
-    pub fn kinds<R>(view: &View, read: impl FnOnce(&SlotKinds) -> R) -> R {
-        ActionsColumn::read(view, |column| read(&column.kinds))
     }
 
     /// Whether action `id` has charges.

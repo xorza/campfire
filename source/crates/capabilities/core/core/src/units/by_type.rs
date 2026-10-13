@@ -3,7 +3,6 @@ use campfire_sim::Capability;
 
 use crate::declare::book::Book;
 use crate::declare::per_type::PerType;
-use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 
@@ -54,7 +53,7 @@ impl<T: PerType> Book for ByType<T> {
     const OWNER: Option<Capability> = T::OWNER;
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(test)]

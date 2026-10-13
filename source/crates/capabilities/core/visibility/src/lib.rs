@@ -7,8 +7,9 @@ mod error;
 mod mode_visibility;
 mod setting;
 
-pub use crate::error::{VisibilityDecodeError, VisibilityError};
+pub use crate::error::VisibilityDecodeError;
 pub use crate::mode_visibility::{HostVisibility, ModeVisibility};
+pub use crate::setting::error::VisibilityError;
 pub use crate::setting::{Setting, SettingValue};
 
 /// What a session's spectators see (design 14, D15).

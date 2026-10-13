@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, ByType, Frame, ResourceId, UnitType, View};
+use campfire_core::{Book, ByType, ResourceId, UnitType, View};
 use campfire_sim::Capability;
 
 use crate::resource_set::ResourceSet;
@@ -29,5 +29,5 @@ impl Book for NodeBook {
     const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

@@ -4,8 +4,11 @@ use bevy_ecs::world::DeferredWorld;
 use campfire_common::PlayerSlot;
 use serde::{Deserialize, Serialize};
 
-use crate::entity_index::EntityIndex;
-use crate::state_changes::StateChanges;
+use crate::stable_id::entity_index::EntityIndex;
+use crate::stable_id::state_changes::StateChanges;
+
+pub(crate) mod entity_index;
+pub(crate) mod state_changes;
 
 /// An entity's identity in the sim, the protocol and replays. Unlike Bevy's `Entity`, it is
 /// allocated in order and never reused, or, for an entity a match holds once, named: the match's

@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 
-use crate::entity_index::EntityIndex;
+use crate::stable_id::entity_index::EntityIndex;
 
 /// Where a restored state breaks a rule that a module other than its type's owner checks: on one
 /// entity, or in the match as a whole.

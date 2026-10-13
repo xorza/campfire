@@ -3,7 +3,6 @@ use std::fmt::Write;
 
 use campfire_package::{Blend, MaterialFile, MaterialTexture};
 
-use crate::error::ImportError;
 use crate::gltf::glb_builder::{CLAMP_TO_EDGE, GlbBuilder, REPEAT};
 use crate::gltf::gltf_document::{Attributes, Material, Mesh, Node, Pbr, Primitive, TextureRef};
 use crate::texture::srgb::Srgb;
@@ -70,7 +69,7 @@ impl ModelImport {
     pub(crate) fn convert(
         name: &str,
         assets: &mut ModelAssets<'_>,
-    ) -> Result<Converted, ImportError> {
+    ) -> Result<Converted, ZeroHourError> {
         let name = name.to_ascii_lowercase();
         if name == NULL {
             return Ok(Converted::Nothing);
@@ -79,11 +78,9 @@ impl ModelImport {
             .split('.')
             .next()
             .expect("split gives one part at least");
-        let error = |error| {
-            ImportError::ZeroHour(ZeroHourError::Model {
-                model: name.clone(),
-                error,
-            })
+        let error = |error| ZeroHourError::Model {
+            model: name.clone(),
+            error,
         };
         let Some(file) = assets.file(stem)? else {
             return Ok(Converted::Missing);

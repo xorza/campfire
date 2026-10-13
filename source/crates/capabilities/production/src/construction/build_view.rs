@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionSlots, ActionTarget, KindSpec, Purse, SlotAim, SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, KindSpec, Purse, SlotAim, SlotTimes,
 };
 use campfire_core::{
     Body, Dead, MapBook, Owner, PlayerResources, PlayerRows, Team, UnitTags, UnitType,
@@ -110,7 +110,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let KindSpec::Build(unit_type) = self.book.get(action)?.kind else {
             return None;
         };
-        let range = self.book.meters(slots, slot);
+        let range = slots.meters_in(&self.book, slot);
         let spec = self
             .builds
             .of(action)
@@ -167,14 +167,15 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             target: ActionTarget::Point(placed.pos),
         };
         let no_target = |_| Relation::Friendly;
-        let checked = self.book.check(
-            self.tick.start(),
-            (slots, times),
+        let checked = times.checked_action(ActionCheck {
+            book: &self.book,
+            now: self.tick.start(),
+            slots,
             purse,
             aim,
-            no_target,
-            |_| None,
-        )?;
+            relation: no_target,
+            living: |_| None,
+        })?;
         let holdings = Holdings { units: held };
         let met = holdings.meet(owner, modifiers, self.requirements.of(checked.id));
         let room = self

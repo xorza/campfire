@@ -1,6 +1,6 @@
 use bevy_ecs::world::{Mut, World};
 
-use crate::entity_index::EntityIndex;
+use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::StateRegistry;
 use crate::state_registry::state_delta::StateDelta;
 

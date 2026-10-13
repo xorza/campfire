@@ -3,7 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes};
+use campfire_actions::{
+    ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
+};
 use campfire_core::{
     Body, ByType, Dead, MapBook, Owner, PlayerResources, PlayerRows, PlayerRowsMut, SpawnAt,
     Spawner, Team, UnitType,
@@ -137,7 +139,15 @@ impl Trains {
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
-            let checked = book.check(now, (&slots, &times), purse, ordered, no_target, |_| None);
+            let checked = times.checked_action(ActionCheck {
+                book: &book,
+                now,
+                slots: &slots,
+                purse,
+                aim: ordered,
+                relation: no_target,
+                living: |_| None,
+            });
             let Some(checked) = checked else {
                 continue;
             };

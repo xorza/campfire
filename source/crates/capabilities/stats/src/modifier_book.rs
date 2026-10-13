@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_common::{Tick, Ticks};
 use campfire_core::{
-    ActionId, Book, Frame, HookSet, ModifierId, NameKind, ParamProblem, ScriptBook, ScriptRole,
+    ActionId, Book, HookSet, ModifierId, NameKind, ParamProblem, ScriptBook, ScriptRole,
     StatusTags, TagSet, UnitTypes, UnknownName, View,
 };
 use campfire_math::Num;
@@ -15,15 +15,13 @@ use crate::application::{Application, NewInstance};
 use crate::applier::Applier;
 use crate::error::ModifierError;
 use crate::instance::{Instance, StackEnd, StatShare};
+use crate::interval::Interval;
 use crate::lifetime::{Ends, Hold, Lifetime};
-use crate::modifier_clocks::Interval;
 use crate::modifier_data::{ModifierData, Reapply};
 use crate::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
-use crate::modifiers::Modifiers;
 use crate::param_book::ParamBook;
 use crate::param_read::ParamRead;
 use crate::stat_id::StatId;
-use crate::stats_column::StatsColumn;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -146,6 +144,11 @@ impl ModifierBook {
         Ok(())
     }
 
+    /// Whether `other` is this book as one load made it, not a book of another load.
+    pub(crate) fn same(&self, other: &ModifierBook) -> bool {
+        Arc::ptr_eq(&self.entries, &other.entries) && Arc::ptr_eq(&self.names, &other.names)
+    }
+
     /// Each modifier's name in its package.
     pub const fn names(&self) -> &Arc<Names<ModifierId>> {
         &self.names
@@ -166,16 +169,16 @@ impl ModifierBook {
         self.get(id).tags
     }
 
-    /// The tag sets a unit's tags derive from beside its type's: those of the modifier of each
-    /// instance of `modifiers` with a stack, then `status`, which a capability gives it.
+    /// The tag sets a unit's tags derive from beside its type's: those of each modifier of
+    /// `stacked`, the modifiers of its instances with a stack, then `status`, which a capability
+    /// gives it.
     pub fn granted<'a>(
         &'a self,
-        modifiers: Option<&'a Modifiers>,
+        stacked: impl Iterator<Item = ModifierId> + Clone + 'a,
         status: Option<StatusTags>,
     ) -> impl Iterator<Item = TagSet> + Clone + 'a {
-        let held = modifiers.into_iter().flat_map(Modifiers::iter);
-        held.filter(|instance| instance.stacks > 0)
-            .map(|instance| self.tags(instance.id))
+        stacked
+            .map(|id| self.tags(id))
             .chain(status.map(StatusTags::get))
     }
 
@@ -310,8 +313,8 @@ impl Book for ModifierBook {
     const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        StatsColumn::share_modifiers(view, self.clone());
+    fn share(&self, view: &View) {
+        view.names_mut().modifiers = Arc::clone(self.names());
     }
 }
 

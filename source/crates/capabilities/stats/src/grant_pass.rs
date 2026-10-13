@@ -6,10 +6,10 @@ use crate::applier::Applier;
 use crate::carried_mut::CarriedMut;
 use crate::grants::{Grant, GrantChange, Grants};
 use crate::modifier_book::ModifierBook;
-use crate::modifier_clocks::ModifierClocks;
 use crate::modifier_params::ModifierParams;
 use crate::modifier_spec::ParamPlace;
 use crate::modifiers::Modifiers;
+use crate::modifiers::modifier_clocks::ModifierClocks;
 
 /// The one pass that keeps on each unit the modifiers its grant sources want from it: its
 /// actions' passives and holds, and its carried items'.

@@ -2,7 +2,6 @@ use std::path::Path;
 
 use campfire_store::{InputRanges, PathError, ReadError};
 
-use crate::error::ImportError;
 use crate::zero_hour::error::{ArchiveError, ZeroHourError};
 
 /// A `.big` archive's list of entries, as its header holds it: `BIGF`, its size as a little-endian
@@ -28,16 +27,14 @@ const HEADER: usize = 16;
 
 impl BigArchive {
     /// The entries of the archive at `path`, which `file` opens, each checked to lie within it.
-    pub(crate) fn read(file: &mut InputRanges, path: &Path) -> Result<BigArchive, ImportError> {
-        let refused = |error| {
-            ImportError::ZeroHour(ZeroHourError::Archive {
-                archive: path.to_owned(),
-                error,
-            })
+    pub(crate) fn read(file: &mut InputRanges, path: &Path) -> Result<BigArchive, ZeroHourError> {
+        let refused = |error| ZeroHourError::Archive {
+            archive: path.to_owned(),
+            error,
         };
         let short = |error: PathError<ReadError>| match error.error {
             ReadError::Short { .. } => refused(ArchiveError::Short),
-            _ => ImportError::Read(error),
+            _ => ZeroHourError::Read(error),
         };
         let head = file.read_at(0, HEADER).map_err(short)?;
         if head[..4] != *b"BIGF" {

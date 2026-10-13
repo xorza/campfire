@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
 use sha2::{Digest, Sha256};
 
-use crate::error::ImportError;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::big_archive::BigArchive;
 use crate::zero_hour::error::ZeroHourError;
@@ -86,7 +85,7 @@ const HASH_CHUNK: u64 = 1 << 20;
 
 impl Install {
     /// The install under `root`, its archives read in the game's order.
-    pub(crate) fn open(root: &Path) -> Result<Install, ImportError> {
+    pub(crate) fn open(root: &Path) -> Result<Install, ZeroHourError> {
         let mut found = Vec::new();
         Install::find(root, "", &mut found)?;
         found.retain(|archive| ArchivePath::of(&archive.name).as_str() != SKIPPED);
@@ -100,7 +99,7 @@ impl Install {
         let mut archives = Vec::new();
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
-            let mut file = InputFile::ranges(&path).map_err(ImportError::Read)?;
+            let mut file = InputFile::ranges(&path).map_err(ZeroHourError::Read)?;
             let big = BigArchive::read(&mut file, &path)?;
             for entry in big.entries {
                 if let Entry::Vacant(vacant) = files.entry(ArchivePath::of(&entry.path)) {
@@ -122,16 +121,16 @@ impl Install {
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
     /// it.
-    pub(crate) fn read(&self, path: &ArchivePath) -> Result<Vec<u8>, ImportError> {
+    pub(crate) fn read(&self, path: &ArchivePath) -> Result<Vec<u8>, ZeroHourError> {
         let located = *self
             .files
             .get(path)
-            .ok_or_else(|| ImportError::ZeroHour(ZeroHourError::NotInArchives(path.to_string())))?;
+            .ok_or_else(|| ZeroHourError::NotInArchives(path.to_string()))?;
         let len = usize::try_from(located.size).expect("a u32 fits usize");
         self.archives[located.archive]
             .open()?
             .read_at(located.offset, len)
-            .map_err(ImportError::Read)
+            .map_err(ZeroHourError::Read)
     }
 
     /// The maps the game lists, as `MapCache::loadMapsFromDisk` finds them: each `.map` under
@@ -232,7 +231,7 @@ impl Install {
 
     /// Each archive's path and SHA-256, in the load order, each of the file of the stamp its
     /// entries were read with, so the bytes a version check knows are the bytes the import reads.
-    pub(crate) fn hashed(&self) -> Result<Vec<HashedArchive>, ImportError> {
+    pub(crate) fn hashed(&self) -> Result<Vec<HashedArchive>, ZeroHourError> {
         self.archives
             .iter()
             .map(|archive| {
@@ -242,7 +241,7 @@ impl Install {
                 while at < file.len() {
                     let len = (file.len() - at).min(HASH_CHUNK);
                     let chunk = usize::try_from(len).expect("a chunk fits usize");
-                    let bytes = file.read_at(at, chunk).map_err(ImportError::Read)?;
+                    let bytes = file.read_at(at, chunk).map_err(ZeroHourError::Read)?;
                     hasher.update(bytes);
                     at += len;
                 }
@@ -257,8 +256,8 @@ impl Install {
     /// The archives under `dir`, `at` its path in the install: each file, or link to one, whose
     /// name ends in `.big`, ignoring case, as the game's search finds them. A name that is not
     /// UTF-8 sorts by its lossy text, and opens by its own.
-    fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ImportError> {
-        for entry in DirEntries::read(dir).map_err(ImportError::Read)? {
+    fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ZeroHourError> {
+        for entry in DirEntries::read(dir).map_err(ZeroHourError::Read)? {
             let name = format!("{at}{}", entry.name.to_string_lossy());
             let path = dir.join(&entry.name);
             let big = Path::new(&entry.name)
@@ -277,14 +276,14 @@ impl Install {
 impl Archive {
     /// Its file, open to read ranges of; `ArchiveChanged` when its stamp is not the one its
     /// entries were read with.
-    fn open(&self) -> Result<InputRanges, ImportError> {
-        let file = InputFile::ranges(&self.path).map_err(ImportError::Read)?;
+    fn open(&self) -> Result<InputRanges, ZeroHourError> {
+        let file = InputFile::ranges(&self.path).map_err(ZeroHourError::Read)?;
         if file.stamp() == self.stamp {
             Ok(file)
         } else {
-            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged {
+            Err(ZeroHourError::ArchiveChanged {
                 archive: self.path.clone(),
-            }))
+            })
         }
     }
 }
@@ -436,7 +435,7 @@ mod tests {
         );
         assert!(matches!(
             install.read(&ArchivePath::of("missing.ini")),
-            Err(ImportError::ZeroHour(ZeroHourError::NotInArchives(path))) if path == "missing.ini"
+            Err(ZeroHourError::NotInArchives(path)) if path == "missing.ini"
         ));
         // Each archive's hash, in the load order.
         let hashed = install.hashed().unwrap();
@@ -462,11 +461,11 @@ mod tests {
         let changed = scratch.path("zh/c.BIG");
         assert!(matches!(
             install.read(&ArchivePath::of("c.ini")),
-            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged { archive })) if archive == changed
+            Err(ZeroHourError::ArchiveChanged { archive }) if archive == changed
         ));
         assert!(matches!(
             install.hashed(),
-            Err(ImportError::ZeroHour(ZeroHourError::ArchiveChanged { .. }))
+            Err(ZeroHourError::ArchiveChanged { .. })
         ));
         assert_eq!(install.read(&ArchivePath::of("data/A.ini")).unwrap(), b"A1");
         assert!(matches!(
@@ -496,7 +495,7 @@ mod tests {
             assert!(
                 matches!(
                     &error,
-                    ImportError::ZeroHour(ZeroHourError::Archive { archive, error })
+                    ZeroHourError::Archive { archive, error }
                         if *archive == scratch.path("zh/x.big") && *error == expected
                 ),
                 "{error:?}"

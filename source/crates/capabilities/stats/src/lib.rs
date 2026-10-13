@@ -30,6 +30,7 @@ mod grants;
 mod held_modifiers;
 mod held_pass;
 mod instance;
+mod interval;
 mod level;
 mod life;
 mod lifetime;
@@ -37,7 +38,6 @@ mod live_carriers;
 mod live_param;
 mod meter;
 mod modifier_book;
-mod modifier_clocks;
 mod modifier_data;
 mod modifier_ends;
 mod modifier_handle;
@@ -83,6 +83,7 @@ pub use crate::grants::{Grant, GrantChange, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
+pub use crate::interval::Interval;
 pub use crate::level::Level;
 pub use crate::life::Life;
 pub use crate::lifetime::{Ends, Hold, Lifetime};
@@ -90,7 +91,6 @@ pub use crate::live_carriers::LiveCarriers;
 pub use crate::live_param::{LiveParam, ParamOwner};
 pub use crate::meter::Meter;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
-pub use crate::modifier_clocks::{Clock, Interval, ModifierClocks, Spent};
 pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
 pub use crate::modifier_ends::ModifierEnds;
 pub use crate::modifier_handle::{HandleData, HandleOf, ModifierHandle};
@@ -99,6 +99,7 @@ pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
 };
 pub use crate::modifier_state_field::ModifierStateField;
+pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
 pub use crate::param_book::{ParamBook, ParamTables};
 pub use crate::param_source::ParamSource;
@@ -546,7 +547,6 @@ pub mod internals {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
-            ParamBook::share_in(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -561,7 +561,6 @@ pub mod internals {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
-            ParamBook::share_in(world);
         }
 
         /// The place of each of `stats` in the match's book, which a world that names no stat

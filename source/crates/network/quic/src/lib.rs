@@ -30,6 +30,7 @@ mod quic_endpoint;
 mod quic_link;
 mod quic_plugin;
 mod recv_batch;
+mod reply_error;
 mod reset_key;
 mod server_key;
 mod shared_endpoint;

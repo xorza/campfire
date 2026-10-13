@@ -138,7 +138,11 @@ impl AbilitiesFixtures for Abilities {
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
         let parts = (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]).timed(),
+            TimedSlots::new(ActionSlots::new([(
+                action,
+                SlotKind::new(0),
+                Rank::new(rank),
+            )])),
         );
         Mode::spawn_named(world, name, Position::ORIGIN, Team::new(0), parts)
     }

@@ -1,14 +1,16 @@
 use std::process::Child;
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use campfire_log::ErrorReport;
 use tracing::error;
 
 use crate::error::CheckError;
-use crate::lan_match::POLL;
 use crate::process::Process;
 use crate::process_outcome::ProcessOutcome;
+
+/// How often the check looks at the processes while it waits.
+pub(crate) const POLL: Duration = Duration::from_millis(50);
 
 /// The processes a run started, each with its role: whatever way the run ends, an error that
 /// returns early among them, each that still runs is stopped and waited for, so no process
@@ -132,7 +134,6 @@ fn kill(process: Process, child: &mut Child) -> Result<(), CheckError> {
 mod tests {
     use std::env;
     use std::process::{Command, Stdio};
-    use std::time::Duration;
 
     use super::*;
 

@@ -275,7 +275,7 @@ impl<'a> BookBuilder<'a> {
         built.add(SupplyCostBook::new(parts.supplies, &parts.actions));
         built.add(parts.actions);
         built.add(parts.effects);
-        built.add(SlotKindBook(data.slots.clone()));
+        built.add(SlotKindBook(Arc::new(data.slots.clone())));
         built.add(CombatBook {
             bindings,
             assist_window,

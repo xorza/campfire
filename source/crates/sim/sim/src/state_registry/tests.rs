@@ -11,6 +11,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use super::*;
 use crate::host_rule::{Either, OnAny};
+use crate::sim_world::SimWorld;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
 struct Health(Num);

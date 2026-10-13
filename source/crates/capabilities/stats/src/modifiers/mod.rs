@@ -15,9 +15,11 @@ use crate::application::{Application, NewInstance};
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::lifetime::{Ends, Hold};
 use crate::modifier_book::ModifierBook;
-use crate::modifier_clocks::ModifierClocks;
 use crate::modifier_data::Reapply;
+use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::param_book::ParamBook;
+
+pub(crate) mod modifier_clocks;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source,
 /// and what each adds to its stats: a change here derives the unit's stats again. Each
@@ -58,6 +60,12 @@ struct Starts {
 }
 
 impl Modifiers {
+    /// The modifier of each instance with a stack, in order.
+    pub fn stacked(&self) -> impl Iterator<Item = ModifierId> + Clone + '_ {
+        let stacked = self.instances.iter().filter(|instance| instance.stacks > 0);
+        stacked.map(|instance| instance.id)
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = Carried<'_>> + Clone {
         let mut starts = Starts::default();
         self.instances.iter().map(move |instance| {
@@ -606,8 +614,8 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
 
     use crate::application::Application;
-    use crate::modifier_clocks::ModifierClocks;
     use crate::modifiers::Modifiers;
+    use crate::modifiers::modifier_clocks::ModifierClocks;
 
     impl Modifiers {
         /// A unit's modifiers and their clocks, of `applications` applied in order.

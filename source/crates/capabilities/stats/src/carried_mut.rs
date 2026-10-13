@@ -8,7 +8,7 @@ use campfire_sim::StableId;
 
 use crate::application::Application;
 use crate::lifetime::Hold;
-use crate::modifier_clocks::ModifierClocks;
+use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::modifiers::{Modifiers, Touched};
 
 /// A unit's modifiers and their clocks, to change together: each component counts as changed
@@ -192,8 +192,8 @@ mod tests {
 
     use super::*;
     use crate::application::NewInstance;
+    use crate::interval::Interval;
     use crate::lifetime::{Ends, Lifetime};
-    use crate::modifier_clocks::Interval;
     use crate::modifier_data::Reapply;
 
     #[test]

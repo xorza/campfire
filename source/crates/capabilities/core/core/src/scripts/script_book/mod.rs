@@ -3,7 +3,6 @@ use campfire_script::ScriptId;
 use campfire_sim::Capability;
 
 use crate::declare::book::Book;
-use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_role::ScriptRole;
@@ -43,7 +42,7 @@ impl Book for ScriptBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(feature = "internals")]

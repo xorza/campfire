@@ -9,6 +9,7 @@ use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::interval::Interval;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
 
@@ -30,13 +31,6 @@ pub struct Clock {
     pub interval: Option<Interval>,
     pub shield: Option<Num>,
     state: u16,
-}
-
-/// A modifier's interval: every `every` ticks, the next in tick `next`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Interval {
-    pub every: Ticks,
-    pub next: Tick,
 }
 
 /// What a shield spent of an amount, and whether it is empty now.
@@ -242,8 +236,8 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::StableId;
 
-    use crate::modifier_clocks::{Clock, ModifierClocks};
     use crate::modifiers::Modifiers;
+    use crate::modifiers::modifier_clocks::{Clock, ModifierClocks};
 
     impl ModifierClocks {
         /// The shield of the instance of `id` from `source` of `modifiers`, if it carries one.

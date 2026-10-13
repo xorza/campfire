@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Book, Frame, ModifierId, ResourceAmount, ResourceId, View};
+use campfire_core::{ActionId, Book, ModifierId, ResourceAmount, ResourceId, View};
 use campfire_sim::Capability;
 use campfire_values::Names;
 
@@ -83,5 +83,5 @@ impl Book for ItemBook {
     const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

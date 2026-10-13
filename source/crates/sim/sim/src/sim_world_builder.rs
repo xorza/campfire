@@ -7,12 +7,12 @@ use bevy_ecs::schedule::{Schedule, Schedules};
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 
-use crate::entity_index::EntityIndex;
 use crate::id_allocator::IdAllocator;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
 use crate::sim_update::SimUpdate;
-use crate::state_changes::StateChanges;
+use crate::stable_id::entity_index::EntityIndex;
+use crate::stable_id::state_changes::StateChanges;
 use crate::state_registry::StateRegistry;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::tick_inputs::TickInputs;

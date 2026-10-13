@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
 use campfire_core::{
     ApiBuilder, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations, EngineTag, EntityKind,
-    Frame, KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
+    KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
 };
 use campfire_math::Num;
 use campfire_orders::Ai;
@@ -27,7 +27,7 @@ impl Book for StrayBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 /// Builds every book a module declares, empty, as a builder that built them all would.

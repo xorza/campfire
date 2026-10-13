@@ -9,7 +9,7 @@ use campfire_state_types::{DataKind, NotSent, Replication, Sending, SentOnChange
 use serde::{Deserialize, Serialize};
 
 use crate::match_mode::MatchMode;
-use crate::mode_data::ModeData;
+use crate::mode_schema::ModeSchema;
 
 /// The fields of the mode's script state whose `sync` is `S`'s, on the match's entity: a value
 /// for each such field its data declares, in the order of their names. Each class is a component
@@ -58,11 +58,10 @@ impl<S: ModeSync> ModeState<S> {
         self.values.as_mut_slice()
     }
 
-    /// The fields of the class `data` declares, each at its first value, in the order of their
-    /// names.
-    pub fn initial(data: &ModeData) -> ModeState<S> {
-        let fields = data.state.values().filter(|field| field.sync == S::SYNC);
-        ModeState::new(fields.map(|field| field.decl.initial().clone()).collect())
+    /// The fields of its class that `schema` declares, each at its first value, in the order of
+    /// their names.
+    pub(crate) fn initial(schema: &ModeSchema) -> ModeState<S> {
+        ModeState::new(schema.initial(S::SYNC).to_vec())
     }
 }
 

@@ -48,7 +48,7 @@ impl PackageStore {
 
     /// Adds the package in `dir`, by its fingerprint, or why it does not read.
     fn insert(&mut self, dir: &Path) {
-        let files = match PackageDir::new(dir).read() {
+        let files = match PackageFiles::read(&PackageDir::new(dir)) {
             Ok(files) => files,
             Err(error) => {
                 self.failures.push(StoreFailure {

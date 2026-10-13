@@ -1,8 +1,9 @@
+use std::any::{Any, TypeId};
 use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
-use campfire_values::{DamageKind, Names};
+use campfire_values::{DamageKind, NameId, Names};
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_names::ScriptNames;
@@ -36,6 +37,9 @@ pub struct ViewNames {
     pub resources: Arc<Names<ResourceId>>,
     /// The modifiers' names, each in its package.
     pub modifiers: Arc<Names<ModifierId>>,
+    /// The names of each kind of id a capability declares, by the id's type: its owner's book
+    /// puts its table in as it loads, and the id's script argument reads it there.
+    tables: Vec<(TypeId, Arc<dyn Any>)>,
 }
 
 impl ViewNames {
@@ -61,6 +65,24 @@ impl ViewNames {
     /// The teams' names; none before a mode sets them.
     pub const fn team_names(&self) -> &ScriptNames<Team> {
         &self.team_names
+    }
+
+    /// Puts in the names of the ids of type `I`, in place of those it held.
+    pub fn set_table<I: NameId + 'static>(&mut self, names: Arc<Names<I>>) {
+        let table: Arc<dyn Any> = names;
+        let kind = TypeId::of::<I>();
+        match self.tables.iter_mut().find(|(held, _)| *held == kind) {
+            Some((_, held)) => *held = table,
+            None => self.tables.push((kind, table)),
+        }
+    }
+
+    /// The names of the ids of type `I`; none before their owner's book loads.
+    pub fn table<I: NameId + 'static>(&self) -> Option<&Names<I>> {
+        let kind = TypeId::of::<I>();
+        let (_, table) = self.tables.iter().find(|(held, _)| *held == kind)?;
+        let names = table.downcast_ref::<Names<I>>();
+        Some(names.expect("a table holds the names of its kind"))
     }
 
     /// Sets the match's unit types and tags, as the load built them, and gives scripts their

@@ -6,8 +6,8 @@ use campfire_stats::{Grant, Grants, Hold, ModifierBook, ModifierParams, Modifier
 
 use crate::action_book::ActionBook;
 use crate::action_slots::ActionSlots;
+use crate::action_slots::slot_times::{SlotCharges, SlotTimes};
 use crate::ready_waits::ReadyWaits;
-use crate::slot_times::{SlotCharges, SlotTimes};
 
 /// The holds of every action: its charges as each tick starts, and the grants of its passives
 /// then and as each stage that changes ranks or cooldowns ends.

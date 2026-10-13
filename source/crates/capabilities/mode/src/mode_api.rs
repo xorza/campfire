@@ -461,12 +461,11 @@ impl ModeApi {
         }
         let mut frame = ctx.write()?;
         let call = ModeCall::of_mut(&mut frame);
-        let taken = |&offer| book.choices.taken(&call.choices, slot, choice, offer);
+        let taken = |&offer| call.choices.taken(&book.choices, slot, choice, offer);
         if choice.unique && offers.iter().any(taken) {
             return Err(ApiError::ChoiceTaken.fail().into());
         }
-        book.choices
-            .choose(&mut call.choices, slot, choice, &offers);
+        call.choices.choose(&book.choices, slot, choice, &offers);
         Ok(())
     }
 
@@ -476,9 +475,9 @@ impl ModeApi {
         let slot = book.teams.player(player)?;
         let choice = book.choices.get(choice);
         let frame = ctx.frame();
-        let Some(values) = book
+        let Some(values) = ModeCall::of(&frame)
             .choices
-            .chosen(&ModeCall::of(&frame).choices, slot, choice)
+            .chosen(&book.choices, slot, choice)
         else {
             return Ok(ScriptList::default());
         };
@@ -508,9 +507,9 @@ impl ModeApi {
             .roster
             .offer(choice.offers, value)
             .ok_or_else(|| ApiError::UnknownChoiceValue.fail())?;
-        let taken = book
+        let taken = ModeCall::of(&ctx.frame())
             .choices
-            .taken(&ModeCall::of(&ctx.frame()).choices, slot, choice, offer);
+            .taken(&book.choices, slot, choice, offer);
         Ok(!(choice.unique && taken))
     }
 

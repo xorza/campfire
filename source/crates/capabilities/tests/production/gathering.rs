@@ -78,7 +78,7 @@ impl Mine {
     ) -> StableId {
         let pos = pos.into();
         let gather = self.gather;
-        let slots = ActionSlots::new([(gather, SlotKind::new(0), rank)]).timed();
+        let slots = TimedSlots::new(ActionSlots::new([(gather, SlotKind::new(0), rank)]));
         let parts = (Owner::new(PlayerSlot::new(owner)), slots);
         Mode::spawn(game, self.worker, pos, Team::new(0), parts)
     }

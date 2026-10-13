@@ -115,7 +115,7 @@ impl Effect for CombatEffect {
                 let unit = world.entity(unit);
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
-                    let slot = slots.slot(book.weapon_for(slots, None)?)?;
+                    let slot = slots.slot(slots.weapon_in(book, None)?)?;
                     let weapon = book.get(slot.action?)?.kind.weapon()?;
                     Some((slot, slot.rank?, weapon))
                 });

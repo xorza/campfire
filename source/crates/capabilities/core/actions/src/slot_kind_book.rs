@@ -1,20 +1,22 @@
+use std::sync::Arc;
+
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, Frame, View};
+use campfire_core::{Book, View};
 use campfire_sim::Capability;
 
-use crate::actions_column::ActionsColumn;
 use crate::slot_kinds::SlotKinds;
 
 /// The mode's kinds of slot, which the `learn` order reads; none before a mode declares them.
-/// Package data, not state.
+/// Package data, not state. A clone shares the kinds, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
-pub struct SlotKindBook(pub SlotKinds);
+pub struct SlotKindBook(pub Arc<SlotKinds>);
 
 impl Book for SlotKindBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        ActionsColumn::share_kinds(view, self.0.clone());
+    /// Names the kinds to scripts; the actions column takes the book from the match at each read.
+    fn share(&self, view: &View) {
+        view.names_mut().set_table(Arc::clone(self.0.names()));
     }
 }

@@ -129,7 +129,7 @@ impl Yard {
     ) -> StableId {
         let pos = pos.into();
         let build = self.build;
-        let slots = ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]).timed();
+        let slots = TimedSlots::new(ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]));
         let parts = (Owner::new(PlayerSlot::new(owner)), slots);
         Mode::spawn(game, self.builder, pos, team, parts)
     }

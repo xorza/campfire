@@ -10,10 +10,8 @@ use campfire_core::{
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
-use campfire_stats::{
-    CarriedMut, ModifierBook, ModifierData, Modifiers, StatId, Stats, StatsColumn,
-};
-use campfire_values::{RelationSet, Stat};
+use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, PoolId, StatId, Stats};
+use campfire_values::{Names, RelationSet, Stat};
 
 use crate::release::Release;
 
@@ -95,9 +93,11 @@ impl UnitsFixtures for Units {
         let unit = world.entity(entity);
         let unit_type = *unit.get::<UnitType>().unwrap();
         let status = unit.get::<StatusTags>().copied();
-        let granted = world
-            .resource::<ModifierBook>()
-            .granted(unit.get::<Modifiers>(), status);
+        let stacked = unit
+            .get::<Modifiers>()
+            .into_iter()
+            .flat_map(Modifiers::stacked);
+        let granted = world.resource::<ModifierBook>().granted(stacked, status);
         let tags = world.resource::<TagBook>().unit_tags(unit_type, granted);
         world.insert_parts(id, tags);
     }
@@ -133,7 +133,8 @@ impl UnitsFixtures for Units {
         let resources = Arc::new(resources.iter().copied().collect());
         let kinds = Arc::new(damage_kinds.iter().copied().collect());
         view.names_mut().set_mode_names(kinds, resources);
-        StatsColumn::share_pool_names(view, Arc::new(pools.iter().copied().collect()));
+        let pools: Names<PoolId> = pools.iter().copied().collect();
+        view.names_mut().set_table(Arc::new(pools));
     }
 }
 
@@ -150,13 +151,15 @@ pub trait ViewFixtures {
 
 impl ViewFixtures for View {
     fn stat_index(&self, stat: &Stat) -> Option<StatId> {
-        self.column(|column: &StatsColumn| column.stat_index(stat))
-            .flatten()
+        let names = self.names();
+        names.table::<StatId>()?.named(stat.name())
     }
 
     fn cost_target(&self, name: &str) -> Option<CostTarget> {
-        let pools = self.column(|column: &StatsColumn| column.pool_names().clone());
-        CostTarget::named(&pools.unwrap_or_default(), &self.names().resources, name)
+        let empty = Names::default();
+        let names = self.names();
+        let pools = names.table::<PoolId>().unwrap_or(&empty);
+        CostTarget::named(pools, &names.resources, name)
     }
 }
 

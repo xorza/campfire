@@ -2,8 +2,7 @@ use std::rc::Rc;
 
 use campfire_actions::ActionSlots;
 use campfire_core::{
-    ApiError, BodyForm, ByType, Checked, Ctx, Relations, ScriptBook, SyncAll, SyncNone, Team,
-    Teams, UnitType,
+    ApiError, BodyForm, ByType, Checked, Ctx, Relations, ScriptBook, Team, Teams, UnitType,
 };
 use campfire_values::Names;
 
@@ -11,7 +10,6 @@ use crate::choice_specs::ChoiceSpecs;
 use crate::game_map::GameMap;
 use crate::mode_schema::ModeSchema;
 use crate::mode_setup::ModeSetup;
-use crate::mode_state::ModeState;
 use crate::placed_unit::PlacedUnit;
 use crate::roster::Roster;
 use crate::unit_type_setup::UnitTypeSetup;
@@ -32,8 +30,6 @@ pub struct ModeSpec {
     pub(crate) placed: Vec<PlacedUnit>,
     /// How the teams regard each other as the match starts, and the mode's state, each class.
     pub relations: Relations,
-    pub(crate) state_none: ModeState<SyncNone>,
-    pub(crate) state_all: ModeState<SyncAll>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
 }
@@ -110,8 +106,6 @@ impl ModeSpec {
             types,
             placed,
             relations,
-            state_none: ModeState::initial(setup.data),
-            state_all: ModeState::initial(setup.data),
             map,
         }
     }

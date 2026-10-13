@@ -22,8 +22,8 @@ use crate::error::limit::Limit;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
+use crate::error::way::Way;
 use crate::files::package_name::PackageName;
-use crate::modifier_ways::Way;
 
 /// A problem that fails a package's load, as design 08's checks find them.
 #[derive(Debug, Error)]

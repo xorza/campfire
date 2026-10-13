@@ -11,12 +11,12 @@ use campfire_math::{Num, Vec3};
 use criterion::{BatchSize, Criterion, Throughput};
 use serde::{Deserialize, Serialize};
 
-use crate::entity_index::EntityIndex;
 use crate::host_rule::OnAny;
 use crate::id_allocator::IdAllocator;
 use crate::sim_state::SimComponent;
 use crate::sim_update::SimUpdate;
 use crate::stable_id::StableId;
+use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::StateRegistry;
 use crate::state_registry::state_delta::StateDelta;
 use crate::tick_rate::TickRate;

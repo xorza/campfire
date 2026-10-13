@@ -4,8 +4,8 @@ use campfire_core::Dead;
 use campfire_sim::SimTick;
 
 use crate::carried_mut::CarriedMut;
-use crate::modifier_clocks::ModifierClocks;
 use crate::modifiers::Modifiers;
+use crate::modifiers::modifier_clocks::ModifierClocks;
 
 /// The ends of modifiers: those that hold no longer, and those of the units that died.
 #[derive(Debug)]

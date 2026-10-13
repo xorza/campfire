@@ -115,7 +115,8 @@ impl Refresh {
             else {
                 continue;
             };
-            let granted = modifier_book.granted(modifiers, status.copied());
+            let stacked = modifiers.into_iter().flat_map(Modifiers::stacked);
+            let granted = modifier_book.granted(stacked, status.copied());
             let derived = tag_book.unit_tags(unit_type, granted);
             if let Some(mut tags) = tags {
                 tags.set_if_neq(derived);

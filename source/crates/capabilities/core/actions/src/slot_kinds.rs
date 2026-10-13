@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use campfire_stats::Level;
 use campfire_values::{DeclaredName, Names, Rank};
@@ -12,7 +13,7 @@ use crate::slot_kind_data::{SlotKindData, SlotRanks};
 #[serde(from = "Vec<SlotKindData>")]
 pub struct SlotKinds {
     kinds: Vec<SlotKindData>,
-    names: Names<SlotKind>,
+    names: Arc<Names<SlotKind>>,
 }
 
 /// The kinds of `kinds`, in order, each named by its id. A list that names a kind twice, or holds
@@ -24,7 +25,7 @@ impl FromIterator<SlotKindData> for SlotKinds {
         let names = Names::all_of(kinds.iter().map(|kind| kind.name.as_str()));
         SlotKinds {
             kinds,
-            names: names.unwrap_or_default(),
+            names: Arc::new(names.unwrap_or_default()),
         }
     }
 }
@@ -49,7 +50,7 @@ impl SlotKinds {
     }
 
     /// The kinds' names.
-    pub const fn names(&self) -> &Names<SlotKind> {
+    pub const fn names(&self) -> &Arc<Names<SlotKind>> {
         &self.names
     }
 

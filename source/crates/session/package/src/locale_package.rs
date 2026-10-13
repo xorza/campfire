@@ -10,9 +10,8 @@ use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use crate::package_dir::PackageDir;
+use crate::package_dir::{LOCALE, PackageDir};
 use crate::package_files::PackageFiles;
-use crate::package_text::LOCALE;
 
 /// A locale package: its name, and its translations of the packages it depends on, by each
 /// package's name, then by language.

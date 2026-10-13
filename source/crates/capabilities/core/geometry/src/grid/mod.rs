@@ -6,6 +6,7 @@ use campfire_sim::Position;
 use crate::body_box::BodyBox;
 use crate::bounds::Bounds;
 use crate::halves::Halves;
+use crate::polygon::Polygon;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -166,6 +167,29 @@ impl Grid {
             body.closer_twice(reach),
             &mut mark,
         );
+    }
+
+    /// Calls `mark` with each of its cells whose center `polygon` holds, in order; the polygon lies
+    /// within the grid's bounds.
+    pub fn polygon_cells(&self, polygon: &Polygon, mut mark: impl FnMut(usize)) {
+        let points = polygon.points();
+        let first = points[0];
+        let (low, high) = points.iter().fold((first, first), |(low, high), point| {
+            (
+                [0, 1].map(|axis| low[axis].min(point[axis])),
+                [0, 1].map(|axis| high[axis].max(point[axis])),
+            )
+        });
+        let columns = self.index(0, low[0])..=self.index(0, high[0]);
+        let rows = self.index(1, low[1])..=self.index(1, high[1]);
+        for row in rows {
+            for column in columns.clone() {
+                let cell = row * self.columns() + column;
+                if polygon.holds(self.center_twice(cell)) {
+                    mark(cell);
+                }
+            }
+        }
     }
 
     /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point

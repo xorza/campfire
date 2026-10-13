@@ -22,16 +22,26 @@ pub struct PackageFiles {
 }
 
 impl PackageFiles {
-    /// The package in `dir` of `index`, and `files`, the ones a load reads.
-    pub(crate) const fn new(
-        files: BTreeMap<PackagePath, Vec<u8>>,
-        index: FileIndex,
-        dir: PackageDir,
-    ) -> PackageFiles {
-        PackageFiles {
-            files,
-            reader: PackageReader::new(index, dir),
+    /// The package's index, and the files a load reads, the manifest's and those under `data/`,
+    /// `scripts/` and `locale/`, each read once into memory and checked against its row. Any
+    /// other file, as a session's map, reads on demand; no file the index does not list reads.
+    /// The open checks that every file the index lists is on disk by its exact name, each
+    /// directory listed once, and fails on the first that is not: a file system that ignores
+    /// case, as macOS's and Windows' do by default, would open a name that differs only in case,
+    /// which Linux holds as missing, so one package would load on one OS and fail on another.
+    /// Nothing changes an open package, so a read after the open takes the path as it is.
+    pub fn read(dir: &PackageDir) -> Result<PackageFiles, ContentError> {
+        let index = dir.checked_index()?;
+        let mut files = BTreeMap::new();
+        for (path, row) in index.rows() {
+            if PackageDir::reads(path) {
+                files.insert(path.clone(), dir.read_row(path, row)?);
+            }
         }
+        Ok(PackageFiles {
+            files,
+            reader: PackageReader::new(index, dir.clone()),
+        })
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {

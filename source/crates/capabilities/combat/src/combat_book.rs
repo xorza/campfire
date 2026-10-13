@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
-use campfire_core::{Book, Frame, View};
+use campfire_core::{Book, View};
 use campfire_sim::Capability;
 
 use crate::combat_bindings::CombatBindings;
@@ -18,5 +18,5 @@ impl Book for CombatBook {
     const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

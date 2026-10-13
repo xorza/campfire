@@ -6,9 +6,9 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::approach::Approach;
+use crate::body_bound::MAX_BOUND;
 use crate::fraction::Fraction;
 use crate::polygon::Polygon;
-use crate::shape::Shape;
 use crate::squared_distance::SquaredDistance;
 
 #[cfg(feature = "internals")]
@@ -85,7 +85,7 @@ impl BodyBox {
     /// The least size: 2⁻¹⁰ m, about a millimeter, many bits above the rounding of a half
     /// edge, so the rounded box never lies flat at any angle.
     pub(crate) const MIN_SIZE: Num = Num::from_bits(1 << (Num::FRAC_BITS - 10));
-    /// The longest diagonal, unrounded: 4,094 m, so the corners stay within `Shape::MAX_BOUND` of
+    /// The longest diagonal, unrounded: 4,094 m, so the corners stay within `MAX_BOUND` of
     /// the position whatever the rounding.
     pub(crate) const MAX_DIAGONAL: Num = Num::int(4094);
 
@@ -121,12 +121,11 @@ impl BodyBox {
     }
 
     /// The box of the half edges `half`; `None` for one that lies flat or turns clockwise, or
-    /// whose corners reach past `Shape::MAX_BOUND`.
+    /// whose corners reach past `MAX_BOUND`.
     fn of_halves(half: [[Num; 2]; 2]) -> Option<BodyBox> {
         // A component past the reach makes a corner past it; refused first, the products below
         // stay within i128 whatever an untrusted snapshot holds.
-        let within =
-            |num: &Num| num.to_bits().unsigned_abs() <= Shape::MAX_BOUND.to_bits().unsigned_abs();
+        let within = |num: &Num| num.to_bits().unsigned_abs() <= MAX_BOUND.to_bits().unsigned_abs();
         if !half.iter().flatten().all(within) {
             return None;
         }
@@ -139,7 +138,7 @@ impl BodyBox {
         let [a, b] = frame.halves;
         let farthest = (a + b).length_squared().max((a - b).length_squared());
         let bound = Num::from_bits(i64::try_from(farthest.ceil_root()).ok()?);
-        (bound <= Shape::MAX_BOUND).then_some(BodyBox { half, bound })
+        (bound <= MAX_BOUND).then_some(BodyBox { half, bound })
     }
 
     /// The sine and the cosine of `angle` degrees, exact at each multiple of 90°.
@@ -828,11 +827,11 @@ fn first_estimate(along: i128, reach: i128, divisor: u128) -> i128 {
 /// root of `square` in place of its root: the root rounds down, so the first `k` is at most the
 /// least, and short of it by `along · radius · 2⁻ᶠ ÷ square ≤ radius · 2⁻ᶠ ÷ √square` before the
 /// rounding up, where `f` is the root's bits of fraction, as many as 128 bits leave beside
-/// `square`, so `2ᶠ · √square ≥ 2⁶²·⁵`: below 2⁻²⁷ for a radius within `Shape::MAX_BOUND`, so that
+/// `square`, so `2ᶠ · √square ≥ 2⁶²·⁵`: below 2⁻²⁷ for a radius within `MAX_BOUND`, so that
 /// quotient's ceiling is the least or one below it; `first_estimate` takes it by floats, which
 /// may give one below that, so the first `k` is the least, or one or two below it.
 ///
-/// A box's corners and a body's radius lie within `Shape::MAX_BOUND`, 2³⁵ bits, of their centres:
+/// A box's corners and a body's radius lie within `MAX_BOUND`, 2³⁵ bits, of their centres:
 /// `normal` is an edge, below its diagonal's 4,094 m, 2³⁶ bits, or the way off a corner, within
 /// the radius, so `along ≤ √square < 2³⁶`; `off` lies within the box, its diagonal from the
 /// edge's corner, or within the radius of the edge, so `|out| < √square · 2³⁶`; so

@@ -1,8 +1,8 @@
 use bevy_ecs::change_detection::Tick as ChangeTick;
 use bevy_ecs::resource::Resource;
 
-use crate::entity_index::EntityIndex;
 use crate::stable_id::StableId;
+use crate::stable_id::entity_index::EntityIndex;
 
 /// What a match world records for the copies of its state, from `StateRegistry::track` on: the
 /// world's change tick at the last copy, the stable ids it gained and lost, and the ids whose
@@ -114,7 +114,7 @@ impl StateChanges {
 pub(crate) mod internals {
     use bevy_ecs::change_detection::Tick as ChangeTick;
 
-    use crate::state_changes::StateChanges;
+    use crate::stable_id::state_changes::StateChanges;
 
     impl StateChanges {
         /// Sets the last copy's tick, as a world that copied it long ago would hold it.

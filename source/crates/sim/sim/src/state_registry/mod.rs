@@ -14,16 +14,15 @@ use campfire_common::{Bytes32, StateHash};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::entity_index::EntityIndex;
 use crate::host_rule::HostRule;
 use crate::id_allocator::IdAllocator;
 use crate::position::Position;
 use crate::restoring::Restoring;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
-use crate::sim_world::SimWorld;
 use crate::stable_id::StableId;
-use crate::state_changes::{Removal, StateChanges};
+use crate::stable_id::entity_index::EntityIndex;
+use crate::stable_id::state_changes::{Removal, StateChanges};
 use crate::state_registry::breach::Breach;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::state_registry::error::SnapshotError;
@@ -496,7 +495,8 @@ impl StateRegistry {
         );
         for &id in &delta.lost {
             let entity = world
-                .entity_of(id)
+                .resource::<EntityIndex>()
+                .get(id)
                 .expect("a copy holds each id its world lost");
             world.despawn(entity);
         }
@@ -648,7 +648,10 @@ fn decode_component<C: SimComponent>(
         if previous.is_some_and(|previous| previous >= id) {
             return Err(SnapshotError::NotCanonical);
         }
-        let entity = world.entity_of(id).ok_or(SnapshotError::UnknownEntity)?;
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(id)
+            .ok_or(SnapshotError::UnknownEntity)?;
         world.entity_mut(entity).insert(component);
         previous = Some(id);
         body = rest;
@@ -708,7 +711,8 @@ fn apply_component<C: SimComponent>(world: &mut World, mut body: &[u8], pass: Pa
         } = take::<(StableId, Option<C>)>(body).expect("a delta decodes");
         body = rest;
         let entity = world
-            .entity_of(id)
+            .resource::<EntityIndex>()
+            .get(id)
             .expect("a copy holds each id a delta names");
         match (pass, value) {
             // An insert over a held value puts back each component it requires that is gone,

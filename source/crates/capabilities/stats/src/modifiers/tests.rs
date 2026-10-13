@@ -6,8 +6,8 @@ use campfire_core::StateValue;
 use campfire_sim::IdAllocator;
 
 use super::*;
+use crate::interval::Interval;
 use crate::lifetime::Lifetime;
-use crate::modifier_clocks::Interval;
 /// An application of modifier `id` from `source`, reapplied as `reapply`, up to
 /// `max_stacks`, adding `armor` a stack, holding until tick `until`, and with `stack` =
 /// `(now, life)`, its stack applied in tick `now` for `life` ticks.

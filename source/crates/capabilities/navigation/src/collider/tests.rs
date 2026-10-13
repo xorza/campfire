@@ -138,7 +138,7 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
 fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
     // Offsets in bits from the first body to the second, with their radii in meters. The
     // squared lengths 2, 74, 2⁴⁹ + 2²⁵ + 1 and 2⁷⁰ + 24 690·2³⁵ + 12 345² + 2⁶⁸ are not
-    // squares; 81, 25·2⁴⁰ and 1 are. The last four pairs stand at `Shape::MAX_BOUND`, 2,048 m,
+    // squares; 81, 25·2⁴⁰ and 1 are. The last four pairs stand at `MAX_BOUND`, 2,048 m,
     // where the product of an offset and the reach squares past `u128`.
     let cases: [([i64; 2], [i64; 2]); 8] = [
         ([1, 1], [1, 1]),

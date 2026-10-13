@@ -1,6 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::error::ImportError;
 use crate::zero_hour::error::{VersionDifference, ZeroHourError};
 use crate::zero_hour::install::HashedArchive;
 
@@ -204,7 +203,7 @@ impl GameVersion {
     pub(crate) fn identify<'a>(
         found: &[HashedArchive],
         known: &'a [GameVersion],
-    ) -> Result<&'a GameVersion, ImportError> {
+    ) -> Result<&'a GameVersion, ZeroHourError> {
         let found: BTreeMap<String, [u8; 32]> = found
             .iter()
             .map(|archive| (archive.name.to_ascii_lowercase(), archive.sha256))
@@ -222,10 +221,10 @@ impl GameVersion {
             archive,
             difference,
         } = first.expect("the importer knows a version");
-        Err(ImportError::ZeroHour(ZeroHourError::UnknownVersion {
+        Err(ZeroHourError::UnknownVersion {
             archive,
             difference,
-        }))
+        })
     }
 
     /// The first archive, in the order of paths ignoring case, where `found` differs from this
@@ -311,7 +310,7 @@ mod tests {
             assert!(
                 matches!(
                     identify(archives),
-                    Err(ImportError::ZeroHour(ZeroHourError::UnknownVersion { archive: at, difference: how }))
+                    Err(ZeroHourError::UnknownVersion { archive: at, difference: how })
                         if at == archive && how == difference
                 ),
                 "{archives:?}"

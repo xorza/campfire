@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::approach::Approach;
 use crate::body_box::BodyBox;
-use crate::metric::Metric;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -21,11 +20,6 @@ pub enum Shape {
 
 impl Shape {
     pub const POINT: Shape = Shape::Circle(Num::ZERO);
-
-    /// The widest a body's bound may be, a circle's radius or the farthest corner of a box, 2³⁵
-    /// bits: the power of two past Zero Hour's widest object, and small enough that two bodies'
-    /// bounds and a range add up within a `Num`.
-    pub const MAX_BOUND: Num = Num::int(2048);
 
     /// The radius of the least circle round the position that holds it.
     pub const fn bound(&self) -> Num {
@@ -86,33 +80,12 @@ impl Shape {
             return false;
         }
         match self {
-            Shape::Circle(_) => {
-                self.approach(Metric::Planar, pos, from, to, reach).nearest == Ordering::Less
+            Shape::Circle(radius) => {
+                let path = from.ground_offset(to);
+                let approach = Approach::of_circle(path, from.ground_offset(pos), reach, *radius);
+                approach.nearest == Ordering::Less
             }
             Shape::Box(body) => body.comes_within(pos, from, to, reach),
-        }
-    }
-
-    /// How the straight path from `from` to `to` comes to the shape at `pos` in `metric`, against
-    /// `reach`: to a circle's centre against `reach` and its radius, a sum past every number
-    /// reaching every distance, as `Metric::reaches` counts it; to a box against `reach`.
-    pub(crate) fn approach(
-        self,
-        metric: Metric,
-        pos: Position,
-        from: Position,
-        to: Position,
-        reach: Num,
-    ) -> Approach {
-        match self {
-            Shape::Circle(radius) => {
-                let reach = reach.checked_add(radius).unwrap_or(Num::MAX);
-                Approach::of(metric.offset(from, to), metric.offset(from, pos), reach)
-            }
-            Shape::Box(body) => {
-                debug_assert!(metric == Metric::Planar, "a box lies on a planar map");
-                body.approach(pos, from, to, reach)
-            }
         }
     }
 }

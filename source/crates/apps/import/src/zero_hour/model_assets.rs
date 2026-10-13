@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use crate::error::ImportError;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::install::Install;
@@ -26,17 +25,15 @@ impl<'a> ModelAssets<'a> {
     }
 
     /// The W3D file `<stem>.w3d`, if the install holds one.
-    pub(crate) fn file(&mut self, stem: &str) -> Result<Option<&W3dFile>, ImportError> {
+    pub(crate) fn file(&mut self, stem: &str) -> Result<Option<&W3dFile>, ZeroHourError> {
         let stem = stem.to_ascii_lowercase();
         if !self.files.contains_key(&stem) {
             let read = match self.find("w3d", &format!("{stem}.w3d")) {
                 Some(path) => {
                     let bytes = self.install.read(&path)?;
-                    let file = W3dFile::read(&bytes).map_err(|error| {
-                        ImportError::ZeroHour(ZeroHourError::W3d {
-                            path: path.to_string(),
-                            error,
-                        })
+                    let file = W3dFile::read(&bytes).map_err(|error| ZeroHourError::W3d {
+                        path: path.to_string(),
+                        error,
                     })?;
                     Some(file)
                 }

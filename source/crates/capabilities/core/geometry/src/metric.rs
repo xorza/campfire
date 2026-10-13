@@ -4,6 +4,7 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
+use crate::approach::Approach;
 use crate::body_box::BodyBox;
 use crate::fraction::Fraction;
 use crate::shape::Shape;
@@ -87,6 +88,27 @@ impl Metric {
         }
     }
 
+    /// How the straight path from `from` to `to` comes to the body `shape` at `pos`, against
+    /// `reach`, as `reaches` counts it.
+    pub(crate) fn approach(
+        self,
+        shape: Shape,
+        pos: Position,
+        from: Position,
+        to: Position,
+        reach: Num,
+    ) -> Approach {
+        match shape {
+            Shape::Circle(radius) => {
+                Approach::of_circle(self.offset(from, to), self.offset(from, pos), reach, radius)
+            }
+            Shape::Box(body) => {
+                debug_assert!(self == Metric::Planar, "a box lies on a planar map");
+                body.approach(pos, from, to, reach)
+            }
+        }
+    }
+
     /// Whether the straight path from `from` to `to` comes within `reach` of the body `shape` at
     /// `pos`, decided exactly and without a square root; and if it does, the share of the path at
     /// its point nearest the body, the first where it enters a box.
@@ -98,7 +120,7 @@ impl Metric {
         shape: Shape,
         reach: Num,
     ) -> Option<Fraction> {
-        let approach = shape.approach(self, pos, from, to, reach);
+        let approach = self.approach(shape, pos, from, to, reach);
         (approach.nearest != Ordering::Greater).then_some(approach.share)
     }
 }

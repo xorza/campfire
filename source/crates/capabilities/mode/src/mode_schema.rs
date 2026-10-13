@@ -23,6 +23,9 @@ pub(crate) struct ModeSchema {
     /// and its place among the class's.
     places: Vec<StatePlace>,
     inputs: NameTable<InputType>,
+    /// The first value of each state field, of class `none` then of class `all`, each in the
+    /// order of their names.
+    initial: [Vec<StateValue>; 2],
 }
 
 /// A field of the mode's state: its place in `ModeState`, and its type.
@@ -42,6 +45,7 @@ impl ModeSchema {
             state: NameTable::default(),
             places: Vec::with_capacity(data.state.len()),
             inputs: NameTable::default(),
+            initial: [Vec::new(), Vec::new()],
         };
         let params = data.params.iter();
         schema
@@ -59,6 +63,7 @@ impl ModeSchema {
                 at: counts[class],
             });
             counts[class] += 1;
+            schema.initial[class].push(field.decl.initial().clone());
         }
         let inputs = data.inputs.iter();
         schema
@@ -127,6 +132,15 @@ impl ModeSchema {
             };
             class.push(value.clone());
         }
+    }
+
+    /// The first value of each state field of class `sync`, in the order of their names.
+    pub(crate) fn initial(&self, sync: SyncTo) -> &[StateValue] {
+        debug_assert!(
+            matches!(sync, SyncTo::None | SyncTo::All),
+            "a mode field syncs to no one or to all"
+        );
+        &self.initial[usize::from(sync == SyncTo::All)]
     }
 
     /// The input type `name`.

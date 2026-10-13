@@ -2,12 +2,10 @@
 //! same bytes on every machine for one install and one importer release. Zero Hour's is the first,
 //! as design 12 says.
 
-mod error;
 mod gltf;
 mod texture;
 mod zero_hour;
 
-pub use crate::error::ImportError;
 pub use crate::texture::error::TextureError;
 pub use crate::zero_hour::error::{
     ArchiveError, Chunk, IniError, MapError, ModelError, Packing, RefPackError, VersionDifference,

@@ -8,7 +8,6 @@
 
 mod capability;
 mod command;
-mod entity_index;
 mod host_rule;
 mod id_allocator;
 mod ordered;
@@ -22,7 +21,6 @@ mod sim_world;
 mod sim_world_builder;
 mod slot_event;
 mod stable_id;
-mod state_changes;
 mod state_copy;
 mod state_registry;
 mod tick_clock;
@@ -32,7 +30,6 @@ mod unpredicted;
 
 pub use crate::capability::Capability;
 pub use crate::command::Command;
-pub use crate::entity_index::EntityIndex;
 pub use crate::host_rule::{Either, HostRule, KindMarker, OnAny};
 pub use crate::id_allocator::IdAllocator;
 pub use crate::ordered::{Keyed, Ordered};
@@ -48,6 +45,7 @@ pub use crate::sim_world::SimWorld;
 pub use crate::sim_world_builder::{SimParts, SimWorldBuilder};
 pub use crate::slot_event::{SlotEvent, SlotEventKind};
 pub use crate::stable_id::StableId;
+pub use crate::stable_id::entity_index::EntityIndex;
 pub use crate::state_copy::StateCopy;
 pub use crate::state_registry::breach::Breach;
 pub use crate::state_registry::error::SnapshotError;

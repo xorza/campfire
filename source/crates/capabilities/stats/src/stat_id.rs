@@ -2,8 +2,6 @@ use campfire_core::{NameKind, name_script_arg};
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
-use crate::stats_column::StatsColumn;
-
 /// A stat, by its place among the stats the mode declares, in the order of their names: what a
 /// unit's stat values are kept by. One list, the stat book's, gives every id.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -35,8 +33,5 @@ impl NameId for StatId {
 }
 
 name_script_arg!(StatId, NameKind::Stat, |ctx, name| {
-    let stats = ctx
-        .view()
-        .column(|column: &StatsColumn| column.stat_names().named(name));
-    stats.flatten()
+    ctx.view().names().table::<StatId>()?.named(name)
 });

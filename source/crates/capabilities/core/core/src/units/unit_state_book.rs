@@ -5,7 +5,6 @@ use campfire_sim::Capability;
 use campfire_values::NameTable;
 
 use crate::declare::book::Book;
-use crate::scripts::frame::Frame;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_value::StateValue;
@@ -101,7 +100,7 @@ impl Book for UnitStateBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
+    fn share(&self, view: &View) {
         UnitsColumn::share(view, self.clone());
     }
 }

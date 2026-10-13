@@ -18,7 +18,7 @@ use campfire_core::{
     Body, BodyUnit, ByType, Declarations, InstallCx, Module, ModuleSet, MoveStep, Phase, SetPlace,
     SpawnHooks,
 };
-use campfire_geometry::{Grid, Shape};
+use campfire_geometry::{Grid, MAX_BOUND};
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
 
@@ -166,7 +166,7 @@ impl Module for Navigation {
     /// unit that walks stands within the bounds again.
     fn install(cx: &mut InstallCx<'_>) {
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(BodyIndex::new(Shape::MAX_BOUND));
+        world.insert_resource(BodyIndex::new(MAX_BOUND));
         StaticsDirty::install(world);
         let run = world.register_system(StaticTracking::track_static_bodies);
         world.insert_resource(StaticTrackingRun(run));

@@ -2,27 +2,9 @@ use campfire_core::{Hook, UnknownName};
 use campfire_values::{DeclaredName, TimeTooLarge};
 use thiserror::Error;
 
+use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_data_field::ActionDataField;
 use crate::action_kind::ActionKind;
-
-/// A capability field of an action that the release runs, which does not give a value of its
-/// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
-/// meters that is not negative, and never through a scaling param.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ActionField {
-    Range,
-    Cooldown,
-    Cost,
-    Windup,
-    /// Its charges: a count of 1 to 255, and a recharge of whole milliseconds.
-    Charges,
-    /// Its toggle's cost: whole amounts of the caster's pools.
-    Toggle,
-    /// Its channel: a length and a time between ticks of whole milliseconds, neither 0.
-    Channel,
-    /// Its charge's most: whole milliseconds, not 0.
-    Charge,
-}
 
 /// Why an action's data makes no action of a match: a rule of design 08's checks that its data
 /// breaks, which the action's book holds as it builds. Packages are untrusted, so each is an
@@ -63,21 +45,6 @@ pub enum ActionProblem {
     /// A number or a duration of an effect of its list `list` breaks `rule`.
     #[error("its {list:?} list: {rule}")]
     Effect { list: Hook, rule: EffectRule },
-}
-
-/// A rule a number of a listed effect breaks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum EffectRule {
-    /// A value, at some rank, past what a sim number holds.
-    #[error("a number past what a sim number holds")]
-    Overflow,
-    /// A value, at some rank, below 0.
-    #[error("a number below 0")]
-    Negative,
-    /// A duration that is no whole number of milliseconds within a `u32` at every rank, or that
-    /// reads a scaling param.
-    #[error("a duration of no whole milliseconds")]
-    Duration,
 }
 
 /// Why an action's data does not load into a match: a rule it breaks, or a name the match does

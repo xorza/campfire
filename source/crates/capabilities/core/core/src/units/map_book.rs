@@ -3,7 +3,6 @@ use campfire_geometry::{Bounds, Metric};
 use campfire_sim::Capability;
 
 use crate::declare::book::Book;
-use crate::scripts::frame::Frame;
 use crate::units::view::View;
 
 /// The map's measure of distance and its bounds; the world's bounds before a map names its own.
@@ -27,5 +26,5 @@ impl Book for MapBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

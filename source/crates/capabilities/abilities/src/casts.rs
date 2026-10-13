@@ -5,8 +5,8 @@ use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
-    ActionBook, ActionCall, ActionKind, ActionSlots, CastSpends, EffectListBook, InProgress,
-    ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
+    ActionBook, ActionCall, ActionCheck, ActionKind, ActionSlots, CastSpends, EffectListBook,
+    InProgress, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
 };
 use campfire_common::Tick;
 use campfire_core::{
@@ -147,9 +147,15 @@ impl Casts {
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let relation = |other| targets.relation(team, other);
             let shape = Body::shape_of(body);
-            let checked = book
-                .check(now, (&slots, &times), purse, aim, relation, |id| {
-                    targets.living(id)
+            let checked = times
+                .checked_action(ActionCheck {
+                    book: &book,
+                    now,
+                    slots: &slots,
+                    purse,
+                    aim,
+                    relation,
+                    living: |id| targets.living(id),
                 })
                 .map(|mut checked| {
                     checked.clamp(position, shape, &targets);
@@ -293,8 +299,16 @@ impl Casts {
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let living = |id| targets.living(id);
             let relation = |other| targets.relation(team, other);
-            let resolved = book
-                .check(now, (&slots, &times), purse, casting, relation, living)
+            let resolved = times
+                .checked_action(ActionCheck {
+                    book: &book,
+                    now,
+                    slots: &slots,
+                    purse,
+                    aim: casting,
+                    relation,
+                    living,
+                })
                 .map(|checked| {
                     checked.resolved(ActionCall {
                         aim: casting,
@@ -402,8 +416,15 @@ impl Casts {
         let purse = Purse::of(pools, world.owner_resources(owner));
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
-        let Some(checked) = book.check(now, (slots, times), purse, casting, relation, living)
-        else {
+        let Some(checked) = times.checked_action(ActionCheck {
+            book,
+            now,
+            slots,
+            purse,
+            aim: casting,
+            relation,
+            living,
+        }) else {
             return Ok(None);
         };
         let target = Abilities::target(view, casting.target);

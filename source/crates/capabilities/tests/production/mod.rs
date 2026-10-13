@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, Actions, SlotKind};
+use campfire_actions::{ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
@@ -125,7 +125,7 @@ impl Shop {
         train: ActionId,
         queue: TrainQueue,
     ) {
-        let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
+        let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
         let at = SpawnAt {
             id,
             unit_type: self.barracks,

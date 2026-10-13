@@ -1,5 +1,4 @@
 use super::*;
-use crate::bounds::Bounds;
 
 fn points(points: &[[i64; 2]]) -> Vec<[Num; 2]> {
     points.iter().map(|point| point.map(Num::int)).collect()
@@ -95,33 +94,4 @@ fn a_polygon_holds_the_points_inside_it_and_on_its_edge_exactly() {
     for at in out {
         assert!(!arrow.holds(quarters(at)), "{at:?}");
     }
-}
-
-#[test]
-fn a_polygon_holds_the_cells_whose_centers_lie_inside_it_or_on_its_edge() {
-    let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
-    let cells = |polygon: &Polygon, cell: Num| {
-        let grid = Grid::new(cell, bounds).unwrap();
-        let mut held = Vec::new();
-        polygon.cells(&grid, |cell| held.push(cell));
-        held
-    };
-    // The triangle (0, 0), (4, 0), (0, 4) holds x + z ≤ 4. Its 1 m cells' centers are at
-    // (i + ½, j + ½), held when i + j ≤ 3, those with i + j = 3 on the long edge: numbered 4j + i.
-    let triangle = polygon(&[[0, 0], [4, 0], [0, 4]]);
-    assert_eq!(cells(&triangle, Num::ONE), [0, 1, 2, 3, 4, 5, 6, 8, 9, 12]);
-    // Half-meter cells, centers at ((i + ½) / 2, (j + ½) / 2), held when i + j ≤ 7: 8 + 7 + … + 1.
-    let half: Vec<usize> = (0..64).filter(|cell| cell % 8 + cell / 8 <= 7).collect();
-    assert_eq!(half.len(), 36);
-    assert_eq!(cells(&triangle, Num::HALF), half);
-    // The box from (1, 1) to (3, 3): 1 m centers at 1.5 and 2.5 are inside, 0.5 and 3.5 out; half
-    // meter centers from 1.25 to 2.75, columns and rows 2 to 5; 2 m centers at 1 and 3, on its
-    // corners, all four.
-    let square = polygon(&[[1, 1], [3, 1], [3, 3], [1, 3]]);
-    assert_eq!(cells(&square, Num::ONE), [5, 6, 9, 10]);
-    let middle: Vec<usize> = (2..=5)
-        .flat_map(|row| (2..=5).map(move |column| row * 8 + column))
-        .collect();
-    assert_eq!(cells(&square, Num::HALF), middle);
-    assert_eq!(cells(&square, Num::int(2)), [0, 1, 2, 3]);
 }

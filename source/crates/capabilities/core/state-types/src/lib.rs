@@ -13,12 +13,13 @@ use campfire_sim::{SimResource, StateRegistry};
 mod data_kind;
 mod recipients;
 mod replication;
-mod sending;
 
 pub use crate::data_kind::DataKind;
 pub use crate::recipients::Recipients;
 pub use crate::replication::Replication;
-pub use crate::sending::{NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted};
+pub use crate::replication::sending::{
+    NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted,
+};
 
 /// Proof that a call comes from a type's own `Sending`: only this module makes one, so a reader
 /// cannot be told a way to send that its type does not declare.

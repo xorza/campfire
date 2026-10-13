@@ -2,8 +2,8 @@
 //! package, else the package's own.
 
 use campfire_package::{
-    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, PackageName,
-    PackageRef, Texts,
+    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, PackageFiles,
+    PackageName, PackageRef, Texts,
 };
 
 use campfire_package::internals::Edit;
@@ -18,7 +18,7 @@ fn language(text: &str) -> Language {
 fn german<'a>(
     edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> Result<LocalePackage, LoadError> {
-    LocalePackage::read(&edited_at("locales/de", edits).read().unwrap())
+    LocalePackage::read(&PackageFiles::read(&edited_at("locales/de", edits)).unwrap())
 }
 
 #[test]
@@ -109,6 +109,6 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
     );
 
     // A mode is no locale package.
-    let mode = LocalePackage::read(&edited([]).read().unwrap()).unwrap_err();
+    let mode = LocalePackage::read(&PackageFiles::read(&edited([])).unwrap()).unwrap_err();
     assert!(matches!(*mode.problem, LoadProblem::WrongKind), "{mode}");
 }

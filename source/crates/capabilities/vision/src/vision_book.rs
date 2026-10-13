@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, Frame, View};
+use campfire_core::{Book, View};
 use campfire_sim::Capability;
 
 use crate::vision_grid::VisionGrid;
@@ -19,5 +19,5 @@ impl Book for VisionBook {
     const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

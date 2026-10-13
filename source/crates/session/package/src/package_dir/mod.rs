@@ -8,10 +8,7 @@ use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
-use crate::package::SCRIPTS;
 use crate::package_dir::listings::Listings;
-use crate::package_files::PackageFiles;
-use crate::package_text::LOCALE;
 use crate::package_walk::PackageWalk;
 
 mod listings;
@@ -23,6 +20,12 @@ pub struct PackageDir {
     root: PathBuf,
     source: Source,
 }
+
+/// The directory of a package's scripts.
+pub(crate) const SCRIPTS: &str = "scripts";
+
+/// The directory of a package's locales.
+pub(crate) const LOCALE: &str = "locale";
 
 /// The directories whose files a load reads, beside the manifest.
 const READ_DIRS: [&str; 3] = ["data", SCRIPTS, LOCALE];
@@ -81,27 +84,15 @@ impl PackageDir {
         &self.root
     }
 
-    /// The package's index, and the files a load reads, the manifest's and those under `data/`,
-    /// `scripts/` and `locale/`, each read once into memory and checked against its row. Any
-    /// other file, as a session's map, reads on demand; no file the index does not list reads.
-    /// The open checks that every file the index lists is on disk by its exact name, each
-    /// directory listed once, and fails on the first that is not: a file system that ignores
-    /// case, as macOS's and Windows' do by default, would open a name that differs only in case,
-    /// which Linux holds as missing, so one package would load on one OS and fail on another.
-    /// Nothing changes an open package, so a read after the open takes the path as it is.
-    pub fn read(&self) -> Result<PackageFiles, ContentError> {
+    /// The package's index, once every file it lists is on disk by its exact name: see
+    /// `PackageFiles::read`.
+    pub(crate) fn checked_index(&self) -> Result<FileIndex, ContentError> {
         let mut listings = Listings::default();
         let index = FileIndex::decode(&self.read_index(&mut listings)?)?;
         for (path, _) in index.rows() {
             self.check_name(path, &mut listings)?;
         }
-        let mut files = BTreeMap::new();
-        for (path, row) in index.rows() {
-            if PackageDir::reads(path) {
-                files.insert(path.clone(), self.read_row(path, row)?);
-            }
-        }
-        Ok(PackageFiles::new(files, index, self.clone()))
+        Ok(index)
     }
 
     /// The index of the files under the package's root but its index, as its builder writes it:
@@ -198,7 +189,7 @@ impl PackageDir {
 
     /// Whether a load reads the file at `path`: the manifest, and the files of its data, its
     /// scripts and its locales.
-    fn reads(path: &PackagePath) -> bool {
+    pub(crate) fn reads(path: &PackagePath) -> bool {
         path.as_str() == PackageDir::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 

@@ -1,6 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
-use campfire_actions::{SlotCharges, SlotTimes};
+use campfire_actions::{SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
 use campfire_core::{PlayerResources, SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
 use campfire_orders::NextThink;
@@ -19,7 +19,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // The grunt holds strike, as a unit holds the times of the slots it holds.
     let strike = game.resource::<ActionBook>().names().named((0, "strike"));
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
-    game.entity_mut(grunt).insert(strike.timed());
+    game.entity_mut(grunt).insert(TimedSlots::new(strike));
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
     assert!(Team::new(2).check(&game, grunt) && !Team::new(3).check(&game, grunt));
     // Team a holds players 0 and 1, team b player 2. The grunt is of team a: player 0 or 1 owns

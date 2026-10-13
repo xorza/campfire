@@ -7,8 +7,8 @@ use campfire_sim::StableId;
 use campfire_values::Rank;
 
 use crate::instance::{StackEnd, StatShare};
+use crate::interval::Interval;
 use crate::lifetime::Lifetime;
-use crate::modifier_clocks::Interval;
 use crate::modifier_data::Reapply;
 
 /// A modifier applied to a unit, its numbers resolved: its instance as it would be new, with

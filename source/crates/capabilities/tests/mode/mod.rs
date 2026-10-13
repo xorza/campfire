@@ -724,7 +724,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     pools.load_into(game);
     tags.load_into(game);
     TestType::load(game, types);
-    SlotKindBook(data.slots.clone()).load_into(game);
+    SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
     let assist_window = data.combat.assist_window_ms.map(|ms| RATE.window(ms));
     (CombatBook {
         bindings,

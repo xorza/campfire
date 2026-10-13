@@ -1,8 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::{ScriptsWorldCrate, StateValue, SyncAll, SyncNone, Team, UnitsWorld};
+use campfire_core::{StateValue, SyncAll, SyncNone, Team, UnitsWorld};
 
-use crate::calls::Calls;
 use crate::match_end::MatchEnd;
 use crate::match_mode::MatchMode;
 use crate::mode_state::{ModeState, ModeSync};
@@ -61,9 +60,6 @@ pub(crate) trait ModeWorldCrate {
     /// Writes `values`, the fields of the class of sync `S` as a call left them, unless they are
     /// what the match holds, so a call that changed none marks nothing changed.
     fn commit_mode_fields<S: ModeSync>(&mut self, values: &[StateValue]);
-
-    /// Runs `calls` in one script batch at the time `now`, and gives what `calls` gave.
-    fn mode_calls<T>(&mut self, now: Tick, calls: impl FnOnce(&mut Calls<'_, '_>) -> T) -> T;
 }
 
 impl ModeWorldCrate for World {
@@ -87,12 +83,5 @@ impl ModeWorldCrate for World {
         if state.values() != values {
             state.values_mut().clone_from_slice(values);
         }
-    }
-
-    fn mode_calls<T>(&mut self, now: Tick, calls: impl FnOnce(&mut Calls<'_, '_>) -> T) -> T {
-        self.script_batch(|batch| {
-            let ctx = batch.ctx().clone();
-            calls(&mut Calls { batch, ctx, now })
-        })
     }
 }

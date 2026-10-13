@@ -1,20 +1,21 @@
+use std::sync::Arc;
+
 use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, KindSpec};
-use campfire_core::{ActionId, Book, ByType, Frame, UnitType, View};
+use campfire_core::{ActionId, Book, ByType, UnitType, View};
 use campfire_sim::Capability;
 
-use crate::production_column::ProductionColumn;
 use crate::supply_data::SupplyData;
 use crate::train_queue::TrainQueue;
 
 /// What each unit type uses and gives of supply, and what the unit each train makes uses, by
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
-/// not state.
+/// not state. A clone shares the costs, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct SupplyCostBook {
-    types: ByType<SupplyData>,
+    types: Arc<ByType<SupplyData>>,
     /// By action, 0 for an action that trains nothing.
-    trains: Vec<u32>,
+    trains: Arc<[u32]>,
 }
 
 /// What one unit counts for: what it uses, its own cost while it lives and its queued trains',
@@ -37,7 +38,16 @@ impl SupplyCostBook {
                 }
             })
             .collect();
-        SupplyCostBook { types, trains }
+        SupplyCostBook {
+            types: Arc::new(types),
+            trains,
+        }
+    }
+
+    /// Whether `other` is this book as one load made it, not a book of another load: the costs a
+    /// row filled from it holds.
+    pub(crate) fn same(&self, other: &SupplyCostBook) -> bool {
+        Arc::ptr_eq(&self.types, &other.types) && Arc::ptr_eq(&self.trains, &other.trains)
     }
 
     /// What a unit of `unit_type` uses as it joins a queue.
@@ -76,7 +86,6 @@ impl Book for SupplyCostBook {
     const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        ProductionColumn::share_costs(view, self.clone());
-    }
+    /// The production column takes it from the match at each read.
+    fn share(&self, _: &View) {}
 }

@@ -10,20 +10,20 @@ use campfire_values::{
 };
 use serde::Deserialize;
 
-use crate::action_data_field::ActionDataField;
+use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
 use crate::construct_data::ConstructData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
 use crate::effect_data::EffectData;
-use crate::error::{ActionField, EffectRule};
-use crate::kind_data::KindData;
 use crate::placement_data::PlacementData;
 use crate::range_field::RangeField;
 use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
 use crate::requires_data::RequiresData;
 use crate::targeting::Targeting;
+
+pub(crate) mod error;
 
 /// An action as its package's `[actions.<id>]` declares it, in milliseconds. Each capability
 /// field may hold one value or one per rank. The release loads every field, and runs those the
@@ -132,35 +132,6 @@ pub struct ChargeUpData {
 }
 
 impl ActionData {
-    /// What its kind, one the release runs, needs, as it gives it; an error names the first field
-    /// its kind refuses, or needs and it does not give, as the table of action fields says.
-    pub fn kind_data(&self) -> Result<KindData<'_>, ActionDataField> {
-        if let Some(field) = ActionDataField::misused(self, self.kind) {
-            return Err(field);
-        }
-        let needs = "the table of action fields makes its kind need it";
-        Ok(match self.kind {
-            ActionKind::Cast => KindData::Cast,
-            ActionKind::Attack => KindData::Attack {
-                rate: self.rate.as_ref().expect(needs),
-                damage: self.damage.as_ref().expect(needs),
-                damage_kind: self.damage_kind.as_ref().expect(needs),
-            },
-            ActionKind::Train => KindData::Train {
-                unit_type: self.unit_type.as_ref().expect(needs),
-            },
-            ActionKind::Build => KindData::Build {
-                unit_type: self.unit_type.as_ref().expect(needs),
-            },
-            ActionKind::Gather => KindData::Gather {
-                resource: self.resource.as_ref().expect(needs),
-                take: self.take.expect(needs),
-                bounce: self.bounce,
-            },
-            kind => panic!("the release runs no {kind:?}"),
-        })
-    }
-
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let range = self.range.as_ref().and_then(Ranked::ranks);

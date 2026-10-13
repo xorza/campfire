@@ -2,16 +2,24 @@ use std::fmt;
 use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
-use campfire_package::TerrainError;
+use campfire_package::{TerrainError, WriteError};
+use campfire_store::{PathError, ReadError};
 use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;
 use thiserror::Error;
 
 use crate::texture::error::TextureError;
 
-/// Why a Zero Hour install is not one the importer reads.
+/// Why a Zero Hour install does not import: a file of it does not read, it is not one the importer
+/// reads, or the package does not write.
 #[derive(Debug, Error)]
 pub enum ZeroHourError {
+    /// A file or a directory of the install does not read.
+    #[error("the install does not read")]
+    Read(#[source] PathError<ReadError>),
+    /// The package does not write.
+    #[error("the package does not write")]
+    Write(#[source] WriteError),
     /// An archive of the install is no archive the game reads.
     #[error("{} is no archive", .archive.display())]
     Archive {

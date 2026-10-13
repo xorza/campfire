@@ -2,14 +2,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, Frame, View};
+use campfire_core::{Book, View};
 use campfire_sim::Capability;
 use campfire_values::{DeclaredName, Names, Stat};
 
 use crate::pool_data::PoolData;
 use crate::pool_id::PoolId;
 use crate::stat_id::StatId;
-use crate::stats_column::StatsColumn;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
@@ -75,8 +74,8 @@ impl Book for PoolBook {
     const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        StatsColumn::share_pool_names(view, Arc::clone(&self.names));
+    fn share(&self, view: &View) {
+        view.names_mut().set_table(Arc::clone(&self.names));
     }
 }
 

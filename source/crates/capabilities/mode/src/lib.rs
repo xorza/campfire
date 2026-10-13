@@ -4,6 +4,7 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
@@ -17,8 +18,6 @@ use campfire_core::{
 };
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
-
-use crate::mode_world::ModeWorldCrate;
 
 mod calls;
 mod choice_data;
@@ -162,10 +161,14 @@ impl Module for Mode {
             Some(at.world().non_send::<MatchMode>().relations.clone())
         });
         d.part::<MatchEntity, ModeState<SyncNone>>(|at| {
-            Some(at.world().non_send::<MatchMode>().state_none.clone())
+            Some(ModeState::initial(
+                &at.world().non_send::<MatchMode>().schema,
+            ))
         });
         d.part::<MatchEntity, ModeState<SyncAll>>(|at| {
-            Some(at.world().non_send::<MatchMode>().state_all.clone())
+            Some(ModeState::initial(
+                &at.world().non_send::<MatchMode>().schema,
+            ))
         });
         d.api(ModeApi::register);
     }
@@ -229,8 +232,9 @@ impl Mode {
             world.resource::<ByType<ActionSlots>>(),
         );
         view.names_mut().set_teams(Rc::clone(&book.teams));
+        view.names_mut().set_table(Arc::clone(book.choices.names()));
         let players = book.teams.players() as usize;
-        world.insert_resource(book.choices.empty(players));
+        world.insert_resource(Choices::empty(&book.choices, players));
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
@@ -304,11 +308,10 @@ impl Mode {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
-        world
-            .mode_calls(now, |call| {
-                call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
-            })
-            .map_err(CallError::from_script)
+        Calls::scope(world, now, |call| {
+            call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
+        })
+        .map_err(CallError::from_script)
     }
 }
 

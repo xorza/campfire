@@ -1,7 +1,9 @@
 use campfire_sim::{Position, SimComponent};
 
 use crate::data_kind::DataKind;
-use crate::sending::{Sending, SentPredicted};
+use crate::replication::sending::{Sending, SentPredicted};
+
+pub(crate) mod sending;
 
 /// A state type of a capability: a `SimComponent`, the kind its clients receive it as, and how
 /// it is sent. Neither has a default, so a type in a capability's list that lacks one does not

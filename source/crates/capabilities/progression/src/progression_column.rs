@@ -1,11 +1,9 @@
 use std::ops::Range;
-use std::sync::Arc;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_core::{
-    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptNames, TrackId, View,
-    ViewColumn,
+    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, TrackId, View, ViewColumn,
 };
 use campfire_math::Num;
 use campfire_sim::StableId;
@@ -55,8 +53,12 @@ struct HeldTrack {
 }
 
 impl ViewColumn for ProgressionColumn {
-    fn begin(&mut self, _: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
+        let book = world.resource::<TrackBook>();
+        if !book.same(&self.book) {
+            self.book = book.clone();
+        }
         false
     }
 
@@ -137,14 +139,6 @@ impl ProgressionColumn {
         rows.rows.push(TracksRow {
             held: start..end,
             points: points.copied(),
-        });
-    }
-
-    /// Shares the tracks the mode declares with the view, which names them to scripts.
-    pub(crate) fn share(view: &View, book: TrackBook) {
-        view.names_mut().tracks = ScriptNames::new(Arc::clone(book.names()));
-        view.column_mut(|column: &mut ProgressionColumn| {
-            column.book = book;
         });
     }
 

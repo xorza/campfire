@@ -58,6 +58,7 @@ mod tests {
 
     use super::*;
     use crate::package_dir::PackageDir;
+    use crate::package_files::PackageFiles;
 
     fn path(text: &str) -> PackagePath {
         PackagePath::parse(text).unwrap()
@@ -92,8 +93,7 @@ mod tests {
         assert_eq!(scratch.read("one/package.index"), index);
         assert_eq!(fingerprint, Fingerprint::new(Sha256::digest(&index).into()));
         assert_eq!(
-            PackageDir::new(scratch.path("one"))
-                .read()
+            PackageFiles::read(&PackageDir::new(scratch.path("one")))
                 .unwrap()
                 .fingerprint(),
             fingerprint

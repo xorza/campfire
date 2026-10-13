@@ -4,7 +4,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
     ActionRange, ActionSlots, ActionTarget, Actions, InProgress, OrderPhase, SlotAim, SlotKind,
-    SlotTimes,
+    SlotTimes, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -859,7 +859,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             Ticks::new(2),
         );
         let weapon = Actions::add_weapon(&mut game, weapon);
-        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
+        let slots = TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
         Mode::spawn(&mut game, striker, (0, 0, 0), Team::new(0), slots)
     };
     let hostile = armed("enemies");

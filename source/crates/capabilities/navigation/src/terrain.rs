@@ -26,8 +26,7 @@ impl Terrain {
         for wall in walls {
             let layer = wall.layer.index();
             let cells = &mut blocked[layer * words..(layer + 1) * words];
-            wall.area
-                .cells(grid, |cell| cells[cell / 64] |= 1 << (cell % 64));
+            grid.polygon_cells(&wall.area, |cell| cells[cell / 64] |= 1 << (cell % 64));
         }
         Terrain { words, blocked }
     }

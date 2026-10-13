@@ -8,7 +8,6 @@ use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::destination::Destination;
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
@@ -83,15 +82,15 @@ impl Route {
         });
     }
 
-    /// Asks in `tick` for a route to `destination` again, if it has one, and forgets `progress`:
-    /// a unit a forced move left elsewhere walks to it from there.
+    /// Asks in `tick` for a route to `goal` again, if there is one, and forgets `progress`: a
+    /// unit a forced move left elsewhere walks to it from there.
     pub(crate) fn ask_again(
         &mut self,
-        destination: &Destination,
+        goal: Option<Position>,
         progress: &mut Progress,
         tick: Tick,
     ) {
-        if let Some(goal) = destination.get() {
+        if let Some(goal) = goal {
             self.ask(goal, tick, None);
             progress.restart();
         }

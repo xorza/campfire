@@ -13,6 +13,13 @@ pub struct Approach {
 }
 
 impl Approach {
+    /// The approach of the path `path` to a circle of `radius` centred `centre` from its start,
+    /// against `reach`: to the centre against the sum, which past every number reaches every
+    /// distance.
+    pub(crate) fn of_circle(path: Vec3, centre: Vec3, reach: Num, radius: Num) -> Approach {
+        Approach::of(path, centre, reach.checked_add(radius).unwrap_or(Num::MAX))
+    }
+
     /// The approach of the path `path`, the offset from its start to its end, to the point `off`
     /// from its start, against `reach`, exactly and without a square root; a negative reach is
     /// nearer than any distance.

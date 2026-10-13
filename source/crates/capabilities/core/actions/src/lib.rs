@@ -71,7 +71,6 @@ mod slot_kind;
 mod slot_kind_book;
 mod slot_kind_data;
 mod slot_kinds;
-mod slot_times;
 mod targeting;
 mod targets;
 mod use_group;
@@ -80,12 +79,16 @@ mod weapon;
 pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::ActionBook;
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
+pub use crate::action_data::error::{ActionField, EffectRule};
 pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 pub use crate::action_data_field::ActionDataField;
 pub use crate::action_kind::ActionKind;
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
+pub use crate::action_slots::slot_times::{
+    ActionCheck, SlotCharges, SlotTime, SlotTimes, TimedSlots,
+};
 pub use crate::action_slots::{ActionSlot, ActionSlots};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
@@ -105,7 +108,7 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionField, ActionProblem, EffectRule};
+pub use crate::error::{ActionError, ActionProblem};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
@@ -127,7 +130,6 @@ pub use crate::slot_kind::SlotKind;
 pub use crate::slot_kind_book::SlotKindBook;
 pub use crate::slot_kind_data::{SlotKindData, SlotRanks};
 pub use crate::slot_kinds::SlotKinds;
-pub use crate::slot_times::{SlotCharges, SlotTime, SlotTimes, TimedSlots};
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::use_group::UseGroup;
@@ -250,7 +252,7 @@ pub mod internals {
         TypeScope, UnitType, UnknownName, View,
     };
     use campfire_math::Num;
-    use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats, StatsColumn};
+    use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{DamageKind, DeclaredName};
 
     use crate::Actions;
@@ -528,11 +530,10 @@ pub mod internals {
         }
 
         fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
-            let pools = self
-                .view
-                .column(|column: &StatsColumn| column.pool_names().named(name.as_str()));
+            let names = self.view.names();
+            let pools = names.table::<PoolId>();
             pools
-                .flatten()
+                .and_then(|pools| pools.named(name.as_str()))
                 .ok_or_else(|| UnknownName::new(NameKind::Pool, name))
         }
 

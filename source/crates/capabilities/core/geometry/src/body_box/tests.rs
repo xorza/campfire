@@ -2,6 +2,7 @@ use campfire_codec::Binary;
 use campfire_math::internals::SplitMix64;
 
 use super::*;
+use crate::shape::Shape;
 
 impl BodyBox {
     /// Whether `pos` lies inside the box at `centre` or on its edge.

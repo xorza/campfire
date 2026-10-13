@@ -1,5 +1,5 @@
 use campfire_codec::BinaryError;
-use campfire_import::ImportError;
+use campfire_import::ZeroHourError;
 use campfire_package::{ClassTextureError, ContentError, LoadError};
 use campfire_store::{DurableCreateError, DurableError, PathError};
 use campfire_values::PackagePath;
@@ -17,7 +17,7 @@ pub(crate) enum CheckError {
     #[error("the run's directory does not make")]
     RunDir(#[source] PathError<DurableCreateError>),
     #[error("the install does not import")]
-    Import(#[source] ImportError),
+    Import(#[source] ZeroHourError),
     #[error("the imported mode does not load")]
     Load(#[source] LoadError),
     /// A file of the imported package does not read.

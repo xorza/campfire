@@ -77,8 +77,8 @@ impl Destinations {
             }
             let aimed = targets.enemy(team, target).and_then(|unit| {
                 let selected = (targets.relation(team, unit.team), unit.tags);
-                let slot = book.weapon_for(&slots, Some(selected))?;
-                Some((unit, book.range(&slots, slot)))
+                let slot = slots.weapon_in(&book, Some(selected))?;
+                Some((unit, slots.range_in(&book, slot)))
             });
             match aimed {
                 None => {

@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind};
+use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_core::{
     Body, BodyForm, Filter, Owner, Players, PlayersWorld, ResourceId, Team, TypeScope, UnitCore,
@@ -122,7 +122,11 @@ fn two_fields() -> Match {
             };
             let worker = (
                 Body::new(Num::HALF).unwrap(),
-                ActionSlots::new([(action, SlotKind::new(0), Some(Rank::FIRST))]).timed(),
+                TimedSlots::new(ActionSlots::new([(
+                    action,
+                    SlotKind::new(0),
+                    Some(Rank::FIRST),
+                )])),
                 gatherer,
                 Destination::default(),
             );

@@ -151,7 +151,7 @@ impl ForcedMoves {
             if ends {
                 commands.entity(entity).remove::<ForcedMove>();
                 if let Ok((destination, mut route, mut progress)) = walkers.get_mut(entity) {
-                    route.ask_again(destination, &mut progress, now);
+                    route.ask_again(destination.get(), &mut progress, now);
                 }
             } else {
                 under_way.set_if_neq(forced);

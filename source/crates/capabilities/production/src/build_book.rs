@@ -1,7 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, BodyForm, Book, Filter, Frame, View};
+use campfire_core::{ActionId, BodyForm, Book, Filter, View};
 use campfire_math::Num;
 use campfire_sim::Capability;
 use campfire_values::Share;
@@ -148,7 +148,7 @@ impl Book for BuildBook {
     const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(test)]

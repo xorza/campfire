@@ -3,9 +3,9 @@ use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_common::StateHash;
 
-use crate::entity_index::EntityIndex;
 use crate::sim_update::SimUpdate;
 use crate::stable_id::StableId;
+use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::{StateRegistry, TypeHash};
@@ -118,12 +118,12 @@ pub(crate) mod internals {
     use campfire_common::{PlayerSlot, Tick};
     use campfire_schedule::StrictSchedule;
 
-    use crate::entity_index::EntityIndex;
     use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimUpdate, end_tick, start_tick};
     use crate::sim_world::SimWorld;
     use crate::stable_id::StableId;
+    use crate::stable_id::entity_index::EntityIndex;
     use crate::state_registry::StateRegistry;
     use crate::state_registry::error::SnapshotError;
     use crate::state_registry::internals::{Draws, Mutation};

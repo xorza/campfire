@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use campfire_sim::Capability;
 
 use crate::declare::book::Book;
-use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 use crate::units::view::View;
 
@@ -59,5 +58,5 @@ impl Book for TypeOriginBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }

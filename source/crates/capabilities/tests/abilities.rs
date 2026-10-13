@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU8;
+use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::Mut;
@@ -11,7 +12,7 @@ use campfire_actions::{
     CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo, InProgress, KindData,
     LaunchFields, ModifierFields, MoveData, OrderPhase, PurgeFields, RangeField, RestoreFields,
     SlotAim, SlotKind, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, Started,
-    Targeting, Toggle, XpFields,
+    Targeting, TimedSlots, Toggle, XpFields,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas};
 use campfire_capabilities::internals::*;
@@ -183,7 +184,7 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         ..action.clone()
     };
     assert_eq!(
-        attack.kind_data(),
+        KindData::of(&attack),
         Ok(KindData::Attack {
             rate: &Stat::named("armor").unwrap(),
             damage: &Stat::named("attack_damage").unwrap(),
@@ -194,7 +195,7 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         kind: ActionKind::Cast,
         ..action.clone()
     };
-    assert_eq!(cast.kind_data(), Err(ActionDataField::Rate));
+    assert_eq!(KindData::of(&cast), Err(ActionDataField::Rate));
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
@@ -234,7 +235,10 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         ..train
     };
     let grunt = DeclaredName::new("grunt").unwrap();
-    assert_eq!(train.kind_data(), Ok(KindData::Train { unit_type: &grunt }));
+    assert_eq!(
+        KindData::of(&train),
+        Ok(KindData::Train { unit_type: &grunt })
+    );
 }
 
 const STRIKE: &str =
@@ -381,7 +385,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let shove = Abilities::load(&mut game, "shove", &shove, script);
     let caster = Abilities::caster(&mut game, aim, 1);
     game.insert_parts(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
-    let slots = ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(shove, SlotKind::new(0), Rank::new(1))]));
     let shover = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), slots);
 
     // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
@@ -619,7 +623,11 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let mut caster_at = |x: i16, rank: u8, unit_type| {
         let parts = (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(strike, SlotKind::new(0), Rank::new(rank))]).timed(),
+            TimedSlots::new(ActionSlots::new([(
+                strike,
+                SlotKind::new(0),
+                Rank::new(rank),
+            )])),
         );
         Mode::spawn(&mut game, unit_type, (x, 0, 0), Team::new(0), parts)
     };
@@ -702,7 +710,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let data = ActionData { cost, ..strike() };
     let strike = Abilities::load(&mut game, "strike", &data, STRIKE);
     let caster = Abilities::caster(&mut game, strike, 1);
-    let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]));
     let ownerless = Mode::spawn_named(&mut game, "caster", (0, 0, 1), Team::new(0), slots);
     let enemy = Abilities::spawn_combatant(&mut game, (5, 0, 0), Team::new(1), ());
     let player = PlayerSlot::new(0);
@@ -1145,12 +1153,11 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([
+            TimedSlots::new(ActionSlots::new([
                 (step, SlotKind::new(0), Rank::new(1)),
                 (refill, SlotKind::new(0), Rank::new(1)),
                 (dud, SlotKind::new(0), Rank::new(1)),
-            ])
-            .timed(),
+            ])),
         ),
     );
     let charges = |game: &Match| {
@@ -1205,11 +1212,10 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([
+            TimedSlots::new(ActionSlots::new([
                 (step, SlotKind::new(0), Rank::new(0)),
                 (refill, SlotKind::new(0), Rank::new(1)),
-            ])
-            .timed(),
+            ])),
         ),
     );
     game.part_mut::<ActionSlots>(learner)
@@ -1255,7 +1261,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
             (action, SlotKind::new(0), Rank::new(1))
         });
         let unit_type = Units::load_next_type(game, &UnitTypeCore::default());
-        let slots = ActionSlots::new(slots).timed();
+        let slots = TimedSlots::new(ActionSlots::new(slots));
         Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), slots)
     };
     let mut server = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
@@ -1426,11 +1432,10 @@ fn on_resolve(ctx, caster, target) {
     let other = Abilities::load(&mut game, "other", &lash_out(), LASH_OUT);
     let caster = |game: &mut Match, x: i16| {
         let pos = Position::from((x, 0, 0));
-        let slots = ActionSlots::new([
+        let slots = TimedSlots::new(ActionSlots::new([
             (draw, SlotKind::new(0), Rank::new(1)),
             (other, SlotKind::new(0), Rank::new(1)),
-        ])
-        .timed();
+        ]));
         let caster = Abilities::spawn_caster(
             game,
             pos,
@@ -1484,7 +1489,7 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(Abilities::failed_calls(&game), []);
     // The same script in an action that does not charge fails its call.
     let pos = Position::from((100, 0, 0));
-    let slots = ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(plain, SlotKind::new(0), Rank::new(1))]));
     let caster = Abilities::spawn_caster(
         &mut game,
         pos,
@@ -1548,7 +1553,7 @@ fn on_resolve(ctx, caster, target) {
         Team::new(0),
         (
             Owner::new(PlayerSlot::new(0)),
-            ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]).timed(),
+            TimedSlots::new(ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))])),
         ),
     );
     let targets = [Num::int(1), Num::int(21)].map(|x| {
@@ -1614,7 +1619,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             Team::new(0),
             (
                 Owner::new(PlayerSlot::new(1)),
-                ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]).timed(),
+                TimedSlots::new(ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))])),
             ),
         );
         let enemy = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
@@ -1876,7 +1881,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game, 0, "claws", &claws, None, 1).unwrap();
-    let slots = ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]));
     let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
     let entity = game.unit_entity(beast);
     game.step();
@@ -1946,7 +1951,11 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let script = Units::compile_hooked(&mut game, own).unwrap();
     let theirs = Actions::load(&mut game, 1, "lash_out", &lash_out(), Some(script), 5);
-    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(
+        theirs.unwrap(),
+        SlotKind::new(0),
+        Rank::new(1),
+    )]));
     game.entity_mut(entity).insert(slots);
     Abilities::cast(&mut game, caster, ActionTarget::None);
     assert_eq!(Abilities::failed_calls(&game), []);
@@ -2479,10 +2488,10 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
-    (SlotKindBook(SlotKinds::from([SlotKindData {
+    (SlotKindBook(Arc::new(SlotKinds::from([SlotKindData {
         name: DeclaredName::new("basic").unwrap(),
         ranks: Some(ranks),
-    }])))
+    }]))))
     .load_into(&mut game);
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = Abilities::caster(&mut game, lash_out, 0);
@@ -2698,16 +2707,16 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                 ..strike()
             };
             let cast = Abilities::load(&mut game, "swing", &data, extra);
-            let slots = ActionSlots::new([
+            let slots = TimedSlots::new(ActionSlots::new([
                 (cast, SlotKind::new(0), Rank::new(1)),
                 (weapon, SlotKind::new(1), Rank::new(1)),
-            ])
-            .timed();
+            ]));
             let caster = Abilities::fighter(&mut game, fighter, slots);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             caster
         } else {
-            let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed();
+            let slots =
+                TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
             let attacker = Abilities::fighter(&mut game, fighter, slots);
             game.part_mut::<ActionSlots>(attacker)
                 .set_attack_target(Some(target));
@@ -2792,7 +2801,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     let attacker = Abilities::fighter(
         &mut game,
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
+        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
     );
     let [target, near, far] = [1, 2, 4].map(|x| {
         let pos = Position::try_from(Vec3::from((
@@ -2838,7 +2847,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
     let attacker = Abilities::fighter(
         &mut game,
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
+        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
     );
     let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     game.part_mut::<ActionSlots>(attacker)
@@ -2872,7 +2881,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
     let attacker = Abilities::fighter(
         &mut game,
         fighter,
-        ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]).timed(),
+        TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
     );
     let mut target = |x| Abilities::spawn_combatant(&mut game, (x, 0, 0), Team::new(1), ());
     let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
@@ -3031,7 +3040,7 @@ fn on_resolve(ctx, caster, target) {
     let action = Abilities::load(&mut game, "ability", &data, script);
     let parts = (
         Owner::new(PlayerSlot::new(0)),
-        ActionSlots::new([(action, SlotKind::new(0), Rank::new(2))]).timed(),
+        TimedSlots::new(ActionSlots::new([(action, SlotKind::new(0), Rank::new(2))])),
         Level::new(3).unwrap(),
     );
     let caster = Mode::spawn(

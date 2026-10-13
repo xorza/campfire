@@ -2,8 +2,6 @@ use campfire_core::{NameKind, name_script_arg};
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
-use crate::actions_column::ActionsColumn;
-
 /// A slot kind of the mode: its place in the mode's `[[slots]]`. A unit's slots go kind after
 /// kind in that order, which is how a client binds its keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -34,5 +32,5 @@ impl NameId for SlotKind {
 }
 
 name_script_arg!(SlotKind, NameKind::SlotKind, |ctx, name| {
-    ActionsColumn::kinds(ctx.view(), |kinds| kinds.names().named(name))
+    ctx.view().names().table::<SlotKind>()?.named(name)
 });

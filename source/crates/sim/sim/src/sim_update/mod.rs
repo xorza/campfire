@@ -6,10 +6,10 @@ use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 use campfire_schedule::StrictSchedule;
 
-use crate::entity_index::EntityIndex;
 use crate::id_allocator::IdAllocator;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
+use crate::stable_id::entity_index::EntityIndex;
 use crate::tick_inputs::TickInputs;
 use crate::tick_rate::TickRate;
 

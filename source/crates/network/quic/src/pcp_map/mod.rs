@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use ring::rand::{SecureRandom, SystemRandom};
 
-use crate::error::ReplyError;
+use crate::reply_error::ReplyError;
 
 /// PCP's version; a gateway that speaks NAT-PMP alone answers with its own, 0 (RFC 6887 §9).
 const VERSION: u8 = 2;

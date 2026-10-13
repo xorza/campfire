@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
 use campfire_core::{
     ApiBuilder, BodyUnit, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations,
-    DeliveryEntity, EngineTag, EntityKind, Frame, KindSpawn, KindVisitor, ModuleSet, Phase, Player,
+    DeliveryEntity, EngineTag, EntityKind, KindSpawn, KindVisitor, ModuleSet, Phase, Player,
     Report, RowReads, Scratch, SetPlace, TagProperties, UnitEntity, View, ViewColumn,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
@@ -442,7 +442,7 @@ impl Book for StrayBook {
     const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 campfire_common::enum_all! {

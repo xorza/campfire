@@ -3,7 +3,7 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, Frame, NameKind, UnitType, UnknownName, View};
+use campfire_core::{Book, NameKind, UnitType, UnknownName, View};
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 use campfire_values::{EngineStat, Names, Stat};
@@ -11,7 +11,6 @@ use campfire_values::{EngineStat, Names, Stat};
 use crate::stat_id::StatId;
 use crate::stat_rule::StatRule;
 use crate::stat_totals::StatTotals;
-use crate::stats_column::StatsColumn;
 use crate::stats_data::StatsData;
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
@@ -202,8 +201,8 @@ impl Book for StatBook {
     const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        StatsColumn::share_stat_names(view, Arc::clone(&self.names));
+    fn share(&self, view: &View) {
+        view.names_mut().set_table(Arc::clone(&self.names));
     }
 }
 

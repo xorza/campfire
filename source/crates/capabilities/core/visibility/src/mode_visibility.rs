@@ -4,7 +4,7 @@ use serde::de::{Error, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
 use crate::Visibility;
-use crate::error::VisibilityError;
+use crate::setting::error::VisibilityError;
 use crate::setting::{Setting, SettingValue};
 
 /// What a session's host sets of its visibility (design 14, D14, D15): the settings it gives in

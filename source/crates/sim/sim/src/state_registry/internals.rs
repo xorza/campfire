@@ -13,8 +13,8 @@ use serde::de::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::entity_index::EntityIndex;
 use crate::sim_state::{SimComponent, SimResource};
+use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::{ENTITIES, StateRegistry};
 

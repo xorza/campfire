@@ -1,8 +1,6 @@
 use campfire_core::{NameKind, name_script_arg};
 use campfire_values::NameId;
 
-use crate::stats_column::StatsColumn;
-
 /// A pool, by its place among the pools the mode declares, in the order of their names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PoolId(u8);
@@ -40,8 +38,5 @@ impl NameId for PoolId {
 }
 
 name_script_arg!(PoolId, NameKind::Pool, |ctx, name| {
-    let pools = ctx
-        .view()
-        .column(|column: &StatsColumn| column.pool_names().named(name));
-    pools.flatten()
+    ctx.view().names().table::<PoolId>()?.named(name)
 });

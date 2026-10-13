@@ -1,8 +1,6 @@
 use campfire_core::{ApiError, ArgCtx, Checked, NameKind, ScriptText, TextArg};
 use campfire_values::NameId;
 
-use crate::mode_spec::ModeSpec;
-
 /// A choice of the mode, by its place among the mode's choices, in the order of their names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChoiceId(u16);
@@ -25,8 +23,11 @@ impl TextArg for ChoiceId {
     const NAMES: NameKind = NameKind::Choice;
 
     fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<ChoiceId> {
-        let book = ModeSpec::of_or_fail(ctx.get())?;
-        let choice = book.choices.names().named(text.as_str());
+        let names = ctx.get().view().names();
+        let names = names
+            .table::<ChoiceId>()
+            .ok_or_else(|| ApiError::NoMode.fail())?;
+        let choice = names.named(text.as_str());
         Ok(choice.ok_or_else(|| ApiError::Unknown(NameKind::Choice).fail())?)
     }
 }

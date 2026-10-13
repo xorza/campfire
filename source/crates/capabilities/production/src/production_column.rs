@@ -9,6 +9,7 @@ use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::site::Site;
 use crate::supply::SupplySums;
+use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
 use crate::train_queue::TrainQueue;
 
@@ -49,9 +50,16 @@ pub(crate) struct ReadSupply {
 }
 
 impl ViewColumn for ProductionColumn {
-    fn begin(&mut self, _: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
         self.rows.begin();
-        false
+        // A row holds what its unit counts for by the costs, so other costs fill every row again.
+        self.rules = world.resource::<SupplyBook>().0;
+        let costs = world.resource::<SupplyCostBook>();
+        if costs.same(&self.costs) {
+            return false;
+        }
+        self.costs = costs.clone();
+        true
     }
 
     fn keep(&mut self, rows: Range<usize>) {
@@ -68,16 +76,6 @@ impl ViewColumn for ProductionColumn {
 }
 
 impl ProductionColumn {
-    /// Gives `view`'s column the mode's supply `rules`, none in a mode that counts no supply.
-    pub fn share_rules(view: &View, rules: Option<ModeSupplyData>) {
-        view.column_mut(|column: &mut ProductionColumn| column.rules = rules);
-    }
-
-    /// Gives `view`'s column what each unit type costs in supply.
-    pub fn share_costs(view: &View, costs: SupplyCostBook) {
-        view.column_mut(|column: &mut ProductionColumn| column.costs = costs);
-    }
-
     /// Adds the row of a unit owned by `owner`, which counts for `counted` and carries `load`.
     pub fn push(&mut self, owner: Option<PlayerSlot>, counted: UnitSupply, load: u32) {
         self.rows.now_mut().push(SupplyRow {

@@ -1,10 +1,12 @@
 use bevy_ecs::entity::Entity;
 use campfire_core::Layer;
-use campfire_geometry::{BodyBox, Shape};
+use campfire_geometry::{BodyBox, MAX_BOUND, Shape};
 use campfire_math::{CeilRoot, Num, Rounding, U256, Vec3};
 use campfire_sim::{Position, StableId};
 
-use crate::broadphase::Contact;
+use crate::collider::contact::Contact;
+
+pub(crate) mod contact;
 
 /// A living unit's body as collision sees it: where it stands, its shape, its layer, whether it
 /// may be pushed, whether it walks now, to a destination, and whether it gathers, as a worker in
@@ -155,11 +157,11 @@ impl Collider {
     /// points the same way and is `reach` bits long, its magnitude rounded up to a whole bit, so
     /// the two bodies end touching or apart. That magnitude is `√x` for `x = along² · reach² ÷
     /// square`, and a whole `k` is at least `√x` exactly when `k² ≥ ⌈x⌉`. Both bodies' radii are
-    /// within `Shape::MAX_BOUND`, 2³⁵ bits, so `|along| < reach ≤ 2³⁶`: the product's square,
+    /// within `MAX_BOUND`, 2³⁵ bits, so `|along| < reach ≤ 2³⁶`: the product's square,
     /// below 2¹⁴⁴, is a `U256`, and `x`, at most `reach²` as `along² ≤ square`, fits `u128`, as
     /// does `square`, below `reach²`, as the bodies overlap.
     fn reaching(along: i128, reach: i128, square: i128) -> i128 {
-        debug_assert!(reach <= 2 * i128::from(Shape::MAX_BOUND.to_bits()));
+        debug_assert!(reach <= 2 * i128::from(MAX_BOUND.to_bits()));
         let product = (along * reach).unsigned_abs();
         let least = U256::product(product, product)
             .div_rounded(square.cast_unsigned(), Rounding::Ceiling)

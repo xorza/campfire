@@ -2,17 +2,20 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, PerType, UnitEntity};
+use campfire_core::{ActionId, PerType, TagSet, UnitEntity};
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_values::{ActionStart, Rank};
+use campfire_values::{ActionStart, Rank, Relation};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::action::Action;
 use crate::action_book::ActionBook;
 use crate::action_call::{ActionCall, ResolvedCast, Started};
 use crate::action_kind::ActionKind;
+use crate::action_range::ActionRange;
+use crate::action_slots::slot_times::SlotTimes;
 use crate::action_target::ActionTarget;
 use crate::channel_call::{ChannelCall, ChannelStep};
 use crate::checked_action::CheckedAction;
@@ -21,7 +24,8 @@ use crate::rank_values::{ChannelRule, RankValues};
 use crate::slot_aim::SlotAim;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
-use crate::slot_times::{SlotTimes, TimedSlots};
+
+pub(crate) mod slot_times;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank,
 /// whose times its `SlotTimes` holds; the action it was ordered or has under way, one at a time;
@@ -54,6 +58,36 @@ impl ActionSlot {
 }
 
 impl ActionSlots {
+    /// The slot of the first learned weapon of these slots, of `book`, whose filter selects a unit
+    /// of `tags` its unit regards with `relation`, ready or not; or with `None`, the first learned
+    /// weapon at all.
+    pub fn weapon_in(&self, book: &ActionBook, target: Option<(Relation, TagSet)>) -> Option<u8> {
+        let at = self.iter().position(|slot| {
+            slot.action.is_some_and(|action| {
+                let action = book.get(action).expect("a slot's action is in the book");
+                Action::arms(slot.rank, action.weapon_filter(), target)
+            })
+        })?;
+        Some(u8::try_from(at).expect("a unit's slots fit u8"))
+    }
+
+    /// The range of the learned action in `slot`, of `book`, at its rank.
+    pub fn range_in(&self, book: &ActionBook, slot: u8) -> ActionRange {
+        let slot = self.slot(slot).expect("a unit's slot");
+        slot.values_in(book)
+            .expect("a learned slot's action is in the book")
+            .range
+    }
+
+    /// The range in meters of the action in `slot`, of `book`, one that reaches in meters at
+    /// every rank, as a build's and a gather's do.
+    pub fn meters_in(&self, book: &ActionBook, slot: u8) -> Num {
+        let ActionRange::Meters(range) = self.range_in(book, slot) else {
+            panic!("a build's and a gather's ranks reach in meters, as their book checked");
+        };
+        range
+    }
+
     /// The kind of the action in `slot`, as `book` gives it; none for a slot that is missing or
     /// holds none.
     pub fn kind_in(&self, book: &ActionBook, slot: u8) -> Option<ActionKind> {
@@ -99,11 +133,6 @@ impl ActionSlots {
             attack_target: None,
             interrupted: None,
         }
-    }
-
-    /// The slots with their times, each ready at once, as a unit gains them.
-    pub fn timed(self) -> TimedSlots {
-        TimedSlots::new(self)
     }
 
     /// Puts `actions` in `kind` at `rank`, each ready at once in `times`, after the slots of that

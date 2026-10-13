@@ -80,7 +80,7 @@ impl GatherView<'_, '_> {
             return None;
         };
         let rank = held.rank?;
-        let range = self.book.meters(slots, slot);
+        let range = slots.meters_in(&self.book, slot);
         let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
             spec,

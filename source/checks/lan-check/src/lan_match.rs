@@ -11,15 +11,13 @@ use campfire_store::OutputFile;
 use crate::binaries::Binaries;
 use crate::error::CheckError;
 use crate::process::Process;
-use crate::process_group::ProcessGroup;
+use crate::process_group::{POLL, ProcessGroup};
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
 
 /// How long the server gets to listen, and then the whole match to end, before the check stops
 /// what still runs: a match of 11 s, with a restart its clients notice in 5 s, ends in a few more.
 const DEADLINE: Duration = Duration::from_secs(30);
-/// How often the check looks at the processes while it waits.
-pub(crate) const POLL: Duration = Duration::from_millis(50);
 /// The server's data directory, in the run's directory.
 pub(crate) const SERVER_DATA: &str = "server-data";
 /// The local client's data directory, in the run's directory; its local server's is `server`

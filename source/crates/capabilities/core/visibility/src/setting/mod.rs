@@ -3,8 +3,10 @@ use std::str::FromStr;
 
 use campfire_state_types::{DataKind, Recipients};
 
-use crate::error::VisibilityError;
+use crate::setting::error::VisibilityError;
 use crate::{OutView, SpectatorFog};
+
+pub(crate) mod error;
 
 /// A setting of a session's visibility, which a mode's `[visibility]` sets and its `host` list may
 /// leave to the host (design 14, D4, D14): a kind's audience, the spectators' fog, or what a player

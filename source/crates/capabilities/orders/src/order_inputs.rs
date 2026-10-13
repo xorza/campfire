@@ -115,7 +115,7 @@ impl OrderInputs {
                             Some((targets.relation(team, unit.team), unit.tags))
                         });
                         let armed = slots.is_some_and(|slots| {
-                            selected.is_some() && book.weapon_for(slots, selected).is_some()
+                            selected.is_some() && slots.weapon_in(&book, selected).is_some()
                         });
                         (armed && sees(target)).then_some(UnitOrder::Attack { target })
                     }

@@ -9,6 +9,7 @@ use campfire_stats::StatsEffect;
 use campfire_values::Number;
 
 use crate::action_data::ActionData;
+use crate::action_data::error::EffectRule;
 use crate::action_target::ActionTarget;
 use crate::actions_effect::ActionsEffect;
 use crate::amount::Amount;
@@ -20,7 +21,7 @@ use crate::effect_data::{
 };
 use crate::effect_names::EffectNames;
 use crate::effect_queues::EffectQueues;
-use crate::error::{ActionError, ActionProblem, EffectRule};
+use crate::error::{ActionError, ActionProblem};
 use crate::launch_id::LaunchId;
 use crate::lists_of::ListsOf;
 
@@ -324,7 +325,7 @@ impl Book for EffectListBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(feature = "internals")]

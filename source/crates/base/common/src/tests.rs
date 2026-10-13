@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::panic;
 use std::path::Path;
 
@@ -765,67 +766,175 @@ fn a_required_dependency_is_named_by_production_code() {
     );
 }
 
-/// The modules of a crate's `src/` in the order they import, a group at each place: each imports
-/// only modules of the groups before its own (design 02, Structural rules).
-const MODULE_ORDERS: [(&str, &[&[&str]]); 2] = [
-    (
-        "crates/network/net/src",
-        &[&["faults"], &["sim_client", "sim_server"], &["local"]],
-    ),
-    (
-        "crates/session/protocol/src",
-        &[
-            &["spill", "stamp_count"],
-            &["checkpoint", "journal"],
-            &["session_log"],
-        ],
-    ),
-];
+/// The crates whose top modules still import each other: the four modules of `campfire-core`
+/// share one crate until they split into a crate each (design 02, The capabilities' crates).
+const CYCLE_EXCEPTIONS: [&str; 1] = ["campfire-core"];
 
-/// The modules of `order` that `code`, of the module `module`, imports though they do not come
-/// before its group.
-fn order_breaches<'a>(order: &[&[&'a str]], module: &str, code: &str) -> Vec<&'a str> {
-    let place = |name: &str| order.iter().position(|group| group.contains(&name));
-    let own = place(module).expect("the module has a place");
-    order
-        .iter()
-        .flat_map(|group| group.iter().copied())
-        .filter(|other| *other != module && place(other).unwrap() >= own)
-        .filter(|other| code.contains(&format!("crate::{other}::")))
-        .collect()
+/// The cycles of `imports`, a crate's top modules each with the top modules it imports: each
+/// group of two or more modules that reach each other through their imports, sorted.
+fn module_cycles(imports: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> {
+    let reach = |from: &str| {
+        let mut seen = BTreeSet::new();
+        let mut next = vec![from.to_owned()];
+        while let Some(module) = next.pop() {
+            for other in imports.get(&module).into_iter().flatten() {
+                if seen.insert(other.clone()) {
+                    next.push(other.clone());
+                }
+            }
+        }
+        seen
+    };
+    let reached: BTreeMap<&String, BTreeSet<String>> = imports
+        .keys()
+        .map(|module| (module, reach(module)))
+        .collect();
+    let mut cycles: Vec<Vec<String>> = Vec::new();
+    for (module, from) in &reached {
+        let cycle: Vec<String> = from
+            .iter()
+            .filter(|other| {
+                reached
+                    .get(other)
+                    .is_some_and(|back| back.contains(*module))
+            })
+            .cloned()
+            .collect();
+        if cycle.len() > 1 && !cycles.contains(&cycle) {
+            cycles.push(cycle);
+        }
+    }
+    cycles
+}
+
+/// The first name of each path `code` names through `crate::`, a group `crate::{a::X, b}` giving
+/// each of its names: `use crate::a::X;`, `use crate::b;` and `crate::c::f()` name `a`, `b` and
+/// `c`. A macro's `$crate::` names no module of the crate it is written in.
+fn crate_heads(code: &str) -> Vec<&str> {
+    fn lead(text: &str) -> &str {
+        let text = text.trim_start();
+        let end = text
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(text.len());
+        &text[..end]
+    }
+    let mut heads = Vec::new();
+    for (at, _) in code.match_indices("crate::") {
+        if code[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '$') {
+            continue;
+        }
+        let rest = &code[at + "crate::".len()..];
+        let Some(group) = rest.strip_prefix('{') else {
+            heads.push(lead(rest));
+            continue;
+        };
+        let mut depth = 0;
+        let mut start = 0;
+        for (at, c) in group.char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' if depth == 0 => {
+                    heads.push(lead(&group[start..at]));
+                    break;
+                }
+                '}' => depth -= 1,
+                ',' if depth == 0 => {
+                    heads.push(lead(&group[start..at]));
+                    start = at + 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    heads.retain(|head| !head.is_empty());
+    heads
+}
+
+/// The top modules of the crate at `src/`, each with the top modules its production code names
+/// through `crate::`: a top module is a file or a folder of `src/` but the crate's root.
+fn top_imports(src: &str, sources: &[SourceFile]) -> BTreeMap<String, BTreeSet<String>> {
+    let mut imports: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for file in sources {
+        let Some(rest) = file.path.strip_prefix(&format!("{src}/")) else {
+            continue;
+        };
+        if rest == "lib.rs" || rest == "main.rs" {
+            continue;
+        }
+        let module = rest
+            .split('/')
+            .next()
+            .unwrap()
+            .trim_end_matches(".rs")
+            .to_owned();
+        let named = imports.entry(module.clone()).or_default();
+        let Some(code) = file.production() else {
+            continue;
+        };
+        for head in crate_heads(&code) {
+            if head != module {
+                named.insert(head.to_owned());
+            }
+        }
+    }
+    let modules: BTreeSet<String> = imports.keys().cloned().collect();
+    for named in imports.values_mut() {
+        named.retain(|other| modules.contains(other));
+    }
+    imports
 }
 
 #[test]
-fn a_crates_modules_import_in_their_order() {
+fn no_crates_modules_import_each_other_in_a_cycle() {
+    let crates = crates();
     let sources = sources();
+    for name in CYCLE_EXCEPTIONS {
+        assert!(
+            crates.iter().any(|krate| krate.name == name),
+            "{name} is no crate"
+        );
+    }
     let mut found = Vec::new();
-    for (src, order) in MODULE_ORDERS {
-        for module in order.iter().flat_map(|group| group.iter()) {
-            let mut files = 0;
-            for file in &sources {
-                let Some(rest) = file.path.strip_prefix(&format!("{src}/")) else {
-                    continue;
-                };
-                if rest != format!("{module}.rs") && !rest.starts_with(&format!("{module}/")) {
-                    continue;
-                }
-                files += 1;
-                let Some(code) = file.production() else {
-                    continue;
-                };
-                for other in order_breaches(order, module, &code) {
-                    found.push(format!("{}: {module} imports {other}", file.path));
-                }
-            }
-            assert!(files > 0, "{src}/{module} holds no file");
+    for krate in &crates {
+        let src = format!("{}/src", krate.path);
+        let cycles = module_cycles(&top_imports(&src, &sources));
+        let excepted = CYCLE_EXCEPTIONS.contains(&krate.name.as_str());
+        assert!(
+            !excepted || !cycles.is_empty(),
+            "{} is no exception now",
+            krate.name
+        );
+        if !excepted {
+            found.extend(
+                cycles
+                    .into_iter()
+                    .map(|cycle| format!("{}: {}", krate.name, cycle.join(", "))),
+            );
         }
     }
     assert_eq!(found, Vec::<String>::new());
-    // A module of a later group and one of its own are breaches; one before it is not.
-    let order: &[&[&str]] = &[&["a"], &["b", "c"], &["d"]];
-    let code = "use crate::a::X;\nuse crate::c::Y;\nuse crate::d::Z;";
-    assert_eq!(order_breaches(order, "b", code), ["c", "d"]);
-    assert_eq!(order_breaches(order, "d", code), Vec::<&str>::new());
+    // Three modules that import in a ring make one cycle; a module that only imports into it stays
+    // out, as does a chain.
+    let imports: BTreeMap<String, BTreeSet<String>> = [
+        ("a", &["b"][..]),
+        ("b", &["c"]),
+        ("c", &["a"]),
+        ("d", &["a"]),
+        ("e", &["f"]),
+        ("f", &[]),
+    ]
+    .into_iter()
+    .map(|(module, named)| {
+        (
+            module.to_owned(),
+            named.iter().map(|&name| name.to_owned()).collect(),
+        )
+    })
+    .collect();
+    assert_eq!(module_cycles(&imports), [["a", "b", "c"]]);
+    // A path, a module, a group with a nested group and a trailing comma, and a macro's own crate.
+    let code = "use crate::a::X;\nuse crate::b;\nuse crate::{c::{Y, Z}, d,\n};\ncrate::e::f();\n$crate::g::H";
+    assert_eq!(crate_heads(code), ["a", "b", "c", "d", "e"]);
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).

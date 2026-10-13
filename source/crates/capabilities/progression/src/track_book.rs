@@ -2,14 +2,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, Frame, TrackId, View};
+use campfire_core::{Book, ScriptNames, TrackId, View};
 use campfire_math::Num;
 use campfire_sim::Capability;
 use campfire_stats::Level;
 use campfire_values::{DeclaredName, Names};
 
 use crate::error::TrackError;
-use crate::progression_column::ProgressionColumn;
 use crate::track_data::TrackData;
 
 /// The tracks a match loaded, by id, each with the experience of its levels. Package data, not
@@ -30,6 +29,11 @@ struct Tracks {
 }
 
 impl TrackBook {
+    /// Whether `other` is this book as one load made it, not a book of another load.
+    pub(crate) fn same(&self, other: &TrackBook) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+
     /// The book of `tracks`; an error for more than `TrackId::LIMIT`, or more than one the
     /// `level` track.
     pub fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> Result<TrackBook, TrackError> {
@@ -95,7 +99,9 @@ impl Book for TrackBook {
     const OWNER: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View, _: Option<&mut Frame>) {
-        ProgressionColumn::share(view, self.clone());
+    /// Names the tracks to scripts; the progression column takes the book from the match at each
+    /// read.
+    fn share(&self, view: &View) {
+        view.names_mut().tracks = ScriptNames::new(Arc::clone(self.names()));
     }
 }

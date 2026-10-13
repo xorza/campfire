@@ -4,7 +4,7 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use campfire_core::{Body, Cache, Layer};
-use campfire_geometry::{BodyBox, CellLevels, Grid, Shape};
+use campfire_geometry::{BodyBox, CellLevels, Grid, MAX_BOUND, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_values::{RowDirectory, RowEntries};
@@ -177,7 +177,7 @@ impl BodyIndex {
         let widest = if widest > Num::ZERO {
             widest
         } else {
-            Shape::MAX_BOUND
+            MAX_BOUND
         };
         BodyIndex::of_levels(CellLevels::new(widest + widest))
     }

@@ -1,7 +1,6 @@
+use campfire_actions::TimedSlots;
 use campfire_core::PlayersWorldCrate;
-use campfire_production::{
-    Gatherer, Load, ModeSupplyData, ProductionColumn, SupplyCostBook, SupplyData,
-};
+use campfire_production::{Gatherer, Load, ModeSupplyData, SupplyBook, SupplyCostBook, SupplyData};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
@@ -30,7 +29,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut owned = game.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(&game).unwrap();
     let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
-    let slots = ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]).timed();
+    let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
     let hero_type = *game.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
@@ -147,8 +146,8 @@ fn on_mode_input(ctx, player, name, value) {
         },
     );
     let costs = SupplyCostBook::new(types, game.resource::<ActionBook>());
-    ProductionColumn::share_rules(&view, Some(ModeSupplyData { max: 5 }));
-    ProductionColumn::share_costs(&view, costs);
+    SupplyBook(Some(ModeSupplyData { max: 5 })).load_into(&mut game);
+    costs.load_into(&mut game);
     // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
     // third gathers and carries nothing.
     let gold = resource("gold").unwrap();
@@ -188,8 +187,8 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(70_000));
     assert_eq!(Mode::failures(&game), []);
     // A mode that counts no supply fails the call.
-    ProductionColumn::share_rules(&view, None);
-    ProductionColumn::share_costs(&view, SupplyCostBook::default());
+    SupplyBook(None).load_into(&mut game);
+    SupplyCostBook::default().load_into(&mut game);
     Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
         Mode::failures(&game),

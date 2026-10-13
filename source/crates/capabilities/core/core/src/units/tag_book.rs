@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use campfire_sim::Capability;
 
 use crate::declare::book::Book;
-use crate::scripts::frame::Frame;
 use crate::units::tag::Tag;
 use crate::units::tag_effect::TagEffect;
 use crate::units::tag_properties::TagProperties;
@@ -114,7 +113,7 @@ impl Book for TagBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View, _: Option<&mut Frame>) {}
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(feature = "internals")]
