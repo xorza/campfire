@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-campfire-capabilities.workspace = true
 campfire-common.workspace = true
+campfire-core.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-net.workspace = true
 campfire-package.workspace = true
@@ -15,6 +15,7 @@ campfire-quic.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
+campfire-visibility.workspace = true
 
 bevy_app.workspace = true
 bevy_ecs.workspace = true
@@ -22,12 +23,14 @@ bevy_state.workspace = true
 bevy_time.workspace = true
 clap.workspace = true
 lightyear.workspace = true
+secp256k1.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
+campfire-state-types = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

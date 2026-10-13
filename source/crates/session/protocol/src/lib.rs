@@ -84,8 +84,6 @@ pub use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 pub use crate::slot_plan::SlotPlan;
 pub use crate::slot_start::SlotStart;
 pub use crate::snapshot_fingerprint::SnapshotFingerprint;
-/// The curve library the keys and signatures of this API are typed in, at the version it pins.
-pub use secp256k1;
 
 #[cfg(feature = "internals")]
 pub mod internals {

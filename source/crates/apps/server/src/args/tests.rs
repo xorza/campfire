@@ -1,9 +1,10 @@
 use std::error::Error;
 use std::ffi::OsString;
 
-use campfire_capabilities::{DataKind, Recipients, SpectatorFog};
 use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFileError;
+use campfire_state_types::{DataKind, Recipients};
+use campfire_visibility::SpectatorFog;
 use clap::error::ErrorKind;
 
 use super::*;

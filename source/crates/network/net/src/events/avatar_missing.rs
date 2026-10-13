@@ -28,9 +28,9 @@ impl LogEvent for AvatarMissing {
 #[cfg(test)]
 mod tests {
     use campfire_log::internals::round_trip;
+    use campfire_progression::ProgressionAction;
 
     use super::*;
-    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_event_reads_back_what_it_logs() {

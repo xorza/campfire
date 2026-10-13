@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use campfire_capabilities::HeightGrid;
 use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
+use campfire_mode::HeightGrid;
 use campfire_package::{MapLight, MapLights, Terrain, TerrainLight, TerrainLighting, TerrainParts};
 use serde::Serialize;
 
@@ -170,10 +170,10 @@ impl MapImport {
             markers,
         };
         Ok(MapImport {
-            map: Toml::write(&map).expect("a map encodes as TOML"),
+            map: Toml::write(&map),
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
-            lights: Toml::write(&map_lights).expect("lights encode as TOML"),
+            lights: Toml::write(&map_lights),
         })
     }
 
@@ -223,10 +223,10 @@ impl MapImport {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::{
-        Bounds, DeclaredName, MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData, Scalar,
-    };
+    use campfire_geometry::Bounds;
+    use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
     use campfire_package::{BlendShape, BlendTile};
+    use campfire_values::{DeclaredName, Scalar};
 
     use super::*;
     use crate::zero_hour::map_file::internals::map;

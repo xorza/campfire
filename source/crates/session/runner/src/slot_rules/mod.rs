@@ -1,4 +1,4 @@
-use campfire_capabilities::{Leaver, PlayersData};
+use campfire_mode::{Leaver, PlayersData};
 use campfire_protocol::{AfterLeave, SlotChangeKind, Taken};
 
 use crate::slot_rules::error::SlotRuleError;

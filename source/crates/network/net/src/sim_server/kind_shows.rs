@@ -5,8 +5,10 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::{Changed, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Query, Res, SystemParam};
-use campfire_capabilities::{EntityKind, KindAudience, KindVisitor, Owner, Release, SeenBy};
+use campfire_capabilities::Release;
+use campfire_core::{EntityKind, KindAudience, KindVisitor, Owner};
 use campfire_sim::StableId;
+use campfire_vision::SeenBy;
 use lightyear::prelude::{NetworkTarget, PredictionTarget, Replicate};
 use tracing::debug;
 

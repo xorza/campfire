@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_capabilities::{
-    ActionData, Applies, DeclaredName, DeliveryData, PackagePath, UnitTypeData,
-};
+use campfire_actions::{ActionData, DeliveryData};
+use campfire_capabilities::UnitTypeData;
+use campfire_core::Applies;
+use campfire_values::{DeclaredName, PackagePath};
 use derive_more::Display;
 
 use crate::package_view::{PackageView, ViewKind};

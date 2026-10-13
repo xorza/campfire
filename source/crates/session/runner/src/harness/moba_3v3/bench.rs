@@ -4,8 +4,9 @@ use std::time::{Duration, Instant};
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use campfire_capabilities::Team;
-use campfire_capabilities::internals::{KernelScene, ScriptsWorldInternals};
+use campfire_core::Team;
+use campfire_core::internals::ScriptsWorldInternals;
+use campfire_geometry::internals::KernelScene;
 use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 

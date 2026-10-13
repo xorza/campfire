@@ -1,10 +1,10 @@
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{ModeVisibility, Visibility};
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{ModePackages, TickRange};
-use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{EngineRelease, SeedCommitment, SessionTerms, SlotPlan};
+use campfire_visibility::{ModeVisibility, Visibility};
+use secp256k1::XOnlyPublicKey;
 
 use crate::input_rules::InputRules;
 use crate::session_rules::error::TermsError;

@@ -7,24 +7,28 @@
 //! content's units and values, so a change to the content changes it, by design. It plays a
 //! match long enough for every hero to learn its ultimate, and takes several seconds.
 
-use campfire_capabilities::{Life, Respawn};
-use campfire_sim::internals::SimWorldInternals;
 mod showcase;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::Stats;
-use campfire_capabilities::{
-    ActionSlot, ActionSlots, Dead, Deaths, Level, Match, ModeParam, ModeWorld, Owner, PathWalker,
-    Points, Rank, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
-};
+use campfire_actions::{ActionSlot, ActionSlots, SlotKind};
+use campfire_capabilities::Match;
+use campfire_combat::{Deaths, Respawn};
 use campfire_common::Tick;
+use campfire_core::{Dead, Owner, ScriptFailures, StateValue, Team, UnitType};
 use campfire_math::Num;
+use campfire_mode::{ModeParam, ModeWorld};
+use campfire_navigation::PathWalker;
+use campfire_progression::Points;
 use campfire_protocol::SessionLog;
-use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, HashTrail, Moba3v3};
-use campfire_runner::internals::{MatchUnits, ScriptedMode};
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, Golden, HashTrail, MatchUnits, Moba3v3, ScriptedMode,
+};
 use campfire_runner::{Session, SessionWorld};
 use campfire_script::ScriptHost;
+use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
+use campfire_stats::{Level, Life, Stats};
+use campfire_values::{Rank, Scalar};
 
 use crate::match_3v3::showcase::Showcase;
 use crate::moba::{gold, level_xp};

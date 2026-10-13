@@ -5,12 +5,12 @@ use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::secp256k1::{Secp256k1, XOnlyPublicKey};
 use campfire_protocol::{
     Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, SeedContribution,
     ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult,
     SessionTerms, Signature, SlotPlan, SlotStart,
 };
+use secp256k1::{Secp256k1, XOnlyPublicKey};
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::input_rules::InputRules;

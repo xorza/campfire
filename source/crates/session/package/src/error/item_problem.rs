@@ -1,4 +1,5 @@
-use campfire_capabilities::{ActionSlots, DeclaredName};
+use campfire_actions::ActionSlots;
+use campfire_values::DeclaredName;
 use thiserror::Error;
 
 use crate::error::place::Place;

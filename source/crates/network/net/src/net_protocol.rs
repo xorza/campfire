@@ -3,11 +3,11 @@ use std::time::Duration;
 
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
-use campfire_capabilities::{
-    CapabilitySet, Declared, Release, Replication, Sending, SendingWays, StateTypes,
-};
+use campfire_capabilities::Release;
+use campfire_core::CapabilitySet;
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
+use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
     PredictionBuilderExt, ReliableSettings,
@@ -173,8 +173,13 @@ mod tests {
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use campfire_capabilities::{Dead, Destination, Inventory, Level, Points, Projectile};
+    use campfire_core::Dead;
+    use campfire_items::Inventory;
+    use campfire_navigation::Destination;
+    use campfire_progression::Points;
+    use campfire_projectiles::Projectile;
     use campfire_sim::{Capability, Position};
+    use campfire_stats::Level;
     use lightyear::prelude::ComponentRegistry;
     use lightyear::prelude::server::ServerPlugins;
 

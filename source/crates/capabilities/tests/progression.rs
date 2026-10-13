@@ -1,5 +1,4 @@
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_core::{Book, Team, TrackId, UnitTypeCore, Units};
 use campfire_math::Num;

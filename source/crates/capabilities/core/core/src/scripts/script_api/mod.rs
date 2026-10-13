@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
 use campfire_script::ScriptHost;
-use campfire_script::rhai::Engine;
 use campfire_sim::Capability;
 use campfire_values::EngineEnum;
+use rhai::Engine;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;

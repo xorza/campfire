@@ -5,16 +5,16 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_capabilities::{
-    ActionData, ActionSlot, ActionSlots, DeclaredName, Inventory, ItemId, ItemStack, Level,
-    Lifespan, ModifierId, Number, Points, PoolId, Rank, Ranked, Scalar, SlotTime, SlotTimes, Team,
-    Toggle,
-};
-use campfire_capabilities::{Names, PoolMeters, Stats};
+use campfire_actions::{ActionData, ActionSlot, ActionSlots, SlotTime, SlotTimes, Toggle};
 use campfire_common::Tick;
+use campfire_core::{Lifespan, ModifierId, Team};
+use campfire_items::{Inventory, ItemId, ItemStack};
 use campfire_math::Num;
+use campfire_progression::Points;
 use campfire_runner::internals::{MatchUnits, Moba3v3, ScriptedMode};
 use campfire_sim::{Position, SimWorld, TickRate};
+use campfire_stats::{Level, PoolId, PoolMeters, Stats};
+use campfire_values::{DeclaredName, Names, Number, Rank, Ranked, Scalar};
 
 use crate::moba::gold;
 

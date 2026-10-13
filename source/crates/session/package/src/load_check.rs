@@ -1,19 +1,26 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::slice;
 
-use campfire_capabilities::{
-    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, ApiOwner, ApiVersion,
-    BookError, BookPlace, Books, CtxMisuse, DamageFields, DataTable, DeclaredName, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, EngineTag, EnumRecord, EnumString, FilterData,
-    HealFields, Hook, ItemData, KindData, LaunchFields, MemberKind, Metric, ModeList,
-    ModeNamesError, ModifierData, ModifierFields, ModifierProblem, MoveData, NameKind, Number,
-    Offers, PackagePath, Param, ParamProblem, ProjectileHits, PurgeFields, RangeField, Release,
-    RestoreFields, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, SpawnFields,
-    Stat, StatId, Status, SyncTo, Targeting, TrackError, TypePlace, TypesError, UnitTypeCore,
-    UnitTypeData, UnknownName, XpFields,
+use campfire_actions::{
+    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
+    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ModifierFields,
+    MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields, Targeting, XpFields,
 };
+use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
+use campfire_core::{
+    ApiOwner, ApiVersion, CtxMisuse, DataTable, EngineTag, EnumRecord, EnumString, Hook,
+    MemberKind, NameKind, ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName,
+    ScriptRole, Status, SyncTo, TypesError, UnitTypeCore, UnknownName,
+};
+use campfire_geometry::Metric;
+use campfire_items::ItemData;
 use campfire_math::Num;
+use campfire_mode::{ModeList, ModeNamesError, Offers};
+use campfire_progression::TrackError;
+use campfire_projectiles::ProjectileHits;
 use campfire_sim::{Capability, TickRate};
+use campfire_stats::{ModifierData, ModifierProblem, StatId};
+use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;

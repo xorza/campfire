@@ -2,14 +2,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 use std::{fmt, iter};
 
+use campfire_actions::ActionData;
 use campfire_capabilities::{
-    ActionData, BookInput, BookKind, BookPackage, Books, DeclaredName, EdgeError, EngineTag,
-    MapData, ModeData, PackageContent, PackagePath, Release, ScriptBook, StatGraph, StatId,
-    UnitTypeData, UnknownName,
+    BookInput, BookKind, BookPackage, Books, PackageContent, Release, UnitTypeData,
 };
 use campfire_common::{Fingerprint, MapName};
+use campfire_core::{EngineTag, ScriptBook, UnknownName};
+use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
+use campfire_stats::{EdgeError, StatGraph, StatId};
+use campfire_values::{DeclaredName, PackagePath};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;

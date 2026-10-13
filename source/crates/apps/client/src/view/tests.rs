@@ -7,12 +7,14 @@ use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
-use campfire_capabilities::Areas;
+use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
-use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOriginBook};
+use campfire_core::{TypeOrigin, TypeOriginBook};
 use campfire_math::Num;
+use campfire_mode::HeightGrid;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};
 use campfire_sim::IdAllocator;
+use campfire_values::{DeclaredName, PackagePath};
 
 use super::*;
 use crate::view::unit_looks::ModelParts;

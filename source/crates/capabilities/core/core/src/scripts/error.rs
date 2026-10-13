@@ -1,7 +1,7 @@
 use campfire_math::Num;
-use campfire_script::rhai::{EvalAltResult, INT};
 use campfire_script::{Raised, ScriptError};
 use campfire_values::EngineEnum;
+use rhai::{EvalAltResult, INT};
 use thiserror::Error;
 
 use crate::scripts::name_kind::NameKind;

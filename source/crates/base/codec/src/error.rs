@@ -1,4 +1,5 @@
 use thiserror::Error;
+use toml::de;
 
 /// Why bytes are no postcard value of a type. Bytes from a file, a log or the network are
 /// untrusted, so each is an expected failure.
@@ -24,3 +25,22 @@ impl From<postcard::Error> for BinaryError {
         }
     }
 }
+
+/// Why a text is no TOML of the type asked for, as `Toml::parse` gives it: TOML's own error,
+/// which names the place in the text.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error(transparent)]
+pub struct TomlError(#[from] de::Error);
+
+impl TomlError {
+    /// What is wrong, without the place.
+    pub fn message(&self) -> &str {
+        self.0.message()
+    }
+}
+
+/// Why a text is no JSON of the type asked for, as `Json::parse` gives it: JSON's own error,
+/// which names the line and column.
+#[derive(Debug, Error)]
+#[error(transparent)]
+pub struct JsonError(#[from] serde_json::Error);

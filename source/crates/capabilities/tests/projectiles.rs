@@ -1,7 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, Deaths, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};

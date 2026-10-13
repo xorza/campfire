@@ -1,7 +1,7 @@
 use std::ops::Deref;
 use std::slice;
 
-use campfire_script::rhai::{Array, Dynamic};
+use rhai::{Array, Dynamic};
 
 use crate::scripts::script_value::ScriptValue;
 

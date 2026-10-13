@@ -2,9 +2,10 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{ChargeRule, PoolId, SlotCharges};
+use campfire_actions::{ChargeRule, SlotCharges};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
+use campfire_stats::PoolId;
 
 use crate::view::float_num::FloatNum;
 

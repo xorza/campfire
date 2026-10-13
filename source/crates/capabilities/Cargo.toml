@@ -31,6 +31,7 @@ internals = [
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
+    "dep:campfire-geometry",
     "dep:campfire-log",
     "dep:campfire-math",
     "dep:criterion",
@@ -45,7 +46,7 @@ campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-deliveries.workspace = true
-campfire-geometry.workspace = true
+campfire-geometry = { workspace = true, optional = true }
 campfire-items.workspace = true
 campfire-log = { workspace = true, optional = true }
 campfire-math = { workspace = true, optional = true }
@@ -73,6 +74,7 @@ thiserror.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
+rhai.workspace = true
 
 [lints]
 workspace = true

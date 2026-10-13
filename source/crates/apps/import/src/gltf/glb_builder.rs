@@ -109,9 +109,7 @@ impl GlbBuilder {
                 byte_length: self.buffer.len(),
             });
         }
-        let mut json = Json::write(&self.document)
-            .expect("a glTF document writes as JSON")
-            .into_bytes();
+        let mut json = Json::write(&self.document).into_bytes();
         json.resize(json.len().next_multiple_of(4), b' ');
         let mut buffer = self.buffer;
         buffer.resize(buffer.len().next_multiple_of(4), 0);

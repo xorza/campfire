@@ -2,15 +2,15 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-use campfire_capabilities::Team;
 use campfire_common::{ChannelBinding, PlayerSlot, Tick, Ticks};
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use campfire_core::Team;
 use campfire_protocol::{
     Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
     SessionTerms, SignedReceipt,
 };
 use campfire_runner::SessionRules;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
+use secp256k1::{Keypair, Secp256k1, VerifyOnly};
 
 use crate::dismissed::Dismissed;
 use crate::join::{Join, JoinRole};

@@ -3,18 +3,21 @@
 
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{
-    Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points, Rank,
-    ScriptFailures, Team, TrackId,
-};
+use campfire_actions::ActionSlots;
+use campfire_capabilities::{Action, Order};
+use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
+use campfire_core::{Hook, ScriptFailures, Team, TrackId};
 use campfire_math::Num;
+use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_runner::internals::MatchUnits;
-use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden};
+use campfire_progression::{Experience, Points};
+use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden, MatchUnits};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_sim::{SimWorld, StableId};
+use campfire_stats::Level;
+use campfire_values::Rank;
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.
@@ -53,9 +56,10 @@ const MEET: u64 = 140;
 
 /// The mode's scripted match, which `source/.config/nextest.toml` exempts from the bound of 1 s.
 mod scripted_match {
+    use campfire_orders::OrdersAction;
+    use campfire_progression::ProgressionAction;
+
     use super::*;
-    use campfire_capabilities::OrdersAction;
-    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_lane_match_plays_to_its_golden_record() {

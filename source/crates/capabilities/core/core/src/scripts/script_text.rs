@@ -1,6 +1,6 @@
 use std::ops::Deref;
 
-use campfire_script::rhai::ImmutableString;
+use rhai::ImmutableString;
 
 /// A text a script reads or gives, shared, so a copy counts a reference.
 #[derive(Debug, Clone, PartialEq, Eq)]

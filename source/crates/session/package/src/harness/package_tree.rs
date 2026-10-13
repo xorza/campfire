@@ -180,7 +180,7 @@ impl PackageTree {
             },
         );
         edit(parent, key);
-        Toml::write(&root).unwrap()
+        Toml::write(&root)
     }
 }
 

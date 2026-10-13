@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use campfire_capabilities::PackagePath;
+use campfire_values::PackagePath;
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
 

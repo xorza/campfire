@@ -3,14 +3,15 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 
-use campfire_capabilities::{DeclaredName, NameKind, UnitTypeData};
+use campfire_capabilities::UnitTypeData;
 use campfire_codec::Toml;
+use campfire_core::NameKind;
+use campfire_package::internals::Edit;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
 };
 use campfire_sim::Capability;
-
-use campfire_package::internals::Edit;
+use campfire_values::DeclaredName;
 
 use crate::moba::{edited, load};
 

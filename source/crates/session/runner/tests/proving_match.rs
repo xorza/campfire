@@ -5,17 +5,25 @@ use std::any::TypeId;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
-use campfire_capabilities::{
-    ActionSlots, Area, Body, CapabilitySet, Dead, Experience, Level, Lifespan, ModeWorld,
-    Modifiers, MoveStep, Owner, Projectile, Release, ScriptFailures, SeenBy, StateValue, Team,
-    TeamSet, TrainQueue,
+use campfire_actions::ActionSlots;
+use campfire_areas::Area;
+use campfire_capabilities::Release;
+use campfire_core::{
+    Body, CapabilitySet, Dead, Lifespan, MoveStep, Owner, ScriptFailures, StateValue, Team, TeamSet,
 };
 use campfire_math::Num;
-use campfire_runner::internals::MatchBuild;
-use campfire_runner::internals::{CopyCheck, FixedMatch, Golden, MatchUnits, ProvingMatch};
+use campfire_mode::ModeWorld;
+use campfire_production::TrainQueue;
+use campfire_progression::Experience;
+use campfire_projectiles::Projectile;
+use campfire_runner::internals::{
+    CopyCheck, FixedMatch, Golden, MatchBuild, MatchUnits, ProvingMatch,
+};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
+use campfire_stats::{Level, Modifiers};
+use campfire_vision::SeenBy;
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]

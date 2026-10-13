@@ -7,9 +7,9 @@ use bevy::asset::io::{
     AssetReader, AssetReaderError, AssetReaderFuture, PathStream, Reader, VecReader,
 };
 use bevy::tasks::ConditionalSendFuture;
-use campfire_capabilities::PackagePath;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_values::PackagePath;
 use tracing::error;
 
 /// The mode's packages as a Bevy asset source: a path is a package's place among them, the
@@ -98,9 +98,9 @@ impl AssetReader for PackageSource {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_capabilities::PackagePath;
     use campfire_package::{PackageDir, PackageReader, PackageWriter};
     use campfire_store::internals::Scratch;
+    use campfire_values::PackagePath;
 
     /// The package `dir` of `scratch`, written with `files`, as its client reads it.
     pub(crate) fn package(scratch: &Scratch, dir: &str, files: &[(&str, &[u8])]) -> PackageReader {

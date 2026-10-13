@@ -1,7 +1,6 @@
 use std::panic;
 
-use campfire_capabilities::internals::*;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::Match;
 use campfire_common::PlayerSlot;
 use campfire_core::*;
 use campfire_sim::Capability;

@@ -6,13 +6,13 @@ use std::time::SystemTime;
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::{Session, SessionWorld};
 use campfire_store::{
     AppendOpenError, DirEntries, DurableError, DurableFile, InputFile, PathError, ReadError,
     Stamped,
 };
+use secp256k1::Keypair;
 
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
@@ -262,11 +262,11 @@ impl RestoredSession {
 mod tests {
     use std::num::NonZeroU32;
 
-    use campfire_capabilities::Visibility;
     use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
     use campfire_protocol::{EngineRelease, SeedChain, SessionTerms, SlotPlan};
     use campfire_store::internals::Scratch;
+    use campfire_visibility::Visibility;
 
     use super::*;
 

@@ -7,8 +7,8 @@
 use std::num::NonZeroU32;
 
 use bevy_time::{Time, Virtual};
-use campfire_capabilities::{SaveBy, SavesData};
 use campfire_common::{PlayerSlot, Tick};
+use campfire_mode::{SaveBy, SavesData};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,

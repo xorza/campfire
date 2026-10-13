@@ -57,18 +57,17 @@ The issue log is `.notes/ISSUES.md`, one file for every open problem of the proj
 
 ## Checks
 
-Every check, test, doc build and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never through `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own, and the driver's shapes are the ones kept warm. No command takes `-p` or a crate list, as each covers the workspace, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
+Every check, test, doc build and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never through `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own, and the driver's shapes are the ones its commands keep built. No command takes `-p` or a crate list, as each covers the workspace, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
 
 | Command | Runs |
 | --- | --- |
-| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index written again, and the whole suite: a step's check |
+| `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index written again, and the tests of the crates the change since the last pass reaches: a step's check. A step that passed on the same tree does not run again |
 | `./drive.py index` | each workspace package's `package.index` written again from its files, after a change to a package |
 | `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again |
-| `./drive.py doc` | the doc tests, and rustdoc with `-D warnings` |
+| `./drive.py doc` | rustdoc with `-D warnings` |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
 | `./drive.py lan`, `./drive.py zero-hour [run root]` | the LAN check, and the Zero Hour check, on request |
 | `./drive.py gate` | every step CI runs, and the Windows lint on Linux |
-| `./drive.py warm` | in the user's terminal: rebuilds every lane on each change; a command stops its pass and takes cargo's lock |
 
 Each step prints one line, its result and its time, after its diagnostics in short form; a failed step names its log, `target/drive/log/<step>.log`, which holds its whole output. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`: what it prints is already filtered. The exit status is 0 when every step passed.
 

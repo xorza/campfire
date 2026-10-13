@@ -1,9 +1,8 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use campfire_codec::Json;
-use serde::de::DeserializeOwned;
-use serde::de::Error;
+use campfire_codec::{Json, JsonError};
+use serde::de::{DeserializeOwned, Error};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
@@ -31,14 +30,15 @@ pub enum LogLevel {
 
 impl LogLine {
     /// The line `text` holds; an error when it is not a JSON event.
-    pub fn parse(text: &str) -> Result<LogLine, serde_json::Error> {
+    pub fn parse(text: &str) -> Result<LogLine, JsonError> {
         Json::parse(text)
     }
 
     /// The event of type `E`, when the line has its message; an error when its fields do not
     /// read as `E`.
-    pub fn read<E: LogEvent>(&self) -> Option<Result<E, serde_json::Error>> {
-        (self.fields.get("message")?.as_str()? == E::MESSAGE).then(|| E::deserialize(&self.fields))
+    pub fn read<E: LogEvent>(&self) -> Option<Result<E, JsonError>> {
+        (self.fields.get("message")?.as_str()? == E::MESSAGE)
+            .then(|| E::deserialize(&self.fields).map_err(JsonError::from))
     }
 
     /// Reads a field that an event logs with `%`, as its `Display` writes it, back through

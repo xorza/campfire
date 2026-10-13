@@ -1,7 +1,7 @@
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::{Array, Dynamic, ImmutableString, Variant};
 use campfire_sim::Position;
 use campfire_values::{DamageKind, EngineEnum, Relation};
+use rhai::{Array, Dynamic, ImmutableString, Variant};
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};

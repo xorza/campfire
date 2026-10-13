@@ -7,7 +7,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use bevy_time::{Real, Time};
-use campfire_capabilities::{HostVisibility, Visibility};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
@@ -15,6 +14,7 @@ use campfire_protocol::{
     Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan, SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules};
+use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::{Connected, LocalTimeline};
 use tracing::info;
 

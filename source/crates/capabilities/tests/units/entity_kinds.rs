@@ -1,7 +1,7 @@
 use std::any::TypeId;
 
 use bevy_ecs::component::ComponentInfo;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::Match;
 use campfire_core::*;
 use campfire_sim::HostRule;
 

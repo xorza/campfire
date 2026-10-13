@@ -20,12 +20,12 @@ use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData,
 use campfire_progression::TrackData;
 use campfire_projectiles::ProjectileData;
 use campfire_script::ScriptHost;
-use campfire_script::rhai::Engine;
 use campfire_sim::Capability;
 use campfire_stats::{AuraData, ModifierData};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use campfire_vision::VisionData;
+use rhai::Engine;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
 /// Each function of `engine`: its name, and the type of its first parameter.

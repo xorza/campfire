@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{ActionTarget, Order};
+use campfire_actions::ActionTarget;
+use campfire_capabilities::Order;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};

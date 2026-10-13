@@ -6,26 +6,32 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
-use campfire_capabilities::{
-    ActionSlots, DashTo, Dead, Destination, ForcedMove, Life, MapBook, MatchResult, ModeState,
-    ModeWorld, Modifiers, MoveStep, Order, OrdersAction, Owner, PlayerResources, PlayersWorld,
-    PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue, StatsWorld, SyncAll,
-    SyncNone, Team, UnitsWorld,
-};
-use campfire_capabilities::{DeclaredName, Names, Stats, Units};
+use campfire_actions::ActionSlots;
+use campfire_capabilities::Order;
+use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_core::{
+    DashTo, Dead, ForcedMove, MapBook, MoveStep, Owner, PlayerResources, PlayersWorld, Relations,
+    ResourceId, StateValue, SyncAll, SyncNone, Team, Units, UnitsWorld,
+};
 use campfire_math::{Num, Vec3};
+use campfire_mode::{MatchResult, ModeState, ModeWorld};
+use campfire_navigation::Destination;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
     PlayerLink, TickHashes,
 };
+use campfire_orders::OrdersAction;
 use campfire_package::internals::TestMode;
+use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_stats::{Life, Modifiers, PoolId, Stats, StatsWorld};
+use campfire_values::{DeclaredName, Names, Relation};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
     Replicate, RollbackMode,

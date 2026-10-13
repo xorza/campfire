@@ -9,20 +9,27 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
-
-use campfire_capabilities::{
-    ActionId, ActionRange, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove, Life,
-    Match, ModifierId, MoveStep, Navigation, Number, Order, OrdersAction, Owner, PackagePath,
-    Param, Pools, Projectile, RangeField, Rank, Ranked, Scalar, Scaling, SeenBy, SlotKind,
-    SlotTimes, Stat, Targeting, Team,
+use campfire_actions::{
+    ActionRange, ActionSlots, ActionTarget, RangeField, SlotKind, SlotTimes, Targeting,
 };
-use campfire_capabilities::{Combat, PoolMeters, Stats};
+use campfire_areas::Area;
+use campfire_capabilities::{Match, Order};
+use campfire_combat::Combat;
 use campfire_common::PlayerSlot;
+use campfire_core::{ActionId, Body, ForcedMove, ModifierId, MoveStep, Owner, Team};
 use campfire_math::{Num, Vec3};
+use campfire_navigation::Navigation;
+use campfire_orders::OrdersAction;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{AvatarFile, PackageDir, PackageFiles};
+use campfire_projectiles::Projectile;
 use campfire_runner::internals::Arena;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
+use campfire_stats::{Life, PoolMeters, Pools, Stats};
+use campfire_values::{
+    DeclaredName, Number, PackagePath, Param, Rank, Ranked, Scalar, Scaling, Stat,
+};
+use campfire_vision::SeenBy;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

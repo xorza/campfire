@@ -1,7 +1,8 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{HeldPlayerUnits, Order};
+use campfire_capabilities::Order;
 use campfire_common::{PlayerSlot, Tick};
+use campfire_core::HeldPlayerUnits;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
@@ -179,7 +180,7 @@ impl DrivenBot {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::{Leaver, PlayersData, SaveBy, SavesData};
+    use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
     use campfire_protocol::{AfterLeave, LeaveReason, SlotPlan};
     use campfire_runner::internals::FixedSession;
     use campfire_runner::{InputRules, SessionWorld};

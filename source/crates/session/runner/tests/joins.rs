@@ -1,7 +1,7 @@
 //! The MOBA 3v3's rules for a player who joins after the pick: one who takes an open slot
 //! gets the first hero no slot holds, and one who takes a bot's slot keeps the bot's hero.
 
-use campfire_capabilities::UnitType;
+use campfire_core::UnitType;
 use campfire_protocol::SlotPlan;
 use campfire_runner::internals::{FixedMatch, MatchUnits, Moba3v3};
 use campfire_sim::{SimWorld, StableId};

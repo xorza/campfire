@@ -4,14 +4,17 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
-use campfire_capabilities::{Destination, Leaver, OrdersAction, Owner, PlayersData};
 use campfire_common::PlayerSlot;
+use campfire_core::Owner;
 use campfire_math::Num;
+use campfire_mode::{Leaver, PlayersData};
+use campfire_navigation::Destination;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
     PlayerLink, SessionTimes, TickHashes,
 };
+use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;

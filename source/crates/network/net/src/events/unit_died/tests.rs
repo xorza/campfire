@@ -1,4 +1,4 @@
-use campfire_capabilities::Fallen;
+use campfire_combat::Fallen;
 use campfire_log::internals::round_trip;
 use campfire_sim::IdAllocator;
 

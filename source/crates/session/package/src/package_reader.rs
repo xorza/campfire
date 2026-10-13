@@ -1,5 +1,5 @@
-use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
+use campfire_values::PackagePath;
 
 use crate::error::ContentError;
 use crate::file_index::FileIndex;

@@ -1,6 +1,7 @@
-use campfire_capabilities::{Hook, PackagePath, ScriptApi, ScriptFacts, ScriptFunction};
 use campfire_common::Fingerprint;
+use campfire_core::{Hook, ScriptApi, ScriptFacts, ScriptFunction};
 use campfire_script::ScriptHost;
+use campfire_values::PackagePath;
 
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;

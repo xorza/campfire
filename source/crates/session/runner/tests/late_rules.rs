@@ -5,11 +5,14 @@
 //! test pins rules, not a log: it has no golden and no replay. The test pins the content's values, so a change to the content changes
 //! it, by design.
 
-use campfire_capabilities::{Combat, Dead, Life, MatchResult, ModeWorld, Respawn, Stats, Team};
+use campfire_combat::{Combat, Respawn};
 use campfire_common::Tick;
+use campfire_core::{Dead, Team};
 use campfire_math::Num;
+use campfire_mode::{MatchResult, ModeWorld};
 use campfire_runner::internals::{MatchUnits, Moba3v3};
 use campfire_sim::internals::SimWorldInternals;
+use campfire_stats::{Life, Stats};
 
 use crate::moba::{gold, run_to};
 

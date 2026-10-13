@@ -78,7 +78,7 @@ mod tests {
             }]
         );
         assert_eq!(
-            Toml::parse::<MapLights>(&Toml::write(&lights).unwrap()).unwrap(),
+            Toml::parse::<MapLights>(&Toml::write(&lights)).unwrap(),
             lights
         );
         assert!(Toml::parse::<MapLights>(&text("[0.0, 0.0, 0.0]")).is_err());

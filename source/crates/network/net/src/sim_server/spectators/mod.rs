@@ -2,7 +2,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query};
-use campfire_capabilities::{SpectatorFog, TeamSet, Visibility};
+use campfire_core::TeamSet;
+use campfire_visibility::{SpectatorFog, Visibility};
 use lightyear::prelude::{Connected, MessageReceiver};
 use tracing::info;
 
@@ -74,7 +75,7 @@ impl Spectators {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::{HostVisibility, ModeVisibility};
+    use campfire_visibility::{HostVisibility, ModeVisibility};
 
     use super::*;
 

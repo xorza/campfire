@@ -2,8 +2,7 @@ use std::ptr;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_common::Tick;
 use campfire_core::{CallPart, CallStart, ModifierId, ScriptRole, StateValue, View};
 use campfire_sim::IdAllocator;

@@ -99,9 +99,9 @@ impl Pose {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::f32::consts::FRAC_1_SQRT_2;
+
+    use super::*;
 
     /// √½ is rounded in `f32`, so a quarter turn's result is within a few ulps of exact.
     const CLOSE: f32 = 1e-6;

@@ -5,22 +5,32 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-campfire-codec.workspace = true
-campfire-log = { workspace = true, features = ["start"] }
+campfire-actions.workspace = true
+campfire-areas.workspace = true
 campfire-capabilities.workspace = true
+campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-core.workspace = true
+campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
+campfire-mode.workspace = true
 campfire-net.workspace = true
+campfire-orders.workspace = true
 campfire-package.workspace = true
+campfire-progression.workspace = true
+campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
 campfire-quic.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
+campfire-stats.workspace = true
 campfire-store.workspace = true
+campfire-values.workspace = true
 
 bevy.workspace = true
 clap.workspace = true
 lightyear.workspace = true
+secp256k1.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

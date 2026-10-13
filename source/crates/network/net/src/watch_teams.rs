@@ -1,4 +1,4 @@
-use campfire_capabilities::TeamSet;
+use campfire_core::TeamSet;
 use serde::{Deserialize, Serialize};
 
 /// A spectator's choice of the teams whose views it watches together, in a session whose

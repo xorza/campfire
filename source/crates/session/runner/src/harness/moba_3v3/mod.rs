@@ -1,17 +1,22 @@
 use std::iter;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::Mode;
-use campfire_capabilities::internals::{Density, KernelScene};
-use campfire_capabilities::{
-    Action, ActionSlots, Dead, DeclaredName, InputValue, Inventory, ItemId, ItemsAction, Life,
-    ModeInput, Names, Order, OrdersAction, PathWalker, ProgressionAction, Team,
-};
+use campfire_actions::ActionSlots;
+use campfire_capabilities::{Action, Order};
 use campfire_common::{PlayerSlot, Tick};
+use campfire_core::{Dead, Team};
+use campfire_geometry::internals::{Density, KernelScene};
+use campfire_items::{Inventory, ItemId, ItemsAction};
 use campfire_math::Num;
+use campfire_mode::{InputValue, Mode, ModeInput};
+use campfire_navigation::PathWalker;
+use campfire_orders::OrdersAction;
 use campfire_package::internals::TestMode;
+use campfire_progression::ProgressionAction;
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
+use campfire_stats::Life;
+use campfire_values::{DeclaredName, Names};
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;

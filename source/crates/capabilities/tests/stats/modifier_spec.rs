@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_common::Ticks;
 use campfire_core::{Filter, ModifierId, NameKind, UnitTypes, UnknownName};
 use campfire_math::Num;

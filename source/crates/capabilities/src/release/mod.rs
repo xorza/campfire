@@ -44,7 +44,7 @@ mod engine_tag_list;
 mod installer;
 mod installing;
 mod kinds_only;
-pub mod r#match;
+pub(crate) mod r#match;
 pub(crate) mod match_spec;
 #[cfg(feature = "internals")]
 mod module_sets;

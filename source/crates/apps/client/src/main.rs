@@ -31,8 +31,8 @@ use bevy::log::LogPlugin;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
-use campfire_capabilities::{Team, TeamSet};
 use campfire_common::ExitStatus;
+use campfire_core::{Team, TeamSet};
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
@@ -40,11 +40,11 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
-use campfire_protocol::secp256k1::Keypair;
 use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use campfire_store::SecretFile;
 use lightyear::prelude::Connect;
+use secp256k1::Keypair;
 use tracing::error;
 
 use crate::args::{Args, Server};

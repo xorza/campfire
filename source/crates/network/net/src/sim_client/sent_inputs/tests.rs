@@ -2,10 +2,10 @@ use std::array;
 
 use campfire_capabilities::Order;
 use campfire_math::Num;
+use campfire_orders::OrdersAction;
 use campfire_sim::IdAllocator;
 
 use super::*;
-use campfire_capabilities::OrdersAction;
 
 fn at(sent: &SentInputs, stamp: u64) -> Vec<&[u8]> {
     sent.at(Tick::new(stamp)).collect()

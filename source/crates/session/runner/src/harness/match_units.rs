@@ -1,5 +1,6 @@
 use bevy_ecs::world::{EntityRef, World};
-use campfire_capabilities::{Experience, Owner, SpawnPoint, Team};
+use campfire_core::{Owner, SpawnPoint, Team};
+use campfire_progression::Experience;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 
 /// The units of a running match, as a scripted player or a test names them by role.

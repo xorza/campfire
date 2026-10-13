@@ -1,4 +1,5 @@
-use campfire_capabilities::{ActionSlots, DeclaredName};
+use campfire_actions::ActionSlots;
+use campfire_values::DeclaredName;
 use thiserror::Error;
 
 /// What is wrong with the mode's slot kinds or choices.

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::ApiVersion;
+use campfire_core::ApiVersion;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::dependency::Dependency;

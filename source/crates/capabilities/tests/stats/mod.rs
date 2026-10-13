@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
 use campfire_core::{

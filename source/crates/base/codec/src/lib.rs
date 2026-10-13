@@ -20,11 +20,7 @@ mod sink;
 mod toml;
 
 pub use crate::binary::{Binary, Taken};
-pub use crate::error::BinaryError;
+pub use crate::error::{BinaryError, JsonError, TomlError};
 pub use crate::json::Json;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;
-/// Why a text is no TOML of the type asked for, as `Toml::parse` gives it.
-pub use ::toml::de::Error as TomlError;
-/// Why a text is no JSON of the type asked for, as `Json::parse` gives it.
-pub use serde_json::Error as JsonError;

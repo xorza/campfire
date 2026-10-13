@@ -1,4 +1,5 @@
-use campfire_capabilities::{ModeData, PackageContent};
+use campfire_capabilities::PackageContent;
+use campfire_mode::ModeData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 

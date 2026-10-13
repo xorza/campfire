@@ -2,7 +2,6 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use campfire_capabilities::PackagePath;
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
@@ -10,6 +9,7 @@ use campfire_package::{
     TextureClass, WriteError,
 };
 use campfire_store::DurableFile;
+use campfire_values::PackagePath;
 
 use crate::error::ImportError;
 use crate::texture::dds_file::DdsFile;
@@ -126,12 +126,12 @@ impl<'a> ZeroHour<'a> {
         write("data/mode.toml", MODE_DATA.as_bytes())?;
         let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
-        let text = Toml::write(&game_data.game_data()).expect("game data writes as TOML");
+        let text = Toml::write(&game_data.game_data());
         write(GameData::PATH, text.as_bytes())?;
         let camera = game_data
             .camera_file()
             .ok_or(ImportError::ZeroHour(ZeroHourError::Camera))?;
-        let text = Toml::write(&camera).expect("a camera writes as TOML");
+        let text = Toml::write(&camera);
         write(CameraFile::PATH, text.as_bytes())?;
         let mut unit_types = UnitTypes::default();
         let mut names = BTreeMap::<MapName, String>::new();
@@ -245,7 +245,7 @@ impl<'a> ZeroHour<'a> {
                 .units
                 .insert(unit_type.declared(), ClientUnit { models: entries });
         }
-        let text = Toml::write(&units).expect("client units write as TOML");
+        let text = Toml::write(&units);
         write("client/units.toml", text.as_bytes())
     }
 
@@ -262,7 +262,7 @@ impl<'a> ZeroHour<'a> {
             Converted::Model(import) => {
                 write(ZeroHour::model_path(name).as_str(), &import.glb.encode())?;
                 for material in &import.materials {
-                    let text = Toml::write(&material.file).expect("a material file writes as TOML");
+                    let text = Toml::write(&material.file);
                     write(
                         &format!("client/materials/{}.toml", material.name),
                         text.as_bytes(),
@@ -348,9 +348,9 @@ impl ZeroHour<'_> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::DeclaredName;
     use campfire_package::{ModePackages, PackageDir};
     use campfire_store::internals::Scratch;
+    use campfire_values::DeclaredName;
     use sha2::{Digest, Sha256};
 
     use super::*;
@@ -552,7 +552,7 @@ mod tests {
         assert_eq!(scratch.names("one/game/client/materials"), ["tank_3.toml"]);
         assert_eq!(
             scratch.read_text("one/game/client/materials/tank_3.toml"),
-            Toml::write(&tank.materials[0].file).unwrap()
+            Toml::write(&tank.materials[0].file)
         );
         assert_eq!(
             scratch.read("one/game/client/models/tank.glb"),

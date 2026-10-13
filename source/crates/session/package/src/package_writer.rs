@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use campfire_capabilities::PackagePath;
 use campfire_common::Fingerprint;
 use campfire_store::{DurableFile, OutputFile};
+use campfire_values::PackagePath;
 
 use crate::error::WriteError;
 use crate::file_index::{FileIndex, FileRow};

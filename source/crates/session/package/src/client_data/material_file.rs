@@ -1,4 +1,4 @@
-use campfire_capabilities::PackagePath;
+use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 /// A material file, `client/materials/<name>.toml`, which overrides the glTF material of that name
@@ -83,7 +83,7 @@ mod tests {
                 ..material.clone()
             };
             assert_eq!(
-                Toml::parse::<MaterialFile>(&Toml::write(&with).unwrap()).unwrap(),
+                Toml::parse::<MaterialFile>(&Toml::write(&with)).unwrap(),
                 with
             );
         }

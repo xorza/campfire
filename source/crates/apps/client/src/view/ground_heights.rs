@@ -1,7 +1,7 @@
 use bevy::ecs::resource::Resource;
 use bevy::math::Vec3;
-use campfire_capabilities::HeightGrid;
 use campfire_math::Num;
+use campfire_mode::HeightGrid;
 
 use crate::view::float_num::FloatNum;
 

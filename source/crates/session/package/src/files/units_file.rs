@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{DeclaredName, UnitTypeData};
+use campfire_capabilities::UnitTypeData;
+use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// The mode's `data/units.toml`: its unit types, by name.

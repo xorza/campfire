@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
-use campfire_capabilities::VisibilityDecodeError;
 use campfire_protocol::EngineRelease;
+use campfire_visibility::VisibilityDecodeError;
 use thiserror::Error;
 
 /// Why session terms do not name a session of a mode's packages on this release. Terms come from

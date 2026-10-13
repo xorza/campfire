@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use campfire_capabilities::PackagePath;
 use campfire_store::{DirEntries, EntryKind, InputFile, ReadError};
+use campfire_values::PackagePath;
 use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;

@@ -1,5 +1,5 @@
-use campfire_capabilities::DeclaredName;
 use campfire_common::MapName;
+use campfire_values::DeclaredName;
 
 /// A name of the original, a map's folder or an object's template, as a package names it: its
 /// ASCII letters lowercase, its digits and `_` kept, each other byte `_`, and `x` before a name

@@ -10,15 +10,22 @@ use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::DeferredWorld;
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
-use campfire_capabilities::{
-    Builder, CapabilitySet, DataKind, Experience, Gatherer, Inventory, Life, ModeState,
-    ModifierClocks, Modifiers, OnDeath, OnPath, Owner, PathWalker, Player, PlayerModifiers,
-    PlayerResources, PlayerSupply, Points, Pools, Progress, Recipients, Release, Replication,
-    Respawn, Route, Site, SlotTimes, SpawnPoint, StateTypes, SyncAll, SyncOwner, SyncTeam, Team,
-    TrainQueue, UnitState, UseGroup,
-};
+use campfire_actions::{SlotTimes, UseGroup};
+use campfire_capabilities::Release;
+use campfire_combat::{OnDeath, Respawn};
 use campfire_common::PlayerSlot;
+use campfire_core::{
+    CapabilitySet, Owner, Player, PlayerResources, SpawnPoint, SyncAll, SyncOwner, SyncTeam, Team,
+    UnitState,
+};
+use campfire_items::Inventory;
+use campfire_mode::ModeState;
+use campfire_navigation::{OnPath, PathWalker, Progress, Route};
+use campfire_production::{Builder, Gatherer, PlayerSupply, Site, TrainQueue};
+use campfire_progression::{Experience, Points};
 use campfire_sim::SimResource;
+use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
+use campfire_stats::{Life, ModifierClocks, Modifiers, PlayerModifiers, Pools};
 
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::scope_union::ScopeUnion;
@@ -325,9 +332,11 @@ mod tests {
     use std::collections::BTreeSet;
 
     use bevy_ecs::world::World;
-    use campfire_capabilities::{ModeVisibility, SentOnChange, TeamSet, Visibility};
     use campfire_codec::Toml;
+    use campfire_core::TeamSet;
     use campfire_sim::{Capability, OnAny, SimComponent};
+    use campfire_state_types::SentOnChange;
+    use campfire_visibility::{ModeVisibility, Visibility};
     use serde::{Deserialize, Serialize};
 
     use super::*;

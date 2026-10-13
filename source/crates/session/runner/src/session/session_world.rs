@@ -1,6 +1,7 @@
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{MatchEnd, MatchResult, ModeWorld, ScriptFailures};
+use campfire_core::ScriptFailures;
 use campfire_log::{ErrorReport, LogEvent};
+use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
 use campfire_protocol::{Checkpoint, Outcome, SessionResult, SlotChangeKind, SnapshotFingerprint};
 use campfire_sim::{
     SimRng, SimTick, SimUpdate, SimWorld, SlotEvent, SlotEventKind, TickInput, TickInputs,

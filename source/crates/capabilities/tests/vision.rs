@@ -1,6 +1,5 @@
-use campfire_capabilities::Release;
 use campfire_capabilities::internals::*;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_core::internals::FailureKind;
 use campfire_core::{
     ApiError, BodyForm, Dead, DeliveryEntity, ScriptBudgets, ScriptLimits, TagProperties, Team,

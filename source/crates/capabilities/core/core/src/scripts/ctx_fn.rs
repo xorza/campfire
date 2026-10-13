@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
-use campfire_script::rhai::{Dynamic, Engine, NativeCallContext};
 use campfire_values::EngineEnum;
+use rhai::{Dynamic, Engine, NativeCallContext};
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;

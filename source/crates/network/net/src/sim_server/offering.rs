@@ -6,11 +6,11 @@ use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
-use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
 use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
+use secp256k1::{Secp256k1, VerifyOnly};
 use tracing::debug;
 
 use crate::close_code::CloseCode;

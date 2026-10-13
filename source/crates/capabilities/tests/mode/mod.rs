@@ -11,9 +11,8 @@ use campfire_actions::{
     ActionBook, ActionData, ActionKind, ActionSlots, ActionTarget, Actions, SlotKind, SlotKindBook,
     SlotKindData, SlotKinds, SlotRanks, Targeting, UseGroup,
 };
-use campfire_capabilities::Release;
 use campfire_capabilities::internals::*;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_combat::{
     CombatBindings, CombatBook, Damage, DamageCause, Heal, HealCause, ModeCombatData, OnDeath,
     PassQueue, RecentAttackers, Respawn,

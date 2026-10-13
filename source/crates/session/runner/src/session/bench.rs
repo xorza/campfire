@@ -3,10 +3,11 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::world::World;
-use campfire_capabilities::{Life, Match, Pools};
+use campfire_capabilities::Match;
 use campfire_protocol::SessionLog;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, SimWorld, StateDelta};
+use campfire_stats::{Life, Pools};
 use criterion::{Criterion, Throughput};
 
 use crate::harness::fixed_match::FixedMatch;

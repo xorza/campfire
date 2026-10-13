@@ -1,7 +1,7 @@
 use std::any::{Any, TypeId};
 
-use campfire_script::rhai::{Dynamic, Variant};
 use campfire_values::Scalar;
+use rhai::{Dynamic, Variant};
 
 use crate::scripts::script_list::ScriptList;
 use crate::scripts::script_map::ScriptMap;

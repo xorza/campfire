@@ -7,23 +7,63 @@ autotests = false
 
 [features]
 internals = [
+    "campfire-actions/internals",
     "campfire-capabilities/internals",
+    "campfire-combat/internals",
+    "campfire-core/internals",
+    "campfire-geometry/internals",
+    "campfire-items/internals",
     "campfire-log/internals",
+    "campfire-mode/internals",
+    "campfire-navigation/internals",
+    "campfire-orders/internals",
     "campfire-package/internals",
+    "campfire-production/internals",
+    "campfire-progression/internals",
     "campfire-protocol/internals",
     "campfire-sim/internals",
+    "campfire-stats/internals",
     "campfire-store/internals",
-    "dep:criterion",
+    "campfire-values/internals",
+    "campfire-visibility/internals",
+    "campfire-vision/internals",
+    "dep:campfire-actions",
+    "dep:campfire-combat",
+    "dep:campfire-geometry",
+    "dep:campfire-items",
+    "dep:campfire-navigation",
+    "dep:campfire-orders",
+    "dep:campfire-production",
+    "dep:campfire-progression",
     "dep:campfire-script",
+    "dep:campfire-stats",
+    "dep:campfire-values",
+    "dep:campfire-vision",
+    "dep:criterion",
 ]
 
 [dependencies]
+campfire-actions = { workspace = true, optional = true }
 campfire-capabilities.workspace = true
+campfire-combat = { workspace = true, optional = true }
 campfire-common.workspace = true
+campfire-core.workspace = true
+campfire-geometry = { workspace = true, optional = true }
+campfire-items = { workspace = true, optional = true }
 campfire-log.workspace = true
 campfire-math.workspace = true
+campfire-mode.workspace = true
+campfire-navigation = { workspace = true, optional = true }
+campfire-orders = { workspace = true, optional = true }
 campfire-package.workspace = true
+campfire-production = { workspace = true, optional = true }
+campfire-progression = { workspace = true, optional = true }
 campfire-protocol.workspace = true
+campfire-stats = { workspace = true, optional = true }
+campfire-values = { workspace = true, optional = true }
+campfire-visibility.workspace = true
+campfire-vision = { workspace = true, optional = true }
+
 # The match build bench times a script host's compile and bind, as a match's are.
 campfire-script = { workspace = true, optional = true }
 campfire-sim.workspace = true
@@ -32,12 +72,15 @@ campfire-store = { workspace = true, optional = true }
 
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
+secp256k1.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 # The integration tests read the test types `internals` gives, so a plain test run builds them.
 [dev-dependencies]
+campfire-areas = { workspace = true, features = ["internals"] }
+campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }
 

@@ -1,4 +1,4 @@
-use campfire_capabilities::PackagePath;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

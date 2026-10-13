@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::DeclaredName;
 use campfire_codec::Toml;
+use campfire_values::DeclaredName;
 use serde::Serialize;
 use toml::Table;
 
@@ -46,7 +46,7 @@ impl UnitTypes {
             .keys()
             .map(|name| (name.as_str(), Table::new()))
             .collect();
-        Toml::write(&UnitsToml { units }).expect("units encode as TOML")
+        Toml::write(&UnitsToml { units })
     }
 }
 

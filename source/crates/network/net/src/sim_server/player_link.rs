@@ -1,8 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
-use campfire_capabilities::Team;
 use campfire_common::PlayerSlot;
+use campfire_core::Team;
 
 use crate::sim_server::viewer::Viewer;
 

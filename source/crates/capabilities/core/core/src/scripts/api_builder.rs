@@ -1,7 +1,7 @@
 use campfire_script::ScriptHost;
-use campfire_script::rhai::{Dynamic, ImmutableString, Module, NativeCallContext};
 use campfire_sim::Capability;
 use campfire_values::ScriptEnum;
+use rhai::{Dynamic, ImmutableString, Module, NativeCallContext};
 
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::arg_ctx::ArgCtx;

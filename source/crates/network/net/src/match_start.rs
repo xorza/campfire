@@ -1,5 +1,5 @@
-use campfire_capabilities::Team;
 use campfire_common::{PlayerSlot, Tick};
+use campfire_core::Team;
 use campfire_protocol::InputHash;
 use serde::{Deserialize, Serialize};
 

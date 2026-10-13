@@ -1,4 +1,4 @@
-use campfire_script::rhai::{Dynamic, Map};
+use rhai::{Dynamic, Map};
 
 use crate::scripts::script_value::ScriptValue;
 

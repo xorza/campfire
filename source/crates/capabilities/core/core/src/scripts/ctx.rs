@@ -4,8 +4,8 @@ use std::rc::Rc;
 
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
-use campfire_script::rhai::{Dynamic, NativeCallContext};
 use campfire_sim::StableId;
+use rhai::{Dynamic, NativeCallContext};
 
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};

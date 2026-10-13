@@ -23,11 +23,12 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
-use campfire_capabilities::{
-    ActionSlots, Area, AreaReach, Body, BodyUnit, Dead, Facing, MatchEnd, MatchResult, MoveStep,
-    Owner, Projectile, Team, UnitType,
-};
+use campfire_actions::ActionSlots;
+use campfire_areas::{Area, AreaReach};
+use campfire_core::{Body, BodyUnit, Dead, Facing, MoveStep, Owner, Team, UnitType};
+use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
+use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
 use lightyear::prelude::Predicted;
 

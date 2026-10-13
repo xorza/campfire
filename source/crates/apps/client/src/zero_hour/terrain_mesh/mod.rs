@@ -1,7 +1,7 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::color::{LinearRgba, Srgba};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use campfire_capabilities::HeightGrid;
+use campfire_mode::HeightGrid;
 use campfire_package::{TerrainAtlas, TerrainLighting};
 
 use crate::view::float_num::FloatNum;

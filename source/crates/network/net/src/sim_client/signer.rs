@@ -1,9 +1,9 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::ChannelBinding;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 use campfire_protocol::{
     ConnectChallenge, Delegation, DelegationTerms, InputChain, RandomKey, SessionId, Signature,
 };
+use secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 
 /// The player's session key, which signs their join answer and every input message, with the
 /// context its signatures take and what fills their randomness.

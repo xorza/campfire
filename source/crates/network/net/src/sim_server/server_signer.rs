@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Checkpoint, Receipt, ServerInput, SessionId, SessionResult, Signature};
 use campfire_runner::{ServerInputRefused, Session};
+use secp256k1::{Keypair, Secp256k1, SignOnly};
 
 /// The server's key, which signs each input the server logs, each with fresh auxiliary
 /// randomness.

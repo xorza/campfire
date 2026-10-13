@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_capabilities::Visibility;
 use campfire_runner::SessionWorld;
+use campfire_visibility::Visibility;
 use lightyear::prelude::MessageSender;
 use tracing::info;
 

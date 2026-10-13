@@ -13,18 +13,18 @@ use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With};
 use bevy_ecs::world::World;
-use campfire_capabilities::{
-    DataKind, Dead, HeldOut, HostVisibility, OutView, Owner, Player, PlayerResources, PlayersWorld,
-    Recipients, Release, Replication, SeenBy, SpectatorFog, StateTypes, Team, TeamSet, Visibility,
-};
+use campfire_capabilities::Release;
 use campfire_common::PlayerSlot;
+use campfire_core::{Dead, HeldOut, Owner, Player, PlayerResources, PlayersWorld, Team, TeamSet};
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
 use campfire_net::{JoinState, OrderScript, TickHashes, WatchRequest};
 use campfire_package::ModePackages;
-use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
-use lightyear::prelude::{Replicate, Replicated, RollbackMode};
-
 use campfire_package::internals::Edit;
+use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
+use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
+use campfire_visibility::{HostVisibility, OutView, SpectatorFog, Visibility};
+use campfire_vision::SeenBy;
+use lightyear::prelude::{Replicate, Replicated, RollbackMode};
 
 use crate::short_3v3::{PICKS, short_3v3};
 

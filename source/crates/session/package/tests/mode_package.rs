@@ -3,14 +3,18 @@
 use std::fmt::Write;
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{
-    ActionDataField, ActionField, ActionKind, AiError, CtxMisuse, DeclaredName, DoesData,
-    EffectData, EffectTo, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric,
-    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields,
-    Release, Scalar, Status, SyncTo, TimeTooLarge, UnitStartError,
+use campfire_actions::{
+    ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
+    LaunchFields, PlannedEffect, PurgeFields,
 };
+use campfire_capabilities::{Release, UnitStartError};
 use campfire_codec::Toml;
 use campfire_common::MapName;
+use campfire_core::{CtxMisuse, Hook, NameKind, ParamProblem, Status, SyncTo};
+use campfire_geometry::Metric;
+use campfire_mode::ModeError;
+use campfire_navigation::MapProblem;
+use campfire_orders::AiError;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, DeliveryProblem, EffectProblem,
@@ -19,6 +23,8 @@ use campfire_package::{
 };
 use campfire_script::internals::Undefined;
 use campfire_sim::{Capability, TickRate};
+use campfire_stats::ModifierProblem;
+use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
 
 use crate::moba::{edited, load, moba, two_lanes};
 
@@ -3006,7 +3012,7 @@ fn raised(map: &str) -> String {
         "metric".to_owned(),
         toml::Value::String("spatial".to_owned()),
     );
-    Toml::write(&table).unwrap()
+    Toml::write(&table)
 }
 
 #[test]

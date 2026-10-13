@@ -1,5 +1,5 @@
-use campfire_capabilities::CallError;
 use campfire_common::StateHash;
+use campfire_core::CallError;
 use campfire_package::StoreError;
 use campfire_protocol::{
     CheckpointError, LogLoadError, Outcome, SeedError, ServerInputError, SlotChange,

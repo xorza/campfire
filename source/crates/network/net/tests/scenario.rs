@@ -2,17 +2,19 @@
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
 use bevy_app::App;
-use campfire_capabilities::{
-    Body, Dead, Life, OrdersAction, PoolId, Pools, SeenBy, SlotTimes, Team,
-};
+use campfire_actions::SlotTimes;
 use campfire_common::Tick;
+use campfire_core::{Body, Dead, Team};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_net::{OrderScript, TickHashes};
+use campfire_orders::OrdersAction;
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::{Position, SimWorld, StableId};
+use campfire_stats::{Life, PoolId, Pools};
+use campfire_vision::SeenBy;
 
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.

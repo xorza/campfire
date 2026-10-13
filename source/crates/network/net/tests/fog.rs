@@ -3,17 +3,18 @@
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
-use campfire_capabilities::Units;
-use campfire_capabilities::{
-    OrdersAction, Owner, Progress, Relation, Relations, Route, SeenBy, SpawnPoint, Team, UnitsWorld,
-};
 use campfire_common::Tick;
+use campfire_core::{Owner, Relations, SpawnPoint, Team, Units, UnitsWorld};
 use campfire_math::Num;
+use campfire_navigation::{Progress, Route};
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
 };
+use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_values::Relation;
+use campfire_vision::SeenBy;
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
 /// Frames of match: one tick each.

@@ -1,6 +1,6 @@
 use bevy::ecs::system::{Res, SystemParam};
-use campfire_capabilities::{Commanded, PlayerUnits, Team, TeamSet};
 use campfire_common::PlayerSlot;
+use campfire_core::{Commanded, PlayerUnits, Team, TeamSet};
 use campfire_net::{JoinState, WatchRequest};
 
 /// The client's own player as a system reads it: its seat and team, once the client plays, the

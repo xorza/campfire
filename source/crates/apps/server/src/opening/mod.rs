@@ -5,18 +5,17 @@ use std::time::{Duration, SystemTime};
 use bevy_app::AppExit;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_capabilities::HostVisibility;
 use campfire_common::MapName;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_net::SimServer;
 use campfire_net::{
     Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
-    SessionRestored,
+    SessionRestored, SimServer,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
 use campfire_runner::{InputRules, Session};
+use campfire_visibility::HostVisibility;
+use secp256k1::Keypair;
 use tracing::error;
 
 use crate::opening::error::OpeningError;

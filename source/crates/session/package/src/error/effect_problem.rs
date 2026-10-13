@@ -1,4 +1,4 @@
-use campfire_capabilities::PlannedEffect;
+use campfire_actions::PlannedEffect;
 use thiserror::Error;
 
 /// What is wrong with an effect of an action's list.

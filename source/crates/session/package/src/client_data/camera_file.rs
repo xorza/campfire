@@ -139,7 +139,7 @@ mod tests {
             }
         );
         assert_eq!(
-            Toml::parse::<CameraFile>(&Toml::write(&file).unwrap()).unwrap(),
+            Toml::parse::<CameraFile>(&Toml::write(&file)).unwrap(),
             file
         );
         // Looking level or straight down, or a least height past the most or not above 0, is no

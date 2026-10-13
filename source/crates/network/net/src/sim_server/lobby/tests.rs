@@ -2,15 +2,16 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
-use campfire_capabilities::{DataKind, OutView, Setting, SpectatorFog, VisibilityError};
 use campfire_common::ChannelBinding;
 use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::secp256k1::{All, Secp256k1};
 use campfire_protocol::{
     ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
 };
+use campfire_state_types::DataKind;
+use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
+use secp256k1::{All, Secp256k1};
 
 use super::*;
 use crate::join::{Join, JoinRole};

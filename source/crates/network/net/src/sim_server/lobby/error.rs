@@ -1,6 +1,6 @@
-use campfire_capabilities::VisibilityError;
 use campfire_common::PlayerSlot;
 use campfire_runner::TermsError;
+use campfire_visibility::VisibilityError;
 use thiserror::Error;
 
 /// Why a session's lobby does not open.

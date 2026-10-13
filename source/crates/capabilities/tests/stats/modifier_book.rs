@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 use std::convert::Infallible;
 
-use campfire_capabilities::Release;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_core::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_core::{ActionId, ParamProblem, ScriptBook, UnitTypes};
 use campfire_math::Num;

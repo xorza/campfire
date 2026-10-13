@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 
 use campfire_common::TlsKey;
 use campfire_log::{LogEvent, LogLine};
-use campfire_protocol::secp256k1::XOnlyPublicKey;
+use secp256k1::XOnlyPublicKey;
 use serde::Deserialize;
 use tracing::info;
 

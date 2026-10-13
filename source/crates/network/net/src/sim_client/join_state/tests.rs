@@ -9,9 +9,9 @@ use std::num::NonZeroU32;
 use campfire_common::{Fingerprint, TlsKey};
 use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::secp256k1::XOnlyPublicKey;
 use campfire_protocol::{ConnectChallenge, EngineRelease, InputHash, Receipt, SeedChain, SlotPlan};
 use campfire_runner::{InputRules, TermsError};
+use secp256k1::XOnlyPublicKey;
 
 use super::*;
 use crate::match_start::ChainHead;

@@ -2,9 +2,8 @@ use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, Actions, SlotKind};
-use campfire_capabilities::Release;
 use campfire_capabilities::internals::*;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_core::{

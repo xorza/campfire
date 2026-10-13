@@ -1,4 +1,4 @@
-use campfire_script::rhai::{Dynamic, FuncArgs};
+use rhai::{Dynamic, FuncArgs};
 
 use crate::scripts::script_value::{ScriptType, ScriptValue};
 

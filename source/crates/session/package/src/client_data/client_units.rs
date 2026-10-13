@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{DeclaredName, PackagePath};
+use campfire_values::{DeclaredName, PackagePath};
 use serde::{Deserialize, Serialize};
 
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`.
@@ -48,7 +48,7 @@ mod tests {
         assert_eq!(humvee.hide, ["turretup01", "muzzlefx01"]);
         assert!(units.units["tree"].models[0].hide.is_empty());
         assert_eq!(
-            Toml::parse::<ClientUnits>(&Toml::write(&units).unwrap()).unwrap(),
+            Toml::parse::<ClientUnits>(&Toml::write(&units)).unwrap(),
             units
         );
         // A path that leaves the package, a name that is no declared name, an unknown field.

@@ -5,9 +5,12 @@ use bevy::input::ButtonInput;
 use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
-use campfire_capabilities::{Action, ActionTarget, Order, OrdersAction, ProgressionAction};
+use campfire_actions::ActionTarget;
+use campfire_capabilities::{Action, Order};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
+use campfire_orders::OrdersAction;
+use campfire_progression::ProgressionAction;
 
 use crate::pointer::Pointer;
 use crate::view::ViewSystems;

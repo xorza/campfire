@@ -4,10 +4,12 @@
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Life, MoveStep, OrdersAction, Owner, Team, UnitType};
+use campfire_core::{MoveStep, Owner, Team, UnitType};
 use campfire_math::Num;
 use campfire_net::internals::{End, InProcessMatch, MatchSetup};
+use campfire_orders::OrdersAction;
 use campfire_sim::EntityIndex;
+use campfire_stats::Life;
 
 /// A match of the lane mode whose one player's walker stands at the map's edge, 8 m off the lane,
 /// out of every creep's and tower's reach, from before the first wave.

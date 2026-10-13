@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::PackagePath;
 use campfire_codec::Toml;
 use campfire_common::Fingerprint;
+use campfire_values::PackagePath;
 use serde::de::DeserializeOwned;
 
 use crate::error::ContentError;

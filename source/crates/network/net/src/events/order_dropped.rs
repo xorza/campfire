@@ -31,10 +31,10 @@ impl LogEvent for OrderDropped {
 #[cfg(test)]
 mod tests {
     use campfire_log::internals::round_trip;
+    use campfire_progression::ProgressionAction;
     use campfire_sim::IdAllocator;
 
     use super::*;
-    use campfire_capabilities::ProgressionAction;
 
     #[test]
     fn the_event_reads_back_what_it_logs() {

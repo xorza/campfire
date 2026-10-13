@@ -5,17 +5,21 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = []
+internals = [
+    "campfire-mode/internals",
+    "campfire-values/internals",
+]
 
 [dependencies]
-campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
+campfire-mode.workspace = true
 campfire-package.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
+campfire-values.workspace = true
 
 clap.workspace = true
 derive_more.workspace = true
@@ -27,6 +31,8 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-geometry = { workspace = true, features = ["internals"] }
 campfire-import = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 

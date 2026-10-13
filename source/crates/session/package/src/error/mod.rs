@@ -2,10 +2,10 @@ use std::io;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use campfire_capabilities::PackagePath;
 use campfire_codec::{BinaryError, TomlError};
 use campfire_common::Fingerprint;
 use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
+use campfire_values::PackagePath;
 use derive_more::Display;
 use thiserror::Error;
 
@@ -167,7 +167,8 @@ impl LoadError {
 mod tests {
     use std::error::Error;
 
-    use campfire_capabilities::{DeclaredName, ModifierProblem};
+    use campfire_stats::ModifierProblem;
+    use campfire_values::DeclaredName;
 
     use super::*;
     use crate::error::locale_problem::LocaleProblem;

@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::Match;
 use campfire_common::{Tick, Ticks};
 use campfire_mode::*;
 use campfire_sim::SimResource;

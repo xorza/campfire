@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use campfire_capabilities::PackagePath;
 use campfire_store::{DirEntries, PathError, ReadError};
+use campfire_values::PackagePath;
 
 /// The names on disk of the directories a package's open passes, each directory listed once, as a
 /// listing gives each name as it is stored, on every OS. A path holds only when each of its

@@ -4,8 +4,9 @@
 
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{Dead, Deaths};
+use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
+use campfire_core::Dead;
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_package::internals::TestMode;

@@ -2,11 +2,11 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_capabilities::DeclaredName;
 use campfire_common::{MapName, PlayerSlot, TlsKey};
 use campfire_net::SlotBotFile;
-use campfire_protocol::secp256k1::XOnlyPublicKey;
+use campfire_values::DeclaredName;
 use clap::Parser;
+use secp256k1::XOnlyPublicKey;
 
 use crate::args::error::{ServerAddressError, ServerBotError};
 

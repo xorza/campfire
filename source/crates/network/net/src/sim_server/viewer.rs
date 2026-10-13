@@ -5,10 +5,10 @@ use bevy_ecs::lifecycle::{HookContext, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::{DeferredWorld, World};
-use campfire_capabilities::{
-    OutOfPlay, OutView, Player, PlayersWorld, Recipients, Team, TeamSet, Visibility,
-};
 use campfire_common::PlayerSlot;
+use campfire_core::{OutOfPlay, Player, PlayersWorld, Team, TeamSet};
+use campfire_state_types::Recipients;
+use campfire_visibility::{OutView, Visibility};
 use lightyear::prelude::Rooms;
 
 use crate::sim_server::match_visibility::MatchVisibility;
@@ -159,7 +159,7 @@ impl Viewer {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::{HostVisibility, ModeVisibility};
+    use campfire_visibility::{HostVisibility, ModeVisibility};
 
     use super::*;
 

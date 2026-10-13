@@ -1,4 +1,5 @@
-use campfire_capabilities::{PackageContent, ScriptApi};
+use campfire_capabilities::PackageContent;
+use campfire_core::ScriptApi;
 use campfire_script::ScriptHost;
 
 use crate::avatar_unit::AvatarUnit;

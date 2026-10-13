@@ -17,12 +17,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{
-    Action, Body, CapabilitySet, HostVisibility, Leaver, MoveStep, Order, Owner, PlayersData,
-    SaveBy, SavesData, Team,
-};
+use campfire_capabilities::{Action, Order};
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
+use campfire_core::{Body, CapabilitySet, MoveStep, Owner, Team};
 use campfire_log::internals::LogCheck;
+use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
 use campfire_package::ModePackages;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
@@ -30,6 +29,7 @@ use campfire_protocol::{SeedChain, ServerInput, SessionPrivate};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
+use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
@@ -998,6 +998,7 @@ pub(crate) mod bench {
     use std::{env, process};
 
     use campfire_math::{Num, Vec3};
+    use campfire_orders::OrdersAction;
     use campfire_package::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableFile;
@@ -1008,7 +1009,6 @@ pub(crate) mod bench {
         CONNECT_FRAMES, End, InProcessMatch, MatchSetup, StepCost,
     };
     use crate::order_script::OrderScript;
-    use campfire_capabilities::OrdersAction;
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.

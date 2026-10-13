@@ -2,10 +2,10 @@ use campfire_capabilities::Match;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1};
 use campfire_protocol::{
     Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
 };
+use secp256k1::{Keypair, Secp256k1};
 
 use crate::harness::fixed_session::FixedSession;
 use crate::session::error::ServerInputRefused;

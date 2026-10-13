@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::system::RunSystemOnce;
-use campfire_capabilities::r#match::Match;
+use campfire_capabilities::Match;
 use campfire_core::*;
 use campfire_math::Num;
 use campfire_mode::Mode;

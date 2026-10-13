@@ -1,6 +1,6 @@
-use campfire_protocol::secp256k1::Keypair;
 use campfire_protocol::{Nsec, RandomKey};
 use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
+use secp256k1::Keypair;
 
 use crate::sim_server::key_file::error::KeyFileError;
 

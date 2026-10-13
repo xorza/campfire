@@ -1,4 +1,4 @@
-use campfire_protocol::secp256k1::Keypair;
+use secp256k1::Keypair;
 
 use crate::session_times::SessionTimes;
 

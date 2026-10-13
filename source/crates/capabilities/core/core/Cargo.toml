@@ -31,6 +31,7 @@ campfire-visibility.workspace = true
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 derive_more.workspace = true
+rhai.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

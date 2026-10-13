@@ -2,9 +2,9 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use campfire_capabilities::{HostVisibility, SettingValue};
 use campfire_common::MapName;
 use campfire_net::{OrderScript, OrderScriptReadError, ServerBots, SessionTimes, SlotBotFile};
+use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a

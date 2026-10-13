@@ -1,6 +1,6 @@
 use std::cell::OnceCell;
 
-use campfire_script::rhai::NativeCallContext;
+use rhai::NativeCallContext;
 
 use crate::scripts::ctx::Ctx;
 

@@ -1,6 +1,8 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::{MatchSpec, ModeInputs, ModeSetup, Release, ScriptBudgets, Units};
+use campfire_capabilities::{MatchSpec, Release};
 use campfire_common::SegmentSeed;
+use campfire_core::{ScriptBudgets, Units};
+use campfire_mode::{ModeInputs, ModeSetup};
 use campfire_package::ModePackages;
 use campfire_sim::TickRate;
 
@@ -60,12 +62,14 @@ pub(crate) mod bench;
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_capabilities::internals::Players;
-    use campfire_capabilities::{Match, MatchSpec, Mode, ModeInputs, Vision};
+    use campfire_capabilities::{Match, MatchSpec};
     use campfire_common::SegmentSeed;
+    use campfire_core::Players;
     use campfire_log::internals::LogCheck;
+    use campfire_mode::{Mode, ModeInputs};
     use campfire_package::ModePackages;
     use campfire_sim::TickRate;
+    use campfire_vision::Vision;
 
     use crate::match_build::MatchBuild;
 

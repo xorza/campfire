@@ -6,19 +6,19 @@
 use std::thread;
 use std::time::Duration;
 
-use campfire_capabilities::OrdersAction;
 use campfire_math::Num;
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     JoinState, JournalWatch, LeaveRequest, PlayerLink, ReceiptRefused, ReceiptUnsaved, ServerDir,
     SessionDir,
 };
+use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Controller, ServerInput, SignedReceipt};
 use campfire_runner::Session;
 use campfire_store::internals::Scratch;
 use campfire_store::{EntryKind, InputFile};
+use secp256k1::Secp256k1;
 
 /// The most bytes a test reads of a receipt file: one receipt, a few hundred.
 const RECEIPT_LEN: usize = 4096;

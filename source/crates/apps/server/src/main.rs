@@ -31,20 +31,21 @@ use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_capabilities::{CapabilitySet, HostVisibility};
 use campfire_common::{ExitStatus, TlsKey};
+use campfire_core::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,
     ServerDir, ServerSetup, SessionTimes, SimServer, SimServerWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
-use campfire_protocol::secp256k1::Keypair;
 use campfire_quic::{LinkTimes, PortMap, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::StopSignals;
+use campfire_visibility::HostVisibility;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
+use secp256k1::Keypair;
 use tracing::{error, info};
 use zeroize::Zeroizing;
 
