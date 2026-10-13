@@ -578,3 +578,21 @@ fn two_builders_that_arrive_at_one_place_in_one_tick_place_one_site() {
     let spawned = Shop::spawned(&mut game, shop.depot);
     assert_eq!(spawned[0].owner, Some(PlayerSlot::new(0)));
 }
+
+#[test]
+fn a_predicting_clients_build_reads_only_what_it_holds() {
+    // The client predicts player 0's builder, and holds as the server sent them an enemy walker
+    // in the depot's box and a static body beside it. Its builder is ordered to build the depot.
+    Release::sync_held(&ORDERING, 12, |game| {
+        let shop = Shop::place(game);
+        let yard = Yard::place(game, shop, Rules::of(Style::Alone));
+        let enemy = Production::yard_walker(game, halves(1, 1), Team::new(1), None);
+        game.insert_parts(enemy, Unpredicted);
+        let form = BodyForm::circle(Num::HALF).unwrap();
+        let post =
+            Navigation::spawn_unit(game, halves(10, 0), Team::new(2), None, None, Some(form));
+        game.insert_parts(post, Unpredicted);
+        let builder = yard.builder(game, halves(-8, 0), Team::new(0), 0);
+        Production::build_at(game, builder, 0, 0);
+    });
+}

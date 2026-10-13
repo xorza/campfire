@@ -160,10 +160,11 @@ impl DamagePass {
         }
     }
 
-    /// The entity of `id`, when it exists and its life pool is above zero: one that damage,
-    /// heals and restores reach.
+    /// The entity of `id`, when it exists, the sim simulates it, and its life pool is above
+    /// zero: one that damage, heals and restores reach, and write. A predicting client writes
+    /// none of a unit it holds as the server sent it, which `Unpredicted` hides.
     pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
-        let entity = world.entity_of(id)?;
+        let entity = world.queried_entity_of(id)?;
         world.get::<Life>(entity)?.above_zero().then_some(entity)
     }
 

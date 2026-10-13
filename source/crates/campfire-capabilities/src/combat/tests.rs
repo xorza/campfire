@@ -1,13 +1,17 @@
 use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{EntityIndex, Position, SimComponent, SimRng, StableId};
+use campfire_sim::{
+    EntityIndex, Position, SimComponent, SimEdge, SimRng, SimUpdate, SimWorld, StableId,
+    Unpredicted,
+};
 
 use super::*;
 use crate::actions::Actions;
@@ -1065,4 +1069,46 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     let second = rolls(&mut game);
     assert_eq!(second, expected(1));
     assert_ne!(first, second);
+}
+
+#[test]
+fn a_predicting_clients_combat_reads_only_what_it_holds() {
+    // A client predicts its fighter and its ally, and holds two enemies as the server sent them:
+    // its fighter attacks the near enemy, which attacks it back, and the far one stands. The
+    // client strikes only what it predicts, and reads of the enemies only what reaches it.
+    Release::sync_held(&[Capability::Stats, Capability::Combat], 12, |game| {
+        Combat::load_weapon_stats(game);
+        let [fighter, dummy] = arm(game, [fighter(), dummy()]);
+        let own = Mode::spawn(game, fighter, (0, 0, 0), Team::new(0), ());
+        Mode::spawn(game, dummy, (0, 0, 1), Team::new(0), ());
+        let enemy = Mode::spawn(game, fighter, (1, 0, 0), Team::new(1), Unpredicted);
+        Mode::spawn(game, dummy, (9, 0, 0), Team::new(1), Unpredicted);
+        Combat::attack(game, own, enemy);
+        Combat::attack(game, enemy, own);
+    });
+}
+
+#[test]
+#[should_panic(expected = "the units the client predicts end alike")]
+fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
+    // A system moves the client's fighter when the enemy it holds as the server sent it has
+    // attackers on record, `RecentAttackers`, which no client receives of such a unit: with the
+    // enemy's state whole the fighter moves, held as sent it stands, and the two differ.
+    Release::sync_held(&[Capability::Stats, Capability::Combat], 1, |game| {
+        Combat::load_weapon_stats(game);
+        let [fighter] = arm(game, [fighter()]);
+        let own = Mode::spawn(game, fighter, (0, 0, 0), Team::new(0), ());
+        let enemy = Mode::spawn(game, fighter, (5, 0, 0), Team::new(1), Unpredicted);
+        let peek = move |world: &mut World| {
+            let enemy = world.entity_of(enemy).unwrap();
+            if world.get::<RecentAttackers>(enemy).is_some() {
+                let own = world.entity_of(own).unwrap();
+                *world.get_mut::<Position>(own).unwrap() = Position::from((1, 0, 0));
+            }
+        };
+        let peek = peek.in_set(SimEdge::After(SimSet::Mode));
+        let after = peek.after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
+        game.resource_mut::<Schedules>()
+            .add_systems(SimUpdate, after);
+    });
 }

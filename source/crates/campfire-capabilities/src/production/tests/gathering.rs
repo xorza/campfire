@@ -487,3 +487,22 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
         (Some(node), Some(GatherStep::ToNode))
     );
 }
+
+#[test]
+fn a_predicting_clients_gather_loop_reads_only_what_it_holds() {
+    // The client predicts player 0's hall and worker, and holds as the server sent them a mineral
+    // and a rival worker that gathers it. Its worker is ordered to the same mineral.
+    Release::sync_held(&ORDERING, 24, |game| {
+        let shop = Shop::place(game);
+        let mine = Mine::place(game, shop);
+        shop.hall(game, halves(0, 0));
+        let node = mine.mineral(game, halves(0, 12), 100);
+        let rival = mine.worker(game, halves(2, 10), 0);
+        Production::gather_at(game, &[rival], node);
+        game.step();
+        game.insert_parts(node, Unpredicted);
+        game.insert_parts(rival, Unpredicted);
+        let worker = mine.worker(game, halves(1, 6), 0);
+        Production::gather_at(game, &[worker], node);
+    });
+}

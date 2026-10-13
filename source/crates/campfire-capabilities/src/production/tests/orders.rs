@@ -206,3 +206,26 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         assert_eq!(spawned.pos, place, "{seers:?}");
     }
 }
+
+#[test]
+fn a_predicting_clients_train_reads_only_what_it_holds() {
+    // The client predicts player 0's barracks, which rallies to a unit of team 1 it holds as the
+    // server sent it, and trains grunts at once.
+    Release::sync_held(&ORDERING, 6, |game| {
+        let shop = Shop::place(game);
+        let train = Actions::add_train(game, shop.grunt, Ticks::ZERO, None);
+        let producer = Production::allocate_id(game);
+        let player = PlayerSlot::new(0);
+        let queue = TrainQueue::default();
+        shop.producer(game, producer, 0, Team::new(0), Some(player), train, queue);
+        let form = BodyForm::circle(Num::HALF).unwrap();
+        let flag =
+            Navigation::spawn_unit(game, halves(0, 12), Team::new(1), None, None, Some(form));
+        game.insert_parts(flag, Unpredicted);
+        let rally = Action::Rally {
+            target: Some(RallyTarget::Unit(flag)),
+        };
+        Production::tick_ordering(game, 0, producer, rally);
+        Production::order_train(game, producer);
+    });
+}

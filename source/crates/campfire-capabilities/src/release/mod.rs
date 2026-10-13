@@ -47,6 +47,8 @@ use crate::vision::Vision;
 mod api_binder;
 mod called_registries;
 mod capability_rows;
+#[cfg(test)]
+mod client_holds;
 mod declaring;
 mod engine_tag_list;
 mod installer;
@@ -383,9 +385,62 @@ pub(crate) mod test_world {
 
     use crate::players::players_world::PlayersWorld;
     use crate::release::Release;
+    use crate::release::client_holds::ClientHolds;
+    use crate::release::r#match::Match;
     use crate::units::Units;
+    use campfire_sim::Capability;
 
     impl Release {
+        /// Design 14's D12 for the reads no access names, an exclusive system's, as GGPO's sync
+        /// test checks rollback: `scene` places a scene into a predicting client's match of
+        /// `declared` twice, each unit it does not predict marked `Unpredicted`; in the second,
+        /// those units hold only the state types their audiences send the client. Both run
+        /// `ticks` ticks of alike inputs, so the units the client predicts end alike, and each
+        /// unit it does not predict keeps what it received, unwritten: a read of state the
+        /// client lacks shows as a difference.
+        pub(crate) fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
+            let set = Release::capability_set(declared).expect("a test declares a valid set");
+            let mut worlds = [(); 2].map(|()| {
+                let mut game = Match::predicting(declared);
+                scene(&mut game);
+                let holds = ClientHolds::of(&mut game, set);
+                (game, holds)
+            });
+            let [_, (held, held_holds)] = &mut worlds;
+            held_holds.strip(held);
+            for (game, holds) in &mut worlds {
+                let parts = holds.parts(game);
+                let since = game.read_change_tick();
+                for _ in 0..ticks {
+                    game.step();
+                }
+                assert_eq!(holds.parts(game), parts, "held units keep their parts");
+                let writes = holds.writes(game, since);
+                assert_eq!(writes, [], "writes of units held as sent");
+            }
+            let by_type = worlds.map(|(mut game, _)| {
+                for entity in ClientHolds::unpredicted(&mut game) {
+                    game.despawn(entity);
+                }
+                let mut by_type = Vec::new();
+                game.state_hash_by_type(&mut by_type);
+                by_type
+            });
+            let [full, held] = &by_type;
+            debug_assert_eq!(full.len(), held.len(), "one match's state types");
+            let differ: Vec<&str> = full
+                .iter()
+                .zip(held)
+                .filter(|(full, held)| full.hash != held.hash)
+                .map(|(full, _)| full.name)
+                .collect();
+            assert_eq!(
+                differ,
+                Vec::<&str>::new(),
+                "the units the client predicts end alike with what it holds"
+            );
+        }
+
         /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
         /// error that refuses it, if one does. `fresh`'s unit types seal as a spawn seals them,
         /// and it loads the modifiers of the test tags when `world` did.

@@ -800,6 +800,14 @@ fn a_copy_follows_each_kind_of_change_by_the_values_that_changed() {
     });
     let health_32 = ("test.health", encoded(&[(fifth, Some(health(32)))]));
     assert_eq!(hidden, (vec![], vec![], vec![absent.clone(), health_32]));
+    // A lookup by id finds it, one that honors the filters does not; a plain entity both find,
+    // and a despawned one neither.
+    let world = &following.world;
+    assert!(world.entity_of(fifth).is_some());
+    assert_eq!(world.queried_entity_of(fifth), None);
+    assert_eq!(world.queried_entity_of(first), Some(entity(world, first)));
+    assert_eq!(world.entity_of(second), None);
+    assert_eq!(world.queried_entity_of(second), None);
 
     // A resource inserted, then removed.
     let tick = SimTick::new(Tick::new(5));

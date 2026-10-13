@@ -2,83 +2,17 @@
 //! it, only what it derives itself or what reaches every client that holds the unit, and builds
 //! no system that computes the server's own state.
 
-use std::collections::BTreeMap;
-
-use bevy_ecs::component::{ComponentId, Immutable, Mutable};
+use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
 use bevy_ecs::schedule::Schedules;
 use bevy_ecs::system::System;
 use campfire_common::SegmentSeed;
-use campfire_sim::{SimResource, SimUpdate};
+use campfire_sim::SimUpdate;
 
 use super::*;
-use crate::state_types::Declared;
-use crate::state_types::data_kind::DataKind;
-use crate::state_types::recipients::Recipients;
-use crate::state_types::replication::Replication;
+use crate::release::client_holds::ClientHolds;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
-
-/// How a client comes to hold a state type: it derives it, or receives it as its kind's.
-#[derive(Debug, Clone, Copy)]
-enum Held {
-    Derived,
-    Of(DataKind),
-}
-
-/// Each state type of a match's lists by its id in `world`, with its name and how a client holds
-/// it.
-#[derive(Debug)]
-struct Classes<'w> {
-    world: &'w mut World,
-    types: BTreeMap<ComponentId, (&'static str, Held)>,
-}
-
-impl Classes<'_> {
-    fn of<C: Component>(&mut self, held: Held) {
-        let id = self.world.register_component::<C>();
-        self.types.insert(id, (type_name::<C>(), held));
-    }
-}
-
-impl StateTypes for Classes<'_> {
-    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
-        &mut self,
-        _: Declared,
-    ) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn server<C: Replication>(&mut self, _: Declared) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn derived<C: Component>(&mut self) {
-        self.of::<C>(Held::Derived);
-    }
-
-    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-
-    fn resource<R: SimResource + Default>(&mut self) {}
-
-    fn sim_component<C: Replication>(&mut self) {
-        self.of::<C>(Held::Of(C::KIND));
-    }
-}
 
 /// What `access` reads, a component's data or its presence, `Has` and `With` among them, and
 /// whether only on the units a client predicts, as the default filters make a query that names
@@ -93,16 +27,6 @@ fn reads(access: &FilteredAccess, unpredicted: ComponentId) -> Option<(Vec<Compo
         .collect();
     reads.extend(sets.iter().flat_map(|set| set.with().iter()));
     Some((reads, predicted))
-}
-
-/// Whether a client's own player holds a type of `kind` on its entity: a system reads a player's
-/// entity through the owner of a unit, and the client predicts only its own player's units, so
-/// it reads its own player's (design 14, D12).
-const fn of_own_player(kind: DataKind) -> bool {
-    matches!(
-        kind,
-        DataKind::Resources | DataKind::Supply | DataKind::PlayerModifiers
-    )
 }
 
 /// The systems that compute the server's own state, which a predicting client does not build;
@@ -136,8 +60,9 @@ fn system_names(world: &mut World) -> Vec<String> {
 }
 
 /// The exclusive systems a predicting client builds: Bevy gives an exclusive system no access,
-/// so the check cannot read what each reads. The test fails on one this list lacks, and on one
-/// it names that is gone, so no new one joins them unchecked (the issue log, **Core**).
+/// so the check cannot read what each reads, and `Release::sync_held` checks them by what they
+/// do. The test fails on one this list lacks, and on one it names that is gone, so no new one
+/// joins them unchecked.
 const EXCLUSIVE: [&str; 7] = [
     "combat::attacks::Attacks::attack_events",
     "combat::damage_pass::DamagePass::run",
@@ -156,12 +81,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
     Release::build(&mut world, spec.clone().predicting().unbuilt());
     let unpredicted = world.register_component::<Unpredicted>();
-    let mut classes = Classes {
-        world: &mut world,
-        types: BTreeMap::new(),
-    };
-    Release::state_types(set, &mut classes);
-    let types = classes.types;
+    let holds = ClientHolds::of(&mut world, set);
     // Each read of a type a client holds of no unit it does not predict, by system, each system
     // whose reads no list can name, and each exclusive system.
     let mut failures = Vec::new();
@@ -194,19 +114,13 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
                     continue;
                 };
                 for read in reads {
-                    let Some(&(type_name, held)) = types.get(&read) else {
+                    let Some((type_name, held)) = holds.get(read) else {
                         continue;
                     };
                     if !predicted {
                         read_unpredicted.push(type_name);
                     }
-                    // The owner of a unit its client predicts holds every kind but the server's.
-                    let reaches = match held {
-                        Held::Derived => true,
-                        Held::Of(kind) if predicted => kind.is_sent(),
-                        Held::Of(kind) => kind.audience() == Recipients::ALL || of_own_player(kind),
-                    };
-                    if !reaches {
+                    if !held.reaches(predicted) {
                         let read = format!("{name} reads {type_name} ({held:?})");
                         failures.push(read.replace("campfire_capabilities::", ""));
                     }

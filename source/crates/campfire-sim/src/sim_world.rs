@@ -1,4 +1,5 @@
 use bevy_ecs::entity::Entity;
+use bevy_ecs::entity_disabling::DefaultQueryFilters;
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_common::StateHash;
 
@@ -17,6 +18,11 @@ pub trait SimWorld {
 
     /// The entity of `id` with its components, while it lives.
     fn entity_ref_of(&self, id: StableId) -> Option<EntityRef<'_>>;
+
+    /// The entity of `id`, while it lives and no disabling component hides it from queries, as
+    /// `Unpredicted` hides a unit a predicting client holds as its authority sent it: the unit a
+    /// query that names no disabling component finds, for a system that reaches units by id.
+    fn queried_entity_of(&self, id: StableId) -> Option<Entity>;
 
     /// Runs one sim tick in a world no `App` updates, so it clears the change trackers after the
     /// tick, as an `App` does after each frame.
@@ -51,6 +57,16 @@ impl SimWorld for World {
 
     fn entity_ref_of(&self, id: StableId) -> Option<EntityRef<'_>> {
         Some(self.entity(self.entity_of(id)?))
+    }
+
+    fn queried_entity_of(&self, id: StableId) -> Option<Entity> {
+        let entity = self.entity_of(id)?;
+        let unit = self.entity(entity);
+        let filters = self.resource::<DefaultQueryFilters>();
+        let hidden = filters
+            .disabling_ids()
+            .any(|component| unit.contains_id(component));
+        (!hidden).then_some(entity)
     }
 
     fn step(&mut self) {
