@@ -5,7 +5,6 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{EntityIndex, SimTick, SlotEvent, SlotEventKind, TickInputs};
 
 use crate::combat::deaths::Deaths;
@@ -20,6 +19,9 @@ use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::hook::Hook;
 use crate::scripts::pending_calls::PendingCalls;
 use crate::scripts::pool::Pool;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_text::ScriptText;
+use crate::scripts::script_value::ScriptValue;
 
 /// One mode input of the tick: its player's slot, and its body in the scratch buffer.
 #[derive(Debug)]
@@ -76,16 +78,16 @@ impl ModeHooks {
                     continue;
                 };
                 let value = match decoded.value {
-                    InputValue::String(text) => Dynamic::from(ImmutableString::from(text)),
-                    InputValue::StringList(texts) => Dynamic::from_array(
+                    InputValue::String(text) => ScriptValue::of(ScriptText::from(text)),
+                    InputValue::StringList(texts) => ScriptValue::of::<ScriptList>(
                         texts
                             .into_iter()
-                            .map(|text| Dynamic::from(ImmutableString::from(text)))
+                            .map(|text| ScriptValue::of(ScriptText::from(text)))
                             .collect(),
                     ),
                 };
-                let name = ImmutableString::from(decoded.name);
-                let args = (call.ctx.clone(), INT::from(input.slot.get()), name, value);
+                let name = ScriptText::from(decoded.name);
+                let args = (call.ctx.clone(), i64::from(input.slot.get()), name, value);
                 // An input is answered once: one whose call finds the pool spent fails.
                 let pool = Pool::Player(input.slot);
                 if let ControlFlow::Break(error) = call.answer(None, pool, Hook::OnModeInput, args)
@@ -123,7 +125,7 @@ impl ModeHooks {
                     SlotEventKind::Left => Hook::OnPlayerLeave,
                 };
                 if hooks.contains(hook) {
-                    let args = (call.ctx.clone(), INT::from(event.slot.get()));
+                    let args = (call.ctx.clone(), i64::from(event.slot.get()));
                     if call.answer(None, Pool::Mode, hook, args).is_break() {
                         break;
                     }
@@ -149,12 +151,12 @@ impl ModeHooks {
         world.mode_calls(now, |call| {
             let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
             while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
-                let name = ImmutableString::from(timer.name.as_str());
+                let name = ScriptText::from(timer.name.as_str());
                 if hooked {
                     let data = timer
                         .data
                         .as_ref()
-                        .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
+                        .map_or(ScriptValue::UNIT, |data| data.to_value(call.ctx.view()));
                     let args = (call.ctx.clone(), name, data);
                     if call
                         .answer(None, Pool::Mode, Hook::OnTimer, args)
@@ -200,10 +202,10 @@ impl ModeHooks {
             for death in pending.iter() {
                 if let Some(unit) = view.unit(death.id) {
                     let killer = death.killer.and_then(|id| view.unit(id));
-                    let killer = killer.map_or(Dynamic::UNIT, Dynamic::from);
+                    let killer = killer.map_or(ScriptValue::UNIT, ScriptValue::of);
                     let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
-                    let assisters: Array = assisters.map(Dynamic::from).collect();
-                    let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
+                    let assisters: ScriptList = assisters.map(ScriptValue::of).collect();
+                    let args = (call.ctx.clone(), ScriptValue::of(unit), killer, assisters);
                     let unit = Some(death.id);
                     if call
                         .answer(unit, Pool::Mode, Hook::OnUnitDied, args)
@@ -267,7 +269,7 @@ impl ModeHooks {
                 let mut answered = 0;
                 for &LevelUp { id, track, level } in due.iter() {
                     if let Some(handle) = view.unit(id) {
-                        let level = INT::from(level.get());
+                        let level = i64::from(level.get());
                         let name = view
                             .names()
                             .tracks

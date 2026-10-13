@@ -3,9 +3,9 @@ use std::slice::Iter;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::scripts::state_value::StateValue;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
@@ -135,22 +135,22 @@ impl UnitsColumn {
     }
 
     /// The value at `at` of the unit in row `row`, as a script reads it.
-    pub(crate) fn read(view: &View, row: usize, at: usize) -> Dynamic {
+    pub(crate) fn read(view: &View, row: usize, at: usize) -> ScriptValue {
         let value = view
             .column(|column: &UnitsColumn| {
                 let rows = column.rows.now();
                 rows.values[rows.rows[row].start as usize + at].clone()
             })
             .expect("a view of units has their state");
-        value.to_dynamic(view)
+        value.to_value(view)
     }
 
     /// The default of the field at `at` of `unit_type`, as a script reads it.
-    pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> Dynamic {
+    pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> ScriptValue {
         let value = view
             .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial().clone())
             .expect("a view of units has their state");
-        value.to_dynamic(view)
+        value.to_value(view)
     }
 
     /// Writes `value` at `at` of the unit in row `row`, as a call's write applies to the unit's

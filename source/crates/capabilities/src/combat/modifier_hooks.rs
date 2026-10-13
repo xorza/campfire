@@ -3,7 +3,6 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{SimTick, SimWorld, StableId};
 
 use crate::combat::combat_event::CombatEvent;
@@ -14,6 +13,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::script_value::ScriptValue;
 use crate::stats::instance::Instance;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
@@ -61,7 +61,7 @@ impl ModifierHooks {
         let unit = |id| Some(self.ctx.view().unit_value(Some(id)));
         let damage = |damage: Damage| {
             let handle = DamageHandle::new(damage, self.ctx.view().clone());
-            Some(Dynamic::from(handle))
+            Some(ScriptValue::of(handle))
         };
         let next = |depth: u8| depth.saturating_add(1);
         match event {
@@ -111,7 +111,7 @@ impl ModifierHooks {
         carrier: StableId,
         hook: Hook,
         depth: u8,
-        arg: impl FnOnce() -> Option<Dynamic>,
+        arg: impl FnOnce() -> Option<ScriptValue>,
     ) {
         let mut heard = mem::take(&mut *self.heard.borrow_mut());
         heard.clear();
@@ -154,7 +154,7 @@ impl ModifierHooks {
         heard: Heard,
         hook: Hook,
         depth: u8,
-        arg: Option<Dynamic>,
+        arg: Option<ScriptValue>,
     ) {
         let world = batch.world();
         let entity = world.entity_of(carrier);

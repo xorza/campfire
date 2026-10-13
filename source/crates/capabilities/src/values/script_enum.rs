@@ -1,9 +1,7 @@
-use campfire_script::rhai::Variant;
-
 use crate::values::engine_enum::EngineEnum;
 
 /// The Rust type of an engine enum, whose values scripts hold as its members.
-pub(crate) trait ScriptEnum: Variant + Clone + Copy + PartialEq {
+pub(crate) trait ScriptEnum: Copy + PartialEq + 'static {
     const ENUM: EngineEnum;
     /// Each member, by its name in scripts, in order.
     const MEMBERS: &'static [(&'static str, Self)];

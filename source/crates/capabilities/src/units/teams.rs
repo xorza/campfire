@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::INT;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::team::Team;
@@ -78,7 +77,7 @@ impl Teams {
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
-    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
+    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
         u32::try_from(player)
             .ok()
             .filter(|&slot| slot < self.players())

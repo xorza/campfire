@@ -6,7 +6,6 @@ use std::rc::Rc;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::ImmutableString;
 use campfire_sim::{Breach, Capability, IdAllocator, SimPlace, SimSet, SimTick};
 
 use crate::abilities::AbilitiesSet;
@@ -55,6 +54,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
+use crate::scripts::script_text::ScriptText;
 use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::body_form::BodyForm;
@@ -241,7 +241,7 @@ impl Mode {
             teams,
             placed,
             relations,
-            map: GameMap::new(path_names.map(ImmutableString::from), &markers),
+            map: GameMap::new(path_names.map(ScriptText::from), &markers),
         };
         Mode::load_units(world, &setup.units);
         let book = ModeSpec::new(
@@ -403,8 +403,6 @@ pub(crate) mod test_world {
     use bevy_ecs::world::World;
     use campfire_common::PlayerSlot;
     use campfire_math::Num;
-    use campfire_script::rhai::Dynamic;
-    use campfire_script::{Budget, ScriptHost};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         EntityIndex, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId, TickInputs,
@@ -426,6 +424,7 @@ pub(crate) mod test_world {
     use crate::scripts::error::internals::FailureKind;
     use crate::scripts::script_failures::ScriptFailures;
     use crate::scripts::script_role::ScriptRole;
+    use crate::scripts::script_value::ScriptValue;
     use crate::scripts::state_value::StateValue;
     use crate::stats::Stats;
     use crate::stats::application::{Application, NewInstance};
@@ -652,7 +651,7 @@ pub(crate) mod test_world {
             role: ScriptRole,
             actor: StableId,
             id: StableId,
-        ) -> Result<Dynamic, CallError> {
+        ) -> Result<ScriptValue, CallError> {
             let ctx = world.non_send::<Ctx>().clone();
             ctx.view().read(world);
             let now = world.resource::<SimTick>().start();
@@ -674,13 +673,7 @@ pub(crate) mod test_world {
                 }
             }
             let handle = ctx.view().unit(id).unwrap();
-            let returned = {
-                let mut host = world.non_send_mut::<ScriptHost>();
-                let script = host.compile(source).unwrap();
-                let mut budget = Budget::new(u64::MAX);
-                host.call(&mut budget, script, "probe", (ctx.clone(), handle))
-            };
-            let returned = returned.map_err(CallError::from_script)?;
+            let returned = ScriptValue::probe(world, source, (ctx.clone(), handle))?;
             ctx.apply(world);
             Ok(returned)
         }

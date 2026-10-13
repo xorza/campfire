@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
@@ -128,7 +127,7 @@ impl CombatApi {
             &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         );
-        api.method(recent_attackers, |unit: Unit, ms: INT| {
+        api.method(recent_attackers, |unit: Unit, ms: i64| {
             CombatColumn::recent_attackers(&unit, ms)
         });
     }

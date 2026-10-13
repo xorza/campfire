@@ -1,11 +1,11 @@
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 use crate::stats::Stats;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
@@ -66,7 +66,7 @@ impl CallPart for StatsCall {
     }
 
     /// An ability's or a modifier's call reads its modifier's params, then its ability's.
-    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue> {
         if !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
             return None;
         }
@@ -78,7 +78,7 @@ impl CallPart for StatsCall {
             let at = self.params.actions().named(self.action?.index(), name)?;
             Some(self.values[at])
         });
-        value.map(Scalar::to_dynamic)
+        value.map(ScriptValue::from)
     }
 
     fn apply(&mut self, world: &mut World) {

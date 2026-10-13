@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::INT;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_names::ScriptNames;
@@ -131,7 +130,7 @@ impl ViewNames {
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
-    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
+    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
         match self.teams.as_deref() {
             Some(teams) => teams.player(player),
             None => Err(ApiError::UnknownPlayer.fail().into()),

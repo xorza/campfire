@@ -2,7 +2,6 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::StableId;
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -10,6 +9,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_arg::plain_script_arg;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_state_field::ModifierStateField;
 use crate::stats::stats_effect::StatsEffect;
@@ -140,15 +140,15 @@ impl ModifierHandle {
                     let data = handle.data();
                     data.source
                         .and_then(|source| data.view.unit(source))
-                        .map_or(Dynamic::UNIT, Dynamic::from)
+                        .map_or(ScriptValue::UNIT, ScriptValue::of)
                 },
             )
             .bind(stacks, |handle: &mut ModifierHandle| {
-                INT::from(handle.data().stacks)
+                i64::from(handle.data().stacks)
             })
             .bind_set(
                 stacks,
-                |handle: &mut ModifierHandle, stacks: INT| -> Checked<()> {
+                |handle: &mut ModifierHandle, stacks: i64| -> Checked<()> {
                     let stacks = u32::try_from(stacks)
                         .ok()
                         .ok_or_else(|| ApiError::NegativeStacks.fail())?;
@@ -169,13 +169,13 @@ impl ModifierHandle {
             .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
                 let at = data.field(name)?;
-                Ok(data.state[at].to_dynamic(&data.view))
+                Ok(data.state[at].to_value(&data.view))
             })
             .index_set(
-                |_, state: &mut ModifierState, name: &str, value: Dynamic| -> Checked<()> {
+                |_, state: &mut ModifierState, name: &str, value: ScriptValue| -> Checked<()> {
                     let mut data = state.0.data();
                     let at = data.field(name)?;
-                    let value = StateValue::from_dynamic(data.fields[at].kind, &value)
+                    let value = StateValue::from_value(data.fields[at].kind, &value)
                         .ok_or_else(|| ApiError::WrongStateType.fail())?;
                     data.state[at] = value;
                     data.written = true;

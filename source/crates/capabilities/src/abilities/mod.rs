@@ -1,6 +1,5 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::Ticks;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{Capability, SimPlace, SimSet, TickRate};
 
 use crate::abilities::abilities_api::AbilitiesApi;
@@ -19,6 +18,7 @@ use crate::declare::module_set::ModuleSet;
 use crate::declare::set_order::SetOrder;
 use crate::deliveries::deliverers::Deliverers;
 use crate::items::inventory::Inventory;
+use crate::scripts::script_value::ScriptValue;
 use crate::stats::StatsSet;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
@@ -115,14 +115,14 @@ impl Module for Abilities {
 impl Abilities {
     /// `target` as a script reads it: a living unit's handle, a point, or `()` for none or a
     /// unit no longer living.
-    fn target(view: &View, target: ActionTarget) -> Dynamic {
+    fn target(view: &View, target: ActionTarget) -> ScriptValue {
         match target {
-            ActionTarget::None => Dynamic::UNIT,
+            ActionTarget::None => ScriptValue::UNIT,
             ActionTarget::Unit(id) => view
                 .living(id)
                 .and_then(|_| view.unit(id))
-                .map_or(Dynamic::UNIT, Dynamic::from),
-            ActionTarget::Point(at) => Dynamic::from(at),
+                .map_or(ScriptValue::UNIT, ScriptValue::of),
+            ActionTarget::Point(at) => ScriptValue::of(at),
         }
     }
 

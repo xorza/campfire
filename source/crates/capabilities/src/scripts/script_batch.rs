@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_script::rhai::{Dynamic, FuncArgs};
 use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
 use campfire_sim::StableId;
 
@@ -8,8 +7,10 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
+use crate::scripts::script_args::ScriptArgs;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
+use crate::scripts::script_value::ScriptValue;
 
 /// A group of script calls in one stage: they share the view as the stage began, the `ctx` of
 /// their calls, and the host, out of the world while they run.
@@ -32,11 +33,17 @@ impl ScriptBatch<'_> {
         pool: Pool,
         script: ScriptId,
         hook: Hook,
-        args: impl FuncArgs,
-    ) -> Result<Dynamic, ScriptError> {
+        args: impl ScriptArgs,
+    ) -> Result<ScriptValue, ScriptError> {
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
         self.host
-            .call(budgets.get_mut(pool), script, hook.name(), args)
+            .call(
+                budgets.get_mut(pool),
+                script,
+                hook.name(),
+                args.into_engine(),
+            )
+            .map(ScriptValue::of_engine)
     }
 
     /// Calls `hook` of `script` with `args`, from the budget of `pool`, for its effects alone.
@@ -45,7 +52,7 @@ impl ScriptBatch<'_> {
         pool: Pool,
         script: ScriptId,
         hook: Hook,
-        args: impl FuncArgs,
+        args: impl ScriptArgs,
     ) -> Result<(), CallError> {
         self.call(pool, script, hook, args)
             .map(drop)
@@ -76,10 +83,16 @@ impl ScriptBatch<'_> {
         &mut self,
         script: ScriptId,
         hook: Hook,
-        args: impl FuncArgs,
-    ) -> Result<Dynamic, ScriptError> {
+        args: impl ScriptArgs,
+    ) -> Result<ScriptValue, ScriptError> {
         self.host
-            .call(&mut Budget::new(u64::MAX), script, hook.name(), args)
+            .call(
+                &mut Budget::new(u64::MAX),
+                script,
+                hook.name(),
+                args.into_engine(),
+            )
+            .map(ScriptValue::of_engine)
     }
 
     /// Records that a call of `hook`, for `id` if any, failed with `error`.

@@ -1,9 +1,9 @@
-use campfire_script::rhai::Dynamic;
 use campfire_sim::StableId;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit::NewUnit;
 use crate::units::unit_type::UnitType;
@@ -43,20 +43,20 @@ impl UnitStateAccess {
     /// Indexes `UnitState` by field name, to read and to write.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.ty::<UnitStateAccess>("UnitState")
-            .index(|call, state: &mut UnitStateAccess, name| state.get(&Ctx::of_call(&call), name))
-            .index_set(|call, state: &mut UnitStateAccess, name, value| {
-                state.set(&Ctx::of_call(&call), name, &value)
+            .index(|args, state: &mut UnitStateAccess, name| state.get(args.get(), name))
+            .index_set(|args, state: &mut UnitStateAccess, name, value| {
+                state.set(args.get(), name, &value)
             });
     }
 
     /// The field `name`, as the call last wrote it, or else as the view holds it, or at its
     /// type's default for a unit the call creates; one the unit's type does not declare fails
     /// the call.
-    fn get(&self, ctx: &Ctx, name: &str) -> Checked<Dynamic> {
+    fn get(&self, ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
         let view = ctx.view();
         let field = UnitsColumn::field(view, self.unit_type, name)?;
         if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.id, field.at) {
-            return Ok(value.to_dynamic(view));
+            return Ok(value.to_value(view));
         }
         if let Some(row) = self.row {
             return Ok(UnitsColumn::read(view, row, field.at));
@@ -67,9 +67,9 @@ impl UnitStateAccess {
     /// Writes `value` to the field `name`, for the call to read back and to apply when it ends,
     /// or as the unit spawns; a field the unit's type does not declare, a value of another
     /// type, and a pure hook's call fail the call.
-    fn set(&self, ctx: &Ctx, name: &str, value: &Dynamic) -> Checked<()> {
+    fn set(&self, ctx: &Ctx, name: &str, value: &ScriptValue) -> Checked<()> {
         let field = UnitsColumn::field(ctx.view(), self.unit_type, name)?;
-        let value = StateValue::from_dynamic(field.kind, value)
+        let value = StateValue::from_value(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         let mut frame = ctx.write()?;
         UnitsCall::of_mut(&mut frame).write(self.id, field, value);

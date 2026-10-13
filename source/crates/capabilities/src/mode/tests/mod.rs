@@ -8,7 +8,6 @@ use bevy_ecs::query::With;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptId;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{
     EntityIndex, Position, SimComponent, SimResource, SimTick, SlotEvent, SlotEventKind, StableId,
     TickRate,

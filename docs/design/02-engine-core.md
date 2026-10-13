@@ -205,6 +205,8 @@ One promise on every OS. Code that differs by OS lives only in `store`'s `platfo
 
 `script` is its own crate in the deterministic core, so `sim` is testable without Rhai. Scripts run inside the sim tick and call only the registry's API ([Script API](08-script-api.md)); they never touch the ECS. Not `bevy_mod_scripting`, which exposes all of Bevy and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
 
+- **Rhai behind the runtime:** only `script` and the script runtime, `capabilities`' `scripts`, name Rhai. A value a script reads or gives is `ScriptValue`, a text `ScriptText`, a list `ScriptList`, a table `ScriptMap`, an integer `i64`; a hook's arguments are a tuple of values, and an argument of the API is a `ScriptArg`, a name a `TextArg`. The load reads what a script defines through `ScriptFacts`.
+
 - **Engine:** `Engine::new_raw` with only the packages scripts need, strict variables ([Engine enums](08-script-api.md#engine-enums)); no `eval`, imports, floats or time; `print` to debug logs only; a fixed hashing seed; never `unchecked`.
 - **Operation limits:** a limit per call, and per-tick pools the manifest sets; counts are the same everywhere, so an over-budget script fails the same everywhere. A property read through a type's indexer costs one operation, as a getter does: the host gives each such type a getter and setter of each property its scripts use. A method of a value or a handle takes it as a copy, so Rhai feeds nothing back through a setter. Each hook runs in one pool:
 

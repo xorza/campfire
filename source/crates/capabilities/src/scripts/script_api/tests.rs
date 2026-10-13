@@ -8,7 +8,6 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 
 use campfire_math::Num;
-use campfire_script::rhai::INT;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
@@ -41,6 +40,7 @@ use crate::production::supply_data::SupplyData;
 use crate::progression::track_data::TrackData;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::release::Release;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::data_section::DataSection;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
@@ -130,7 +130,7 @@ fn each_form_that_takes_a_num_takes_an_integer_in_its_place_too() {
         .into_iter()
         .filter(|form| !before.contains(form))
         .collect();
-    let (num, int) = (TypeId::of::<Num>(), TypeId::of::<INT>());
+    let (num, int) = (TypeId::of::<Num>(), TypeId::of::<i64>());
     let numbers: Vec<_> = bound
         .iter()
         .filter(|(_, params)| params.contains(&num))
@@ -282,7 +282,7 @@ fn a_binding_records_its_spec_once_and_whole() {
         ScriptApi::bind(&mut host, |api| {
             api.module(Some(Capability::Combat));
             let spec = MemberSpec::value("strength", "a test's").capability(Capability::Combat);
-            api.bind(spec, || 1_i64);
+            api.bind(spec, |_: &mut Ctx| 1_i64);
         })
     }));
     let said = redundant

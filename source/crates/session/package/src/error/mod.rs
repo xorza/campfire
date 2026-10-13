@@ -15,7 +15,6 @@ use crate::files::package_name::PackageName;
 pub(crate) mod box_problem;
 pub(crate) mod build_problem;
 pub(crate) mod choice_problem;
-pub(crate) mod ctx_misuse;
 pub(crate) mod delivery_problem;
 pub(crate) mod effect_problem;
 pub(crate) mod gather_problem;

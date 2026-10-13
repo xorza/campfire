@@ -3,7 +3,6 @@ use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{Breach, Capability, Position, SimEdge, SimPlace, SimSet, TickRate};
 
@@ -300,8 +299,7 @@ impl Units {
         if let Some(budgets) = budgets {
             let ctx = Ctx::new(view.clone());
             let mut host = ScriptHost::new(budgets.limits().per_call);
-            host.engine_mut()
-                .set_default_tag(Dynamic::from(ctx.clone()));
+            ctx.tag(&mut host);
             world.insert_non_send(ctx);
             world.insert_non_send(host);
             world.insert_non_send(ScriptFailures::default());
@@ -352,8 +350,7 @@ pub(crate) mod test_world {
     use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
     use bevy_ecs::world::World;
     use campfire_common::Tick;
-    use campfire_script::rhai::Dynamic;
-    use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
+    use campfire_script::{ScriptError, ScriptHost, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
 
@@ -361,6 +358,7 @@ pub(crate) mod test_world {
     use crate::scripts::ctx::Ctx;
     use crate::scripts::error::CallError;
     use crate::scripts::script_book::ScriptBook;
+    use crate::scripts::script_value::ScriptValue;
     use crate::stats::Stats;
     use crate::stats::carried_mut::CarriedMut;
     use crate::stats::modifier_book::ModifierBook;
@@ -541,15 +539,11 @@ pub(crate) mod test_world {
             world: &mut World,
             source: &str,
             of: StableId,
-        ) -> Result<Dynamic, CallError> {
+        ) -> Result<ScriptValue, CallError> {
             let ctx = world.non_send::<Ctx>().clone();
             ctx.view().read(world);
             let unit = ctx.view().unit(of).expect("a unit of the match");
-            let mut host = world.non_send_mut::<ScriptHost>();
-            let script = host.compile(source).expect("a probe compiles");
-            let mut budget = Budget::new(u64::MAX);
-            host.call(&mut budget, script, "probe", (ctx, unit))
-                .map_err(CallError::from_script)
+            ScriptValue::probe(world, source, (ctx, unit))
         }
 
         /// `expression` evaluated with `ctx` and `of`, the unit `of`, on the units as they are now.
@@ -557,7 +551,7 @@ pub(crate) mod test_world {
             world: &mut World,
             expression: &str,
             of: StableId,
-        ) -> Result<Dynamic, CallError> {
+        ) -> Result<ScriptValue, CallError> {
             Units::probe(world, &format!("fn probe(ctx, of) {{ {expression} }}"), of)
         }
 

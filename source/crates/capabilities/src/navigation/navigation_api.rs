@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::INT;
 use campfire_sim::Position;
 
 use crate::navigation::mode_navigation_data::ModeNavigationData;
@@ -57,7 +56,7 @@ impl NavigationApi {
         )
         .call(
             dash,
-            move |ctx: &mut Ctx, of: Unit, to: Position, speed: INT| {
+            move |ctx: &mut Ctx, of: Unit, to: Position, speed: i64| {
                 NavigationApi::dash(ctx, &of, point(to), ApiError::num(speed)?)
             },
         )
@@ -69,19 +68,19 @@ impl NavigationApi {
         )
         .call(
             dash,
-            move |ctx: &mut Ctx, of: Unit, to: Unit, speed: INT| {
+            move |ctx: &mut Ctx, of: Unit, to: Unit, speed: i64| {
                 NavigationApi::dash(ctx, &of, unit(to), ApiError::num(speed)?)
             },
         )
         .call(
             knock_back,
-            |ctx: &mut Ctx, of: Unit, from: Position, distance: Num, ms: INT| {
+            |ctx: &mut Ctx, of: Unit, from: Position, distance: Num, ms: i64| {
                 NavigationApi::knock_back(ctx, &of, from, distance, ms)
             },
         )
         .call(
             knock_back,
-            |ctx: &mut Ctx, of: Unit, from: Position, distance: INT, ms: INT| {
+            |ctx: &mut Ctx, of: Unit, from: Position, distance: i64, ms: i64| {
                 NavigationApi::knock_back(ctx, &of, from, ApiError::num(distance)?, ms)
             },
         )
@@ -98,7 +97,7 @@ impl NavigationApi {
         ctx.queue(dash.map_err(ApiError::fail)?)
     }
 
-    fn knock_back(ctx: &Ctx, unit: &Unit, from: Position, distance: Num, ms: INT) -> Checked<()> {
+    fn knock_back(ctx: &Ctx, unit: &Unit, from: Position, distance: Num, ms: i64) -> Checked<()> {
         let knock_back = NavigationEffect::knock_back(ctx.view(), unit.id, from, distance, ms);
         ctx.queue(knock_back.map_err(ApiError::fail)?)
     }

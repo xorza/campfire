@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic};
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -9,6 +8,8 @@ use crate::scripts::frame::Frame;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::scripts_call::ScriptsCall;
 use crate::units::block::Block;
 use crate::units::collision_data::CollisionData;
@@ -42,7 +43,7 @@ impl CoreApi {
                     &[&["list"]],
                     "an entry of `list`, each as likely, from the secret stream",
                 ),
-                |ctx: &mut Ctx, list: Array| CoreApi::pick(ctx, &list),
+                |ctx: &mut Ctx, list: ScriptList| CoreApi::pick(ctx, &list),
             )
             .data::<CollisionData>(&["radius", "box", "layer"], &[])
             .shared_data(DataTable::UnitType, &["tags", "params", "state", "collision"], &[])
@@ -69,7 +70,7 @@ impl CoreApi {
     }
 
     /// Draws an entry of `list`, each as likely, on the running call's sequence.
-    fn pick(ctx: &Ctx, list: &Array) -> Checked<Dynamic> {
+    fn pick(ctx: &Ctx, list: &[ScriptValue]) -> Checked<ScriptValue> {
         if list.is_empty() {
             return Err(ApiError::EmptyPick.fail().into());
         }

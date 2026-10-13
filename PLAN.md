@@ -32,34 +32,7 @@ Every batch moves the engine toward one shape, and each item names the part it b
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. One direction in layer 1
-
-`capabilities`: `values`, `scripts`, `declare`, `units`, `players`; `script`, `package`. The cycles of layer 1 go first, as Cargo refuses a cycle between the crates F56 makes of these modules, and Rhai goes behind the one crate that runs scripts.
-
-### F58. Rhai in one crate
-
-(`script`, `capabilities`, `package`.) `campfire-script` alone lists `rhai`, and re-exports it, `pub use rhai;` (`script/src/lib.rs:12`), so 22 files of `capabilities` and 5 of `package` name Rhai's types: `Dynamic` 40 times, `INT`, `ImmutableString`, `Array`, `Map`, `NativeCallContext`, `Variant`, `Engine`, `EvalAltResult`. Everything that touches Rhai becomes one crate, `campfire-script`, the host and the runtime `capabilities`' `scripts` module holds (F56 moves it), and no other crate names Rhai:
-
-- A value a script reads or gives is `campfire-script`'s own, `ScriptValue`, which holds a `Dynamic` inside the crate; `INT` is `i64`; text, lists and tables are the crate's types, converted at the boundary. A capability registers its members, hooks and data through `ApiBuilder` as now, and its handles as the custom types they are.
-- `package`'s script facts (`package/src/script_facts`) ask `campfire-script` what a script defines.
-- F56 then moves `scripts` into `campfire-script`, and the re-export goes with it, so Cargo refuses `rhai::` in any other crate, with no test needed.
-
-Check: no module of `capabilities` but `scripts`, and no file of `package`, names `rhai`; the script API reference does not change.
-
-### F50. One direction between the modules of layer 1
-
-(`capabilities`: `values`, `scripts`, `units`, `players`; **Core**.) The modules of layer 1 import each other in three pairs: `units ↔ scripts` (32 files of `units` import `scripts`; `scripts` imports `View` and `Unit` in four files, and the plain types `ActionId`, `ModifierId`, `Team`, `Block`, `TagProperty`, `TagData` and `CollisionData`), `units ↔ declare` and `scripts ↔ declare` (F53 takes the two of `declare`); and `scripts` imports `players` (`scripts/frame.rs:6`), against the order below. The layer test refuses only an import from a higher layer. The order this step and F53 give them, each importing only those before it, is `scripts`, `declare`, `units`, `players`, with `values` below all four; F56 makes `scripts` part of `campfire-script` (F58):
-
-- The plain types and ids, and the `NameKind` trait they implement, go to `values`, so no module of the four takes them from another.
-- `scripts` imports nothing of `units`: the view's data, its rows, the columns' contracts `ViewColumn`, `RowFill` and `RowReads`, and the names go into `scripts`, with `Book`, which shares a book into the view and the frame (`declare/book.rs:19`); the fill that reads the units stays in `units`. The frame's copy of the players' resources (`scripts/frame.rs:6`) takes them through a contract of `scripts` that `players` fills.
-
-Check: `scripts` imports nothing of `units` or `players`.
-
-### F53. `declare` holds only the contracts a module implements
-
-(`capabilities`: `declare`, `units`, `scripts`; **Core**.) Every module imports `declare`, and `declare` imports `units` for `EntityKind` (`declare/kind_visitor.rs:1`), `EngineTag` (`declarations.rs:16`) and the context a part is made from, which reads its unit's type, its facing and the books by type (`kind_spawn.rs:9-11`), and imports `scripts` for `ApiBuilder`, `CallPart` and, after F50, the view's contracts and `Book`. `EntityKind`, a contract each kind implements, moves into `declare`, and `EngineTag` to `values`. The context of a part reads the unit model, so it moves to `units`, and `d.part` takes it through a trait of `declare` that `units` implements, as a declaration takes a contract and never the type that fills it; the step writes this into design 02's [Structural rules](docs/design/02-engine-core.md#structural-rules) for review before the code moves. Check: the layer table gives `scripts`, `declare`, `units` and `players` a layer each, in that order, and the layer test passes on it, so F56 can make each a crate.
-
-## 2. One direction in layer 5
+## 1. One direction in layer 5
 
 `capabilities`: `declare` and every module's sets; `abilities`, `items`, `actions`. The cycles among the capabilities of layer 5, for the same reason, and the imports of sets that make a crate depend on more than its needs and uses.
 
@@ -94,9 +67,9 @@ let group = kind.map_or(Block::Cast, |kind| UseGroup::group(used, kind));
 
 It is not U1's `uses = { kind }`, the slot that holds a use under way, whose action blocks as `use` by its own kind. Check: the state column moves for `UseGroup`, the behaviour column does not.
 
-## 3. The capabilities as crates
+## 2. The capabilities as crates
 
-`capabilities` and every crate that depends on it; `docs/design/02-engine-core.md`. After batches 1 and 2, no module of `capabilities` imports another both ways, so its modules become crates that Cargo orders: an import against the graph does not build. Before the batches that grow the code, as the tests that move grow with it.
+`capabilities` and every crate that depends on it; `docs/design/02-engine-core.md`. After batch 1, no module of `capabilities` imports another both ways, but the four of layer 1's knot, which share a crate until F50 and F53, so its modules become crates that Cargo orders: an import against the graph does not build. Before the batches that grow the code, as the tests that move grow with it.
 
 ### F56. A crate for each module
 
@@ -105,26 +78,39 @@ It is not U1's `uses = { kind }`, the slot that holds a use under way, whose act
 | Layer | Crates | Folder |
 | --- | --- | --- |
 | 0 | `campfire-values`, `campfire-geometry`, `campfire-state-types` | `capabilities/core/` |
-| 1 | `campfire-visibility`, `campfire-script` (the Rhai host and `scripts`, F58), `campfire-declare`, `campfire-units`, `campfire-players` | `capabilities/core/` |
+| 1 | `campfire-visibility`; `campfire-core`, the four modules of layer 1 that still import each other, `scripts`, `declare`, `units` and `players`, until F50 and F53 split it | `capabilities/core/` |
 | 2 | `campfire-stats` | `capabilities/` |
 | 3 | `campfire-actions`, `campfire-deliveries` | `capabilities/core/` |
 | 4 to 7 | `campfire-combat`, `campfire-navigation`, `campfire-vision`, `campfire-projectiles`, `campfire-areas`, `campfire-abilities`, `campfire-progression`, `campfire-production`, `campfire-items`, `campfire-orders`, `campfire-mode` | `capabilities/` |
 | 8 | `campfire-capabilities`: `release`, `books`, `Match`, the senders' `Order` and its `Action`, and the published surface, its `lib.rs`, so `net`, `runner` and `client` keep their imports | `capabilities/` itself |
 
-The module list is the crate list, and each import between modules is a dependency Cargo checks; a group of small modules in one crate would hide their imports again. The core's modules, which design 01 names the core, sit in `core/`, and the capabilities beside it.
+The module list is the crate list, and each import between modules is a dependency Cargo checks; a group of small modules in one crate would hide their imports again, as `campfire-core` does until F50 and F53. The core's modules, which design 01 names the core, sit in `core/`, and the capabilities beside it.
 
 - A capability's `Cargo.toml` lists exactly the crates of its needs and uses, which F44 then ties to `Module::NEEDS` and `Module::USES`; the layer test and its `LAYERS` table go, as Cargo holds the order.
 - An item another crate uses becomes `pub`, and the rest stays `pub(crate)`; a crate's published surface is its `lib.rs`.
 - A test that builds a whole `Match`, which `release` composes at the top, becomes an integration test in its own crate's `tests/`, one binary for each crate, with a dev-dependency on `campfire-capabilities`: Cargo accepts that cycle, and an integration test links the crate once, so its types are the match's; it reads its crate's privates through `internals`. A test of one crate's own types stays a unit test. Each `#[cfg(test)] test_world` that other crates' tests use becomes `internals`, and `impl Match` blocks in other modules' tests become methods of an extension trait.
-- `scripts` joins `campfire-script`, which then drops its `pub use rhai;`: no other crate can name Rhai (F58).
 - The senders' `Order` and its `Action`, a sum of every owner's action, go to the top crate, so `orders` depends on no capability for them; each owner keeps its own action.
 - The drive's lanes cover the workspace, so the new crates join them; each carries the lint list and the `internals` self dev-dependency.
 
 The step writes the crate map into design 02's [Modules](docs/design/02-engine-core.md#modules) and its dependencies for review before the code moves, and measures `./drive.py check`'s times before and after from `target/drive/history.jsonl`. Check: the workspace builds with each crate's dependencies as the table gives them; no golden moves.
 
-## 4. The script call's runtime and the script view
+## 3. The script call's runtime and the script view
 
-`capabilities`: `scripts`, `units`' view and columns, `mode`'s state, `stats`' call, in their crates after F56. What a script call costs and how its parts are kept, with the view's copy of the match. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
+`campfire-core`'s `scripts`, `declare`, `units` and `players`; `mode`'s state, `stats`' call, in their crates after F56. The script view becomes the script runtime's own data, which the modules fill, and with it the knot of layer 1 comes apart and `campfire-core` splits into four crates; then what a script call costs and how its parts are kept. The design of the view, F50 and F53 together, goes into design 02 and design 03 for review before the code moves. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
+
+### F50. One direction between the modules of layer 1
+
+(`capabilities`: `values`, `scripts`, `units`, `players`; **Core**.) The modules of layer 1 import each other in three pairs: `units ↔ scripts` (32 files of `units` import `scripts`; `scripts` imports `View` and `Unit` in four files, and the plain types `ActionId`, `ModifierId`, `Team`, `Block`, `TagProperty`, `TagData` and `CollisionData`), `units ↔ declare` and `scripts ↔ declare` (F53 takes the two of `declare`); and `scripts` imports `players` (`scripts/frame.rs:6`), against the order below. The layer test refuses only an import from a higher layer. The order this step and F53 give them, each importing only those before it, is `scripts`, `declare`, `units`, `players`, with `values` below all four; `campfire-core` then splits into a crate for each, and `scripts` joins `campfire-script`, which then holds every use of Rhai:
+
+- The plain types and ids, and the `NameKind` trait they implement, go to `values`, so no module of the four takes them from another.
+- `scripts` imports nothing of `units`: the script view becomes the runtime's own data, rows of plain values that `scripts` defines, with the columns' contracts `ViewColumn`, `RowFill` and `RowReads`, the names and `Book`, which shares a book into the view and the frame (`declare/book.rs:19`); the fill that reads the units stays in `units`. Today `View` reaches, through its rows, columns, names, filter and target index, 64 of `units`' 87 files, so a move of the view as it is would move the unit model: the view's rows hold values, its names come as tables the load fills, and the unit model stays in `units`. This is I1's view, designed once. The frame's copy of the players' resources (`scripts/frame.rs:6`) takes them through a contract of `scripts` that `players` fills.
+
+Check: `scripts` imports nothing of `units` or `players`.
+
+### F53. `declare` holds only the contracts a module implements
+
+(`capabilities`: `declare`, `units`, `scripts`; **Core**.) Every module imports `declare`, and `declare` imports `units` for `EntityKind` (`declare/kind_visitor.rs:1`), `EngineTag` (`declarations.rs:16`) and the context a part is made from, which reads its unit's type, its facing and the books by type (`kind_spawn.rs:9-11`), and imports `scripts` for `ApiBuilder`, `CallPart` and, after F50, the view's contracts and `Book`. `EntityKind`, a contract each kind implements, moves into `declare`, and `EngineTag` to `values`. The context of a part reads the unit model, so it moves to `units`, and `d.part` takes it through a trait of `declare` that `units` implements, as a declaration takes a contract and never the type that fills it; the step writes this into design 02's [Structural rules](docs/design/02-engine-core.md#structural-rules) for review before the code moves. Check: `campfire-core` splits into `campfire-script`, `campfire-declare`, `campfire-units` and `campfire-players`, each depending only on those before it, and the workspace builds; `campfire-script` no longer re-exports Rhai (`pub use rhai;`), so Cargo refuses `rhai::` in any other crate.
+
 
 ### F36. One schema of script state
 
@@ -164,7 +150,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`; **Core**, and Foundations.) Each script batch reads every unit again, 14.2 % of a 3v3 match's time; it goes before the Zero Hour import multiplies the units. Its direction: a batch reads again only the rows whose parts changed since the last, by the change filter each column's `RowReads` already gives and its list of what it reads, `RowReads::components`; the columns' half of F37 lands with it, and the batch measures it.
 
-## 5. What install holds
+## 4. What install holds
 
 `capabilities`, every module's `install`; `release`. A sweep, last of the refactorings of `capabilities`' structure, over what a module adds at install: its systems alone, each fact of the build a fact of the schedule, every other addition a declaration.
 
@@ -180,7 +166,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`: `release`, `declare`; `net`, `runner`.) `MatchSpec` holds `budgets: Option<ScriptBudgets>` and `predicting: bool` (`release/match_spec.rs:17-20`), and `InstallCx` gives `scripts()` and `predicting()` (`declare/install_cx.rs:53-66`): four combinations, of which a server's and a predicting client's ship, a server with no scripts serves the tests, and a predicting client with scripts is invalid but builds. Each install branches on the two flags its own way (`orders/mod.rs:118`, `production/mod.rs:189`, `combat/mod.rs:189`, `projectiles/mod.rs:72`, `vision/mod.rs:95`, …). One `Role`, `Server(Option<ScriptBudgets>)` or `Client`, that `MatchSpec` holds and `InstallCx::role` gives; a module adds a system that computes the server's own state through `cx.server(systems)`, which a client's install leaves out, so the prediction test's `SERVER_ONLY` (`release/tests/prediction_reads.rs:31`) is read from the server's schedule, not written again. Check: the prediction test passes with no hand list of server systems.
 
-## 6. Match records and replays
+## 5. Match records and replays
 
 `runner`, `verifier`; the tests of `runner` and `net`. How a test builds a match, records it and replays its log, in one form each.
 
@@ -200,7 +186,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`runner`, `common`.) A zero seed, `MatchBuild::spec`, `Match::new` and `install_mode` are written three times (`runner/src/session/mod.rs:112-117`, `match_build/mod.rs:121-126`, `match_build/bench.rs:40-44`), and `MatchBuild` is `pub` only for the internals, with an `expect(unreachable_pub)`. A production `MatchBuild::restore_target(packages, rate, players)` serves all three, the internals add only the `LogCheck`, `SegmentSeed::ZERO` replaces the repeated zero seed, and the lint's suppression goes. F51's `Role` replaces the flags it passes.
 
-## 7. The session's host
+## 6. The session's host
 
 `net`, `server`, `client`, `runner`. Its code stays in `net`, which hosts every session (design 02), and the operating system's clock and randomness travel as one value.
 
@@ -224,7 +210,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`net`, `server`, `client`.) `clock: fn() -> u64` and `entropy: fn(&mut [u8; 32])` travel as two function pointers through some ten types (`SimClient`, `net/src/sim_client/mod.rs:104-106`; `ServerSetup`; `LocalServerSetup`, `local_server/mod.rs:123-125`; `Offering`, `JoinState`, `ServerSigner`, `KeyFile`, `SessionDir::abort`, `server/src/opening/mod.rs:119`). A function pointer holds no state, so the tests' settable clock lives in two `thread_local!`s (`net/src/harness/in_process_match/mod.rs:73-80`, `net/src/sim_client/join_state/tests.rs:16-22`), which the style rules refuse. `Os` (`net/src/os.rs`) becomes a value, `Os { clock: Clock, entropy: Entropy }`, where `Clock` is `System` or `Manual(Arc<AtomicU64>)`; every setup holds one `os: Os`, and the harness keeps the `Arc` as it keeps its pace. Both thread-locals go.
 
-## 8. The tick and the tests, measured
+## 7. The tick and the tests, measured
 
 `capabilities`: `navigation`'s broadphase, `vision`'s bitmap, the storage of toggled parts; `package`, `runner`. A bench session: it runs when the user asks for the benches, after the refactorings above, so it measures the code they leave. The tests past their bound go here, as the proving match's spend their time in the broadphase and collider that F46 changes.
 
@@ -240,13 +226,13 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `runner`; **Runner**, **Vision**.) Design 02's worst 3v3 tick, 0.83 ms, and design 10's, 0.51 ms, disagree; `Bitmap::set` takes 6.9 % of the mean tick, for runs of one or two words a row. The session measures `integration/server_tick/worst_3v3` again and writes the figure into design 02, finds which part of `Bitmap::set` costs it, and measures two changes the engine's best practice suggests before either lands: parts that come and go while a match runs, `Dead`, `Respawn`, `ForcedMove`, `Resetting`, `OutOfPlay`, `Kept`, `Rally`, `AreaTrigger` and `Unpredicted`, stored in Bevy's sparse sets, where a change moves no table, as Bevy's `StorageType` advises for parts added and removed often; and the twelve systems that sort their units by stable id each tick (`Local<Ordered>`) reading one shared order instead. Each lands only where the worst tick gains. Check: the goldens do not move; the archetype shuffle test passes.
 
-## 9. The shop
+## 8. The shop
 
 `capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
 
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 9 to 13. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 8 to 12. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 7 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 6 and F44 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 
@@ -256,7 +242,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `package`, `packages/test/moba`; D8; **Package**.) `name`, a message id, on item types, actions, a loadout's spells, the mode, its teams and its choices, as only an avatar names its own today, and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
 
-## 10. The client's shop
+## 9. The client's shop
 
 `client`. I2 gives the view tests' units their types, and the issue log's **Client** item on the camera's keys is decided, before S2 changes the client's input.
 
@@ -268,7 +254,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 11. Use and the graph
+## 10. Use and the graph
 
 `capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. F44 ties each capability crate's dependencies to its needs and uses, and U1 adds the `use` kind, beside F55's `UseGroup`. M2 reads the code as the release tests do.
 
@@ -308,7 +294,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`: the release tests.) A test reads the crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 12. The shrine
+## 11. The shrine
 
 `packages/test/moba`, `client`.
 
@@ -316,7 +302,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 13. Gravity
+## 12. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -324,7 +310,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 14. Queues and capacities
+## 13. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -336,9 +322,9 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 15. Work and haul
+## 14. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 14, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 13, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -350,7 +336,7 @@ The overview's prose points to the table. Check: the test fails on today's `visi
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 16. The genre proofs
+## 15. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -379,7 +365,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 17. The network
+## 16. The network
 
 `quic`, `net`.
 
@@ -393,7 +379,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 18. Planned
+## 17. Planned
 
 ### P1. LAN listing
 

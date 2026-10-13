@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 
-use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
 use crate::actions::slot_kinds::SlotKinds;
@@ -15,6 +14,9 @@ use crate::production::mode_supply_data::ModeSupplyData;
 use crate::progression::track_data::TrackData;
 use crate::scripts::data_section::DataSection;
 use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_text::ScriptText;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::stats::pool_data::PoolData;
 use crate::stats::stat_rule::StatRule;
@@ -116,15 +118,15 @@ pub enum ModeParam {
 
 impl ModeParam {
     /// The param as a script reads it.
-    pub(crate) fn to_dynamic(&self) -> Dynamic {
-        let text = |text: &str| Dynamic::from(ImmutableString::from(text));
+    pub(crate) fn to_value(&self) -> ScriptValue {
+        let text = |text: &str| ScriptValue::of(ScriptText::from(text));
         match self {
-            ModeParam::Value(value) => value.to_dynamic(),
-            ModeParam::List(entries) => Dynamic::from_array(
+            ModeParam::Value(value) => ScriptValue::from(*value),
+            ModeParam::List(entries) => ScriptValue::of::<ScriptList>(
                 entries
                     .iter()
                     .map(|entry| match entry {
-                        ListEntry::Value(value) => value.to_dynamic(),
+                        ListEntry::Value(value) => ScriptValue::from(*value),
                         ListEntry::Text(entry) => text(entry),
                     })
                     .collect(),

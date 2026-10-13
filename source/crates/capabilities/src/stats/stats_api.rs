@@ -1,5 +1,4 @@
 use campfire_common::Ticks;
-use campfire_script::rhai::INT;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -40,9 +39,9 @@ impl StatsApi {
         };
         api.bind(
             field("level", "its level"),
-            |unit: &mut Unit| -> Checked<INT> {
+            |unit: &mut Unit| -> Checked<i64> {
                 let level = StatsColumn::level(unit.view(), unit.row_index())?;
-                Ok(INT::from(level))
+                Ok(i64::from(level))
             },
         )
         .method(
@@ -98,7 +97,7 @@ impl StatsApi {
         })
         .call(
             add,
-            |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: INT| {
+            |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: i64| {
                 let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
                 StatsApi::add_modifier(ctx, &target, id, Some(ticks))
             },
@@ -112,7 +111,7 @@ impl StatsApi {
                  action, so the modifier declares each param it reads",
             )
             .applies(Applies::WithoutAction),
-            |ctx: &mut Ctx, player: INT, id: ModifierId| {
+            |ctx: &mut Ctx, player: i64, id: ModifierId| {
                 StatsApi::add_player_modifier(ctx, player, id)
             },
         )
@@ -151,7 +150,7 @@ impl StatsApi {
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
     /// when `id` reads a param it does not declare.
-    fn add_player_modifier(ctx: &Ctx, player: INT, id: ModifierId) -> Checked<()> {
+    fn add_player_modifier(ctx: &Ctx, player: i64, id: ModifierId) -> Checked<()> {
         let player = ctx.view().names().player(player)?;
         StatsColumn::check_way(
             ctx.view(),

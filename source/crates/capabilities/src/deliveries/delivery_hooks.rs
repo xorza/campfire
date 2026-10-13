@@ -1,7 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{SimTick, SimWorld};
 
 use crate::actions::action_book::ActionBook;
@@ -12,6 +11,7 @@ use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::pool::Pool;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
@@ -105,7 +105,7 @@ impl DeliveryHooks {
                     let Some(script) = script else {
                         return Ok(());
                     };
-                    let hit = Dynamic::from(HitHandle::new(hit, view.clone()));
+                    let hit = ScriptValue::of(HitHandle::new(hit, view.clone()));
                     match reach {
                         Reached::Hit(_) => {
                             batch.call_hook(pool, script, hook, (ctx.clone(), caster, target, hit))

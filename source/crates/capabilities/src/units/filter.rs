@@ -1,12 +1,10 @@
-use campfire_script::rhai::ImmutableString;
-
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked, UnknownName};
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_arg::ScriptArg;
+use crate::scripts::script_arg::TextArg;
+use crate::scripts::script_text::ScriptText;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
-use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 use crate::values::relation_set::RelationSet;
@@ -98,20 +96,12 @@ impl Filter {
 }
 
 /// A filter a script gives, its tags among the match's.
-impl ScriptArg for Filter {
-    type Raw = ImmutableString;
-    type Int = ImmutableString;
-    const NAMES: Option<NameKind> = Some(NameKind::Filter);
-    const ENUM: Option<EngineEnum> = None;
-    const NUMBER: bool = false;
+impl TextArg for Filter {
+    const NAMES: NameKind = NameKind::Filter;
 
-    fn take(raw: ImmutableString, ctx: &ArgCtx<'_>) -> Checked<Filter> {
-        let filter = Filter::parse(raw.as_str(), ctx.get().view().names().types());
+    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Filter> {
+        let filter = Filter::parse(&text, ctx.get().view().names().types());
         Ok(filter.map_err(ApiError::fail)?)
-    }
-
-    fn take_int(raw: ImmutableString, ctx: &ArgCtx<'_>) -> Checked<Filter> {
-        Filter::take(raw, ctx)
     }
 }
 

@@ -3,10 +3,11 @@ use std::ops::Range;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic};
 use campfire_sim::Position;
 
 use crate::scripts::error::Checked;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::filter::Filter;
 use crate::units::kept_rows::KeptRows;
 use crate::units::relations::Relations;
@@ -65,7 +66,12 @@ impl VisionColumn {
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
-    pub(crate) fn find(of: &Unit, pos: Position, radius: Num, filter: &Filter) -> Checked<Array> {
+    pub(crate) fn find(
+        of: &Unit,
+        pos: Position,
+        radius: Num,
+        filter: &Filter,
+    ) -> Checked<ScriptList> {
         let team = of.read(|row| row.team);
         of.view().find(of, pos, radius, filter, |columns, row| {
             VisionColumn::sees(columns, row, team)
@@ -74,7 +80,7 @@ impl VisionColumn {
 
     /// `ctx.nearest_visible`: the nearest living target `radius` from the edge of `of`'s body
     /// reaches that `filter` selects and `of`'s team sees.
-    pub(crate) fn nearest(of: &Unit, radius: Num, filter: &Filter) -> Checked<Dynamic> {
+    pub(crate) fn nearest(of: &Unit, radius: Num, filter: &Filter) -> Checked<ScriptValue> {
         let team = of.read(|row| row.team);
         of.view().nearest(of, radius, filter, |columns, row| {
             VisionColumn::sees(columns, row, team)

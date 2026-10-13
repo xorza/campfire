@@ -1,9 +1,8 @@
-use campfire_script::rhai::Dynamic;
-
 use crate::combat::damage::{Damage, DamageCause};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::hit_handle::HitHandle;
 use crate::units::view::View;
 
@@ -55,7 +54,12 @@ impl DamageHandle {
                     "roll",
                     "its attack's random number, at least 0 and less than 1, `()` for other damage",
                 ),
-                |d: &mut DamageHandle| d.damage.cause.roll().map_or(Dynamic::UNIT, Dynamic::from),
+                |d: &mut DamageHandle| {
+                    d.damage
+                        .cause
+                        .roll()
+                        .map_or(ScriptValue::UNIT, ScriptValue::of)
+                },
             )
             .bind(
                 field(
@@ -63,8 +67,8 @@ impl DamageHandle {
                     "how its projectile or area reached the target, `()` for damage none delivered",
                 ),
                 |d: &mut DamageHandle| {
-                    d.damage.hit.map_or(Dynamic::UNIT, |hit| {
-                        Dynamic::from(HitHandle::new(hit, d.view.clone()))
+                    d.damage.hit.map_or(ScriptValue::UNIT, |hit| {
+                        ScriptValue::of(HitHandle::new(hit, d.view.clone()))
                     })
                 },
             )

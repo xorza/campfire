@@ -3,7 +3,6 @@ use std::ops::Range;
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::rhai::INT;
 
 use crate::production::gatherer::Gatherer;
 use crate::production::mode_supply_data::ModeSupplyData;
@@ -96,12 +95,12 @@ impl ProductionColumn {
     }
 
     /// `unit.load`: the amount `unit` carries, 0 with none, or in a view with no production.
-    pub(crate) fn load(unit: &Unit) -> INT {
+    pub(crate) fn load(unit: &Unit) -> i64 {
         let row = unit.row_index();
         let load = unit
             .view()
             .column(|column: &ProductionColumn| column.rows.now()[row].load);
-        INT::from(load.unwrap_or(0))
+        i64::from(load.unwrap_or(0))
     }
 
     pub(crate) const fn costs(&self) -> &SupplyCostBook {

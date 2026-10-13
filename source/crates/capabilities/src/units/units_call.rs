@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{SimWorld, StableId};
 
 use crate::scripts::call_part::CallPart;
@@ -7,6 +6,7 @@ use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_value::StateValue;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::unit_state_book::{StateField, StatePlace};
@@ -36,7 +36,7 @@ impl CallPart for UnitsCall {
         Ok(())
     }
 
-    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<Dynamic> {
+    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<ScriptValue> {
         None
     }
 

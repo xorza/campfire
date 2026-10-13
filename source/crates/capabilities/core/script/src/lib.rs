@@ -12,6 +12,11 @@ pub use crate::script_host::{ScriptHost, ScriptId};
 pub use rhai;
 
 #[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::script_host::error::internals::Undefined;
+}
+
+#[cfg(feature = "internals")]
 pub mod bench {
     use criterion::Criterion;
 

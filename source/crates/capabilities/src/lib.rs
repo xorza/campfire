@@ -185,7 +185,7 @@ pub use crate::release::r#match::Match;
 pub use crate::release::match_spec::MatchSpec;
 pub use crate::scripts::api_version::ApiVersion;
 pub use crate::scripts::applies::Applies;
-pub use crate::scripts::error::{ApiError, CallError, ParamProblem, UnknownName};
+pub use crate::scripts::error::{ApiError, CallError, CtxMisuse, ParamProblem, UnknownName};
 pub use crate::scripts::hook::Hook;
 pub use crate::scripts::name_kind::NameKind;
 pub use crate::scripts::role_set::RoleSet;
@@ -202,6 +202,9 @@ pub use crate::scripts::script_api::status::Status;
 pub use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
 pub use crate::scripts::script_book::ScriptBook;
 pub use crate::scripts::script_budgets::ScriptBudgets;
+pub use crate::scripts::script_facts::{
+    CtxUse, EnumPath, EnumString, MemberUse, ScriptFacts, ScriptFunction, ScriptName,
+};
 pub use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 pub use crate::scripts::script_limits::ScriptLimits;
 pub use crate::scripts::script_role::ScriptRole;

@@ -6,7 +6,6 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_script::rhai::{Array, Dynamic, INT};
 use campfire_sim::{Position, StableId, TickRate};
 
 use crate::geometry::bounds::Bounds;
@@ -16,6 +15,8 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::action_id::ActionId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
@@ -110,14 +111,14 @@ impl View {
 
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
     /// or one too long to count.
-    pub(crate) fn ticks(&self, ms: INT) -> Result<Ticks, ApiError> {
+    pub(crate) fn ticks(&self, ms: i64) -> Result<Ticks, ApiError> {
         let ms = u64::try_from(ms).ok().ok_or(ApiError::NegativeTime)?;
         self.0.rate.duration(ms).ok_or(ApiError::TimeTooLarge)
     }
 
     /// `ms`, more than 0, in ticks as `ticks` gives them: what lasts, as a reveal or a knock
     /// back, lasts some time.
-    pub(crate) fn lasting(&self, ms: INT) -> Result<Ticks, ApiError> {
+    pub(crate) fn lasting(&self, ms: i64) -> Result<Ticks, ApiError> {
         if ms == 0 {
             return Err(ApiError::ZeroTime);
         }
@@ -179,23 +180,23 @@ impl View {
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
-    fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> Array {
+    fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> ScriptList {
         let rows = self.rows();
         rows.units()
             .iter()
             .enumerate()
             .filter(|(_, row)| keep(row))
-            .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
+            .map(|(at, row)| ScriptValue::of(Unit::new(row.id, at, self.clone())))
             .collect()
     }
 
     /// Every unit, living or dead, with `tag`, by stable id.
-    pub(crate) fn units_tagged(&self, tag: Tag) -> Array {
+    pub(crate) fn units_tagged(&self, tag: Tag) -> ScriptList {
         self.units_where(|row| row.tags.tags.contains(tag))
     }
 
     /// Every avatar, living or dead, of `team` or of every team, by stable id.
-    pub(crate) fn avatars(&self, team: Option<Team>) -> Array {
+    pub(crate) fn avatars(&self, team: Option<Team>) -> ScriptList {
         self.units_where(|row| row.is_avatar() && team.is_none_or(|team| row.team == team))
     }
 
@@ -222,16 +223,16 @@ impl View {
     }
 
     /// The handle of unit `id` as a script value: `()` for none, or a unit the view did not read.
-    pub(crate) fn unit_value(&self, id: Option<StableId>) -> Dynamic {
+    pub(crate) fn unit_value(&self, id: Option<StableId>) -> ScriptValue {
         id.and_then(|id| self.unit(id))
-            .map_or(Dynamic::UNIT, Dynamic::from)
+            .map_or(ScriptValue::UNIT, ScriptValue::of)
     }
 
     /// The name of action `id` as a script value: `()` for none.
-    pub(crate) fn ability_value(&self, id: Option<ActionId>) -> Dynamic {
-        id.map_or(Dynamic::UNIT, |id| {
+    pub(crate) fn ability_value(&self, id: Option<ActionId>) -> ScriptValue {
+        id.map_or(ScriptValue::UNIT, |id| {
             let name = self.names().actions.name(id);
-            Dynamic::from(name.expect("an action of the match is named"))
+            ScriptValue::of(name.expect("an action of the match is named"))
         })
     }
 
@@ -257,7 +258,7 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<Array> {
+    ) -> Checked<ScriptList> {
         let radius = ApiError::radius(radius)?;
         let rows = self.rows();
         let units = rows.units();
@@ -270,7 +271,8 @@ impl View {
         };
         let mut targets = self.0.targets.borrow_mut();
         let found = targets.find(&rows, query, seen);
-        let unit = |&index: &usize| Dynamic::from(Unit::new(units[index].id, index, self.clone()));
+        let unit =
+            |&index: &usize| ScriptValue::of(Unit::new(units[index].id, index, self.clone()));
         Ok(found.iter().map(unit).collect())
     }
 
@@ -284,7 +286,7 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<Dynamic> {
+    ) -> Checked<ScriptValue> {
         let radius = ApiError::radius(radius)?;
         let rows = self.rows();
         let of = rows.units()[of.row_index()];
@@ -307,8 +309,8 @@ impl View {
                     nearest = Some(candidate);
                 }
             });
-        Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
-            Dynamic::from(Unit::new(id, at, self.clone()))
+        Ok(nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
+            ScriptValue::of(Unit::new(id, at, self.clone()))
         }))
     }
 

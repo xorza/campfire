@@ -6,7 +6,6 @@ use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_common::Tick;
 use campfire_script::ScriptId;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 
 use crate::abilities::Abilities;
@@ -35,6 +34,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stats_world::StatsWorld;
@@ -58,7 +58,7 @@ struct Prepared {
     pool: Pool,
     action: ActionId,
     rank: Rank,
-    target: Dynamic,
+    target: ScriptValue,
     on_resolve: Option<ScriptId>,
     resolved: ResolvedCast,
 }

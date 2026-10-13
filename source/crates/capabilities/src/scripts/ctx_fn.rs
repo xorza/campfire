@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use campfire_script::rhai::{Engine, NativeCallContext, Variant};
+use campfire_script::rhai::{Dynamic, Engine, NativeCallContext};
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;
@@ -9,6 +9,7 @@ use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::member_spec::{ArgKinds, MemberSpec};
 use crate::scripts::script_arg::ScriptArg;
+use crate::scripts::script_value::{ScriptType, ScriptValue};
 use crate::values::engine_enum::EngineEnum;
 
 /// A form of a call or a value of `ctx`, which takes `ctx` first and then its arguments, each a
@@ -30,6 +31,64 @@ pub(crate) trait MethodFn<M, H, Args, R> {
     fn args() -> ArgKinds;
 
     fn register(self, engine: &mut Engine, name: &str);
+}
+
+/// A form of a value of `ctx` or a field's getter of a handle `H`, which takes the handle, and the
+/// call's `ctx` before it when its marker `M` is `WithCtx`. It gives its value `O`: a value, or
+/// one that fails the call when its marker `K` is `Fallible`.
+pub(crate) trait GetFn<M, H, O, K> {
+    fn register(self, engine: &mut Engine, name: &str);
+}
+
+/// What a form gives: its value, or with the marker `Fallible`, its value or the error that
+/// fails the call.
+pub(crate) trait ScriptReturn<K> {
+    /// The value in the engine's form, or the error.
+    fn checked(self) -> Checked<Dynamic>;
+}
+
+/// The marker of a form that gives its value.
+#[derive(Debug)]
+pub(crate) struct Plain;
+
+/// The marker of a form that may fail the call.
+#[derive(Debug)]
+pub(crate) struct Fallible;
+
+impl<R: ScriptType> ScriptReturn<Plain> for R {
+    fn checked(self) -> Checked<Dynamic> {
+        Ok(ScriptValue::engine(self))
+    }
+}
+
+impl<R: ScriptType> ScriptReturn<Fallible> for Checked<R> {
+    fn checked(self) -> Checked<Dynamic> {
+        self.map(ScriptValue::engine)
+    }
+}
+
+impl<F, H, O, K> GetFn<WithoutCtx, H, O, K> for F
+where
+    F: Fn(&mut H) -> O + 'static,
+    H: ScriptType,
+    O: ScriptReturn<K>,
+{
+    fn register(self, engine: &mut Engine, name: &str) {
+        engine.register_fn(name, move |handle: &mut H| self(handle).checked());
+    }
+}
+
+impl<F, H, O, K> GetFn<WithCtx, H, O, K> for F
+where
+    F: Fn(&Ctx, &mut H) -> O + 'static,
+    H: ScriptType,
+    O: ScriptReturn<K>,
+{
+    fn register(self, engine: &mut Engine, name: &str) {
+        engine.register_fn(name, move |call: NativeCallContext<'_>, handle: &mut H| {
+            self(&Ctx::of_call(&call), handle).checked()
+        });
+    }
 }
 
 /// The marker of a method that reads the call's `ctx`.
@@ -67,7 +126,7 @@ macro_rules! script_fn {
         impl<F, R, $($arg),*> CtxFn<($($arg,)*), R> for F
         where
             F: Fn(&mut Ctx, $($arg),*) -> Checked<R> + 'static,
-            R: Variant + Clone,
+            R: ScriptType,
             $($arg: ScriptArg,)*
         {
             fn args() -> ArgKinds {
@@ -86,22 +145,22 @@ macro_rules! script_fn {
             fn register(self, engine: &mut Engine, name: &str, roles: RoleSet) {
                 let each = Rc::new(self);
                 let int = Rc::clone(&each);
-                engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Raw),*| -> Checked<R> {
+                engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Raw),*| -> Checked<Dynamic> {
                     if roles != RoleSet::ALL {
                         ctx.require(roles)?;
                     }
                     let args = ArgCtx::Ctx(ctx);
                     $(let $arg = $arg::take($arg, &args)?;)*
-                    each(ctx, $($arg),*)
+                    each(ctx, $($arg),*).map(ScriptValue::engine)
                 });
                 if [$($arg::NUMBER),*].contains(&true) {
-                    engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Int),*| -> Checked<R> {
+                    engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Int),*| -> Checked<Dynamic> {
                         if roles != RoleSet::ALL {
                             ctx.require(roles)?;
                         }
                         let args = ArgCtx::Ctx(ctx);
                         $(let $arg = $arg::take_int($arg, &args)?;)*
-                        int(ctx, $($arg),*)
+                        int(ctx, $($arg),*).map(ScriptValue::engine)
                     });
                 }
             }
@@ -110,7 +169,7 @@ macro_rules! script_fn {
         impl<F, R, H, $($arg),*> MethodFn<WithoutCtx, H, ($($arg,)*), R> for F
         where
             F: Fn(H, $($arg),*) -> Checked<R> + 'static,
-            R: Variant + Clone,
+            R: ScriptType,
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
@@ -131,21 +190,21 @@ macro_rules! script_fn {
                 let int = Rc::clone(&each);
                 engine.register_fn(
                     name,
-                    move |call: NativeCallContext<'_>, handle: H::Raw, $($arg: $arg::Raw),*| -> Checked<R> {
+                    move |call: NativeCallContext<'_>, handle: H::Raw, $($arg: $arg::Raw),*| -> Checked<Dynamic> {
                         let args = ArgCtx::of_call(&call);
                         let handle = H::take(handle, &args)?;
                         $(let $arg = $arg::take($arg, &args)?;)*
-                        each(handle, $($arg),*)
+                        each(handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,
-                        move |call: NativeCallContext<'_>, handle: H::Int, $($arg: $arg::Int),*| -> Checked<R> {
+                        move |call: NativeCallContext<'_>, handle: H::Int, $($arg: $arg::Int),*| -> Checked<Dynamic> {
                             let args = ArgCtx::of_call(&call);
                             let handle = H::take_int(handle, &args)?;
                             $(let $arg = $arg::take_int($arg, &args)?;)*
-                            int(handle, $($arg),*)
+                            int(handle, $($arg),*).map(ScriptValue::engine)
                         },
                     );
                 }
@@ -155,7 +214,7 @@ macro_rules! script_fn {
         impl<F, R, H, $($arg),*> MethodFn<WithCtx, H, ($($arg,)*), R> for F
         where
             F: Fn(&Ctx, H, $($arg),*) -> Checked<R> + 'static,
-            R: Variant + Clone,
+            R: ScriptType,
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
@@ -176,21 +235,21 @@ macro_rules! script_fn {
                 let int = Rc::clone(&each);
                 engine.register_fn(
                     name,
-                    move |call: NativeCallContext<'_>, handle: H::Raw, $($arg: $arg::Raw),*| -> Checked<R> {
+                    move |call: NativeCallContext<'_>, handle: H::Raw, $($arg: $arg::Raw),*| -> Checked<Dynamic> {
                         let args = ArgCtx::of_call(&call);
                         let handle = H::take(handle, &args)?;
                         $(let $arg = $arg::take($arg, &args)?;)*
-                        each(args.get(), handle, $($arg),*)
+                        each(args.get(), handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,
-                        move |call: NativeCallContext<'_>, handle: H::Int, $($arg: $arg::Int),*| -> Checked<R> {
+                        move |call: NativeCallContext<'_>, handle: H::Int, $($arg: $arg::Int),*| -> Checked<Dynamic> {
                             let args = ArgCtx::of_call(&call);
                             let handle = H::take_int(handle, &args)?;
                             $(let $arg = $arg::take_int($arg, &args)?;)*
-                            int(args.get(), handle, $($arg),*)
+                            int(args.get(), handle, $($arg),*).map(ScriptValue::engine)
                         },
                     );
                 }

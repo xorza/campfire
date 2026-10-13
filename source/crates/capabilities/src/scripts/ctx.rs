@@ -3,6 +3,7 @@ use std::cell::{OnceCell, RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
+use campfire_script::ScriptHost;
 use campfire_script::rhai::{Dynamic, NativeCallContext};
 use campfire_sim::StableId;
 
@@ -12,6 +13,7 @@ use crate::scripts::frame::Frame;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::view::View;
 
 /// `ctx` in every script: what one call reads, and the effects it queues. Every role's call goes
@@ -40,11 +42,17 @@ impl Ctx {
         }
     }
 
+    /// Tags `host` with the ctx, which `of_call` reads in each call of its scripts.
+    pub(crate) fn tag(&self, host: &mut ScriptHost) {
+        host.engine_mut()
+            .set_default_tag(Dynamic::from(self.clone()));
+    }
+
     /// The `ctx` of the match whose script makes `call`: the host's tag.
-    pub(crate) fn of_call(call: &NativeCallContext<'_>) -> Ctx {
+    pub(super) fn of_call(call: &NativeCallContext<'_>) -> Ctx {
         call.tag()
             .and_then(Dynamic::read_lock::<Ctx>)
-            .expect("the units capability tags its host with the ctx")
+            .expect("the host is tagged with the ctx")
             .clone()
     }
 
@@ -106,7 +114,7 @@ impl Ctx {
 
 impl Params {
     /// The param `name`; one the call's ability, modifier or mode does not declare fails it.
-    pub(crate) fn get(&self, name: &str) -> Checked<Dynamic> {
+    pub(crate) fn get(&self, name: &str) -> Checked<ScriptValue> {
         let ctx = &self.0;
         let role = ctx.frame().role();
         let modes = !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier));

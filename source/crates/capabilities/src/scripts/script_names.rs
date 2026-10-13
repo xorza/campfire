@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use campfire_script::rhai::ImmutableString;
-
+use crate::scripts::script_text::ScriptText;
 use crate::values::names::{NameId, NameKey, Names};
 
 /// The names of one kind as scripts read them: the table, shared with the book that holds it,
@@ -9,12 +8,12 @@ use crate::values::names::{NameId, NameKey, Names};
 #[derive(Debug)]
 pub(crate) struct ScriptNames<I: NameId> {
     names: Arc<Names<I>>,
-    text: Vec<ImmutableString>,
+    text: Vec<ScriptText>,
 }
 
 impl<I: NameId> ScriptNames<I> {
     pub(crate) fn new(names: Arc<Names<I>>) -> ScriptNames<I> {
-        let text = names.texts().map(ImmutableString::from).collect();
+        let text = names.texts().map(ScriptText::from).collect();
         ScriptNames { names, text }
     }
 
@@ -29,7 +28,7 @@ impl<I: NameId> ScriptNames<I> {
     }
 
     /// The name of `id`; none for an id past the table.
-    pub(crate) fn name(&self, id: I) -> Option<ImmutableString> {
+    pub(crate) fn name(&self, id: I) -> Option<ScriptText> {
         self.text.get(id.index()).cloned()
     }
 }

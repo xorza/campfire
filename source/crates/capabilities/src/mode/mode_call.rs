@@ -1,7 +1,6 @@
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 
 use crate::mode::choices::Choices;
 use crate::mode::mode_spec::ModeSpec;
@@ -12,6 +11,7 @@ use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_value::StateValue;
 use crate::units::unit_state::{SyncAll, SyncNone};
 
@@ -51,7 +51,7 @@ impl CallPart for ModeCall {
     }
 
     /// A mode's or an AI's call reads the mode's params.
-    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue> {
         if matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
             return None;
         }

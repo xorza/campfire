@@ -1,6 +1,5 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{IdAllocator, StableId};
 
 use crate::players::player_resources::PlayerResources;
@@ -11,6 +10,7 @@ use crate::scripts::effects::Effects;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::action_id::ActionId;
 use crate::units::forced_move::DashDelivery;
 use crate::values::action_start::ActionStart;
@@ -202,7 +202,7 @@ impl Frame {
     }
 
     /// The running call's param `name`, of the part that holds its role's params.
-    pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
+    pub(crate) fn param(&self, name: &str) -> Option<ScriptValue> {
         self.parts.param(self.role(), name)
     }
 }

@@ -5,7 +5,6 @@ use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
-use campfire_script::rhai::Array;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     EntityIndex, IdAllocator, Restoring, SimComponent, SimTick, SimWorld, SnapshotError,
@@ -27,6 +26,8 @@ use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::life::Life;
@@ -208,7 +209,9 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     ];
     for (metric, within, distance) in metrics {
         game.resource_mut::<MapBook>().metric = metric;
-        let read = Units::probe(&mut game, probe, of).unwrap().cast::<Array>();
+        let read = Units::probe(&mut game, probe, of)
+            .unwrap()
+            .cast::<ScriptList>();
         let read_within: Vec<_> = read[..5]
             .iter()
             .map(|reach| reach.as_bool().unwrap())
@@ -243,8 +246,10 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
     // difference is none, and 5 times each is exact. Half of 13 421 773 is 6 710 886.5, a tie,
     // which goes to the even 6 710 886.
     let vector = |x, z| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
-    let read = Units::probe(&mut game, probe, of).unwrap().cast::<Array>();
-    let read: Vec<Vec3> = read.into_iter().map(Dynamic::cast::<Vec3>).collect();
+    let read = Units::probe(&mut game, probe, of)
+        .unwrap()
+        .cast::<ScriptList>();
+    let read: Vec<Vec3> = read.into_iter().map(ScriptValue::cast::<Vec3>).collect();
     let five = vector(5 * 10_066_330, 5 * 13_421_773);
     let half = vector(5_033_165, 6_710_886);
     assert_eq!(
@@ -399,7 +404,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let value = |game: &mut Match, expression: &str| read(game, expression).unwrap();
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut game, "of.alive").as_bool().unwrap());
-    assert_eq!(value(&mut game, "of.owner").as_int(), Ok(2));
+    assert_eq!(value(&mut game, "of.owner").as_int(), Some(2));
     assert!(value(&mut game, "of.path").is_unit());
     // With no `vision`, every team sees every unit.
     assert!(value(&mut game, "of.can_see(of)").as_bool().unwrap());
@@ -421,7 +426,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(spawn_pos(&mut game, delivery).is_unit());
     assert_eq!(
         value(&mut game, "of.params.help_window_ms").as_int(),
-        Ok(2000)
+        Some(2000)
     );
     assert_eq!(
         value(&mut game, "of.params.aggro_range").cast::<Num>(),
@@ -490,7 +495,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 
     let read = |game: &mut Match, unit, expression: &str| Units::read(game, expression, unit);
     let value = |game: &mut Match, expression: &str| read(game, of, expression).unwrap();
-    assert_eq!(value(&mut game, "of.level").as_int(), Ok(3));
+    assert_eq!(value(&mut game, "of.level").as_int(), Some(3));
     assert_eq!(
         value(&mut game, r#"of.pool("health")"#).cast::<Num>(),
         Num::int(6)

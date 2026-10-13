@@ -1,8 +1,9 @@
 use std::rc::Rc;
 
-use campfire_script::rhai::{ImmutableString, Map};
 use campfire_sim::Position;
 
+use crate::scripts::script_map::ScriptMap;
+use crate::scripts::script_text::ScriptText;
 use crate::units::team::Team;
 use crate::values::declared_name::DeclaredName;
 
@@ -14,11 +15,11 @@ pub(crate) struct Marker(Rc<MarkerInfo>);
 /// params as scripts read them.
 #[derive(Debug)]
 pub(crate) struct MarkerInfo {
-    pub(crate) name: ImmutableString,
+    pub(crate) name: ScriptText,
     pub(crate) tags: Box<[DeclaredName]>,
     pub(crate) pos: Option<Position>,
     pub(crate) team: Option<Team>,
-    pub(crate) params: Map,
+    pub(crate) params: ScriptMap,
 }
 
 impl Marker {

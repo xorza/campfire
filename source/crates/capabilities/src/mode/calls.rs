@@ -3,7 +3,6 @@ use std::ops::ControlFlow;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptError;
-use campfire_script::rhai::{Dynamic, FuncArgs};
 use campfire_sim::{SimTick, StableId};
 
 use crate::combat::damage::Damage;
@@ -17,7 +16,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
+use crate::scripts::script_args::ScriptArgs;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::script_value::ScriptValue;
 
 /// The mode calls of one batch, at one time.
 #[derive(Debug)]
@@ -39,7 +40,7 @@ impl Calls<'_, '_> {
         &mut self,
         pool: Pool,
         hook: Hook,
-        args: impl FuncArgs,
+        args: impl ScriptArgs,
     ) -> Result<(), ScriptError> {
         self.begin(false);
         let script = self.book().schema.script;
@@ -56,7 +57,7 @@ impl Calls<'_, '_> {
         id: Option<StableId>,
         pool: Pool,
         hook: Hook,
-        args: impl FuncArgs,
+        args: impl ScriptArgs,
     ) -> ControlFlow<CallError> {
         match self.run(pool, hook, args) {
             Ok(()) => ControlFlow::Continue(()),
@@ -77,18 +78,22 @@ impl Calls<'_, '_> {
         damage: Damage,
     ) -> Result<Num, CallError> {
         let handle = DamageHandle::new(damage, batch.ctx().view().clone());
-        Calls::amount(batch, Hook::CalcDamage, Dynamic::from(handle))
+        Calls::amount(batch, Hook::CalcDamage, ScriptValue::of(handle))
     }
 
     /// The amount of `heal` before the heal scale: what the mode's `calc_heal` returns for it,
     /// a pure call in `batch`; an error when the call fails or returns no number.
     pub(crate) fn weigh_heal(batch: &mut ScriptBatch<'_>, heal: Heal) -> Result<Num, CallError> {
         let handle = HealHandle::new(heal, batch.ctx().view().clone());
-        Calls::amount(batch, Hook::CalcHeal, Dynamic::from(handle))
+        Calls::amount(batch, Hook::CalcHeal, ScriptValue::of(handle))
     }
 
     /// The number the mode's pure `hook` returns for `handle`, in `batch`.
-    fn amount(batch: &mut ScriptBatch<'_>, hook: Hook, handle: Dynamic) -> Result<Num, CallError> {
+    fn amount(
+        batch: &mut ScriptBatch<'_>,
+        hook: Hook,
+        handle: ScriptValue,
+    ) -> Result<Num, CallError> {
         let now = batch.world().resource::<SimTick>().start();
         let ctx = batch.ctx().clone();
         let mut calls = Calls {
@@ -101,8 +106,8 @@ impl Calls<'_, '_> {
         let returned = calls.batch.call_pure(script, hook, (ctx, handle));
         let value = returned.map_err(CallError::from_script)?;
         let amount = match value.as_int() {
-            Ok(int) => Num::from_int(int),
-            Err(_) => value.try_cast::<Num>(),
+            Some(int) => Num::from_int(int),
+            None => value.try_cast::<Num>(),
         };
         amount.ok_or(CallError::Api(ApiError::NotAnAmount))
     }

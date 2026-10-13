@@ -1,8 +1,6 @@
-use campfire_capabilities::EngineEnum;
+use campfire_capabilities::{CtxMisuse, EngineEnum};
 use campfire_script::ScriptError;
 use thiserror::Error;
-
-use crate::error::ctx_misuse::CtxMisuse;
 
 /// What is wrong with a script.
 #[derive(Debug, Error)]

@@ -96,7 +96,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
         seen"#;
     let flags = Units::read(&mut game, can_see, seer)
         .unwrap()
-        .into_array()
+        .into_list()
         .unwrap();
     let flags: Vec<bool> = flags
         .into_iter()

@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::{Capability, Position};
 
 use crate::abilities::abilities_effect::AbilitiesEffect;
@@ -16,6 +15,7 @@ use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::tag_property::TagProperty;
@@ -59,7 +59,7 @@ impl AbilitiesApi {
                 &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
             ),
-            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: INT| {
+            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: i64| {
                 AbilitiesApi::reduce_cooldown(ctx, &unit, id, ms)
             },
         )
@@ -102,21 +102,21 @@ impl AbilitiesApi {
     }
 
     /// The range of the running call's action at its rank: meters, or `()` for a global one.
-    fn range(ctx: &Ctx) -> Dynamic {
+    fn range(ctx: &Ctx) -> ScriptValue {
         let (action, rank) = {
             let frame = ctx.frame();
             let action = frame.action().expect("an action's call has its action");
             (action, frame.rank())
         };
         match ActionsColumn::range(ctx.view(), action, rank) {
-            ActionRange::Meters(meters) => Dynamic::from(meters),
-            ActionRange::Global => Dynamic::UNIT,
+            ActionRange::Meters(meters) => ScriptValue::of(meters),
+            ActionRange::Global => ScriptValue::UNIT,
         }
     }
 
     /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
     /// package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: ActionId, ms: INT) -> Checked<()> {
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: ActionId, ms: i64) -> Checked<()> {
         let action = AbilitiesApi::held(ctx, unit, id)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {

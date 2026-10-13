@@ -1,9 +1,9 @@
-use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::view::View;
 use crate::values::hit::Hit;
 
@@ -50,7 +50,7 @@ impl HitHandle {
                     "direction",
                     "the direction its delivery flew in, `()` for an area or a delivery that did not move",
                 ),
-                |hit: &mut HitHandle| hit.hit.direction.map_or(Dynamic::UNIT, Dynamic::from),
+                |hit: &mut HitHandle| hit.hit.direction.map_or(ScriptValue::UNIT, ScriptValue::of),
             )
             .plan(
                 MemberSpec::field(

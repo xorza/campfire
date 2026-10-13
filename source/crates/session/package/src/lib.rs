@@ -29,7 +29,6 @@ mod package_text;
 mod package_view;
 mod package_walk;
 mod package_writer;
-mod script_facts;
 mod texts;
 mod zero_hour;
 
@@ -42,7 +41,6 @@ pub use crate::dependent::{Dependent, DependentKind};
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
 pub use crate::error::choice_problem::ChoiceProblem;
-pub use crate::error::ctx_misuse::CtxMisuse;
 pub use crate::error::delivery_problem::DeliveryProblem;
 pub use crate::error::effect_problem::EffectProblem;
 pub use crate::error::gather_problem::GatherProblem;

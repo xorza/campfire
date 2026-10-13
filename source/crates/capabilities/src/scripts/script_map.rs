@@ -1,0 +1,29 @@
+use campfire_script::rhai::{Dynamic, Map};
+
+use crate::scripts::script_value::ScriptValue;
+
+/// A table a script reads, of values by name.
+#[derive(Debug, Clone)]
+pub(crate) struct ScriptMap(Map);
+
+impl ScriptMap {
+    pub(super) const fn of_engine(map: Map) -> ScriptMap {
+        ScriptMap(map)
+    }
+
+    /// The table in the engine's form.
+    pub(super) fn into_engine(self) -> Dynamic {
+        Dynamic::from_map(self.0)
+    }
+}
+
+impl<'a> FromIterator<(&'a str, ScriptValue)> for ScriptMap {
+    fn from_iter<I: IntoIterator<Item = (&'a str, ScriptValue)>>(entries: I) -> ScriptMap {
+        ScriptMap(
+            entries
+                .into_iter()
+                .map(|(name, value)| (name.into(), value.into_engine()))
+                .collect(),
+        )
+    }
+}

@@ -1,4 +1,4 @@
-use campfire_capabilities::{Hook, PackagePath, ScriptApi};
+use campfire_capabilities::{Hook, PackagePath, ScriptApi, ScriptFacts, ScriptFunction};
 use campfire_common::Fingerprint;
 use campfire_script::ScriptHost;
 
@@ -9,7 +9,6 @@ use crate::files::package_header::PackageHeader;
 use crate::package_files::PackageFiles;
 use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
-use crate::script_facts::{Function, ScriptFacts};
 
 /// Where a package holds its game scripts.
 pub(crate) const SCRIPTS: &str = "scripts";
@@ -37,7 +36,7 @@ pub struct Script {
 impl Script {
     /// Whether it defines `hook`.
     pub(crate) fn defines(&self, hook: Hook) -> bool {
-        let named = |function: &Function| Hook::named(&function.name) == Some(hook);
+        let named = |function: &ScriptFunction| Hook::named(&function.name) == Some(hook);
         self.facts.functions.iter().any(named)
     }
 }
@@ -57,14 +56,14 @@ impl Package {
             let source = files
                 .read_text(path)
                 .map_err(|error| fail(LoadProblem::Content(error)))?;
-            let ast = host.parse(source).map_err(|error| {
+            let facts = ScriptFacts::read(host, source, api).map_err(|error| {
                 fail(LoadProblem::Script {
                     path: path.clone(),
                     problem: ScriptProblem::Compile(error),
                 })
             })?;
             scripts.push(Script {
-                facts: ScriptFacts::read(&ast, api),
+                facts,
                 path: path.clone(),
                 source: source.to_owned(),
             });

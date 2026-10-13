@@ -4,21 +4,20 @@ use std::fmt::Write;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{
-    ActionDataField, ActionField, ActionKind, AiError, DeclaredName, DoesData, EffectData,
-    EffectTo, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric, ModeError,
-    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields, Release, Scalar,
-    Status, SyncTo, TimeTooLarge, UnitStartError,
+    ActionDataField, ActionField, ActionKind, AiError, CtxMisuse, DeclaredName, DoesData,
+    EffectData, EffectTo, EngineEnum, HealFields, Hook, LaunchFields, MapProblem, Metric,
+    ModeError, ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, PurgeFields,
+    Release, Scalar, Status, SyncTo, TimeTooLarge, UnitStartError,
 };
 use campfire_codec::Toml;
 use campfire_common::MapName;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{
-    BoxProblem, BuildProblem, ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem,
-    EffectProblem, GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages,
-    PackageName, PackageRef, Place, ScriptProblem, Way,
+    BoxProblem, BuildProblem, ChoiceProblem, ContentError, DeliveryProblem, EffectProblem,
+    GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName,
+    PackageRef, Place, ScriptProblem, Way,
 };
-use campfire_script::ScriptError;
-use campfire_script::rhai::ParseErrorType;
+use campfire_script::internals::Undefined;
 use campfire_sim::{Capability, TickRate};
 
 use crate::moba::{edited, load, moba, two_lanes};
@@ -102,7 +101,7 @@ fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> b
 /// Whether `problem` is a script that does not compile, as it reads the variable `name`, which
 /// nothing defines before it.
 fn undefined(problem: &LoadProblem, name: &str) -> bool {
-    matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(ScriptError::Compile(error)), .. } if matches!(&*error.0, ParseErrorType::VariableUndefined(found) if found == name))
+    matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Variable(name)))
 }
 
 /// The way of the action `name`.
@@ -1205,7 +1204,7 @@ static FLAWS: [Flaw; 276] = [
         MODE_SCRIPT,
         Edit::Replace("PathEnd::named(spawn_marker", "Path::named(spawn_marker"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(ScriptError::Compile(error)), .. } if matches!(&*error.0, ParseErrorType::ModuleUndefined(module) if module == "Path")),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Module("Path"))),
     ),
     // No script makes a function pointer: a closure, an anonymous function that captures
     // nothing, or `Fn`.

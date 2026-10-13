@@ -1,4 +1,3 @@
-use campfire_script::rhai::{Dynamic, INT};
 use campfire_sim::StableId;
 
 use crate::geometry::shape::Shape;
@@ -8,6 +7,7 @@ use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_arg::plain_script_arg;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::tag::Tag;
 use crate::units::unit_row::UnitRow;
 use crate::units::unit_state_access::UnitStateAccess;
@@ -66,8 +66,8 @@ impl Unit {
                     "its body's radius, 0 with no body, `()` for a box",
                 ),
                 |unit: &mut Unit| match unit.read(|row| row.shape) {
-                    Shape::Circle(radius) => Dynamic::from(radius),
-                    Shape::Box(_) => Dynamic::UNIT,
+                    Shape::Circle(radius) => ScriptValue::of(radius),
+                    Shape::Box(_) => ScriptValue::UNIT,
                 },
             )
             .bind(field("alive", "whether it lives"), |unit: &mut Unit| {
@@ -92,13 +92,13 @@ impl Unit {
             )
             .bind(
                 field("team", "its team's name"),
-                |unit: &mut Unit| -> Checked<Dynamic> {
+                |unit: &mut Unit| -> Checked<ScriptValue> {
                     let name = unit
                         .view
                         .names()
                         .team_names()
                         .name(unit.read(|row| row.team));
-                    name.map(Dynamic::from)
+                    name.map(ScriptValue::of)
                         .ok_or_else(|| ApiError::Unknown(NameKind::Team).fail().into())
                 },
             )
@@ -107,15 +107,16 @@ impl Unit {
                 |unit: &mut Unit| {
                     let unit_type = unit.read(|row| row.unit_type);
                     let name = unit.view.names().unit_types().name(unit_type);
-                    name.map_or(Dynamic::UNIT, Dynamic::from)
+                    name.map_or(ScriptValue::UNIT, ScriptValue::of)
                 },
             )
             .bind(
                 field("owner", "its player's slot, `()` with none"),
                 |unit: &mut Unit| {
-                    unit.read(|row| row.owner).map_or(Dynamic::UNIT, |slot| {
-                        Dynamic::from_int(INT::from(slot.get()))
-                    })
+                    unit.read(|row| row.owner)
+                        .map_or(ScriptValue::UNIT, |slot| {
+                            ScriptValue::of(i64::from(slot.get()))
+                        })
                 },
             )
             .bind(
@@ -125,7 +126,7 @@ impl Unit {
                 ),
                 |unit: &mut Unit| {
                     unit.read(|row| row.spawn)
-                        .map_or(Dynamic::UNIT, Dynamic::from)
+                        .map_or(ScriptValue::UNIT, ScriptValue::of)
                 },
             );
         api.ty::<UnitParams>("UnitParams")
@@ -170,13 +171,12 @@ impl Unit {
 
 impl UnitParams {
     /// The param `name`; one the unit's type does not declare fails the call.
-    fn get(&self, name: &str) -> Checked<Dynamic> {
+    fn get(&self, name: &str) -> Checked<ScriptValue> {
         let unit = &self.0;
         let unit_type = unit.read(|row| row.unit_type);
         let param = unit.view.names().types().param(unit_type, name);
-        Ok(param
-            .ok_or_else(|| ApiError::Unknown(NameKind::Param).fail())?
-            .to_dynamic())
+        let param = param.ok_or_else(|| ApiError::Unknown(NameKind::Param).fail())?;
+        Ok(ScriptValue::from(param))
     }
 }
 
@@ -184,18 +184,19 @@ plain_script_arg!(Unit);
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_script::rhai::Dynamic;
     use campfire_sim::StableId;
 
+    use crate::scripts::script_list::ScriptList;
+    use crate::scripts::script_value::ScriptValue;
     use crate::units::unit::Unit;
 
     impl Unit {
         /// The stable ids of `value`, a unit, a list of units, or `()` for none.
-        pub(crate) fn ids(value: Dynamic) -> Vec<StableId> {
-            let units = match value.clone().try_cast::<Vec<Dynamic>>() {
+        pub(crate) fn ids(value: ScriptValue) -> Vec<StableId> {
+            let units = match value.clone().try_cast::<ScriptList>() {
                 Some(units) => units,
-                None if value.is_unit() => Vec::new(),
-                None => vec![value],
+                None if value.is_unit() => ScriptList::default(),
+                None => ScriptList::from([value]),
             };
             units
                 .into_iter()

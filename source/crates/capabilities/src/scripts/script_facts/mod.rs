@@ -1,14 +1,17 @@
 use std::ptr;
 
-use campfire_capabilities::{
-    ApiOwner, Applies, EngineEnum, EnumArgs, MemberKind, NameArgs, NameKind, ScriptApi,
-};
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
+use campfire_script::{ScriptError, ScriptHost};
 use derive_more::Display;
 
-use crate::error::ctx_misuse::CtxMisuse;
-use crate::error::load_problem::LoadProblem;
-use crate::error::place::Place;
+use crate::scripts::applies::Applies;
+use crate::scripts::error::CtxMisuse;
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_api::ScriptApi;
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_kind::MemberKind;
+use crate::scripts::script_api::member_spec::{EnumArgs, NameArgs};
+use crate::values::engine_enum::EngineEnum;
 
 /// The variable every script API call goes through, by design 08's convention.
 const CTX: &str = "ctx";
@@ -21,87 +24,76 @@ const ANONYMOUS: &str = "anon$";
 /// What the package load checks read from a script: its functions, the names it uses on `ctx`,
 /// and the string literals it gives the arguments the registry marks as names.
 #[derive(Debug, Default, PartialEq, Eq)]
-pub(crate) struct ScriptFacts {
+pub struct ScriptFacts {
     /// Sorted by name, then by parameter count.
-    pub(crate) functions: Vec<Function>,
-    pub(crate) ctx_names: Vec<CtxUse>,
+    pub functions: Vec<ScriptFunction>,
+    pub ctx_names: Vec<CtxUse>,
     /// Each `ctx.p.<name>` it reads.
-    pub(crate) params: Vec<String>,
+    pub params: Vec<String>,
     /// Each field it reads or writes after `.state`, of the mode, a modifier or a unit.
-    pub(crate) state_fields: Vec<String>,
+    pub state_fields: Vec<String>,
     /// Each literal it gives an argument the registry marks as a name, in the script's order.
-    pub(crate) names: Vec<ScriptName>,
+    pub names: Vec<ScriptName>,
     /// Each string literal it gives an argument that takes an engine enum.
-    pub(crate) enum_strings: Vec<EnumString>,
+    pub enum_strings: Vec<EnumString>,
     /// Each `Module::name` it reads or calls, in the script's order.
-    pub(crate) enum_paths: Vec<EnumPath>,
+    pub enum_paths: Vec<EnumPath>,
     /// Whether it makes a function pointer: a closure, an anonymous function or a call of `Fn`.
-    pub(crate) function_pointer: bool,
+    pub function_pointer: bool,
     /// Each field or method it reads on a value other than `ctx`, but the names after `p`,
     /// `state` and `params`, which name data; and the keys of its object-map literals.
-    pub(crate) members: Vec<MemberUse>,
-    pub(crate) map_keys: Vec<String>,
+    pub members: Vec<MemberUse>,
+    pub map_keys: Vec<String>,
     /// The first use of `ctx` that breaks the convention, if any.
-    pub(crate) ctx_misuse: Option<CtxMisuse>,
+    pub ctx_misuse: Option<CtxMisuse>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Function {
-    pub(crate) name: String,
-    pub(crate) params: usize,
+pub struct ScriptFunction {
+    pub name: String,
+    pub params: usize,
     /// Whether its first parameter is named `ctx`.
-    pub(crate) ctx_first: bool,
+    pub ctx_first: bool,
 }
 
 /// A name used on `ctx`, as a value or as a call.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct CtxUse {
-    pub(crate) name: String,
-    pub(crate) kind: MemberKind,
+pub struct CtxUse {
+    pub name: String,
+    pub kind: MemberKind,
 }
 
 /// A literal a script gives an argument that names something of `kind`, and, for a modifier,
 /// how the call applies it; none when it only names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ScriptName {
-    pub(crate) kind: NameKind,
-    pub(crate) name: String,
-    pub(crate) applies: Option<Applies>,
-}
-
-impl ScriptName {
-    /// The problem of it, which nothing of its kind has, in a script at `at`.
-    pub(crate) fn unknown(&self, at: &Place) -> LoadProblem {
-        LoadProblem::Unknown {
-            of: self.kind,
-            at: at.clone(),
-            name: self.name.clone(),
-        }
-    }
+pub struct ScriptName {
+    pub kind: NameKind,
+    pub name: String,
+    pub applies: Option<Applies>,
 }
 
 /// A string literal a script gives `call`'s argument that takes a member of `engine_enum`.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct EnumString {
-    pub(crate) call: String,
-    pub(crate) engine_enum: EngineEnum,
+pub struct EnumString {
+    pub call: String,
+    pub engine_enum: EngineEnum,
 }
 
 /// A name a script reads in a module, `Relation::Hostile`, as a value, or calls,
 /// `PathEnd::named(text)`.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]
 #[display("{module}::{name}")]
-pub(crate) struct EnumPath {
-    pub(crate) module: String,
-    pub(crate) name: String,
-    pub(crate) kind: MemberKind,
+pub struct EnumPath {
+    pub module: String,
+    pub name: String,
+    pub kind: MemberKind,
 }
 
 /// A name read on a value, as a field or as a method.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct MemberUse {
-    pub(crate) name: String,
-    pub(crate) kind: MemberKind,
+pub struct MemberUse {
+    pub name: String,
+    pub kind: MemberKind,
 }
 
 /// The names after which a property names data, not a member: `ctx.p.<param>`,
@@ -109,14 +101,23 @@ pub(crate) struct MemberUse {
 const DATA_ACCESSORS: [&str; 3] = ["p", "state", "params"];
 
 impl ScriptFacts {
-    /// The facts of `ast`. `ctx` is the variable of that name, as every hook's first parameter
-    /// is by convention and every helper passes it on; a use that breaks the convention is
-    /// recorded, so the facts see every use of `ctx` in a script that keeps it.
-    pub(crate) fn read(ast: &AST, api: &ScriptApi) -> ScriptFacts {
+    /// The facts of `source`, as `host` parses it; an error when it does not parse. `ctx` is the
+    /// variable of that name, as every hook's first parameter is by convention and every helper
+    /// passes it on; a use that breaks the convention is recorded, so the facts see every use of
+    /// `ctx` in a script that keeps it.
+    pub fn read(
+        host: &ScriptHost,
+        source: &str,
+        api: &ScriptApi,
+    ) -> Result<ScriptFacts, ScriptError> {
+        Ok(ScriptFacts::of(&host.parse(source)?, api))
+    }
+
+    fn of(ast: &AST, api: &ScriptApi) -> ScriptFacts {
         let mut facts = ScriptFacts {
             functions: ast
                 .iter_functions()
-                .map(|function| Function {
+                .map(|function| ScriptFunction {
                     name: function.name.to_owned(),
                     params: function.params.len(),
                     ctx_first: function.params.first() == Some(&CTX),
@@ -291,7 +292,7 @@ impl ScriptFacts {
     }
 
     /// The modifiers it applies by a literal name, each with how its call applies it.
-    pub(crate) fn applied(&self) -> impl Iterator<Item = (&str, Applies)> {
+    pub fn applied(&self) -> impl Iterator<Item = (&str, Applies)> {
         self.names
             .iter()
             .filter_map(|named| Some((named.name.as_str(), named.applies?)))

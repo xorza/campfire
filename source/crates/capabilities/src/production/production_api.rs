@@ -1,4 +1,3 @@
-use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
@@ -48,7 +47,7 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
                 ),
-                |ctx: &mut Ctx, player: INT| ProductionApi::supply(ctx, player, false),
+                |ctx: &mut Ctx, player: i64| ProductionApi::supply(ctx, player, false),
             )
             .call(
                 MemberSpec::call(
@@ -56,17 +55,17 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
                 ),
-                |ctx: &mut Ctx, player: INT| ProductionApi::supply(ctx, player, true),
+                |ctx: &mut Ctx, player: i64| ProductionApi::supply(ctx, player, true),
             );
     }
 
     /// `player`'s supply as the view read the match: its cap when `cap`, else what it uses.
-    fn supply(ctx: &Ctx, player: INT, cap: bool) -> Checked<INT> {
+    fn supply(ctx: &Ctx, player: i64, cap: bool) -> Checked<i64> {
         let view = ctx.view();
         let slot = view.names().player(player)?;
         let supply =
             ProductionColumn::supply(view, slot).ok_or_else(|| ApiError::NoSupply.fail())?;
         let count = if cap { supply.cap } else { supply.used };
-        Ok(INT::try_from(count).expect("a supply count fits an integer"))
+        Ok(i64::try_from(count).expect("a supply count fits an integer"))
     }
 }

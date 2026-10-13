@@ -1,8 +1,10 @@
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Position, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_text::ScriptText;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_decl::StateType;
 use crate::units::unit::Unit;
 use crate::units::view::View;
@@ -24,21 +26,19 @@ pub enum StateValue {
 impl StateValue {
     /// A script's value as a field of type `kind`; `None` when it is not of the type. An integer
     /// is a `Num` too, and `()` is an entity field's none.
-    pub(crate) fn from_dynamic(kind: StateType, value: &Dynamic) -> Option<StateValue> {
+    pub(crate) fn from_value(kind: StateType, value: &ScriptValue) -> Option<StateValue> {
         Some(match kind {
-            StateType::Int => StateValue::Int(value.as_int().ok()?),
+            StateType::Int => StateValue::Int(value.as_int()?),
             StateType::Num => StateValue::Num(match value.as_int() {
-                Ok(int) => Num::from_int(int)?,
-                Err(_) => value.clone().try_cast::<Num>()?,
+                Some(int) => Num::from_int(int)?,
+                None => value.clone().try_cast::<Num>()?,
             }),
-            StateType::Bool => StateValue::Bool(value.as_bool().ok()?),
-            StateType::String => {
-                StateValue::Text(value.clone().into_immutable_string().ok()?.into())
-            }
+            StateType::Bool => StateValue::Bool(value.as_bool()?),
+            StateType::String => StateValue::Text(value.clone().into_text()?.as_str().into()),
             StateType::Entity if value.is_unit() => StateValue::Entity(None),
             StateType::Entity => StateValue::Entity(Some(value.clone().try_cast::<Unit>()?.id)),
             StateType::EntityList => {
-                let list = value.clone().try_cast::<Array>()?;
+                let list = value.clone().into_list()?;
                 let ids = list
                     .into_iter()
                     .map(|unit| unit.try_cast::<Unit>().map(|unit| unit.id))
@@ -66,21 +66,21 @@ impl StateValue {
 
     /// The value as a script sees it: a unit the view did not read is `()`, and is left out of a
     /// list.
-    pub(crate) fn to_dynamic(&self, view: &View) -> Dynamic {
+    pub(crate) fn to_value(&self, view: &View) -> ScriptValue {
         match self {
-            StateValue::Int(value) => Dynamic::from_int(INT::from(*value)),
-            StateValue::Num(value) => Dynamic::from(*value),
-            StateValue::Bool(value) => Dynamic::from_bool(*value),
-            StateValue::Text(text) => Dynamic::from(ImmutableString::from(text.as_str())),
+            StateValue::Int(value) => ScriptValue::of(*value),
+            StateValue::Num(value) => ScriptValue::of(*value),
+            StateValue::Bool(value) => ScriptValue::of(*value),
+            StateValue::Text(text) => ScriptValue::of(ScriptText::from(text.as_str())),
             StateValue::Entity(id) => view.unit_value(*id),
-            StateValue::EntityList(ids) => Dynamic::from_array(
+            StateValue::EntityList(ids) => ScriptValue::of(
                 ids.iter()
                     .filter_map(|&id| view.unit(id))
-                    .map(Dynamic::from)
-                    .collect(),
+                    .map(ScriptValue::of)
+                    .collect::<ScriptList>(),
             ),
-            StateValue::Pos(pos) => Dynamic::from(*pos),
-            StateValue::Vec(vec) => Dynamic::from(*vec),
+            StateValue::Pos(pos) => ScriptValue::of(*pos),
+            StateValue::Vec(vec) => ScriptValue::of(*vec),
         }
     }
 }

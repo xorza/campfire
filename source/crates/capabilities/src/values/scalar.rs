@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::str::FromStr;
 
 use campfire_math::Num;
-use campfire_script::rhai::Dynamic;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -64,14 +63,6 @@ impl Scalar {
     pub(crate) fn checked<E: Error>(self, at: &str) -> Result<Num, E> {
         self.to_num()
             .ok_or_else(|| E::custom(format!("{at}{self:?} is past what a number holds")))
-    }
-
-    /// The value as a script sees it: an integer, or a `Num`.
-    pub(crate) fn to_dynamic(self) -> Dynamic {
-        match self {
-            Scalar::Int(value) => Dynamic::from_int(value),
-            Scalar::Decimal(value) => Dynamic::from(value),
-        }
     }
 }
 

@@ -1,5 +1,4 @@
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::Dynamic;
 use campfire_script::{NumError, Raised};
 use campfire_sim::Position;
 
@@ -9,6 +8,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_value::ScriptValue;
 
 /// The script API of positions and vectors: `Pos` with `distance_to`, `within` and
 /// `direction_to`, and `Vector` with `rotated_deg`.
@@ -59,7 +59,7 @@ impl UnitsApi {
                         .metric()
                         .offset(from, to)
                         .normalized()
-                        .map_or(Dynamic::UNIT, Dynamic::from))
+                        .map_or(ScriptValue::UNIT, ScriptValue::of))
                 },
             );
         let vector = |name, signature, description| {

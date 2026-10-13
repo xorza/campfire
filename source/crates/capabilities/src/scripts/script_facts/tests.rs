@@ -1,9 +1,7 @@
 use std::num::NonZeroU64;
 
-use campfire_capabilities::Release;
-use campfire_script::ScriptHost;
-
 use super::*;
+use crate::release::Release;
 
 #[test]
 fn the_facts_are_the_names_a_script_uses_on_ctx_and_gives_the_api() {
@@ -31,9 +29,8 @@ fn helper(ctx, gold) {}
 "#;
     let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
     let api = Release::bind_script_api(&mut host);
-    let ast = host.parse(source).unwrap();
-    let facts = ScriptFacts::read(&ast, &api);
-    let function = |name: &str, params| Function {
+    let facts = ScriptFacts::read(&host, source, &api).unwrap();
+    let function = |name: &str, params| ScriptFunction {
         name: name.to_owned(),
         params,
         ctx_first: true,
@@ -118,7 +115,7 @@ fn on_x(ctx, unit) {
 "#;
     let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
     let api = Release::bind_script_api(&mut host);
-    let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
+    let facts = ScriptFacts::read(&host, source, &api).unwrap();
     let string = EnumString {
         call: "spawn_group".to_owned(),
         engine_enum: EngineEnum::PathEnd,
@@ -152,7 +149,7 @@ fn a_closure_an_anonymous_function_and_fn_make_a_function_pointer() {
         ("fn on_x(ctx, name) { g(Fn(name)) } fn g(c) {}", true),
         ("fn on_x(ctx) { h(1); } fn h(c) {}", false),
     ] {
-        let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
+        let facts = ScriptFacts::read(&host, source, &api).unwrap();
         assert_eq!(facts.function_pointer, pointer, "{source}");
     }
 }
@@ -194,9 +191,9 @@ fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() 
     let host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
     let api = Release::script_api();
     for (source, misuse) in cases {
-        let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
+        let facts = ScriptFacts::read(&host, source, &api).unwrap();
         assert_eq!(facts.ctx_misuse, misuse, "{source}");
     }
-    let facts = ScriptFacts::read(&host.parse("fn on_x(c, ctx) {}").unwrap(), &api);
+    let facts = ScriptFacts::read(&host, "fn on_x(c, ctx) {}", &api).unwrap();
     assert!(!facts.functions[0].ctx_first);
 }

@@ -3,13 +3,14 @@ use std::slice;
 
 use campfire_capabilities::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, ApiOwner, ApiVersion,
-    BookError, BookPlace, Books, DamageFields, DataTable, DeclaredName, DeliveryData, DoesData,
-    EffectData, EffectRule, EffectTo, EngineTag, EnumRecord, FilterData, HealFields, Hook,
-    ItemData, KindData, LaunchFields, MemberKind, Metric, ModeList, ModeNamesError, ModifierData,
-    ModifierFields, ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param,
-    ParamProblem, ProjectileHits, PurgeFields, RangeField, Release, RestoreFields, ScriptApi,
-    ScriptRole, SpawnFields, Stat, StatId, Status, SyncTo, Targeting, TrackError, TypePlace,
-    TypesError, UnitTypeCore, UnitTypeData, UnknownName, XpFields,
+    BookError, BookPlace, Books, CtxMisuse, DamageFields, DataTable, DeclaredName, DeliveryData,
+    DoesData, EffectData, EffectRule, EffectTo, EngineTag, EnumRecord, EnumString, FilterData,
+    HealFields, Hook, ItemData, KindData, LaunchFields, MemberKind, Metric, ModeList,
+    ModeNamesError, ModifierData, ModifierFields, ModifierProblem, MoveData, NameKind, Number,
+    Offers, PackagePath, Param, ParamProblem, ProjectileHits, PurgeFields, RangeField, Release,
+    RestoreFields, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, SpawnFields,
+    Stat, StatId, Status, SyncTo, Targeting, TrackError, TypePlace, TypesError, UnitTypeCore,
+    UnitTypeData, UnknownName, XpFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -19,7 +20,6 @@ use crate::error::LoadError;
 use crate::error::box_problem::BoxProblem;
 use crate::error::build_problem::BuildProblem;
 use crate::error::choice_problem::ChoiceProblem;
-use crate::error::ctx_misuse::CtxMisuse;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
@@ -34,7 +34,6 @@ use crate::modifier_ways::{ModifierWays, Way};
 use crate::name_tables::NameTables;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
-use crate::script_facts::{EnumString, Function, ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -858,7 +857,7 @@ impl<'a> LoadCheck<'a> {
     /// hook's parameters, and `ctx` first. A name with a hook's prefix that names none fails.
     fn hook(
         &self,
-        function: &Function,
+        function: &ScriptFunction,
         roles: &BTreeSet<ScriptRole>,
     ) -> Result<Option<Hook>, ScriptProblem> {
         let name = &function.name;
@@ -941,6 +940,11 @@ impl<'a> LoadCheck<'a> {
         package: &PackageNames<'_>,
         at: &Place,
     ) -> Result<(), LoadProblem> {
+        let unknown = || LoadProblem::Unknown {
+            of: named.kind,
+            at: at.clone(),
+            name: named.name.clone(),
+        };
         let packages = self.packages;
         let data = &packages.data;
         let name = named.name.as_str();
@@ -949,7 +953,7 @@ impl<'a> LoadCheck<'a> {
             NameKind::Ability => package.actions.contains_key(name),
             NameKind::Filter => return self.filter_text(name, at),
             NameKind::Stat => {
-                let stat = Stat::named(name).ok_or_else(|| named.unknown(at))?;
+                let stat = Stat::named(name).ok_or_else(unknown)?;
                 return self.stats_declared([&stat], at);
             }
             NameKind::Choice => declares(data.choices.keys(), name),
@@ -975,11 +979,7 @@ impl<'a> LoadCheck<'a> {
                 unreachable!("no argument of the script API is a {}", named.kind)
             }
         };
-        if known {
-            Ok(())
-        } else {
-            Err(named.unknown(at))
-        }
+        if known { Ok(()) } else { Err(unknown()) }
     }
 
     /// The mode's damage kinds: with `combat`, at least one.

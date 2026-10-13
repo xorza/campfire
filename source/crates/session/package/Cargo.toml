@@ -29,6 +29,7 @@ unic-langid.workspace = true
 # The integration tests find the MOBA packages through `internals`.
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
+campfire-script = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

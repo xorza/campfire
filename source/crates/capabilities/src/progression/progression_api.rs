@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::INT;
 
 use crate::progression::progression_column::ProgressionColumn;
 use crate::progression::progression_effect::ProgressionEffect;
@@ -61,9 +60,9 @@ impl ProgressionApi {
                 &[&["track"]],
                 "its level on `track`, one of its unit type's",
             ),
-            |unit: Unit, track: TrackId| -> Checked<INT> {
+            |unit: Unit, track: TrackId| -> Checked<i64> {
                 let level = ProgressionColumn::level(unit.view(), unit.row_index(), track)?;
-                Ok(INT::from(level.get()))
+                Ok(i64::from(level.get()))
             },
         )
         .bind(
@@ -71,9 +70,9 @@ impl ProgressionApi {
                 "points",
                 "its unspent points, which a unit with the `level` track has",
             ),
-            |unit: &mut Unit| -> Checked<INT> {
+            |unit: &mut Unit| -> Checked<i64> {
                 let points = ProgressionColumn::points(unit.view(), unit.row_index())?;
-                Ok(INT::from(points.get()))
+                Ok(i64::from(points.get()))
             },
         )
         .plan(method(

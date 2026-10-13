@@ -1,7 +1,9 @@
-use campfire_script::rhai::{Array, INT};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
+
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 
 #[test]
 fn every_role_reads_the_match_and_deals_damage_heals_and_restores() {
@@ -36,16 +38,18 @@ fn probe(ctx, unit) {
         let before = gold(&game);
         let read = Mode::probe_as(&mut game, probe, role, actor, target).unwrap();
         assert_eq!(gold(&game), before + 5, "{role:?}");
-        let read: Array = read.cast();
-        let names = |value: &Dynamic| -> Vec<String> {
-            let list: Array = value.clone().cast();
-            list.into_iter().map(|name| name.to_string()).collect()
+        let read: ScriptList = read.cast();
+        let names = |value: &ScriptValue| -> Vec<String> {
+            let list: ScriptList = value.clone().cast();
+            list.into_iter()
+                .map(|name| name.into_text().unwrap().to_string())
+                .collect()
         };
         assert_eq!(names(&read[0]), ["a", "b"], "{role:?}");
         assert_eq!(names(&read[1]), ["mid"], "{role:?}");
         assert_eq!(
             (read[2].as_int(), read[3].as_int()),
-            (Ok(1), Ok(1)),
+            (Some(1), Some(1)),
             "{role:?}"
         );
         assert_eq!(
@@ -101,8 +105,8 @@ fn probe(ctx, unit) {
     ["hostiles", "neutrals", "enemies"].map(|filter| ctx.find(unit, unit.pos, 1, filter).len())
 }
 "#;
-    let count = |game: &mut Match| -> Vec<INT> {
-        let counts: Array = Mode::probe_as(game, counts, ScriptRole::Mode, a, a)
+    let count = |game: &mut Match| -> Vec<i64> {
+        let counts: ScriptList = Mode::probe_as(game, counts, ScriptRole::Mode, a, a)
             .unwrap()
             .cast();
         counts
@@ -122,10 +126,10 @@ fn probe(ctx, unit) {
         [Relation::Hostile.to_string(), Relation::named("neutral") == Relation::Neutral,
          Relation::Hostile != Relation::Friendly, Relation::Hostile == Relation::Neutral]
     }"#;
-    let members: Array = Mode::probe_as(&mut game, members, ScriptRole::Mode, a, a)
+    let members: ScriptList = Mode::probe_as(&mut game, members, ScriptRole::Mode, a, a)
         .unwrap()
         .cast();
-    assert_eq!(members[0].clone().into_string().unwrap(), "hostile");
+    assert_eq!(members[0].clone().into_text().unwrap().as_str(), "hostile");
     let compared = members[1..].iter().map(|member| member.as_bool().unwrap());
     assert_eq!(compared.collect::<Vec<_>>(), [true, true, false]);
     // A text that names no relation fails `named`, and a team's relation to itself, or to a

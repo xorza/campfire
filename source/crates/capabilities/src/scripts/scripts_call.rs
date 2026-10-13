@@ -1,12 +1,12 @@
 use bevy_ecs::world::World;
 use campfire_math::{Num, Rng, RngOpener, RngStream};
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{SimRng, StableId};
 
 use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 
 /// The stream of an acting unit's draws, and of the mode's own calls'.
 const UNIT_DRAWS: RngStream = RngStream::new("script.draw");
@@ -36,7 +36,7 @@ impl CallPart for ScriptsCall {
         Ok(())
     }
 
-    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<Dynamic> {
+    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<ScriptValue> {
         None
     }
 

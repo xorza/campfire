@@ -77,3 +77,31 @@ pub enum NumError {
     /// `clamp` with a low bound above the high one.
     ClampBounds,
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use rhai::ParseErrorType;
+
+    use crate::script_host::error::ScriptError;
+
+    /// A name a script uses that nothing defines before it, which fails its compile.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Undefined<'a> {
+        Variable(&'a str),
+        Module(&'a str),
+    }
+
+    impl ScriptError {
+        /// The name the script uses and nothing defines, when that fails its compile.
+        pub fn undefined(&self) -> Option<Undefined<'_>> {
+            let ScriptError::Compile(error) = self else {
+                return None;
+            };
+            match &*error.0 {
+                ParseErrorType::VariableUndefined(name) => Some(Undefined::Variable(name)),
+                ParseErrorType::ModuleUndefined(name) => Some(Undefined::Module(name)),
+                _ => None,
+            }
+        }
+    }
+}

@@ -2,11 +2,11 @@ use std::any::{Any, TypeId};
 use std::fmt;
 
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::script_value::ScriptValue;
 
 /// A capability's own part of the call frame: what a call reads besides the core's, such as its
 /// params or the mode's state, and what it wrote that applies once its effects did. The core
@@ -16,7 +16,7 @@ pub(crate) trait CallPart: Any + fmt::Debug {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
 
     /// The running call's param `name`, when this part holds the params of a call of `role`.
-    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic>;
+    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue>;
 
     /// Applies what the call wrote to it, once its effects applied.
     fn apply(&mut self, world: &mut World);
@@ -60,7 +60,7 @@ impl CallParts {
     }
 
     /// The running call's param `name` of the first part that holds it.
-    pub(crate) fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<Dynamic> {
+    pub(crate) fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue> {
         self.0.iter().find_map(|part| part.param(role, name))
     }
 

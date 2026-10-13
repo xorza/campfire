@@ -2,13 +2,14 @@ use std::ops::Range;
 
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_script::rhai::{Array, Dynamic, INT};
 
 use crate::actions::targets::Targets;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_list::ScriptList;
+use crate::scripts::script_value::ScriptValue;
 use crate::stats::life::Life;
 use crate::units::dead::Dead;
 use crate::units::kept_rows::{ColumnRows, KeptRows, RunMove};
@@ -122,7 +123,7 @@ impl CombatColumn {
 
     /// `unit.recent_attackers(ms)`: the living units that struck `unit` within the last `ms`
     /// milliseconds, rounded up to whole ticks, by stable id; none in a view with no combat.
-    pub(crate) fn recent_attackers(unit: &Unit, ms: INT) -> Checked<Array> {
+    pub(crate) fn recent_attackers(unit: &Unit, ms: i64) -> Checked<ScriptList> {
         let ms = u64::try_from(ms)
             .ok()
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
@@ -138,7 +139,7 @@ impl CombatColumn {
                 .filter(|attack| now.since(attack.tick).is_some_and(|age| age <= window))
                 .filter_map(|attack| view.unit(attack.source))
                 .filter(|attacker| attacker.read(|row| row.alive))
-                .map(Dynamic::from)
+                .map(ScriptValue::of)
                 .collect()
         });
         Ok(attackers.unwrap_or_default())

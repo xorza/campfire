@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::rhai::INT;
 use campfire_sim::Position;
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -34,13 +33,13 @@ impl VisionApi {
         .roles(RoleSet::ACTING);
         api.call(
             reveal,
-            |ctx: &mut Ctx, pos: Position, radius: Num, ms: INT| {
+            |ctx: &mut Ctx, pos: Position, radius: Num, ms: i64| {
                 VisionApi::reveal(ctx, pos, radius, ms)
             },
         )
         .call(
             reveal,
-            |ctx: &mut Ctx, pos: Position, radius: INT, ms: INT| {
+            |ctx: &mut Ctx, pos: Position, radius: i64, ms: i64| {
                 VisionApi::reveal(ctx, pos, ApiError::num(radius)?, ms)
             },
         )
@@ -52,7 +51,7 @@ impl VisionApi {
 
     /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`
     /// rounded up to ticks.
-    fn reveal(ctx: &Ctx, pos: Position, radius: Num, ms: INT) -> Checked<()> {
+    fn reveal(ctx: &Ctx, pos: Position, radius: Num, ms: i64) -> Checked<()> {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.row(id));
         let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;

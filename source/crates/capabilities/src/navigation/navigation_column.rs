@@ -2,7 +2,6 @@ use std::ops::Range;
 
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
 use campfire_sim::{Position, StableId};
 
 use crate::geometry::shape::Shape;
@@ -10,6 +9,7 @@ use crate::navigation::body_index::IndexedBody;
 use crate::navigation::navigation_book::NavigationBook;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::walls::Walls;
+use crate::scripts::script_value::ScriptValue;
 use crate::units::body::Body;
 use crate::units::kept_rows::KeptRows;
 use crate::units::layer::Layer;
@@ -117,14 +117,14 @@ impl NavigationColumn {
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view
     /// with no navigation.
-    pub(crate) fn path(unit: &Unit) -> Dynamic {
+    pub(crate) fn path(unit: &Unit) -> ScriptValue {
         let view = unit.view();
         let path =
             view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
         let name = path
             .flatten()
             .and_then(|path| view.names().paths.name(path));
-        name.map_or(Dynamic::UNIT, Dynamic::from)
+        name.map_or(ScriptValue::UNIT, ScriptValue::of)
     }
 
     /// Whether unit `id`, which `view` read, walks; none does in a view with no navigation.
