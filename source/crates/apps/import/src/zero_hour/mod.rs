@@ -395,7 +395,7 @@ mod tests {
         );
         assert_eq!(
             scratch.read("one/zero-hour/package.index"),
-            include_bytes!("../../../../packages/zero-hour/package.index")
+            include_bytes!("../../../../../packages/zero-hour/package.index")
         );
         let named = MapName::new("fixture_map").unwrap();
         let mode = ModePackages::from_dir(&scratch.path("one/game"), &named);

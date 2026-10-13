@@ -25,7 +25,7 @@ fn kind_of(file: &str) -> Option<FrameKind> {
 #[test]
 fn a_frame_is_kept_by_where_its_file_lies_in_the_workspace() {
     let root = AllocTrace::workspace_root().to_string_lossy().into_owned();
-    let source = "crates/campfire-quic/src/recv_batch.rs";
+    let source = "crates/network/quic/src/recv_batch.rs";
     // DWARF's absolute path, and PDB's relative one, led by `.` at times.
     for file in [
         native(&format!("{root}/{source}")),
@@ -37,18 +37,15 @@ fn a_frame_is_kept_by_where_its_file_lies_in_the_workspace() {
     }
     for (file, kind) in [
         (
-            "crates/campfire-quic/tests/alloc/main.rs",
+            "crates/network/quic/tests/alloc/main.rs",
             FrameKind::Fixture,
         ),
         (
-            "crates/campfire-common/src/alloc_audit/mod.rs",
+            "crates/base/common/src/alloc_audit/mod.rs",
             FrameKind::Other,
         ),
-        (
-            "crates/campfire-common/src/codec/sink.rs",
-            FrameKind::Source,
-        ),
-        ("crates/campfire-quic/tests/rejoin.rs", FrameKind::Other),
+        ("crates/base/common/src/codec/sink.rs", FrameKind::Source),
+        ("crates/network/quic/tests/rejoin.rs", FrameKind::Other),
         ("docs/design/15-quic-transport.md", FrameKind::Other),
     ] {
         assert_eq!(kind_of(&native(file)), Some(kind), "{file}");
@@ -72,7 +69,7 @@ fn a_trace_shows_the_workspaces_frames_from_the_allocation_to_the_fixtures_call(
         [
             symbol(
                 "__rust_alloc",
-                "crates/campfire-quic/tests/alloc/main.rs",
+                "crates/network/quic/tests/alloc/main.rs",
                 15,
             ),
             symbol(
@@ -82,22 +79,22 @@ fn a_trace_shows_the_workspaces_frames_from_the_allocation_to_the_fixtures_call(
             ),
             symbol(
                 "campfire_quic::outbox::Outbox::push",
-                "crates/campfire-quic/src/outbox.rs",
+                "crates/network/quic/src/outbox.rs",
                 34,
             ),
             symbol(
                 "campfire_common::alloc_audit::AllocAudit::run",
-                "crates/campfire-common/src/alloc_audit/mod.rs",
+                "crates/base/common/src/alloc_audit/mod.rs",
                 100,
             ),
             symbol(
                 "alloc::fixture",
-                "crates/campfire-quic/tests/alloc/main.rs",
+                "crates/network/quic/tests/alloc/main.rs",
                 40,
             ),
             symbol(
                 "alloc::wrapper",
-                "crates/campfire-quic/tests/alloc/main.rs",
+                "crates/network/quic/tests/alloc/main.rs",
                 60,
             ),
         ]
@@ -105,7 +102,7 @@ fn a_trace_shows_the_workspaces_frames_from_the_allocation_to_the_fixtures_call(
     );
     assert_eq!(
         rendered,
-        "   0: campfire_quic::outbox::Outbox::push\n            at crates/campfire-quic/src/outbox.rs:34:9\n   1: alloc::fixture\n            at crates/campfire-quic/tests/alloc/main.rs:40:9\n"
+        "   0: campfire_quic::outbox::Outbox::push\n            at crates/network/quic/src/outbox.rs:34:9\n   1: alloc::fixture\n            at crates/network/quic/tests/alloc/main.rs:40:9\n"
     );
     assert_eq!(AllocTrace::workspace_frames(iter::empty()), "");
     for (name, short) in [

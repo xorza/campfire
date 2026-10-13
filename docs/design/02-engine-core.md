@@ -91,7 +91,7 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `ownership` | planned | License checks (optional) |
 | `payments` | planned | Pools, hold invoices, wallet budgets (optional, separate repo) |
 
-A module is built when the workspace has its crate, `campfire-<module>` in `source/crates/` or `source/checks/`; a test fails when this column and the workspace differ. `lan-check` and `zero-hour-check` live in `source/checks/`, and nothing depends on them.
+A module is built when the workspace has its crate, `campfire-<module>`, in a folder of its module's name: `source/checks/` holds the checks, and `source/crates/` the rest, in a group for each role, `base/` (`common`, `codec`, `log`, `schedule`, `store`), `sim/` (`math`, `sim`), `capabilities/` (`campfire-capabilities` itself, beside its `core/` and the capabilities' crates), `session/` (`protocol`, `package`, `runner`, `verifier`), `network/` (`quic`, `net`) and `apps/` (`server`, `client`, `import`); a test fails when this column and the workspace differ, and another when a crate's folder is not its package's name without `campfire-`. `lan-check` and `zero-hour-check` live in `source/checks/`, and nothing depends on them.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 

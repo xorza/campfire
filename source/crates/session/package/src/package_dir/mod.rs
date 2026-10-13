@@ -272,7 +272,7 @@ pub(crate) mod internals {
         /// `path` within the workspace's `packages` directory, where the tests and the checks
         /// find the test packages.
         pub fn workspace(path: &str) -> PathBuf {
-            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
+            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../packages")).join(path)
         }
 
         /// `files` with the index of each package in it, each directory that holds a

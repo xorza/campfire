@@ -162,7 +162,7 @@ fn production(file: &SourceFile) -> Option<String> {
     reason = "the samples are lines of source the scan reads, not format strings"
 )]
 fn every_error_the_workspace_writes_goes_through_its_report() {
-    let workspace = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let workspace = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.."));
     let mut found = Vec::new();
     let mut files = 0;
     for group in ["crates", "checks"] {

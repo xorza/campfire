@@ -153,23 +153,31 @@ impl AllocTrace {
         Some(relative.trim_start_matches("./").to_owned())
     }
 
-    /// The workspace's root, two levels over this crate's manifest: `crates/campfire-common`.
+    /// The workspace's root, three levels over this crate's manifest: `crates/base/common`.
     fn workspace_root() -> &'static Path {
         Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(Path::parent)
-            .expect("common's manifest lies in the workspace's crates directory")
+            .ancestors()
+            .nth(3)
+            .expect("common's manifest lies in a group of the workspace's crates directory")
     }
 
+    /// A crate's folder lies under `crates/`, at the depth of its group, and its code under its
+    /// `src/` or `tests/`.
     fn kind(relative: &str) -> FrameKind {
-        let mut parts = relative.split('/');
-        let (Some("crates"), Some(krate)) = (parts.next(), parts.next()) else {
+        let Some(path) = relative.strip_prefix("crates/") else {
             return FrameKind::Other;
         };
-        match (krate, parts.next(), parts.next()) {
-            ("campfire-common", Some("src"), Some("alloc_audit")) => FrameKind::Other,
-            (_, Some("tests"), Some("alloc")) => FrameKind::Fixture,
-            (_, Some("src"), _) => FrameKind::Source,
+        let inside = ["/src/", "/tests/"]
+            .into_iter()
+            .filter_map(|own| path.find(own))
+            .min();
+        let Some(at) = inside else {
+            return FrameKind::Other;
+        };
+        match (&path[..at], &path[at + 1..]) {
+            ("base/common", inside) if inside.starts_with("src/alloc_audit/") => FrameKind::Other,
+            (_, inside) if inside.starts_with("tests/alloc/") => FrameKind::Fixture,
+            (_, inside) if inside.starts_with("src/") => FrameKind::Source,
             _ => FrameKind::Other,
         }
     }

@@ -145,7 +145,7 @@ Each is pure Rust, with no float math in what it writes, so one version and one 
 ## What the engine lacks
 
 - **`package`** has no model of a unit type.
-- **`client`** draws a plane and capsules (`campfire-client/src/view/mod.rs`), and builds Bevy with no glTF, PNG or KTX2 support. Design 02 says the client loads no asset from a file, so a model's bytes reach Bevy through `store`, not Bevy's asset server.
+- **`client`** draws a plane and capsules (`client/src/view/mod.rs`), and builds Bevy with no glTF, PNG or KTX2 support. Design 02 says the client loads no asset from a file, so a model's bytes reach Bevy through `store`, not Bevy's asset server.
 
 ## Open
 

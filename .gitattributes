@@ -5,4 +5,4 @@
 # fingerprint, would.
 package.index binary
 # A pinned session log is binary: a changed line ending would fail its format's pin.
-source/crates/campfire-protocol/tests/golden/session-log/* binary
+source/crates/session/protocol/tests/golden/session-log/* binary

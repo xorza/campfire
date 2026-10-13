@@ -3,11 +3,11 @@
 pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
     (
         "manifest.toml",
-        include_bytes!("../../../../packages/zero-hour/manifest.toml"),
+        include_bytes!("../../../../../packages/zero-hour/manifest.toml"),
     ),
     (
         "scripts/mode.rhai",
-        include_bytes!("../../../../packages/zero-hour/scripts/mode.rhai"),
+        include_bytes!("../../../../../packages/zero-hour/scripts/mode.rhai"),
     ),
 ];
 

@@ -1,6 +1,15 @@
 [workspace]
 resolver = "3"
-members = ["crates/*", "checks/*"]
+members = [
+    "crates/base/*",
+    "crates/sim/*",
+    "crates/capabilities",
+    "crates/capabilities/core/*",
+    "crates/session/*",
+    "crates/network/*",
+    "crates/apps/*",
+    "checks/*",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -10,22 +19,22 @@ license = "MIT OR Apache-2.0"
 
 # Exact versions: a release must rebuild bit for bit (docs/design/02-engine-core.md).
 [workspace.dependencies]
-campfire-capabilities = { path = "crates/campfire-capabilities" }
-campfire-codec = { path = "crates/campfire-codec" }
-campfire-common = { path = "crates/campfire-common" }
-campfire-import = { path = "crates/campfire-import" }
-campfire-log = { path = "crates/campfire-log" }
-campfire-math = { path = "crates/campfire-math" }
-campfire-net = { path = "crates/campfire-net" }
-campfire-package = { path = "crates/campfire-package" }
-campfire-protocol = { path = "crates/campfire-protocol" }
-campfire-quic = { path = "crates/campfire-quic" }
-campfire-runner = { path = "crates/campfire-runner" }
-campfire-schedule = { path = "crates/campfire-schedule" }
-campfire-script = { path = "crates/campfire-script" }
-campfire-sim = { path = "crates/campfire-sim" }
-campfire-store = { path = "crates/campfire-store" }
-campfire-verifier = { path = "crates/campfire-verifier" }
+campfire-capabilities = { path = "crates/capabilities" }
+campfire-codec = { path = "crates/base/codec" }
+campfire-common = { path = "crates/base/common" }
+campfire-import = { path = "crates/apps/import" }
+campfire-log = { path = "crates/base/log" }
+campfire-math = { path = "crates/sim/math" }
+campfire-net = { path = "crates/network/net" }
+campfire-package = { path = "crates/session/package" }
+campfire-protocol = { path = "crates/session/protocol" }
+campfire-quic = { path = "crates/network/quic" }
+campfire-runner = { path = "crates/session/runner" }
+campfire-schedule = { path = "crates/base/schedule" }
+campfire-script = { path = "crates/capabilities/core/script" }
+campfire-sim = { path = "crates/sim/sim" }
+campfire-store = { path = "crates/base/store" }
+campfire-verifier = { path = "crates/session/verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
 backtrace = "=0.3.76"

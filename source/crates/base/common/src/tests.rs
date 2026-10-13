@@ -49,12 +49,21 @@ fn dependencies(manifest: &str) -> Vec<&str> {
     names
 }
 
+/// The workspace's `source/` folder, three levels over this crate's manifest: `crates/base/common`.
+fn source() -> &'static Path {
+    Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../.."))
+}
+
 /// The dependencies of the crate at `dir`, under `source/crates/`, sorted.
 fn crate_dependencies(dir: &str) -> Vec<String> {
-    let manifest = read(&format!(
-        "{}/../{dir}/Cargo.toml",
-        env!("CARGO_MANIFEST_DIR")
-    ));
+    let manifest = read(
+        source()
+            .join("crates")
+            .join(dir)
+            .join("Cargo.toml")
+            .to_str()
+            .unwrap(),
+    );
     let mut names: Vec<String> = dependencies(&manifest)
         .into_iter()
         .map(str::to_owned)
@@ -69,7 +78,7 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
     // the allocation audit, which only a test build turns on; a proxy reaches only its own
     // group's crates, so its exemption covers no call of another group.
     assert_eq!(
-        crate_dependencies("campfire-common"),
+        crate_dependencies("base/common"),
         ["backtrace", "derive_more", "serde", "thiserror"]
     );
     let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
@@ -92,10 +101,10 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
 #[test]
 fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     // Design 02's module table names each module in its first column and its status in the
-    // second; a built module's crate is `campfire-<module>` in `crates/` or `checks/`.
+    // second; a built module's crate is `campfire-<module>`, in a folder of `crates/` or `checks/`.
     let design = read(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../../docs/design/02-engine-core.md"
+        "/../../../../docs/design/02-engine-core.md"
     ));
     let table = design
         .lines()
@@ -246,7 +255,7 @@ const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "al
 /// Every proxy crate, each the owner of one group of the bans.
 const PROXIES: [Proxy; 3] = [
     Proxy {
-        dir: "campfire-store",
+        dir: "base/store",
         lints: &LINTS,
         methods: &STORAGE_METHODS,
         types: &STORAGE_TYPES,
@@ -261,7 +270,7 @@ const PROXIES: [Proxy; 3] = [
         names: &["std::fs", "std::thread", "tempfile::"],
     },
     Proxy {
-        dir: "campfire-codec",
+        dir: "base/codec",
         lints: &LINTS,
         methods: &CODEC_METHODS,
         types: &CODEC_TYPES,
@@ -276,7 +285,7 @@ const PROXIES: [Proxy; 3] = [
         names: &["postcard::", "serde_json::", "toml::", "postcard_utils"],
     },
     Proxy {
-        dir: "campfire-schedule",
+        dir: "base/schedule",
         lints: &[LINTS[0]],
         methods: &SCHEDULE_METHODS,
         types: &[],
@@ -406,25 +415,72 @@ fn foreign_names(proxy: &Proxy, text: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// The crates of the workspace, each by its name, with the text of its manifest.
-fn manifests() -> Vec<(String, String)> {
-    let source = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+/// A crate of the workspace: its folder's name, its package's name, and its manifest's text.
+#[derive(Debug)]
+struct Crate {
+    folder: String,
+    name: String,
+    manifest: String,
+}
+
+/// The crates of the workspace, by their packages' names: each folder of `crates/` and `checks/`
+/// that holds a `Cargo.toml`, at any depth of the groups, as a crate's folder may hold other
+/// crates' folders beside its own `src/`.
+fn crates() -> Vec<Crate> {
     let mut found = Vec::new();
-    for folder in ["crates", "checks"] {
-        for entry in DirEntries::read(&source.join(folder)).unwrap() {
-            if entry.kind != EntryKind::Dir {
-                continue;
-            }
-            let dir = source.join(folder).join(&entry.name);
-            let manifest = |inner: &DirEntry| inner.name == "Cargo.toml";
-            if DirEntries::read(&dir).unwrap().iter().any(manifest) {
-                let text = read(dir.join("Cargo.toml").to_str().unwrap());
-                found.push((entry.name.into_string().unwrap(), text));
-            }
+    let mut folders = vec![source().join("crates"), source().join("checks")];
+    while let Some(dir) = folders.pop() {
+        let entries = DirEntries::read(&dir).unwrap();
+        if entries
+            .iter()
+            .any(|inner: &DirEntry| inner.name == "Cargo.toml")
+        {
+            let manifest = read(dir.join("Cargo.toml").to_str().unwrap());
+            found.push(Crate {
+                folder: dir.file_name().unwrap().to_str().unwrap().to_owned(),
+                name: package_name(&manifest).to_owned(),
+                manifest,
+            });
         }
+        let own = ["src", "tests", "benches", "examples"];
+        folders.extend(
+            entries
+                .iter()
+                .filter(|entry| entry.kind == EntryKind::Dir)
+                .filter(|entry| !own.iter().any(|name| entry.name == *name))
+                .map(|entry| dir.join(&entry.name)),
+        );
     }
-    found.sort_unstable();
+    found.sort_unstable_by(|a, b| a.name.cmp(&b.name));
     found
+}
+
+/// The crates of the workspace, each by its package's name, with the text of its manifest.
+fn manifests() -> Vec<(String, String)> {
+    crates()
+        .into_iter()
+        .map(|krate| (krate.name, krate.manifest))
+        .collect()
+}
+
+#[test]
+fn each_crates_folder_is_its_package_name_without_the_prefix() {
+    let misnamed: Vec<String> = crates()
+        .into_iter()
+        .filter(|krate| krate.name.strip_prefix("campfire-") != Some(krate.folder.as_str()))
+        .map(|krate| format!("{} in {}", krate.name, krate.folder))
+        .collect();
+    assert_eq!(misnamed, Vec::<String>::new());
+}
+
+/// The package's name the manifest `manifest` gives.
+fn package_name(manifest: &str) -> &str {
+    let line = section(manifest, "package")
+        .find(|line| line.starts_with("name ") || line.starts_with("name="))
+        .expect("a manifest names its package");
+    line.split('"')
+        .nth(1)
+        .expect("a package's name is a string")
 }
 
 /// The lines of `manifest`'s section `[name]`, past its header.
@@ -543,10 +599,9 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
 /// Each Rust source file of the workspace's crates and checks, by its path under `source/`,
 /// with its text.
 fn sources() -> Vec<SourceFile> {
-    let source = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
     let mut read = Vec::new();
     for folder in ["crates", "checks"] {
-        for file in SourceFiles::under(&source.join(folder)) {
+        for file in SourceFiles::under(&source().join(folder)) {
             read.push(SourceFile {
                 path: format!("{folder}/{}", file.path),
                 ..file
@@ -558,7 +613,7 @@ fn sources() -> Vec<SourceFile> {
 
 #[test]
 fn each_banned_call_goes_through_its_proxy_alone() {
-    let clippy = read(concat!(env!("CARGO_MANIFEST_DIR"), "/../../clippy.toml"));
+    let clippy = read(source().join("clippy.toml").to_str().unwrap());
     let sources = sources();
     for proxy in &PROXIES {
         let methods = unlisted(&clippy, "disallowed-methods", proxy.methods);
@@ -608,7 +663,7 @@ fn each_banned_call_goes_through_its_proxy_alone() {
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).
-const PLATFORM: &str = "crates/campfire-store/src/platform/";
+const PLATFORM: &str = "crates/base/store/src/platform/";
 
 /// The words of a condition that name an OS, or the vendor or the toolchain environment that
 /// stand for one, which only `PLATFORM` may test.
@@ -705,7 +760,7 @@ fn only_the_platform_module_names_an_os() {
         .iter()
         .filter(|file| file.path.starts_with(PLATFORM) && !os_names(&file.text).is_empty())
         .map(|file| file.path.as_str());
-    assert!(platform.any(|path| path == "crates/campfire-store/src/platform/mod.rs"));
+    assert!(platform.any(|path| path == "crates/base/store/src/platform/mod.rs"));
 }
 
 #[test]
@@ -783,24 +838,16 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         // A proxy's root, of the lints it exempts: `store`'s and `codec`'s of both, `schedule`'s
         // of the methods' alone; another of its files, or a statement anywhere, is found.
         (
-            "crates/campfire-store/src/lib.rs",
+            "crates/base/store/src/lib.rs",
             format!("#![expect(\n    {methods},\n    {types},\n    reason = \"r\"\n)]\n"),
             vec![],
         ),
-        ("crates/campfire-codec/src/lib.rs", inner(types), vec![]),
-        ("crates/campfire-schedule/src/lib.rs", inner(types), vec![1]),
+        ("crates/base/codec/src/lib.rs", inner(types), vec![]),
+        ("crates/base/schedule/src/lib.rs", inner(types), vec![1]),
+        ("crates/base/schedule/src/lib.rs", inner(methods), vec![]),
+        ("crates/base/codec/src/binary.rs", inner(methods), vec![1]),
         (
-            "crates/campfire-schedule/src/lib.rs",
-            inner(methods),
-            vec![],
-        ),
-        (
-            "crates/campfire-codec/src/binary.rs",
-            inner(methods),
-            vec![1],
-        ),
-        (
-            "crates/campfire-sim/src/sim_update/mod.rs",
+            "crates/sim/sim/src/sim_update/mod.rs",
             format!("{}let x = 1;\n", expect(methods)),
             vec![1],
         ),
@@ -831,7 +878,7 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         ),
         // An `allow`, even in `store`; a mention is no attribute.
         (
-            "crates/campfire-store/src/lib.rs",
+            "crates/base/store/src/lib.rs",
             format!("#![allow({methods})]\n"),
             vec![1],
         ),
@@ -1101,7 +1148,7 @@ fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
     // to the module's type. Test code counts, as these traits lived in it; this file holds a
     // source of each form for the check's own test.
     let mut found = Vec::new();
-    let own = "crates/campfire-common/src/tests.rs";
+    let own = "crates/base/common/src/tests.rs";
     for file in sources().into_iter().filter(|file| file.path != own) {
         for (line, name) in refused_traits(&file.text) {
             found.push(format!("{}:{line} {name}", file.path));
