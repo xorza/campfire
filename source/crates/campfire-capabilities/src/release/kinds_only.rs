@@ -10,6 +10,7 @@ use crate::declare::callbacks::Callbacks;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
@@ -66,6 +67,8 @@ impl<V: KindVisitor> Declarations for KindsOnly<'_, V> {
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
     fn book<B: Book>(&mut self) {}
+
+    fn sets<S: ModuleSet>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {}
 

@@ -2,13 +2,15 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::Vec3;
-use campfire_sim::{Capability, Position, SimSet, StableId};
+use campfire_sim::{Capability, Position, SimPlace, SimSet, StableId};
 
-use crate::combat::CombatSet;
+use crate::actions::ActionsSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
 use crate::declare::scratch::Scratch;
+use crate::declare::set_order::SetOrder;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::deliverers::Deliverers;
 use crate::deliveries::deliveries_api::DeliveriesApi;
@@ -34,14 +36,38 @@ pub(crate) struct Deliveries {
     pub(crate) ended: Vec<Entity>,
 }
 
-/// The systems that move the deliveries of actions and find what they reach, in Hit before
-/// attacks strike, in this order; their hooks run after them.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum DeliverySet {
-    /// Projectiles fly.
-    Fly,
-    /// Areas trigger and end.
-    Trigger,
+campfire_common::enum_all! {
+    /// The steps that move the deliveries of actions and find what they reach, in this order,
+    /// before their hooks run in `ActionsSet::Deliver`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum DeliverySet {
+        /// Projectiles fly.
+        Fly,
+        /// Areas trigger and end.
+        Trigger,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for DeliverySet {
+    const CAPABILITY: Option<Capability> = None;
+    const ALL: &'static [DeliverySet] = &DeliverySet::ALL;
+
+    fn place(self) -> SimPlace {
+        SimPlace::Stage(SimSet::Hit)
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            DeliverySet::Fly => {
+                o.before(DeliverySet::Trigger);
+            }
+            DeliverySet::Trigger => {
+                o.before(ActionsSet::Deliver);
+            }
+        }
+    }
 }
 
 impl Module for Deliveries {
@@ -49,37 +75,23 @@ impl Module for Deliveries {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<DeliverySet>();
         d.scratch::<Deliveries>();
         d.api(DeliveriesApi::register);
     }
 
     /// Adds the deliveries' hooks to a match whose modules call for them, as a module that sets a
-    /// delivery out or calls one does: after the `DeliverySet`s, before attacks pay their toggles
-    /// and strike.
+    /// delivery out or calls one does: in `ActionsSet::Deliver`, after the `DeliverySet`s.
     fn install(cx: &mut InstallCx<'_>) {
         if !cx.calls_for::<Deliverers>() {
             return;
         }
-        cx.schedule.configure_sets(
-            (DeliverySet::Fly, DeliverySet::Trigger)
-                .chain()
-                .in_set(SimSet::Hit)
-                .before(CombatSet::Pay),
-        );
         if cx.scripts() {
-            cx.schedule.add_systems(
-                DeliveryHooks::deliver
-                    .in_set(SimSet::Hit)
-                    .after(DeliverySet::Trigger)
-                    .before(CombatSet::Pay),
-            );
+            cx.schedule
+                .add_systems(DeliveryHooks::deliver.in_set(ActionsSet::Deliver));
         } else {
-            cx.schedule.add_systems(
-                DeliveryHooks::end
-                    .in_set(SimSet::Hit)
-                    .after(DeliverySet::Trigger)
-                    .before(CombatSet::Pay),
-            );
+            cx.schedule
+                .add_systems(DeliveryHooks::end.in_set(ActionsSet::Deliver));
         }
     }
 }

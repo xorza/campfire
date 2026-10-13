@@ -18,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 use crate::host_rule::OnAny;
 use crate::sim_state::{SimComponent, SimResource};
+use crate::sim_update::sim_place::SimPlace;
 use crate::sim_world::internals::SimWorldInternals;
 use crate::stable_id::StableId;
 use crate::state_registry::StateRegistry;
@@ -373,12 +374,13 @@ fn a_system_in_no_stage_and_no_edge_is_found() {
             outside: &["push"],
         },
     ];
+    let places = SimPlace::ALL.map(SimPlace::set);
     for PlacementCase { name, add, outside } in cases {
         let mut world = new_world(SEED);
         let mut schedule = SimUpdate::schedule();
         add(&mut schedule);
         world.add_schedule(schedule);
-        assert_eq!(world.systems_outside_stages(), outside, "{name}");
+        assert_eq!(world.systems_outside(&places), outside, "{name}");
     }
 }
 

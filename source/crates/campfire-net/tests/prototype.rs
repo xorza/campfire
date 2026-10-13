@@ -7,10 +7,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{
-    Action, ActionSlots, CombatWorld, DashTo, Dead, Destination, ForcedMove, Life, MapBook,
-    MatchResult, ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources,
-    PlayersWorld, PoolId, Projectile, Relation, Relations, ResourceId, Respawn, StateValue,
-    SyncAll, SyncNone, Team, UnitsWorld,
+    Action, ActionSlots, DashTo, Dead, Destination, ForcedMove, Life, MapBook, MatchResult,
+    ModeState, ModeWorld, Modifiers, MoveStep, Order, Owner, PlayerResources, PlayersWorld, PoolId,
+    Projectile, Relation, Relations, ResourceId, Respawn, StateValue, StatsWorld, SyncAll,
+    SyncNone, Team, UnitsWorld,
 };
 use campfire_capabilities::{DeclaredName, Names, Stats, Units};
 use campfire_common::{PlayerSlot, Tick, Ticks};

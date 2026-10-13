@@ -1,9 +1,11 @@
-use bevy_ecs::schedule::IntoScheduleConfigs;
-use campfire_sim::{Capability, SimSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::units::by_type::ByType;
 use crate::units::unit_entity::UnitEntity;
 use crate::vision::reveals::Reveals;
@@ -39,11 +41,40 @@ pub(crate) mod vision_groups;
 #[derive(Debug)]
 pub struct Vision;
 
+campfire_common::enum_all! {
+    /// The steps of `vision`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum VisionSet {
+        /// Each team marks what it may see.
+        See,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for VisionSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Vision);
+    const ALL: &'static [VisionSet] = &VisionSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            VisionSet::See => SimPlace::Stage(SimSet::Vision),
+        }
+    }
+
+    fn order(self, _: &mut SetOrder) {
+        match self {
+            VisionSet::See => {}
+        }
+    }
+}
+
 impl Module for Vision {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<VisionSet>();
         d.resource::<Reveals>();
         d.component::<SeenBy>();
         d.component::<Sight>();
@@ -61,7 +92,7 @@ impl Module for Vision {
     /// the server sends them, and reveals nothing.
     fn install(cx: &mut InstallCx<'_>) {
         if !cx.predicting() {
-            cx.schedule.add_systems(Seeing::see.in_set(SimSet::Vision));
+            cx.schedule.add_systems(Seeing::see.in_set(VisionSet::See));
         }
     }
 }

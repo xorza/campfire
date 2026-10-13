@@ -4,8 +4,8 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{Keyed, Ordered, Position, StableId};
 
+use crate::actions::shot_hits::ShotHits;
 use crate::actions::targets::{TargetKey, Targets};
-use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::deliveries::teleported::Teleported;
 use crate::geometry::fraction::Fraction;
@@ -38,14 +38,14 @@ impl Flying {
     }
 
     /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. An
-    /// attack's hit deals its damage; an action's hits and ends run its hooks, and an ended
-    /// projectile despawns after them. A line's hits are kept while it flies, and a cast's, for a
-    /// type that strikes a unit once a cast, while any of its projectiles flies.
+    /// attack's hit joins the tick's shot hits; an action's hits and ends run its hooks, and an
+    /// ended projectile despawns after them. A line's hits are kept while it flies, and a cast's,
+    /// for a type that strikes a unit once a cast, while any of its projectiles flies.
     pub(super) fn fly(
         targets: Targets<'_, '_>,
         specs: Res<'_, ByType<ProjectileSpec>>,
-        (mut queue, mut deliveries, mut struck): (
-            ResMut<'_, PassQueue>,
+        (mut hits, mut deliveries, mut struck): (
+            ResMut<'_, ShotHits>,
             ResMut<'_, Deliveries>,
             ResMut<'_, StruckUnits>,
         ),
@@ -78,7 +78,7 @@ impl Flying {
             grid.rebuild(targets.placed());
         }
         let mut flights = Flights {
-            queue: &mut queue,
+            hits: &mut hits,
             deliveries: &mut deliveries,
             struck: &mut struck,
             grid: &grid,

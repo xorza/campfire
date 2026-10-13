@@ -4,12 +4,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{Capability, Position, SimEdge, SimSet};
+use campfire_sim::{Capability, Position, SimEdge, SimPlace, SimSet};
 
 use crate::actions::effect_queues::EffectQueues;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::geometry::grid::Grid;
 use crate::geometry::shape::Shape;
 use crate::navigation::body_index::BodyIndex;
@@ -74,12 +76,44 @@ pub(crate) mod walking;
 pub(crate) mod wall;
 pub(crate) mod walls;
 
-/// The systems of `navigation`, for the systems of other capabilities to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum NavigationSet {
-    /// In `SimSet::Inputs`: the static index and the pathing grid take the static bodies as the
-    /// tick starts.
-    TrackStatics,
+campfire_common::enum_all! {
+    /// Navigation's steps, for the capabilities built on it to order theirs against.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum NavigationSet {
+        /// The static index and the pathing grid take the static bodies as the tick starts.
+        TrackStatics,
+        /// Units route and move.
+        Move,
+        /// The static bodies are taken again, and walkers collide.
+        Collide,
+        /// The units out of the map's bounds come back in.
+        Bounds,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for NavigationSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
+    const ALL: &'static [NavigationSet] = &NavigationSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            NavigationSet::TrackStatics => SimPlace::Stage(SimSet::Inputs),
+            NavigationSet::Move => SimPlace::Stage(SimSet::Move),
+            NavigationSet::Collide => SimPlace::Stage(SimSet::Collide),
+            NavigationSet::Bounds => SimPlace::Edge(SimEdge::After(SimSet::Collide)),
+        }
+    }
+
+    fn order(self, _: &mut SetOrder) {
+        match self {
+            NavigationSet::TrackStatics
+            | NavigationSet::Move
+            | NavigationSet::Collide
+            | NavigationSet::Bounds => {}
+        }
+    }
 }
 
 /// The `navigation` capability: units that walk routes to a destination, the map's waypoint
@@ -92,6 +126,7 @@ impl Module for Navigation {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<NavigationSet>();
         d.component::<Destination>();
         d.component::<PathWalker>();
         d.component::<OnPath>();
@@ -131,9 +166,7 @@ impl Module for Navigation {
         let run = world.register_system(RoomMaking::make_room);
         world.insert_resource(RoomMakingRun(run));
         schedule.add_systems((
-            StaticTracking::track_static_bodies
-                .in_set(SimSet::Inputs)
-                .in_set(NavigationSet::TrackStatics),
+            StaticTracking::track_static_bodies.in_set(NavigationSet::TrackStatics),
             (
                 Walking::forget_dead,
                 Routing::route_units,
@@ -143,11 +176,11 @@ impl Module for Navigation {
                 ForcedMoves::force_units,
             )
                 .chain()
-                .in_set(SimSet::Move),
+                .in_set(NavigationSet::Move),
             (StaticTracking::track_static_bodies, Walking::collide)
                 .chain()
-                .in_set(SimSet::Collide),
-            Walking::keep_in_bounds.in_set(SimEdge::After(SimSet::Collide)),
+                .in_set(NavigationSet::Collide),
+            Walking::keep_in_bounds.in_set(NavigationSet::Bounds),
         ));
     }
 }

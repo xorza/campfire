@@ -1,6 +1,6 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_math::RngStream;
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::actions::ActionsSet;
 use crate::actions::effect_queues::EffectQueues;
@@ -21,10 +21,12 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::combat::shots::Shots;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
+use crate::deliveries::DeliverySet;
 use crate::scripts::ctx::Ctx;
 use crate::stats::StatsSet;
 use crate::stats::life::Life;
@@ -42,7 +44,6 @@ pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_hooks;
-pub(crate) mod combat_world;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_pass;
@@ -61,7 +62,6 @@ pub(crate) mod pass_queue;
 pub(crate) mod recent_attack;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
-pub(crate) mod shots;
 pub(crate) mod wielded;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -71,29 +71,83 @@ pub(crate) const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 #[derive(Debug)]
 pub struct Combat;
 
-/// Combat's systems, for the capabilities built on it to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum CombatSet {
-    /// In `SimSet::Inputs`: dead units whose respawn is due come back, before any input of the
-    /// tick can reach them.
-    Respawn,
-    /// In `SimSet::Act`: attacks start, and targets that are gone are dropped.
-    Attack,
-    /// In `SimSet::Hit`: the attacks going off pay the toggles that cost an attack.
-    Pay,
-    /// In `SimSet::Hit`, after `Pay`: windups that end strike, or fire, each with its roll drawn.
-    Strike,
-    /// In `SimSet::Hit`, after `Strike`: the tick's shots become launches, before any cast
-    /// delivers.
-    Fire,
-    /// In `SimSet::Hit`, after `Fire`: the tick's launches take off.
-    Launch,
-    /// In `SimSet::Hit`, after `Launch`: modifiers' intervals come.
-    Interval,
-    /// In `SimSet::Resolve`: the tick's damage is dealt.
-    Damage,
-    /// In `SimSet::Resolve`, after `Damage`: units at zero life die.
-    Die,
+campfire_common::enum_all! {
+    /// Combat's steps, for the capabilities built on it to order theirs against.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum CombatSet {
+        /// Dead units whose respawn is due come back, before any input of the tick can reach
+        /// them.
+        Respawn,
+        /// Attacks start, and targets that are gone are dropped.
+        Attack,
+        /// After the projectiles fly and before areas trigger: the hits of the attacks'
+        /// projectiles queue their damage.
+        Hits,
+        /// The attacks going off pay the toggles that cost an attack.
+        Pay,
+        /// Windups that end strike, or fire, each with its roll drawn.
+        Strike,
+        /// Modifiers' intervals come.
+        Interval,
+        /// The tick's damage is dealt.
+        Damage,
+        /// Units at zero life die.
+        Die,
+        /// The dead whose type despawns go, after the Mode stage saw them.
+        Despawn,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for CombatSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Combat);
+    const ALL: &'static [CombatSet] = &CombatSet::ALL;
+
+    fn place(self) -> SimPlace {
+        SimPlace::Stage(match self {
+            CombatSet::Respawn => SimSet::Inputs,
+            CombatSet::Attack => SimSet::Act,
+            CombatSet::Hits | CombatSet::Pay | CombatSet::Strike | CombatSet::Interval => {
+                SimSet::Hit
+            }
+            CombatSet::Damage | CombatSet::Die => SimSet::Resolve,
+            CombatSet::Despawn => SimSet::Vision,
+        })
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            CombatSet::Respawn | CombatSet::Despawn => {}
+            CombatSet::Attack => {
+                o.before(ActionsSet::Start);
+            }
+            CombatSet::Hits => {
+                o.after(DeliverySet::Fly)
+                    .before(DeliverySet::Trigger)
+                    .before(ActionsSet::Deliver);
+            }
+            CombatSet::Pay => {
+                o.after(ActionsSet::Deliver)
+                    .before(ActionsSet::HoldAtStrike);
+            }
+            CombatSet::Strike => {
+                o.after(CombatSet::Pay)
+                    .after(StatsSet::GrantAtStrike)
+                    .before(ActionsSet::Fire);
+            }
+            CombatSet::Interval => {
+                o.after(ActionsSet::Land);
+            }
+            CombatSet::Damage => {
+                o.before(ActionsSet::Resolve);
+            }
+            CombatSet::Die => {
+                o.after(StatsSet::GrantAtResolve)
+                    .before(StatsSet::ClearDead);
+            }
+        }
+    }
 }
 
 impl Module for Combat {
@@ -101,13 +155,13 @@ impl Module for Combat {
     const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<CombatSet>();
         d.component::<Kept>();
         d.component::<Life>();
         d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<Respawn>();
         d.scratch::<PassQueue>();
-        d.scratch::<Shots>();
         d.report::<Deaths>();
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
@@ -144,50 +198,25 @@ impl Module for Combat {
             events,
             ..CombatHooks::default()
         });
-        schedule.configure_sets((
-            CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
-            CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
-            CombatSet::Attack
-                .in_set(SimSet::Act)
-                .before(ActionsSet::Start),
-            CombatSet::Damage.before(ActionsSet::HoldAtResolve),
-            CombatSet::Die
-                .after(ActionsSet::HoldAtResolve)
-                .before(StatsSet::Hold),
-            CombatSet::Pay
-                .in_set(SimSet::Hit)
-                .before(ActionsSet::HoldAtStrike)
-                .before(CombatSet::Strike),
-            CombatSet::Strike.after(ActionsSet::HoldAtStrike),
-        ));
         schedule.add_systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
+            Attacks::take_hits.in_set(CombatSet::Hits),
             Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
             (Attacks::attack_events, Attacks::strike)
                 .chain()
-                .in_set(SimSet::Hit)
                 .in_set(CombatSet::Strike),
-            ModifierIntervals::run_intervals
-                .in_set(SimSet::Hit)
-                .in_set(CombatSet::Interval)
-                .after(CombatSet::Launch),
-            (
-                DamagePass::run.in_set(CombatSet::Damage),
-                Dying::die.in_set(CombatSet::Die),
-            )
-                .chain()
-                .in_set(SimSet::Resolve),
-            Dying::respawn
-                .in_set(SimSet::Inputs)
-                .in_set(CombatSet::Respawn),
+            ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
+            DamagePass::run.in_set(CombatSet::Damage),
+            Dying::die.in_set(CombatSet::Die),
         ));
-        if !predicting {
+        if predicting {
+            schedule.add_systems(Dying::respawn.in_set(CombatSet::Respawn));
+        } else {
             schedule.add_systems((
-                Dying::forget_attackers
-                    .in_set(SimSet::Inputs)
-                    .in_set(CombatSet::Respawn)
-                    .before(Dying::respawn),
-                Dying::despawn_dead.in_set(SimSet::Vision),
+                (Dying::forget_attackers, Dying::respawn)
+                    .chain()
+                    .in_set(CombatSet::Respawn),
+                Dying::despawn_dead.in_set(CombatSet::Despawn),
             ));
         }
     }

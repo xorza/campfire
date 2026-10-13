@@ -1,10 +1,12 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::actions::ActionsSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::navigation::NavigationSet;
 use crate::production::build_book::BuildBook;
 use crate::production::builder::Builder;
@@ -70,13 +72,49 @@ pub(crate) mod trains;
 #[derive(Debug)]
 pub struct Production;
 
-/// The systems of `production`, for the mode to order its own against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ProductionSet {
-    /// In `SimSet::Inputs`: the build orders that changed are checked, after the orders apply.
-    CheckBuilds,
-    /// In `SimSet::Mode`: the trains whose time ended spawn.
-    Finish,
+campfire_common::enum_all! {
+    /// The steps of `production`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ProductionSet {
+        /// The build orders that changed are checked, after the orders apply.
+        CheckBuilds,
+        /// After the actions start: trains start, builds start and workers gather.
+        Start,
+        /// Sites progress, and the trains whose time ended spawn.
+        Finish,
+        /// Each player's supply is counted again, and the emptied nodes go.
+        Supply,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ProductionSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const ALL: &'static [ProductionSet] = &ProductionSet::ALL;
+
+    fn place(self) -> SimPlace {
+        SimPlace::Stage(match self {
+            ProductionSet::CheckBuilds => SimSet::Inputs,
+            ProductionSet::Start => SimSet::Act,
+            ProductionSet::Finish => SimSet::Mode,
+            ProductionSet::Supply => SimSet::Vision,
+        })
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            ProductionSet::CheckBuilds => {
+                o.after(StatsSet::Regenerate)
+                    .after(NavigationSet::TrackStatics)
+                    .after(StatsSet::GrantAtInputs);
+            }
+            ProductionSet::Start => {
+                o.after(ActionsSet::Start);
+            }
+            ProductionSet::Finish | ProductionSet::Supply => {}
+        }
+    }
 }
 
 impl Module for Production {
@@ -84,6 +122,7 @@ impl Module for Production {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ProductionSet>();
         d.engine_tags(&[
             Production::CONSTRUCTING,
             Production::NODE,
@@ -159,43 +198,36 @@ impl Production {
         let navigation = cx.has(Capability::Navigation);
         let predicting = cx.predicting();
         let schedule = &mut *cx.schedule;
+        if !predicting {
+            schedule.add_systems(PlayerSupply::refresh.in_set(ProductionSet::Supply));
+        }
+        // A build places a box, which only navigation tests for room, and a worker walks.
+        if !navigation {
+            schedule.add_systems((
+                Trains::start_trains.in_set(ProductionSet::Start),
+                Trains::finish_trains.in_set(ProductionSet::Finish),
+            ));
+            return;
+        }
         schedule.add_systems((
-            Trains::start_trains
-                .in_set(SimSet::Act)
-                .after(ActionsSet::Start),
-            Trains::finish_trains
-                .in_set(SimSet::Mode)
+            (Construction::check_builds::<S>, GatherLoop::check_gathers)
+                .chain()
+                .in_set(ProductionSet::CheckBuilds),
+            (
+                Trains::start_trains,
+                Construction::forget_dead_builds,
+                Construction::start_builds::<S>,
+                GatherLoop::run,
+                GatherLoop::tag_gatherers,
+            )
+                .chain()
+                .in_set(ProductionSet::Start),
+            (Construction::progress_sites, Trains::finish_trains)
+                .chain()
                 .in_set(ProductionSet::Finish),
         ));
         if !predicting {
-            schedule.add_systems(PlayerSupply::refresh.in_set(SimSet::Vision));
-        }
-        // A build places a box, which only navigation tests for room, and a worker walks.
-        if navigation {
-            schedule.add_systems((
-                (Construction::check_builds::<S>, GatherLoop::check_gathers)
-                    .chain()
-                    .in_set(SimSet::Inputs)
-                    .in_set(ProductionSet::CheckBuilds)
-                    .after(StatsSet::Regenerate)
-                    .after(NavigationSet::TrackStatics)
-                    .after(ActionsSet::HoldAtInputs),
-                (
-                    Construction::forget_dead_builds,
-                    Construction::start_builds::<S>,
-                    GatherLoop::run,
-                    GatherLoop::tag_gatherers,
-                )
-                    .chain()
-                    .in_set(SimSet::Act)
-                    .after(Trains::start_trains),
-                Construction::progress_sites
-                    .in_set(SimSet::Mode)
-                    .before(ProductionSet::Finish),
-            ));
-            if !predicting {
-                schedule.add_systems(GatherLoop::despawn_empty_nodes.in_set(SimSet::Vision));
-            }
+            schedule.add_systems(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
         }
     }
 }

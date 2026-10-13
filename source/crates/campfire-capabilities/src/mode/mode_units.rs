@@ -5,9 +5,9 @@ use crate::mode::loadout_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
 use crate::mode::unit_type_setup::UnitTypeSetup;
 use crate::navigation::Navigation;
-use crate::stats::applier::Applier;
+use crate::stats::Stats;
+use crate::stats::grants::Grant;
 use crate::stats::lifetime::Hold;
-use crate::stats::stats_effect::StatsEffect;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::modifier_id::ModifierId;
@@ -50,19 +50,14 @@ impl ModeUnits {
         })
     }
 
-    /// Applies `passive` to the unit `id`, held from itself.
+    /// Grants `passive` to the unit `id`, held from itself.
     fn apply_passive(world: &mut World, id: StableId, passive: ModifierId) {
-        let applier = Applier {
-            source: Some(id),
+        let grant = Grant {
+            modifier: passive,
+            hold: Hold::Passive,
             action: None,
-            rank: Rank::FIRST,
-            hold: Some(Hold::Passive),
+            rank: Some(Rank::FIRST),
         };
-        let add = StatsEffect::Add {
-            target: id,
-            id: passive,
-            duration: None,
-        };
-        add.apply_by(world, applier);
+        Stats::grant(world, id, grant);
     }
 }

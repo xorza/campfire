@@ -1,9 +1,8 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::actions::shot_hits::{ShotHit, ShotHits};
 use crate::actions::targets::{TargetKey, Targets};
-use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::{Delivered, Reached};
 use crate::deliveries::delivering::Delivering;
@@ -22,7 +21,7 @@ use crate::values::hit::Hit;
 /// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
-    pub(crate) queue: &'a mut PassQueue,
+    pub(crate) hits: &'a mut ShotHits,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
     pub(crate) grid: &'a BodyGrid<TargetKey>,
@@ -206,8 +205,8 @@ impl Flights<'_> {
         true
     }
 
-    /// What a hit of `target` delivers: an attack's damage, its roll with it, or its action's
-    /// `on_hit`.
+    /// What a hit of `target` delivers: an attack's shot hit, with its damage and its roll, or its
+    /// action's `on_hit`.
     fn strike(&mut self, projectile: &Projectile, target: StableId, hit: Hit) {
         match projectile.payload() {
             Payload::Attack {
@@ -216,15 +215,15 @@ impl Flights<'_> {
                 amount,
                 kind,
                 roll,
-            } => self.queue.push_damage(Damage {
-                source: Some(projectile.source()),
+            } => self.hits.0.push(ShotHit {
+                source: projectile.source(),
                 target,
+                action,
+                rank,
                 amount,
                 kind,
-                cause: DamageCause::Attack { roll, rank },
-                action: Some(action),
-                depth: 0,
-                hit: Some(hit),
+                roll,
+                hit,
             }),
             Payload::Action {
                 action,

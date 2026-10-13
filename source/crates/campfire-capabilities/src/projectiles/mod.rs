@@ -3,12 +3,12 @@ use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, StableId};
 
+use crate::actions::ActionsSet;
 use crate::actions::action::Aim;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_range::ActionRange;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::{Delivery, DeliveryShape};
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
@@ -73,8 +73,8 @@ impl Module for Projectiles {
         cx.world.add_observer(Flying::lose_teleported);
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
-            Launching::take_shots.in_set(CombatSet::Fire),
-            Launching::launch.in_set(CombatSet::Launch),
+            Launching::take_shots.in_set(ActionsSet::Fire),
+            Launching::launch.in_set(ActionsSet::Launch),
         ));
         if !predicting {
             schedule.add_systems(Flying::fly.in_set(DeliverySet::Fly));

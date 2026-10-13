@@ -5,12 +5,14 @@ use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimPlace, SimSet, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_book::ScriptBook;
@@ -133,11 +135,38 @@ pub(crate) mod view;
 pub(crate) mod view_column;
 pub(crate) mod view_names;
 
-/// The core's systems, for the capabilities above it to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum UnitsSet {
-    /// In `SimSet::Inputs`: every pool starts full.
-    BeginTick,
+campfire_common::enum_all! {
+    /// The core's steps, for the capabilities above it to order theirs against.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum UnitsSet {
+        /// Every pool starts full.
+        BeginTick,
+        /// The units whose lifespan ended despawn.
+        EndLifespans,
+        /// The script states of units that never spawned are dropped.
+        DropUnspawned,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for UnitsSet {
+    const CAPABILITY: Option<Capability> = None;
+    const ALL: &'static [UnitsSet] = &UnitsSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            UnitsSet::BeginTick => SimPlace::Stage(SimSet::Inputs),
+            UnitsSet::EndLifespans => SimPlace::Stage(SimSet::Vision),
+            UnitsSet::DropUnspawned => SimPlace::Edge(SimEdge::After(SimSet::Vision)),
+        }
+    }
+
+    fn order(self, _: &mut SetOrder) {
+        match self {
+            UnitsSet::BeginTick | UnitsSet::EndLifespans | UnitsSet::DropUnspawned => {}
+        }
+    }
 }
 
 /// The core under every capability's scripts: unit types, the script host they run in, and the
@@ -151,6 +180,7 @@ impl Module for Units {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<UnitsSet>();
         d.engine_tags(&[Units::AVATAR]);
         Units::kinds(d);
         d.component::<Body>();
@@ -213,11 +243,9 @@ impl Module for Units {
         });
         if cx.scripts() {
             cx.schedule.add_systems((
-                UnitTicks::begin_tick
-                    .in_set(SimSet::Inputs)
-                    .in_set(UnitsSet::BeginTick),
-                UnitTicks::end_lifespans.in_set(SimSet::Vision),
-                UnitTicks::drop_unspawned_states.in_set(SimEdge::After(SimSet::Vision)),
+                UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
+                UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
+                UnitTicks::drop_unspawned_states.in_set(UnitsSet::DropUnspawned),
             ));
         }
     }

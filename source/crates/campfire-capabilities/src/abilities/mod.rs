@@ -1,7 +1,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::Ticks;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{Capability, SimSet, TickRate};
+use campfire_sim::{Capability, SimPlace, SimSet, TickRate};
 
 use crate::abilities::abilities_api::AbilitiesApi;
 use crate::abilities::cast_spends::CastSpends;
@@ -15,6 +15,8 @@ use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::deliveries::deliverers::Deliverers;
 use crate::items::inventory::Inventory;
 use crate::stats::StatsSet;
@@ -34,11 +36,42 @@ pub(crate) mod toggles;
 #[derive(Debug)]
 pub struct Abilities;
 
-/// The systems of `abilities`, for the capabilities built on it to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum AbilitiesSet {
-    /// In `SimSet::Inputs`, before the holds follow: toggles pay their seconds or turn off.
-    Toggles,
+campfire_common::enum_all! {
+    /// The steps of `abilities`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum AbilitiesSet {
+        /// Before the holds follow: toggles pay their seconds or turn off.
+        Toggles,
+        /// After attacks strike and before the tick's projectiles launch: due casts resolve.
+        Resolve,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for AbilitiesSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
+    const ALL: &'static [AbilitiesSet] = &AbilitiesSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            AbilitiesSet::Toggles => SimPlace::Stage(SimSet::Inputs),
+            AbilitiesSet::Resolve => SimPlace::Stage(SimSet::Hit),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            AbilitiesSet::Toggles => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .before(ActionsSet::HoldAtInputs);
+            }
+            AbilitiesSet::Resolve => {
+                o.after(ActionsSet::Fire).before(ActionsSet::Launch);
+            }
+        }
+    }
 }
 
 impl Module for Abilities {
@@ -46,6 +79,7 @@ impl Module for Abilities {
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<AbilitiesSet>();
         d.calls::<Deliverers>();
         d.calls::<CastSpends>();
         d.api(AbilitiesApi::register);
@@ -60,33 +94,20 @@ impl Module for Abilities {
     fn install(cx: &mut InstallCx<'_>) {
         let scripts = cx.scripts();
         let schedule = &mut *cx.schedule;
-        schedule.add_systems(
-            Casts::start_casts
-                .in_set(SimSet::Act)
-                .in_set(ActionsSet::Start),
-        );
+        schedule.add_systems(Casts::start_casts.in_set(ActionsSet::Start));
         if !scripts {
             schedule.add_systems(
                 (Casts::predict_casts, Channels::predict_channels)
                     .chain()
-                    .in_set(SimSet::Hit)
-                    .after(CombatSet::Fire)
-                    .before(CombatSet::Launch),
+                    .in_set(AbilitiesSet::Resolve),
             );
             return;
         }
         schedule.add_systems((
             (Casts::resolve_casts, Channels::run_channels)
                 .chain()
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Fire)
-                .before(CombatSet::Launch),
-            Toggles::run_toggles
-                .in_set(SimSet::Inputs)
-                .in_set(AbilitiesSet::Toggles)
-                .after(StatsSet::Regenerate)
-                .after(CombatSet::Respawn)
-                .before(ActionsSet::HoldAtInputs),
+                .in_set(AbilitiesSet::Resolve),
+            Toggles::run_toggles.in_set(AbilitiesSet::Toggles),
         ));
     }
 }

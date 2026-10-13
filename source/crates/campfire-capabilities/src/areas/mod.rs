@@ -1,7 +1,8 @@
-use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, Position, SimSet, StableId};
+use campfire_sim::{Capability, Position, SimPlace, SimSet, StableId};
 
+use crate::actions::ActionsSet;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::delivery::Delivery;
 use crate::actions::effect_queues::EffectQueues;
@@ -13,10 +14,11 @@ use crate::areas::area_spec::AreaSpec;
 use crate::areas::area_trigger::AreaTrigger;
 use crate::areas::areas_api::AreasApi;
 use crate::areas::areas_effect::AreasEffect;
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::deliveries::DeliverySet;
 use crate::deliveries::deliverers::{Deliverers, DeliveryKind};
 use crate::deliveries::delivering::Delivering;
@@ -43,11 +45,43 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub struct Areas;
 
+campfire_common::enum_all! {
+    /// The steps of `areas`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum AreasSet {
+        /// After the dead units' modifiers end and before stats hold: each area lists those it
+        /// holds on the units inside.
+        HoldInside,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for AreasSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Areas);
+    const ALL: &'static [AreasSet] = &AreasSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            AreasSet::HoldInside => SimPlace::Stage(SimSet::Resolve),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            AreasSet::HoldInside => {
+                o.after(StatsSet::ClearDead).before(StatsSet::Hold);
+            }
+        }
+    }
+}
+
 impl Module for Areas {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const NEEDS: &'static [Capability] = &[Capability::Combat];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<AreasSet>();
         d.engine_tags(&[Areas::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
@@ -71,18 +105,9 @@ impl Module for Areas {
             schedule.add_systems(AreaLife::trigger.in_set(DeliverySet::Trigger));
         }
         schedule.add_systems((
-            AreaLife::land
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Launch)
-                .before(CombatSet::Interval),
-            AreaLife::land
-                .in_set(SimSet::Resolve)
-                .after(CombatSet::Damage)
-                .before(CombatSet::Die),
-            AreaHolds::hold_inside
-                .in_set(SimSet::Resolve)
-                .after(CombatSet::Die)
-                .before(StatsSet::Hold),
+            AreaLife::land.in_set(ActionsSet::Land),
+            AreaLife::land.in_set(ActionsSet::Resolve),
+            AreaHolds::hold_inside.in_set(AreasSet::HoldInside),
         ));
     }
 }

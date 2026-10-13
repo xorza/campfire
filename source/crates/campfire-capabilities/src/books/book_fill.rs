@@ -14,6 +14,7 @@ use crate::declare::capability_set::CapabilitySet;
 use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
@@ -80,6 +81,8 @@ impl Declarations for BookFill<'_> {
             Books::load(self.world, book);
         }
     }
+
+    fn sets<S: ModuleSet>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {}
 

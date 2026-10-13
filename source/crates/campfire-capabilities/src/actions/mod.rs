@@ -1,5 +1,5 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
@@ -8,11 +8,15 @@ use crate::actions::actions_column::{ActionsColumn, RowReads};
 use crate::actions::effect_list_book::EffectListBook;
 use crate::actions::effect_queues::EffectQueues;
 use crate::actions::holds::Holds;
+use crate::actions::shot_hits::ShotHits;
+use crate::actions::shots::Shots;
 use crate::actions::slot_kind_book::SlotKindBook;
 use crate::actions::slot_times::SlotTimes;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::stats::StatsSet;
 use crate::stats::param_book::ParamBook;
 use crate::units::body_unit::BodyUnit;
@@ -62,6 +66,8 @@ pub(crate) mod rank_fields;
 pub(crate) mod rank_values;
 pub(crate) mod ready_waits;
 pub(crate) mod requires_data;
+pub(crate) mod shot_hits;
+pub(crate) mod shots;
 pub(crate) mod slot_aim;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kind_book;
@@ -76,21 +82,90 @@ pub(crate) mod weapon;
 #[derive(Debug)]
 pub struct Actions;
 
-/// The systems of the action pipeline, for the capabilities built on it to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ActionsSet {
-    /// In `SimSet::Act`, after attacks start: what each unit was ordered starts, each kind's
-    /// orders by the capability that runs the kind.
-    Start,
-    /// In `SimSet::Inputs`, once the tick's orders and expiries are in: passives hold as the
-    /// slots stand.
-    HoldAtInputs,
-    /// In `SimSet::Resolve`, once the tick's damage is dealt and before units die: passives hold
-    /// as the slots stand.
-    HoldAtResolve,
-    /// In `SimSet::Hit`, once the attacks going off paid their toggles and before their events:
-    /// holds follow the toggles an unpaid cost turned off.
-    HoldAtStrike,
+campfire_common::enum_all! {
+    /// The steps of the action pipeline, which every capability that acts orders its systems
+    /// against. They name no capability: each capability places its own steps between them.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ActionsSet {
+        /// After attacks start: what each unit was ordered starts, each kind's orders by the
+        /// capability that runs the kind.
+        Start,
+        /// Once the deliveries flew and triggered: their hits and ends run their actions' hooks.
+        Deliver,
+        /// Once the attacks going off struck: the tick's shots become launches.
+        Fire,
+        /// Once the due casts resolved: the tick's launches take off.
+        Launch,
+        /// The tick's areas land.
+        Land,
+        /// Once the tick's damage is dealt and before units die: what the damage launched lands,
+        /// and the sources push what the tick spent.
+        Resolve,
+        /// Once the tick's orders and expiries are in: passives and holds push their grants.
+        HoldAtInputs,
+        /// Once the attacks going off paid their toggles and before they strike: holds push the
+        /// grants of the toggles an unpaid cost turned off.
+        HoldAtStrike,
+        /// Once the tick's damage is dealt and before units die: passives and holds push their
+        /// grants.
+        HoldAtResolve,
+        /// Passives and holds push the grants of what the tick changed.
+        HoldAtEnd,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ActionsSet {
+    const CAPABILITY: Option<Capability> = None;
+    const ALL: &'static [ActionsSet] = &ActionsSet::ALL;
+
+    fn place(self) -> SimPlace {
+        SimPlace::Stage(match self {
+            ActionsSet::Start => SimSet::Act,
+            ActionsSet::Deliver
+            | ActionsSet::Fire
+            | ActionsSet::Launch
+            | ActionsSet::Land
+            | ActionsSet::HoldAtStrike => SimSet::Hit,
+            ActionsSet::Resolve | ActionsSet::HoldAtResolve => SimSet::Resolve,
+            ActionsSet::HoldAtInputs => SimSet::Inputs,
+            ActionsSet::HoldAtEnd => SimSet::Vision,
+        })
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            ActionsSet::Start => {}
+            ActionsSet::Deliver => {
+                o.before(StatsSet::GrantAtStrike);
+            }
+            ActionsSet::Fire => {
+                o.after(ActionsSet::Deliver).after(StatsSet::GrantAtStrike);
+            }
+            ActionsSet::Launch => {
+                o.after(ActionsSet::Fire);
+            }
+            ActionsSet::Land => {
+                o.after(ActionsSet::Launch);
+            }
+            ActionsSet::Resolve => {
+                o.before(ActionsSet::HoldAtResolve);
+            }
+            ActionsSet::HoldAtInputs => {
+                o.after(StatsSet::Expire).before(StatsSet::GrantAtInputs);
+            }
+            ActionsSet::HoldAtStrike => {
+                o.before(StatsSet::GrantAtStrike);
+            }
+            ActionsSet::HoldAtResolve => {
+                o.before(StatsSet::GrantAtResolve);
+            }
+            ActionsSet::HoldAtEnd => {
+                o.before(StatsSet::GrantAtEnd);
+            }
+        }
+    }
 }
 
 impl Module for Actions {
@@ -98,8 +173,11 @@ impl Module for Actions {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ActionsSet>();
         d.component::<ActionSlots>();
         d.component::<SlotTimes>();
+        d.scratch::<Shots>();
+        d.scratch::<ShotHits>();
         d.require::<ActionSlots, SlotTimes>();
         d.book::<ActionBook>();
         d.book::<ParamBook>();
@@ -128,21 +206,12 @@ impl Module for Actions {
 impl Actions {
     fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
-            Holds::hold_charges
-                .in_set(SimSet::Inputs)
+            (Holds::hold_charges, Holds::want_passives)
+                .chain()
                 .in_set(ActionsSet::HoldAtInputs),
-            Holds::hold_passives
-                .in_set(SimSet::Inputs)
-                .in_set(ActionsSet::HoldAtInputs)
-                .after(StatsSet::Expire)
-                .after(Holds::hold_charges),
-            Holds::hold_passives
-                .in_set(SimSet::Hit)
-                .in_set(ActionsSet::HoldAtStrike),
-            Holds::hold_passives
-                .in_set(SimSet::Resolve)
-                .in_set(ActionsSet::HoldAtResolve),
-            Holds::hold_passives.in_set(SimSet::Vision),
+            Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
+            Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
+            Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
         ));
     }
 }

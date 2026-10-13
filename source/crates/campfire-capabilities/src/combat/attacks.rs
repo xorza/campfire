@@ -11,23 +11,24 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::in_progress::InProgress;
 use crate::actions::payer::Payer;
 use crate::actions::purse::Purse;
+use crate::actions::shot_hits::ShotHits;
+use crate::actions::shots::{Shot, Shots};
 use crate::actions::slot_aim::SlotAim;
 use crate::actions::slot_times::SlotTimes;
 use crate::actions::targets::Targets;
 use crate::combat::ROLL_STREAM;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_hooks::CombatHooks;
-use crate::combat::combat_world::CombatWorld;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::going_off::GoingOff;
 use crate::combat::pass_queue::PassQueue;
-use crate::combat::shots::{Shot, Shots};
 use crate::combat::wielded::Wielded;
 use crate::players::player_resources::PlayerResources;
 use crate::players::player_rows::{PlayerRows, PlayerRowsMut};
 use crate::players::players_world::PlayersWorldCrate;
 use crate::scripts::scripts_world::ScriptsWorldCrate;
 use crate::stats::pool_book::PoolBook;
+use crate::stats::stats_world::StatsWorld;
 use crate::stats::unit_pools::{UnitPools, UnitPoolsReadOnly};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
@@ -56,6 +57,26 @@ type Attacker<'a> = (
 pub(super) struct Attacks;
 
 impl Attacks {
+    /// Queues the damage of each hit of an attack's projectile this tick, in the order they
+    /// struck: its weapon's damage, with the roll it drew.
+    pub(super) fn take_hits(mut hits: ResMut<'_, ShotHits>, mut queue: ResMut<'_, PassQueue>) {
+        for hit in hits.0.drain(..) {
+            queue.push_damage(Damage {
+                source: Some(hit.source),
+                target: hit.target,
+                amount: hit.amount,
+                kind: hit.kind,
+                cause: DamageCause::Attack {
+                    roll: hit.roll,
+                    rank: hit.rank,
+                },
+                action: Some(hit.action),
+                depth: 0,
+                hit: Some(hit.hit),
+            });
+        }
+    }
+
     /// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
     /// the first weapon whose filter selects the target, once that weapon passes its checks and the
     /// target is within its range. An attack in its windup stops when the unit's tags keep it from

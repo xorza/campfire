@@ -1,16 +1,17 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, SimSet};
+use campfire_sim::{Capability, SimPlace, SimSet};
 
 use crate::abilities::cast_spends::CastSpends;
 use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_times::SlotTimes;
-use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
 use crate::items::item_holds::ItemHolds;
@@ -35,11 +36,34 @@ pub(crate) mod shop_data;
 #[derive(Debug)]
 pub struct Items;
 
-/// The systems of `items`, for the capabilities built on it to order theirs against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum ItemsSet {
-    /// In `SimSet::Inputs`, once the tick's trades are in: carried items hold their modifiers.
-    HoldAtInputs,
+campfire_common::enum_all! {
+    /// The steps of `items`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ItemsSet {
+        /// Once the tick's trades are in: carried items push their grants.
+        HoldAtInputs,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ItemsSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Items);
+    const ALL: &'static [ItemsSet] = &ItemsSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            ItemsSet::HoldAtInputs => SimPlace::Stage(SimSet::Inputs),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            ItemsSet::HoldAtInputs => {
+                o.before(ActionsSet::HoldAtInputs);
+            }
+        }
+    }
 }
 
 impl Module for Items {
@@ -47,6 +71,7 @@ impl Module for Items {
     const NEEDS: &'static [Capability] = &[Capability::Stats];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ItemsSet>();
         d.callback::<CastSpends>((), Items::spend_use);
         d.component::<Inventory>();
         d.book::<ItemBook>();
@@ -62,14 +87,8 @@ impl Module for Items {
     fn install(cx: &mut InstallCx<'_>) {
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
-            ItemHolds::hold_items
-                .in_set(SimSet::Inputs)
-                .in_set(ItemsSet::HoldAtInputs)
-                .before(ActionsSet::HoldAtInputs),
-            ItemHolds::hold_items
-                .in_set(SimSet::Resolve)
-                .after(CombatSet::Damage)
-                .before(ActionsSet::HoldAtResolve),
+            ItemHolds::want_items.in_set(ItemsSet::HoldAtInputs),
+            ItemHolds::want_items.in_set(ActionsSet::Resolve),
         ));
     }
 }

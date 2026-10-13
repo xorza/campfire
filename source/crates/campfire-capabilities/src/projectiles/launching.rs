@@ -1,7 +1,7 @@
 use bevy_ecs::system::ResMut;
 use campfire_sim::StableId;
 
-use crate::combat::shots::Shots;
+use crate::actions::shots::Shots;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::projectiles::flight_state::FlightState;
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};

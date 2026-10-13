@@ -55,6 +55,8 @@ mod kinds_only;
 pub(crate) mod r#match;
 pub(crate) mod match_spec;
 #[cfg(feature = "internals")]
+mod module_sets;
+#[cfg(feature = "internals")]
 mod resource_audit;
 mod state_only;
 
@@ -249,11 +251,13 @@ pub(crate) mod internals {
 
     use bevy_ecs::archetype::Archetype;
     use bevy_ecs::component::{Component, Immutable, Mutable};
+    use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
     use campfire_sim::{EntityIndex, SimResource, StableId};
 
     use crate::declare::capability_set::CapabilitySet;
     use crate::release::Release;
+    use crate::release::module_sets::ModuleSets;
     use crate::release::resource_audit::DeclaredResources;
     use crate::state_types::replication::Replication;
     use crate::state_types::{Declared, StateTypes};
@@ -311,6 +315,14 @@ pub(crate) mod internals {
     }
 
     impl Release {
+        /// Every system set the release's modules declare, in the order they declare them: the
+        /// sets each game system sits in, an anchor's among them.
+        pub fn module_sets() -> Vec<InternedSystemSet> {
+            let mut sets = ModuleSets::default();
+            Release::declare(Release::capabilities(), &mut sets);
+            sets.0
+        }
+
         /// The names of the resources of `world`, a match of `set`, that no declaration names,
         /// `host`'s own aside, then, while the match runs, of each scratch resource not clear: a
         /// resource none declares may carry from tick to tick what no hash, snapshot or restore

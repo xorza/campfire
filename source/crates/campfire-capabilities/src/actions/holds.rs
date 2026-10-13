@@ -1,25 +1,21 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{SimTick, StableId, TickClock};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::ready_waits::ReadyWaits;
 use crate::actions::slot_times::{SlotCharges, SlotTimes};
-use crate::stats::applier::Applier;
-use crate::stats::carried_mut::CarriedMut;
+use crate::stats::grants::{Grant, Grants};
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
-use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_params::ModifierParams;
-use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_book::StatBook;
-use crate::values::rank::Rank;
 
-/// The holds of every action: its charges as each tick starts, and its passives then and as each
-/// stage that changes ranks or cooldowns ends.
+/// The holds of every action: its charges as each tick starts, and the grants of its passives
+/// then and as each stage that changes ranks or cooldowns ends.
 #[derive(Debug)]
 pub(super) struct Holds;
 
@@ -44,22 +40,23 @@ impl Holds {
         }
     }
 
-    /// Keeps each unit's passives and holds as its slots stand: the passive of each action with a
-    /// rank, and with `passive_while_ready` off cooldown, and the `hold` of each action whose
-    /// toggle is on or whose channel runs, each from the unit itself at the action's rank, applied
-    /// again when the rank changes; and none other. It runs as each tick starts, after the casts
-    /// resolve and the attacks strike, and after the mode's calls, which learn ranks. A passive's
-    /// or a hold's params are the match's param book's. What a unit holds follows from its slots,
-    /// its modifiers and the books, and from the tick only for a passive that waits for its
-    /// action's cooldown: so a run visits only the units whose slots or modifiers changed since its
-    /// last, and those that wait, unless a book changed.
-    pub(super) fn hold_passives(
-        actions: Res<'_, ActionBook>,
-        book: Option<Res<'_, ModifierBook>>,
-        stats: Option<Res<'_, StatBook>>,
+    /// Pushes the grants of each unit's passives and holds as its slots stand: the passive of each
+    /// action with a rank, and with `passive_while_ready` off cooldown, and the `hold` of each
+    /// action whose toggle is on or whose channel runs, each from the unit itself at the action's
+    /// rank; and none of each other. What a unit wants follows from its slots, its modifiers and
+    /// the books, and from the tick only for a passive that waits for its action's cooldown: so a
+    /// run visits only the units whose slots or modifiers changed since its last, and those that
+    /// wait, unless a book changed.
+    pub(super) fn want_passives(
+        (actions, book, stats): (
+            Res<'_, ActionBook>,
+            Option<Res<'_, ModifierBook>>,
+            Option<Res<'_, StatBook>>,
+        ),
         clock: TickClock<'_>,
         params: ModifierParams<'_, '_>,
-        mut units: Query<
+        mut grants: ResMut<'_, Grants>,
+        units: Query<
             '_,
             '_,
             (
@@ -67,8 +64,7 @@ impl Holds {
                 &StableId,
                 Ref<'_, ActionSlots>,
                 Ref<'_, SlotTimes>,
-                &mut Modifiers,
-                &mut ModifierClocks,
+                Ref<'_, Modifiers>,
             ),
         >,
         mut waiting: Local<'_, ReadyWaits>,
@@ -82,13 +78,13 @@ impl Holds {
         let every =
             actions.is_changed() || book.is_changed() || stats.is_changed() || params.changed();
         let now = clock.start();
-        for (entity, &id, slots, times, modifiers, clocks) in &mut units {
+        for (entity, &id, slots, times, modifiers) in &units {
             let changed = slots.is_changed() || times.is_changed() || modifiers.is_changed();
             if !(every || changed || waiting.waits(entity)) {
                 continue;
             }
             let mut waits = false;
-            let mut carried = CarriedMut::new(modifiers, clocks);
+            grants.unit(entity, id);
             for ((index, slot), time) in slots.indexed().zip(times.iter()) {
                 let Some(action_id) = slot.action else {
                     continue;
@@ -96,59 +92,24 @@ impl Holds {
                 let action = actions
                     .get(action_id)
                     .expect("a slot's action is in the book");
-                // The modifier is held at `holds`, its action's rank, or released with none.
-                let mut keep = |modifier, hold, holds: Option<Rank>| {
-                    let held = carried
-                        .modifiers()
-                        .get(modifier, Some(id))
-                        .filter(|instance| instance.lifetime.held_by(hold))
-                        .map(|instance| instance.rank);
-                    let Some(rank) = holds else {
-                        if held.is_some() {
-                            carried.release(modifier, Some(id), hold);
-                        }
-                        return;
-                    };
-                    if held == Some(rank) {
-                        return;
-                    }
-                    let applier = Applier {
-                        source: Some(id),
-                        action: Some(action_id),
-                        rank,
-                        hold: Some(hold),
-                    };
-                    let source = params.source(id);
-                    let param = |place: &ParamPlace| {
-                        params.modifier_param(
-                            modifier,
-                            Some(action_id),
-                            rank,
-                            place,
-                            source.as_ref(),
-                        )
-                    };
-                    carried.apply(book.application(
-                        modifier,
-                        applier,
-                        None,
-                        now,
-                        clock.rate(),
-                        param,
-                    ));
-                };
                 if let Some(passive) = action.passive {
                     let cooling = passive.while_ready && time.ready_at > now;
                     waits |= slot.rank.is_some() && cooling;
-                    keep(
-                        passive.modifier,
-                        Hold::Passive,
-                        slot.rank.filter(|_| !cooling),
-                    );
+                    grants.push(Grant {
+                        modifier: passive.modifier,
+                        hold: Hold::Passive,
+                        action: Some(action_id),
+                        rank: slot.rank.filter(|_| !cooling),
+                    });
                 }
                 if let Some(hold) = action.hold {
                     let runs = time.toggle.is_some() || slots.channeling() == Some(index);
-                    keep(hold, Hold::Running, slot.rank.filter(|_| runs));
+                    grants.push(Grant {
+                        modifier: hold,
+                        hold: Hold::Running,
+                        action: Some(action_id),
+                        rank: slot.rank.filter(|_| runs),
+                    });
                 }
             }
             waiting.set(entity, waits);

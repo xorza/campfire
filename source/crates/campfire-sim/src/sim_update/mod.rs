@@ -106,6 +106,7 @@ pub(crate) fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, Tic
     inputs.clear();
 }
 
+pub(crate) mod sim_place;
 #[cfg(feature = "internals")]
 pub(crate) mod stage_clock;
 

@@ -744,6 +744,73 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 }
 
 #[test]
+fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
+    let limits = ScriptLimits::ROOMY;
+    let scripts = ScriptBudgets::new(limits, 1);
+    let mut game = Match::server(&[Capability::Stats], scripts);
+    let book = StatBook::new(&rules(), Num::int(6));
+    Books::load(&mut game, book);
+    Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
+    let carrier = || (Modifiers::default(), ModifierClocks::default());
+    let id = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), carrier());
+    let gone = Units::spawn(&mut game, Position::ORIGIN, Team::new(0), carrier());
+    let unit = game.unit_entity(id);
+    let inspired = game
+        .resource::<ModifierBook>()
+        .names()
+        .named((0, "inspired"))
+        .unwrap();
+    let second = Rank::new(2).unwrap();
+    let grant = |rank| Grant {
+        modifier: inspired,
+        hold: Hold::Passive,
+        action: None,
+        rank,
+    };
+    let push = |game: &mut Match, id: StableId, rank| {
+        let entity = game.unit_entity(id);
+        let mut grants = game.resource_mut::<Grants>();
+        grants.unit(entity, id);
+        grants.push(grant(rank));
+    };
+    let held = |game: &Match| {
+        let modifiers = game.get::<Modifiers>(unit).unwrap();
+        modifiers
+            .get(inspired, Some(id))
+            .map(|instance| instance.rank)
+    };
+    let change = |game: &Match, rank| grant(rank).change(game.get::<Modifiers>(unit).unwrap(), id);
+    // Held at no rank: a rank applies, and none changes nothing.
+    assert_eq!(
+        change(&game, Some(Rank::FIRST)),
+        Some(GrantChange::Apply(Rank::FIRST))
+    );
+    assert_eq!(change(&game, None), None);
+    // The pass of the tick's start applies the grant, and empties the list. A unit despawned
+    // after its source pushed is passed over.
+    push(&mut game, id, Some(Rank::FIRST));
+    push(&mut game, gone, Some(Rank::FIRST));
+    let gone = game.unit_entity(gone);
+    game.despawn(gone);
+    game.step();
+    assert_eq!(held(&game), Some(Rank::FIRST));
+    assert_eq!(game.resource::<Grants>().iter().len(), 0);
+    // Held at rank 1: the same rank changes nothing, another applies, and none releases.
+    assert_eq!(change(&game, Some(Rank::FIRST)), None);
+    assert_eq!(
+        change(&game, Some(second)),
+        Some(GrantChange::Apply(second))
+    );
+    assert_eq!(change(&game, None), Some(GrantChange::Release));
+    push(&mut game, id, Some(second));
+    game.step();
+    assert_eq!(held(&game), Some(second));
+    push(&mut game, id, None);
+    game.step();
+    assert_eq!(held(&game), None);
+}
+
+#[test]
 fn a_restored_unit_derives_its_stats_and_tags_again() {
     // A walker of move speed 4, stunned by a modifier that grants tag 0, which blocks moving, and
     // slowed by another's cut of 0.5: move speed 4 × (1 − 0.5) = 2.

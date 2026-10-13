@@ -3,11 +3,11 @@
 
 use std::rc::Rc;
 
-use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::rhai::ImmutableString;
-use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
+use campfire_sim::{Breach, Capability, IdAllocator, SimPlace, SimSet, SimTick};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -19,6 +19,8 @@ use crate::combat::heal::HealWeigher;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
@@ -117,11 +119,60 @@ pub(crate) mod unit_type_setup;
 #[derive(Debug)]
 pub struct Mode;
 
+campfire_common::enum_all! {
+    /// The mode's steps.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ModeSet {
+        /// The tick's mode inputs run its script, once the tick started and before any order.
+        Inputs,
+        /// Once the trains spawned: the slots' events, the due timers, the deaths and the level
+        /// ups run the mode's hooks.
+        Hooks,
+        /// The players out of play are counted again.
+        OutOfPlay,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for ModeSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Mode);
+    const ALL: &'static [ModeSet] = &ModeSet::ALL;
+
+    fn place(self) -> SimPlace {
+        SimPlace::Stage(match self {
+            ModeSet::Inputs => SimSet::Inputs,
+            ModeSet::Hooks => SimSet::Mode,
+            ModeSet::OutOfPlay => SimSet::Vision,
+        })
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            ModeSet::Inputs => {
+                o.after(UnitsSet::BeginTick)
+                    .after(StatsSet::Expire)
+                    .after(StatsSet::Regenerate)
+                    .after(NavigationSet::TrackStatics)
+                    .after(CombatSet::Respawn)
+                    .before(OrdersSet::Orders)
+                    .before(AbilitiesSet::Toggles)
+                    .before(ActionsSet::HoldAtInputs);
+            }
+            ModeSet::Hooks => {
+                o.after(ProductionSet::Finish);
+            }
+            ModeSet::OutOfPlay => {}
+        }
+    }
+}
+
 impl Module for Mode {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ModeSet>();
         d.component::<MatchEnd>();
         d.component::<ModeState<SyncNone>>();
         d.component::<ModeState<SyncAll>>();
@@ -149,16 +200,7 @@ impl Module for Mode {
     /// levels reached run `on_level_up`. `Mode::load` gives them the mode they run.
     fn install(cx: &mut InstallCx<'_>) {
         cx.schedule.add_systems((
-            ModeHooks::mode_inputs
-                .in_set(SimSet::Inputs)
-                .after(UnitsSet::BeginTick)
-                .after(StatsSet::Expire)
-                .after(StatsSet::Regenerate)
-                .after(NavigationSet::TrackStatics)
-                .after(CombatSet::Respawn)
-                .before(OrdersSet::Orders)
-                .before(AbilitiesSet::Toggles)
-                .before(ActionsSet::HoldAtInputs),
+            ModeHooks::mode_inputs.in_set(ModeSet::Inputs),
             (
                 ModeHooks::slot_events,
                 ModeHooks::run_timers,
@@ -166,9 +208,8 @@ impl Module for Mode {
                 ModeHooks::level_ups,
             )
                 .chain()
-                .in_set(SimSet::Mode)
-                .after(ProductionSet::Finish),
-            OutOfPlay::refresh.in_set(SimSet::Vision),
+                .in_set(ModeSet::Hooks),
+            OutOfPlay::refresh.in_set(ModeSet::OutOfPlay),
         ));
     }
 }

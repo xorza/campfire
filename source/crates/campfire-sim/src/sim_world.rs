@@ -97,7 +97,7 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::entity::Entity;
-    use bevy_ecs::schedule::{IntoSystemSet, SystemSet};
+    use bevy_ecs::schedule::{InternedSystemSet, IntoSystemSet, SystemSet};
     use bevy_ecs::world::{Mut, World};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_schedule::StrictSchedule;
@@ -105,7 +105,7 @@ pub(crate) mod internals {
     use crate::entity_index::EntityIndex;
     use crate::restoring::Restoring;
     use crate::sim_tick::SimTick;
-    use crate::sim_update::{SimEdge, SimSet, SimUpdate, end_tick, start_tick};
+    use crate::sim_update::{SimUpdate, end_tick, start_tick};
     use crate::sim_world::SimWorld;
     use crate::stable_id::StableId;
     use crate::state_registry::StateRegistry;
@@ -123,12 +123,12 @@ pub(crate) mod internals {
         /// its systems.
         fn build_without_sync_points(&mut self) -> Result<(), String>;
 
-        /// The name of each system of the sim schedule that sits in no stage and no `SimEdge`,
-        /// but the tick's own start and end. Such a system runs in a gap between two stages, in
-        /// an order Bevy picks, so a bench's probes time it with either stage. It builds the
-        /// schedule as `build_without_sync_points` does, so a sync point it finds is one the
-        /// code added.
-        fn systems_outside_stages(&mut self) -> Vec<String>;
+        /// The name of each system of the sim schedule that sits in none of `sets`, but the
+        /// tick's own start and end: with the modules' declared sets, a system no module set
+        /// holds, which may run in a gap between two stages, in an order Bevy picks, so a
+        /// bench's probes time it with either stage. It builds the schedule as
+        /// `build_without_sync_points` does, so a sync point it finds is one the code added.
+        fn systems_outside(&mut self, sets: &[InternedSystemSet]) -> Vec<String>;
 
         /// The name of each state type the match registers, in their order.
         fn state_names(&self) -> Vec<&'static str>;
@@ -182,20 +182,16 @@ pub(crate) mod internals {
             })
         }
 
-        fn systems_outside_stages(&mut self) -> Vec<String> {
+        fn systems_outside(&mut self, sets: &[InternedSystemSet]) -> Vec<String> {
             if let Err(error) = self.build_without_sync_points() {
                 panic!("{error}");
             }
             self.schedule_scope(SimUpdate, |_, schedule| {
                 let graph = schedule.graph();
-                let sets = SimSet::ALL
-                    .into_iter()
-                    .flat_map(|stage| [stage.intern(), SimEdge::After(stage).intern()])
-                    .chain([
-                        SimEdge::Start.intern(),
-                        start_tick.into_system_set().intern(),
-                        end_tick.into_system_set().intern(),
-                    ]);
+                let sets = sets.iter().copied().chain([
+                    start_tick.into_system_set().intern(),
+                    end_tick.into_system_set().intern(),
+                ]);
                 let mut placed = BTreeSet::new();
                 for set in sets {
                     let systems = graph

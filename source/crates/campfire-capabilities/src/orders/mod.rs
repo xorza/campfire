@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::{Capability, SimEdge, SimSet};
+use campfire_sim::{Capability, SimEdge, SimPlace, SimSet};
 
 use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
@@ -10,6 +10,8 @@ use crate::combat::CombatSet;
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::items::ItemsSet;
 use crate::orders::ai::Ai;
 use crate::orders::destinations::Destinations;
@@ -47,11 +49,64 @@ pub(crate) mod tick_orders;
 pub(crate) mod trade_orders;
 pub(crate) mod unit_order;
 
-/// The systems of `orders`, for the mode to order its own against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum OrdersSet {
-    /// In `SimSet::Inputs`: the tick's orders become current.
-    Orders,
+campfire_common::enum_all! {
+    /// The steps of `orders`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum OrdersSet {
+        /// The tick's orders become current, and the ranks they learn.
+        Orders,
+        /// After `Orders`: the tick's production orders apply.
+        Production,
+        /// After `Production`: the tick's trades apply.
+        Trade,
+        /// Units follow their paths and chase their targets, before attacks start.
+        Chase,
+        /// The tick's orders are dropped once its inputs ran.
+        Clear,
+        /// AI of the units due this tick issues orders.
+        Think,
+    }
+    /// Every step.
+    pub(crate) const ALL;
+}
+
+impl ModuleSet for OrdersSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Orders);
+    const ALL: &'static [OrdersSet] = &OrdersSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            OrdersSet::Orders | OrdersSet::Production | OrdersSet::Trade => {
+                SimPlace::Stage(SimSet::Inputs)
+            }
+            OrdersSet::Chase => SimPlace::Stage(SimSet::Act),
+            OrdersSet::Clear => SimPlace::Edge(SimEdge::After(SimSet::Inputs)),
+            OrdersSet::Think => SimPlace::Stage(SimSet::Think),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            OrdersSet::Orders => {
+                o.after(StatsSet::Regenerate)
+                    .after(CombatSet::Respawn)
+                    .after(AbilitiesSet::Toggles);
+            }
+            OrdersSet::Production => {
+                o.after(OrdersSet::Orders);
+            }
+            OrdersSet::Trade => {
+                o.after(OrdersSet::Production)
+                    .before(ActionsSet::HoldAtInputs)
+                    .before(ItemsSet::HoldAtInputs)
+                    .before(ProductionSet::CheckBuilds);
+            }
+            OrdersSet::Chase => {
+                o.before(CombatSet::Attack);
+            }
+            OrdersSet::Clear | OrdersSet::Think => {}
+        }
+    }
 }
 
 /// The `orders` capability: units that take orders from a player, or from the AI script of their
@@ -64,6 +119,7 @@ impl Module for Orders {
     const NEEDS: &'static [Capability] = &[Capability::Combat, Capability::Navigation];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<OrdersSet>();
         d.component::<NextThink>();
         d.component::<Resetting>();
         d.scratch::<PlayerOrders>();
@@ -105,29 +161,15 @@ impl Orders {
                 LearnOrders::learn_ranks,
             )
                 .chain()
-                .in_set(SimSet::Inputs)
-                .in_set(OrdersSet::Orders)
-                .after(StatsSet::Regenerate)
-                .after(CombatSet::Respawn),
+                .in_set(OrdersSet::Orders),
             (Destinations::follow_paths, Destinations::chase)
                 .chain()
-                .in_set(SimSet::Act)
-                .before(CombatSet::Attack),
-            TickOrders::empty.in_set(SimEdge::After(SimSet::Inputs)),
+                .in_set(OrdersSet::Chase),
+            TickOrders::empty.in_set(OrdersSet::Clear),
         ));
-        schedule.configure_sets(
-            OrdersSet::Orders
-                .after(AbilitiesSet::Toggles)
-                .before(ActionsSet::HoldAtInputs)
-                .before(ItemsSet::HoldAtInputs)
-                .before(ProductionSet::CheckBuilds),
-        );
         if production {
             schedule.add_systems(
-                ProductionOrders::apply_production_orders::<S>
-                    .in_set(SimSet::Inputs)
-                    .in_set(OrdersSet::Orders)
-                    .after(LearnOrders::learn_ranks),
+                ProductionOrders::apply_production_orders::<S>.in_set(OrdersSet::Production),
             );
         }
         if !scripts {
@@ -136,18 +178,10 @@ impl Orders {
         schedule.add_systems(
             (Thinking::end_dead_resets, Thinking::think)
                 .chain()
-                .in_set(SimSet::Think),
+                .in_set(OrdersSet::Think),
         );
         if items {
-            let trade = TradeOrders::trade_items
-                .in_set(SimSet::Inputs)
-                .in_set(OrdersSet::Orders)
-                .after(LearnOrders::learn_ranks);
-            if production {
-                schedule.add_systems(trade.after(ProductionOrders::apply_production_orders::<S>));
-            } else {
-                schedule.add_systems(trade);
-            }
+            schedule.add_systems(TradeOrders::trade_items.in_set(OrdersSet::Trade));
         }
     }
 

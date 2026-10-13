@@ -13,6 +13,7 @@ use crate::declare::declarations::{ColumnFill, Declarations};
 use crate::declare::entity_parts::EntityParts;
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::mode::mode_world::ModeWorld;
@@ -130,6 +131,8 @@ impl Declarations for DeclaredResources {
     fn book<B: Book>(&mut self) {
         self.ids.push(TypeId::of::<B>());
     }
+
+    fn sets<S: ModuleSet>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {
         self.ids.push(TypeId::of::<R>());

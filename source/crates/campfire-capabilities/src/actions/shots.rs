@@ -8,8 +8,8 @@ use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 use crate::values::rank::Rank;
 
-/// The projectiles the tick's ranged attacks fire, which `projectiles` launches in
-/// `CombatSet::Fire`. Not state: it empties within the tick.
+/// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches
+/// in `ActionsSet::Fire`. Not state: it empties within the tick.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Shots(pub(crate) Vec<Shot>);
 

@@ -4,14 +4,18 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
+use campfire_sim::{Capability, SimEdge, SimPlace, SimSet, SimTick, SimWorld, StableId, TickRate};
 
 use crate::declare::declarations::Declarations;
 use crate::declare::install_cx::InstallCx;
 use crate::declare::module::Module;
+use crate::declare::module_set::ModuleSet;
+use crate::declare::set_order::SetOrder;
 use crate::players::player::Player;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
+use crate::stats::grant_pass::GrantPass;
+use crate::stats::grants::{Grant, GrantChange, Grants};
 use crate::stats::held_modifiers::HeldModifiers;
 use crate::stats::held_pass::HeldPass;
 use crate::stats::level::Level;
@@ -45,6 +49,8 @@ pub(crate) mod application;
 pub(crate) mod applier;
 pub(crate) mod carried_mut;
 pub(crate) mod error;
+pub(crate) mod grant_pass;
+pub(crate) mod grants;
 pub(crate) mod held_modifiers;
 pub(crate) mod held_pass;
 pub(crate) mod instance;
@@ -96,16 +102,100 @@ pub(crate) mod unit_stats;
 #[derive(Debug)]
 pub struct Stats;
 
-/// The systems of `stats`, for the capabilities built on it to order theirs against.
+/// The steps of `stats`, for the capabilities built on it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum StatsSet {
-    /// In `SimSet::Inputs`: the modifiers and stacks that hold no longer end.
+    /// The modifiers and stacks that hold no longer end.
     Expire,
-    /// In `SimSet::Inputs`: the living units' pools regenerate.
+    /// The living units' pools regenerate.
     Regenerate,
-    /// In `SimSet::Resolve`, after the tick's deaths: the dead units' modifiers end, then
-    /// auras, players and `HeldModifiers` hold their modifiers.
+    /// Once the tick's orders and trades are in: the grants the sources pushed apply.
+    GrantAtInputs,
+    /// Once the attacks going off paid their toggles and before they strike: the grants the
+    /// sources pushed apply.
+    GrantAtStrike,
+    /// Once the tick's damage is dealt and before units die: the grants the sources pushed apply.
+    GrantAtResolve,
+    /// The grants the sources pushed apply.
+    GrantAtEnd,
+    /// After the tick's deaths: the dead units' modifiers end.
+    ClearDead,
+    /// Auras, players and `HeldModifiers` hold their modifiers.
     Hold,
+    /// In its gap: every unit whose level or modifiers changed, or that is new, derives its stats
+    /// and states again.
+    Refresh(SimEdge),
+}
+
+impl StatsSet {
+    /// The steps in the stages.
+    const STEPS: [StatsSet; 8] = [
+        StatsSet::Expire,
+        StatsSet::Regenerate,
+        StatsSet::GrantAtInputs,
+        StatsSet::GrantAtStrike,
+        StatsSet::GrantAtResolve,
+        StatsSet::GrantAtEnd,
+        StatsSet::ClearDead,
+        StatsSet::Hold,
+    ];
+
+    /// The steps in the stages, then a refresh in each gap, `SimEdge::Start` first.
+    const ALL: [StatsSet; StatsSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = StatsSet::STEPS.len();
+        let mut all =
+            [StatsSet::Refresh(SimEdge::Start); StatsSet::STEPS.len() + 1 + SimSet::ALL.len()];
+        let mut at = 0;
+        while at < steps {
+            all[at] = StatsSet::STEPS[at];
+            at += 1;
+        }
+        let mut stage = 0;
+        while stage < SimSet::ALL.len() {
+            all[steps + 1 + stage] = StatsSet::Refresh(SimEdge::After(SimSet::ALL[stage]));
+            stage += 1;
+        }
+        all
+    };
+}
+
+impl ModuleSet for StatsSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
+    const ALL: &'static [StatsSet] = &StatsSet::ALL;
+
+    fn place(self) -> SimPlace {
+        match self {
+            StatsSet::Expire | StatsSet::Regenerate | StatsSet::GrantAtInputs => {
+                SimPlace::Stage(SimSet::Inputs)
+            }
+            StatsSet::GrantAtStrike => SimPlace::Stage(SimSet::Hit),
+            StatsSet::GrantAtResolve | StatsSet::ClearDead | StatsSet::Hold => {
+                SimPlace::Stage(SimSet::Resolve)
+            }
+            StatsSet::GrantAtEnd => SimPlace::Stage(SimSet::Vision),
+            StatsSet::Refresh(edge) => SimPlace::Edge(edge),
+        }
+    }
+
+    fn order(self, o: &mut SetOrder) {
+        match self {
+            StatsSet::GrantAtInputs => {
+                o.after(StatsSet::Expire);
+            }
+            StatsSet::GrantAtResolve => {
+                o.before(StatsSet::ClearDead);
+            }
+            StatsSet::Hold => {
+                o.after(StatsSet::ClearDead);
+            }
+            StatsSet::Expire
+            | StatsSet::Regenerate
+            | StatsSet::GrantAtStrike
+            | StatsSet::GrantAtEnd
+            | StatsSet::ClearDead
+            | StatsSet::Refresh(_) => {}
+        }
+    }
 }
 
 impl Module for Stats {
@@ -113,12 +203,14 @@ impl Module for Stats {
     const NEEDS: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<StatsSet>();
         d.component::<PlayerModifiers>();
         d.component::<Level>();
         d.component::<Modifiers>();
         d.component::<ModifierClocks>();
         d.component::<Pools>();
         d.scratch::<HeldModifiers>();
+        d.scratch::<Grants>();
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
@@ -138,25 +230,26 @@ impl Module for Stats {
     /// Adds stats to a match: in `SimEdge::Start` and in the `SimEdge::After` of each stage,
     /// every unit whose level or modifiers changed, or that is new, has its stats and states
     /// derived again, and the components that hold their effect follow them; as each tick
-    /// starts, the living units' pools regenerate. With no stat book, as before a mode loads one,
-    /// nothing changes.
+    /// starts, the living units' pools regenerate. The grants the sources push apply as each
+    /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
+    /// book, as before a mode loads one, nothing changes.
     fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(LiveCarriers::default());
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
-            (
-                ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
-                Refresh::regenerate.in_set(StatsSet::Regenerate),
-            )
-                .in_set(SimSet::Inputs),
-            (ModifierEnds::clear_dead_modifiers, HeldPass::run)
-                .chain()
-                .in_set(SimSet::Resolve)
-                .in_set(StatsSet::Hold),
-            Refresh::run.in_set(SimEdge::Start),
+            ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
+            Refresh::regenerate.in_set(StatsSet::Regenerate),
+            GrantPass::run.in_set(StatsSet::GrantAtInputs),
+            GrantPass::run.in_set(StatsSet::GrantAtStrike),
+            GrantPass::run.in_set(StatsSet::GrantAtResolve),
+            GrantPass::run.in_set(StatsSet::GrantAtEnd),
+            ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
+            HeldPass::run.in_set(StatsSet::Hold),
         ));
-        for stage in SimSet::ALL {
-            schedule.add_systems(Refresh::run.in_set(SimEdge::After(stage)));
+        for set in StatsSet::ALL {
+            if let StatsSet::Refresh(_) = set {
+                schedule.add_systems(Refresh::run.in_set(set));
+            }
         }
     }
 }
@@ -172,6 +265,34 @@ impl Stats {
         let book = world.resource::<ModifierBook>().clone();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.purge(|id| book.tags(id).contains(tag));
+        }
+    }
+
+    /// Grants `grant` to the unit `unit` from itself at once, as `GrantPass` does in its passes:
+    /// a unit type's passive as its unit spawns.
+    pub(crate) fn grant(world: &mut World, unit: StableId, grant: Grant) {
+        let Some(entity) = world.entity_of(unit) else {
+            return;
+        };
+        let Some(modifiers) = world.get::<Modifiers>(entity) else {
+            return;
+        };
+        match grant.change(modifiers, unit) {
+            Some(GrantChange::Apply(rank)) => {
+                let applier = Applier {
+                    source: Some(unit),
+                    action: grant.action,
+                    rank,
+                    hold: Some(grant.hold),
+                };
+                Stats::add_modifier(world, unit, grant.modifier, applier, None);
+            }
+            Some(GrantChange::Release) => {
+                if let Some(mut carried) = CarriedMut::of(world, entity) {
+                    carried.release(grant.modifier, Some(unit), grant.hold);
+                }
+            }
+            None => {}
         }
     }
 

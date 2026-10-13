@@ -12,6 +12,8 @@ pub(crate) mod install_cx;
 pub(crate) mod kind_spawn;
 pub(crate) mod kind_visitor;
 pub(crate) mod module;
+pub(crate) mod module_set;
 pub(crate) mod per_type;
 pub(crate) mod report;
 pub(crate) mod scratch;
+pub(crate) mod set_order;

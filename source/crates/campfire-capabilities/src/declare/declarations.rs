@@ -7,6 +7,7 @@ use crate::declare::cache::Cache;
 use crate::declare::callbacks::Callbacks;
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
+use crate::declare::module_set::ModuleSet;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 use crate::scripts::api_builder::ApiBuilder;
@@ -43,6 +44,9 @@ pub(crate) trait Declarations: StateTypes + KindVisitor {
 
     /// `B`, a book the module reads, empty until the books fill it.
     fn book<B: Book>(&mut self);
+
+    /// `S`, the module's system sets, each with its place and its order.
+    fn sets<S: ModuleSet>(&mut self);
 
     /// `R`, a resource a tick fills and empties.
     fn scratch<R: Scratch>(&mut self);

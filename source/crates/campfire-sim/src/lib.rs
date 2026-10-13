@@ -42,6 +42,7 @@ pub use crate::restoring::Restoring;
 pub use crate::sim_rng::SimRng;
 pub use crate::sim_state::{SimComponent, SimResource};
 pub use crate::sim_tick::SimTick;
+pub use crate::sim_update::sim_place::SimPlace;
 pub use crate::sim_update::{SimEdge, SimSet, SimUpdate};
 pub use crate::sim_world::SimWorld;
 pub use crate::sim_world_builder::{SimParts, SimWorldBuilder};
