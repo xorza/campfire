@@ -1,7 +1,7 @@
+use campfire_values::DeclaredName;
 use derive_more::Display;
 
 use crate::books::type_place::TypePlace;
-use crate::values::declared_name::DeclaredName;
 
 /// Where in a package a book finds a name it resolves, as a book error names it.
 #[derive(Debug, Display, Clone, PartialEq, Eq)]

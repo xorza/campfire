@@ -1,16 +1,10 @@
+use campfire_combat::{CombatData, OnDeath};
+use campfire_core::{MoveStep, UnitType};
 use campfire_sim::TickRate;
+use campfire_stats::{Life, Meter, PoolId, Pools, StatBook};
+use campfire_values::{EngineStat, Stat};
 
 use crate::books::error::UnitStartError;
-use crate::combat::combat_data::CombatData;
-use crate::combat::on_death::OnDeath;
-use crate::stats::life::Life;
-use crate::stats::meter::Meter;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
-use crate::stats::stat_book::StatBook;
-use crate::units::move_step::MoveStep;
-use crate::units::unit_type::UnitType;
-use crate::values::stat::{EngineStat, Stat};
 
 /// What a new unit of a type starts with of its stats, in ticks at the match's rate: its life and
 /// its other pools, full at their maxima at level 1, whether it stays when it dies, when it has a

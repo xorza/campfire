@@ -1,11 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::world::World;
-#[cfg(feature = "internals")]
-use campfire_log::internals::LogCheck;
+use campfire_core::CapabilitySet;
 use campfire_sim::StateRegistry;
 
-use crate::declare::capability_set::CapabilitySet;
 use crate::release::Release;
 use crate::release::match_spec::MatchSpec;
 
@@ -19,7 +17,11 @@ pub struct Match {
     /// A test's check of the warnings its match logs: last, so it drops after the world and sees
     /// what the world logs as it drops.
     #[cfg(feature = "internals")]
-    _log: Option<LogCheck>,
+    #[expect(
+        clippy::absolute_paths,
+        reason = "a gated field names its type in full, as no gated import sits mid-file"
+    )]
+    _log: Option<campfire_log::internals::LogCheck>,
 }
 
 impl Match {
@@ -66,9 +68,24 @@ impl DerefMut for Match {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_log::internals::LogCheck;
+    use std::num::NonZeroU32;
 
+    use bevy_ecs::world::World;
+    use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
+    use campfire_codec::Binary;
+    use campfire_combat::Combat;
+    use campfire_common::SegmentSeed;
+    use campfire_core::{Book, Players, ScriptBudgets};
+    use campfire_log::internals::LogCheck;
+    use campfire_sim::{Capability, TickRate};
+    use campfire_stats::PoolId;
+    use campfire_values::DeclaredName;
+    use serde::Serialize;
+    use serde::de::DeserializeOwned;
+
+    use crate::release::Release;
     use crate::release::r#match::Match;
+    use crate::release::match_spec::MatchSpec;
 
     impl Match {
         /// The match, which fails the test that holds it on any warning `log`, started before
@@ -84,42 +101,16 @@ pub(crate) mod internals {
             }
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) mod test_matches {
-    use std::num::NonZeroU32;
-
-    use bevy_ecs::world::World;
-    use campfire_codec::Binary;
-    use campfire_common::SegmentSeed;
-    use campfire_log::internals::LogCheck;
-    use campfire_sim::{Capability, TickRate};
-    use serde::Serialize;
-    use serde::de::DeserializeOwned;
-
-    use crate::actions::slot_kind_book::SlotKindBook;
-    use crate::actions::slot_kind_data::SlotKindData;
-    use crate::actions::slot_kinds::SlotKinds;
-    use crate::books::Books;
-    use crate::combat::Combat;
-    use crate::players::Players;
-    use crate::release::Release;
-    use crate::release::r#match::Match;
-    use crate::release::match_spec::MatchSpec;
-    use crate::scripts::script_budgets::ScriptBudgets;
-    use crate::stats::pool_id::PoolId;
-    use crate::values::declared_name::DeclaredName;
 
     impl Match {
         /// The MOBA's 30 ticks a second.
-        pub(crate) const TEST_RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+        pub const TEST_RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
         /// A test's match at `rate` of the capabilities `declared`, running scripts within
         /// `budgets`, or none, as a client; with combat, its life pool the first. It has no mode
         /// to start it, so it starts with the match's entity, as a start spawns it. It fails the
         /// test on any warning it logs.
-        pub(crate) fn test(
+        pub fn test(
             declared: &[Capability],
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
@@ -130,7 +121,7 @@ pub(crate) mod test_matches {
         }
 
         /// The match `test` gives, with no entity yet, for a mode to start.
-        pub(crate) fn test_unstarted(
+        pub fn test_unstarted(
             declared: &[Capability],
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
@@ -155,7 +146,7 @@ pub(crate) mod test_matches {
                 name: DeclaredName::new("basic").unwrap(),
                 ranks: None,
             };
-            Books::load(&mut world, SlotKindBook(SlotKinds::from([basic])));
+            SlotKindBook(SlotKinds::from([basic])).load_into(&mut world);
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }
@@ -167,13 +158,13 @@ pub(crate) mod test_matches {
 
         /// A client's match at `TEST_RATE` of `declared`: no script host, and no system that
         /// runs scripts.
-        pub(crate) fn client(declared: &[Capability]) -> Match {
+        pub fn client(declared: &[Capability]) -> Match {
             Match::test(declared, Match::TEST_RATE, None)
         }
 
         /// A predicting client's match at `TEST_RATE` of `declared`, as `client` gives it: each
         /// of its sim's queries skips the units it holds as the server sent them, `Unpredicted`.
-        pub(crate) fn predicting(declared: &[Capability]) -> Match {
+        pub fn predicting(declared: &[Capability]) -> Match {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
                 .capabilities(set)
@@ -184,13 +175,13 @@ pub(crate) mod test_matches {
         }
 
         /// A server's match at `TEST_RATE` of `declared`, running scripts within `budgets`.
-        pub(crate) fn server(declared: &[Capability], budgets: ScriptBudgets) -> Match {
+        pub fn server(declared: &[Capability], budgets: ScriptBudgets) -> Match {
             Match::test(declared, Match::TEST_RATE, Some(budgets))
         }
 
         /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the
         /// rules a type's own values follow, as a restore check keeps those that need the match.
-        pub(crate) fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
+        pub fn decodes<T: Serialize + DeserializeOwned>(value: &T) -> bool {
             Binary::decode::<T>(&Binary::encode(value)).is_ok()
         }
     }

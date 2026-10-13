@@ -4,35 +4,20 @@ use std::panic::{self, AssertUnwindSafe};
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
+use campfire_combat::CombatBook;
+use campfire_core::{
+    ApiBuilder, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations, EngineTag, EntityKind,
+    Frame, KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
+};
 use campfire_math::Num;
+use campfire_orders::Ai;
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
+use campfire_state_types::{Replication, StateTypes};
+use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
+use campfire_values::Stat;
 
 use super::*;
-use crate::combat::combat_book::CombatBook;
-use crate::declare::cache::Cache;
-use crate::declare::callbacks::Callbacks;
-use crate::declare::declarations::{ColumnFill, Declarations};
-use crate::declare::kind_spawn::KindSpawn;
-use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::module_set::ModuleSet;
-use crate::declare::report::Report;
-use crate::declare::scratch::Scratch;
-use crate::orders::ai::Ai;
 use crate::release::r#match::Match;
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::call_part::CallPart;
-use crate::scripts::frame::Frame;
-use crate::state_types::StateTypes;
-use crate::state_types::replication::Replication;
-use crate::stats::modifier_book::ModifierBook;
-use crate::stats::param_book::ParamBook;
-use crate::stats::stat_book::StatBook;
-use crate::stats::stat_rule::StatRule;
-use crate::units::engine_tag::EngineTag;
-use crate::units::entity_kind::EntityKind;
-use crate::units::row_reads::RowReads;
-use crate::units::view_column::ViewColumn;
-use crate::values::stat::Stat;
 
 /// A book no module declares.
 #[derive(Resource, Debug, Default)]
@@ -148,7 +133,7 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     assert!(!game.contains_resource::<CombatBook>());
     // A book its installed owner did not declare, a book declared and not built, and one built
     // and not declared are each a logic error.
-    let said = panic_of(|| Books::load(&mut game, CombatBook::default()));
+    let said = panic_of(|| CombatBook::default().load_into(&mut game));
     assert!(said.ends_with("is declared by its owner"), "{said}");
     let mut missing = every_book();
     missing.take::<ModifierBook>().unwrap();

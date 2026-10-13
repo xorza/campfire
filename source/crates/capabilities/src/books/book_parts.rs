@@ -1,35 +1,19 @@
-use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::ActionSlots;
-use crate::actions::effect_list_book::EffectListBook;
-use crate::actions::use_group::UseGroup;
-use crate::areas::area_spec::AreaSpec;
-use crate::combat::on_death::OnDeath;
-use crate::items::inventory::Inventory;
-use crate::items::item_book::ItemBook;
-use crate::mode::mode_units::ModeUnits;
-use crate::navigation::walker::Walker;
-use crate::orders::ai::Ai;
-use crate::production::build_book::BuildBook;
-use crate::production::builder::Builder;
-use crate::production::gatherer::Gatherer;
-use crate::production::mode_supply_data::ModeSupplyData;
-use crate::production::node::Node;
-use crate::production::node_book::NodeBook;
-use crate::production::production_data::ProductionData;
-use crate::production::requirement_book::RequirementBook;
-use crate::production::supply_data::SupplyData;
-use crate::progression::track_book::TrackBook;
-use crate::progression::track_set::TrackSet;
-use crate::projectiles::projectile_spec::ProjectileSpec;
-use crate::stats::life::Life;
-use crate::stats::modifier_book::ModifierBook;
-use crate::stats::param_book::ParamTables;
-use crate::stats::pools::Pools;
-use crate::units::body_form::BodyForm;
-use crate::units::by_type::ByType;
-use crate::units::move_step::MoveStep;
-use crate::units::unit_types::UnitTypes;
-use crate::vision::sight::Sight;
+use campfire_actions::{ActionBook, ActionSlots, EffectListBook, UseGroup};
+use campfire_areas::AreaSpec;
+use campfire_combat::OnDeath;
+use campfire_core::{BodyForm, ByType, MoveStep, UnitTypes};
+use campfire_items::{Inventory, ItemBook};
+use campfire_mode::ModeUnits;
+use campfire_navigation::Walker;
+use campfire_orders::Ai;
+use campfire_production::{
+    BuildBook, Builder, Gatherer, ModeSupplyData, Node, NodeBook, ProductionData, RequirementBook,
+    SupplyData,
+};
+use campfire_progression::{TrackBook, TrackSet};
+use campfire_projectiles::ProjectileSpec;
+use campfire_stats::{Life, ModifierBook, ParamTables, Pools};
+use campfire_vision::Sight;
 
 /// What the builder loads package by package: the unit types and tags, the tracks, the
 /// modifiers and actions with their params and effect lists, the AIs, the projectile and area

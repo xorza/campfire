@@ -1,0 +1,173 @@
+use std::sync::Arc;
+
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
+use bevy_ecs::world::World;
+use campfire_actions::CostTarget;
+use campfire_common::Tick;
+use campfire_core::internals::TEST_PACKAGE;
+use campfire_core::{
+    Block, Filter, StatusTags, TagBook, TagProperties, UnitType, UnitTypes, Units, View,
+};
+use campfire_sim::internals::SimWorldInternals;
+use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
+use campfire_stats::{
+    CarriedMut, ModifierBook, ModifierData, Modifiers, StatId, Stats, StatsColumn,
+};
+use campfire_values::{RelationSet, Stat};
+
+use crate::release::Release;
+
+/// The test fixtures of `Units` that need a crate above its own.
+pub trait UnitsFixtures {
+    /// Loads the modifiers that grant the test tags, each of its tag's name, in the package
+    /// `TEST_PACKAGE`, after every other, unless the match loaded them.
+    fn load_test_modifiers(world: &mut World);
+
+    /// Whether the match loaded the modifiers that grant the test tags.
+    fn loads_test_modifiers(world: &World) -> bool;
+
+    /// Holds on unit `id` the test tags whose effects make `properties`, in place of those it
+    /// held, each by the modifier that grants it, as a stun's does; and derives its tags at
+    /// once, as the stats derive them.
+    fn hold_properties(world: &mut World, id: StableId, properties: TagProperties);
+
+    /// Holds on unit `id` the test tags that block `blocks`, in place of those it held, as
+    /// `hold_properties` does.
+    fn set_blocks(world: &mut World, id: StableId, blocks: &[Block]);
+
+    /// Holds on unit `id` the test tags that block `blocks` in `stage` of tick `tick`, as
+    /// `set_blocks` does then, as a modifier applied in that stage would.
+    fn block_at(
+        world: &mut World,
+        id: StableId,
+        tick: u64,
+        stage: SimSet,
+        blocks: &'static [Block],
+    );
+
+    /// Names, for the scripts of a match with no mode, its `damage_kinds`, its `pools` and its
+    /// players' `resources`, each by id, as a mode's books name them.
+    fn name_kinds(world: &World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]);
+}
+
+impl UnitsFixtures for Units {
+    fn load_test_modifiers(world: &mut World) {
+        if Units::loads_test_modifiers(world) {
+            return;
+        }
+        let mut tags = Units::test_tags();
+        tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+        for (name, _) in tags {
+            let grants = ModifierData {
+                tags: vec![name.clone()],
+                ..ModifierData::default()
+            };
+            Stats::load_modifier(world, TEST_PACKAGE, name.as_str(), &grants, None);
+        }
+    }
+
+    fn loads_test_modifiers(world: &World) -> bool {
+        let (first, _) = &Units::test_tags()[0];
+        world.get_resource::<ModifierBook>().is_some()
+            && Stats::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
+    }
+
+    fn hold_properties(world: &mut World, id: StableId, properties: TagProperties) {
+        let blocks = Block::ALL.map(|block| properties.blocks(block));
+        let wanted = blocks
+            .into_iter()
+            .chain([properties.hidden(), properties.detects()]);
+        let entity = world.unit_entity(id);
+        Units::load_test_modifiers(world);
+        for ((name, _), wanted) in Units::test_tags().iter().zip(wanted) {
+            let modifier = Stats::modifier(world, TEST_PACKAGE, name.as_str()).unwrap();
+            let held = world
+                .get::<Modifiers>(entity)
+                .is_some_and(|modifiers| modifiers.get(modifier, None).is_some());
+            if wanted && !held {
+                Stats::give_modifier(world, id, modifier, None, false);
+            } else if !wanted && held {
+                CarriedMut::of(world, entity)
+                    .unwrap()
+                    .remove(modifier, None);
+            }
+        }
+        let unit = world.entity(entity);
+        let unit_type = *unit.get::<UnitType>().unwrap();
+        let status = unit.get::<StatusTags>().copied();
+        let granted = world
+            .resource::<ModifierBook>()
+            .granted(unit.get::<Modifiers>(), status);
+        let tags = world.resource::<TagBook>().unit_tags(unit_type, granted);
+        world.insert_parts(id, tags);
+    }
+
+    fn set_blocks(world: &mut World, id: StableId, blocks: &[Block]) {
+        let properties = blocks
+            .iter()
+            .fold(TagProperties::default(), |properties, &block| {
+                properties.with_block(block)
+            });
+        Units::hold_properties(world, id, properties);
+    }
+
+    fn block_at(
+        world: &mut World,
+        id: StableId,
+        tick: u64,
+        stage: SimSet,
+        blocks: &'static [Block],
+    ) {
+        let block = move |world: &mut World| {
+            if world.resource::<SimTick>().start() == Tick::new(tick) {
+                Units::set_blocks(world, id, blocks);
+            }
+        };
+        world
+            .resource_mut::<Schedules>()
+            .add_systems(SimUpdate, block.in_set(stage));
+    }
+
+    fn name_kinds(world: &World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]) {
+        let view = world.non_send::<View>();
+        let resources = Arc::new(resources.iter().copied().collect());
+        let kinds = Arc::new(damage_kinds.iter().copied().collect());
+        view.names_mut().set_mode_names(kinds, resources);
+        StatsColumn::share_pool_names(view, Arc::new(pools.iter().copied().collect()));
+    }
+}
+
+/// The test fixtures of `View` that need a crate above its own.
+pub trait ViewFixtures {
+    /// The place of `stat` among the stats the mode declares; `None` when it does not declare
+    /// it.
+    fn stat_index(&self, stat: &Stat) -> Option<StatId>;
+
+    /// What a cost named `name` takes from: a pool, or else a player resource; `None` for a name
+    /// the mode declares neither as.
+    fn cost_target(&self, name: &str) -> Option<CostTarget>;
+}
+
+impl ViewFixtures for View {
+    fn stat_index(&self, stat: &Stat) -> Option<StatId> {
+        self.column(|column: &StatsColumn| column.stat_index(stat))
+            .flatten()
+    }
+
+    fn cost_target(&self, name: &str) -> Option<CostTarget> {
+        let pools = self.column(|column: &StatsColumn| column.pool_names().clone());
+        CostTarget::named(&pools.unwrap_or_default(), &self.names().resources, name)
+    }
+}
+
+/// The test fixtures of `Filter` that need a crate above its own.
+pub trait FilterFixtures {
+    /// The filter of `relations` alone, of a match of the release's engine tags.
+    fn of_release_relations(relations: RelationSet) -> Filter;
+}
+
+impl FilterFixtures for Filter {
+    fn of_release_relations(relations: RelationSet) -> Filter {
+        Filter::of_relations(relations, &UnitTypes::new(Release::engine_tags()))
+    }
+}

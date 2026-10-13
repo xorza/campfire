@@ -1,0 +1,114 @@
+use campfire_geometry::Bounds;
+use campfire_math::Num;
+use campfire_sim::Position;
+
+/// The smallest rectangle of the ground plane, its sides along x and z, that holds a group's
+/// positions, each corner `[x, z]`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GroupBox {
+    low: [Num; 2],
+    high: [Num; 2],
+}
+
+impl GroupBox {
+    /// The box of `positions`; `None` for none.
+    pub fn of(positions: impl IntoIterator<Item = Position>) -> Option<GroupBox> {
+        positions
+            .into_iter()
+            .fold(None, |held: Option<GroupBox>, at| {
+                let at = at.get();
+                let point = [at.x, at.z];
+                Some(held.map_or(
+                    GroupBox {
+                        low: point,
+                        high: point,
+                    },
+                    |held| GroupBox {
+                        low: [held.low[0].min(at.x), held.low[1].min(at.z)],
+                        high: [held.high[0].max(at.x), held.high[1].max(at.z)],
+                    },
+                ))
+            })
+    }
+
+    /// The box's midpoint: each coordinate the half of its two ends' sum, rounded toward negative
+    /// infinity.
+    pub(crate) fn centre(self) -> [Num; 2] {
+        // Both ends lie within the world's bound, far inside an i64's half.
+        let mid = |axis: usize| {
+            Num::from_bits((self.low[axis].to_bits() + self.high[axis].to_bits()) >> 1)
+        };
+        [mid(0), mid(1)]
+    }
+
+    /// Whether `point` lies inside the box or on its edge.
+    pub fn holds(self, [x, z]: [Num; 2]) -> bool {
+        self.low[0] <= x && x <= self.high[0] && self.low[1] <= z && z <= self.high[1]
+    }
+
+    /// The goal of the unit at `pos` of a group ordered to `goal`, a point within `bounds`: outside
+    /// the box, `goal` plus the unit's offset from the centre, taken into the bounds; inside the
+    /// box or on its edge, `goal` itself.
+    pub fn goal_of(self, pos: Position, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
+        if self.holds(goal) {
+            return goal;
+        }
+        let [cx, cz] = self.centre();
+        let pos = pos.get();
+        bounds.clamp_ground([goal[0] + (pos.x - cx), goal[1] + (pos.z - cz)])
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_math::Vec3;
+
+    use super::*;
+
+    #[test]
+    fn a_group_keeps_its_shape_only_on_a_move_away_from_its_box() {
+        // Three units at (1, 2), (4, 6) and (2, 3): the box runs from (1, 2) to (4, 6), its centre
+        // (2.5, 4). A goal of (20, 10) lies outside, so each goes to its offset from the centre
+        // added to the goal: (−1.5, −2) → (18.5, 8), (1.5, 2) → (21.5, 12), (−0.5, −1) →
+        // (19.5, 9). Bounds of ±21 m take the second to x = 21.
+        let int = Num::int;
+        let half = |value: i64| Num::int(value) / 2;
+        let units = [
+            Position::try_from(Vec3::from((int(1), 0, int(2)))).unwrap(),
+            Position::try_from(Vec3::from((int(4), 0, int(6)))).unwrap(),
+            Position::try_from(Vec3::from((int(2), 0, int(3)))).unwrap(),
+        ];
+        let group = GroupBox::of(units).unwrap();
+        assert_eq!(group.centre(), [half(5), int(4)]);
+        let bounds = Bounds::new([int(-21), int(-21)], [int(21), int(21)]).unwrap();
+        let goals = units.map(|unit| group.goal_of(unit, [int(20), int(10)], bounds));
+        assert_eq!(
+            goals,
+            [[half(37), int(8)], [int(21), int(12)], [half(39), int(9)]]
+        );
+        // A goal inside the box or on its edge is every unit's goal.
+        for inside in [[int(3), int(5)], [int(1), int(2)], [int(4), int(4)]] {
+            assert!(
+                units
+                    .iter()
+                    .all(|&unit| group.goal_of(unit, inside, bounds) == inside)
+            );
+        }
+        // Just past the edge, the shape holds again.
+        let past = [int(4) + Num::from_bits(1), int(4)];
+        assert_ne!(group.goal_of(units[0], past, bounds), past);
+        assert_eq!(GroupBox::of([]), None);
+    }
+
+    #[test]
+    fn the_centre_rounds_toward_negative_infinity() {
+        // Ends 1 and 2 bits apart: (−1 + 0) / 2 = −½ bit rounds to −1 bit, (0 + 1) / 2 = ½ to 0.
+        let bit = Num::from_bits;
+        let group = GroupBox::of([
+            Position::try_from(Vec3::from((bit(-1), 0, bit(0)))).unwrap(),
+            Position::try_from(Vec3::from((bit(0), 0, bit(1)))).unwrap(),
+        ])
+        .unwrap();
+        assert_eq!(group.centre(), [bit(-1), bit(0)]);
+    }
+}

@@ -1,0 +1,70 @@
+use std::vec;
+
+use campfire_sim::StableId;
+
+use crate::scripts::error::CallError;
+use crate::scripts::hook::Hook;
+
+/// The script calls of the running tick that failed. A failed call changed nothing; the list is
+/// for the host to see. Not state: it empties each tick. A non-send resource, as a script's
+/// raised value is not `Send`.
+#[derive(Debug, Default)]
+pub struct ScriptFailures(Vec<ScriptFailure>);
+
+/// A call that failed: the unit it ran for, if any, its hook, and why.
+#[derive(Debug)]
+pub struct ScriptFailure {
+    pub id: Option<StableId>,
+    pub hook: Hook,
+    pub error: CallError,
+}
+
+impl ScriptFailures {
+    pub fn get(&self) -> &[ScriptFailure] {
+        &self.0
+    }
+
+    /// Takes the failures out, for a caller that keeps them past the tick.
+    pub fn drain(&mut self) -> vec::Drain<'_, ScriptFailure> {
+        self.0.drain(..)
+    }
+
+    pub fn record(&mut self, id: Option<StableId>, hook: Hook, error: CallError) {
+        self.0.push(ScriptFailure { id, hook, error });
+    }
+
+    /// Forgets the failures of the tick before, as a tick begins.
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_sim::StableId;
+
+    use crate::scripts::error::internals::FailureKind;
+    use crate::scripts::hook::Hook;
+    use crate::scripts::script_failures::ScriptFailures;
+
+    /// A failed call as a test compares it: its unit, its hook and what its error is.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct FailedCall {
+        pub id: Option<StableId>,
+        pub hook: Hook,
+        pub kind: FailureKind,
+    }
+
+    impl ScriptFailures {
+        pub fn calls(&self) -> Vec<FailedCall> {
+            self.0
+                .iter()
+                .map(|failure| FailedCall {
+                    id: failure.id,
+                    hook: failure.hook,
+                    kind: failure.error.kind(),
+                })
+                .collect()
+        }
+    }
+}

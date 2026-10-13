@@ -1,6 +1,4 @@
-use crate::declare::capability_set::CapabilitySet;
-use crate::declare::declarations::Declarations;
-use crate::declare::module::{Module, ModuleVisitor};
+use campfire_core::{CapabilitySet, Declarations, Module, ModuleVisitor};
 
 /// The walk that visits, with `D`, the declarations of each module a match of its set runs.
 #[derive(Debug)]

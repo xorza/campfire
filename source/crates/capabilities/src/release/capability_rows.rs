@@ -1,6 +1,5 @@
+use campfire_core::{Module, ModuleVisitor};
 use campfire_sim::Capability;
-
-use crate::declare::module::{Module, ModuleVisitor};
 
 /// Each capability of the release's list, in the order they install, with what it builds on.
 #[derive(Debug, Default)]

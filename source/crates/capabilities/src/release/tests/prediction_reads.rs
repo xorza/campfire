@@ -5,11 +5,10 @@
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
 use bevy_ecs::system::System;
+use campfire_stats::{Modifiers, UnitStats};
 
 use super::*;
 use crate::release::client_holds::ClientHolds;
-use crate::stats::modifiers::Modifiers;
-use crate::stats::unit_stats::UnitStats;
 
 /// What `access` reads, a component's data or its presence, `Has` and `With` among them, and
 /// whether only on the units a client predicts, as the default filters make a query that names
@@ -29,13 +28,13 @@ fn reads(access: &FilteredAccess, unpredicted: ComponentId) -> Option<(Vec<Compo
 /// The systems that compute the server's own state, which a predicting client does not build;
 /// the mode's `OutOfPlay::refresh`, which no client installs, among them.
 const SERVER_ONLY: [&str; 7] = [
-    "areas::area_life::AreaLife::trigger",
-    "combat::dying::Dying::despawn_dead",
-    "combat::dying::Dying::forget_attackers",
-    "production::gather_loop::GatherLoop::despawn_empty_nodes",
-    "production::player_supply::PlayerSupply::refresh",
-    "projectiles::flying::Flying::fly",
-    "vision::seeing::Seeing::see",
+    "campfire_areas::area_life::AreaLife::trigger",
+    "campfire_combat::dying::Dying::despawn_dead",
+    "campfire_combat::dying::Dying::forget_attackers",
+    "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
+    "campfire_production::player_supply::PlayerSupply::refresh",
+    "campfire_projectiles::flying::Flying::fly",
+    "campfire_vision::seeing::Seeing::see",
 ];
 
 /// The names of the systems of the sim's schedule in `world`, built unbuilt.
@@ -61,13 +60,13 @@ fn system_names(world: &mut World) -> Vec<String> {
 /// do. The test fails on one this list lacks, and on one it names that is gone, so no new one
 /// joins them unchecked.
 const EXCLUSIVE: [&str; 7] = [
-    "combat::attacks::Attacks::attack_events",
-    "combat::damage_pass::DamagePass::run",
-    "combat::modifier_intervals::ModifierIntervals::run_intervals",
-    "deliveries::delivery_hooks::DeliveryHooks::end",
-    "production::construction::Construction::start_builds<vision::team_sight::ByHolding>",
-    "production::gather_loop::GatherLoop::run",
-    "production::trains::Trains::finish_trains",
+    "campfire_combat::attacks::Attacks::attack_events",
+    "campfire_combat::damage_pass::DamagePass::run",
+    "campfire_combat::modifier_intervals::ModifierIntervals::run_intervals",
+    "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
+    "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
+    "campfire_production::gather_loop::GatherLoop::run",
+    "campfire_production::trains::Trains::finish_trains",
 ];
 
 #[test]

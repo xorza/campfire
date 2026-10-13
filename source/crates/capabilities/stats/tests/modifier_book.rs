@@ -1,0 +1,113 @@
+use std::collections::BTreeMap;
+use std::convert::Infallible;
+
+use campfire_capabilities::Release;
+use campfire_capabilities::r#match::Match;
+use campfire_core::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
+use campfire_core::{ActionId, ParamProblem, ScriptBook, UnitTypes};
+use campfire_math::Num;
+use campfire_stats::*;
+use campfire_values::{DeclaredName, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat};
+
+fn name(text: &str) -> DeclaredName {
+    DeclaredName::new(text).unwrap()
+}
+
+fn param(text: &str) -> Number {
+    Number::Param(ParamRef { param: name(text) })
+}
+
+#[test]
+fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
+    // The action's params: 2⁴⁰, past a number's 2³⁹; −5 ms; 100 and 200 ms at its 2 ranks;
+    // and a scaling table of 2 ranks.
+    let int = |value| Param::Ranked(Ranked::One(Scalar::Int(value)));
+    let scaling = Param::Scaling(Scaling {
+        base: Ranked::from([Num::ONE, Num::ONE]),
+        per_level: Num::ZERO,
+        bonus: BTreeMap::new(),
+        ratios: BTreeMap::new(),
+    });
+    let per_rank = Ranked::from([Scalar::Int(100), Scalar::Int(200)]);
+    let action = BTreeMap::from([
+        (name("huge"), int(1 << 40)),
+        (name("late"), int(-5)),
+        (name("pace"), Param::Ranked(per_rank)),
+        (name("power"), scaling),
+    ]);
+    // By name, each modifier reads one param, as a shield or as a duration; `own` declares
+    // its param, of one rank.
+    let shield = |read| ModifierData {
+        shield: Some(param(read)),
+        ..ModifierData::default()
+    };
+    let lasting = |read| ModifierData {
+        duration_ms: Some(param(read)),
+        ..ModifierData::default()
+    };
+    let own = ModifierData {
+        params: BTreeMap::from([(name("own"), Param::Ranked(Ranked::from([Scalar::Int(1)])))]),
+        ..shield("own")
+    };
+    let data = [
+        ("absent", shield("absent")),
+        ("huge", shield("huge")),
+        ("late", lasting("late")),
+        ("own", own),
+        ("pace", lasting("pace")),
+        ("power", lasting("power")),
+        ("scaled", shield("power")),
+    ]
+    .map(|(id, data)| (name(id), data));
+    let rate = Match::TEST_RATE;
+    let mut book = ModifierBook::default();
+    let load = ModifierLoad {
+        scripts: &ScriptBook::default(),
+        types: &mut UnitTypes::new(Release::engine_tags()),
+        stat: |_: &_| Ok(StatId::new(0)),
+        rate,
+    };
+    let modifiers = data.each_ref().map(|(name, data)| PackageModifier {
+        name,
+        data,
+        script: None,
+    });
+    book.load(load, 0, &modifiers).unwrap();
+    let mut tables = ParamTables::default();
+    let stat = |_: &Stat| Ok::<_, Infallible>(StatId::new(0));
+    tables.push_action(&action, stat).unwrap();
+    for (_, data) in &data {
+        tables.push_modifier(&data.params, stat).unwrap();
+    }
+    let params = ParamBook::new(tables);
+    let ways = |action, rank| -> Vec<Option<ParamProblem>> {
+        let rank = Rank::new(rank).unwrap();
+        let check = |at| book.check_way(ModifierBook::id_at(at), action, rank, &params, rate);
+        (0..data.len()).map(|at| check(at).err()).collect()
+    };
+    // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no
+    // second rank; 200 ms holds; a time of a scaling table does not, and a shield of it does.
+    let action = Some(ActionId::new(0));
+    let by_action = [Missing, Overflow, Time, Short].map(Some);
+    let by_action = [by_action.as_slice(), &[None, Some(ScalingTime), None]].concat();
+    assert_eq!(ways(action, 2), by_action);
+    // At rank 1 `own` holds too; at rank 3 no per-rank param has a value, the action's as
+    // its own; with no action, only `own`, which declares its param, holds.
+    assert_eq!(ways(action, 1)[3], None);
+    let past = [Missing, Overflow, Time, Short, Short, Short, Short].map(Some);
+    assert_eq!(ways(action, 3), past);
+    let mut no_action = vec![Some(Missing); data.len()];
+    no_action[3] = None;
+    assert_eq!(ways(None, 1), no_action);
+    // A live param is the action's scaling table, at a rank it has: not 2⁴⁰, which is no
+    // table, nor a place past its params, nor rank 3.
+    let live = |at| LiveParam {
+        owner: ParamOwner::Action(ActionId::new(0)),
+        at,
+    };
+    let [second, third] = [2, 3].map(|rank| Rank::new(rank).unwrap());
+    assert!(params.holds_live(live(3), second));
+    assert!(!params.holds_live(live(0), second));
+    assert!(!params.holds_live(live(4), second));
+    assert!(!params.holds_live(live(3), third));
+}

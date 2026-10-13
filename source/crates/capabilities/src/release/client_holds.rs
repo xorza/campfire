@@ -10,14 +10,11 @@ use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
+use campfire_core::CapabilitySet;
 use campfire_sim::{SimResource, StableId, Unpredicted};
+use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
 
-use crate::declare::capability_set::CapabilitySet;
 use crate::release::Release;
-use crate::state_types::StateTypes;
-use crate::state_types::data_kind::DataKind;
-use crate::state_types::recipients::Recipients;
-use crate::state_types::replication::Replication;
 
 /// How a client comes to hold a state type: it derives it, or receives it as its kind's.
 #[derive(Debug, Clone, Copy)]

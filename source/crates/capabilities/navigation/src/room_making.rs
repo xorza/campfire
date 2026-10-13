@@ -1,0 +1,84 @@
+use std::cmp::Ordering;
+
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{QueryState, With, Without};
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::{In, Local, SystemId};
+use bevy_ecs::world::World;
+use campfire_core::{Body, Cache, Dead, MoveStep};
+use campfire_geometry::Shape;
+use campfire_sim::{Keyed, Position, SimTick, StableId};
+
+use crate::body_index::BodyIndex;
+use crate::navigation_effect::NavigationEffect;
+use crate::pathing_grid::PathingGrid;
+use crate::route_planner::{RoutePlanner, Walkable};
+use crate::static_tracking::StaticTrackingRun;
+use crate::walker::Walker;
+
+/// The room a box makes for itself as it spawns, as `Navigation::make_room` says.
+#[derive(Debug)]
+pub struct RoomMaking;
+
+/// The room making as a system of its own, which a spawn runs out of the schedule, so its query
+/// of the walkers and its list of those a box overlaps persist between its runs. Each install
+/// registers it again.
+#[derive(Resource, Debug, Clone, Copy)]
+pub struct RoomMakingRun(pub(super) SystemId<In<Entity>>);
+
+impl Cache for RoomMakingRun {}
+
+impl RoomMaking {
+    /// Makes room for the box of `entity` as `Navigation::make_room` says, with `walkers`, the
+    /// query of every living walker, and `inside`, a buffer it keeps.
+    pub(super) fn make_room(
+        In(entity): In<Entity>,
+        world: &mut World,
+        walkers: &mut QueryState<
+            (Entity, &StableId, &Position, &Body),
+            (With<MoveStep>, Without<Dead>),
+        >,
+        mut inside: Local<'_, Vec<Keyed>>,
+    ) {
+        let run = world.resource::<StaticTrackingRun>().0;
+        world
+            .run_system(run)
+            .expect("the static bodies' tracking runs on any world");
+        let unit = world.entity(entity);
+        let pos = *unit.get::<Position>().expect("a unit has a place");
+        let body = *unit.get::<Body>().expect("a box makes room");
+        let Shape::Box(boxed) = body.shape() else {
+            return;
+        };
+        let now = world.resource::<SimTick>().start();
+        inside.clear();
+        inside.extend(
+            walkers
+                .iter(world)
+                .filter(|&(_, _, &walker_pos, other)| {
+                    let radius = Walker::walking(Some(other)).radius;
+                    other.layer() == body.layer()
+                        && boxed.nearest(pos, walker_pos, radius) == Ordering::Less
+                })
+                .map(|(entity, &id, ..)| Keyed { id, entity }),
+        );
+        inside.sort_unstable_by_key(|keyed| keyed.id);
+        for &Keyed { entity: walker, .. } in &*inside {
+            let unit = world.entity(walker);
+            let walker_pos = *unit.get::<Position>().expect("a walker has a place");
+            let kind = Walker::walking(unit.get::<Body>());
+            let grid = world.get_resource::<PathingGrid>();
+            let planner = world.get_resource::<RoutePlanner>();
+            let place = if let (Some(grid), Some(planner)) = (grid, planner) {
+                let walkable = Walkable::of(grid.clearance(kind), world.resource::<BodyIndex>());
+                planner.stand_at(walkable, walker_pos).unwrap_or(walker_pos)
+            } else {
+                let out = boxed
+                    .push_out(pos, walker_pos.get(), kind.radius)
+                    .expect("the box overlaps the walker, so it pushes the walker out");
+                Position::new(out).expect("a push stays near the bounds")
+            };
+            NavigationEffect::put(world, walker, place, now);
+        }
+    }
+}

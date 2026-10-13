@@ -1,7 +1,7 @@
 use std::any::{Any, type_name};
 use std::fmt;
 
-use crate::declare::book::Book;
+use campfire_core::Book;
 
 /// The books the builder made, each once, until the install takes each where its owner declares
 /// it.

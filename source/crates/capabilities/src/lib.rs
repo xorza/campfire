@@ -1,85 +1,103 @@
-//! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
-//! them. A module imports only from its own layer and the layers below, lowest first: `values`
-//! (data value types); the core, `units`, `scripts` and `players` (unit types, teams, owners,
-//! paths, the script view and runtime, and the players' resources), and `declare`, how each
-//! module declares what it adds; `stats`; `actions`; `combat`; `deliveries`, `projectiles`,
-//! `areas`, `abilities`, `navigation`, `vision`, `progression`, `production` and `items`;
-//! `orders`; the `mode`; and `release`, which installs them, and `books`, which builds a match's
-//! books. The layer test in `release` holds this list, and fails on any import from a higher
-//! layer. A capability gives the script view its fields of a
-//! unit through its column, and the call frame what a call reads besides the core's through its
-//! part.
+//! Capabilities: the mechanisms a mode combines, a crate each, on the core, and the mode above
+//! them. This crate is the top of them: `release` installs every module, `books` builds a
+//! match's books, and `Order` is the body of a command, by the capability that owns it. Its
+//! `pub use` list is the surface the crates above read.
+//!
+//! A capability crate depends only on the crates of its layer and the layers below, lowest
+//! first: `values`, `geometry` and `state-types`; `visibility` and the `core` (units, scripts,
+//! players, and how a module declares what it adds); `stats`; `actions` and `deliveries`;
+//! `combat`; `projectiles`, `areas`, `abilities`, `navigation`, `vision`, `progression`,
+//! `production` and `items`; `orders`; and the `mode`. `LAYERS`, in `release`'s tests, holds
+//! this list, and a test fails on a dependency on a higher layer. A capability gives the script
+//! view its fields of a unit through its column, and the call frame what a call reads besides
+//! the core's through its part.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
-#![warn(unnameable_types)]
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-#![allow(
-    clippy::type_complexity,
-    reason = "a Bevy query names its data and its filters in one type"
-)]
 
-mod abilities;
-mod actions;
-mod areas;
 mod books;
-mod combat;
-mod declare;
-mod deliveries;
-mod geometry;
-mod items;
-mod mode;
-mod navigation;
-mod orders;
-mod players;
-mod production;
-mod progression;
-mod projectiles;
+#[cfg(feature = "internals")]
+mod fixtures;
+mod order;
 mod release;
-mod scripts;
-mod state_types;
-mod stats;
-mod units;
-mod values;
-mod visibility;
-mod vision;
 
-pub use crate::abilities::Abilities;
-pub use crate::actions::Actions;
-pub use crate::actions::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
-pub use crate::actions::action_data_field::ActionDataField;
-pub use crate::actions::action_kind::ActionKind;
-pub use crate::actions::action_range::ActionRange;
-pub use crate::actions::action_slots::{ActionSlot, ActionSlots};
-pub use crate::actions::action_target::ActionTarget;
-pub use crate::actions::construct_data::ConstructData;
-pub use crate::actions::cost_target::CostTarget;
-pub use crate::actions::delivery_data::DeliveryData;
-pub use crate::actions::effect_data::{
-    DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
-    MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
+pub use campfire_abilities::Abilities;
+pub use campfire_actions::{
+    ActionData, ActionDataField, ActionField, ActionKind, ActionProblem, ActionRange, ActionSlot,
+    ActionSlots, ActionTarget, Actions, ChannelData, ChargeRule, ChargeUpData, ChargesData,
+    ConstructData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectRule,
+    EffectTo, HealFields, KindData, LaunchFields, ModifierFields, MoveData, PlacementData,
+    PlacementRule, PlannedEffect, PurgeFields, RangeField, RankChannel, RankCharges, RankFields,
+    RankToggle, RequiresData, RestoreFields, SlotCharges, SlotKind, SlotKindData, SlotKinds,
+    SlotRanks, SlotTime, SlotTimes, SpawnFields, Targeting, TimedSlots, Toggle, TogglePer,
+    UseGroup, XpFields,
 };
-pub use crate::actions::error::{ActionField, ActionProblem, EffectRule};
-pub use crate::actions::kind_data::KindData;
-pub use crate::actions::placement_data::{PlacementData, PlacementRule};
-pub use crate::actions::range_field::RangeField;
-pub use crate::actions::rank_fields::{
-    RankChannel, RankCharges, RankFields, RankToggle, TogglePer,
+pub use campfire_areas::{Area, AreaData, AreaInsideData, AreaReach, Areas};
+pub use campfire_combat::{
+    Combat, CombatData, DeathView, Deaths, Fallen, LeechData, ModeCombatData, OnDeath,
+    RecentAttack, RecentAttackers, Respawn,
 };
-pub use crate::actions::rank_values::ChargeRule;
-pub use crate::actions::requires_data::RequiresData;
-pub use crate::actions::slot_kind::SlotKind;
-pub use crate::actions::slot_kind_data::{SlotKindData, SlotRanks};
-pub use crate::actions::slot_kinds::SlotKinds;
-pub use crate::actions::slot_times::{SlotCharges, SlotTime, SlotTimes, TimedSlots};
-pub use crate::actions::targeting::Targeting;
-pub use crate::actions::use_group::UseGroup;
-pub use crate::areas::Areas;
-pub use crate::areas::area::Area;
-pub use crate::areas::area_data::{AreaData, AreaInsideData};
-pub use crate::areas::area_reach::AreaReach;
+pub use campfire_core::{
+    ActionId, ApiError, ApiMember, ApiOwner, ApiVersion, Applies, Block, Body, BodyForm, BodyUnit,
+    CallError, CapabilityError, CapabilitySet, CollisionData, Commanded, CtxMisuse, CtxUse,
+    DashDelivery, DashTo, DataField, DataTable, Dead, DeliveryEntity, EngineTag, EntityKind,
+    EnumArgs, EnumPath, EnumRecord, EnumString, Facing, ForcedMove, Forms, HeldOut,
+    HeldPlayerUnits, Hook, HookStatus, KindAudience, KindVisitor, Layer, Lifespan, MapBook,
+    MatchEntity, MemberKind, MemberSpec, MemberUse, ModifierId, MoveStep, NameArgs, NameKind,
+    OrderUnits, OutOfPlay, Owner, ParamProblem, PathId, Player, PlayerResources, PlayerUnits,
+    PlayersWorld, Relations, ResourceAmount, ResourceId, RoleSet, ScriptApi, ScriptBook,
+    ScriptBudgets, ScriptFacts, ScriptFailure, ScriptFailures, ScriptFunction, ScriptLimits,
+    ScriptName, ScriptRole, SpawnPoint, StateDecl, StateDefault, StateSync, StateType, StateValue,
+    Status, SyncAll, SyncNone, SyncOwner, SyncTeam, SyncTo, SyncedStateDecl, Tag, TagData,
+    TagProperty, TagPropertyStatus, Team, TeamSet, TrackId, TypeOrigin, TypeOriginBook, TypeScope,
+    TypesError, UnitEntity, UnitFilter, UnitState, UnitType, UnitTypeCore, Units, UnitsWorld,
+    UnknownName,
+};
+pub use campfire_geometry::{Bounds, Grid, Metric, Polygon, PolygonError};
+pub use campfire_items::{
+    Inventory, InventoryData, ItemData, ItemId, ItemStack, Items, ItemsAction, ShopData,
+};
+pub use campfire_mode::{
+    BrushData, ChoiceData, GridData, HeightGrid, InputType, InputValue, Leaver, ListEntry, MapData,
+    MapNavigationData, MapPoint, MarkerData, MatchEnd, MatchResult, Mode, ModeData, ModeError,
+    ModeInput, ModeInputs, ModeList, ModeLoad, ModeMap, ModeNamesError, ModeParam, ModeSetup,
+    ModeState, ModeSync, ModeUnits, ModeWorld, Offer, Offers, PathData, PlacedUnitData,
+    PlayersData, RegionData, RelationData, SaveAsked, SaveBy, SavesData, TeamManifest, WallData,
+};
+pub use campfire_navigation::{
+    Destination, MapProblem, ModeNavigationData, Navigation, OnPath, PathEnd, PathWalker, Paths,
+    Progress, Route,
+};
+pub use campfire_orders::{AiData, AiError, Orders, OrdersAction};
+pub use campfire_production::{
+    BuildOrder, BuildTarget, Builder, DropOffData, Gatherer, ModeSupplyData, NodeData,
+    PlayerSupply, Production, ProductionAction, ProductionData, Queued, Rally, RallyTarget, Site,
+    SupplyData, TrainQueue,
+};
+pub use campfire_progression::{
+    Experience, Learning, Points, Progression, ProgressionAction, Thresholds, TrackData,
+    TrackError, TrackSet, TrackXp,
+};
+pub use campfire_projectiles::{Projectile, ProjectileData, ProjectileHits, Projectiles};
+pub use campfire_state_types::{
+    DataKind, Declared, NotSent, Recipients, Replication, Sending, SendingWays, SentOnChange,
+    SentOnInsert, SentOnce, SentPredicted, StateTypes,
+};
+pub use campfire_stats::{
+    AuraData, EdgeError, Level, Life, ModifierClocks, ModifierData, ModifierProblem, Modifiers,
+    PlayerModifiers, PoolCost, PoolData, PoolId, PoolMeters, Pools, Reapply, StatChange, StatGraph,
+    StatId, StatOp, StatRule, StatValue, Stats, StatsData, StatsWorld,
+};
+pub use campfire_values::{
+    DamageKind, DeclaredName, DeclaredStat, EngineEnum, EngineStat, FilterData, FilterTag, NameId,
+    NameKey, Names, NamesError, Number, PackagePath, Param, ParamRef, Rank, Ranked, Relation,
+    RelationSet, Scalar, Scaling, Share, Speed, Stat, TimeTooLarge,
+};
+pub use campfire_visibility::{
+    HostVisibility, ModeVisibility, OutView, Setting, SettingValue, SpectatorFog, Visibility,
+    VisibilityDecodeError, VisibilityError,
+};
+pub use campfire_vision::{SeenBy, Sight, Vision, VisionData};
+
 pub use crate::books::Books;
 pub use crate::books::book_input::{BookInput, BookKind, BookPackage};
 pub use crate::books::book_place::BookPlace;
@@ -87,256 +105,30 @@ pub use crate::books::error::{BookError, UnitStartError};
 pub use crate::books::package_content::PackageContent;
 pub use crate::books::type_place::TypePlace;
 pub use crate::books::unit_type_data::UnitTypeData;
-pub use crate::combat::Combat;
-pub use crate::combat::combat_data::CombatData;
-pub use crate::combat::deaths::{DeathView, Deaths, Fallen};
-pub use crate::combat::mode_combat_data::{LeechData, ModeCombatData};
-pub use crate::combat::on_death::OnDeath;
-pub use crate::combat::recent_attack::RecentAttack;
-pub use crate::combat::recent_attackers::RecentAttackers;
-pub use crate::combat::respawn::Respawn;
-pub use crate::declare::capability_set::CapabilitySet;
-pub use crate::declare::error::CapabilityError;
-pub use crate::declare::kind_visitor::KindVisitor;
-pub use crate::geometry::bounds::Bounds;
-pub use crate::geometry::grid::Grid;
-pub use crate::geometry::metric::Metric;
-pub use crate::geometry::polygon::Polygon;
-pub use crate::geometry::polygon::error::PolygonError;
-pub use crate::items::Items;
-pub use crate::items::inventory::{Inventory, ItemStack};
-pub use crate::items::inventory_data::InventoryData;
-pub use crate::items::item_data::ItemData;
-pub use crate::items::item_id::ItemId;
-pub use crate::items::items_action::ItemsAction;
-pub use crate::items::shop_data::ShopData;
-pub use crate::mode::Mode;
-pub use crate::mode::choice_data::{ChoiceData, Offers};
-pub use crate::mode::error::{ModeError, ModeList, ModeNamesError};
-pub use crate::mode::height_grid::HeightGrid;
-pub use crate::mode::map_data::{
-    BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
-};
-pub use crate::mode::map_point::MapPoint;
-pub use crate::mode::match_end::{MatchEnd, MatchResult};
-pub use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-pub use crate::mode::mode_input::{InputValue, ModeInput};
-pub use crate::mode::mode_inputs::ModeInputs;
-pub use crate::mode::mode_load::ModeLoad;
-pub use crate::mode::mode_map::ModeMap;
-pub use crate::mode::mode_setup::ModeSetup;
-pub use crate::mode::mode_state::{ModeState, ModeSync};
-pub use crate::mode::mode_units::ModeUnits;
-pub use crate::mode::mode_world::ModeWorld;
-pub use crate::mode::offer::Offer;
-pub use crate::mode::players_data::{Leaver, PlayersData};
-pub use crate::mode::region_data::RegionData;
-pub use crate::mode::relation_data::RelationData;
-pub use crate::mode::save_asked::SaveAsked;
-pub use crate::mode::saves_data::{SaveBy, SavesData};
-pub use crate::mode::team_manifest::TeamManifest;
-pub use crate::navigation::Navigation;
-pub use crate::navigation::destination::Destination;
-pub use crate::navigation::error::MapProblem;
-pub use crate::navigation::mode_navigation_data::ModeNavigationData;
-pub use crate::navigation::on_path::OnPath;
-pub use crate::navigation::path_walker::{PathEnd, PathWalker};
-pub use crate::navigation::paths::Paths;
-pub use crate::navigation::progress::Progress;
-pub use crate::navigation::route::Route;
-pub use crate::orders::Orders;
-pub use crate::orders::ai_data::AiData;
-pub use crate::orders::error::AiError;
-pub use crate::orders::order::{Action, Order};
-pub use crate::orders::orders_action::OrdersAction;
-pub use crate::players::held_out::HeldOut;
-pub use crate::players::order_units::OrderUnits;
-pub use crate::players::out_of_play::OutOfPlay;
-pub use crate::players::player_resources::PlayerResources;
-pub use crate::players::players_world::PlayersWorld;
-pub use crate::players::resource_amount::ResourceAmount;
-pub use crate::production::Production;
-pub use crate::production::build_target::BuildTarget;
-pub use crate::production::builder::{BuildOrder, Builder};
-pub use crate::production::drop_off_data::DropOffData;
-pub use crate::production::gatherer::Gatherer;
-pub use crate::production::mode_supply_data::ModeSupplyData;
-pub use crate::production::node_data::NodeData;
-pub use crate::production::player_supply::PlayerSupply;
-pub use crate::production::production_action::ProductionAction;
-pub use crate::production::production_data::ProductionData;
-pub use crate::production::rally::Rally;
-pub use crate::production::rally_target::RallyTarget;
-pub use crate::production::site::Site;
-pub use crate::production::supply_data::SupplyData;
-pub use crate::production::train_queue::{Queued, TrainQueue};
-pub use crate::progression::Progression;
-pub use crate::progression::error::TrackError;
-pub use crate::progression::experience::{Experience, TrackXp};
-pub use crate::progression::learning::Learning;
-pub use crate::progression::points::Points;
-pub use crate::progression::progression_action::ProgressionAction;
-pub use crate::progression::track_data::{Thresholds, TrackData};
-pub use crate::progression::track_set::TrackSet;
-pub use crate::projectiles::Projectiles;
-pub use crate::projectiles::projectile::Projectile;
-pub use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
-pub use crate::release::Release;
+pub use crate::order::{Action, Order};
 pub use crate::release::r#match::Match;
 pub use crate::release::match_spec::MatchSpec;
-pub use crate::scripts::api_version::ApiVersion;
-pub use crate::scripts::applies::Applies;
-pub use crate::scripts::error::{ApiError, CallError, CtxMisuse, ParamProblem, UnknownName};
-pub use crate::scripts::hook::Hook;
-pub use crate::scripts::name_kind::NameKind;
-pub use crate::scripts::role_set::RoleSet;
-pub use crate::scripts::script_api::ScriptApi;
-pub use crate::scripts::script_api::api_member::ApiMember;
-pub use crate::scripts::script_api::api_owner::ApiOwner;
-pub use crate::scripts::script_api::data_field::DataField;
-pub use crate::scripts::script_api::data_table::DataTable;
-pub use crate::scripts::script_api::enum_record::EnumRecord;
-pub use crate::scripts::script_api::hook_status::HookStatus;
-pub use crate::scripts::script_api::member_kind::MemberKind;
-pub use crate::scripts::script_api::member_spec::{EnumArgs, Forms, MemberSpec, NameArgs};
-pub use crate::scripts::script_api::status::Status;
-pub use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
-pub use crate::scripts::script_book::ScriptBook;
-pub use crate::scripts::script_budgets::ScriptBudgets;
-pub use crate::scripts::script_facts::{
-    CtxUse, EnumPath, EnumString, MemberUse, ScriptFacts, ScriptFunction, ScriptName,
-};
-pub use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
-pub use crate::scripts::script_limits::ScriptLimits;
-pub use crate::scripts::script_role::ScriptRole;
-pub use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
-pub use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
-pub use crate::scripts::state_value::StateValue;
-pub use crate::state_types::data_kind::DataKind;
-pub use crate::state_types::recipients::Recipients;
-pub use crate::state_types::replication::Replication;
-pub use crate::state_types::sending::{
-    NotSent, Sending, SentOnChange, SentOnInsert, SentOnce, SentPredicted,
-};
-pub use crate::state_types::{Declared, SendingWays, StateTypes};
-pub use crate::stats::Stats;
-pub use crate::stats::error::{EdgeError, ModifierProblem};
-pub use crate::stats::level::Level;
-pub use crate::stats::life::Life;
-pub use crate::stats::modifier_clocks::ModifierClocks;
-pub use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
-pub use crate::stats::modifiers::Modifiers;
-pub use crate::stats::player_modifiers::PlayerModifiers;
-pub use crate::stats::pool_cost::PoolCost;
-pub use crate::stats::pool_data::PoolData;
-pub use crate::stats::pool_id::PoolId;
-pub use crate::stats::pools::Pools;
-pub use crate::stats::stat_change::StatChange;
-pub use crate::stats::stat_graph::StatGraph;
-pub use crate::stats::stat_id::StatId;
-pub use crate::stats::stat_op::StatOp;
-pub use crate::stats::stat_rule::StatRule;
-pub use crate::stats::stats_data::{StatValue, StatsData};
-pub use crate::stats::stats_world::StatsWorld;
-pub use crate::stats::unit_pools::PoolMeters;
-pub use crate::units::Units;
-pub use crate::units::action_id::ActionId;
-pub use crate::units::block::Block;
-pub use crate::units::body::Body;
-pub use crate::units::body_form::BodyForm;
-pub use crate::units::body_unit::BodyUnit;
-pub use crate::units::collision_data::CollisionData;
-pub use crate::units::dead::Dead;
-pub use crate::units::delivery_entity::DeliveryEntity;
-pub use crate::units::engine_tag::EngineTag;
-pub use crate::units::entity_filters::UnitFilter;
-pub use crate::units::entity_kind::{EntityKind, KindAudience};
-pub use crate::units::error::TypesError;
-pub use crate::units::facing::Facing;
-pub use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove};
-pub use crate::units::layer::Layer;
-pub use crate::units::lifespan::Lifespan;
-pub use crate::units::map_book::MapBook;
-pub use crate::units::match_entity::MatchEntity;
-pub use crate::units::modifier_id::ModifierId;
-pub use crate::units::move_step::MoveStep;
-pub use crate::units::owner::Owner;
-pub use crate::units::path_id::PathId;
-pub use crate::units::player::Player;
-pub use crate::units::player_units::{Commanded, HeldPlayerUnits, PlayerUnits};
-pub use crate::units::relations::Relations;
-pub use crate::units::resource_id::ResourceId;
-pub use crate::units::spawn_point::SpawnPoint;
-pub use crate::units::tag::Tag;
-pub use crate::units::tag_data::TagData;
-pub use crate::units::tag_property::TagProperty;
-pub use crate::units::team::Team;
-pub use crate::units::team_set::TeamSet;
-pub use crate::units::track_id::TrackId;
-pub use crate::units::type_origin_book::{TypeOrigin, TypeOriginBook};
-pub use crate::units::type_scope::TypeScope;
-pub use crate::units::unit_entity::UnitEntity;
-pub use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
-pub use crate::units::unit_type::UnitType;
-pub use crate::units::unit_type_core::UnitTypeCore;
-pub use crate::units::units_world::UnitsWorld;
-pub use crate::values::damage_kind::DamageKind;
-pub use crate::values::declared_name::DeclaredName;
-pub use crate::values::engine_enum::EngineEnum;
-pub use crate::values::error::{NamesError, TimeTooLarge};
-pub use crate::values::filter_data::{FilterData, FilterTag};
-pub use crate::values::names::{NameId, NameKey, Names};
-pub use crate::values::number::{Number, ParamRef};
-pub use crate::values::package_path::PackagePath;
-pub use crate::values::param::{Param, Scaling};
-pub use crate::values::rank::Rank;
-pub use crate::values::ranked::Ranked;
-pub use crate::values::relation::Relation;
-pub use crate::values::relation_set::RelationSet;
-pub use crate::values::scalar::Scalar;
-pub use crate::values::share::Share;
-pub use crate::values::speed::Speed;
-pub use crate::values::stat::{DeclaredStat, EngineStat, Stat};
-pub use crate::visibility::error::{VisibilityDecodeError, VisibilityError};
-pub use crate::visibility::mode_visibility::{HostVisibility, ModeVisibility};
-pub use crate::visibility::setting::{Setting, SettingValue};
-pub use crate::visibility::{OutView, SpectatorFog, Visibility};
-pub use crate::vision::Vision;
-pub use crate::vision::seen_by::SeenBy;
-pub use crate::vision::sight::Sight;
-pub use crate::vision::vision_data::VisionData;
+pub use crate::release::{Release, r#match};
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::geometry::kernel_scene::{Density, KernelScene};
-    pub use crate::players::Players;
+    pub use campfire_core::Players;
     #[expect(
         clippy::module_name_repetitions,
         reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
     )]
-    pub use crate::scripts::scripts_world::internals::ScriptsWorldInternals;
+    pub use campfire_core::internals::ScriptsWorldInternals;
+    pub use campfire_geometry::internals::{Density, KernelScene};
+
+    pub use crate::fixtures::abilities::AbilitiesFixtures;
+    pub use crate::fixtures::actions::{ActionsFixtures, MatchNames};
+    pub use crate::fixtures::areas::AreasFixtures;
+    pub use crate::fixtures::navigation::NavigationFixtures;
+    pub use crate::fixtures::orders::OrdersFixtures;
+    pub use crate::fixtures::production::ProductionFixtures;
+    pub use crate::fixtures::units::{FilterFixtures, UnitsFixtures, ViewFixtures};
+    pub use crate::fixtures::vision::VisionFixtures;
 }
 
 #[cfg(feature = "internals")]
-pub mod bench {
-    use criterion::Criterion;
-
-    use crate::geometry::{body_box, grid, shape};
-    use crate::navigation::body_index;
-    use crate::units::body_grid;
-    use crate::{navigation, production, vision};
-
-    /// Runs each bench of the crate whose id criterion's filter takes.
-    pub fn run(c: &mut Criterion) {
-        body_box::bench::body_box(c);
-        shape::bench::shape(c);
-        grid::bench::grid(c);
-        body_grid::bench::body_grid(c);
-        body_index::bench::body_index(c);
-        navigation::bench::collision(c);
-        navigation::bench::pathing_grid(c);
-        navigation::bench::route_planner(c);
-        production::bench::gather(c);
-        vision::bench::fog(c);
-    }
-}
+pub mod bench;

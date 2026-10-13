@@ -1,0 +1,46 @@
+[package]
+name = "campfire-actions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-core/internals",
+    "campfire-geometry/internals",
+    "campfire-math/internals",
+    "campfire-sim/internals",
+    "campfire-state-types/internals",
+    "campfire-stats/internals",
+    "campfire-values/internals",
+    "dep:campfire-log",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-core.workspace = true
+campfire-geometry.workspace = true
+campfire-log = { workspace = true, optional = true, features = ["internals"] }
+campfire-math.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+campfire-state-types.workspace = true
+campfire-stats.workspace = true
+campfire-values.workspace = true
+
+bevy_ecs.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+campfire-actions = { workspace = true, features = ["internals"] }
+campfire-codec.workspace = true
+campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
+campfire-sim = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
+
+toml.workspace = true
+
+[lints]
+workspace = true

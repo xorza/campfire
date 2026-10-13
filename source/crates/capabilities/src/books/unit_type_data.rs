@@ -1,26 +1,16 @@
 use std::collections::BTreeMap;
 
+use campfire_areas::AreaData;
+use campfire_combat::CombatData;
+use campfire_core::{CollisionData, DataSection, DataTable, SyncedStateDecl, UnitTypeCore};
+use campfire_items::InventoryData;
+use campfire_orders::AiData;
+use campfire_production::{DropOffData, NodeData, ProductionData, SupplyData};
+use campfire_projectiles::ProjectileData;
+use campfire_stats::StatsData;
+use campfire_values::{DeclaredName, EngineStat, Scalar, Stat};
+use campfire_vision::VisionData;
 use serde::Deserialize;
-
-use crate::areas::area_data::AreaData;
-use crate::combat::combat_data::CombatData;
-use crate::items::inventory_data::InventoryData;
-use crate::orders::ai_data::AiData;
-use crate::production::drop_off_data::DropOffData;
-use crate::production::node_data::NodeData;
-use crate::production::production_data::ProductionData;
-use crate::production::supply_data::SupplyData;
-use crate::projectiles::projectile_data::ProjectileData;
-use crate::scripts::data_section::DataSection;
-use crate::scripts::script_api::data_table::DataTable;
-use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
-use crate::stats::stats_data::StatsData;
-use crate::units::collision_data::CollisionData;
-use crate::units::unit_type_core::UnitTypeCore;
-use crate::values::declared_name::DeclaredName;
-use crate::values::scalar::Scalar;
-use crate::values::stat::{EngineStat, Stat};
-use crate::vision::vision_data::VisionData;
 
 /// A unit type as its data file declares it, in one table: the core's tags, params and state,
 /// and a section for each capability the type uses, its pools beside its stats, its actions by

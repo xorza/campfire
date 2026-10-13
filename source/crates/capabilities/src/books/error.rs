@@ -1,17 +1,14 @@
+use campfire_actions::{ActionError, ActionProblem};
+use campfire_core::{TypesError, UnknownName};
+use campfire_mode::{ModeError, ModeNamesError};
+use campfire_orders::AiError;
+use campfire_progression::TrackError;
+use campfire_stats::ModifierProblem;
+use campfire_values::{DeclaredName, PackagePath, Stat};
 use thiserror::Error;
 
-use crate::actions::error::{ActionError, ActionProblem};
 use crate::books::book_place::BookPlace;
 use crate::books::type_place::TypePlace;
-use crate::mode::error::{ModeError, ModeNamesError};
-use crate::orders::error::AiError;
-use crate::progression::error::TrackError;
-use crate::scripts::error::UnknownName;
-use crate::stats::error::ModifierProblem;
-use crate::units::error::TypesError;
-use crate::values::declared_name::DeclaredName;
-use crate::values::package_path::PackagePath;
-use crate::values::stat::Stat;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.

@@ -1,0 +1,58 @@
+[package]
+name = "campfire-projectiles"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+autotests = false
+
+[features]
+internals = [
+    "campfire-actions/internals",
+    "campfire-core/internals",
+    "campfire-deliveries/internals",
+    "campfire-geometry/internals",
+    "campfire-math/internals",
+    "campfire-sim/internals",
+    "campfire-state-types/internals",
+    "campfire-stats/internals",
+    "campfire-values/internals",
+    "dep:campfire-log",
+]
+
+[dependencies]
+campfire-actions.workspace = true
+campfire-common.workspace = true
+campfire-core.workspace = true
+campfire-deliveries.workspace = true
+campfire-geometry.workspace = true
+campfire-log = { workspace = true, optional = true, features = ["internals"] }
+campfire-math.workspace = true
+campfire-sim.workspace = true
+campfire-state-types.workspace = true
+campfire-stats.workspace = true
+campfire-values.workspace = true
+
+bevy_ecs.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-codec.workspace = true
+campfire-combat = { workspace = true, features = ["internals"] }
+campfire-log = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
+campfire-mode = { workspace = true, features = ["internals"] }
+campfire-navigation = { workspace = true, features = ["internals"] }
+campfire-projectiles = { workspace = true, features = ["internals"] }
+campfire-sim = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
+campfire-vision = { workspace = true, features = ["internals"] }
+
+toml.workspace = true
+
+[lints]
+workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"

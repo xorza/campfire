@@ -4,31 +4,13 @@ use std::fmt::{self, Debug};
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
+use campfire_core::{
+    ApiBuilder, Book, Cache, CallPart, Callbacks, CapabilitySet, ColumnFill, Ctx, Declarations,
+    EngineTag, EntityKind, EntityKinds, EntityParts, KindSpawn, KindVisitor, ModuleSet, Report,
+    RowReads, Scratch, SpawnParts, View, ViewColumn,
+};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
-
-use crate::declare::book::Book;
-use crate::declare::cache::Cache;
-use crate::declare::callbacks::Callbacks;
-use crate::declare::capability_set::CapabilitySet;
-use crate::declare::declarations::{ColumnFill, Declarations};
-use crate::declare::entity_parts::EntityParts;
-use crate::declare::kind_spawn::KindSpawn;
-use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::module_set::ModuleSet;
-use crate::declare::report::Report;
-use crate::declare::scratch::Scratch;
-use crate::declare::spawn_parts::SpawnParts;
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::call_part::CallPart;
-use crate::scripts::ctx::Ctx;
-use crate::state_types::StateTypes;
-use crate::state_types::replication::Replication;
-use crate::units::engine_tag::EngineTag;
-use crate::units::entity_kind::EntityKind;
-use crate::units::entity_kinds::EntityKinds;
-use crate::units::row_reads::RowReads;
-use crate::units::view::View;
-use crate::units::view_column::ViewColumn;
+use campfire_state_types::{Replication, StateTypes};
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
 /// checks into the state registry, its system sets into the schedule, and the rest into the

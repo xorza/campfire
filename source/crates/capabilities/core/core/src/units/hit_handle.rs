@@ -1,0 +1,64 @@
+use campfire_sim::Capability;
+use campfire_values::Hit;
+
+use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_value::ScriptValue;
+use crate::units::view::View;
+
+/// A hit as a script holds it, `Hit` in scripts: read only.
+#[derive(Debug, Clone)]
+pub struct HitHandle {
+    hit: Hit,
+    view: View,
+}
+
+impl HitHandle {
+    pub const fn new(hit: Hit, view: View) -> HitHandle {
+        HitHandle { hit, view }
+    }
+
+    /// The `Hit` handle's fields.
+    pub fn register(api: &mut ApiBuilder<'_>) {
+        let field = |name, description| {
+            MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
+        };
+        let unit = |hit: &HitHandle, id| hit.view.unit_value(id);
+        api.ty::<HitHandle>("Hit")
+            .bind(
+                field(
+                    "delivery",
+                    "the projectile or area unit that delivered it, `()` when at once or gone",
+                ),
+                move |hit: &mut HitHandle| unit(hit, hit.hit.delivery),
+            )
+            .bind(
+                field("target", "the unit the action aimed at, `()` with none"),
+                move |hit: &mut HitHandle| unit(hit, hit.hit.target),
+            )
+            .bind(
+                field("pos", "where it hit, or where its delivery ended"),
+                |hit: &mut HitHandle| hit.hit.pos,
+            )
+            .bind(
+                field("distance", "how far its delivery flew"),
+                |hit: &mut HitHandle| hit.hit.distance,
+            )
+            .bind(
+                field(
+                    "direction",
+                    "the direction its delivery flew in, `()` for an area or a delivery that did not move",
+                ),
+                |hit: &mut HitHandle| hit.hit.direction.map_or(ScriptValue::UNIT, ScriptValue::of),
+            )
+            .plan(
+                MemberSpec::field(
+                    ApiOwner::Hit,
+                    "part",
+                    "the body part a ray or a sweep struck, `()` with none",
+                )
+                .capability(Capability::Hitboxes),
+            );
+    }
+}

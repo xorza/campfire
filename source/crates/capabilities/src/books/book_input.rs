@@ -1,15 +1,11 @@
+use campfire_core::ScriptBook;
+use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_sim::TickRate;
+use campfire_stats::StatId;
+use campfire_values::{DeclaredName, PackagePath, Speed};
 
 use crate::books::package_content::PackageContent;
 use crate::books::unit_type_data::UnitTypeData;
-use crate::mode::map_data::MapData;
-use crate::mode::mode_data::ModeData;
-use crate::mode::team_manifest::TeamManifest;
-use crate::scripts::script_book::ScriptBook;
-use crate::stats::stat_id::StatId;
-use crate::values::declared_name::DeclaredName;
-use crate::values::package_path::PackagePath;
-use crate::values::speed::Speed;
 
 /// What a match's books are built from, which the package load checked: the mode's data, its
 /// map and teams, the rules of its manifest, its packages in the order a match loads them, and

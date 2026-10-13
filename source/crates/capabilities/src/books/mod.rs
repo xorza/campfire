@@ -1,33 +1,22 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
-use std::any::type_name;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
+use campfire_core::{
+    BodyForm, ByType, CapabilitySet, MapBook, ResourceId, UnitType, UnitTypes, View,
+};
+use campfire_mode::ModeInputs;
+use campfire_navigation::{MapProblem, Walker};
+use campfire_values::{DamageKind, DeclaredName, Names};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;
 use crate::books::book_input::BookInput;
 use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
-use crate::declare::book::Book;
-use crate::declare::capability_set::CapabilitySet;
-use crate::mode::mode_inputs::ModeInputs;
-use crate::navigation::error::MapProblem;
-use crate::navigation::walker::Walker;
 use crate::release::Release;
-use crate::scripts::ctx::Ctx;
-use crate::units::body_form::BodyForm;
-use crate::units::by_type::ByType;
-use crate::units::map_book::MapBook;
-use crate::units::resource_id::ResourceId;
-use crate::units::unit_type::UnitType;
-use crate::units::unit_types::UnitTypes;
-use crate::units::view::View;
-use crate::values::damage_kind::DamageKind;
-use crate::values::declared_name::DeclaredName;
-use crate::values::names::Names;
 
 pub(crate) mod book_builder;
 pub(crate) mod book_fill;
@@ -54,28 +43,6 @@ pub struct Books {
 }
 
 impl Books {
-    /// Puts `book` in place of the empty one its owner's declaration put in `world`, and gives
-    /// the script view and, in a match that runs scripts, the call frame what they copy of it:
-    /// the step of the install for each book, which a test that loads a book alone takes too.
-    pub(crate) fn load<B: Book>(world: &mut World, book: B) {
-        assert!(
-            world.contains_resource::<B>(),
-            "{} is declared by its owner",
-            type_name::<B>()
-        );
-        world.insert_resource(book);
-        Books::share::<B>(world);
-    }
-
-    /// Gives the script view and, in a match that runs scripts, the call frame what they copy of
-    /// `world`'s book `B`, as it stands.
-    pub(crate) fn share<B: Book>(world: &World) {
-        let view = world.non_send::<View>();
-        let ctx = world.get_non_send::<Ctx>();
-        let mut frame = ctx.map(Ctx::frame);
-        world.resource::<B>().share(view, frame.as_deref_mut());
-    }
-
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {

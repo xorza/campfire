@@ -3,28 +3,15 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
+use campfire_core::{
+    ApiBuilder, Book, Cache, CallPart, Callbacks, CapabilitySet, ColumnFill, Declarations,
+    EngineTag, EntityKind, KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch,
+    ViewColumn,
+};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
+use campfire_state_types::{Replication, StateTypes};
 
-use crate::books::Books;
 use crate::books::built_books::BuiltBooks;
-use crate::declare::book::Book;
-use crate::declare::cache::Cache;
-use crate::declare::callbacks::Callbacks;
-use crate::declare::capability_set::CapabilitySet;
-use crate::declare::declarations::{ColumnFill, Declarations};
-use crate::declare::kind_spawn::KindSpawn;
-use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::module_set::ModuleSet;
-use crate::declare::report::Report;
-use crate::declare::scratch::Scratch;
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::call_part::CallPart;
-use crate::state_types::StateTypes;
-use crate::state_types::replication::Replication;
-use crate::units::engine_tag::EngineTag;
-use crate::units::entity_kind::EntityKind;
-use crate::units::row_reads::RowReads;
-use crate::units::view_column::ViewColumn;
 
 /// The install of the books, a walk of every module's declarations: each declared book is taken
 /// from `built`, which must hold it, and goes in `world`, a match of `set` that runs scripts when
@@ -66,7 +53,7 @@ impl Declarations for BookFill<'_> {
         let book = self.built.take::<B>();
         let book = book.unwrap_or_else(|| panic!("{} is declared and built", type_name::<B>()));
         if B::held(self.set, self.scripts) {
-            Books::load(self.world, book);
+            book.load_into(self.world);
         }
     }
 

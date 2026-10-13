@@ -1,0 +1,314 @@
+#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "Bevy systems take `Res` and `Query` by value"
+)]
+#![expect(
+    clippy::type_complexity,
+    reason = "a Bevy query names its data and its filters in one type"
+)]
+
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use campfire_core::{
+    Block, BodyUnit, ByType, Declarations, EngineTag, InstallCx, Module, ModuleSet, Phase, Player,
+    SetPlace, TagProperties,
+};
+use campfire_sim::Capability;
+use campfire_vision::{ByHolding, ByVision, TeamSight};
+
+mod build_book;
+mod build_target;
+mod builder;
+mod construction;
+mod drop_off_data;
+mod gather_loop;
+mod gatherer;
+mod held;
+mod holdings;
+mod mode_supply_data;
+mod node;
+mod node_book;
+mod node_data;
+mod placement;
+mod player_supply;
+mod production_action;
+mod production_api;
+mod production_books;
+mod production_column;
+mod production_data;
+mod production_orders;
+mod rally;
+mod rally_target;
+mod requirement_book;
+mod resource_set;
+mod site;
+mod supply;
+mod supply_book;
+mod supply_cost_book;
+mod supply_data;
+mod train_queue;
+mod trains;
+
+pub use crate::build_book::{BuildBook, BuildSpec, NewBuild, PlacementCheck, Style};
+pub use crate::build_target::BuildTarget;
+pub use crate::builder::{BuildOrder, Builder};
+pub use crate::construction::Construction;
+pub use crate::construction::step::{Start, Step};
+pub use crate::drop_off_data::DropOffData;
+pub use crate::gather_loop::GatherLoop;
+pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
+pub use crate::held::Held;
+pub use crate::mode_supply_data::ModeSupplyData;
+pub use crate::node::Node;
+pub use crate::node_book::NodeBook;
+pub use crate::node_data::NodeData;
+pub use crate::player_supply::PlayerSupply;
+pub use crate::production_action::ProductionAction;
+pub use crate::production_api::ProductionApi;
+pub use crate::production_column::{ProductionColumn, RowReads};
+pub use crate::production_data::ProductionData;
+pub use crate::production_orders::ProductionOrders;
+pub use crate::rally::Rally;
+pub use crate::rally_target::RallyTarget;
+pub use crate::requirement_book::{Required, RequirementBook};
+pub use crate::resource_set::ResourceSet;
+pub use crate::site::{Progressed, Site};
+pub use crate::supply_book::SupplyBook;
+pub use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
+pub use crate::supply_data::SupplyData;
+pub use crate::train_queue::{Queued, TrainQueue};
+pub use crate::trains::Trains;
+
+/// The `production` capability: units that train others, through a queue, within their player's
+/// supply and requirements.
+#[derive(Debug)]
+pub struct Production;
+
+campfire_common::enum_all! {
+    /// The steps of `production`.
+    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+    pub(crate) enum ProductionSet {
+        /// The tick's orders cancel trains and builds, and set rally points.
+        Commands,
+        /// The build orders that changed are checked, after the orders apply.
+        CheckBuilds,
+        /// After the actions start: trains start, builds start and workers gather.
+        Start,
+        /// Sites progress, and the trains whose time ended spawn.
+        Finish,
+        /// Each player's supply is counted again, and the emptied nodes go.
+        Supply,
+    }
+    /// Every step.
+    pub const ALL;
+}
+
+impl ModuleSet for ProductionSet {
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const ALL: &'static [ProductionSet] = &ProductionSet::ALL;
+
+    fn place(self) -> SetPlace {
+        SetPlace::Phase(match self {
+            ProductionSet::Commands => Phase::Produce,
+            ProductionSet::CheckBuilds => Phase::CheckBuilds,
+            ProductionSet::Start => Phase::StartBuilds,
+            ProductionSet::Finish => Phase::Finish,
+            ProductionSet::Supply => Phase::End,
+        })
+    }
+}
+
+impl Module for Production {
+    const CAPABILITY: Option<Capability> = Some(Capability::Production);
+    const NEEDS: &'static [Capability] = &[];
+
+    fn declare<D: Declarations>(d: &mut D) {
+        d.sets::<ProductionSet>();
+        d.engine_tags(&[
+            Production::CONSTRUCTING,
+            Production::NODE,
+            Production::DROP_OFF,
+            Production::GATHERING,
+        ]);
+        d.component::<TrainQueue>();
+        d.derived_sent::<PlayerSupply>();
+        d.component::<Rally>();
+        d.component::<Builder>();
+        d.component::<Site>();
+        d.component::<Node>();
+        d.component::<Gatherer>();
+        d.book::<ByType<ProductionData>>();
+        d.book::<RequirementBook>();
+        d.book::<SupplyCostBook>();
+        d.book::<BuildBook>();
+        d.book::<NodeBook>();
+        d.book::<SupplyBook>();
+        d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
+        d.api(ProductionApi::register);
+        d.book::<ByType<Builder>>();
+        d.book::<ByType<Node>>();
+        d.book::<ByType<Gatherer>>();
+        d.part::<BodyUnit, TrainQueue>(|at| {
+            at.of_type::<ProductionData>()
+                .map(|_| TrainQueue::default())
+        });
+        d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
+        d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
+        d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
+    }
+
+    /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and set
+    /// rally points, at the units the server's vision sees, or, on a predicting client, the units it
+    /// holds; in Act, after the other orders start, ordered trains pass their
+    /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
+    /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
+    /// construction and gathering too: in Inputs, the build and gather orders that changed are
+    /// checked; in Act, after the trains, builds start and workers run their loops; in Mode,
+    /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn. A
+    /// player's supply and a node's end are the server's: a predicting client derives neither,
+    /// as it holds only the units its team sees. A build's placement tests the units the server's
+    /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
+    /// with its supply, which the refresh writes in place; a client receives its own player's.
+    fn install(cx: &mut InstallCx<'_>) {
+        if cx.predicting() {
+            Production::install_by::<ByHolding>(cx);
+        } else {
+            cx.world
+                .register_required_components::<Player, PlayerSupply>();
+            Production::install_by::<ByVision>(cx);
+        }
+    }
+}
+
+impl Production {
+    /// The engine tag of a site, a building under construction: it blocks its attacks, casts and
+    /// uses, so no action of its starts.
+    pub const CONSTRUCTING: EngineTag = EngineTag::new(
+        3,
+        "constructing",
+        TagProperties::NONE
+            .with_block(Block::Attack)
+            .with_block(Block::Cast)
+            .with_block(Block::Use),
+    );
+    /// The engine tag of node types, which workers gather from.
+    pub const NODE: EngineTag = EngineTag::new(4, "node", TagProperties::NONE);
+    /// The engine tag of drop-off types, which workers take their loads to.
+    pub const DROP_OFF: EngineTag = EngineTag::new(5, "drop_off", TagProperties::NONE);
+    /// The engine tag of a worker in its gather loop, which another such worker passes through.
+    pub const GATHERING: EngineTag =
+        EngineTag::new(6, "gathering", TagProperties::NONE.with_passes());
+
+    /// `install`, each placement testing the units `S` sees.
+    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
+        let navigation = cx.has(Capability::Navigation);
+        let predicting = cx.predicting();
+        let schedule = &mut *cx.schedule;
+        schedule.add_systems(
+            ProductionOrders::apply_production_orders::<S>.in_set(ProductionSet::Commands),
+        );
+        if !predicting {
+            schedule.add_systems(PlayerSupply::refresh.in_set(ProductionSet::Supply));
+        }
+        // A build places a box, which only navigation tests for room, and a worker walks.
+        if !navigation {
+            schedule.add_systems((
+                Trains::start_trains.in_set(ProductionSet::Start),
+                Trains::finish_trains.in_set(ProductionSet::Finish),
+            ));
+            return;
+        }
+        schedule.add_systems((
+            (Construction::check_builds::<S>, GatherLoop::check_gathers)
+                .chain()
+                .in_set(ProductionSet::CheckBuilds),
+            (
+                Trains::start_trains,
+                Construction::forget_dead_builds,
+                Construction::start_builds::<S>,
+                GatherLoop::run,
+                GatherLoop::tag_gatherers,
+            )
+                .chain()
+                .in_set(ProductionSet::Start),
+            (Construction::progress_sites, Trains::finish_trains)
+                .chain()
+                .in_set(ProductionSet::Finish),
+        ));
+        if !predicting {
+            schedule.add_systems(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    use bevy_ecs::world::World;
+    use campfire_actions::{ActionBook, ActionSlots, ActionTarget};
+    use campfire_core::{Book, ByType, UnitType};
+    use campfire_math::Num;
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{IdAllocator, StableId};
+    use campfire_stats::Life;
+
+    use crate::Production;
+    use crate::build_target::BuildTarget;
+    use crate::builder::Builder;
+    use crate::gatherer::{GatherStep, Gatherer};
+    use crate::mode_supply_data::ModeSupplyData;
+    use crate::site::Site;
+    use crate::supply_book::SupplyBook;
+    use crate::supply_cost_book::SupplyCostBook;
+    use crate::supply_data::SupplyData;
+
+    impl Production {
+        /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
+        pub fn count_supply(world: &mut World, max: u32, supplies: &[(UnitType, SupplyData)]) {
+            let mut types = ByType::default();
+            for &(unit_type, supply) in supplies {
+                types.set(unit_type, supply);
+            }
+            let costs = SupplyCostBook::new(types, world.resource::<ActionBook>());
+            costs.load_into(world);
+            (SupplyBook(Some(ModeSupplyData { max }))).load_into(world);
+        }
+
+        /// The next stable id.
+        pub fn allocate_id(world: &mut World) -> StableId {
+            world.resource_mut::<IdAllocator>().allocate()
+        }
+
+        /// Orders `producer` to train what its slot 0 holds.
+        pub fn order_train(world: &mut World, producer: StableId) {
+            let mut slots = world.part_mut::<ActionSlots>(producer);
+            slots.order(0, ActionTarget::None);
+        }
+
+        /// The depot `id`'s life, and its progress while a site.
+        pub fn site(world: &World, id: StableId) -> (Num, Option<Num>) {
+            let life = world.part::<Life>(id).current();
+            let progress = world.try_part::<Site>(id).map(Site::progress);
+            (life, progress)
+        }
+
+        /// Where `builder`'s build order builds.
+        pub fn order_of(world: &World, builder: StableId) -> Option<BuildTarget> {
+            world
+                .part::<Builder>(builder)
+                .order()
+                .map(|order| order.target)
+        }
+
+        /// The step of `worker`'s gather loop, none when it gathers nothing.
+        pub fn gather_step(world: &World, worker: StableId) -> Option<GatherStep> {
+            let gatherer = world.part::<Gatherer>(worker);
+            gatherer.order().map(|order| order.step)
+        }
+
+        /// The node `worker`'s loop is at.
+        pub fn node_of(world: &World, worker: StableId) -> Option<StableId> {
+            let gatherer = world.part::<Gatherer>(worker);
+            gatherer.order().map(|order| order.node.node)
+        }
+    }
+}

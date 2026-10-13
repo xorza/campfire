@@ -3,10 +3,9 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use campfire_math::Num;
+use campfire_stats::{StatRule, StatValue, StatsData};
 
 use super::*;
-use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_data::{StatValue, StatsData};
 
 fn decimal(text: &str) -> Num {
     Num::from_str(text).unwrap()

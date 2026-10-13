@@ -4,6 +4,18 @@ members = [
     "crates/base/*",
     "crates/sim/*",
     "crates/capabilities",
+    "crates/capabilities/abilities",
+    "crates/capabilities/areas",
+    "crates/capabilities/combat",
+    "crates/capabilities/items",
+    "crates/capabilities/mode",
+    "crates/capabilities/navigation",
+    "crates/capabilities/orders",
+    "crates/capabilities/production",
+    "crates/capabilities/progression",
+    "crates/capabilities/projectiles",
+    "crates/capabilities/stats",
+    "crates/capabilities/vision",
     "crates/capabilities/core/*",
     "crates/session/*",
     "crates/network/*",
@@ -20,6 +32,25 @@ license = "MIT OR Apache-2.0"
 # Exact versions: a release must rebuild bit for bit (docs/design/02-engine-core.md).
 [workspace.dependencies]
 campfire-capabilities = { path = "crates/capabilities" }
+campfire-abilities = { path = "crates/capabilities/abilities" }
+campfire-actions = { path = "crates/capabilities/core/actions" }
+campfire-areas = { path = "crates/capabilities/areas" }
+campfire-combat = { path = "crates/capabilities/combat" }
+campfire-core = { path = "crates/capabilities/core/core" }
+campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
+campfire-geometry = { path = "crates/capabilities/core/geometry" }
+campfire-items = { path = "crates/capabilities/items" }
+campfire-mode = { path = "crates/capabilities/mode" }
+campfire-navigation = { path = "crates/capabilities/navigation" }
+campfire-orders = { path = "crates/capabilities/orders" }
+campfire-production = { path = "crates/capabilities/production" }
+campfire-progression = { path = "crates/capabilities/progression" }
+campfire-projectiles = { path = "crates/capabilities/projectiles" }
+campfire-state-types = { path = "crates/capabilities/core/state-types" }
+campfire-stats = { path = "crates/capabilities/stats" }
+campfire-values = { path = "crates/capabilities/core/values" }
+campfire-visibility = { path = "crates/capabilities/core/visibility" }
+campfire-vision = { path = "crates/capabilities/vision" }
 campfire-codec = { path = "crates/base/codec" }
 campfire-common = { path = "crates/base/common" }
 campfire-import = { path = "crates/apps/import" }

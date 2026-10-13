@@ -9,26 +9,20 @@ use Capability::{
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::Mut;
+use campfire_actions::ActionBook;
 use campfire_common::SegmentSeed;
-use campfire_sim::SimUpdate;
+use campfire_core::{
+    ByType, EntityParts, Player, PlayerResources, ScriptBudgets, ScriptLimits, Team, UnitTypeCore,
+    View,
+};
+use campfire_orders::Ai;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, StateRegistry};
+use campfire_sim::{Position, SimUpdate, StateRegistry};
 use campfire_store::InputFile;
 use campfire_store::internals::SourceFiles;
 
 use super::*;
-use crate::actions::action_book::ActionBook;
-use crate::declare::entity_parts::EntityParts;
-use crate::orders::ai::Ai;
-use crate::players::player_resources::PlayerResources;
 use crate::release::r#match::Match;
-use crate::scripts::script_budgets::ScriptBudgets;
-use crate::scripts::script_limits::ScriptLimits;
-use crate::units::by_type::ByType;
-use crate::units::player::Player;
-use crate::units::team::Team;
-use crate::units::unit_type_core::UnitTypeCore;
-use crate::units::view::View;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -205,20 +199,18 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
     assert_eq!(built, installed);
 }
 
-/// The layer of each module of the crate, lowest first: a module imports from its own layer
-/// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 24] = [
-    ("values", 0),
-    ("geometry", 0),
-    ("state_types", 0),
-    ("visibility", 1),
-    ("declare", 1),
-    ("units", 1),
-    ("scripts", 1),
-    ("players", 1),
+/// Each capability crate's folder under this crate's and its layer, lowest first: a crate
+/// depends only on crates of its own layer and the layers below, as design 02's structural rules
+/// ask. This crate sits above them all.
+const LAYERS: [(&str, u8); 19] = [
+    ("core/values", 0),
+    ("core/geometry", 0),
+    ("core/state-types", 0),
+    ("core/visibility", 1),
+    ("core/core", 1),
     ("stats", 2),
-    ("actions", 3),
-    ("deliveries", 3),
+    ("core/actions", 3),
+    ("core/deliveries", 3),
     ("combat", 4),
     ("projectiles", 5),
     ("areas", 5),
@@ -230,9 +222,50 @@ const LAYERS: [(&str, u8); 24] = [
     ("items", 5),
     ("orders", 6),
     ("mode", 7),
-    ("release", 8),
-    ("books", 8),
 ];
+
+/// The layer of the capability crate `name`, by the last part of its folder.
+fn layer(name: &str) -> Option<u8> {
+    let found = LAYERS
+        .iter()
+        .find(|(folder, _)| folder.rsplit('/').next() == Some(name));
+    found.map(|&(_, layer)| layer)
+}
+
+const MANIFEST_LEN: usize = 1 << 16;
+
+#[test]
+fn a_capability_crate_depends_only_on_its_layer_and_below() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut edges = Vec::new();
+    for (folder, own) in LAYERS {
+        let path = root.join(folder).join("Cargo.toml");
+        let manifest = InputFile::read_text(&path, MANIFEST_LEN).unwrap();
+        let dependencies = manifest
+            .split("\n[")
+            .find_map(|section| section.strip_prefix("dependencies]\n"))
+            .expect("a capability crate has dependencies");
+        for line in dependencies.lines() {
+            let Some(name) = line.strip_prefix("campfire-") else {
+                continue;
+            };
+            let name = &name[..name.find(['.', ' ']).unwrap()];
+            if let Some(layer) = layer(name) {
+                edges.push((folder, name.to_owned(), layer > own));
+            }
+        }
+    }
+    assert!(
+        edges
+            .iter()
+            .any(|(from, to, _)| *from == "mode" && to == "stats")
+    );
+    let upward: Vec<_> = edges
+        .into_iter()
+        .filter_map(|(from, to, upward)| upward.then_some((from, to)))
+        .collect();
+    assert_eq!(upward, [], "dependencies on a higher layer");
+}
 
 /// Visits each source file under `dir` with its production code, by its path from `dir`.
 fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
@@ -243,31 +276,33 @@ fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
     }
 }
 
-/// Each `crate::<module>` the production code of `dir`'s files names, beside the module the
-/// file is in.
-fn imports(dir: &Path, module: &str, found: &mut Vec<(String, String)>) {
-    production(dir, &mut |_, code| {
-        for (at, _) in code.match_indices("crate::") {
-            let rest = &code[at + "crate::".len()..];
-            let end = rest
-                .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-                .unwrap_or(rest.len());
-            found.push((module.to_owned(), rest[..end].to_owned()));
-        }
-    });
+/// Visits each source file of every capability crate and of this one with its production code,
+/// by its path as `<module>/<path>`: a crate of one module under its module's name, and
+/// `campfire-core` and this crate, which hold several, under their modules' own.
+fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    for folder in LAYERS.iter().map(|&(folder, _)| folder).chain([""]) {
+        let module = match folder.rsplit('/').next().unwrap() {
+            "core" | "" => None,
+            name => Some(name.replace('-', "_")),
+        };
+        production(
+            &root.join(folder).join("src"),
+            &mut |path, code| match &module {
+                Some(module) => visit(&format!("{module}/{path}"), code),
+                None => visit(path, code),
+            },
+        );
+    }
 }
 
 #[test]
 fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     // The table's install order, its needs and the layers are three facts of one order: a
     // capability builds only on capabilities of lower layers, installed before it.
-    let layer = |capability: Capability| {
-        let found = LAYERS.iter().find(|(name, _)| *name == capability.name());
-        found.map(|&(_, layer)| layer)
-    };
     let mut installed = Vec::new();
     for row in Release::rows().0 {
-        let own = layer(row.capability).expect("an installed capability is a module");
+        let own = layer(row.capability.name()).expect("an installed capability is a crate");
         for &need in row.needs {
             assert!(
                 installed.contains(&need),
@@ -275,7 +310,7 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
                 row.capability
             );
             assert!(
-                layer(need) < Some(own),
+                layer(need.name()) < Some(own),
                 "{need:?} below {:?}",
                 row.capability
             );
@@ -285,67 +320,35 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
 }
 
 #[test]
-fn a_module_imports_only_from_its_layer_and_below() {
-    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
-    let layer = |module: &str| {
-        LAYERS
-            .iter()
-            .find(|(name, _)| *name == module)
-            .map(|&(_, layer)| layer)
-    };
-    let mut found = Vec::new();
-    for (module, _) in LAYERS {
-        imports(&src.join(module), module, &mut found);
-    }
-    let mut upward: Vec<(String, String)> = found
-        .into_iter()
-        .filter(|(from, to)| {
-            let to_layer = layer(to);
-            assert!(
-                to_layer.is_some() || to.is_empty(),
-                "{from} imports crate::{to}, a module with no layer"
-            );
-            to_layer > layer(from)
-        })
-        .collect();
-    upward.sort();
-    upward.dedup();
-    assert_eq!(upward, [], "imports from a higher layer");
-}
-
-#[test]
 fn no_module_names_another_modules_sets() {
     // A set's order is its phase's alone: a module that named another's set would order against
     // it, or put a system in it, outside the one list of phases.
-    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+    let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
     let mut sets = Vec::new();
-    for (module, _) in LAYERS {
-        production(&src.join(module), &mut |_, code| {
-            for (at, _) in code.match_indices("impl ModuleSet for ") {
-                let rest = &code[at + "impl ModuleSet for ".len()..];
-                let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
-                sets.push((module, rest[..end].to_owned()));
-            }
-        });
-    }
+    capability_sources(&mut |path, code| {
+        for (at, _) in code.match_indices("impl ModuleSet for ") {
+            let rest = &code[at + "impl ModuleSet for ".len()..];
+            let end = rest.find(|c: char| !c.is_ascii_alphanumeric()).unwrap();
+            sets.push((module_of(path), rest[..end].to_owned()));
+        }
+    });
     assert!(
         sets.iter()
-            .any(|(module, set)| *module == "actions" && set == "ActionsSet")
+            .any(|(module, set)| module == "actions" && set == "ActionsSet")
     );
     let mut named = Vec::new();
-    for (module, _) in LAYERS {
-        production(&src.join(module), &mut |path, code| {
-            let words = code.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
-            for word in words {
-                let other = sets
-                    .iter()
-                    .find(|(owner, set)| set == word && *owner != module);
-                if let Some((owner, set)) = other {
-                    named.push(format!("{module}/{path} names {owner}'s {set}"));
-                }
+    capability_sources(&mut |path, code| {
+        let module = module_of(path);
+        let words = code.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
+        for word in words {
+            let other = sets
+                .iter()
+                .find(|(owner, set)| set == word && *owner != module);
+            if let Some((owner, set)) = other {
+                named.push(format!("{path} names {owner}'s {set}"));
             }
-        });
-    }
+        }
+    });
     named.sort();
     named.dedup();
     assert_eq!(named, Vec::<String>::new());
@@ -421,7 +424,7 @@ const ROLE_EXCEPTIONS: [&str; 2] = ["UnitOrder", "CoreApi"];
 
 /// The types of `code`, the file `file` of the module `module`, that hold a role and are not
 /// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
-/// directory.
+/// directory, and a crate's `lib.rs` by its module.
 fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)> {
     let pascal: String = module
         .split('_')
@@ -456,16 +459,16 @@ fn misnamed_roles(module: &str, file: &str, code: &str) -> Vec<(String, String)>
 
 #[test]
 fn each_role_of_a_module_takes_the_modules_name() {
-    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
     let mut misnamed = Vec::new();
     let mut held = [0; ROLES.len()];
-    production(src, &mut |path, code| {
+    capability_sources(&mut |path, code| {
         let parts: Vec<&str> = path.split('/').collect();
         let [module, .., last] = parts[..] else {
             return;
         };
         let file = match last.strip_suffix(".rs").expect("a source ends in .rs") {
             "mod" => parts[parts.len() - 2],
+            "lib" => module,
             stem => stem,
         };
         misnamed.extend(misnamed_roles(module, file, code));
@@ -592,10 +595,9 @@ fn suffixed<'c>(code: &'c str, suffix: &str) -> Vec<&'c str> {
 
 #[test]
 fn a_book_and_a_data_table_take_their_suffix() {
-    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
     let mut holders: [Vec<String>; SUFFIX_ROLES.len()] = Default::default();
     let mut books = Vec::new();
-    production(src, &mut |_, code| {
+    capability_sources(&mut |_, code| {
         for (holders, (role, _)) in holders.iter_mut().zip(SUFFIX_ROLES) {
             holders.extend(implementers(code, role).into_iter().map(str::to_owned));
         }
@@ -634,9 +636,8 @@ fn a_book_and_a_data_table_take_their_suffix() {
 
 #[test]
 fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
-    let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
     let mut found = Vec::new();
-    production(src, &mut |path, code| {
+    capability_sources(&mut |path, code| {
         let file = path.to_owned();
         for line in code.lines() {
             if line.trim_start().starts_with("//") {
@@ -666,7 +667,7 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
 #[test]
 fn a_unit_holds_only_parts_the_declarations_list() {
     // The mode's module, which the capability of the same name hides here.
-    use crate::mode::Mode;
+    use campfire_mode::Mode;
     // A match of every capability the release runs: a unit holds only parts the declarations
     // list, as state or derived; one more is named.
     /// A part of a unit that no declaration lists.

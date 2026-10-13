@@ -2,23 +2,35 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::sync::Arc;
 
+use campfire_actions::{
+    ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ConstructData,
+    CostTarget, EffectNames, PlacementData, PlacementRule, SlotKindBook, UseGroup,
+};
+use campfire_areas::{AreaError, AreaSpec, Areas};
+use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
+use campfire_core::{
+    ActionId, Filter, ModifierId, NameKind, ResourceAmount, ResourceId, Tag, TrackId, TypeScope,
+    TypesError, UnitType, UnitTypes, Units, UnknownName,
+};
+use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopBook, ShopData, ShopPlace};
+use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
+use campfire_navigation::Walker;
+use campfire_orders::Ai;
+use campfire_production::{
+    Builder, Gatherer, NewBuild, Node, PlacementCheck, Production, ResourceSet, Style, SupplyBook,
+    SupplyCostBook,
+};
+use campfire_progression::{TrackBook, TrackSet};
+use campfire_projectiles::{ProjectileSpec, Projectiles};
 use campfire_script::ScriptId;
+use campfire_stats::{
+    ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
+    PoolId, SpecError, StatBook, StatId,
+};
+use campfire_values::{
+    DamageKind, DeclaredName, FilterData, Names, PackagePath, Share, Stat, TimeTooLarge,
+};
 
-use crate::actions::action_data::ActionData;
-use crate::actions::action_kind::ActionKind;
-use crate::actions::action_names::ActionNames;
-use crate::actions::action_parts::ActionParts;
-use crate::actions::action_slots::ActionSlots;
-use crate::actions::construct_data::ConstructData;
-use crate::actions::cost_target::CostTarget;
-use crate::actions::effect_names::EffectNames;
-use crate::actions::error::ActionProblem;
-use crate::actions::placement_data::{PlacementData, PlacementRule};
-use crate::actions::slot_kind_book::SlotKindBook;
-use crate::actions::use_group::UseGroup;
-use crate::areas::Areas;
-use crate::areas::area_spec::AreaSpec;
-use crate::areas::error::AreaError;
 use crate::books::Books;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::book_parts::BookParts;
@@ -28,66 +40,7 @@ use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
 use crate::books::unit_start::{StartOf, UnitStart};
 use crate::books::unit_type_data::UnitTypeData;
-use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::combat_book::CombatBook;
-use crate::combat::combat_data::CombatData;
-use crate::combat::on_death::OnDeath;
-use crate::items::inventory::Inventory;
-use crate::items::item_book::{ItemBook, ItemSpec};
-use crate::items::item_id::ItemId;
-use crate::items::shop::{Shop, ShopPlace};
-use crate::items::shop_book::ShopBook;
-use crate::items::shop_data::ShopData;
-use crate::mode::mode_inputs::ModeInputs;
-use crate::mode::mode_load::ModeLoad;
-use crate::mode::mode_map::{ModeMap, ResolvedMap};
-use crate::mode::mode_names::ModeNames;
-use crate::mode::unit_type_setup::UnitTypeSetup;
-use crate::navigation::walker::Walker;
-use crate::orders::ai::Ai;
-use crate::players::resource_amount::ResourceAmount;
-use crate::production::Production;
-use crate::production::build_book::{NewBuild, PlacementCheck, Style};
-use crate::production::builder::Builder;
-use crate::production::gatherer::Gatherer;
-use crate::production::node::Node;
-use crate::production::resource_set::ResourceSet;
-use crate::production::supply_book::SupplyBook;
-use crate::production::supply_cost_book::SupplyCostBook;
-use crate::progression::track_book::TrackBook;
-use crate::progression::track_set::TrackSet;
-use crate::projectiles::Projectiles;
-use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::release::Release;
-use crate::scripts::error::UnknownName;
-use crate::scripts::name_kind::NameKind;
-use crate::stats::error::{ModifierError, SpecError};
-use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_table::ParamTable;
-use crate::stats::pool_book::PoolBook;
-use crate::stats::pool_id::PoolId;
-use crate::stats::stat_book::StatBook;
-use crate::stats::stat_id::StatId;
-use crate::units::Units;
-use crate::units::action_id::ActionId;
-use crate::units::error::TypesError;
-use crate::units::filter::Filter;
-use crate::units::modifier_id::ModifierId;
-use crate::units::resource_id::ResourceId;
-use crate::units::tag::Tag;
-use crate::units::track_id::TrackId;
-use crate::units::type_scope::TypeScope;
-use crate::units::unit_type::UnitType;
-use crate::units::unit_types::UnitTypes;
-use crate::values::damage_kind::DamageKind;
-use crate::values::declared_name::DeclaredName;
-use crate::values::error::TimeTooLarge;
-use crate::values::filter_data::FilterData;
-use crate::values::names::Names;
-use crate::values::package_path::PackagePath;
-use crate::values::share::Share;
-use crate::values::stat::Stat;
 
 /// A unit type the builder looks up by the name it declared it by.
 const DECLARED: &str = "the builder declared each unit type";

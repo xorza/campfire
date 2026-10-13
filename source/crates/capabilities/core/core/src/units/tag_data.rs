@@ -1,0 +1,26 @@
+use campfire_values::DeclaredName;
+use serde::Deserialize;
+
+use crate::scripts::data_section::DataSection;
+use crate::scripts::script_api::data_table::DataTable;
+use crate::units::block::Block;
+
+/// A tag's properties as the mode's `[tags.<name>]` declares them; a tag it does not declare has
+/// none.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TagData {
+    #[serde(default)]
+    pub blocks: Vec<Block>,
+    #[serde(default)]
+    pub hidden: bool,
+    #[serde(default)]
+    pub detects: bool,
+    /// The tags whose modifiers it holds without effect.
+    #[serde(default)]
+    pub immune: Vec<DeclaredName>,
+}
+
+impl DataSection for TagData {
+    const TABLE: DataTable = DataTable::Tag;
+}

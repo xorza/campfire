@@ -1,9 +1,7 @@
 use campfire_common::SegmentSeed;
+use campfire_core::{CapabilitySet, ScriptBudgets};
 use campfire_sim::TickRate;
-
-use crate::declare::capability_set::CapabilitySet;
-use crate::scripts::script_budgets::ScriptBudgets;
-use crate::visibility::OutView;
+use campfire_visibility::OutView;
 
 /// What a match is built of: its tick rate and seed, its capabilities, the budgets of its
 /// scripts, and what its players out of play see.

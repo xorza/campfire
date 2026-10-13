@@ -1,0 +1,39 @@
+use bevy_ecs::query::Allow;
+use bevy_ecs::system::{Query, Res, SystemParam};
+use campfire_core::{OnMatch, Relations, Team, UnitFilter};
+use campfire_sim::{EntityIndex, StableId, Unpredicted};
+
+use crate::team_sight::TeamSight;
+use crate::vision_book::VisionBook;
+
+/// The units a player's order may aim at: those its vision group sees as the order applies, by
+/// `S`, so a stable id never tells a client what its group does not see; every unit in a match
+/// with no vision grid. A player's units play on its team, so the team of the unit it orders
+/// names its group. A client asks of the units it holds and does not predict too, where the
+/// server last had them.
+#[derive(SystemParam, Debug)]
+pub struct SeenTargets<'w, 's, S: TeamSight> {
+    index: Res<'w, EntityIndex>,
+    vision: Option<Res<'w, VisionBook>>,
+    relations: OnMatch<'w, 's, Relations>,
+    units: Query<'w, 's, (&'static Team, <S as TeamSight>::Seen), (UnitFilter, Allow<Unpredicted>)>,
+}
+
+impl<S: TeamSight> SeenTargets<'_, '_, S> {
+    /// Whether the vision group of `team` sees `target`; no group sees a unit that is gone. A
+    /// unit that spawned after the last Vision stage, as one does before the match's first, is
+    /// seen by its own group alone.
+    pub fn sees(&self, team: Team, target: StableId) -> bool {
+        let Some((&own, seen)) = self
+            .index
+            .get(target)
+            .and_then(|entity| self.units.get(entity).ok())
+        else {
+            return false;
+        };
+        if self.vision.as_deref().and_then(VisionBook::grid).is_none() {
+            return true;
+        }
+        S::sees(seen, team).unwrap_or_else(|| self.relations.get().vision_group(own).contains(team))
+    }
+}

@@ -2,32 +2,28 @@ use std::any::TypeId;
 use std::num::NonZeroU64;
 
 use bevy_ecs::world::World;
+use campfire_abilities::Abilities;
+use campfire_actions::Actions;
+use campfire_areas::Areas;
+use campfire_combat::Combat;
+use campfire_core::{
+    ApiBuilder, CapabilityError, CapabilitySet, Declarations, EngineTag, InstallCx, KindVisitor,
+    ModuleVisitor, Phase, Players, Predicting, ScriptApi, Units,
+};
+use campfire_deliveries::Deliveries;
+use campfire_items::Items;
+use campfire_mode::{MatchEnd, Mode, ModeLoad, ModeSetup};
+use campfire_navigation::Navigation;
+use campfire_orders::Orders;
+use campfire_production::Production;
+use campfire_progression::Progression;
+use campfire_projectiles::Projectiles;
 use campfire_script::ScriptHost;
 use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
+use campfire_state_types::StateTypes;
+use campfire_stats::Stats;
+use campfire_vision::Vision;
 
-use crate::abilities::Abilities;
-use crate::actions::Actions;
-use crate::areas::Areas;
-use crate::combat::Combat;
-use crate::declare::capability_set::CapabilitySet;
-use crate::declare::declarations::Declarations;
-use crate::declare::error::CapabilityError;
-use crate::declare::install_cx::InstallCx;
-use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::module::ModuleVisitor;
-use crate::declare::phase::Phase;
-use crate::deliveries::Deliveries;
-use crate::items::Items;
-use crate::mode::Mode;
-use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_load::ModeLoad;
-use crate::mode::mode_setup::ModeSetup;
-use crate::navigation::Navigation;
-use crate::orders::Orders;
-use crate::players::Players;
-use crate::production::Production;
-use crate::progression::Progression;
-use crate::projectiles::Projectiles;
 use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
@@ -37,26 +33,18 @@ use crate::release::installing::Installing;
 use crate::release::kinds_only::KindsOnly;
 use crate::release::match_spec::MatchSpec;
 use crate::release::state_only::StateOnly;
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::script_api::ScriptApi;
-use crate::state_types::StateTypes;
-use crate::stats::Stats;
-use crate::units::Units;
-use crate::units::engine_tag::EngineTag;
-use crate::units::predicting::Predicting;
-use crate::vision::Vision;
 
 mod api_binder;
 mod called_registries;
 mod capability_rows;
-#[cfg(test)]
+#[cfg(feature = "internals")]
 mod client_holds;
 mod declaring;
 mod engine_tag_list;
 mod installer;
 mod installing;
 mod kinds_only;
-pub(crate) mod r#match;
+pub mod r#match;
 pub(crate) mod match_spec;
 #[cfg(feature = "internals")]
 mod module_sets;
@@ -261,15 +249,20 @@ pub(crate) mod internals {
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
-    use campfire_sim::{EntityIndex, SimResource, StableId};
+    use campfire_core::{CapabilitySet, EntityKinds, Units, UnitsWorld};
+    use campfire_sim::internals::SimWorldInternals;
+    use campfire_sim::{
+        Capability, EntityIndex, SimResource, SimWorld, SnapshotError, StableId, StateCopy,
+        StateRegistry,
+    };
+    use campfire_state_types::{Replication, StateTypes};
 
-    use crate::declare::capability_set::CapabilitySet;
+    use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
+    use crate::release::client_holds::ClientHolds;
+    use crate::release::r#match::Match;
     use crate::release::module_sets::ModuleSets;
     use crate::release::resource_audit::DeclaredResources;
-    use crate::state_types::StateTypes;
-    use crate::state_types::replication::Replication;
-    use crate::units::entity_kinds::EntityKinds;
 
     /// The component types the lists declare, as state or as derived, by their ids.
     #[derive(Debug, Default)]
@@ -360,20 +353,6 @@ pub(crate) mod internals {
             names
         }
     }
-}
-
-#[cfg(test)]
-pub(crate) mod test_world {
-    use bevy_ecs::world::World;
-    use campfire_sim::internals::SimWorldInternals;
-    use campfire_sim::{SimWorld, SnapshotError, StateCopy, StateRegistry};
-
-    use crate::release::Release;
-    use crate::release::client_holds::ClientHolds;
-    use crate::release::r#match::Match;
-    use crate::units::Units;
-    use crate::units::units_world::UnitsWorld;
-    use campfire_sim::Capability;
 
     impl Release {
         /// Design 14's D12 for the reads no access names, an exclusive system's, as GGPO's sync
@@ -383,7 +362,7 @@ pub(crate) mod test_world {
         /// `ticks` ticks of alike inputs, so the units the client predicts end alike, and each
         /// unit it does not predict keeps what it received, unwritten: a read of state the
         /// client lacks shows as a difference.
-        pub(crate) fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
+        pub fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let mut worlds = [(); 2].map(|()| {
                 let mut game = Match::predicting(declared);
@@ -429,7 +408,7 @@ pub(crate) mod test_world {
         /// Restores its state into `fresh`, a match that loaded the same books, as a restore does; the
         /// error that refuses it, if one does. `fresh`'s unit types seal as a spawn seals them,
         /// and it loads the modifiers of the test tags when `world` did.
-        pub(crate) fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
+        pub fn refusal_into(world: &World, fresh: &mut World) -> Option<SnapshotError> {
             Units::seal_once(fresh);
             if Units::loads_test_modifiers(world) {
                 Units::load_test_modifiers(fresh);
@@ -441,7 +420,7 @@ pub(crate) mod test_world {
         }
 
         /// Despawns the match's entity it started with, as a restore takes a world of no entity.
-        pub(crate) fn clear(world: &mut World) {
+        pub fn clear(world: &mut World) {
             if let Some(entity) = world.match_entity() {
                 world.despawn(entity);
             }
@@ -449,7 +428,7 @@ pub(crate) mod test_world {
 
         /// Restores its state into `fresh`, a match that loaded the same books, as a restore does, and
         /// asserts that the two hash the same.
-        pub(crate) fn restore_into(world: &World, fresh: &mut World) {
+        pub fn restore_into(world: &World, fresh: &mut World) {
             assert_eq!(
                 Release::refusal_into(world, fresh),
                 None,
@@ -464,7 +443,7 @@ pub(crate) mod test_world {
 
         /// Brings `copy`, a copy of the match's state, up to the match, and checks that every state
         /// type of it hashes as the match's own.
-        pub(crate) fn check_copy(world: &mut World, copy: &mut StateCopy) {
+        pub fn check_copy(world: &mut World, copy: &mut StateCopy) {
             copy.follow(world);
             let (mut copied, mut own) = (Vec::new(), Vec::new());
             let registry = world.resource::<StateRegistry>();
@@ -484,6 +463,5 @@ pub(crate) mod test_world {
         }
     }
 }
-
 #[cfg(test)]
 mod tests;

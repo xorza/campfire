@@ -149,8 +149,7 @@ fn writes_its_source(lines: &[&str]) -> bool {
 /// The production code of `file`, under `crates/` or `checks/`: none for one outside a member's
 /// `src`.
 fn production(file: &SourceFile) -> Option<String> {
-    let mut names = file.path.split('/');
-    if names.nth(1) != Some("src") {
+    if !file.path.split('/').any(|name| name == "src") {
         return None;
     }
     file.production()

@@ -71,7 +71,26 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `protocol` | built | Signatures, session key delegations, the handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
-| `capabilities` | built | Mechanisms a mode combines, a module each ([Capabilities](04-capabilities/00-overview.md)) |
+| `capabilities` | built | Mechanisms a mode combines: the top of the capabilities' crates, a crate each ([The capabilities' crates](#the-capabilities-crates)): `release`, which installs them, the books, `Match`, the senders' `Order`, and the published surface ([Capabilities](04-capabilities/00-overview.md)) |
+| `values` | built | Data value types: numbers, per-rank values, params, filters, package paths, names and ids ([The capabilities' crates](#the-capabilities-crates)) |
+| `geometry` | built | Exact geometry in `Num`: the map's metric and bounds, shapes and boxes of bodies, polygons, the grid ([The capabilities' crates](#the-capabilities-crates)) |
+| `state-types` | built | The state types each module declares, and how each is sent ([The capabilities' crates](#the-capabilities-crates)) |
+| `visibility` | built | Who receives each kind of state: the mode's and the host's visibility settings ([The capabilities' crates](#the-capabilities-crates)) |
+| `core` | built | The core under every capability: the script runtime, the declarations, the units and the players, in one crate until F50 and F53 split them ([The capabilities' crates](#the-capabilities-crates)) |
+| `stats` | built | The `stats` capability: stats, pools, modifiers and grants ([The capabilities' crates](#the-capabilities-crates)) |
+| `actions` | built | The action pipeline and the action slots, under every capability that acts ([The capabilities' crates](#the-capabilities-crates)) |
+| `deliveries` | built | The deliveries of actions and their hooks ([The capabilities' crates](#the-capabilities-crates)) |
+| `combat` | built | The `combat` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `navigation` | built | The `navigation` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `vision` | built | The `vision` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `projectiles` | built | The `projectiles` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `areas` | built | The `areas` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `abilities` | built | The `abilities` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `progression` | built | The `progression` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `production` | built | The `production` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `items` | built | The `items` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `orders` | built | The `orders` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `mode` | built | The mode: its script, state, choices and spawns, on the capabilities below it ([The capabilities' crates](#the-capabilities-crates)) |
 | `package` | built | Reads a mode's packages and their dependencies, each file on demand and checked against its index, and runs the load checks; writes a package and its index |
 | `runner` | built | Builds a match from checked packages and feeds it inputs; owns `SessionRules`, which builds a session's terms and checks them on the server, the client and the verifier |
 | `verifier` | built | CLI: replays a session log segment and checks the result |
@@ -96,6 +115,39 @@ A module is built when the workspace has its crate, `campfire-<module>`, in a fo
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
 **Dependencies.** `server` and `client` → `net` → `runner` → `package` → `capabilities` → `script`, `sim` → `math` → `common`; `sim` → `schedule`; `runner` → `protocol` → `common`; `net` → `quic` → `common`, `store`, `log`; every crate that serializes → `codec`; `verifier` → `runner`; `import` → `package`, `store`. `server`, `client`, `net`, `package`, `verifier` and `lan-check` use `store`, and the runner's `internals` for golden files; `zero-hour-check` uses `import`, `package`, `store` and the runner's `internals`; `client`'s tests use `import`'s `internals` for the KTX2 files the client must read. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate. `log` depends on `common`, and on `store` only under its `start` feature, which only the binaries turn on. A type enters `common` only when two crates that do not depend on each other both name it, as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde`, `derive_more` and `thiserror` alone, and, for the allocation audit behind `internals`, `backtrace`.
+
+### The capabilities' crates
+
+Before the split, `campfire-capabilities` held 59,000 lines of production code and 32,000 of tests in 24 modules, whose layers only a test of text held. Each module is a crate, as Bevy's are, and each import between modules becomes a dependency that Cargo checks: an import against the graph does not build. A crate's dependencies are the modules its production code imports today, so the split moves no code between modules; F44 then ties each capability crate's dependencies to its needs and uses.
+
+| Layer | Crate | Modules | Folder | Depends on, of these crates |
+| --- | --- | --- | --- | --- |
+| 0 | `campfire-values` | `values` | `capabilities/core/values` | none |
+| 0 | `campfire-geometry` | `geometry` | `capabilities/core/geometry` | values |
+| 0 | `campfire-state-types` | `state_types` | `capabilities/core/state-types` | none |
+| 1 | `campfire-visibility` | `visibility` | `capabilities/core/visibility` | state-types |
+| 1 | `campfire-core` | `scripts`, `declare`, `units`, `players`, which import each other until F50 and F53 split them | `capabilities/core/core` | values, geometry, state-types, visibility |
+| 2 | `campfire-stats` | `stats` | `capabilities/stats` | core, geometry, state-types, values |
+| 3 | `campfire-actions` | `actions` | `capabilities/core/actions` | core, geometry, state-types, stats, values |
+| 3 | `campfire-deliveries` | `deliveries` | `capabilities/core/deliveries` | actions, core, values |
+| 4 | `campfire-combat` | `combat` | `capabilities/combat` | actions, core, state-types, stats, values |
+| 5 | `campfire-navigation` | `navigation` | `capabilities/navigation` | actions, core, deliveries, geometry, state-types, values |
+| 5 | `campfire-vision` | `vision` | `capabilities/vision` | core, geometry, state-types, values |
+| 5 | `campfire-projectiles` | `projectiles` | `capabilities/projectiles` | actions, core, deliveries, geometry, state-types, stats, values |
+| 5 | `campfire-areas` | `areas` | `capabilities/areas` | actions, core, deliveries, geometry, state-types, stats, values |
+| 5 | `campfire-abilities` | `abilities` | `capabilities/abilities` | actions, core, deliveries, navigation, stats, values |
+| 5 | `campfire-progression` | `progression` | `capabilities/progression` | actions, core, state-types, stats, values |
+| 5 | `campfire-production` | `production` | `capabilities/production` | actions, core, geometry, navigation, state-types, stats, values, vision |
+| 5 | `campfire-items` | `items` | `capabilities/items` | actions, core, geometry, state-types, stats, values |
+| 6 | `campfire-orders` | `orders` | `capabilities/orders` | actions, core, geometry, navigation, production, state-types, stats, values, vision |
+| 7 | `campfire-mode` | `mode` | `capabilities/mode` | actions, combat, core, geometry, items, navigation, production, progression, state-types, stats, values, visibility, vision |
+| 8 | `campfire-capabilities` | `release`, `books`, `Match`, the senders' `Order` and its `Action`, `lib.rs` | `capabilities` | every crate above |
+
+- **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, move from `orders` to the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, and on `vision`, whose sight it reads.
+- **Visibility.** An item that another crate uses becomes `pub`; the rest stays `pub(crate)`. A crate's published surface is its `lib.rs`. The top crate's `lib.rs` publishes what `net`, `runner` and `client` import today, so they keep their imports.
+- **Tests.** A unit test cannot build a whole `Match`: `release` composes it at the top, and with a dev-dependency on the top crate, a crate's test build is a second copy of the crate, whose types are not the match's, so a query for one of them compiles and finds nothing. A test that builds a `Match` therefore becomes an integration test in its crate's `tests/`, one binary for each crate, with a dev-dependency on `campfire-capabilities`: it links the crate once, and reads the crate's privates through its `internals`. A test of a crate's own types, with no `Match`, stays a unit test. Each `#[cfg(test)] test_world` that another crate's tests use becomes `internals`, and an `impl Match` block in another module's tests becomes a method of an extension trait of `internals`.
+- **Checks.** Each crate carries the lint list and the `internals` self dev-dependency, and the drive's lanes cover it. Cargo refuses a cycle, but not a dependency on a higher layer whose crate does not depend back: `LAYERS` lists each capability crate with its layer, and a test reads each crate's manifest and fails on a dependency on a higher layer. The test that no module names another's sets reads every capability crate.
+- **Measured.** Before the split, `./drive.py check` after a change in `units`, a low module, takes 7.4 s to lint, 4.7 s to lint the ship build and 15.3 s to test, and the same after a change in `orders`, a high one, as both rebuild the one crate. After the split, a change in `units` takes 15.7 s to lint, 6.6 s to lint the ship build and 17.9 s to test, as the 20 capability crates above `campfire-core` and their dependents are checked again one layer after the other; a change in `orders` takes 12.1 s, 3.2 s and 17.8 s.
 
 **Game-bound code.** Code that serves one imported game lives in a module named after it, in the crate whose interface it serves: Zero Hour's importer in `import::zero_hour`, its backends in `navigation::zero_hour`, its AI in the `zero_hour` module of the crate that drives server bots. Nothing depends on it but the place that installs it; a mechanism a second game needs moves into a general module.
 

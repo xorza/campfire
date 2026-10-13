@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
+use campfire_actions::ActionData;
+use campfire_items::ItemData;
+use campfire_stats::ModifierData;
+use campfire_values::DeclaredName;
 use serde::Deserialize;
 
-use crate::actions::action_data::ActionData;
 use crate::books::unit_type_data::UnitTypeData;
-use crate::items::item_data::ItemData;
-use crate::stats::modifier_data::ModifierData;
-use crate::values::declared_name::DeclaredName;
 
 /// What a package holds for a match, each by its id in the package: its actions, its modifiers,
 /// its unit types and its item types. The mode, an avatar and a loadout hold the same shape, and

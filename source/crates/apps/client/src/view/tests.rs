@@ -8,6 +8,7 @@ use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_capabilities::Areas;
+use campfire_capabilities::internals::AreasFixtures;
 use campfire_capabilities::{DeclaredName, HeightGrid, PackagePath, TypeOrigin, TypeOriginBook};
 use campfire_math::Num;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits};

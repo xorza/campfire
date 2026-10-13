@@ -2,25 +2,12 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
+use campfire_core::{
+    ApiBuilder, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations, EngineTag, EntityKind,
+    KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
+};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
-
-use crate::declare::book::Book;
-use crate::declare::cache::Cache;
-use crate::declare::callbacks::Callbacks;
-use crate::declare::declarations::{ColumnFill, Declarations};
-use crate::declare::kind_spawn::KindSpawn;
-use crate::declare::kind_visitor::KindVisitor;
-use crate::declare::module_set::ModuleSet;
-use crate::declare::report::Report;
-use crate::declare::scratch::Scratch;
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::call_part::CallPart;
-use crate::state_types::StateTypes;
-use crate::state_types::replication::Replication;
-use crate::units::engine_tag::EngineTag;
-use crate::units::entity_kind::EntityKind;
-use crate::units::row_reads::RowReads;
-use crate::units::view_column::ViewColumn;
+use campfire_state_types::{Replication, StateTypes};
 
 /// The consumer that binds each module's script API, of the module's capability: it reads the
 /// modules and their APIs, and ignores every other declaration.

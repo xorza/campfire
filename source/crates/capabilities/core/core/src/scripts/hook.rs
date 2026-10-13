@@ -1,0 +1,161 @@
+use serde::Deserialize;
+
+use crate::scripts::script_role::ScriptRole;
+
+campfire_common::enum_all! {
+    /// A hook the engine calls in a script, by name: every hook of the script API, whether the
+    /// release calls it yet or not, so the package load checks know them all. It reads back from
+    /// its `Debug` name, as a log writes it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+    pub enum Hook {
+        OnResolve,
+        OnHit,
+        OnEnd,
+        OnChannelTick,
+        OnInterrupt,
+        OnInterval,
+        OnAttack,
+        OnAttackHit,
+        OnDamageTaken,
+        OnKill,
+        OnTakedown,
+        OnMatchStart,
+        OnModeInput,
+        OnTimer,
+        OnPlayerJoin,
+        OnPlayerLeave,
+        OnUnitDied,
+        CalcDamage,
+        CalcHeal,
+        OnThink,
+        OnLevelUp,
+        OnGenerate,
+    }
+    pub const ALL;
+}
+
+impl Hook {
+    /// The prefixes that mark a script function as a hook: one with either that is no hook of
+    /// the API is a misspelling, not a helper.
+    pub const PREFIXES: [&'static str; 2] = ["on_", "calc_"];
+
+    /// The hook named `name`, of any role.
+    pub fn named(name: &str) -> Option<Hook> {
+        Hook::ALL.into_iter().find(|hook| hook.name() == name)
+    }
+
+    /// The script function the engine calls.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Hook::OnResolve => "on_resolve",
+            Hook::OnHit => "on_hit",
+            Hook::OnEnd => "on_end",
+            Hook::OnChannelTick => "on_channel_tick",
+            Hook::OnInterrupt => "on_interrupt",
+            Hook::OnInterval => "on_interval",
+            Hook::OnAttack => "on_attack",
+            Hook::OnAttackHit => "on_attack_hit",
+            Hook::OnDamageTaken => "on_damage_taken",
+            Hook::OnKill => "on_kill",
+            Hook::OnTakedown => "on_takedown",
+            Hook::OnMatchStart => "on_match_start",
+            Hook::OnModeInput => "on_mode_input",
+            Hook::OnTimer => "on_timer",
+            Hook::OnPlayerJoin => "on_player_join",
+            Hook::OnPlayerLeave => "on_player_leave",
+            Hook::OnUnitDied => "on_unit_died",
+            Hook::CalcDamage => "calc_damage",
+            Hook::CalcHeal => "calc_heal",
+            Hook::OnThink => "on_think",
+            Hook::OnLevelUp => "on_level_up",
+            Hook::OnGenerate => "on_generate",
+        }
+    }
+
+    /// The names of the function's parameters, `ctx` first, as the reference shows them.
+    pub(crate) const fn param_names(self) -> &'static [&'static str] {
+        match self {
+            Hook::OnMatchStart => &["ctx"],
+            Hook::OnChannelTick | Hook::OnThink => &["ctx", "unit"],
+            Hook::OnInterval => &["ctx", "m"],
+            Hook::OnPlayerJoin | Hook::OnPlayerLeave => &["ctx", "player"],
+            Hook::OnGenerate => &["ctx", "region"],
+            Hook::CalcDamage => &["ctx", "d"],
+            Hook::CalcHeal => &["ctx", "h"],
+            Hook::OnResolve | Hook::OnInterrupt => &["ctx", "unit", "target"],
+            Hook::OnEnd => &["ctx", "unit", "hit"],
+            Hook::OnAttack => &["ctx", "m", "target"],
+            Hook::OnAttackHit | Hook::OnDamageTaken => &["ctx", "m", "d"],
+            Hook::OnKill | Hook::OnTakedown => &["ctx", "m", "victim"],
+            Hook::OnTimer => &["ctx", "name", "data"],
+            Hook::OnHit => &["ctx", "unit", "target", "hit"],
+            Hook::OnModeInput => &["ctx", "player", "name", "value"],
+            Hook::OnUnitDied => &["ctx", "unit", "killer", "assisters"],
+            Hook::OnLevelUp => &["ctx", "unit", "track", "level"],
+        }
+    }
+
+    /// How many parameters the function takes, `ctx` first.
+    pub const fn params(self) -> usize {
+        self.param_names().len()
+    }
+
+    pub const fn role(self) -> ScriptRole {
+        match self {
+            Hook::OnResolve
+            | Hook::OnHit
+            | Hook::OnEnd
+            | Hook::OnChannelTick
+            | Hook::OnInterrupt => ScriptRole::Action,
+            Hook::OnInterval
+            | Hook::OnAttack
+            | Hook::OnAttackHit
+            | Hook::OnDamageTaken
+            | Hook::OnKill
+            | Hook::OnTakedown => ScriptRole::Modifier,
+            Hook::OnMatchStart
+            | Hook::OnModeInput
+            | Hook::OnTimer
+            | Hook::OnPlayerJoin
+            | Hook::OnPlayerLeave
+            | Hook::OnUnitDied
+            | Hook::CalcDamage
+            | Hook::CalcHeal
+            | Hook::OnLevelUp
+            | Hook::OnGenerate => ScriptRole::Mode,
+            Hook::OnThink => ScriptRole::Ai,
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_values::RelationSet;
+
+    use super::*;
+
+    #[test]
+    fn every_hook_is_found_by_its_name_alone() {
+        for hook in Hook::ALL {
+            assert_eq!(Hook::named(hook.name()), Some(hook));
+        }
+        assert_eq!(Hook::named("on_cats"), None);
+        assert_eq!(Hook::named("on_cast"), None);
+        assert_eq!(Hook::named("think"), None);
+        let named_like_hooks = Hook::ALL.iter().all(|hook| {
+            Hook::PREFIXES
+                .iter()
+                .any(|prefix| hook.name().starts_with(prefix))
+        });
+        assert!(named_like_hooks);
+        for relation in [RelationSet::Enemies, RelationSet::Allies, RelationSet::All] {
+            assert_eq!(RelationSet::named(relation.name()), Some(relation));
+        }
+        // A few as design 08 lists them.
+        let think = Hook::OnThink;
+        assert_eq!((think.params(), think.role()), (2, ScriptRole::Ai));
+        let hit = Hook::OnHit;
+        assert_eq!((hit.params(), hit.role()), (4, ScriptRole::Action));
+        assert_eq!(Hook::OnModeInput.params(), 4);
+    }
+}

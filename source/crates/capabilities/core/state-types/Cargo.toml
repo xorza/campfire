@@ -1,0 +1,23 @@
+[package]
+name = "campfire-state-types"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-sim/internals",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-sim.workspace = true
+
+bevy_ecs.workspace = true
+
+[dev-dependencies]
+campfire-sim = { workspace = true, features = ["internals"] }
+campfire-state-types = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true
