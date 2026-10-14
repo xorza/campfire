@@ -85,7 +85,7 @@ A package's `[tables.<id>]` lists weighted entries, each a unit type, an item ty
 
 The dependencies form a fixed graph with no cycle. Under every capability lie `sim` (positions, stable ids, randomness, the state hash, the tick rate) and the core under every script: unit types, tags, relations, the map, the action pipeline, the effect queue, the script host and its budget, and the script view, to which each capability adds its fields, so the core names none.
 
-Each capability is a crate, which depends only on the crates of lower layers; its dependency on another capability is a need, without which it does not run and which a mode that declares it declares, or a use, which it reads when the match has it. Design 02's table of the capabilities' crates gives each crate's layer, needs and uses ([The capabilities' crates](../02-engine-core.md#the-capabilities-crates)), which a release test holds equal to the crates' manifests. Only the declared capabilities' systems run, and a package's effect of a capability its mode does not declare fails its load.
+Each capability is a crate, which depends only on the crates of lower layers; its dependency on another capability is a need, without which it does not run and which a mode that declares it declares, or a use, which it reads when the match has it. Design 02's table of the capabilities' crates gives each crate's layer, needs and uses ([The capabilities' crates](../02-engine-core.md#the-capabilities-crates)); the modules' declarations hold them in code, which release tests hold equal to the crates' manifests. Only the declared capabilities' systems run, and a package's effect of a capability its mode does not declare fails its load.
 
 ## Tick stages
 

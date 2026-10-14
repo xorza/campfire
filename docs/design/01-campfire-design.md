@@ -11,7 +11,7 @@ Four pillars all ship:
 3. **Bitcoin and Nostr:** identity, discovery, reputation and optional Lightning payments.
 4. **Imported games:** so close to the original that no player notices a difference.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Games](04-capabilities/games.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [MOBA test content](07-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md) · [Sessions](10-sessions.md) · [RTS foundations](11-rts-foundations.md) · [Zero Hour](12-zero-hour.md) · [Wide bodies, uses, the shop and gravity](13-bodies-uses-shop-gravity.md) · [Replication audiences](14-replication-audiences.md) · [QUIC transport](15-quic-transport.md) (proposal)
+Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Games](04-capabilities/games.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [MOBA test content](07-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md) · [Sessions](10-sessions.md) · [RTS foundations](11-rts-foundations.md) · [Zero Hour](12-zero-hour.md) · [Wide bodies, uses, the shop and gravity](13-bodies-uses-shop-gravity.md) · [Replication audiences](14-replication-audiences.md) · [QUIC transport](15-quic-transport.md)
 
 ## Guiding principles
 

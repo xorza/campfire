@@ -17,5 +17,4 @@ What the engine gained for RTS games: box bodies, unit types in every package, g
 
 - **Order queues** (shift-click) and the `hold` order; formations, flow fields and crowds, with the imported game that needs them.
 - **A faction as its own package**, and the `choices` offer that lists them (D6).
-- **What each client receives of production**: queues, supply, loads, a site's progress, a node's amount and player resources reach no client until the player entity sends them ([Replication audiences](14-replication-audiences.md), D7).
 - **A client to play it:** the build placement, the gather and rally clicks and the queue's buttons, with Zero Hour's control bar. The client draws box bodies already.

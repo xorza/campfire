@@ -2,36 +2,7 @@
 
 The one plan of the project: every open step, in the order it is done, in batches. A batch is one commit: it holds the steps that change the same systems, refactorings, fixes and features alike, and ends with `./drive.py check` passing, and a stop for review. Each batch says what it touches and why it stands where it does. Open items only: a step goes when it is done. The issue log, `.notes/ISSUES.md`, holds every open problem; a problem that a step here takes carries the step's tag there ([Issue log](AGENTS.md#issue-log)). The designs in `docs/design/` stay the source of truth: a step names what the code lacks against its design, or the design it proposes, which moves into `docs/design/` when it is agreed.
 
-One policy holds across the steps: **what can be forgotten is a type or a trait method with no default.** A rule that no type can hold is held by a type that makes the right way the short one, a test where one can see the breach, and review. Line numbers point to the code as each step was written; a step refreshes its references as it starts. A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
-
-## Direction
-
-Every batch moves the engine toward one shape, and each item names the part it builds.
-
-- **A module is one entry of one list.** Each module, the core's `units`, `players`, `actions` and `deliveries`, each capability and the mode, implements `Module`: its capability, its needs and its uses, `declare` and `install`, none with a default. `install` holds only its systems, each in one of its module's declared sets; all else a module adds is a declaration.
-- **What a module adds is declared once,** and one walk of the declarations serves the installer, the script API's binder, the network's lists of state types and the declaration audit:
-
-| What | Declaration | Item |
-| --- | --- | --- |
-| A state type, a state resource | `d.component`, `d.resource` | today |
-| A resource that is not state: clear between ticks, built again, or a tick's report for the host | `d.scratch`, `d.cache`, `d.report` | today |
-| A registry of callbacks a lower module calls, and each callback in it | `d.calls`, `d.callback` | today |
-| A system set's phase in the tick's one list, `Phase::ALL`, or its gap | `d.sets` | today |
-| A part every entity of a kind starts with | `d.part` | today |
-| Engine tags | `d.engine_tags` | today |
-| Package data a match holds | `d.book` | today |
-| A column of the script view, a part of a script call, a part that holds params | `d.column`, `d.call_part`, `d.call_params` | today |
-| Script members, hooks and data tables | `d.api` | today |
-| An observer, a system a spawn runs out of the schedule, and a part a server's match derives, which another part requires | `d.observer`, `d.one_shot`, `d.server_part` | today |
-
-- **A kind is a marker,** one on each entity, and an entity spawns whole: each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once. A part derived from another part comes by Bevy's required components or that part's hook; a part a system derives each tick is a declared part the system writes in place, never one it inserts by command. A marker of a state that an event starts and ends, as `Dead`, `Respawn` or `OutOfPlay`, comes and goes by command; F52 measures it in a sparse set, where it moves no table.
-- **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
-- **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
-- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or at the load is a fact of the schedule.
-- **Each crate depends only on lower layers,** which `LAYERS` holds: no two crates of one layer depend on each other, and a crate depends on nothing that only its gated code names. No crate's top modules import each other in a cycle, which a rule test holds. What is the sim's lives in `sim`, and `math` holds the numbers every crate shares, each operation one `i128` step rounded once. A capability asks another for its work through a contract below both, never by writing its state.
-- **Bevy's own mechanisms, not hand-made ones:** what install or the load fixes is a run condition or an `If` parameter; observers, one-shot systems and required components are declarations; a marker that comes and goes is measured in a sparse set, and the units' order by stable id in one shared order (F52); a composition of an `App` is a plugin group (H2).
-
-So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
+Every batch moves the engine toward the [Direction](AGENTS.md#direction), and each step names the part it builds. Line numbers point to the code as each step was written; a step refreshes its references as it starts. A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
 
 ## 1. Match records and replays
 
@@ -91,7 +62,7 @@ So a new capability is one entry of the list; a new state type its type and one 
 
 ### F52. The worst tick, measured part by part
 
-(`capabilities`, `runner`; **Runner**, **Vision**.) Design 02's worst 3v3 tick, 0.83 ms, and design 10's, 0.51 ms, disagree; `Bitmap::set` takes 6.9 % of the mean tick, for runs of one or two words a row. The session measures `integration/server_tick/worst_3v3` again and writes the figure into design 02, finds which part of `Bitmap::set` costs it, and measures two changes the engine's best practice suggests before either lands: parts that come and go while a match runs, `Dead`, `Respawn`, `ForcedMove`, `Resetting`, `OutOfPlay`, `Kept`, `Rally`, `AreaTrigger` and `Unpredicted`, stored in Bevy's sparse sets, where a change moves no table, as Bevy's `StorageType` advises for parts added and removed often; and the twelve systems that sort their units by stable id each tick (`Local<Ordered>`) reading one shared order instead. Each lands only where the worst tick gains. Check: the goldens do not move; the archetype shuffle test passes.
+(`capabilities`, `runner`; **Runner**, **Vision**.) Two measurements of the worst 3v3 tick, 0.83 ms and 0.51 ms, disagree; `Bitmap::set` takes 6.9 % of the mean tick, for runs of one or two words a row. The session measures `integration/server_tick/worst_3v3` again, finds which part of `Bitmap::set` costs it, and measures two changes the engine's best practice suggests before either lands: parts that come and go while a match runs, `Dead`, `Respawn`, `ForcedMove`, `Resetting`, `OutOfPlay`, `Kept`, `Rally`, `AreaTrigger` and `Unpredicted`, stored in Bevy's sparse sets, where a change moves no table, as Bevy's `StorageType` advises for parts added and removed often; and the twelve systems that sort their units by stable id each tick (`Local<Ordered>`) reading one shared order instead. Each lands only where the worst tick gains. Check: the goldens do not move; the archetype shuffle test passes.
 
 ## 4. The shop
 
@@ -99,7 +70,7 @@ So a new capability is one entry of the list; a new state type its type and one 
 
 **Slice 2, wide bodies, uses, the shop and gravity,** batches 4 to 8. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the [Direction](AGENTS.md#direction) gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 

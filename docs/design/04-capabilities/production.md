@@ -77,7 +77,7 @@ A player's supply and resources go to that player, or as the mode sets, as compo
 
 ## Cost
 
-Each queue a counter a tick; each site a progress step and a count of its builders; each worker in the loop up to five steps, a hold reading nothing new, a pass over the nodes when its node is held or gone, and over the workers when a node frees; each placement its box's tests against the walls, the static index and the bodies near; supply and requirements a pass over the owned units in a tick that starts a train, and in each script view read with supply. `integration/gather/two_fields`, 200 workers on 16 nodes and two drop-offs, measures 28.6 µs a tick on one core, 0.09 % of a tick at 30 Hz.
+Each queue a counter a tick; each site a progress step and a count of its builders; each worker in the loop up to five steps, a hold reading nothing new, a pass over the nodes when its node is held or gone, and over the workers when a node frees; each placement its box's tests against the walls, the static index and the bodies near; supply and requirements a pass over the owned units in a tick that starts a train, and in each script view read with supply. `integration/gather/two_fields` runs 200 workers on 16 nodes and two drop-offs.
 
 ## Genres
 

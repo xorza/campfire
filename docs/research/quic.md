@@ -2,7 +2,7 @@
 
 What a transport of QUIC alone under Lightyear can be built from, read from the crates' sources and documentation, for [design 15](../design/15-quic-transport.md). Facts only: what the design takes from them is design 15's. Read on 11 October 2026; the crates are the versions in `source/Cargo.lock` on that day, Lightyear at the patched revision `9c2d69b`.
 
-## What the build holds today
+## The build before the transport
 
 - **The chain.** `lightyear_webtransport` 0.30.1 → `aeronet_webtransport` 0.21.0 → `wtransport` 0.6.1 (HTTP/3 and WebTransport) → `quinn` 0.11.12 → `quinn-proto` 0.11.19 and `quinn-udp` 0.5.16, with `rustls` 0.23.45 over `ring` 0.17.14. `tokio` 1.53.1 comes in through `aeronet_webtransport`, `quinn` and `wtransport`, and through nothing else.
 - **A runtime for each app.** `WebTransportRuntime::default` builds a multi-thread tokio runtime, one worker for each core, and leaks it (`Box::leak`); the plugin makes one in each app that adds it (`aeronet_webtransport/src/runtime.rs`).

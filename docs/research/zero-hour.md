@@ -142,11 +142,6 @@ The logic draws from one generator: six `u32` words, each draw an add-with-carry
 
 Each is pure Rust, with no float math in what it writes, so one version and one setting should give the same bytes on every OS; the import's check on two OSes confirms it.
 
-## What the engine lacks
-
-- **`package`** has no model of a unit type.
-- **`client`** draws a plane and capsules (`client/src/view/mod.rs`), and builds Bevy with no glTF, PNG or KTX2 support. Design 02 says the client loads no asset from a file, so a model's bytes reach Bevy through `store`, not Bevy's asset server.
-
 ## Open
 
 - **Sounds.** The WAV encodings, and an encoder of Ogg Vorbis that gives the same bytes on every OS.

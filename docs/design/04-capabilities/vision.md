@@ -58,7 +58,7 @@ Each unit goes to the clients whose group sees it, and leaves them when no longe
 
 ## Cost
 
-The grid fog costs each living unit with sight the cells within its range, and each unit a test of its cells against each group's bitmaps. For 1,000 units of two teams with 10 m sight on 1 m cells, on one core of a Ryzen 7 6800U, the stage takes 0.17 ms when every unit moved, `integration/fog/sight`, 0.5 % of a tick at 30 Hz, and 0.07 ms when none did, `integration/fog/still`. A sight's rows go four at a time in `math`'s lanes, each with an exact integer root, and a unit that stood still reuses its runs of the tick before, about two sights in three in the 3v3.
+The grid fog costs each living unit with sight the cells within its range, and each unit a test of its cells against each group's bitmaps: `integration/fog/sight`, every unit moved, and `integration/fog/still`, none did. A sight's rows each take an exact integer root, and a unit that stood still reuses its runs of the tick before.
 
 ## Genres
 
