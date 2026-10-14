@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_math::Num;
-use campfire_values::{Scalar, Stat};
+use campfire_values::Stat;
 use serde::Deserialize;
 
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
@@ -14,9 +14,8 @@ pub struct StatsData(pub BTreeMap<Stat, StatValue>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatValue {
-    #[serde(deserialize_with = "Scalar::num")]
     pub base: Num,
-    #[serde(default, deserialize_with = "Scalar::num")]
+    #[serde(default)]
     pub per_level: Num,
 }
 

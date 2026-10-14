@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, FilterData, Scalar};
+use campfire_values::{DeclaredName, FilterData};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -43,7 +43,7 @@ impl<'de> Deserialize<'de> for AreaData {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            radius: Scalar,
+            radius: Num,
             #[serde(default)]
             delay_ms: u64,
             #[serde(default)]
@@ -53,13 +53,11 @@ impl<'de> Deserialize<'de> for AreaData {
             inside: AreaInsideData,
         }
         let fields = Fields::deserialize(deserializer)?;
-        let radius = fields
-            .radius
-            .to_num()
-            .filter(|&radius| radius >= Num::ZERO)
-            .ok_or_else(|| D::Error::custom("an area's radius is not negative"))?;
+        if fields.radius < Num::ZERO {
+            return Err(D::Error::custom("an area's radius is not negative"));
+        }
         Ok(AreaData {
-            radius,
+            radius: fields.radius,
             delay_ms: fields.delay_ms,
             duration_ms: fields.duration_ms,
             affects: fields.affects,

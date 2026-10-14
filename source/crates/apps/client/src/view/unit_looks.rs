@@ -73,7 +73,7 @@ impl UnitLooks {
 mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
-    use campfire_package::{ClientModel, ClientUnit, ClientUnits};
+    use campfire_package::{ClientModel, ClientUnit, ClientUnits, ModelScale};
     use campfire_units::TypeOrigin;
     use campfire_values::PackagePath;
 
@@ -86,6 +86,7 @@ mod tests {
         app.init_asset::<WorldAsset>();
         let model = |path: &str, hide: &[&str]| ClientModel {
             model: PackagePath::parse(path).unwrap(),
+            scale: ModelScale::ONE,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
         };
         let units = |entries: Vec<(&str, Vec<ClientModel>)>| ClientUnits {
@@ -98,6 +99,7 @@ mod tests {
                     )
                 })
                 .collect(),
+            ..ClientUnits::default()
         };
         let data = ClientData {
             units: vec![

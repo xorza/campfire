@@ -13,6 +13,7 @@ internals = [
     "campfire-declare/internals",
     "campfire-items/internals",
     "campfire-log/internals",
+    "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
@@ -42,6 +43,7 @@ campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-items.workspace = true
 campfire-log.workspace = true
+campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
@@ -74,7 +76,6 @@ serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 [dev-dependencies]
-campfire-math = { workspace = true, features = ["internals"] }
 campfire-net = { workspace = true, features = ["internals"] }
 
 [lints]

@@ -129,7 +129,7 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
     // An integer past what a number holds fails before the order is checked.
     assert!(
         refusal("levels = [9223372036854775807]")
-            .starts_with("a level's experience is beyond a number")
+            .starts_with("9223372036854775807 is past what a number holds")
     );
 }
 

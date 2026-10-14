@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -26,7 +25,7 @@ impl<'de> Deserialize<'de> for ConstructData {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Table {
-            builders: Vec<Scalar>,
+            builders: Vec<Num>,
         }
         #[derive(Debug, Deserialize)]
         #[serde(untagged)]
@@ -38,15 +37,12 @@ impl<'de> Deserialize<'de> for ConstructData {
             Written::Style(Style::Alone) => Ok(ConstructData::Alone),
             Written::Style(Style::Builder) => Ok(ConstructData::Builder),
             Written::Table(Table { builders }) => {
-                let rates: Option<Vec<Num>> = builders
-                    .iter()
-                    .map(|rate| rate.to_num().filter(|&rate| rate > Num::ZERO))
-                    .collect();
-                match rates {
-                    Some(rates) if !rates.is_empty() => Ok(ConstructData::Builders(rates)),
-                    _ => Err(D::Error::custom(
+                if !builders.is_empty() && builders.iter().all(|&rate| rate > Num::ZERO) {
+                    Ok(ConstructData::Builders(builders))
+                } else {
+                    Err(D::Error::custom(
                         "a builders table holds a positive rate for each count, one at least",
-                    )),
+                    ))
                 }
             }
         }

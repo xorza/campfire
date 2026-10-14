@@ -2,7 +2,8 @@ use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{self, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::num::decimal::Decimal;
 use crate::num::error::{IntToNumError, ParseNumError};
@@ -22,10 +23,7 @@ mod trig;
 /// no search of the hard cases proves them correctly rounded. Operators panic on
 /// overflow and on division by zero, which in engine code are bugs; the `checked_*` methods
 /// return `None` instead.
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
 pub struct Num(i64);
 
@@ -462,6 +460,56 @@ impl fmt::Display for Num {
     /// The exact decimal value; 24 fractional bits always end within 24 decimal digits.
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.pad(Decimal::new(*self).as_str())
+    }
+}
+
+/// In a binary format, which the log, the state hash and the network read, its bits; in a text
+/// format, which data files read, its exact decimal string.
+impl Serialize for Num {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.collect_str(self)
+        } else {
+            serializer.serialize_i64(self.0)
+        }
+    }
+}
+
+/// In a binary format, its bits; in a text format, an integer or a decimal string, as data writes
+/// a number, where an integer past what a `Num` holds, a float, and text `from_str` refuses fail
+/// the read, as data never holds a float.
+impl<'de> Deserialize<'de> for Num {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Num, D::Error> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_any(TextNum)
+        } else {
+            i64::deserialize(deserializer).map(Num)
+        }
+    }
+}
+
+/// The reader of a `Num` from a text format.
+#[derive(Debug)]
+struct TextNum;
+
+impl Visitor<'_> for TextNum {
+    type Value = Num;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("an integer or a decimal string")
+    }
+
+    fn visit_i64<E: de::Error>(self, value: i64) -> Result<Num, E> {
+        Num::from_int(value)
+            .ok_or_else(|| E::custom(format!("{value} is past what a number holds")))
+    }
+
+    fn visit_u64<E: de::Error>(self, value: u64) -> Result<Num, E> {
+        Num::try_from(value).map_err(|_| E::custom(format!("{value} is past what a number holds")))
+    }
+
+    fn visit_str<E: de::Error>(self, text: &str) -> Result<Num, E> {
+        Num::from_str(text).map_err(E::custom)
     }
 }
 

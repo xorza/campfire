@@ -1,5 +1,5 @@
+use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -17,13 +17,10 @@ impl<'de> Deserialize<'de> for VisionData {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            sight_range: Scalar,
+            sight_range: Num,
         }
         let fields = Fields::deserialize(deserializer)?;
-        let sight = fields
-            .sight_range
-            .to_num()
-            .and_then(Sight::new)
+        let sight = Sight::new(fields.sight_range)
             .ok_or_else(|| D::Error::custom("a sight range is a number that is not negative"))?;
         Ok(VisionData { sight })
     }

@@ -1,3 +1,5 @@
+use crate::zero_hour::error::IniError;
+
 /// An INI file's text, as the game reads it: bytes as Latin-1 chars, each kept as one.
 #[derive(Debug)]
 pub(crate) struct IniText(String);
@@ -35,6 +37,42 @@ impl IniLine<'_> {
     /// Its first token, folded to lowercase, as the game matches a keyword.
     pub(crate) fn word(&self) -> String {
         self.tokens[0].to_ascii_lowercase()
+    }
+
+    /// The value of a field of yes or no, of either case, as `INI::scanBool` reads it.
+    pub(crate) fn yes(&self) -> Result<bool, IniError> {
+        let value = self.value()?;
+        if value.eq_ignore_ascii_case("yes") {
+            Ok(true)
+        } else if value.eq_ignore_ascii_case("no") {
+            Ok(false)
+        } else {
+            Err(IniError::Bool { line: self.number })
+        }
+    }
+
+    /// The value of a field of a whole number.
+    pub(crate) fn int(&self) -> Result<i32, IniError> {
+        self.value()?.parse().map_err(|error| IniError::Number {
+            line: self.number,
+            error,
+        })
+    }
+
+    /// The value of a field of a real number.
+    pub(crate) fn real(&self) -> Result<f32, IniError> {
+        self.value()?.parse().map_err(|error| IniError::Real {
+            line: self.number,
+            error,
+        })
+    }
+
+    /// A field's value, its second token.
+    pub(crate) fn value(&self) -> Result<&str, IniError> {
+        self.tokens
+            .get(1)
+            .copied()
+            .ok_or(IniError::NoValue { line: self.number })
     }
 }
 

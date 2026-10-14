@@ -1,7 +1,7 @@
 use campfire_package::{CameraFile, CameraHeight, GameData, TerrainLighting};
 
 use crate::zero_hour::error::IniError;
-use crate::zero_hour::ini_text::{IniLine, IniText};
+use crate::zero_hour::ini_text::IniText;
 
 /// What the import reads of Zero Hour's `GameData.ini` files, as `GlobalData` reads them: each
 /// field from the game's default until a file sets it, a later file's value replacing an earlier
@@ -73,12 +73,12 @@ impl GameDataIni {
                 (false, _) => return Err(IniError::NotBlock { line: line.number }),
                 (true, "end") => open = false,
                 (true, "adjustclifftextures") => {
-                    self.adjust_cliff_textures = GameDataIni::yes(&line)?;
+                    self.adjust_cliff_textures = line.yes()?;
                 }
-                (true, "use3wayterrainblends") => self.three_way_blends = GameDataIni::int(&line)?,
+                (true, "use3wayterrainblends") => self.three_way_blends = line.int()?,
                 (true, "numbergloballights") => {
                     // The game keeps three lights a map, and draws past none it keeps.
-                    let lights = GameDataIni::int(&line)?;
+                    let lights = line.int()?;
                     self.global_lights = usize::try_from(lights)
                         .ok()
                         .filter(|&lights| lights <= TerrainLighting::MOST)
@@ -96,7 +96,7 @@ impl GameDataIni {
                         "keyboardcamerarotatespeed" => &mut self.rotate_speed,
                         _ => continue,
                     };
-                    *field = GameDataIni::real(&line)?;
+                    *field = line.real()?;
                 }
             }
         }
@@ -147,45 +147,6 @@ impl GameDataIni {
             zoom_key: ZOOM_HEIGHT * FRAMES,
         }
         .checked()
-    }
-
-    /// The value of a field of yes or no, of either case, as `INI::scanBool` reads it.
-    fn yes(line: &IniLine<'_>) -> Result<bool, IniError> {
-        let value = GameDataIni::value(line)?;
-        if value.eq_ignore_ascii_case("yes") {
-            Ok(true)
-        } else if value.eq_ignore_ascii_case("no") {
-            Ok(false)
-        } else {
-            Err(IniError::Bool { line: line.number })
-        }
-    }
-
-    /// The value of a field of a whole number.
-    fn int(line: &IniLine<'_>) -> Result<i32, IniError> {
-        GameDataIni::value(line)?
-            .parse()
-            .map_err(|error| IniError::Number {
-                line: line.number,
-                error,
-            })
-    }
-
-    /// The value of a field of a real number.
-    fn real(line: &IniLine<'_>) -> Result<f32, IniError> {
-        GameDataIni::value(line)?
-            .parse()
-            .map_err(|error| IniError::Real {
-                line: line.number,
-                error,
-            })
-    }
-
-    fn value<'a>(line: &IniLine<'a>) -> Result<&'a str, IniError> {
-        line.tokens
-            .get(1)
-            .copied()
-            .ok_or(IniError::NoValue { line: line.number })
     }
 }
 

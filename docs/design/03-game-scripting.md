@@ -103,7 +103,7 @@ Scripts have two number types and no decimal literals (`no_float`):
 
 Arithmetic on both is checked; an overflow is a script error. An integer becomes a `Num` automatically, an integer that does not fit being an error; a `Num` becomes an integer only through `floor`, `ceil` or `round` (half away from zero). A `Num` operation with an integer gives a `Num`.
 
-In data files, a TOML integer is an integer and a decimal in a string (`"7.5"`) is a `Num`. Capability fields sit in their capability's section; values for scripts in `[params]`.
+In data files, a TOML integer is an integer and a decimal in a string (`"7.5"`) is a `Num`. A field that is a `Num` reads either, an integer past what a `Num` holds and a float failing the read, and is written as its exact decimal string; a binary format, as the log, the state hash and the network carry, holds a `Num` as its bits. Capability fields sit in their capability's section; values for scripts in `[params]`.
 
 ## Network sync
 

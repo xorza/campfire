@@ -2127,7 +2127,7 @@ static FLAWS: [Flaw; 283] = [
             read_fails(
                 problem,
                 "data/avatar.toml",
-                "Int(1099511627776) is past what a number holds",
+                "1099511627776 is past what a number holds",
             )
         },
     ),
@@ -2139,7 +2139,7 @@ static FLAWS: [Flaw; 283] = [
             read_fails(
                 problem,
                 "data/avatar.toml",
-                "Int(1099511627776) is past what a number holds",
+                "1099511627776 is past what a number holds",
             )
         },
     ),

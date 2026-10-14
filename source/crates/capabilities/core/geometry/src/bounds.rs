@@ -1,6 +1,5 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
-use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -101,13 +100,10 @@ impl<'de> Deserialize<'de> for Bounds {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            min: [Scalar; 2],
-            max: [Scalar; 2],
+            min: [Num; 2],
+            max: [Num; 2],
         }
-        let fields = Fields::deserialize(deserializer)?;
-        let num = |scalar: Scalar| scalar.checked::<D::Error>("bounds: ");
-        let min = [num(fields.min[0])?, num(fields.min[1])?];
-        let max = [num(fields.max[0])?, num(fields.max[1])?];
+        let Fields { min, max } = Fields::deserialize(deserializer)?;
         Bounds::new(min, max).ok_or_else(|| {
             D::Error::custom("bounds need min below max, both within the world's bound")
         })

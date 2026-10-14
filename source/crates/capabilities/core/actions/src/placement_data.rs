@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_values::{FilterData, Scalar};
+use campfire_values::FilterData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -28,13 +28,14 @@ impl<'de> Deserialize<'de> for PlacementRule {
         #[serde(deny_unknown_fields)]
         struct Fields {
             filter: FilterData,
-            distance: Scalar,
+            distance: Num,
         }
         let Fields { filter, distance } = Fields::deserialize(deserializer)?;
-        let distance = distance
-            .to_num()
-            .filter(|&distance| distance >= Num::ZERO)
-            .ok_or_else(|| D::Error::custom("a placement's distance is a number from 0"))?;
+        if distance < Num::ZERO {
+            return Err(D::Error::custom(
+                "a placement's distance is a number from 0",
+            ));
+        }
         Ok(PlacementRule { filter, distance })
     }
 }

@@ -208,7 +208,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
         if walled {
             let corner = |x, z| point(x, z);
             map.navigation = Some(MapNavigationData {
-                cell: Scalar::Decimal(Num::HALF),
+                cell: Num::HALF,
                 walls: vec![WallData {
                     layer: None,
                     points: vec![corner(6, 0), corner(8, 0), corner(8, 1), corner(6, 1)],
@@ -216,7 +216,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
             });
         }
         let placed = boxes.iter().map(|&(x, z)| PlacedUnitData {
-            pos: MapPoint::Ground([Scalar::Decimal(x), Scalar::Decimal(z)]),
+            pos: MapPoint::Ground([x, z]),
             ..PlacedUnitData::new("crate", "west", point(0, 0))
         });
         map.units.extend(placed);

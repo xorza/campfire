@@ -9,9 +9,6 @@ use thiserror::Error;
 pub enum OrderScriptError {
     #[error(transparent)]
     Toml(TomlError),
-    /// A coordinate of the order at `tick` is past what a sim number holds.
-    #[error("the order at tick {tick} has a coordinate past a sim number")]
-    Coordinate { tick: u64 },
     /// The order at `tick` comes after an order at a later tick.
     #[error("the order at tick {tick} comes after a later one")]
     Unordered { tick: u64 },

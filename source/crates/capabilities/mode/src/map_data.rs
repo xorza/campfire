@@ -5,7 +5,7 @@ use campfire_math::{Num, Vec3};
 use campfire_navigation::{PathEnd, Wall};
 use campfire_sim::Position;
 use campfire_units::Layer;
-use campfire_values::{DeclaredName, Names, Scalar};
+use campfire_values::{DeclaredName, Names};
 use serde::Deserialize;
 
 use crate::error::ModeError;
@@ -39,7 +39,7 @@ pub struct MapData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GridData {
-    pub cell: Scalar,
+    pub cell: Num,
     #[serde(default)]
     pub brush: Vec<BrushData>,
 }
@@ -56,7 +56,7 @@ pub struct BrushData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapNavigationData {
-    pub cell: Scalar,
+    pub cell: Num,
     #[serde(default)]
     pub walls: Vec<WallData>,
 }
@@ -87,9 +87,9 @@ pub struct PlacedUnitData {
     pub unit_type: DeclaredName,
     pub team: DeclaredName,
     pub pos: MapPoint,
-    #[serde(default, deserialize_with = "Scalar::num")]
+    #[serde(default)]
     pub angle: Num,
-    #[serde(default, deserialize_with = "Scalar::num")]
+    #[serde(default)]
     pub height: Num,
     pub path: Option<DeclaredName>,
     pub from: Option<PathEnd>,
@@ -174,7 +174,7 @@ impl MapData {
 
     /// `point` as a position; an error unless it fits the map's metric and lies within its
     /// bounds.
-    pub(crate) fn point(&self, point: &MapPoint) -> Result<Position, ModeError> {
+    pub(crate) const fn point(&self, point: &MapPoint) -> Result<Position, ModeError> {
         match point.position() {
             _ if !point.fits(self.metric) => Err(ModeError::PointShape),
             Some(pos) if self.bounds.contains(pos) => Ok(pos),
@@ -198,11 +198,11 @@ impl MapData {
         }
     }
 
-    fn grid_of(&self, cell: Option<Scalar>) -> Result<Option<Grid>, ModeError> {
+    fn grid_of(&self, cell: Option<Num>) -> Result<Option<Grid>, ModeError> {
         let Some(cell) = cell else {
             return Ok(None);
         };
-        let grid = cell.to_num().and_then(|cell| Grid::new(cell, self.bounds));
+        let grid = Grid::new(cell, self.bounds);
         grid.map(Some).ok_or(ModeError::Grid)
     }
 }
@@ -213,7 +213,7 @@ pub(crate) mod internals {
 
     use campfire_geometry::{Bounds, Metric};
     use campfire_math::Num;
-    use campfire_values::{DeclaredName, Scalar};
+    use campfire_values::DeclaredName;
 
     use crate::map_data::{MapData, MarkerData, PlacedUnitData};
     use crate::map_point::MapPoint;
@@ -224,7 +224,7 @@ pub(crate) mod internals {
 
     impl MapPoint {
         pub const fn ground(x: i64, z: i64) -> MapPoint {
-            MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)])
+            MapPoint::Ground([Num::int(x), Num::int(z)])
         }
     }
 
@@ -284,13 +284,11 @@ mod tests {
 
     #[test]
     fn a_point_beyond_the_world_bound_has_no_position() {
-        let int = Scalar::Int;
-        let at = |x: i64, y: i64, z: i64| {
-            let num = |value| Num::from_int(value).unwrap();
-            Position::new(Vec3::new(num(x), num(y), num(z)))
-        };
-        // A ground point stands at height 0; 2⁴⁰ m is past what a `Num` holds, on any axis.
-        let beyond = 1 << 40;
+        let int = Num::int;
+        let at = |x: i64, y: i64, z: i64| Position::new(Vec3::new(int(x), int(y), int(z)));
+        // A ground point stands at height 0; a meter past 2²⁰ m is past the world's bound, on any
+        // axis.
+        let beyond = (1 << 20) + 1;
         for (point, position) in [
             (MapPoint::Ground([int(1), int(2)]), at(1, 0, 2)),
             (MapPoint::Space([int(1), int(3), int(2)]), at(1, 3, 2)),
@@ -306,7 +304,7 @@ mod tests {
         let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
         let with = |points: &[(i64, i64)]| MapData {
             grid: Some(GridData {
-                cell: Scalar::Int(1),
+                cell: Num::ONE,
                 brush: vec![BrushData {
                     points: points
                         .iter()

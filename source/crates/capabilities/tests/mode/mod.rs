@@ -364,11 +364,11 @@ fn map() -> MapData {
     let grunt = ("unit_type", ModeParam::Text("grunt".to_owned()));
     MapData {
         grid: Some(GridData {
-            cell: Scalar::Int(1),
+            cell: Num::ONE,
             brush: Vec::new(),
         }),
         navigation: Some(MapNavigationData {
-            cell: Scalar::Int(1),
+            cell: Num::ONE,
             walls: Vec::new(),
         }),
         paths: vec![PathData {
@@ -396,7 +396,7 @@ fn raised(mut map: MapData, y: i64) -> MapData {
         let MapPoint::Ground([x, z]) = *point else {
             panic!("the test map's points are on the ground");
         };
-        *point = MapPoint::Space([x, Scalar::Int(y), z]);
+        *point = MapPoint::Space([x, Num::int(y), z]);
     };
     map.metric = Metric::Spatial;
     for path in &mut map.paths {

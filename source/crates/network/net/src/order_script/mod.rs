@@ -4,12 +4,12 @@ use campfire_actions::ActionTarget;
 use campfire_capabilities::Action;
 use campfire_codec::Toml;
 use campfire_common::Tick;
+use campfire_math::Num;
 use campfire_mode::{InputValue, ModeInput};
 use campfire_orders::OrdersAction;
 use campfire_progression::ProgressionAction;
 use campfire_sim::StableId;
 use campfire_store::InputFile;
-use campfire_values::Scalar;
 use serde::Deserialize;
 
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
@@ -114,7 +114,7 @@ impl OrderScript {
         struct Entry {
             tick: u64,
             #[serde(rename = "move")]
-            to: Option<[Scalar; 2]>,
+            to: Option<[Num; 2]>,
             attack: Option<StableId>,
             cast: Option<u8>,
             target: Option<StableId>,
@@ -133,10 +133,7 @@ impl OrderScript {
         {
             let action = match (to, attack, cast, target, learn) {
                 (Some(to), None, None, None, None) => {
-                    let [x, z] = to.map(Scalar::to_num);
-                    let (Some(x), Some(z)) = (x, z) else {
-                        return Err(OrderScriptError::Coordinate { tick });
-                    };
+                    let [x, z] = to;
                     Action::Orders(OrdersAction::Move { x, z })
                 }
                 (None, Some(target), None, None, None) => {

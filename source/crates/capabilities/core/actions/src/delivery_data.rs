@@ -2,7 +2,7 @@ use std::num::NonZeroU8;
 
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::DeclaredName;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -42,19 +42,15 @@ impl<'de> Deserialize<'de> for DeliveryData {
             projectile: Option<DeclaredName>,
             area: Option<DeclaredName>,
             count: Option<NonZeroU8>,
-            spread_deg: Option<Scalar>,
+            spread_deg: Option<Num>,
         }
         let fields = Fields::deserialize(deserializer)?;
         match (fields.projectile, fields.area) {
             (Some(unit_type), None) => {
                 let spread_deg = match fields.spread_deg {
                     None => Num::ZERO,
-                    Some(spread) => spread
-                        .to_num()
-                        .filter(|&spread| {
-                            spread >= Num::ZERO && spread <= Num::from_bits(360 << Num::FRAC_BITS)
-                        })
-                        .ok_or_else(|| D::Error::custom("a spread from 0 to 360 degrees"))?,
+                    Some(spread) if spread >= Num::ZERO && spread <= Num::int(360) => spread,
+                    Some(_) => return Err(D::Error::custom("a spread from 0 to 360 degrees")),
                 };
                 Ok(DeliveryData::Projectile {
                     unit_type,

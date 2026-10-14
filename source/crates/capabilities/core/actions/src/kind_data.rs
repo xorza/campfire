@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
-use campfire_values::{DeclaredName, Scalar, Stat};
+use campfire_math::Num;
+use campfire_values::{DeclaredName, Stat};
 
 use crate::action_data::ActionData;
 use crate::action_data_field::ActionDataField;
@@ -28,7 +29,7 @@ pub enum KindData<'a> {
     Gather {
         resource: &'a DeclaredName,
         take: NonZeroU32,
-        bounce: Option<Scalar>,
+        bounce: Option<Num>,
     },
 }
 

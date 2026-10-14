@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{FilterData, RelationSet, Scalar};
+use campfire_values::{FilterData, RelationSet};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -18,7 +18,7 @@ pub struct ProjectileData {
     /// A unit one projectile of a cast hit is no hit for another of the same cast.
     pub once_per_cast: bool,
     pub hits: ProjectileHits,
-    pub gravity: Option<Scalar>,
+    pub gravity: Option<Num>,
 }
 
 /// What a projectile hits. In data: `none`, or a filter of the units it hits.
@@ -36,9 +36,9 @@ impl<'de> Deserialize<'de> for ProjectileData {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            speed: Scalar,
-            width: Option<Scalar>,
-            range: Option<Scalar>,
+            speed: Num,
+            width: Option<Num>,
+            range: Option<Num>,
             #[serde(default)]
             homing: bool,
             #[serde(default)]
@@ -46,31 +46,23 @@ impl<'de> Deserialize<'de> for ProjectileData {
             #[serde(default)]
             once_per_cast: bool,
             hits: Option<ProjectileHits>,
-            gravity: Option<Scalar>,
+            gravity: Option<Num>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        let at_least = |value: Scalar, least: Num| value.to_num().filter(|&value| value >= least);
-        let speed = fields
-            .speed
-            .to_num()
-            .filter(|&speed| speed > Num::ZERO)
-            .ok_or_else(|| D::Error::custom("a projectile's speed is positive"))?;
-        let width = match fields.width {
-            None => Num::ZERO,
-            Some(width) => at_least(width, Num::ZERO)
-                .ok_or_else(|| D::Error::custom("a projectile's width is not negative"))?,
-        };
-        let range = fields
-            .range
-            .map(|range| {
-                at_least(range, Num::ZERO)
-                    .ok_or_else(|| D::Error::custom("a projectile's range is not negative"))
-            })
-            .transpose()?;
+        if fields.speed <= Num::ZERO {
+            return Err(D::Error::custom("a projectile's speed is positive"));
+        }
+        let width = fields.width.unwrap_or(Num::ZERO);
+        if width < Num::ZERO {
+            return Err(D::Error::custom("a projectile's width is not negative"));
+        }
+        if fields.range.is_some_and(|range| range < Num::ZERO) {
+            return Err(D::Error::custom("a projectile's range is not negative"));
+        }
         Ok(ProjectileData {
-            speed,
+            speed: fields.speed,
             width,
-            range,
+            range: fields.range,
             homing: fields.homing,
             stop_on_hit: fields.stop_on_hit,
             once_per_cast: fields.once_per_cast,

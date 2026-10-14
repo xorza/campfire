@@ -280,13 +280,13 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     // A height past the world's bound; and on a spatial map, whose points hold their own, any
     // height but 0.
     let mut map = mode_files().map;
-    let ground = MapPoint::Ground([Scalar::Int(0), Scalar::Int(0)]);
+    let ground = MapPoint::ground(0, 0);
     assert_eq!(
         map.placed_at(&ground, Num::int(1 << 21)),
         Err(ModeError::OutOfBounds)
     );
     map.metric = Metric::Spatial;
-    let space = MapPoint::Space([Scalar::Int(0), Scalar::Int(1), Scalar::Int(0)]);
+    let space = MapPoint::Space([Num::ZERO, Num::ONE, Num::ZERO]);
     let lifted = Position::new(Vec3::new(Num::ZERO, Num::int(1), Num::ZERO)).unwrap();
     assert_eq!(map.placed_at(&space, Num::ZERO), Ok(lifted));
     assert_eq!(

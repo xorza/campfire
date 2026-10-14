@@ -1,5 +1,6 @@
+use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::DeclaredName;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -23,23 +24,20 @@ impl<'de> Deserialize<'de> for CollisionData {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            radius: Option<Scalar>,
+            radius: Option<Num>,
             #[serde(rename = "box")]
-            size: Option<[Scalar; 2]>,
+            size: Option<[Num; 2]>,
             layer: Option<DeclaredName>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let form = match (fields.radius, fields.size) {
-            (Some(radius), None) => BodyForm::circle(radius.checked("collision radius: ")?)
+            (Some(radius), None) => BodyForm::circle(radius)
                 .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 2,048 m"))?,
-            (None, Some([width, height])) => {
-                let side = |side: Scalar| side.checked::<D::Error>("collision box: ");
-                BodyForm::box_sized([side(width)?, side(height)?]).ok_or_else(|| {
-                    D::Error::custom(
-                        "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 4,094 m",
-                    )
-                })?
-            }
+            (None, Some(size)) => BodyForm::box_sized(size).ok_or_else(|| {
+                D::Error::custom(
+                    "a collision box's sides are at least 2⁻¹⁰ m, its diagonal at most 4,094 m",
+                )
+            })?,
             _ => {
                 return Err(D::Error::custom(
                     "a collision `radius` or `box`, one of them",

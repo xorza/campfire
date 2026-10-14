@@ -13,7 +13,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{ArrivedShort, Body, BodyForm, Dead, Destination, Layer, MapBook, Units};
 use campfire_values::{Block, PathId, Team, UnitType};
-use campfire_values::{DeclaredName, Names, Scalar};
+use campfire_values::{DeclaredName, Names};
 
 const ONE: i64 = 1 << 24;
 
@@ -793,7 +793,7 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
     MapData {
         navigation: Some(MapNavigationData {
-            cell: Scalar::Decimal(Num::HALF),
+            cell: Num::HALF,
             walls: Vec::new(),
         }),
         paths: vec![PathData {

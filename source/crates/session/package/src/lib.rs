@@ -31,7 +31,8 @@ mod zero_hour;
 
 pub use crate::avatar_unit::AvatarUnit;
 pub use crate::client_data::camera_file::{CameraFile, CameraHeight};
-pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits};
+pub use crate::client_data::client_objects::{ClientObject, ClientObjects};
+pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 pub use crate::client_data::map_lights::{MapLight, MapLights};
 pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
 pub use crate::dependent::{Dependent, DependentKind};

@@ -1,5 +1,3 @@
-use campfire_math::Num;
-
 use super::*;
 
 #[test]
@@ -45,14 +43,11 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         flaw("[[order]]\ntick = 9\nmove = [1, 1]\n[[order]]\ntick = 8\nmove = [1, 1]\n"),
         OrderScriptError::Unordered { tick: 8 }
     );
-    assert_eq!(
-        flaw("[[order]]\ntick = 9\nmove = [99999999999999, 1]\n"),
-        OrderScriptError::Coordinate { tick: 9 }
-    );
-    assert!(matches!(
-        flaw("[[order]]\ntick = 9\nwalk = [1, 1]\n"),
-        OrderScriptError::Toml(_)
-    ));
+    // A coordinate past what a sim number holds, and an unknown action, fail the read.
+    for flawed in ["move = [99999999999999, 1]", "walk = [1, 1]"] {
+        let text = format!("[[order]]\ntick = 9\n{flawed}\n");
+        assert!(matches!(flaw(&text), OrderScriptError::Toml(_)), "{flawed}");
+    }
     // A cast of slot 2 with no target, one of slot 0 at unit 7, an attack on unit 3, and a learn
     // of slot 1; an order of no action, of two, or of a target with no cast is refused.
     let actions = "[[order]]\ntick = 9\ncast = 2\n[[order]]\ntick = 9\ncast = 0\ntarget = 7\n\

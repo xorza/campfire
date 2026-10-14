@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 
-use campfire_codec::Binary;
+use campfire_codec::{Binary, Toml};
 use proptest::prelude::*;
 
 use super::*;
@@ -228,11 +229,40 @@ fn div_by_zero_panics() {
 }
 
 #[test]
-fn serializes_as_its_bits() {
+fn serializes_as_its_bits_in_binary_and_as_its_exact_decimal_in_text() {
     let encoded = Binary::encode(&Num::ONE);
     assert_eq!(encoded, Binary::encode(&16_777_216_i64));
     let decoded: Num = Binary::decode(&Binary::encode(&Num::MIN)).unwrap();
     assert_eq!(decoded, Num::MIN);
+    // In text, the exact decimal: 2⁻²⁴, the least step, ends at its 24th digit; −2.5 and 3 read
+    // back from what they write, and an integer reads as itself.
+    let least = n(1);
+    let values = BTreeMap::from([("a", n(-5 * HALF)), ("b", Num::int(3)), ("c", least)]);
+    let text = Toml::write(&values);
+    assert_eq!(
+        text,
+        "a = \"-2.5\"\nb = \"3\"\nc = \"0.000000059604644775390625\"\n"
+    );
+    let read =
+        |text: &str| Toml::parse::<BTreeMap<String, Num>>(text).map_err(|error| error.to_string());
+    assert_eq!(read(&text).unwrap()["a"], n(-5 * HALF));
+    assert_eq!(
+        read("a = 549755813887").unwrap()["a"],
+        Num::int(549_755_813_887)
+    );
+    assert_eq!(
+        read("a = -549755813888").unwrap()["a"],
+        Num::int(-549_755_813_888)
+    );
+    // An integer past what a `Num` holds, a float, and text that is no decimal fail the read.
+    for flawed in ["549755813888", "-549755813889", "1.5", "\"1e3\"", "\"\""] {
+        assert!(read(&format!("a = {flawed}")).is_err(), "{flawed}");
+    }
+    assert!(
+        read("a = 549755813888")
+            .unwrap_err()
+            .contains("549755813888 is past what a number holds")
+    );
 }
 
 /// `numerator / denominator` rounded to nearest, ties to even, by comparing the distances to

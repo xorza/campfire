@@ -3,22 +3,39 @@ use std::collections::BTreeSet;
 use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
 use campfire_mode::HeightGrid;
-use campfire_package::{MapLight, MapLights, Terrain, TerrainLight, TerrainLighting, TerrainParts};
+use campfire_package::{
+    ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, Terrain, TerrainLight,
+    TerrainLighting, TerrainParts,
+};
 use serde::Serialize;
 
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::map_file::{GameLight, MapFile, MapHeights};
 use crate::zero_hour::map_object::Placement;
+use crate::zero_hour::object_ini::{ObjectIni, PlacedAs};
 use crate::zero_hour::unit_types::UnitTypes;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
-/// `client/maps/<name>/terrain.bin` and `client/maps/<name>/lights.toml`.
+/// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
+/// `client/maps/<name>/objects.toml`.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
     pub(crate) heights: Vec<u8>,
     pub(crate) terrain: Vec<u8>,
     pub(crate) lights: String,
+    pub(crate) objects: String,
+}
+
+/// What a map import reads and adds to beside its file: the object INI, the unit types of the
+/// maps so far, the looks of the package's `client/units.toml`, and how many of the map's lights
+/// the game draws.
+#[derive(Debug)]
+pub(crate) struct MapSources<'a> {
+    pub(crate) ini: &'a ObjectIni,
+    pub(crate) types: &'a mut UnitTypes,
+    pub(crate) looks: &'a ClientUnits,
+    pub(crate) lights: usize,
 }
 
 /// A cell of the heightmap, 10 units wide (`MAP_XY_FACTOR`).
@@ -42,24 +59,24 @@ struct MapToml {
 
 #[derive(Debug, Serialize)]
 struct BoundsToml {
-    min: [String; 2],
-    max: [String; 2],
+    min: [Num; 2],
+    max: [Num; 2],
 }
 
 #[derive(Debug, Serialize)]
 struct UnitToml {
     unit_type: String,
     team: &'static str,
-    pos: [String; 2],
-    angle: String,
-    height: String,
+    pos: [Num; 2],
+    angle: Num,
+    height: Num,
 }
 
 #[derive(Debug, Serialize)]
 struct MarkerToml {
     name: String,
     tags: [&'static str; 1],
-    pos: [String; 2],
+    pos: [Num; 2],
     params: MarkerParams,
 }
 
@@ -69,17 +86,21 @@ struct MarkerParams {
 }
 
 impl MapImport {
-    /// The files of `file`: its heights on the engine's axes, its terrain in the same order, lit
-    /// by its first `lights` terrain lights, its objects as units of the types `types`
-    /// names, its waypoints as markers, bounds that hold its heights and every point it places,
-    /// and its first `lights` object lights, as the game draws `NumberGlobalLights` of each. The
-    /// terrain's ambient color is its first light's, and the objects' theirs, as the game takes
-    /// them.
-    pub(crate) fn new(
-        file: &MapFile,
-        types: &mut UnitTypes,
-        lights: usize,
-    ) -> Result<MapImport, MapError> {
+    /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain in the
+    /// same order, lit by its first `lights` terrain lights; its objects as a multiplayer game
+    /// spawns them (design 12, D14), none of a template no INI object names, an optimized tree,
+    /// a prop and fluff as client objects, of a look of `looks`, or none when it has none, and
+    /// every other as a unit of the type `types` names; its waypoints as markers; bounds that hold its heights and
+    /// every point its sim places; and its first `lights` object lights, as the game draws
+    /// `NumberGlobalLights` of each. The terrain's ambient color is its first light's, and the
+    /// objects' theirs, as the game takes them.
+    pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<MapImport, MapError> {
+        let MapSources {
+            ini,
+            types,
+            looks,
+            lights,
+        } = sources;
         let heights = MapImport::heights(&file.heights)?;
         let lighting = &file.lighting;
         let terrain_lighting = TerrainLighting {
@@ -115,9 +136,10 @@ impl MapImport {
                 low[axis] = low[axis].min(point[axis]);
                 high[axis] = high[axis].max(point[axis]);
             }
-            point.map(|value| value.to_string())
+            point
         };
         let mut units = Vec::new();
+        let mut client = ClientObjects::default();
         let mut markers = Vec::new();
         let mut waypoints = BTreeSet::new();
         for (at, object) in file.objects.iter().enumerate() {
@@ -147,24 +169,39 @@ impl MapImport {
                     params: MarkerParams { name },
                 });
             } else {
+                let Some(template) = ini.object(&object.template) else {
+                    continue;
+                };
                 let Placement {
                     ground,
                     height,
                     degrees,
                 } = object.placement().ok_or(MapError::Placement(at))?;
+                if ini.placed_as(template) != PlacedAs::Unit {
+                    let look = template.import_name().declared();
+                    if looks.objects.contains_key(&look) {
+                        client.objects.push(ClientObject {
+                            look,
+                            pos: ground,
+                            height,
+                            angle: degrees,
+                        });
+                    }
+                    continue;
+                }
                 units.push(UnitToml {
                     unit_type: types.name(&object.template)?.as_str().to_owned(),
                     team: NEUTRAL,
                     pos: take(ground),
-                    angle: degrees.to_string(),
-                    height: height.to_string(),
+                    angle: degrees,
+                    height,
                 });
             }
         }
         let map = MapToml {
             bounds: BoundsToml {
-                min: low.map(|value| value.to_string()),
-                max: high.map(|value| value.to_string()),
+                min: low,
+                max: high,
             },
             units,
             markers,
@@ -174,6 +211,7 @@ impl MapImport {
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
             lights: Toml::write(&map_lights),
+            objects: Toml::write(&client),
         })
     }
 
@@ -224,17 +262,44 @@ impl MapImport {
 #[cfg(test)]
 mod tests {
     use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
-    use campfire_package::{BlendShape, BlendTile};
-    use campfire_values::{DeclaredName, Scalar};
+    use campfire_package::{BlendShape, BlendTile, ClientUnit};
+    use campfire_values::DeclaredName;
 
     use super::*;
     use crate::zero_hour::map_file::internals::map;
+    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+
+    /// The import of `file` of the fixture install's objects, with the looks of its client
+    /// objects but the prop of no model's, drawn in `lights` lights.
+    fn import(file: &MapFile, types: &mut UnitTypes, lights: usize) -> Result<MapImport, MapError> {
+        let mut ini = ObjectIni::default();
+        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
+            ini.read(objects.as_bytes()).unwrap();
+        }
+        let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
+            (
+                DeclaredName::new(look).unwrap(),
+                ClientUnit { models: Vec::new() },
+            )
+        });
+        let looks = ClientUnits {
+            objects: objects.into(),
+            ..ClientUnits::default()
+        };
+        let sources = MapSources {
+            ini: &ini,
+            types,
+            looks: &looks,
+            lights,
+        };
+        MapImport::new(file, sources)
+    }
 
     #[test]
     fn a_map_s_lights_are_its_time_of_day_s_on_the_engine_s_axes() {
         let mut file = MapFile::read(&map(8)).unwrap();
         let mut types = UnitTypes::default();
-        let imported = MapImport::new(&file, &mut types, 3).unwrap();
+        let imported = import(&file, &mut types, 3).unwrap();
         let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
         // The afternoon's lights: light `l` of time 2 has ambient [2, l, 0], diffuse [2, l, 1]
         // and position [2, l, 2], which is the engine's [2, 2, −l]. The terrain's ambient is its
@@ -262,7 +327,7 @@ mod tests {
             }
         );
         // Drawn in two lights, each keeps its first two.
-        let two = MapImport::new(&file, &mut types, 2).unwrap();
+        let two = import(&file, &mut types, 2).unwrap();
         let terrain = Binary::decode::<Terrain>(&two.terrain).unwrap();
         assert_eq!(terrain.lighting().lights.len(), 2);
         assert_eq!(
@@ -271,16 +336,16 @@ mod tests {
         );
         // An object light it draws that goes no way is refused; one it does not draw is not.
         file.lighting.objects[1].position = [0.0; 3];
-        let refused = MapImport::new(&file, &mut types, 3).map(drop);
+        let refused = import(&file, &mut types, 3).map(drop);
         assert_eq!(refused, Err(MapError::Lighting));
-        assert!(MapImport::new(&file, &mut types, 1).is_ok());
+        assert!(import(&file, &mut types, 1).is_ok());
     }
 
     #[test]
     fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
         let file = MapFile::read(&map(8)).unwrap();
         let mut types = UnitTypes::default();
-        let imported = MapImport::new(&file, &mut types, 3).unwrap();
+        let imported = import(&file, &mut types, 3).unwrap();
 
         // 4 × 3 samples, a border of 1: x from −10 to 20, and z from −(3 − 1 − 1) · 10 = −10 to
         // 10, the file's last row first.
@@ -323,7 +388,7 @@ mod tests {
         // turned 4.729842 − 2π = −1.5533433 in `f32`, −1,493,172,475.64 steps, so
         // −1,493,172,476. The waypoint at (12.5, 7.5) is marker `w3`. The road's end is none.
         let map: MapData = Toml::parse(&imported.map).unwrap();
-        let decimal = |text: &str| Scalar::Decimal(text.parse().unwrap());
+        let decimal = |text: &str| text.parse::<Num>().unwrap();
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
         let unit = |unit_type: &str, pos, angle: i64, height: Num| PlacedUnitData {
             unit_type: DeclaredName::new(unit_type).unwrap(),
@@ -367,9 +432,30 @@ mod tests {
                 events: false,
             }]
         );
-        // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15.
+        // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15, and
+        // not the tree's x of 50, which the sim does not hold.
         let bounds = Toml::parse("min = [-10, -15]\nmax = [30, 10]").unwrap();
         assert_eq!(map.bounds, bounds);
+        // The tree, the prop 1 above the ground, its reskin and the fluff are client objects, in
+        // the map's order, of their templates' looks; the prop of no look, the template no object
+        // names and the one of another case are none; the fence that a build clears is a unit.
+        let client = |look: &str, x: i64, z: i64, height: i64| ClientObject {
+            look: DeclaredName::new(look).unwrap(),
+            pos: [Num::int(x), Num::int(z)],
+            height: Num::int(height),
+            angle: Num::ZERO,
+        };
+        assert_eq!(
+            Toml::parse::<ClientObjects>(&imported.objects).unwrap(),
+            ClientObjects {
+                objects: vec![
+                    client("oak", 50, 0, 0),
+                    client("rock", 5, -5, 1),
+                    client("rockred", 5, 5, 0),
+                    client("bush", 0, -5, 0),
+                ]
+            }
+        );
         assert_eq!(
             types.toml(),
             "[units.americatankcrusader]\n\n[units.rocks1]\n"
@@ -379,7 +465,7 @@ mod tests {
     #[test]
     fn a_map_whose_waypoints_or_objects_the_engine_cannot_hold_is_refused() {
         let mut file = MapFile::read(&map(8)).unwrap();
-        let import = |file: &MapFile| MapImport::new(file, &mut UnitTypes::default(), 3).map(drop);
+        let import = |file: &MapFile| import(file, &mut UnitTypes::default(), 3).map(drop);
         let waypoint = 2;
         let mut twice = file.clone();
         twice.objects.push(file.objects[waypoint].clone());

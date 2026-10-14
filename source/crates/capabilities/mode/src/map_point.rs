@@ -1,7 +1,6 @@
 use campfire_geometry::Metric;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
-use campfire_values::Scalar;
 use serde::Deserialize;
 
 /// A point of the map, in meters: `[x, z]` on the ground plane of a planar map, `[x, y, z]` on a
@@ -9,19 +8,18 @@ use serde::Deserialize;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum MapPoint {
-    Ground([Scalar; 2]),
-    Space([Scalar; 3]),
+    Ground([Num; 2]),
+    Space([Num; 3]),
 }
 
 impl MapPoint {
     /// The point as a position, a ground point at height 0; `None` beyond the world's bound.
-    pub fn position(self) -> Option<Position> {
+    pub const fn position(self) -> Option<Position> {
         let [x, y, z] = match self {
-            MapPoint::Ground([x, z]) => [x, Scalar::Int(0), z],
+            MapPoint::Ground([x, z]) => [x, Num::ZERO, z],
             MapPoint::Space(point) => point,
-        }
-        .map(Scalar::to_num);
-        Position::new(Vec3::new(x?, y?, z?))
+        };
+        Position::new(Vec3::new(x, y, z))
     }
 
     /// Whether it has the shape of a point of a map of `metric`.

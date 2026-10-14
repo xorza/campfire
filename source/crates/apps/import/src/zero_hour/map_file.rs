@@ -502,8 +502,10 @@ pub(crate) mod internals {
 
     /// A map of 4 × 3 samples with a border of 1, its terrain's `BlendTileData` of `version`,
     /// beside a chunk the import skips. Its objects: a tank, a rock 4.5 below the ground at an
-    /// angle past π, and a waypoint, which the import keeps; a road's end, and an object too high
-    /// for the game to keep, which it does not.
+    /// angle past π, and a waypoint, which the import keeps; a road's end; a tree past the
+    /// heights, a prop 1 above the ground, its reskin, fluff, a prop of no model, a template no
+    /// object names and one of another case; and an object too high for the game to keep, which
+    /// it does not.
     pub(crate) fn map(version: u16) -> Vec<u8> {
         let mut writer = ChunkWriter::default();
         let heights = [
@@ -587,6 +589,13 @@ pub(crate) mod internals {
                 Some((3, "Player_1_Start")),
             ),
             object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0x4, "GravelRoad", None),
+            object(&mut writer, [50.0, 0.0, 0.0], 0.0, 0, "Oak", None),
+            object(&mut writer, [5.0, 5.0, 1.0], 0.0, 0, "Rock", None),
+            object(&mut writer, [5.0, -5.0, 0.0], 0.0, 0, "RockRed", None),
+            object(&mut writer, [0.0, 5.0, 0.0], 0.0, 0, "Bush", None),
+            object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "Ghost", None),
+            object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "Nowhere", None),
+            object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "rock", None),
             object(&mut writer, [0.0, 0.0, 2000.0], 0.0, 0, "Rocks1", None),
         ]
         .map(|body| writer.chunk("Object", 3, &body));
@@ -713,7 +722,7 @@ mod tests {
                 mutant: false,
             }]
         );
-        // The road's end is read and kept; the object at 2,000 is not.
+        // The road's end is read and kept, as is every template; the object at 2,000 is not.
         let templates: Vec<&[u8]> = read
             .objects
             .iter()
@@ -725,7 +734,14 @@ mod tests {
                 &b"AmericaTankCrusader"[..],
                 b"Rocks1",
                 b"*Waypoints/Waypoint",
-                b"GravelRoad"
+                b"GravelRoad",
+                b"Oak",
+                b"Rock",
+                b"RockRed",
+                b"Bush",
+                b"Ghost",
+                b"Nowhere",
+                b"rock",
             ]
         );
         assert_eq!(read.objects[0].pos, [30.0, 5.0, 0.0]);

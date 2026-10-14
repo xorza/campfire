@@ -11,7 +11,7 @@ use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
 use campfire_math::Num;
 use campfire_mode::HeightGrid;
-use campfire_package::{ClientModel, ClientUnit, ClientUnits};
+use campfire_package::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 use campfire_sim::IdAllocator;
 use campfire_units::{TypeOrigin, TypeOriginBook};
 use campfire_values::{DeclaredName, PackagePath};
@@ -228,6 +228,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let tank = ClientUnit {
         models: vec![ClientModel {
             model: PackagePath::parse("client/models/tank.glb").unwrap(),
+            scale: ModelScale::ONE,
             hide: vec!["tank.flash".to_owned()],
         }],
     };
@@ -236,6 +237,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             units: [(DeclaredName::new("tank").unwrap(), tank)]
                 .into_iter()
                 .collect(),
+            ..ClientUnits::default()
         }],
         heights: GroundHeights::of(&grid),
         ..ClientData::default()

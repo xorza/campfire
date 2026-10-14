@@ -326,6 +326,12 @@ pub enum IniError {
     /// A weapon bone names no slot of `PRIMARY`, `SECONDARY` and `TERTIARY`, or no bone.
     #[error("line {line}: a weapon bone names no slot and bone")]
     WeaponSlot { line: usize },
+    /// A `KindOf` mixes a list of names with names of `+` or `-`, or `NONE` with either.
+    #[error("line {line}: a KindOf mixes its forms")]
+    MixedKinds { line: usize },
+    /// An object's `Scale` is not positive, or not finite.
+    #[error("line {line}: an object's scale is not positive")]
+    Scale { line: usize },
 }
 
 /// Why a W3D file's bytes are no model the importer converts.

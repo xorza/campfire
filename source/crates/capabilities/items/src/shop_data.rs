@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, FilterData, Scalar, Share};
+use campfire_values::{DeclaredName, FilterData, Share};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -24,20 +24,20 @@ impl<'de> Deserialize<'de> for ShopData {
         struct Fields {
             items: Vec<DeclaredName>,
             resource: DeclaredName,
-            reach: Scalar,
+            reach: Num,
             buyers: FilterData,
             sell_share: Share,
         }
         let fields = Fields::deserialize(deserializer)?;
-        let reach = fields
-            .reach
-            .to_num()
-            .filter(|reach| *reach >= Num::ZERO)
-            .ok_or_else(|| D::Error::custom("a shop's reach is a number that is not negative"))?;
+        if fields.reach < Num::ZERO {
+            return Err(D::Error::custom(
+                "a shop's reach is a number that is not negative",
+            ));
+        }
         Ok(ShopData {
             items: fields.items,
             resource: fields.resource,
-            reach,
+            reach: fields.reach,
             buyers: fields.buyers,
             sell_share: fields.sell_share,
         })

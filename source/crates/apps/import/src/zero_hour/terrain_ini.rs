@@ -39,11 +39,7 @@ impl TerrainIni {
                 None => return Err(IniError::NotBlock { line: line.number }),
                 Some(_) if word == "end" => open = None,
                 Some(name) if word == "texture" => {
-                    let texture = line
-                        .tokens
-                        .get(1)
-                        .ok_or(IniError::NoValue { line: line.number })?;
-                    (*texture).clone_into(
+                    line.value()?.clone_into(
                         self.textures
                             .get_mut(name)
                             .expect("an open type is in the list"),

@@ -554,7 +554,7 @@ fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range(
         ("speed = \"-0.5\"", "a projectile's speed is positive"),
         (
             "speed = 9223372036854775807",
-            "a projectile's speed is positive",
+            "9223372036854775807 is past what a number holds",
         ),
         (
             "speed = 20\nwidth = -1",

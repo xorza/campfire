@@ -22,13 +22,12 @@ pub enum Param {
 /// type's value.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Scaling {
-    #[serde(deserialize_with = "Scalar::ranked_num")]
     pub base: Ranked<Num>,
-    #[serde(default, deserialize_with = "Scalar::num")]
+    #[serde(default)]
     pub per_level: Num,
-    #[serde(default, deserialize_with = "Scalar::nums")]
+    #[serde(default)]
     pub bonus: BTreeMap<Stat, Num>,
-    #[serde(flatten, deserialize_with = "Scalar::nums")]
+    #[serde(flatten)]
     pub ratios: BTreeMap<Stat, Num>,
 }
 

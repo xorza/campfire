@@ -1,6 +1,5 @@
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -37,15 +36,7 @@ impl Thresholds {
 /// Data is untrusted, so thresholds that are none, not positive or not ascending fail to read.
 impl<'de> Deserialize<'de> for Thresholds {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Thresholds, D::Error> {
-        let levels = Vec::<Scalar>::deserialize(deserializer)?
-            .into_iter()
-            .map(|level| {
-                level
-                    .to_num()
-                    .ok_or_else(|| D::Error::custom("a level's experience is beyond a number"))
-            })
-            .collect::<Result<Vec<Num>, D::Error>>()?;
-        Thresholds::new(levels).ok_or_else(|| {
+        Thresholds::new(Vec::<Num>::deserialize(deserializer)?).ok_or_else(|| {
             D::Error::custom(
                 "a track has a level 2, and each level's experience is positive and more than the \
                  level before's",

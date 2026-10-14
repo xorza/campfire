@@ -8,8 +8,9 @@ use crate::zero_hour::chunk_reader::ChunkReader;
 use crate::zero_hour::error::MapError;
 
 /// An object of a map's `ObjectsList`, as `WorldHeightMap::ParseObjectData` reads it: its
-/// position, `z` above the ground, its angle in radians, its flags, its template's name, and
-/// whether its properties make it a waypoint.
+/// position, `z` above the ground, its angle in radians, its flags, its template's name, as
+/// `handleNameChange` renames it before the game spawns it, and whether its properties make it a
+/// waypoint.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MapObject {
     pub(crate) pos: [f32; 3],
@@ -43,6 +44,12 @@ pub(crate) struct Placement {
     pub(crate) degrees: Num,
 }
 
+/// The templates `handleNameChange` renames, each matched of its case.
+const RENAMED: [(&[u8], &[u8]); 2] = [
+    (b"AmericaTankLeopard", b"AmericaTankCrusader"),
+    (b"AmericaVehicleHumVee", b"AmericaVehicleHumvee"),
+];
+
 /// The flags of a road's or a bridge's ends, which the terrain draws and no object spawns from
 /// (`FLAG_ROAD_FLAGS` and `FLAG_BRIDGE_FLAGS`).
 const ROAD_OR_BRIDGE: u32 = 0x36;
@@ -68,7 +75,12 @@ impl MapObject {
         let pos = [body.f32()?, body.f32()?, body.f32()?];
         let angle = body.f32()?;
         let flags = body.u32()?;
-        let template = body.text()?.to_vec();
+        let template = body.text()?;
+        let template = RENAMED
+            .iter()
+            .find(|(old, _)| *old == template)
+            .map_or(template, |(_, new)| new)
+            .to_vec();
         // A key set twice keeps its last value and type, as the game's `Dict` does; the object is
         // a waypoint when its `waypointID` is an integer.
         let mut id = None;
@@ -329,6 +341,16 @@ mod tests {
         );
         // An id set again as a real makes no waypoint, as the game's `Dict` keeps the last type.
         assert_eq!(read(&writer, &[id, as_real, name]).waypoint, None);
+        // `handleNameChange` renames two templates, each matched of its case alone.
+        let template = |name: &str| {
+            let bytes = body([0.0; 3], 0.0, 0, name, &[]);
+            let object = MapObject::read(&mut ChunkReader::new(&bytes), &writer.table());
+            object.unwrap().template
+        };
+        assert_eq!(template("AmericaTankLeopard"), b"AmericaTankCrusader");
+        assert_eq!(template("AmericaVehicleHumVee"), b"AmericaVehicleHumvee");
+        assert_eq!(template("AmericaVehicleHumvee"), b"AmericaVehicleHumvee");
+        assert_eq!(template("americatankleopard"), b"americatankleopard");
 
         // The game drops an object past −1,000 or 1,593.75, not one at either, nor a NaN height,
         // whose placement the engine cannot hold.

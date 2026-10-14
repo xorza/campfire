@@ -87,7 +87,7 @@ pub struct ActionData {
     /// The most a `gather`'s trip carries.
     pub take: Option<NonZeroU32>,
     /// How far from its node, in meters, a `gather` looks for another, none when absent.
-    pub bounce: Option<Scalar>,
+    pub bounce: Option<Num>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,

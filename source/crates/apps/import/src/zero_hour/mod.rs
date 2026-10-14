@@ -1,12 +1,11 @@
-use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
-    CameraFile, ClientModel, ClientUnit, ClientUnits, GameData, MapLights, PackageWriter,
-    TextureClass, WriteError,
+    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, GameData, MapLights,
+    ModelScale, PackageWriter, TextureClass, WriteError,
 };
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
@@ -20,11 +19,10 @@ use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
 use crate::zero_hour::map_file::MapFile;
-use crate::zero_hour::map_import::MapImport;
+use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
-use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::model_parts::ModelParts;
-use crate::zero_hour::object_ini::ObjectIni;
+use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
+use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni, PlacedAs};
 use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
 use crate::zero_hour::terrain_ini::TerrainIni;
 use crate::zero_hour::unit_types::UnitTypes;
@@ -46,6 +44,7 @@ pub(crate) mod map_object;
 pub(crate) mod model_assets;
 pub(crate) mod model_import;
 pub(crate) mod model_parts;
+pub(crate) mod model_writer;
 pub(crate) mod object_ini;
 pub(crate) mod pose;
 pub(crate) mod ref_pack;
@@ -133,6 +132,13 @@ impl<'a> ZeroHour<'a> {
         let camera = game_data.camera_file().ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
         write(CameraFile::PATH, text.as_bytes())?;
+        let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
+        let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut write);
+        let looks = ZeroHour::write_models(&ini, &mut models)?;
+        let ModelReport {
+            skipped,
+            missing_textures,
+        } = models.report();
         let mut unit_types = UnitTypes::default();
         let mut names = BTreeMap::<MapName, String>::new();
         for map in self.install.maps() {
@@ -150,7 +156,13 @@ impl<'a> ZeroHour<'a> {
                     for class in terrain.classes.iter_mut().chain(&mut terrain.edge_classes) {
                         class.texture = self.class_texture(class, &terrain_types);
                     }
-                    MapImport::new(&file, &mut unit_types, game_data.global_lights())
+                    let sources = MapSources {
+                        ini: &ini,
+                        types: &mut unit_types,
+                        looks: &looks,
+                        lights: game_data.global_lights(),
+                    };
+                    MapImport::new(&file, sources)
                 })
                 .map_err(|error| ZeroHourError::Map {
                     map: map.path.to_string(),
@@ -163,6 +175,10 @@ impl<'a> ZeroHour<'a> {
                 &imported.terrain,
             )?;
             write(&MapLights::path(name.as_str()), imported.lights.as_bytes())?;
+            write(
+                &ClientObjects::path(name.as_str()),
+                imported.objects.as_bytes(),
+            )?;
         }
         for InstallTexture { path, kind } in self.install.textures() {
             let bytes = self.install.read(&path)?;
@@ -177,105 +193,92 @@ impl<'a> ZeroHour<'a> {
             write(path.texture_path().as_str(), &ktx2)?;
         }
         write("data/units.toml", unit_types.toml().as_bytes())?;
-        let mut skipped_models = Vec::new();
-        let mut missing_textures = BTreeSet::new();
-        self.write_models(&mut write, &mut skipped_models, &mut missing_textures)?;
         Ok(Imported {
             fingerprint: writer.finish().map_err(ZeroHourError::Write)?,
             rules,
-            skipped_models,
-            missing_textures: missing_textures.into_iter().collect(),
+            skipped_models: skipped,
+            missing_textures,
         })
     }
 
-    /// Writes each object's models: each model once, at `client/models/<name>.glb`, with the
-    /// material files its shaders need, and `client/units.toml`, each object's models and the
-    /// nodes its default look hides; adds the models the objects name that the package lacks to
-    /// `skipped`, and the textures the models name that no archive holds to `missing_textures`.
-    fn write_models(
-        &self,
-        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
-        skipped: &mut Vec<SkippedModel>,
-        missing_textures: &mut BTreeSet<String>,
-    ) -> Result<(), ZeroHourError> {
-        let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
-        let mut assets = ModelAssets::new(&self.install)?;
-        let mut models: BTreeMap<String, Option<ModelParts>> = BTreeMap::new();
+    /// Writes `client/units.toml` of `ini`'s objects, through `models`, and gives it: each
+    /// object's look, its models, each at its object's asset scale, with the nodes its default
+    /// look hides; and the look of each object that maps place as client objects, as the client's
+    /// tree or prop buffer draws it (design 12, D14): a tree's models of its tree draw modules, a
+    /// prop's of its first draw module, when the `W3DModelDraw` family's, each created by its
+    /// name, so only the meshes hidden by their own flag are hidden.
+    fn write_models<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
+        ini: &ObjectIni,
+        models: &mut ModelWriter<'_, W>,
+    ) -> Result<ClientUnits, ZeroHourError> {
         let mut units = ClientUnits::default();
         let mut types = BTreeMap::<String, String>::new();
+        let unhidden = DefaultLook::default();
         for object in ini.objects() {
-            let mut entries = Vec::new();
-            for draw in ini.draws(object) {
-                let Some(model) = &draw.model else {
-                    continue;
-                };
-                let name = model.to_ascii_lowercase();
-                let parts = match models.entry(name.clone()) {
-                    Entry::Occupied(known) => known.into_mut(),
-                    Entry::Vacant(new) => new.insert(ZeroHour::write_model(
-                        &name,
-                        &mut assets,
-                        write,
-                        skipped,
-                        missing_textures,
-                    )?),
-                };
-                if let Some(parts) = parts {
-                    entries.push(ClientModel {
-                        model: ZeroHour::model_path(&name),
-                        hide: parts.hidden(&draw.look),
-                    });
-                }
-            }
+            let scale = ini.scale(object);
+            let draws = ini.draws(object);
+            let entries =
+                ZeroHour::models(draws.iter().map(|draw| (draw, &draw.look)), scale, models)?;
             if entries.is_empty() {
                 continue;
             }
-            let unit_type = ImportName::of(object.name.as_bytes());
+            let unit_type = object.import_name();
             if let Some(first) = types.insert(unit_type.as_str().to_owned(), object.name.clone()) {
                 return Err(ZeroHourError::UnitTypeClash {
                     first,
                     second: object.name.clone(),
                 });
             }
+            let drawn: Vec<&DrawModule> = match ini.placed_as(object) {
+                PlacedAs::Unit => Vec::new(),
+                PlacedAs::Tree => draws
+                    .iter()
+                    .filter(|draw| draw.kind == DrawKind::Tree)
+                    .collect(),
+                PlacedAs::Prop => draws
+                    .first()
+                    .filter(|draw| draw.kind == DrawKind::Family)
+                    .into_iter()
+                    .collect(),
+            };
+            let drawn = drawn.into_iter().map(|draw| (draw, &unhidden));
+            let look = ZeroHour::models(drawn, scale, models)?;
+            if !look.is_empty() {
+                units
+                    .objects
+                    .insert(unit_type.declared(), ClientUnit { models: look });
+            }
             units
                 .units
                 .insert(unit_type.declared(), ClientUnit { models: entries });
         }
         let text = Toml::write(&units);
-        write("client/units.toml", text.as_bytes())
+        models.write("client/units.toml", text.as_bytes())?;
+        Ok(units)
     }
 
-    /// Converts the model `name` and writes its files; the parts its default looks read, or
-    /// `None` if it draws nothing or is skipped, which `skipped` gains.
-    fn write_model(
-        name: &str,
-        assets: &mut ModelAssets<'_>,
-        write: &mut impl FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
-        skipped: &mut Vec<SkippedModel>,
-        missing_textures: &mut BTreeSet<String>,
-    ) -> Result<Option<ModelParts>, ZeroHourError> {
-        let reason = match ModelImport::convert(name, assets)? {
-            Converted::Model(import) => {
-                write(ZeroHour::model_path(name).as_str(), &import.glb.encode())?;
-                for material in &import.materials {
-                    let text = Toml::write(&material.file);
-                    write(
-                        &format!("client/materials/{}.toml", material.name),
-                        text.as_bytes(),
-                    )?;
-                }
-                missing_textures.extend(import.missing_textures);
-                return Ok(Some(import.parts));
+    /// The models of `draws`, each with the look whose hidden nodes it hides, at `scale`, of those
+    /// that draw one the package holds.
+    fn models<'d, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
+        draws: impl IntoIterator<Item = (&'d DrawModule, &'d DefaultLook)>,
+        scale: ModelScale,
+        models: &mut ModelWriter<'_, W>,
+    ) -> Result<Vec<ClientModel>, ZeroHourError> {
+        let mut entries = Vec::new();
+        for (draw, look) in draws {
+            let Some(model) = &draw.model else {
+                continue;
+            };
+            let name = model.to_ascii_lowercase();
+            if let Some(parts) = models.parts(&name)? {
+                entries.push(ClientModel {
+                    model: model_writer::path(&name),
+                    scale,
+                    hide: parts.hidden(look),
+                });
             }
-            Converted::Nothing => return Ok(None),
-            Converted::Emitter => SkipReason::Emitter,
-            Converted::Missing => SkipReason::Missing,
-        };
-        skipped.push(SkippedModel {
-            name: name.to_owned(),
-            reason,
-        });
-        Ok(None)
+        }
+        Ok(entries)
     }
 }
 
@@ -320,12 +323,6 @@ impl ZeroHour<'_> {
         let path = ArchivePath::of(&format!("art\\terrain\\{file}"));
         self.install.contains(&path).then(|| path.texture_path())
     }
-
-    /// Where the model `name` goes: `client/models/<name>.glb`.
-    fn model_path(name: &str) -> PackagePath {
-        PackagePath::parse(&format!("client/models/{name}.glb"))
-            .expect("a model name is a package path")
-    }
 }
 
 #[cfg(test)]
@@ -342,6 +339,8 @@ mod tests {
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
     use crate::zero_hour::map_file::internals::map;
+    use crate::zero_hour::model_import::{Converted, ModelImport};
+    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
 
     /// The fixture install's version, as its archives hold their bytes now.
     fn version_of(scratch: &Scratch) -> [GameVersion; 1] {
@@ -396,14 +395,25 @@ mod tests {
         );
         assert_eq!(
             scratch.names("one/game/client/maps/fixture_map"),
-            ["lights.toml", "terrain.bin"]
+            ["lights.toml", "objects.toml", "terrain.bin"]
         );
         // The class whose type's texture the install holds names it; the other names none.
         let mut file = MapFile::read(&map(8)).unwrap();
         let sand = PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap();
         file.terrain.classes[0].texture = Some(sand);
+        let mut ini = ObjectIni::default();
+        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
+            ini.read(objects.as_bytes()).unwrap();
+        }
+        let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
         let mut types = UnitTypes::default();
-        let expected = MapImport::new(&file, &mut types, 3).unwrap();
+        let sources = MapSources {
+            ini: &ini,
+            types: &mut types,
+            looks: &looks,
+            lights: 3,
+        };
+        let expected = MapImport::new(&file, sources).unwrap();
         assert_eq!(
             scratch.read_text("one/game/map/fixture_map/map.toml"),
             expected.map
@@ -419,6 +429,10 @@ mod tests {
         assert_eq!(
             scratch.read_text("one/game/client/maps/fixture_map/lights.toml"),
             expected.lights
+        );
+        assert_eq!(
+            scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
+            expected.objects
         );
         assert_eq!(scratch.read_text("one/game/data/units.toml"), types.toml());
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
@@ -546,22 +560,41 @@ mod tests {
             scratch.read("one/game/client/models/tank.glb"),
             tank.glb.encode()
         );
-        let model = |name: &str, hide: &[&str]| ClientModel {
+        let scaled = |name: &str, scale: f32, hide: &[&str]| ClientModel {
             model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
+            scale: ModelScale::new(scale).unwrap(),
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
         };
+        let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
         let unit = |models| ClientUnit { models };
+        let looks = |looks: Vec<(&str, ClientUnit)>| {
+            looks
+                .into_iter()
+                .map(|(name, unit)| (DeclaredName::new(name).unwrap(), unit))
+                .collect()
+        };
         let tank = || unit(vec![model("tank", &["tank.turret", "tank.flash"])]);
+        // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
+        // look as a unit of both its models, and as the client's of its tree draw module's; the
+        // fluff's as a unit of its hidden turret, with the flash below it, and as the client's of
+        // none.
+        let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
         let expected = ClientUnits {
-            units: [
-                ("rock", unit(vec![model("rock01", &[])])),
+            units: looks(vec![
+                ("bush", tank()),
+                ("oak", unit(vec![model("tank", &[]), model("rock01", &[])])),
+                ("rock", rock()),
+                ("rockred", rock()),
                 ("tank", tank()),
                 ("tankcamo", tank()),
                 ("tankred", unit(vec![model("tank", &[])])),
-            ]
-            .into_iter()
-            .map(|(name, unit)| (DeclaredName::new(name).unwrap(), unit))
-            .collect(),
+            ]),
+            objects: looks(vec![
+                ("bush", unit(vec![model("tank", &[])])),
+                ("oak", unit(vec![model("rock01", &[])])),
+                ("rock", rock()),
+                ("rockred", rock()),
+            ]),
         };
         assert_eq!(
             Toml::parse::<ClientUnits>(&scratch.read_text("one/game/client/units.toml")).unwrap(),

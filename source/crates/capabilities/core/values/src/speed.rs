@@ -2,8 +2,6 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::scalar::Scalar;
-
 /// A speed in meters a second, positive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Speed(Num);
@@ -26,7 +24,7 @@ impl Speed {
 /// A number, or a decimal string, that is positive.
 impl<'de> Deserialize<'de> for Speed {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Speed, D::Error> {
-        let speed = Scalar::num(deserializer)?;
+        let speed = Num::deserialize(deserializer)?;
         Speed::new(speed).ok_or_else(|| D::Error::custom("a speed is a positive number"))
     }
 }
@@ -50,7 +48,7 @@ mod tests {
         };
         assert_eq!(read(3).map(Speed::get), Ok(Num::int(3)));
         let past = read(1 << 40).unwrap_err();
-        assert_eq!(past, "Int(1099511627776) is past what a number holds");
+        assert_eq!(past, "1099511627776 is past what a number holds");
         let zero = read(0).unwrap_err();
         assert_eq!(zero, "a speed is a positive number");
     }
