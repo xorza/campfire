@@ -455,13 +455,13 @@ const LOOKUPS: [(&str, &str); 34] = [
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_arg.rs", "named"),
     ("script/scripts/script_names.rs", "named"),
+    ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),
     ("script/scripts/view/view_names.rs", "named"),
     ("stats/param_table.rs", "named"),
     ("stats/pool_id.rs", "named"),
     ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
-    ("units/units/unit_state_book.rs", "named"),
     ("values/name_table.rs", "named"),
     // As a modifier applies: a param of the ability that applies it, by name, as the place
     // differs by ability.

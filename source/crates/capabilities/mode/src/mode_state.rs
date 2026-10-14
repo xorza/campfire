@@ -62,7 +62,7 @@ impl<S: ModeSync> ModeState<S> {
     /// The fields of its class that `schema` declares, each at its first value, in the order of
     /// their names.
     pub(crate) fn initial(schema: &ModeSchema) -> ModeState<S> {
-        ModeState::new(schema.initial(S::SYNC).to_vec())
+        ModeState::new(schema.state.initial_of(S::SYNC).cloned().collect())
     }
 }
 
@@ -74,7 +74,7 @@ impl<S: ModeSync> SimComponent for ModeState<S> {
     // never wrote.
     fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.non_send::<MatchMode>();
-        book.schema.fits_state(S::SYNC, &self.values)
+        book.schema.state.holds(S::SYNC, &self.values)
     }
 }
 

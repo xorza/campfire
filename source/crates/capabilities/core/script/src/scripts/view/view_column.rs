@@ -1,17 +1,31 @@
-use std::any::{Any, TypeId};
+use std::any::Any;
 use std::fmt;
 use std::ops::Range;
 
 use bevy_ecs::world::World;
 
+use crate::scripts::type_slots::{Slot, TypeSlots};
+use crate::scripts::view::kept_rows::AnyKeptRows;
+
 /// A part of the script view that a capability, or the action pipeline, owns: what it reads of
-/// each unit, a row each in the order the view reads the units, and what its getters read
-/// besides, such as its book. The core names none of them.
+/// each unit, a row each in the order the view reads the units, kept from the read before, and
+/// what its getters read besides, such as its book. The core names none of them.
 pub trait ViewColumn: Any + fmt::Debug {
-    /// Starts a read of `world`: the rows it holds become those it keeps from, and it holds none.
-    /// Whether every row must be filled again, as something its rows derive from besides the
-    /// units' parts changed.
+    /// Its rows of the running read, and those of the read before.
+    fn kept(&self) -> &dyn AnyKeptRows;
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows;
+
+    /// Takes what its rows derive from besides the units' parts, as a read of `world` starts.
+    /// Whether every row must be filled again, as that changed.
     fn begin(&mut self, world: &World) -> bool;
+}
+
+/// A column of any type, as the view holds it: what the view does with every column's rows.
+trait AnyColumn: Slot + fmt::Debug {
+    /// Starts a read of `world`: the rows it holds become those it keeps from, and it holds none.
+    /// Whether every row must be filled again.
+    fn start(&mut self, world: &World) -> bool;
 
     /// Adds the rows `rows` of the read before, unchanged.
     fn keep(&mut self, rows: Range<usize>);
@@ -23,58 +37,71 @@ pub trait ViewColumn: Any + fmt::Debug {
     fn same_as_kept(&self) -> bool;
 }
 
+impl<C: ViewColumn> AnyColumn for C {
+    fn start(&mut self, world: &World) -> bool {
+        self.kept_mut().begin();
+        self.begin(world)
+    }
+
+    fn keep(&mut self, rows: Range<usize>) {
+        self.kept_mut().keep(rows);
+    }
+
+    fn rows(&self) -> usize {
+        self.kept().rows()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.kept().same_as_kept()
+    }
+}
+
 /// The columns of the view, each of its own type, in the order they were added.
 #[derive(Debug, Default)]
-pub struct ViewColumns {
-    /// The type of each column, to find one without a call through its table.
-    types: Vec<TypeId>,
-    columns: Vec<Box<dyn ViewColumn>>,
-}
+pub struct ViewColumns(TypeSlots<dyn AnyColumn>);
 
 impl ViewColumns {
     pub fn add<C: ViewColumn>(&mut self, column: C) {
-        debug_assert!(self.get::<C>().is_none(), "one column of each type");
-        self.types.push(TypeId::of::<C>());
-        self.columns.push(Box::new(column));
+        self.0.add(Box::new(column));
     }
 
     /// The place of the column of type `C`, when one was added.
     pub fn index_of<C: ViewColumn>(&self) -> Option<usize> {
-        self.types.iter().position(|&ty| ty == TypeId::of::<C>())
+        self.0.index_of::<C>()
     }
 
     /// The column of type `C`, when one was added.
     pub fn get<C: ViewColumn>(&self) -> Option<&C> {
-        let column: &dyn Any = self.columns[self.index_of::<C>()?].as_ref();
-        column.downcast_ref()
+        self.0.get()
     }
 
     /// The column of type `C`, to change, when one was added.
     pub fn get_mut<C: ViewColumn>(&mut self) -> Option<&mut C> {
-        let at = self.index_of::<C>()?;
-        Some(self.at_mut(at))
+        self.0.get_mut()
     }
 
     /// The column at `at`, of type `C`.
     pub fn at_mut<C: ViewColumn>(&mut self, at: usize) -> &mut C {
-        let column: &mut dyn Any = self.columns[at].as_mut();
-        column
-            .downcast_mut()
-            .expect("the column at a place is of the type found there")
+        self.0.typed_mut(at)
     }
 
-    /// The column at `at`, of any type.
-    pub fn any_mut(&mut self, at: usize) -> &mut dyn ViewColumn {
-        self.columns[at].as_mut()
+    /// Starts a read of `world` in the column at `at`. Whether every row must be filled again.
+    pub fn start(&mut self, at: usize, world: &World) -> bool {
+        self.0.at_mut(at).start(world)
+    }
+
+    /// Adds the rows `rows` of the read before to the column at `at`, unchanged.
+    pub fn keep(&mut self, at: usize, rows: Range<usize>) {
+        self.0.at_mut(at).keep(rows);
     }
 
     /// Whether every column holds `rows` rows.
     pub fn hold(&self, rows: usize) -> bool {
-        self.columns.iter().all(|column| column.rows() == rows)
+        self.0.iter().all(|column| column.rows() == rows)
     }
 
     /// Whether every column's rows of the running read equal those of the read before.
     pub fn same_as_kept(&self) -> bool {
-        self.columns.iter().all(|column| column.same_as_kept())
+        self.0.iter().all(AnyColumn::same_as_kept)
     }
 }

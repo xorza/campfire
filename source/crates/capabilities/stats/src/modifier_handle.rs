@@ -3,13 +3,12 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, StateValue, View,
-    plain_script_arg,
+    ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, StateField, StateSchema,
+    StateValue, View, plain_script_arg,
 };
 use campfire_sim::StableId;
 use campfire_values::ModifierId;
 
-use crate::modifier_state_field::ModifierStateField;
 use crate::stats_effect::StatsEffect;
 
 /// A modifier as a script holds it, `Modifier` in scripts: its carrier and source, and its
@@ -28,7 +27,7 @@ pub struct HandleData {
     pub state: Vec<StateValue>,
     pub written: bool,
     pub removed: bool,
-    fields: Arc<[ModifierStateField]>,
+    schema: Arc<StateSchema>,
     view: View,
 }
 
@@ -48,13 +47,13 @@ pub struct HandleOf {
 
 impl ModifierHandle {
     /// A handle to the instance `of`, with `state` as the call starts to see it, and its state's
-    /// `fields`: `spare`, a handle no script holds any more, filled again when given, so its
+    /// `schema`: `spare`, a handle no script holds any more, filled again when given, so its
     /// buffers serve once more.
     pub fn new(
         spare: Option<ModifierHandle>,
         of: HandleOf,
         state: &[StateValue],
-        fields: Arc<[ModifierStateField]>,
+        schema: Arc<StateSchema>,
         view: View,
     ) -> ModifierHandle {
         let HandleOf {
@@ -74,7 +73,7 @@ impl ModifierHandle {
             data.state.extend_from_slice(state);
             data.written = false;
             data.removed = false;
-            data.fields = fields;
+            data.schema = schema;
             data.view = view;
             return handle;
         }
@@ -86,7 +85,7 @@ impl ModifierHandle {
             state: state.to_vec(),
             written: false,
             removed: false,
-            fields,
+            schema,
             view,
         })))
     }
@@ -164,16 +163,16 @@ impl ModifierHandle {
         api.ty::<ModifierState>("ModifierState")
             .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
-                let at = data.field(name)?;
-                Ok(data.state[at].to_value(&data.view))
+                let field = data.field(name)?;
+                Ok(data.state[field.index()].to_value(&data.view))
             })
             .index_set(
                 |_, state: &mut ModifierState, name: &str, value: ScriptValue| -> Checked<()> {
                     let mut data = state.0.data();
-                    let at = data.field(name)?;
-                    let value = StateValue::from_value(data.fields[at].kind, &value)
+                    let field = data.field(name)?;
+                    let value = StateValue::from_value(data.schema.kind(field), &value)
                         .ok_or_else(|| ApiError::WrongStateType.fail())?;
-                    data.state[at] = value;
+                    data.state[field.index()] = value;
                     data.written = true;
                     Ok(())
                 },
@@ -182,12 +181,10 @@ impl ModifierHandle {
 }
 
 impl HandleData {
-    /// The place of the state field `name`; one the modifier does not declare fails the call.
-    fn field(&self, name: &str) -> Checked<usize> {
-        self.fields
-            .binary_search_by(|field| (*field.name).cmp(name))
-            .ok()
-            .ok_or_else(|| ApiError::UnknownState.fail().into())
+    /// The state field `name`; one the modifier does not declare fails the call.
+    fn field(&self, name: &str) -> Checked<StateField> {
+        let field = self.schema.field(name);
+        field.ok_or_else(|| ApiError::UnknownState.fail().into())
     }
 }
 

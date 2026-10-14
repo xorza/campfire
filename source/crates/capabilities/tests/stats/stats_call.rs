@@ -21,7 +21,7 @@ fn a_handle_no_script_holds_serves_the_next_call_again() {
         stacks,
     };
     let handle = |stacks, state: &[StateValue]| {
-        ModifierHandle::new(None, of(stacks), state, Arc::from([]), view.clone())
+        ModifierHandle::new(None, of(stacks), state, Arc::default(), view.clone())
     };
     // The call holds two handles; a script still holds a copy of the second as the next
     // call begins, so only the first is spare.
@@ -39,7 +39,7 @@ fn a_handle_no_script_holds_serves_the_next_call_again() {
     assert!(call.spare().is_none());
     // Filled again, it is the first's storage with the new instance, and nothing written.
     let state = [StateValue::Int(7), StateValue::Int(8)];
-    let again = ModifierHandle::new(Some(spare), of(3), &state, Arc::from([]), view.clone());
+    let again = ModifierHandle::new(Some(spare), of(3), &state, Arc::default(), view.clone());
     let data = again.data();
     assert_eq!(ptr::from_ref(&*data).addr(), first);
     assert_eq!((data.stacks, data.state.as_slice()), (3, &state[..]));

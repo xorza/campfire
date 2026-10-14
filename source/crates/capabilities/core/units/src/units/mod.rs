@@ -8,7 +8,7 @@ use campfire_declare::{
 };
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, SyncTo, Unit, UnitRow, View,
+    ScriptList, StateSchema, SyncTo, Unit, UnitRow, View,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{EngineTag, Relations, TagProperties, Team, UnitTags, UnitType};
@@ -280,15 +280,16 @@ impl Units {
                 return false;
             };
             let unit = world.entity(entity);
-            let states = || {
-                book.fields(unit_type).iter().all(|field| match field.sync {
+            let states = |schema: &StateSchema| {
+                schema.places().iter().all(|place| match place.sync {
                     SyncTo::None => unit.contains::<UnitState<SyncNone>>(),
                     SyncTo::Owner => unit.contains::<UnitState<SyncOwner>>(),
                     SyncTo::Team => unit.contains::<UnitState<SyncTeam>>(),
                     SyncTo::All => unit.contains::<UnitState<SyncAll>>(),
                 })
             };
-            !(types.contains(unit_type) && states())
+            let schema = book.schema(unit_type);
+            !(types.contains(unit_type) && schema.is_some_and(states))
         })
     }
 

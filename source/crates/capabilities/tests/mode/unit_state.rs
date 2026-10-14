@@ -58,7 +58,7 @@ fn on_mode_input(ctx, player, name, value) {
     let at = |hits: i64| {
         (
             vec![StateValue::Int(hits)],
-            vec![StateValue::Text(String::new())],
+            vec![StateValue::Text("".into())],
         )
     };
     assert_eq!(grunt(&game), at(2));
@@ -107,7 +107,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(Mode::failures(&game), []);
     let marked = (
         vec![StateValue::Int(2)],
-        vec![StateValue::Text("new".to_owned())],
+        vec![StateValue::Text("new".into())],
     );
     assert_eq!(grunt(&game), marked);
 }

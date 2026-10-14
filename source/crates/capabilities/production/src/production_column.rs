@@ -1,9 +1,7 @@
-use std::ops::Range;
-
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::{KeptRows, RowFill, Unit, View, ViewColumn};
+use campfire_script::{AnyKeptRows, KeptRows, RowFill, Unit, View, ViewColumn};
 use campfire_units::{Dead, Owner};
 use campfire_values::UnitType;
 
@@ -52,8 +50,15 @@ pub(crate) struct ReadSupply {
 }
 
 impl ViewColumn for ProductionColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, world: &World) -> bool {
-        self.rows.begin();
         // A row holds what its unit counts for by the costs, so other costs fill every row again.
         self.rules = world.resource::<SupplyBook>().0;
         let costs = world.resource::<SupplyCostBook>();
@@ -62,18 +67,6 @@ impl ViewColumn for ProductionColumn {
         }
         self.costs = costs.clone();
         true
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 

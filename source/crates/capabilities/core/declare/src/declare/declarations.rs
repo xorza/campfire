@@ -1,6 +1,6 @@
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_script::{ApiBuilder, CallPart, RowFill, RowReads, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, RowFill, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent};
 use campfire_state_types::StateTypes;
 use campfire_values::EngineTag;
@@ -64,6 +64,9 @@ pub trait Declarations: StateTypes + KindVisitor {
 
     /// `P`, a part of every script call.
     fn call_part<P: CallPart + Default>(&mut self);
+
+    /// `P`, a part of every script call that holds the params of its scope's calls.
+    fn call_params<P: CallParams + Default>(&mut self);
 
     /// `C`, a part of each entity of the host `H`, a kind or every unit, which `start` makes as
     /// the entity spawns, when it gives one; a restore checks that each entity of the host holds

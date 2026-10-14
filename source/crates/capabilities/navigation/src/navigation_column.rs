@@ -1,9 +1,7 @@
-use std::ops::Range;
-
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_geometry::Shape;
-use campfire_script::{KeptRows, RowFill, ScriptValue, Unit, View, ViewColumn};
+use campfire_script::{AnyKeptRows, KeptRows, RowFill, ScriptValue, Unit, View, ViewColumn};
 use campfire_sim::{Position, StableId};
 use campfire_units::{Body, Layer, MoveStep};
 use campfire_values::PathId;
@@ -39,25 +37,20 @@ struct NavigationRow {
 }
 
 impl ViewColumn for NavigationColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, world: &World) -> bool {
-        self.rows.begin();
         let walls = &world.resource::<NavigationBook>().walls;
         if !walls.same(&self.walls) {
             self.walls = walls.clone();
         }
         false
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 

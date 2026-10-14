@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use bevy_ecs::world::World;
 use campfire_navigation::IndexedBody;
-use campfire_script::{CallError, CallPart, CallStart, Frame, ScriptRole, ScriptValue, StateValue};
+use campfire_script::{
+    CallError, CallParams, CallPart, CallStart, Commit, Frame, ParamScope, ScriptRole, ScriptValue,
+    StateValue,
+};
 use campfire_units::{SyncAll, SyncNone};
 
 use crate::choices::Choices;
@@ -11,11 +14,13 @@ use crate::mode_world::{ModeWorld, ModeWorldCrate};
 
 /// What the mode adds to the call frame: the mode's params, which a mode's or an AI's call reads;
 /// and as a mode call sees them, the mode's state and the players' choices, which it writes and
-/// reads back, whether the match ended, before the call or in it, and the boxes it spawned, which
-/// a box it spawns next needs room from.
+/// reads back and which commit before its effects apply, whether the match ended, before the call
+/// or in it, and the boxes it spawned, which a box it spawns next needs room from.
 #[derive(Debug)]
 pub struct ModeCall {
     book: Rc<ModeSpec>,
+    /// Whether the running call is the mode's, whose state and choices it holds.
+    running: bool,
     /// Every field of the mode's state, in the order of their names.
     pub(crate) state: Vec<StateValue>,
     /// The fields of each class, `none` and `all`, as a commit splits them.
@@ -27,10 +32,14 @@ pub struct ModeCall {
 }
 
 impl CallPart for ModeCall {
+    /// Before the effects, as an effect may read the mode's state and the choices.
+    const COMMITS: Commit = Commit::BeforeEffects;
+
     /// A mode call reads the mode's state, the choices and the match's end as `world` holds
     /// them.
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
-        if start.role != ScriptRole::Mode {
+        self.running = start.role == ScriptRole::Mode;
+        if !self.running {
             return Ok(());
         }
         let (none, all) = (
@@ -44,22 +53,35 @@ impl CallPart for ModeCall {
         Ok(())
     }
 
-    /// A mode's or an AI's call reads the mode's params.
-    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue> {
-        if matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
-            return None;
+    /// Writes a mode call's state, each class of it unless it is what `world` holds, and its
+    /// choices unless they are, as a write marks them changed.
+    fn commit(&mut self, world: &mut World) {
+        if !self.running {
+            return;
         }
+        let (none, all) = (&mut self.none, &mut self.all);
+        self.book.schema.split_state(&self.state, none, all);
+        world.commit_mode_fields::<SyncNone>(none);
+        world.commit_mode_fields::<SyncAll>(all);
+        if *world.resource::<Choices>() != self.choices {
+            world.resource_mut::<Choices>().clone_from(&self.choices);
+        }
+    }
+}
+
+impl CallParams for ModeCall {
+    const SCOPE: ParamScope = ParamScope::Mode;
+
+    fn param(&self, name: &str) -> Option<ScriptValue> {
         self.book.schema.param(name)
     }
-
-    /// A mode call commits its state and choices itself, before its effects apply.
-    fn apply(&mut self, _: &mut World) {}
 }
 
 impl ModeCall {
     pub fn new(book: Rc<ModeSpec>) -> ModeCall {
         ModeCall {
             book,
+            running: false,
             state: Vec::new(),
             none: Vec::new(),
             all: Vec::new(),
@@ -67,14 +89,6 @@ impl ModeCall {
             ended: false,
             boxes: Vec::new(),
         }
-    }
-
-    /// Writes the call's state, each class of it unless it is what `world` holds.
-    pub(crate) fn commit_state(&mut self, world: &mut World) {
-        let (none, all) = (&mut self.none, &mut self.all);
-        self.book.schema.split_state(&self.state, none, all);
-        world.commit_mode_fields::<SyncNone>(none);
-        world.commit_mode_fields::<SyncAll>(all);
     }
 
     /// The mode's part of `frame`, which the mode added as it installed.

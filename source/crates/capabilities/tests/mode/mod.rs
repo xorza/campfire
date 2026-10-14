@@ -837,7 +837,7 @@ const fn input<'a>(name: &'a str, value: &'a str) -> ModeInput<'a> {
 /// `phase`, `seen`, `count` and `inputs`.
 fn state(phase: &str, seen: i64, count: i64, inputs: i64) -> [StateValue; 4] {
     let [seen, count, inputs] = [seen, count, inputs].map(StateValue::Int);
-    [StateValue::Text(phase.to_owned()), seen, count, inputs]
+    [StateValue::Text(phase.into()), seen, count, inputs]
 }
 
 /// The MOBA 3v3's `source_stat` and `calc_damage` as they were when these tests were written:

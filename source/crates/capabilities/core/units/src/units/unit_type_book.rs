@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::{SyncedStateDecl, TagNames, View};
+use campfire_script::{StateSchema, TagNames, View};
 use campfire_sim::Capability;
 use campfire_values::{
     DeclaredName, EngineTag, NameTable, Names, NamesError, Scalar, Tag, TagProperties, TagSet,
@@ -38,8 +38,8 @@ pub struct UnitTypeBook {
     /// Each type's params, one run per type, in the order of the types; shared with the script
     /// view.
     params: Arc<NameTable<Scalar>>,
-    /// Each type's script state fields, one run per type, in the order of the types.
-    states: NameTable<SyncedStateDecl>,
+    /// Each type's script state, a schema per type, in the order of the types.
+    states: Vec<StateSchema>,
 }
 
 /// No tag and no type, as a match's declaration puts the book in before the release gives it
@@ -61,7 +61,7 @@ impl UnitTypeBook {
             types: Arc::default(),
             origins: TypeOriginBook::default(),
             params: Arc::default(),
-            states: NameTable::default(),
+            states: Vec::new(),
         }
     }
 
@@ -90,12 +90,14 @@ impl UnitTypeBook {
         })?;
         let run = Arc::make_mut(&mut self.params).push(params);
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
-        let fields = data
-            .state
-            .iter()
-            .map(|(name, field)| (name.as_str(), field.clone()));
-        let run = self.states.push(fields);
-        debug_assert_eq!(run, unit_type.index(), "one run of state fields per type");
+        let fields = data.state.iter();
+        let fields = fields.map(|(name, field)| (name.as_str(), field.sync, &field.decl));
+        self.states.push(StateSchema::new(fields));
+        debug_assert_eq!(
+            self.states.len(),
+            unit_type.index() + 1,
+            "one schema per type"
+        );
         self.staged_mut().push(tags);
         self.origins.push(TypeOrigin {
             package,
@@ -206,7 +208,7 @@ impl UnitTypeBook {
 
     /// The state fields of every type, for the match's book of them.
     pub fn state_book(&self) -> UnitStateBook {
-        UnitStateBook::new(self.states.clone())
+        self.states.iter().cloned().collect()
     }
 }
 

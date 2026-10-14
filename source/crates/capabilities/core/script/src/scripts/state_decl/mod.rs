@@ -1,4 +1,5 @@
 use std::str::FromStr;
+use std::sync::Arc;
 
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
@@ -7,6 +8,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::scripts::state_value::StateValue;
 
+pub(crate) mod state_schema;
 pub(crate) mod synced_state_decl;
 
 /// A declared field of script state: its first value, which is of its type. Script state is
@@ -48,9 +50,9 @@ impl StateDecl {
             (StateType::Int, None) => StateValue::Int(0),
             (StateType::Num, None) => StateValue::Num(Num::ZERO),
             (StateType::Bool, None) => StateValue::Bool(false),
-            (StateType::String, None) => StateValue::Text(String::new()),
+            (StateType::String, None) => StateValue::Text(Arc::from("")),
             (StateType::Entity, None) => StateValue::Entity(None),
-            (StateType::EntityList, None) => StateValue::EntityList(Vec::new()),
+            (StateType::EntityList, None) => StateValue::EntityList(Arc::from([])),
             (StateType::Pos, None) => StateValue::Pos(Position::ORIGIN),
             (StateType::Vec, None) => StateValue::Vec(Vec3::ZERO),
             (StateType::Int, Some(StateDefault::Int(value))) => StateValue::Int(value),
@@ -61,7 +63,9 @@ impl StateDecl {
                 StateValue::Num(Num::from_str(&text).ok()?)
             }
             (StateType::Bool, Some(StateDefault::Bool(value))) => StateValue::Bool(value),
-            (StateType::String, Some(StateDefault::Text(text))) => StateValue::Text(text),
+            (StateType::String, Some(StateDefault::Text(text))) => {
+                StateValue::Text(Arc::from(text))
+            }
             _ => return None,
         };
         Some(StateDecl { initial })

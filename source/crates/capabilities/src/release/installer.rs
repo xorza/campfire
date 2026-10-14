@@ -8,7 +8,7 @@ use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
     KindSpawn, KindVisitor, ModuleSet, Report, Scratch, SpawnParts,
 };
-use campfire_script::{ApiBuilder, CallPart, Ctx, RowReads, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
@@ -149,6 +149,15 @@ impl Declarations for Installer<'_> {
     fn call_part<P: CallPart + Default>(&mut self) {
         if self.scripts {
             self.world.non_send::<Ctx>().frame().add_part(P::default());
+        }
+    }
+
+    fn call_params<P: CallParams + Default>(&mut self) {
+        if self.scripts {
+            self.world
+                .non_send::<Ctx>()
+                .frame()
+                .add_params(P::default());
         }
     }
 

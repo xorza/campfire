@@ -54,7 +54,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
         }
     }
     // The match start ran the ticks before the first one seen, and the bot had nothing then.
-    let text = |word: &str| StateValue::Text(word.to_owned());
+    let text = |word: &str| StateValue::Text(word.into());
     let first = seen[0].0;
     assert!(first < 5);
     let expected: Vec<_> = (first..12)

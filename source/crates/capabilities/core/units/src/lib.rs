@@ -55,7 +55,7 @@ pub use crate::units::unit_core::{MadeCore, UnitCore};
 pub use crate::units::unit_entity::UnitEntity;
 pub use crate::units::unit_grid::{Built, UnitGrid, UnitsNear};
 pub use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
-pub use crate::units::unit_state_book::{StateField, StatePlace, UnitStateBook};
+pub use crate::units::unit_state_book::UnitStateBook;
 pub use crate::units::unit_states::UnitStates;
 pub use crate::units::unit_type_book::UnitTypeBook;
 pub use crate::units::unit_type_core::UnitTypeCore;

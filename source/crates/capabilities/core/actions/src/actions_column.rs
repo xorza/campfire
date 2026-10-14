@@ -4,7 +4,9 @@ use std::sync::Arc;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_script::{ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn};
+use campfire_script::{
+    AnyKeptRows, ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
+};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, Rank};
 
@@ -57,8 +59,15 @@ pub struct SlotRow {
 }
 
 impl ViewColumn for ActionsColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, world: &World) -> bool {
-        self.rows.begin();
         let kinds = &world.resource::<SlotKindBook>().0;
         if !Arc::ptr_eq(kinds, &self.kinds) {
             self.kinds = Arc::clone(kinds);
@@ -71,18 +80,6 @@ impl ViewColumn for ActionsColumn {
         }
         self.book = book.clone();
         true
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 

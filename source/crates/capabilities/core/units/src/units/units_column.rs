@@ -1,16 +1,15 @@
 use std::ops::Range;
-use std::slice::Iter;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_script::{
-    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue, StateValue, SyncTo,
-    View, ViewColumn,
+    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue,
+    StateField, StateSchema, StateValue, SyncTo, View, ViewColumn,
 };
 use campfire_values::UnitType;
 
 use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
-use crate::units::unit_state_book::{StateField, UnitStateBook};
+use crate::units::unit_state_book::UnitStateBook;
 
 /// The parts of a unit the core reads into its row of script state: its type, which names the
 /// class of each field, and its state of each class.
@@ -42,21 +41,16 @@ struct StateRows {
 }
 
 impl ViewColumn for UnitsColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, _: &World) -> bool {
-        self.rows.begin();
         false
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 
@@ -82,37 +76,31 @@ impl ColumnRows for StateRows {
 
 impl UnitsColumn {
     /// Adds the row of a unit of `unit_type` with `state`, its fields of each class, merged into
-    /// the order of their names as the book gives each field's class.
+    /// the order of their names as the type's schema places each field.
     fn push(&mut self, unit_type: Option<UnitType>, state: StateParts<'_, '_>) {
-        fn class<S: StateSync>(state: Option<&UnitState<S>>) -> Iter<'_, StateValue> {
-            state.map_or(&[][..], UnitState::values).iter()
+        fn class<S: StateSync>(state: Option<&UnitState<S>>) -> &[StateValue] {
+            state.map_or(&[][..], UnitState::values)
         }
         let (_, none, owner, team, all) = state;
-        let mut classes = [class(none), class(owner), class(team), class(all)];
         let rows = self.rows.now_mut();
         let start = len(rows.values.len());
-        let fields = unit_type.map_or(&[][..], |unit_type| self.book.fields(unit_type));
-        for field in fields {
-            let at = match field.sync {
-                SyncTo::None => 0,
-                SyncTo::Owner => 1,
-                SyncTo::Team => 2,
-                SyncTo::All => 3,
-            };
-            let value = classes[at]
-                .next()
-                .expect("a unit holds each field its type declares");
-            rows.values.push(value.clone());
-        }
-        #[expect(
-            clippy::debug_assert_with_mut_call,
-            reason = "the check drains what is left of each class, which nothing reads after it"
-        )]
-        {
+        if let Some(schema) = unit_type.and_then(|unit_type| self.book.schema(unit_type)) {
+            let classes = [
+                (SyncTo::None, class(none)),
+                (SyncTo::Owner, class(owner)),
+                (SyncTo::Team, class(team)),
+                (SyncTo::All, class(all)),
+            ];
             debug_assert!(
-                classes.iter_mut().all(|class| class.next().is_none()),
-                "a unit holds only the fields its type declares"
+                classes
+                    .iter()
+                    .all(|&(sync, values)| schema.holds(sync, values)),
+                "a unit holds exactly the fields its type declares"
             );
+            for place in schema.places() {
+                let values = classes[place.sync.index()].1;
+                rows.values.push(values[place.at].clone());
+            }
         }
         rows.rows.push(start..len(rows.values.len()));
     }
@@ -122,40 +110,55 @@ impl UnitsColumn {
         view.column_mut(|column: &mut UnitsColumn| column.book = book);
     }
 
+    /// What `read` gives of the schema of `unit_type`, a type of the match.
+    pub(crate) fn schema<R>(
+        view: &View,
+        unit_type: UnitType,
+        read: impl FnOnce(&StateSchema) -> R,
+    ) -> R {
+        view.column(|column: &UnitsColumn| {
+            read(
+                column
+                    .book
+                    .schema(unit_type)
+                    .expect("a unit's type is the match's"),
+            )
+        })
+        .expect("a view of units has their state")
+    }
+
     /// The field `name` of a unit of `unit_type`; one its type does not declare fails the call.
     pub(crate) fn field(view: &View, unit_type: UnitType, name: &str) -> Checked<StateField> {
-        let found = view
-            .column(|column: &UnitsColumn| column.book.field(unit_type, name))
-            .expect("a view of units has their state");
+        let found = UnitsColumn::schema(view, unit_type, |schema| schema.field(name));
         Ok(found.ok_or_else(|| ApiError::UnknownState.fail())?)
     }
 
-    /// The value at `at` of the unit in row `row`, as a script reads it.
-    pub(crate) fn read(view: &View, row: usize, at: usize) -> ScriptValue {
+    /// The value of `field` of the unit in row `row`, as a script reads it.
+    pub(crate) fn read(view: &View, row: usize, field: StateField) -> ScriptValue {
         let value = view
             .column(|column: &UnitsColumn| {
                 let rows = column.rows.now();
-                rows.values[rows.rows[row].start as usize + at].clone()
+                rows.values[rows.rows[row].start as usize + field.index()].clone()
             })
             .expect("a view of units has their state");
         value.to_value(view)
     }
 
-    /// The default of the field at `at` of `unit_type`, as a script reads it.
-    pub(crate) fn initial(view: &View, unit_type: UnitType, at: usize) -> ScriptValue {
-        let value = view
-            .column(|column: &UnitsColumn| column.book.fields(unit_type)[at].decl.initial().clone())
-            .expect("a view of units has their state");
+    /// The first value of `field` of `unit_type`, as a script reads it.
+    pub(crate) fn initial(view: &View, unit_type: UnitType, field: StateField) -> ScriptValue {
+        let value = UnitsColumn::schema(view, unit_type, |schema| {
+            schema.initial()[field.index()].clone()
+        });
         value.to_value(view)
     }
 
-    /// Writes `value` at `at` of the unit in row `row`, as a call's write applies to the unit's
-    /// state too, so a later call of the stage reads it.
-    pub(crate) fn write(view: &View, row: usize, at: usize, value: StateValue) {
+    /// Writes `value` to `field` of the unit in row `row`, as a call's write applies to the
+    /// unit's state too, so a later call of the stage reads it.
+    pub(crate) fn write(view: &View, row: usize, field: StateField, value: StateValue) {
         view.write_rows(|column: &mut UnitsColumn| {
             let rows = column.rows.now_mut();
             let start = rows.rows[row].start as usize;
-            rows.values[start + at] = value;
+            rows.values[start + field.index()] = value;
         });
     }
 

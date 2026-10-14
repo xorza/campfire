@@ -1,5 +1,7 @@
-use campfire_script::{HookSet, ScriptId, ScriptRole, ScriptValue, StateType, StateValue, SyncTo};
-use campfire_units::{ScriptBook, StatePlace};
+use campfire_script::{
+    HookSet, ScriptId, ScriptRole, ScriptValue, StateSchema, StateValue, SyncTo,
+};
+use campfire_units::ScriptBook;
 use campfire_values::NameTable;
 
 use crate::mode_data::{InputType, ModeData};
@@ -16,21 +18,9 @@ pub(crate) struct ModeSchema {
     pub(crate) hooks: HookSet,
     /// One run each; each param as `ctx.p` reads it, converted once.
     params: NameTable<ScriptValue>,
-    state: NameTable<StateType>,
-    /// Where each state field is held, in the order of their names: its class, `none` or `all`,
-    /// and its place among the class's.
-    places: Vec<StatePlace>,
+    /// The state's fields, each of class `none` or `all`.
+    pub(crate) state: StateSchema,
     inputs: NameTable<InputType>,
-    /// The first value of each state field, of class `none` then of class `all`, each in the
-    /// order of their names.
-    initial: [Vec<StateValue>; 2],
-}
-
-/// A field of the mode's state: its place in `ModeState`, and its type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StateField {
-    pub(crate) index: usize,
-    pub(crate) kind: StateType,
 }
 
 impl ModeSchema {
@@ -40,29 +30,17 @@ impl ModeSchema {
             script,
             hooks: scripts.defines(Some(script), ScriptRole::Mode),
             params: NameTable::default(),
-            state: NameTable::default(),
-            places: Vec::with_capacity(data.state.len()),
+            state: StateSchema::new(
+                data.state
+                    .iter()
+                    .map(|(name, field)| (name.as_str(), field.sync, &field.decl)),
+            ),
             inputs: NameTable::default(),
-            initial: [Vec::new(), Vec::new()],
         };
         let params = data.params.iter();
         schema
             .params
             .push(params.map(|(name, param)| (name.as_str(), param.to_value())));
-        let state = data.state.iter();
-        schema
-            .state
-            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind())));
-        let mut counts = [0; 2];
-        for field in data.state.values() {
-            let class = usize::from(field.sync == SyncTo::All);
-            schema.places.push(StatePlace {
-                sync: field.sync,
-                at: counts[class],
-            });
-            counts[class] += 1;
-            schema.initial[class].push(field.decl.initial().clone());
-        }
         let inputs = data.inputs.iter();
         schema
             .inputs
@@ -76,26 +54,6 @@ impl ModeSchema {
         Some(self.params.values(RUN)[at].clone())
     }
 
-    /// The state field `name`.
-    pub(crate) fn state_field(&self, name: &str) -> Option<StateField> {
-        let index = self.state.named(RUN, name)?;
-        Some(StateField {
-            index,
-            kind: self.state.values(RUN)[index],
-        })
-    }
-
-    /// Whether `values` hold a value of each state field of class `sync`, of its type, in the
-    /// order of their names.
-    pub(crate) fn fits_state(&self, sync: SyncTo, values: &[StateValue]) -> bool {
-        let kinds = self.state.values(RUN).iter().zip(&self.places);
-        let mut kinds = kinds.filter(|(_, place)| place.sync == sync);
-        let fits = values
-            .iter()
-            .all(|value| kinds.next().is_some_and(|(&kind, _)| value.kind() == kind));
-        fits && kinds.next().is_none()
-    }
-
     /// Fills `into` with every state field, in the order of their names, from the fields of
     /// class `none`, `none`, and of class `all`, `all`.
     pub(crate) fn merge_state(
@@ -105,8 +63,8 @@ impl ModeSchema {
         into: &mut Vec<StateValue>,
     ) {
         into.clear();
-        into.reserve_exact(self.places.len());
-        for place in &self.places {
+        into.reserve_exact(self.state.len());
+        for place in self.state.places() {
             let class = if place.sync == SyncTo::All { all } else { none };
             into.push(class[place.at].clone());
         }
@@ -122,7 +80,7 @@ impl ModeSchema {
     ) {
         none.clear();
         all.clear();
-        for (value, place) in state.iter().zip(&self.places) {
+        for (value, place) in state.iter().zip(self.state.places()) {
             let class = if place.sync == SyncTo::All {
                 &mut *all
             } else {
@@ -130,15 +88,6 @@ impl ModeSchema {
             };
             class.push(value.clone());
         }
-    }
-
-    /// The first value of each state field of class `sync`, in the order of their names.
-    pub(crate) fn initial(&self, sync: SyncTo) -> &[StateValue] {
-        debug_assert!(
-            matches!(sync, SyncTo::None | SyncTo::All),
-            "a mode field syncs to no one or to all"
-        );
-        &self.initial[usize::from(sync == SyncTo::All)]
     }
 
     /// The input type `name`.

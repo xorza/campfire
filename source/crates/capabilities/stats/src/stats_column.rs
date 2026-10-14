@@ -5,7 +5,8 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue, View, ViewColumn,
+    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue, View,
+    ViewColumn,
 };
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
@@ -77,26 +78,21 @@ struct ModifierRow {
 }
 
 impl ViewColumn for StatsColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, world: &World) -> bool {
-        self.rows.begin();
         self.life_pool = world.resource::<PoolBook>().life();
         let book = world.resource::<ModifierBook>();
         if !book.same(&self.modifier_book) {
             self.modifier_book = book.clone();
         }
         false
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 
@@ -321,7 +317,7 @@ impl StatsColumn {
                         spec.reapply.stacks(held.stacks, spec.max_stacks),
                         column.rows.now().state(held),
                     ),
-                    None => (1, &*spec.initial),
+                    None => (1, spec.state.initial()),
                 };
                 let of = HandleOf {
                     carrier,
@@ -329,8 +325,8 @@ impl StatsColumn {
                     source,
                     stacks,
                 };
-                let fields = Arc::clone(&spec.fields);
-                ModifierHandle::new(spare, of, state, fields, view.clone())
+                let schema = Arc::clone(&spec.state);
+                ModifierHandle::new(spare, of, state, schema, view.clone())
             })
             .expect("a match that applies a modifier has stats");
         call.handles.push(handle.clone());
@@ -345,10 +341,10 @@ impl StatsColumn {
         of: HandleOf,
         state: &[StateValue],
     ) -> ModifierHandle {
-        let fields = view
-            .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.fields))
+        let schema = view
+            .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.state))
             .expect("a match with modifiers has stats");
-        ModifierHandle::new(spare, of, state, fields, view.clone())
+        ModifierHandle::new(spare, of, state, schema, view.clone())
     }
 
     /// Applies `id` again through `handle`, which the running call took: a removed instance is
@@ -360,7 +356,7 @@ impl StatsColumn {
             data.removed = false;
             data.written = false;
             data.stacks = 1;
-            data.state.clone_from_slice(&spec.initial);
+            data.state.clone_from_slice(spec.state.initial());
         } else {
             data.stacks = spec.reapply.stacks(data.stacks, spec.max_stacks);
         }

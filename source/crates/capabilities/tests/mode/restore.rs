@@ -70,7 +70,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let all_state = game.get::<UnitState<SyncAll>>(grunt).unwrap();
     assert!(owner_state.check(&game, grunt) && all_state.check(&game, grunt));
     let int = || vec![StateValue::Int(0)];
-    let text = || vec![StateValue::Text(String::new())];
+    let text = || vec![StateValue::Text("".into())];
     assert!(!UnitState::<SyncOwner>::new(vec![]).check(&game, grunt));
     assert!(!UnitState::<SyncOwner>::new(text()).check(&game, grunt));
     assert!(!UnitState::<SyncOwner>::new([int(), text()].concat()).check(&game, grunt));
@@ -203,7 +203,7 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     let none = game.get::<ModeState<SyncNone>>(match_entity).unwrap();
     let all = game.get::<ModeState<SyncAll>>(match_entity).unwrap();
     assert!(none.check(&game, match_entity) && all.check(&game, match_entity));
-    let text = StateValue::Text(String::new());
+    let text = StateValue::Text("".into());
     assert_eq!(none.values(), [text, StateValue::Int(0)]);
     let class = |values: &[StateValue]| {
         ModeState::<SyncAll>::new(values.to_vec()).check(&game, match_entity)

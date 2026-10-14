@@ -2,11 +2,9 @@ use bevy_ecs::world::World;
 use campfire_math::{Num, Rng, RngStream};
 use campfire_sim::{RngOpener, SimRng, StableId};
 
-use crate::scripts::call_part::CallPart;
+use crate::scripts::call_part::{CallPart, Commit};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
-use crate::scripts::script_role::ScriptRole;
-use crate::scripts::script_value::ScriptValue;
 
 /// The stream of an acting unit's draws, and of the mode's own calls'.
 const UNIT_DRAWS: RngStream = RngStream::new("script.draw");
@@ -26,6 +24,8 @@ pub struct ScriptCall {
 }
 
 impl CallPart for ScriptCall {
+    const COMMITS: Commit = Commit::AfterEffects;
+
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         let opener = world.resource::<SimRng>().opener();
         if self.opener != Some(opener) {
@@ -36,11 +36,8 @@ impl CallPart for ScriptCall {
         Ok(())
     }
 
-    fn param(&self, _: Option<ScriptRole>, _: &str) -> Option<ScriptValue> {
-        None
-    }
-
-    fn apply(&mut self, _: &mut World) {}
+    /// The draws are no state, so a call commits nothing of them.
+    fn commit(&mut self, _: &mut World) {}
 }
 
 impl ScriptCall {

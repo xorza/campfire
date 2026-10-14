@@ -38,7 +38,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(Mode::field(&game, "inputs"), StateValue::Int(3));
     assert_eq!(
         Mode::field(&game, "phase"),
-        StateValue::Text("start".to_owned())
+        StateValue::Text("start".into())
     );
     assert_eq!(
         Mode::failures(&game),
@@ -143,7 +143,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
     // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path
     // of the tower, which stands on it as grunt 2 walks it, and grunt 2's unit type.
-    let text = |text: &str| StateValue::Text(text.to_owned());
+    let text = |text: &str| StateValue::Text(text.into());
     let seen = [
         "enemy",
         "grunts",
@@ -212,7 +212,7 @@ fn on_input(ctx, player, name, value) {
     let [strike, blink] = ["strike", "blink"].map(|name| Actions::named(&game, 0, name).unwrap());
     let probe = |value| input("probe", value);
     let read = |game: &Match| ["kind", "seen", "team"].map(|name| Mode::field(game, name));
-    let text = |text: &str| StateValue::Text(text.to_owned());
+    let text = |text: &str| StateValue::Text(text.into());
     // Before any choice: no duo, hero X free to player 0, who is on team a.
     Mode::tick_inputs(&mut game, &[(0, probe("read"))]);
     assert_eq!(read(&game), [text("none"), StateValue::Int(1), text("a")]);

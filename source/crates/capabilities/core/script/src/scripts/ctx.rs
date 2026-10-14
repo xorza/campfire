@@ -10,9 +10,7 @@ use crate::script_host::ScriptHost;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_role::ScriptRole;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::view::View;
 
@@ -20,11 +18,15 @@ use crate::scripts::view::View;
 /// through it, its frame saying whose call it is. Effects apply only after the call returns
 /// successfully, in the order queued, so a failed call changes nothing.
 #[derive(Debug, Clone)]
-pub struct Ctx {
-    frame: Rc<RefCell<Frame>>,
+pub struct Ctx(Rc<CtxParts>);
+
+/// What every copy of a match's `ctx` shares.
+#[derive(Debug)]
+struct CtxParts {
+    frame: RefCell<Frame>,
     view: View,
     /// The match's mode, once it installs, which only the mode reads as its own type.
-    mode: Rc<OnceCell<Rc<dyn Any>>>,
+    mode: OnceCell<Rc<dyn Any>>,
 }
 
 /// `ctx.p`: the running call's params, by name: an ability's, a modifier's then its ability's,
@@ -35,11 +37,11 @@ pub struct Params(pub(crate) Ctx);
 
 impl Ctx {
     pub fn new(view: View) -> Ctx {
-        Ctx {
-            frame: Rc::default(),
+        Ctx(Rc::new(CtxParts {
+            frame: RefCell::default(),
             view,
-            mode: Rc::default(),
-        }
+            mode: OnceCell::new(),
+        }))
     }
 
     /// Tags `host` with the ctx, which `of_call` reads in each call of its scripts.
@@ -59,7 +61,7 @@ impl Ctx {
     /// The frame, borrowed until the guard drops. A call borrows it again, so no guard may live
     /// across a call.
     pub fn frame(&self) -> RefMut<'_, Frame> {
-        self.frame.borrow_mut()
+        self.0.frame.borrow_mut()
     }
 
     /// The frame to change, as `frame`; a pure hook's call fails.
@@ -87,8 +89,8 @@ impl Ctx {
         Ok(())
     }
 
-    pub const fn view(&self) -> &View {
-        &self.view
+    pub fn view(&self) -> &View {
+        &self.0.view
     }
 
     /// The running call's acting unit.
@@ -98,12 +100,12 @@ impl Ctx {
 
     /// Gives the match its mode.
     pub fn set_mode(&self, mode: Rc<dyn Any>) {
-        assert!(self.mode.set(mode).is_ok(), "a match has one mode");
+        assert!(self.0.mode.set(mode).is_ok(), "a match has one mode");
     }
 
     /// The match's mode, if it installed.
     pub fn mode(&self) -> Option<&dyn Any> {
-        self.mode.get().map(|mode| &**mode)
+        self.0.mode.get().map(|mode| &**mode)
     }
 
     /// Applies the effects of the call that ran, in its tick.
@@ -115,13 +117,7 @@ impl Ctx {
 impl Params {
     /// The param `name`; one the call's ability, modifier or mode does not declare fails it.
     pub fn get(&self, name: &str) -> Checked<ScriptValue> {
-        let ctx = &self.0;
-        let role = ctx.frame().role();
-        let modes = !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier));
-        if modes && ctx.mode().is_none() {
-            return Err(ApiError::NoMode.fail().into());
-        }
-        let value = ctx.frame().param(name);
-        value.ok_or_else(|| ApiError::Unknown(NameKind::Param).fail().into())
+        let value = self.0.frame().param(name);
+        value.map_err(|error| error.fail().into())
     }
 }

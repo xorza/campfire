@@ -1,8 +1,8 @@
-use campfire_script::{StateValue, SyncTo};
+use campfire_script::{StateField, StatePlace, StateValue, SyncTo};
 use campfire_sim::IdAllocator;
+use campfire_values::NameId;
 
 use super::*;
-use crate::units::unit_state_book::StatePlace;
 
 #[test]
 fn a_spawn_takes_its_own_writes_in_order_and_a_clear_drops_the_rest() {
@@ -12,7 +12,7 @@ fn a_spawn_takes_its_own_writes_in_order_and_a_clear_drops_the_rest() {
     let places = [(SyncTo::Owner, 0), (SyncTo::Owner, 1), (SyncTo::All, 0)];
     let write = |id, at: usize, value| StateWrite {
         id,
-        at,
+        field: StateField::at(at),
         place: StatePlace {
             sync: places[at].0,
             at: places[at].1,

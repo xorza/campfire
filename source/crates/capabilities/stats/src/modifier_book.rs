@@ -293,7 +293,7 @@ impl ModifierBook {
             interval,
             shield: not_negative(spec.shield.as_ref()),
             stats: shares.collect(),
-            state: spec.initial.to_vec(),
+            state: spec.state.initial().to_vec(),
         };
         Application {
             instance,
@@ -359,8 +359,7 @@ pub(crate) mod internals {
                     shield: None,
                     aura: None,
                     affects: None,
-                    fields: Arc::from([]),
-                    initial: Box::new([]),
+                    state: Arc::default(),
                 },
                 script: None,
                 hooks: HookSet::default(),

@@ -1,10 +1,9 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::{StateValue, SyncTo};
+use campfire_script::{StatePlace, StateValue, SyncTo};
 
 use crate::units::spawn_target::SpawnTarget;
 use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
-use crate::units::unit_state_book::StatePlace;
 
 /// A new unit's script state: the values of each class of its fields, in the order of their
 /// names, each class a `UnitState` of its own as the unit spawns.

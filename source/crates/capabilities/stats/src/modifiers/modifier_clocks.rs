@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_script::StateValue;
+use campfire_script::{StateValue, SyncTo};
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -191,11 +191,7 @@ impl SimComponent for ModifierClocks {
                     let state = self.state(at);
                     clock.interval.is_some() == spec.interval.is_some()
                         && clock.shield.is_some() == spec.shield.is_some()
-                        && state.len() == spec.fields.len()
-                        && state
-                            .iter()
-                            .zip(spec.fields.iter())
-                            .all(|(value, field)| value.kind() == field.kind)
+                        && spec.state.holds(SyncTo::None, state)
                 })
             })
     }

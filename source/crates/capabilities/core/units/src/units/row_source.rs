@@ -86,7 +86,7 @@ impl<D: RowReads, C: ViewColumn> FillRow for RowSource<D, C> {
         for entity in &changed {
             marks.mark(entity, source);
         }
-        columns.any_mut(self.column).begin(world)
+        columns.start(self.column, world)
     }
 
     fn fill(&self, world: &World, entity: Entity, row: &mut UnitRow, columns: &mut ViewColumns) {
@@ -103,6 +103,6 @@ impl<D: RowReads, C: ViewColumn> FillRow for RowSource<D, C> {
     }
 
     fn keep(&self, columns: &mut ViewColumns, rows: Range<usize>) {
-        columns.any_mut(self.column).keep(rows);
+        columns.keep(self.column, rows);
     }
 }

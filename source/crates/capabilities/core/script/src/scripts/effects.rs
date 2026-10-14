@@ -1,10 +1,10 @@
-use std::any::Any;
 use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use bevy_ecs::world::World;
 
 use crate::scripts::frame::Frame;
+use crate::scripts::type_slots::{Slot, TypeSlots};
 
 /// An effect a call queues: it applies itself when the call returns, in the order queued among
 /// every type's.
@@ -21,28 +21,18 @@ type ApplyNext = fn(&mut World, &mut Frame);
 /// their own queue's order, so the order list needs no index.
 #[derive(Debug, Default)]
 pub struct Effects {
-    queues: Vec<Box<dyn Queue>>,
+    queues: TypeSlots<dyn Queue>,
     order: Vec<ApplyNext>,
 }
 
 /// One effect type's queue, as `Effects` holds every type.
-trait Queue: Debug {
+trait Queue: Slot + Debug {
     fn clear(&mut self);
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<E: Effect> Queue for VecDeque<E> {
     fn clear(&mut self) {
         VecDeque::clear(self);
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -51,27 +41,15 @@ impl Effects {
     pub fn push<E: Effect>(&mut self, effect: E) {
         let at = self
             .queues
-            .iter()
-            .position(|queue| queue.as_any().is::<VecDeque<E>>())
-            .unwrap_or_else(|| {
-                self.queues.push(Box::new(VecDeque::<E>::new()));
-                self.queues.len() - 1
-            });
-        self.queues[at]
-            .as_any_mut()
-            .downcast_mut::<VecDeque<E>>()
-            .expect("the queue of its type")
-            .push_back(effect);
+            .index_of::<VecDeque<E>>()
+            .unwrap_or_else(|| self.queues.add(Box::new(VecDeque::<E>::new())));
+        self.queues.typed_mut::<VecDeque<E>>(at).push_back(effect);
         self.order.push(Effects::apply_first::<E>);
     }
 
     /// The effects of type `E` queued and not applied yet, first first.
     pub fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
-        let queue = self
-            .queues
-            .iter()
-            .find_map(|queue| queue.as_any().downcast_ref::<VecDeque<E>>());
-        queue.into_iter().flatten()
+        self.queues.get::<VecDeque<E>>().into_iter().flatten()
     }
 
     /// The apply of each effect, in the order queued.
@@ -81,7 +59,7 @@ impl Effects {
 
     pub fn clear(&mut self) {
         self.order.clear();
-        for queue in &mut self.queues {
+        for queue in self.queues.iter_mut() {
             queue.clear();
         }
     }
@@ -92,8 +70,7 @@ impl Effects {
         let effect = frame
             .effects
             .queues
-            .iter_mut()
-            .find_map(|queue| queue.as_any_mut().downcast_mut::<VecDeque<E>>())
+            .get_mut::<VecDeque<E>>()
             .and_then(VecDeque::pop_front)
             .expect("the effect the order names is queued");
         effect.apply(world, frame);
@@ -106,6 +83,9 @@ mod tests {
     use campfire_common::Tick;
 
     use super::*;
+    use crate::scripts::call_part::{CallPart, Commit};
+    use crate::scripts::call_start::CallStart;
+    use crate::scripts::error::CallError;
 
     /// What the test's effects applied, in order.
     #[derive(Resource, Debug, Default)]
@@ -138,11 +118,45 @@ mod tests {
         }
     }
 
+    /// A part that commits before the effects, and one that commits after them.
+    #[derive(Debug)]
+    struct Early;
+
+    #[derive(Debug)]
+    struct Late;
+
+    impl CallPart for Early {
+        const COMMITS: Commit = Commit::BeforeEffects;
+
+        fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
+            Ok(())
+        }
+
+        fn commit(&mut self, world: &mut World) {
+            world.resource_mut::<Applied>().0.push("early".to_owned());
+        }
+    }
+
+    impl CallPart for Late {
+        const COMMITS: Commit = Commit::AfterEffects;
+
+        fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
+            Ok(())
+        }
+
+        fn commit(&mut self, world: &mut World) {
+            world.resource_mut::<Applied>().0.push("late".to_owned());
+        }
+    }
+
     #[test]
     fn effects_apply_themselves_in_their_order_across_types_and_their_own_within_one() {
         let mut world = World::new();
         world.init_resource::<Applied>();
         let mut frame = Frame::in_tick(Tick::new(7));
+        // Added in the other order, each part commits at its own side of the effects.
+        frame.add_part(Late);
+        frame.add_part(Early);
         frame.effects.push(Hit(1));
         frame.effects.push(Heal(2));
         frame.effects.push(Hit(3));
@@ -152,7 +166,7 @@ mod tests {
         frame.apply(&mut world);
         assert_eq!(
             world.resource::<Applied>().0,
-            ["hit 1 at 7", "heal 2 at 7", "hit 3 at 7"]
+            ["early", "hit 1 at 7", "heal 2 at 7", "hit 3 at 7", "late"]
         );
         // Applied, the frame holds no effect; a type never queued has none, and a queue made
         // by an earlier call serves the next.

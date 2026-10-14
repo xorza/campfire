@@ -3,7 +3,7 @@ use campfire_sim::StableId;
 use campfire_values::UnitType;
 
 use crate::units::new_unit::NewUnit;
-use crate::units::units_call::UnitsCall;
+use crate::units::units_call::{StateWrite, UnitsCall};
 use crate::units::units_column::UnitsColumn;
 
 /// `unit.state`, `UnitState` in scripts: the script state fields of a unit a script holds, by
@@ -51,24 +51,34 @@ impl UnitStateAccess {
     fn get(&self, ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
         let view = ctx.view();
         let field = UnitsColumn::field(view, self.unit_type, name)?;
-        if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.id, field.at) {
+        if let Some(value) = UnitsCall::of(&ctx.frame()).written(self.id, field) {
             return Ok(value.to_value(view));
         }
         if let Some(row) = self.row {
-            return Ok(UnitsColumn::read(view, row, field.at));
+            return Ok(UnitsColumn::read(view, row, field));
         }
-        Ok(UnitsColumn::initial(view, self.unit_type, field.at))
+        Ok(UnitsColumn::initial(view, self.unit_type, field))
     }
 
     /// Writes `value` to the field `name`, for the call to read back and to apply when it ends,
     /// or as the unit spawns; a field the unit's type does not declare, a value of another
     /// type, and a pure hook's call fail the call.
     fn set(&self, ctx: &Ctx, name: &str, value: &ScriptValue) -> Checked<()> {
-        let field = UnitsColumn::field(ctx.view(), self.unit_type, name)?;
-        let value = StateValue::from_value(field.kind, value)
-            .ok_or_else(|| ApiError::WrongStateType.fail())?;
-        let mut frame = ctx.write()?;
-        UnitsCall::of_mut(&mut frame).write(self.id, field, value);
+        let write = UnitsColumn::schema(ctx.view(), self.unit_type, |schema| {
+            let field = schema
+                .field(name)
+                .ok_or_else(|| ApiError::UnknownState.fail())?;
+            let value = StateValue::from_value(schema.kind(field), value)
+                .ok_or_else(|| ApiError::WrongStateType.fail())?;
+            let place = schema.place(field);
+            Checked::Ok(StateWrite {
+                id: self.id,
+                field,
+                place,
+                value,
+            })
+        })?;
+        UnitsCall::of_mut(&mut *ctx.write()?).write(write);
         Ok(())
     }
 }

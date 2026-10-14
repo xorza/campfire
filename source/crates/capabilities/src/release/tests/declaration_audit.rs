@@ -15,7 +15,7 @@ use campfire_declare::{
     ModuleSet, Phase, Report, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
-use campfire_script::{ApiBuilder, CallPart, RowReads, View, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
@@ -352,6 +352,10 @@ impl Declarations for DeclarationAudit {
     }
 
     fn call_part<P: CallPart + Default>(&mut self) {
+        self.call_parts.push(Named::of::<P>());
+    }
+
+    fn call_params<P: CallParams + Default>(&mut self) {
         self.call_parts.push(Named::of::<P>());
     }
 

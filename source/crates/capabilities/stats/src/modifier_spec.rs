@@ -4,14 +4,13 @@ use std::sync::Arc;
 
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::{Filter, StateValue, UnknownName};
+use campfire_script::{Filter, StateSchema, SyncTo, UnknownName};
 use campfire_sim::TickRate;
 use campfire_units::UnitTypeBook;
 use campfire_values::{DeclaredName, FilterData, ModifierId, Number, Stat};
 
 use crate::error::{ModifierProblem, SpecError};
 use crate::modifier_data::{ModifierData, Reapply};
-use crate::modifier_state_field::ModifierStateField;
 use crate::stat_id::StatId;
 use crate::stat_op::StatOp;
 
@@ -34,9 +33,8 @@ pub struct ModifierSpec {
     pub aura: Option<AuraSpec>,
     /// The units of its player a player modifier holds on; absent, all of them.
     pub affects: Option<Filter>,
-    /// Its script state's fields, in the order of their names, and each one's first value.
-    pub fields: Arc<[ModifierStateField]>,
-    pub initial: Box<[StateValue]>,
+    /// Its script state's fields, each of class `none`, as one run of values holds them.
+    pub state: Arc<StateSchema>,
 }
 
 /// A change of the stat at `stat` by `op`, of `value` a stack.
@@ -130,19 +128,11 @@ impl ModifierSpec {
             shield: data.shield.as_ref().map(number).transpose()?,
             aura: aura.transpose()?,
             affects: data.affects.as_ref().map(filter).transpose()?,
-            fields: data
-                .state
-                .iter()
-                .map(|(name, decl)| ModifierStateField {
-                    name: name.as_str().into(),
-                    kind: decl.kind(),
-                })
-                .collect(),
-            initial: data
-                .state
-                .values()
-                .map(|decl| decl.initial().clone())
-                .collect(),
+            state: Arc::new(StateSchema::new(
+                data.state
+                    .iter()
+                    .map(|(name, decl)| (name.as_str(), SyncTo::None, decl)),
+            )),
         })
     }
 

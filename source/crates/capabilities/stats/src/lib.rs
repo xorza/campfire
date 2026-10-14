@@ -41,7 +41,6 @@ mod modifier_ends;
 mod modifier_handle;
 mod modifier_params;
 mod modifier_spec;
-mod modifier_state_field;
 mod modifiers;
 mod param_book;
 mod param_read;
@@ -96,7 +95,6 @@ pub use crate::modifier_params::ModifierParams;
 pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
 };
-pub use crate::modifier_state_field::ModifierStateField;
 pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
 pub use crate::param_book::{ParamBook, ParamTables};
@@ -225,7 +223,7 @@ impl Module for Stats {
         d.book::<StatBook>();
         d.book::<PoolBook>();
         d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
-        d.call_part::<StatsCall>();
+        d.call_params::<StatsCall>();
         d.api(StatsApi::register);
         d.book::<ByType<Pools>>();
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));

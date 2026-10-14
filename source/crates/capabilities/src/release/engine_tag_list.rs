@@ -6,7 +6,7 @@ use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
     ModuleSet, Report, Scratch,
 };
-use campfire_script::{ApiBuilder, CallPart, RowReads, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
@@ -58,6 +58,8 @@ impl Declarations for EngineTagList {
     fn column<C: ViewColumn + Default, D: RowReads>(&mut self, _: ColumnFill<D, C>) {}
 
     fn call_part<P: CallPart + Default>(&mut self) {}
+
+    fn call_params<P: CallParams + Default>(&mut self) {}
 
     fn part<H: HostRule + SimComponent, C: SimComponent>(
         &mut self,

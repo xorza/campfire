@@ -36,12 +36,15 @@ fn on_input(ctx, player, name, value) {
     );
     let mut rng = mode_sequence(&game);
     let first = format!("{}{}", draw(&mut rng), draw(&mut rng));
-    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(first.clone()));
+    assert_eq!(
+        Mode::field(&game, "kind"),
+        StateValue::Text(first.as_str().into())
+    );
     Mode::tick_inputs(&mut game, &[(0, input("probe", "draw"))]);
     let second = draw(&mut mode_sequence(&game));
     assert_eq!(
         Mode::field(&game, "kind"),
-        StateValue::Text(format!("{first}{second}"))
+        StateValue::Text(format!("{first}{second}").into())
     );
     assert_eq!(Mode::failures(&game), []);
     // A chance of 0 never comes true, and one of 1 always does.

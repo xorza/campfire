@@ -63,7 +63,7 @@ fn on_mode_input(ctx, player, name, value) {
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.
     let seen = ["count", "kind", "team", "grunts", "path"].map(|name| Mode::field(&game, name));
-    let text = |text: &str| StateValue::Text(text.to_owned());
+    let text = |text: &str| StateValue::Text(text.into());
     assert_eq!(
         seen,
         [

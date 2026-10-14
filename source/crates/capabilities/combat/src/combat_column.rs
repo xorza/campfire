@@ -4,8 +4,8 @@ use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
 use campfire_script::{
-    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, Unit,
-    ViewColumn,
+    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList,
+    ScriptValue, Unit, ViewColumn,
 };
 use campfire_stats::Life;
 use campfire_units::Dead;
@@ -42,21 +42,16 @@ struct CombatRows {
 }
 
 impl ViewColumn for CombatColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, _: &World) -> bool {
-        self.rows.begin();
         false
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 

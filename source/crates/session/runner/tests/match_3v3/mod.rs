@@ -324,7 +324,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
         .keys()
         .position(|name| name.as_str() == "phase");
     let phase = &world.mode_state()[at.unwrap()];
-    assert_eq!(phase, &StateValue::Text("play".to_owned()));
+    assert_eq!(phase, &StateValue::Text("play".into()));
     // Each script file compiles once, however many abilities or unit types run it.
     let scripts = packages.packages().map(|view| view.package.scripts.len());
     assert_eq!(

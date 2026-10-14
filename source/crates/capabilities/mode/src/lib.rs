@@ -249,7 +249,7 @@ impl Mode {
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
-        ctx.frame().add_part(ModeCall::new(Rc::clone(&book)));
+        ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
         ctx.set_mode(Rc::<ModeSpec>::clone(&book));
         world.insert_non_send(MatchMode(Rc::clone(&book)));
         // A mode that defines either hook declares combat, as the load checks.
@@ -517,9 +517,10 @@ pub mod internals {
             let at = ModeSpec::of(ctx)
                 .unwrap()
                 .schema
-                .state_field(name)
+                .state
+                .field(name)
                 .unwrap()
-                .index;
+                .index();
             world.mode_state()[at].clone()
         }
 

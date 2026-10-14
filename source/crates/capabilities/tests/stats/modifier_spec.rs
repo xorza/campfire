@@ -103,8 +103,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
             modifier: ModifierId::new(7),
         }),
         affects: Some(filter("allies:!rooted")),
-        fields: Arc::from([]),
-        initial: Box::new([]),
+        state: Arc::default(),
     };
     assert_eq!(ModifierSpec::of(&data, &names), Ok(expected));
     assert_ne!(filter("enemies:rooted"), filter("allies:!rooted"));

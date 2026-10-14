@@ -10,8 +10,6 @@ use campfire_script::{
 };
 use campfire_sim::{SimTick, StableId};
 
-use crate::choices::Choices;
-use crate::mode_call::ModeCall;
 use crate::mode_spec::ModeSpec;
 
 /// The mode calls of one batch, at one time.
@@ -126,18 +124,9 @@ impl Calls<'_, '_> {
         self.ctx.frame().begin_mode(world, pure, self.now);
     }
 
-    /// Commits the call's state and choices, then applies its effects in order.
+    /// Commits what the call wrote, the mode's state and choices first, and applies its effects
+    /// in order.
     fn commit(&mut self) {
-        let world = self.batch.world();
-        {
-            let mut frame = self.ctx.frame();
-            let call = ModeCall::of_mut(&mut frame);
-            call.commit_state(world);
-            // A write marks the choices changed, so a call that changed none writes nothing.
-            if *world.resource::<Choices>() != call.choices {
-                world.resource_mut::<Choices>().clone_from(&call.choices);
-            }
-        }
-        self.ctx.apply(world);
+        self.ctx.apply(self.batch.world());
     }
 }

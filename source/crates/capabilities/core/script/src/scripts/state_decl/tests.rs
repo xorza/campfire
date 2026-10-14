@@ -23,12 +23,12 @@ fn a_field_starts_at_its_default_or_its_types_zero() {
         ),
         (
             (StateType::String, text("pick")),
-            Some(StateValue::Text("pick".to_owned())),
+            Some(StateValue::Text("pick".into())),
         ),
         ((StateType::Entity, None), Some(StateValue::Entity(None))),
         (
             (StateType::EntityList, None),
-            Some(StateValue::EntityList(Vec::new())),
+            Some(StateValue::EntityList(Arc::from([]))),
         ),
         (
             (StateType::Pos, None),

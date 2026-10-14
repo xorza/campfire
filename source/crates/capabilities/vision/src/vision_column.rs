@@ -1,10 +1,9 @@
-use std::ops::Range;
-
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    Checked, Filter, KeptRows, RowFill, ScriptList, ScriptValue, Unit, ViewColumn, ViewColumns,
+    AnyKeptRows, Checked, Filter, KeptRows, RowFill, ScriptList, ScriptValue, Unit, ViewColumn,
+    ViewColumns,
 };
 use campfire_sim::Position;
 use campfire_values::{Relations, Team, TeamSet};
@@ -21,21 +20,16 @@ pub struct VisionColumn {
 }
 
 impl ViewColumn for VisionColumn {
+    fn kept(&self) -> &dyn AnyKeptRows {
+        &self.rows
+    }
+
+    fn kept_mut(&mut self) -> &mut dyn AnyKeptRows {
+        &mut self.rows
+    }
+
     fn begin(&mut self, _: &World) -> bool {
-        self.rows.begin();
         false
-    }
-
-    fn keep(&mut self, rows: Range<usize>) {
-        self.rows.keep(rows);
-    }
-
-    fn rows(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn same_as_kept(&self) -> bool {
-        self.rows.same_as_kept()
     }
 }
 

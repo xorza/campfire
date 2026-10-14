@@ -20,62 +20,20 @@ Every batch moves the engine toward one shape, and each item names the part it b
 | A part every entity of a kind starts with | `d.part` | today |
 | Engine tags | `d.engine_tags` | today |
 | Package data a match holds | `d.book` | today |
-| A column of the script view, a part of a script call | `d.column`, `d.call_part` | today, F37 |
+| A column of the script view, a part of a script call, a part that holds params | `d.column`, `d.call_part`, `d.call_params` | today |
 | Script members, hooks and data tables | `d.api` | today |
 | An observer, a system a spawn runs out of the schedule, and a derived part another part requires | `d.observer`, `d.one_shot`, `d.requires` | F49 |
 
 - **A kind is a marker,** one on each entity, and an entity spawns whole: each part it carries is declared on its kind and comes with its spawn, so a new entity moves between archetypes once. A part derived from another part comes by Bevy's required components or that part's hook; a part a system derives each tick is a declared part the system writes in place, never one it inserts by command. A marker of a state that an event starts and ends, as `Dead`, `Respawn` or `OutOfPlay`, comes and goes by command; F52 measures it in a sparse set, where it moves no table.
 - **A name is resolved once,** at the load: one table of names for each id, `Names`, a builder that is the check of what it resolves, a script argument resolved by its type, `ScriptArg`.
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`, which the release tests hold.
-- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path (I1), and a fact fixed at install or at the load is a fact of the schedule (F39).
+- **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or at the load is a fact of the schedule (F39).
 - **Each crate depends only on lower layers,** which `LAYERS` holds: no two crates of one layer depend on each other, and a crate depends on nothing that only its gated code names. No crate's top modules import each other in a cycle, which a rule test holds. What is the sim's lives in `sim`, and `math` holds the numbers every crate shares, each operation one `i128` step rounded once. A capability asks another for its work through a contract below both, never by writing its state.
 - **Bevy's own mechanisms, not hand-made ones:** what install or the load fixes is a run condition or an `If` parameter (F39); observers, one-shot systems and required components are declarations (F49); a marker that comes and goes is measured in a sparse set, and the units' order by stable id in one shared order (F52); a composition of an `App` is a plugin group (H2).
 
 So a new capability is one entry of the list; a new state type its type and one `d.component`; a new section of a unit type a `DataSection`, its owner's data record and a `d.part`; a new effect an `Effect` and a `d.callback`. The declaration audit and the release tests fail on each piece left out.
 
-## 1. The script call's cost
-
-`campfire-script`'s call, `campfire-units`' state, `mode`'s state, `stats`' call, in their crates: what a script call costs and how its parts are kept, on the script view, which is the runtime's own data. I1 and F38's boxing are measured, so the batch runs in a session where the user asks for the benches.
-
-### F36. One schema of script state
-
-(`capabilities`: `mode`, `units`, `stats`.) Mode, unit and modifier state each look a field up their own way: `NameTable` and places kept for the mode (`mode/src/mode_schema.rs:20-66`); `UnitStateBook::field`, which counts the field's place on every access (`units/src/units/unit_state_book.rs:48-58`); a binary search of its own for a modifier (`stats/src/modifier_handle.rs:187`). Two `StateField` types differ (`mode_schema.rs:30`, `unit_state_book.rs:26`). `StateValue::Text(String)` allocates a `ScriptText` on every read (`script/src/scripts/state_value.rs:74`), and each mode call clones the whole state and every value again as it commits. One `StateSchema { names: Names<StateField>, places: Vec<StatePlace> }`, built once for each unit type and for the mode; text kept shared, so a read counts a reference; the mode copies a field only when it is written.
-
-### F37. One contract of a call part, and one list by type
-
-(`capabilities`: `scripts`, `units`.) `CallPart::param` is on the trait, and two of four parts return `None`; the split of params by role is written three times (`stats/src/stats_call.rs:65`, `mode/src/mode_call.rs:50`, `script/src/scripts/ctx.rs:117`); `ModeCall::apply` does nothing (`mode/src/mode_call.rs:57`) and the mode commits apart, before the effects apply (`mode/src/calls.rs:114-125`). Three lists keyed by type are built three ways: `CallParts` by the vtable's `type_id` (`script/src/scripts/call_part.rs:40`), `ViewColumns` by a `TypeId` vec (`script/src/scripts/view/view_column.rs:28-37`), `Effects` by `as_any().is` (`script/src/scripts/effects.rs:55`); and each of the nine columns writes the same four delegating methods.
-
-```rust
-pub trait CallPart {
-    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
-    /// Writes what the call changed, in the order `COMMITS` gives: before or after the effects.
-    fn commit(&mut self, world: &mut World);
-    const COMMITS: Commit;
-}
-
-/// The params of one scope of a call, which the frame holds by `ScriptRole::params`.
-pub trait ParamSource {
-    fn param(&self, name: &str) -> Option<Dynamic>;
-}
-
-/// Items of distinct types, each found by its type.
-pub(crate) struct TypeSlots<T: ?Sized> {
-    types: Vec<TypeId>,
-    items: Vec<Box<T>>,
-}
-```
-
-The columns' shared methods become a blanket impl over a `ViewColumn` that names its rows.
-
-### F38. What a call costs
-
-(`capabilities`: `stats`, `scripts`.) `StatsCall::begin` computes every param of the call before the script reads one (`stats/src/stats_call.rs:30-61`), where design 08 says `ctx.p` resolves when it is read; mode params are kept as `NameTable<ScriptValue>` and cloned on each read (`mode/src/mode_schema.rs:71`), an array deeply; `Ctx` is three `Rc`s where one serves. Params resolve on read, behind a mask of those computed; a mode param is read by reference; `Ctx` holds one `Rc`. The frame keeps its copy of each player's resources, which F50 fills through a contract: a script call holds no world to read them from later, and the copy allocates nothing. Rhai boxes each custom-type value twice (`Box<Box<dyn Variant>>`), which the batch measures before any change.
-
-### I1. The script view's copy
-
-(`capabilities`; **Core**, and Foundations.) Each script batch reads every unit again, 14.2 % of a 3v3 match's time; it goes before the Zero Hour import multiplies the units. Its direction: a batch reads again only the rows whose parts changed since the last, by the change filter each column's `RowReads` already gives and its list of what it reads, `RowReads::components`; the columns' half of F37 lands with it, and the batch measures it.
-
-## 2. What install holds
+## 1. What install holds
 
 `capabilities`, every module's `install`; `release`. A sweep, last of the refactorings of `capabilities`' structure, over what a module adds at install: its systems alone, each fact of the build a fact of the schedule, every other addition a declaration.
 
@@ -91,7 +49,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`: `release`, `declare`; `net`, `runner`.) `MatchSpec` holds `budgets: Option<ScriptBudgets>` and `predicting: bool` (`capabilities/src/release/match_spec.rs:15-18`), and `InstallCx` gives `scripts()` and `predicting()` (`declare/src/declare/install_cx.rs:53-66`): four combinations, of which a server's and a predicting client's ship, a server with no scripts serves the tests, and a predicting client with scripts is invalid but builds. Each install branches on the two flags its own way (`orders/src/lib.rs:97`, `production/src/lib.rs:173`, `combat/src/lib.rs:167-168`, `projectiles/src/lib.rs:101`, `vision/src/lib.rs:101`, …). One `Role`, `Server(Option<ScriptBudgets>)` or `Client`, that `MatchSpec` holds and `InstallCx::role` gives; a module adds a system that computes the server's own state through `cx.server(systems)`, which a client's install leaves out, so the prediction test's `SERVER_ONLY` (`capabilities/src/release/tests/prediction_reads.rs:30`) is read from the server's schedule, not written again. Check: the prediction test passes with no hand list of server systems.
 
-## 3. Match records and replays
+## 2. Match records and replays
 
 `runner`, `verifier`; the tests of `runner` and `net`. How a test builds a match, records it and replays its log, in one form each.
 
@@ -111,7 +69,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`runner`, `common`.) A zero seed, `MatchBuild::spec`, `Match::new` and `install_mode` are written three times (`runner/src/session/mod.rs:112-117`, `match_build/mod.rs:121-126`, `match_build/bench.rs:40-44`), and `MatchBuild` is `pub` only for the internals, with an `expect(unreachable_pub)`. A production `MatchBuild::restore_target(packages, rate, players)` serves all three, the internals add only the `LogCheck`, `SegmentSeed::ZERO` replaces the repeated zero seed, and the lint's suppression goes. F51's `Role` replaces the flags it passes.
 
-## 4. The session's host
+## 3. The session's host
 
 `net`, `server`, `client`, `runner`. Its code stays in `net`, which hosts every session (design 02), and the operating system's clock and randomness travel as one value.
 
@@ -131,7 +89,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`net`, `server`, `client`.) `clock: fn() -> u64` and `entropy: fn(&mut [u8; 32])` travel as two function pointers through some ten types (`SimClient`, `net/src/sim_client/mod.rs:104-106`; `ServerSetup`; `LocalServerSetup`, `local_server/mod.rs:123-125`; `Offering`, `JoinState`, `ServerSigner`, `KeyFile`, `SessionDir::abort`, `server/src/opening/mod.rs:119`). A function pointer holds no state, so the tests' settable clock lives in two `thread_local!`s (`net/src/harness/in_process_match/mod.rs:73-80`, `net/src/sim_client/join_state/tests.rs:16-22`), which the style rules refuse. `Os` (`net/src/os.rs`) becomes a value, `Os { clock: Clock, entropy: Entropy }`, where `Clock` is `System` or `Manual(Arc<AtomicU64>)`; every setup holds one `os: Os`, and the harness keeps the `Arc` as it keeps its pace. Both thread-locals go.
 
-## 5. The tick and the tests, measured
+## 4. The tick and the tests, measured
 
 `capabilities`: `navigation`'s broadphase, `vision`'s bitmap, the storage of toggled parts; `package`, `runner`. A bench session: it runs when the user asks for the benches, after the refactorings above, so it measures the code they leave. The tests past their bound go here, as the proving match's spend their time in the broadphase and collider that F46 changes.
 
@@ -151,13 +109,13 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `runner`; **Runner**, **Vision**.) Design 02's worst 3v3 tick, 0.83 ms, and design 10's, 0.51 ms, disagree; `Bitmap::set` takes 6.9 % of the mean tick, for runs of one or two words a row. The session measures `integration/server_tick/worst_3v3` again and writes the figure into design 02, finds which part of `Bitmap::set` costs it, and measures two changes the engine's best practice suggests before either lands: parts that come and go while a match runs, `Dead`, `Respawn`, `ForcedMove`, `Resetting`, `OutOfPlay`, `Kept`, `Rally`, `AreaTrigger` and `Unpredicted`, stored in Bevy's sparse sets, where a change moves no table, as Bevy's `StorageType` advises for parts added and removed often; and the twelve systems that sort their units by stable id each tick (`Local<Ordered>`) reading one shared order instead. Each lands only where the worst tick gains. Check: the goldens do not move; the archetype shuffle test passes.
 
-## 6. The shop
+## 5. The shop
 
 `capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
 
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 6 to 10. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 5 to 9. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
 
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 4 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
+**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: batches 1 to 3 take its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the Direction gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### M1. Shops as units
 
@@ -167,7 +125,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `package`, `packages/test/moba`; D8; **Package**.) `name`, a message id, on item types, actions, a loadout's spells, the mode, its teams and its choices, as only an avatar names its own today, and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
 
-## 7. The client's shop
+## 6. The client's shop
 
 `client`. I2 gives the view tests' units their types, and the issue log's **Client** item on the camera's keys is decided, before S2 changes the client's input.
 
@@ -179,7 +137,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 8. Use
+## 7. Use
 
 `capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. U1 adds the `use` kind, beside `actions`' `UseGroup`. M2 reads the code as the release tests do.
 
@@ -191,7 +149,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`: the release tests.) A test reads every capability crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 9. The shrine
+## 8. The shrine
 
 `packages/test/moba`, `client`.
 
@@ -199,7 +157,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 10. Gravity
+## 9. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -207,7 +165,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 11. Queues and capacities
+## 10. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -219,9 +177,9 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 12. Work and haul
+## 11. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 11, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 10, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -233,7 +191,7 @@ The columns' shared methods become a blanket impl over a `ViewColumn` that names
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 13. The genre proofs
+## 12. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -262,7 +220,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 14. The network
+## 13. The network
 
 `quic`, `net`.
 
@@ -276,7 +234,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 15. Planned
+## 14. Planned
 
 ### P1. LAN listing
 
@@ -298,6 +256,5 @@ Then the network's Research items of the issue log as they show; then P1 to P4, 
 
 The open problems whose cause is in the architecture or in a format the project chose, not in one piece of code: each shows as several items of the issue log, or limits every system built after it. Each entry names its cause, what it limits, and the issue-log items it holds ([Issue log](AGENTS.md#issue-log)).
 
-- **The script view copies the whole match** (Core; I1). Each script batch reads every unit again, though few change between two batches of a tick: 14.2 % of a 3v3 match's time, a cost that grows with the units times the batches, which the Zero Hour import multiplies. Items: Core, "The script view copies the whole match".
 - **The import's materials are glTF's** (Zero Hour). glTF's material model holds no W3D pass past the first, no ambient color and no fallback texture, so the presentation loses each, and each later fidelity gap of a W3D material meets the same limit. Items: Zero Hour, "The import writes W3D's materials into glTF's material model"; Zero Hour, "A texture no archive holds"; Zero Hour, "The import ignores a vertex material's ambient color"; Zero Hour, "The import draws a mesh's first material pass".
 - **The import has no object that only the client shows** (Zero Hour). Every object a map places becomes a unit of the sim, where the game spawns props, optimized trees and fluff on the client alone and some objects not at all, so the sim, its log and its state hash hold objects the original never simulates, and the parity oracle meets them. Items: Zero Hour, "The import makes a unit of every object a map places".

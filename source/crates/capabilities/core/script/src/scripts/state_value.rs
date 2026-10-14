@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use serde::{Deserialize, Serialize};
@@ -10,15 +12,16 @@ use crate::scripts::view::View;
 use crate::scripts::view::unit::Unit;
 
 /// A value of script state, of one of the declared types. Units are held by stable id, so a
-/// value outlives the handles a call holds.
+/// value outlives the handles a call holds. A text and a list are shared, so a copy of a value
+/// counts a reference.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StateValue {
     Int(i64),
     Num(Num),
     Bool(bool),
-    Text(String),
+    Text(Arc<str>),
     Entity(Option<StableId>),
-    EntityList(Vec<StableId>),
+    EntityList(Arc<[StableId]>),
     Pos(Position),
     Vec(Vec3),
 }
@@ -34,7 +37,7 @@ impl StateValue {
                 None => value.clone().try_cast::<Num>()?,
             }),
             StateType::Bool => StateValue::Bool(value.as_bool()?),
-            StateType::String => StateValue::Text(value.clone().into_text()?.as_str().into()),
+            StateType::String => StateValue::Text(Arc::from(value.clone().into_text()?.as_str())),
             StateType::Entity if value.is_unit() => StateValue::Entity(None),
             StateType::Entity => StateValue::Entity(Some(value.clone().try_cast::<Unit>()?.id)),
             StateType::EntityList => {
@@ -71,7 +74,7 @@ impl StateValue {
             StateValue::Int(value) => ScriptValue::of(*value),
             StateValue::Num(value) => ScriptValue::of(*value),
             StateValue::Bool(value) => ScriptValue::of(*value),
-            StateValue::Text(text) => ScriptValue::of(ScriptText::from(text.as_str())),
+            StateValue::Text(text) => ScriptValue::of(ScriptText::from(&**text)),
             StateValue::Entity(id) => view.unit_value(*id),
             StateValue::EntityList(ids) => ScriptValue::of(
                 ids.iter()

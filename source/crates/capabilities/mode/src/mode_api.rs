@@ -415,19 +415,20 @@ impl ModeApi {
     fn state(ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
         let field = ModeSpec::of_or_fail(ctx)?
             .schema
-            .state_field(name)
+            .state
+            .field(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
-        Ok(ModeCall::of(&ctx.frame()).state[field.index].to_value(ctx.view()))
+        Ok(ModeCall::of(&ctx.frame()).state[field.index()].to_value(ctx.view()))
     }
 
     fn set_state(ctx: &Ctx, name: &str, value: &ScriptValue) -> Checked<()> {
-        let field = ModeSpec::of_or_fail(ctx)?
-            .schema
-            .state_field(name)
+        let state = &ModeSpec::of_or_fail(ctx)?.schema.state;
+        let field = state
+            .field(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
-        let value = StateValue::from_value(field.kind, value)
+        let value = StateValue::from_value(state.kind(field), value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
-        ModeCall::of_mut(&mut *ctx.write()?).state[field.index] = value;
+        ModeCall::of_mut(&mut *ctx.write()?).state[field.index()] = value;
         Ok(())
     }
 

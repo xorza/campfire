@@ -1,5 +1,5 @@
-use std::mem;
 use std::ops::Range;
+use std::{fmt, mem};
 
 /// A column's rows of the running read, and those of the read before it, from which it copies
 /// the row of each unit whose parts did not change.
@@ -10,7 +10,7 @@ pub struct KeptRows<R> {
 }
 
 /// The rows of one read of a column.
-pub trait ColumnRows: Default + PartialEq {
+pub trait ColumnRows: Default + PartialEq + fmt::Debug {
     fn clear(&mut self);
 
     /// Adds the rows `rows` of `from`, a run that is not empty.
@@ -23,18 +23,42 @@ pub trait ColumnRows: Default + PartialEq {
     }
 }
 
-impl<R: ColumnRows> KeptRows<R> {
+/// A column's kept rows, of whatever type its rows are, as the view starts, keeps, counts and
+/// compares them.
+pub trait AnyKeptRows: fmt::Debug {
     /// Starts a read: the rows become those it keeps from, and it holds none.
-    pub fn begin(&mut self) {
+    fn begin(&mut self);
+
+    /// Adds the rows `rows` of the read before, unchanged.
+    fn keep(&mut self, rows: Range<usize>);
+
+    /// How many rows the running read holds.
+    fn rows(&self) -> usize;
+
+    /// Whether the rows of the running read equal those of the read before.
+    fn same_as_kept(&self) -> bool;
+}
+
+impl<R: ColumnRows> AnyKeptRows for KeptRows<R> {
+    fn begin(&mut self) {
         mem::swap(&mut self.now, &mut self.kept);
         self.now.clear();
     }
 
-    /// Adds the rows `rows` of the read before, unchanged.
-    pub fn keep(&mut self, rows: Range<usize>) {
+    fn keep(&mut self, rows: Range<usize>) {
         self.now.push_from(&self.kept, rows);
     }
 
+    fn rows(&self) -> usize {
+        self.now.len()
+    }
+
+    fn same_as_kept(&self) -> bool {
+        self.now == self.kept
+    }
+}
+
+impl<R: ColumnRows> KeptRows<R> {
     /// The rows of the running read.
     pub const fn now(&self) -> &R {
         &self.now
@@ -43,19 +67,6 @@ impl<R: ColumnRows> KeptRows<R> {
     /// The rows of the running read, to add to.
     pub const fn now_mut(&mut self) -> &mut R {
         &mut self.now
-    }
-
-    pub fn len(&self) -> usize {
-        self.now.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    /// Whether the rows of the running read equal those of the read before.
-    pub fn same_as_kept(&self) -> bool {
-        self.now == self.kept
     }
 }
 
@@ -88,7 +99,7 @@ impl RunMove {
 }
 
 /// Rows of one value each, as a column with no runs holds them.
-impl<T: Clone + PartialEq> ColumnRows for Vec<T> {
+impl<T: Clone + PartialEq + fmt::Debug> ColumnRows for Vec<T> {
     fn clear(&mut self) {
         Vec::clear(self);
     }

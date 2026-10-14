@@ -1,5 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_script::{CallError, CallPart, CallStart, Frame, ScriptRole, ScriptValue};
+use campfire_script::{
+    CallError, CallParams, CallPart, CallStart, Commit, Frame, ParamScope, ScriptValue,
+};
 use campfire_values::{ActionId, ModifierId, Scalar};
 
 use crate::Stats;
@@ -10,8 +12,8 @@ use crate::param_table::ParamTable;
 
 /// What stats adds to the call frame: every loaded ability's and modifier's params, which the
 /// stat engine reads too; the running call's params at its rank, its ability's and its
-/// modifier's, read from its acting unit; and the modifier handles it took, which write back
-/// once its effects applied.
+/// modifier's, read from its acting unit; and the modifier handles it took, which commit once
+/// its effects applied.
 #[derive(Debug, Default)]
 pub struct StatsCall {
     params: ParamBook,
@@ -25,6 +27,8 @@ pub struct StatsCall {
 }
 
 impl CallPart for StatsCall {
+    const COMMITS: Commit = Commit::AfterEffects;
+
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         let params = world.resource::<ParamBook>();
         if !params.same(&self.params) {
@@ -62,11 +66,18 @@ impl CallPart for StatsCall {
         Ok(())
     }
 
-    /// An ability's or a modifier's call reads its modifier's params, then its ability's.
-    fn param(&self, role: Option<ScriptRole>, name: &str) -> Option<ScriptValue> {
-        if !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier)) {
-            return None;
+    fn commit(&mut self, world: &mut World) {
+        for handle in self.handles.drain(..) {
+            Stats::write_handle(world, &handle);
         }
+    }
+}
+
+impl CallParams for StatsCall {
+    const SCOPE: ParamScope = ParamScope::Action;
+
+    /// A call reads its modifier's params, then its ability's.
+    fn param(&self, name: &str) -> Option<ScriptValue> {
         let own = self.modifier.and_then(|modifier| {
             let at = self.params.modifiers().named(modifier.index(), name)?;
             Some(self.modifier_values[at])
@@ -76,12 +87,6 @@ impl CallPart for StatsCall {
             Some(self.values[at])
         });
         value.map(ScriptValue::from)
-    }
-
-    fn apply(&mut self, world: &mut World) {
-        for handle in self.handles.drain(..) {
-            Stats::write_handle(world, &handle);
-        }
     }
 }
 

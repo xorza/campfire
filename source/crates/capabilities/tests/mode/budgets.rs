@@ -160,7 +160,7 @@ fn on_level_up(ctx, unit, track, level) {
     // despawned; the third stays, dead and kept, for its call.
     assert_eq!(
         Mode::field(&game, "kind"),
-        StateValue::Text("b by a;b by a;".to_owned())
+        StateValue::Text("b by a;b by a;".into())
     );
     assert_eq!(waiting(&game), (1, 1));
     // The waiting death is state: it decodes to itself, and an assister its runs do not cover
@@ -180,7 +180,7 @@ fn on_level_up(ctx, unit, track, level) {
     // Both run first in the next tick, with the third grunt and its killer as handles; then it
     // despawns.
     let all = "b by a;b by a;b by a;level 2;";
-    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.to_owned()));
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.into()));
     assert_eq!(waiting(&game), (0, 0));
     assert_eq!(stands(&game, grunts[2]), None);
     assert_eq!(Mode::failures(&game), []);
@@ -213,7 +213,7 @@ fn on_player_leave(ctx, player) {
     Mode::tick_slots(&mut game, &[(2, left), (1, joined), (2, joined)]);
     assert_eq!(
         Mode::field(&game, "kind"),
-        StateValue::Text("leave 2;join 1;".to_owned())
+        StateValue::Text("leave 2;join 1;".into())
     );
     let waiting = game.resource::<UnansweredSlotEvents>();
     let join = SlotEvent {
@@ -228,7 +228,7 @@ fn on_player_leave(ctx, player) {
     // It runs first in the next tick, before that tick's leave of player 1.
     Mode::tick_slots(&mut game, &[(1, left)]);
     let all = "leave 2;join 1;join 2;leave 1;";
-    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.to_owned()));
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(all.into()));
     assert!(game.resource::<UnansweredSlotEvents>().0.is_empty());
 }
 

@@ -21,6 +21,18 @@ pub enum SyncTo {
     All,
 }
 
+impl SyncTo {
+    /// Its place among the classes: none, owner, team, all.
+    pub const fn index(self) -> usize {
+        match self {
+            SyncTo::None => 0,
+            SyncTo::Owner => 1,
+            SyncTo::Team => 2,
+            SyncTo::All => 3,
+        }
+    }
+}
+
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for SyncedStateDecl {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SyncedStateDecl, D::Error> {
