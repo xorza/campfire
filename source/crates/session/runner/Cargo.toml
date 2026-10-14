@@ -10,6 +10,7 @@ internals = [
     "campfire-actions/internals",
     "campfire-capabilities/internals",
     "campfire-combat/internals",
+    "campfire-declare/internals",
     "campfire-geometry/internals",
     "campfire-items/internals",
     "campfire-log/internals",
@@ -50,6 +51,7 @@ campfire-actions = { workspace = true, optional = true }
 campfire-capabilities.workspace = true
 campfire-combat = { workspace = true, optional = true }
 campfire-common.workspace = true
+campfire-declare.workspace = true
 campfire-geometry = { workspace = true, optional = true }
 campfire-items = { workspace = true, optional = true }
 campfire-log.workspace = true
@@ -82,7 +84,6 @@ tracing.workspace = true
 
 # The integration tests read the test types `internals` gives, so a plain test run builds them.
 [dev-dependencies]
-campfire-declare = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }

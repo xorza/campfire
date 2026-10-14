@@ -80,7 +80,7 @@ impl Module for Abilities {
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
+        let scripts = cx.role().scripts();
         let schedule = &mut *cx.schedule;
         schedule.add_systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
         if !scripts {

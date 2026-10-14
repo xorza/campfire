@@ -20,68 +20,57 @@ impl GrantPass {
     /// Applies the stage's grants, unit by unit in the order the sources pushed them: a grant at
     /// a rank the unit does not hold its modifier at, by its hold, applies at that rank, and one
     /// granted no more is released. The params are the match's param book's, of the unit as it
-    /// is now. A unit despawned since its source pushed holds nothing, and is passed over. With no
-    /// modifier book, as before a mode loads one, nothing changes.
+    /// is now. A unit despawned since its source pushed holds nothing, and is passed over.
     pub(crate) fn run(
-        book: Option<Res<'_, ModifierBook>>,
+        book: Res<'_, ModifierBook>,
         clock: TickClock<'_>,
         params: ModifierParams<'_, '_>,
         mut grants: ResMut<'_, Grants>,
         mut units: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks)>,
     ) {
-        if let Some(book) = book {
-            let now = clock.start();
-            for unit in &*grants {
-                let (modifiers, clocks) = match units.get_mut(unit.entity) {
-                    Ok(carried) => carried,
-                    // A sync point between the push and the pass applied its despawn.
-                    Err(QueryEntityError::NotSpawned(_)) => continue,
-                    Err(error) => {
-                        panic!(
-                            "a source pushes the grants of a unit that carries modifiers: {error:?}"
-                        )
+        let now = clock.start();
+        for unit in &*grants {
+            let (modifiers, clocks) = match units.get_mut(unit.entity) {
+                Ok(carried) => carried,
+                // A sync point between the push and the pass applied its despawn.
+                Err(QueryEntityError::NotSpawned(_)) => continue,
+                Err(error) => {
+                    panic!("a source pushes the grants of a unit that carries modifiers: {error:?}")
+                }
+            };
+            let mut carried = CarriedMut::new(modifiers, clocks);
+            let source = params.source(unit.unit);
+            for &grant in unit.grants {
+                let Grant {
+                    modifier,
+                    hold,
+                    action,
+                    ..
+                } = grant;
+                match grant.change(carried.modifiers(), unit.unit) {
+                    Some(GrantChange::Apply(rank)) => {
+                        let applier = Applier {
+                            source: Some(unit.unit),
+                            action,
+                            rank,
+                            hold: Some(hold),
+                        };
+                        let param = |place: &ParamPlace| {
+                            params.modifier_param(modifier, action, rank, place, source.as_ref())
+                        };
+                        carried.apply(book.application(
+                            modifier,
+                            applier,
+                            None,
+                            now,
+                            clock.rate(),
+                            param,
+                        ));
                     }
-                };
-                let mut carried = CarriedMut::new(modifiers, clocks);
-                let source = params.source(unit.unit);
-                for &grant in unit.grants {
-                    let Grant {
-                        modifier,
-                        hold,
-                        action,
-                        ..
-                    } = grant;
-                    match grant.change(carried.modifiers(), unit.unit) {
-                        Some(GrantChange::Apply(rank)) => {
-                            let applier = Applier {
-                                source: Some(unit.unit),
-                                action,
-                                rank,
-                                hold: Some(hold),
-                            };
-                            let param = |place: &ParamPlace| {
-                                params.modifier_param(
-                                    modifier,
-                                    action,
-                                    rank,
-                                    place,
-                                    source.as_ref(),
-                                )
-                            };
-                            carried.apply(book.application(
-                                modifier,
-                                applier,
-                                None,
-                                now,
-                                clock.rate(),
-                                param,
-                            ));
-                        }
-                        Some(GrantChange::Release) => {
-                            carried.release(modifier, Some(unit.unit), hold);
-                        }
-                        None => {}
+                    Some(GrantChange::Release) => {
+                        carried.release(modifier, Some(unit.unit), hold);
                     }
+                    None => {}
                 }
             }
         }

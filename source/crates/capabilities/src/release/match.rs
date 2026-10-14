@@ -76,7 +76,7 @@ pub(crate) mod internals {
     use campfire_codec::Binary;
     use campfire_combat::Combat;
     use campfire_common::SegmentSeed;
-    use campfire_declare::Book;
+    use campfire_declare::{Book, Role};
     use campfire_log::internals::LogCheck;
     use campfire_players::Players;
     use campfire_script::ScriptBudgets;
@@ -109,8 +109,8 @@ pub(crate) mod internals {
         /// The MOBA's 30 ticks a second.
         pub const TEST_RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
-        /// A test's match at `rate` of the capabilities `declared`, running scripts within
-        /// `budgets`, or none, as a client; with combat, its life pool the first. It has no mode
+        /// A test's server match at `rate` of the capabilities `declared`, running scripts
+        /// within `budgets`, or none; with combat, its life pool the first. It has no mode
         /// to start it, so it starts with the match's entity, as a start spawns it. It fails the
         /// test on any warning it logs.
         pub fn test(
@@ -130,11 +130,10 @@ pub(crate) mod internals {
             budgets: Option<ScriptBudgets>,
         ) -> Match {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
-            Match::test_of(match budgets {
-                Some(budgets) => spec.script_budgets(budgets),
-                None => spec,
-            })
+            let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate)
+                .capabilities(set)
+                .role(Role::Server(budgets));
+            Match::test_of(spec)
         }
 
         /// The match of `spec`, as `test_unstarted` gives it.
@@ -159,19 +158,19 @@ pub(crate) mod internals {
             }
         }
 
-        /// A client's match at `TEST_RATE` of `declared`: no script host, and no system that
-        /// runs scripts.
-        pub fn client(declared: &[Capability]) -> Match {
+        /// A server's match at `TEST_RATE` of `declared` that runs no scripts: no script host,
+        /// and no system that runs scripts, as a client's.
+        pub fn unscripted(declared: &[Capability]) -> Match {
             Match::test(declared, Match::TEST_RATE, None)
         }
 
-        /// A predicting client's match at `TEST_RATE` of `declared`, as `client` gives it: each
-        /// of its sim's queries skips the units it holds as the server sent them, `Unpredicted`.
+        /// A predicting client's match at `TEST_RATE` of `declared`: each of its sim's queries
+        /// skips the units it holds as the server sent them, `Unpredicted`.
         pub fn predicting(declared: &[Capability]) -> Match {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
                 .capabilities(set)
-                .predicting();
+                .role(Role::Client);
             let mut started = Match::test_of(spec);
             Players::start_without_mode(&mut started, [], 0);
             started

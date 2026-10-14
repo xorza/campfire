@@ -35,7 +35,7 @@ fn walk_match() -> Match {
 
 /// A match of `declared`, with navigation among them, as `walk_match` gives one.
 fn walk_match_of(declared: &[Capability]) -> Match {
-    let mut game = Match::client(declared);
+    let mut game = Match::unscripted(declared);
     Navigation::walker_type(&mut game);
     game
 }

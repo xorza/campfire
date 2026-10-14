@@ -181,20 +181,12 @@ impl Attacks {
     }
 
     /// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one
-    /// its pools cannot pay turns off, before the attack's events. A client that predicts the
-    /// attack pays nothing, as its pools come from the server.
+    /// its pools cannot pay turns off, before the attack's events. Only the server pays them, as a
+    /// client's pools come from the server.
     pub(super) fn pay_attack_toggles(
-        (tick, book, life, predicting): (
-            Res<'_, SimTick>,
-            Res<'_, ActionBook>,
-            Res<'_, PoolBook>,
-            Option<Res<'_, Predicting>>,
-        ),
+        (tick, book, life): (Res<'_, SimTick>, Res<'_, ActionBook>, Res<'_, PoolBook>),
         mut attackers: Query<'_, '_, (&ActionSlots, &mut SlotTimes, UnitPools), Without<Dead>>,
     ) {
-        if predicting.is_some() {
-            return;
-        }
         let now = tick.start();
         let life = life.life();
         for (slots, mut times, pools) in &mut attackers {

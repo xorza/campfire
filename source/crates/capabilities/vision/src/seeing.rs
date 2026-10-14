@@ -47,9 +47,7 @@ impl Seeing {
         >,
         mut fog: Local<'_, Fog>,
     ) {
-        let Some(grid) = vision.grid() else {
-            return;
-        };
+        let grid = vision.grid().expect("a map with a grid is seen");
         let relations = relations.get();
         if relations.is_changed() || vision.is_changed() {
             fog.rebuild(grid, &relations);

@@ -88,6 +88,7 @@ impl Module for Projectiles {
         d.scratch::<Launches>();
         d.callback::<Deliverers>(DeliveryKind::Projectile, Projectiles::deliver);
         d.require::<Projectile, FlightState>();
+        d.observer(Flying::lose_teleported);
         d.book::<ByType<ProjectileSpec>>();
         d.api(ProjectilesApi::register);
     }
@@ -98,16 +99,11 @@ impl Module for Projectiles {
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
     /// delivery, so it flies none.
     fn install(cx: &mut InstallCx<'_>) {
-        let predicting = cx.predicting();
-        cx.world.add_observer(Flying::lose_teleported);
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
+        cx.schedule.add_systems((
             Launching::take_shots.in_set(ProjectilesSet::TakeShots),
             Launching::launch.in_set(ProjectilesSet::Launch),
         ));
-        if !predicting {
-            schedule.add_systems(Flying::fly.in_set(ProjectilesSet::Fly));
-        }
+        cx.server(Flying::fly.in_set(ProjectilesSet::Fly));
     }
 }
 

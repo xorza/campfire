@@ -526,7 +526,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 
 #[test]
 fn a_unit_type_name_is_one_types_only_in_its_scope() {
-    let mut game = Match::client(&[Capability::Stats, Capability::Combat]);
+    let mut game = Match::unscripted(&[Capability::Stats, Capability::Combat]);
     let data = UnitTypeCore::default();
     let mut load = |scope, name| Units::load_type(&mut game, scope, name, &data);
     let first = load(TypeScope::Mode, "grunt");

@@ -1,22 +1,17 @@
 use campfire_common::SegmentSeed;
-use campfire_declare::CapabilitySet;
-use campfire_script::ScriptBudgets;
+use campfire_declare::{CapabilitySet, Role};
 use campfire_sim::TickRate;
 use campfire_visibility::OutView;
 
-/// What a match is built of: its tick rate and seed, its capabilities, the budgets of its
-/// scripts, and what its players out of play see.
+/// What a match is built of: its tick rate and seed, its capabilities, its role, and what its
+/// players out of play see.
 #[derive(Debug, Clone)]
 #[must_use = "a spec builds nothing until a match is built of it"]
 pub struct MatchSpec {
     pub(crate) seed: SegmentSeed,
     pub(crate) rate: TickRate,
     pub(crate) set: CapabilitySet,
-    /// `None` for a match that runs no scripts.
-    pub(crate) budgets: Option<ScriptBudgets>,
-    /// Whether a client predicts the match: its sim's queries skip the units it holds as the
-    /// server sent them.
-    pub(crate) predicting: bool,
+    pub(crate) role: Role,
     pub(crate) out: OutView,
     /// Whether the tick's schedule leaves out Bevy's automatic sync points, for the ambiguity
     /// check that sees every pair only a sync point keeps in order.
@@ -29,15 +24,14 @@ pub struct MatchSpec {
 }
 
 impl MatchSpec {
-    /// A match at `rate`, drawing from `seed`: of no capability but the core, and running no
-    /// scripts, until the spec says otherwise.
+    /// A match at `rate`, drawing from `seed`: a server's of no capability but the core, and
+    /// running no scripts, until the spec says otherwise.
     pub const fn new(seed: SegmentSeed, rate: TickRate) -> MatchSpec {
         MatchSpec {
             seed,
             rate,
             set: CapabilitySet::CORE,
-            budgets: None,
-            predicting: false,
+            role: Role::Server(None),
             out: OutView::Team,
             #[cfg(feature = "internals")]
             without_sync_points: false,
@@ -51,30 +45,17 @@ impl MatchSpec {
         MatchSpec { set, ..self }
     }
 
-    /// The match runs scripts within `budgets`, as a server or a verifier does. A match without
-    /// runs none, as a client, which predicts only its own player's units: the core has no
-    /// script host, and each capability leaves out what runs scripts.
-    pub fn script_budgets(self, budgets: ScriptBudgets) -> MatchSpec {
-        MatchSpec {
-            budgets: Some(budgets),
-            ..self
-        }
+    /// The match's role. A client's predicts: each of its sim's queries skips the units the
+    /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
+    /// filter is in place before any system's query is made.
+    pub fn role(self, role: Role) -> MatchSpec {
+        MatchSpec { role, ..self }
     }
 
     /// The match of a session whose players out of play see as `out` says, as its terms carry it;
     /// `OutView::Team` until the spec says otherwise.
     pub fn out_view(self, out: OutView) -> MatchSpec {
         MatchSpec { out, ..self }
-    }
-
-    /// The match a client predicts: each of its sim's queries skips the units the client holds
-    /// as the server sent them, `Unpredicted`, unless it names them, as the marker's filter is in
-    /// place before any system's query is made.
-    pub fn predicting(self) -> MatchSpec {
-        MatchSpec {
-            predicting: true,
-            ..self
-        }
     }
 }
 

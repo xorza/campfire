@@ -1,77 +1,79 @@
 use std::any::TypeId;
 use std::fmt;
 
-use bevy_ecs::schedule::Schedule;
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::system::ScheduleSystem;
 use bevy_ecs::world::World;
 use campfire_sim::Capability;
 
 use crate::declare::callbacks::Callbacks;
 use crate::declare::capability_set::CapabilitySet;
+use crate::declare::role::Role;
+use crate::declare::server_only::ServerOnly;
 
-/// What a module's install reads and changes: the match's world and schedule, the capabilities
-/// the match declares, whether it runs scripts, whether a client predicts it, and the registries
-/// of callbacks its modules call or declare callbacks in.
+/// What a module's install reads and changes: the match's world and schedule, and what it knows
+/// of the match.
 pub struct InstallCx<'a> {
     pub world: &'a mut World,
     pub schedule: &'a mut Schedule,
-    set: CapabilitySet,
-    scripts: bool,
-    predicting: bool,
-    called: Vec<TypeId>,
+    facts: MatchFacts<'a>,
+}
+
+/// What an install knows of its match: the capabilities it declares, its role, and the registries
+/// of callbacks its modules call or declare callbacks in.
+#[derive(Debug)]
+pub struct MatchFacts<'a> {
+    pub set: CapabilitySet,
+    pub role: &'a Role,
+    pub called: Vec<TypeId>,
 }
 
 impl<'a> InstallCx<'a> {
     pub const fn new(
         world: &'a mut World,
         schedule: &'a mut Schedule,
-        set: CapabilitySet,
-        scripts: bool,
-        predicting: bool,
-        called: Vec<TypeId>,
+        facts: MatchFacts<'a>,
     ) -> InstallCx<'a> {
         InstallCx {
             world,
             schedule,
-            set,
-            scripts,
-            predicting,
-            called,
+            facts,
         }
     }
 
     /// The capabilities the match declares.
     pub const fn set(&self) -> CapabilitySet {
-        self.set
+        self.facts.set
     }
 
     /// Whether the match declares `capability`.
     pub const fn has(&self, capability: Capability) -> bool {
-        self.set.contains(capability)
+        self.facts.set.contains(capability)
     }
 
-    /// Whether the match runs scripts: a server's does, a client's predicts with none.
-    pub const fn scripts(&self) -> bool {
-        self.scripts
+    /// What the match is to its host.
+    pub const fn role(&self) -> &'a Role {
+        self.facts.role
     }
 
     /// Whether a module of the match calls the registry `C`, or declares a callback in it.
     pub fn calls_for<C: Callbacks>(&self) -> bool {
-        self.called.contains(&TypeId::of::<C>())
+        self.facts.called.contains(&TypeId::of::<C>())
     }
 
-    /// Whether a client predicts the match: it builds no system that computes the server's own
-    /// state, which reaches it from the server (design 14, D12).
-    pub const fn predicting(&self) -> bool {
-        self.predicting
+    /// Adds `systems`, which compute the server's own state, to a server's match, in `ServerOnly`
+    /// besides their own sets; a client's install leaves them out.
+    pub fn server<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+        if let Role::Server(_) = self.facts.role {
+            self.schedule.add_systems(systems.in_set(ServerOnly));
+        }
     }
 }
 
 impl fmt::Debug for InstallCx<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InstallCx")
-            .field("set", &self.set)
-            .field("scripts", &self.scripts)
-            .field("predicting", &self.predicting)
+            .field("facts", &self.facts)
             .finish_non_exhaustive()
     }
 }

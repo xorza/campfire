@@ -1269,7 +1269,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), slots)
     };
     let mut server = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
-    let mut client = Match::client(&declared);
+    let mut client = Match::unscripted(&declared);
     let on_server = caster(&mut server);
     let on_client = caster(&mut client);
     for slot in 0..3 {

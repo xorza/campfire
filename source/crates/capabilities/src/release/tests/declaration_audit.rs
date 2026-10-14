@@ -4,17 +4,22 @@
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
+use bevy_ecs::event::Event;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, Phase, Report, Scratch, SetPlace,
+    ModuleSet, OneShot, Phase, Report, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
+use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
+use campfire_production::PlayerSupply;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
@@ -106,6 +111,12 @@ struct DeclarationAudit {
     column_reads: Vec<(TypeId, &'static str)>,
     /// The engine tags, in the order the modules declare them.
     engine_tags: Vec<EngineTag>,
+    /// Each observer, by its system's name.
+    observers: Vec<String>,
+    /// Each system run out of the schedule, by the resource that keeps its id.
+    one_shots: Vec<Named>,
+    /// Each part a server's match derives: its holder, and its type.
+    server_parts: Vec<(Named, Named)>,
 }
 
 impl DeclarationAudit {
@@ -143,6 +154,7 @@ impl DeclarationAudit {
             self.states.iter().map(|state| state.ty.name).collect(),
         );
         once("resource", self.resources.clone());
+        once("run", self.one_shots.iter().map(|ty| ty.name).collect());
         once("book", self.books.iter().map(|book| book.ty.name).collect());
         once("column", self.columns.iter().map(|ty| ty.name).collect());
         once(
@@ -204,6 +216,16 @@ impl DeclarationAudit {
         for &(id, name) in &self.column_reads {
             if self.state_of(id).is_none() && !self.derived.contains(&id) {
                 problems.push(format!("a column reads {name}, not declared"));
+            }
+        }
+        for (holder, part) in &self.server_parts {
+            let holds = self.kinds.contains(&holder.id) || self.state_of(holder.id).is_some();
+            let derived = self.state_of(part.id).is_some() || self.derived.contains(&part.id);
+            if !holds || !derived {
+                problems.push(format!(
+                    "{} is a server part of {}, not both declared",
+                    part.name, holder.name
+                ));
             }
         }
         self.callback_problems(&mut problems);
@@ -385,6 +407,19 @@ impl Declarations for DeclarationAudit {
     }
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
+
+    fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
+        let system = IntoObserverSystem::into_system(observer);
+        self.observers.push(system.name().shortname().to_string());
+    }
+
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+        self.one_shots.push(Named::of::<R>());
+    }
+
+    fn server_part<H: Component, C: Component + Default>(&mut self) {
+        self.server_parts.push((Named::of::<H>(), Named::of::<C>()));
+    }
 }
 
 #[test]
@@ -400,6 +435,38 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.books.len(), 42);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 13);
+    // The observers, the runs out of the schedule and the parts a server derives, which the
+    // installer adds for their modules.
+    assert_eq!(
+        audit.observers,
+        [
+            "UnitTracker<GridUnits>::aged",
+            "UnitTracker<GridUnits>::lost_body",
+            "Units::refill_view",
+            "UnitTracker<StaticBodies>::aged",
+            "StaticBodies::part_removed",
+            "StaticBodies::state_inserted",
+            "StaticBodies::state_removed",
+            "Flying::lose_teleported",
+        ]
+    );
+    let runs: Vec<&str> = audit.one_shots.iter().map(|ty| ty.name).collect();
+    assert_eq!(
+        runs,
+        [
+            type_name::<StaticTrackingRun>(),
+            type_name::<RoomMakingRun>()
+        ]
+    );
+    let server: Vec<(&str, &str)> = audit
+        .server_parts
+        .iter()
+        .map(|(holder, part)| (holder.name, part.name))
+        .collect();
+    assert_eq!(
+        server,
+        [(type_name::<Player>(), type_name::<PlayerSupply>())]
+    );
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
     assert_eq!(
@@ -440,8 +507,8 @@ const STRAY_TAGS: [EngineTag; 2] = [
     EngineTag::new(1, "stray", TagProperties::NONE),
 ];
 
-/// A component no module declares, which a test's column reads.
-#[derive(Component, Debug)]
+/// A component no module declares, which a test's column reads and a test's server part is.
+#[derive(Component, Debug, Default)]
 struct Undeclared;
 
 /// A book a test declares, as the stats' own.
@@ -481,7 +548,8 @@ impl ModuleSet for StraySet {
 fn each_rule_names_the_declaration_that_breaks_it() {
     // One module of the combat capability: a state type on no kind, declared twice, needed by a
     // unit though it is a part that sits nowhere, checked, and put on players; a book the stats
-    // own; a kind's part, a unit's, needing a type no module declares; and the stats' sets.
+    // own; a kind's part, a unit's, needing a type no module declares; a unit's server part, of a
+    // type no module declares; and the stats' sets.
     let mut audit = DeclarationAudit::default();
     audit.module(None);
     audit.kind::<BodyUnit>();
@@ -499,6 +567,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     // A column that reads a type no module declares.
     let reads_undeclared: ColumnFill<&Undeclared, VisionColumn> = |_, _| {};
     audit.column::<VisionColumn, &Undeclared>(reads_undeclared);
+    audit.server_part::<UnitEntity, Undeclared>();
     // A callback the areas own, twice, in a registry no module calls.
     let queue: QueueListed = |_, _, _, _, _| Ok(());
     audit.callback::<EffectQueues>(Capability::Areas, queue);
@@ -523,6 +592,10 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             "the engine tag stray is not at its number".to_owned(),
             "the engine tag stray is declared twice".to_owned(),
             format!("a column reads {}, not declared", type_name::<Undeclared>()),
+            format!(
+                "{} is a server part of {unit}, not both declared",
+                type_name::<Undeclared>()
+            ),
             format!("the callback Areas of {queues} is declared by another module"),
             format!("{queues} has a callback no module calls"),
             format!("the callback Areas of {queues} is declared by another module"),

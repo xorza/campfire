@@ -5,7 +5,7 @@ use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{In, Local, SystemId};
 use bevy_ecs::world::World;
-use campfire_declare::Cache;
+use campfire_declare::OneShot;
 use campfire_geometry::Shape;
 use campfire_sim::{Keyed, Position, SimTick, StableId};
 use campfire_units::{Body, Dead, MoveStep};
@@ -22,12 +22,17 @@ use crate::walker::Walker;
 pub struct RoomMaking;
 
 /// The room making as a system of its own, which a spawn runs out of the schedule, so its query
-/// of the walkers and its list of those a box overlaps persist between its runs. Each install
-/// registers it again.
+/// of the walkers and its list of those a box overlaps persist between its runs.
 #[derive(Resource, Debug, Clone, Copy)]
 pub struct RoomMakingRun(pub(super) SystemId<In<Entity>>);
 
-impl Cache for RoomMakingRun {}
+impl OneShot for RoomMakingRun {
+    type In = In<Entity>;
+
+    fn new(id: SystemId<In<Entity>>) -> RoomMakingRun {
+        RoomMakingRun(id)
+    }
+}
 
 impl RoomMaking {
     /// Makes room for the box of `entity` as `Navigation::make_room` says, with `walkers`, the

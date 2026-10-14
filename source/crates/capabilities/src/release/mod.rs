@@ -7,8 +7,8 @@ use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_declare::{
-    Book, CapabilityError, CapabilitySet, Declarations, InstallCx, KindVisitor, ModuleVisitor,
-    Phase,
+    Book, CapabilityError, CapabilitySet, Declarations, InstallCx, KindVisitor, MatchFacts,
+    ModuleVisitor, Phase, Role,
 };
 use campfire_deliveries::Deliveries;
 use campfire_items::Items;
@@ -19,7 +19,7 @@ use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, ScriptApi, ScriptHost};
+use campfire_script::{ApiBuilder, ScriptApi, ScriptBudgets, ScriptHost};
 use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
@@ -187,7 +187,8 @@ impl Release {
     /// install. A match that ended runs no stage. The world then holds the match whole: its
     /// schedule, its state registry, and its capabilities.
     pub fn build(world: &mut World, spec: MatchSpec) {
-        if spec.predicting {
+        let role = spec.role;
+        if matches!(role, Role::Client) {
             Unpredicted::register(world);
             world.insert_resource(Predicting);
         }
@@ -204,17 +205,20 @@ impl Release {
         } = sim.parts();
         world.insert_resource(set);
         world.insert_resource(spec.out);
-        let scripts = spec.budgets.is_some();
-        Units::open(world, spec.budgets);
-        if scripts {
+        Units::open(world, role.budgets().cloned());
+        if role.scripts() {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }
         MatchEnd::stop_stages(schedule);
         for phase in Phase::ALL {
             phase.configure(schedule);
         }
-        let called = Release::called(set);
-        let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting, called);
+        let facts = MatchFacts {
+            set,
+            role: &role,
+            called: Release::called(set),
+        };
+        let mut cx = InstallCx::new(world, schedule, facts);
         Release::modules(&mut Installing::new(&mut cx, registry));
         UnitTypeBook::new(Release::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
@@ -225,18 +229,26 @@ impl Release {
         sim.build();
     }
 
-    /// Installs the mode into the match the world holds, once the books are in place: its
-    /// declarations and systems, then the mode of `setup`, with what `load` takes from the books.
+    /// Installs the mode into the match the world holds, a server's that runs scripts, once the
+    /// books are in place: its declarations and systems, then the mode of `setup`, with what
+    /// `load` takes from the books.
     pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
         let set = *world.resource::<CapabilitySet>();
+        let budgets = world.get_resource::<ScriptBudgets>();
+        let budgets = budgets.expect("the mode installs into a match that runs scripts");
+        let role = Role::Server(Some(budgets.clone()));
         let mut sim = SimWorldBuilder::reopen(world);
         let SimParts {
             world,
             schedule,
             registry,
         } = sim.parts();
-        let called = Release::called(set);
-        let mut cx = InstallCx::new(world, schedule, set, true, false, called);
+        let facts = MatchFacts {
+            set,
+            role: &role,
+            called: Release::called(set),
+        };
+        let mut cx = InstallCx::new(world, schedule, facts);
         Installing::new(&mut cx, registry).install::<Mode>();
         Mode::load(world, setup, load);
         sim.build();

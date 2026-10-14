@@ -101,12 +101,8 @@ impl Module for Areas {
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
     /// delivery, so it triggers none.
     fn install(cx: &mut InstallCx<'_>) {
-        let predicting = cx.predicting();
-        let schedule = &mut *cx.schedule;
-        if !predicting {
-            schedule.add_systems(AreaLife::trigger.in_set(AreasSet::Trigger));
-        }
-        schedule.add_systems((
+        cx.server(AreaLife::trigger.in_set(AreasSet::Trigger));
+        cx.schedule.add_systems((
             AreaLife::land.in_set(AreasSet::Land),
             AreaLife::land.in_set(AreasSet::LandAtResolve),
             AreaHolds::hold_inside.in_set(AreasSet::HoldInside),

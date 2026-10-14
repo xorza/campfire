@@ -45,8 +45,8 @@ impl Holds {
     pub(super) fn want_passives(
         (actions, book, stats): (
             Res<'_, ActionBook>,
-            Option<Res<'_, ModifierBook>>,
-            Option<Res<'_, StatBook>>,
+            Res<'_, ModifierBook>,
+            Res<'_, StatBook>,
         ),
         clock: TickClock<'_>,
         params: ModifierParams<'_, '_>,
@@ -64,12 +64,6 @@ impl Holds {
         >,
         mut waiting: Local<'_, ReadyWaits>,
     ) {
-        let Some(stats) = stats else {
-            return;
-        };
-        let Some(book) = book else {
-            return;
-        };
         let every =
             actions.is_changed() || book.is_changed() || stats.is_changed() || params.changed();
         let now = clock.start();

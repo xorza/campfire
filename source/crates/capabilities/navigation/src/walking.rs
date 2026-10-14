@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
 use campfire_geometry::Placed;
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, MapBook, MoveStep};
@@ -33,9 +33,8 @@ impl Walking {
     /// takes a place in the order.
     pub(super) fn steer(
         rate: Res<'_, TickRate>,
-        grid: Option<Res<'_, PathingGrid>>,
+        If((grid, mut planner)): If<(Res<'_, PathingGrid>, ResMut<'_, RoutePlanner>)>,
         statics: Res<'_, BodyIndex>,
-        mut planner: Option<ResMut<'_, RoutePlanner>>,
         bodies: Query<
             '_,
             '_,
@@ -72,12 +71,6 @@ impl Walking {
         >,
         (mut steering, mut order): (Local<'_, Steering>, Local<'_, Ordered>),
     ) {
-        let Some(grid) = grid else {
-            return;
-        };
-        let planner = planner
-            .as_deref_mut()
-            .expect("a pathing grid comes with its planner");
         let still = bodies
             .iter()
             .filter(|(.., destination, tags)| !Self::walks(*destination, *tags, false))
@@ -119,7 +112,7 @@ impl Walking {
                 stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
                 gathering: UnitTags::passes(tags),
             };
-            if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
+            if let Some(detour) = steering.steer(&mut planner, &grid, &statics, steered, &route) {
                 route.splice(steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             }

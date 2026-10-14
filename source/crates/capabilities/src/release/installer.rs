@@ -1,12 +1,15 @@
 use std::any::type_name;
 use std::fmt::{self, Debug};
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::event::Event;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, Report, Scratch, SpawnParts,
+    InstallCx, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
@@ -22,27 +25,24 @@ pub(super) struct Installer<'a> {
     schedule: &'a mut Schedule,
     registry: &'a mut StateRegistry,
     set: CapabilitySet,
-    scripts: bool,
+    role: &'a Role,
     /// The capability of the module whose declarations it installs.
     capability: Option<Capability>,
 }
 
 impl<'a> Installer<'a> {
-    /// Installs into `world`, `schedule` and `registry`, of a match of the capabilities `set` that
-    /// runs scripts when `scripts` says.
+    /// Installs into the match `cx` builds, its state types into `registry`.
     pub(super) const fn new(
-        world: &'a mut World,
-        schedule: &'a mut Schedule,
+        cx: &'a mut InstallCx<'_>,
         registry: &'a mut StateRegistry,
-        set: CapabilitySet,
-        scripts: bool,
     ) -> Installer<'a> {
+        let (set, role) = (cx.set(), cx.role());
         Installer {
-            world,
-            schedule,
+            world: &mut *cx.world,
+            schedule: &mut *cx.schedule,
             registry,
             set,
-            scripts,
+            role,
             capability: None,
         }
     }
@@ -52,7 +52,7 @@ impl Debug for Installer<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Installer")
             .field("set", &self.set)
-            .field("scripts", &self.scripts)
+            .field("role", &self.role)
             .field("capability", &self.capability)
             .finish_non_exhaustive()
     }
@@ -102,7 +102,7 @@ impl Declarations for Installer<'_> {
     }
 
     fn book<B: Book>(&mut self) {
-        if B::held(self.set, self.scripts) {
+        if B::held(self.set, self.role.scripts()) {
             self.world.insert_resource(B::default());
         }
     }
@@ -147,13 +147,13 @@ impl Declarations for Installer<'_> {
     }
 
     fn call_part<P: CallPart + Default>(&mut self) {
-        if self.scripts {
+        if self.role.scripts() {
             self.world.non_send::<Ctx>().frame().add_part(P::default());
         }
     }
 
     fn call_params<P: CallParams + Default>(&mut self) {
-        if self.scripts {
+        if self.role.scripts() {
             self.world
                 .non_send::<Ctx>()
                 .frame()
@@ -176,4 +176,19 @@ impl Declarations for Installer<'_> {
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
+
+    fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
+        self.world.add_observer(observer);
+    }
+
+    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static) {
+        let id = self.world.register_system(system);
+        self.world.insert_resource(R::new(id));
+    }
+
+    fn server_part<H: Component, C: Component + Default>(&mut self) {
+        if let Role::Server(_) = self.role {
+            self.world.register_required_components::<H, C>();
+        }
+    }
 }

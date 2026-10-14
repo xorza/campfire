@@ -12,7 +12,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::MapBook;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -96,10 +96,9 @@ impl Module for Orders {
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
-        if cx.predicting() {
-            Orders::install_by::<ByHolding>(cx);
-        } else {
-            Orders::install_by::<ByVision>(cx);
+        match cx.role() {
+            Role::Server(_) => Orders::install_by::<ByVision>(cx),
+            Role::Client => Orders::install_by::<ByHolding>(cx),
         }
     }
 }
@@ -107,7 +106,7 @@ impl Module for Orders {
 impl Orders {
     /// `install`, each order's targets checked as `S` sees them.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
+        let scripts = cx.role().scripts();
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             (

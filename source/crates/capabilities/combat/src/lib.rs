@@ -161,11 +161,11 @@ impl Module for Combat {
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them. A unit's despawn and its attackers are the server's: a
-    /// predicting client despawns no unit, and forgets no attacker it never held.
+    /// go, after the Mode stage saw them. A unit's despawn, its attackers and its toggles' pay are
+    /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
+    /// pays no toggle, as its pools come from the server.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
-        let predicting = cx.predicting();
+        let scripts = cx.role().scripts();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(Deaths::default());
         let events = scripts.then(|| {
@@ -179,24 +179,21 @@ impl Module for Combat {
         schedule.add_systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
-            Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
             (Attacks::attack_events, Attacks::strike)
                 .chain()
                 .in_set(CombatSet::Strike),
             ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
             DamagePass::run.in_set(CombatSet::Damage),
             Dying::die.in_set(CombatSet::Die),
+            Dying::respawn.in_set(CombatSet::Respawn),
         ));
-        if predicting {
-            schedule.add_systems(Dying::respawn.in_set(CombatSet::Respawn));
-        } else {
-            schedule.add_systems((
-                (Dying::forget_attackers, Dying::respawn)
-                    .chain()
-                    .in_set(CombatSet::Respawn),
-                Dying::despawn_dead.in_set(CombatSet::Despawn),
-            ));
-        }
+        cx.server((
+            Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
+            Dying::forget_attackers
+                .before(Dying::respawn)
+                .in_set(CombatSet::Respawn),
+            Dying::despawn_dead.in_set(CombatSet::Despawn),
+        ));
     }
 }
 

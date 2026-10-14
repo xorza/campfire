@@ -2,7 +2,7 @@ use std::mem;
 use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::Local;
+use bevy_ecs::system::{Local, NonSend, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_combat::{Deaths, Kept};
 use campfire_common::PlayerSlot;
@@ -25,11 +25,17 @@ pub(super) struct Input {
 }
 
 /// The mode's hooks, each in the Mode stage: its inputs, its slot events, its timers, the deaths
-/// and the level-ups.
+/// and the level-ups. Each hook's system runs under a run condition on the hooks the mode
+/// defines, which its load fixes.
 #[derive(Debug)]
 pub struct ModeHooks;
 
 impl ModeHooks {
+    /// The run condition of the system of `hook`: whether the mode defines it.
+    pub(super) fn defines(hook: Hook) -> impl Fn(NonSend<'_, MatchMode>) -> bool + Clone {
+        move |mode: NonSend<'_, MatchMode>| mode.schema.hooks.contains(hook)
+    }
+
     /// Runs `on_mode_input` for each mode input of the tick, in input order, from its player's
     /// pool. An input whose name the mode does not declare, or whose value is not of its type, is
     /// ignored.
@@ -38,14 +44,6 @@ impl ModeHooks {
         mut bodies: Local<'_, Vec<u8>>,
         mut inputs: Local<'_, Vec<Input>>,
     ) {
-        if !world
-            .non_send::<MatchMode>()
-            .schema
-            .hooks
-            .contains(Hook::OnModeInput)
-        {
-            return;
-        }
         bodies.clear();
         inputs.clear();
         for command in world
@@ -143,25 +141,32 @@ impl ModeHooks {
             return;
         }
         Calls::scope(world, now, |call| {
-            let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
             while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
                 let name = ScriptText::from(timer.name.as_str());
-                if hooked {
-                    let data = timer
-                        .data
-                        .as_ref()
-                        .map_or(ScriptValue::UNIT, |data| data.to_value(call.ctx.view()));
-                    let args = (call.ctx.clone(), name, data);
-                    if call
-                        .answer(None, Pool::Mode, Hook::OnTimer, args)
-                        .is_break()
-                    {
-                        break;
-                    }
+                let data = timer
+                    .data
+                    .as_ref()
+                    .map_or(ScriptValue::UNIT, |data| data.to_value(call.ctx.view()));
+                let args = (call.ctx.clone(), name, data);
+                if call
+                    .answer(None, Pool::Mode, Hook::OnTimer, args)
+                    .is_break()
+                {
+                    break;
                 }
                 call.batch.world().resource_mut::<Timers>().fire();
             }
         });
+    }
+
+    /// Fires each timer due in this tick's Mode stage, earliest first, in a mode that defines no
+    /// `on_timer`, so no call answers it.
+    pub(super) fn fire_timers(mut timers: ResMut<'_, Timers>, tick: Res<'_, SimTick>) {
+        let now = tick.end();
+        // A write marks the timers changed, so a tick with none due writes nothing.
+        while timers.due(now).is_some() {
+            timers.fire();
+        }
     }
 
     /// Runs `on_unit_died` for each death of the tick, after those that wait from earlier ticks, in
@@ -173,10 +178,6 @@ impl ModeHooks {
         world: &mut World,
         (mut units, mut pending): (Local<'_, Vec<Option<Entity>>>, Local<'_, UnansweredDeaths>),
     ) {
-        let hooks = world.non_send::<MatchMode>().schema.hooks;
-        if !hooks.contains(Hook::OnUnitDied) {
-            return;
-        }
         // A write marks the state changed, and the swap below is one, so a tick with no death to
         // answer leaves it as it is.
         if world.resource::<Deaths>().is_empty() && world.resource::<UnansweredDeaths>().is_empty()
@@ -239,18 +240,6 @@ impl ModeHooks {
     /// the pool spent waits, with those after it, for a later tick; one whose unit is gone by then
     /// runs no call.
     pub(super) fn level_ups(world: &mut World, mut due: Local<'_, PendingCalls<LevelUp>>) {
-        if !world.contains_resource::<LevelUps>() {
-            return;
-        }
-        let hooks = world.non_send::<MatchMode>().schema.hooks;
-        // A write marks the state changed, so a tick with no level-up writes nothing.
-        if world.resource::<LevelUps>().0.is_empty() {
-            return;
-        }
-        if !hooks.contains(Hook::OnLevelUp) {
-            world.resource_mut::<LevelUps>().0.clear();
-            return;
-        }
         let now = world.resource::<SimTick>().end();
         loop {
             if world.resource::<LevelUps>().0.is_empty() {
@@ -287,6 +276,15 @@ impl ModeHooks {
                 mem::swap(&mut *due, &mut level_ups.0);
                 return;
             }
+        }
+    }
+
+    /// Clears the levels reached, in a mode that defines no `on_level_up`, so no call answers
+    /// them.
+    pub(super) fn clear_level_ups(mut level_ups: ResMut<'_, LevelUps>) {
+        // A write marks the state changed, so a tick with no level-up writes nothing.
+        if !level_ups.0.is_empty() {
+            level_ups.0.clear();
         }
     }
 }

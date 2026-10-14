@@ -33,8 +33,7 @@ impl PlayerSupply {
     }
 
     /// Counts each player's supply anew, in a mode that counts it, and writes it on each player's
-    /// entity where it changed. A client holds the player entities unpredicted, which no query
-    /// here reads, so only the server writes it.
+    /// entity where it changed. Only the server counts it, which a client receives.
     pub(super) fn refresh(
         rules: Res<'_, SupplyBook>,
         costs: Res<'_, SupplyCostBook>,
@@ -42,9 +41,7 @@ impl PlayerSupply {
         mut players: Query<'_, '_, (&Player, &mut PlayerSupply)>,
         mut supply: Local<'_, Supply>,
     ) {
-        let Some(rules) = rules.0 else {
-            return;
-        };
+        let rules = rules.0.expect("supply is counted in a mode that counts it");
         let counted = units
             .iter()
             .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {

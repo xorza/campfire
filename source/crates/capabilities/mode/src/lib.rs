@@ -2,11 +2,16 @@
 //! mode's hooks on the capabilities below it.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "Bevy systems take `Res` and `Query` by value"
+)]
 
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::common_conditions::not;
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_combat::{CombatHooks, DamageWeigher, HealWeigher};
@@ -186,21 +191,38 @@ impl Module for Mode {
 
     /// Adds the mode's hooks to a match: in Inputs, the players' mode inputs run
     /// `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join` and
-    /// `on_player_leave`, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and the
-    /// levels reached run `on_level_up`. `Mode::load` gives them the mode they run.
+    /// `on_player_leave`, due timers run `on_timer`, or fire with no call in a mode without it, the
+    /// tick's deaths run `on_unit_died`, and, with progression, the levels reached run
+    /// `on_level_up`, or clear in a mode without it. `Mode::load` gives them the mode they run,
+    /// and each hook's system runs only in a mode that defines its hook.
     fn install(cx: &mut InstallCx<'_>) {
+        let defines = ModeHooks::defines;
+        let joins = defines(Hook::OnPlayerJoin).or_else(defines(Hook::OnPlayerLeave));
         cx.schedule.add_systems((
-            ModeHooks::mode_inputs.in_set(ModeSet::Inputs),
+            ModeHooks::mode_inputs
+                .run_if(defines(Hook::OnModeInput))
+                .in_set(ModeSet::Inputs),
             (
-                ModeHooks::slot_events,
-                ModeHooks::run_timers,
-                ModeHooks::unit_deaths,
-                ModeHooks::level_ups,
+                ModeHooks::slot_events.run_if(joins),
+                ModeHooks::run_timers.run_if(defines(Hook::OnTimer)),
+                ModeHooks::fire_timers.run_if(not(defines(Hook::OnTimer))),
+                ModeHooks::unit_deaths.run_if(defines(Hook::OnUnitDied)),
             )
                 .chain()
                 .in_set(ModeSet::Hooks),
             OutOfPlay::refresh.in_set(ModeSet::OutOfPlay),
         ));
+        if cx.has(Capability::Progression) {
+            cx.schedule.add_systems(
+                (
+                    ModeHooks::level_ups.run_if(defines(Hook::OnLevelUp)),
+                    ModeHooks::clear_level_ups.run_if(not(defines(Hook::OnLevelUp))),
+                )
+                    .chain()
+                    .after(ModeHooks::unit_deaths)
+                    .in_set(ModeSet::Hooks),
+            );
+        }
     }
 }
 

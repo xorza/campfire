@@ -30,7 +30,7 @@ impl TradeOrders {
         (mut orders, index): (TickCommands<'_, '_, ItemsAction>, Res<'_, EntityIndex>),
         (book, shop, mut resources): (
             Res<'_, ItemBook>,
-            Option<Res<'_, ShopBook>>,
+            Res<'_, ShopBook>,
             PlayerRowsMut<'_, '_, PlayerResources>,
         ),
         mut units: Query<
@@ -64,8 +64,8 @@ impl TradeOrders {
                 };
                 inventory.note(&mut before);
                 let shop = shop
-                    .as_deref()
-                    .and_then(|book| book.0.as_ref())
+                    .0
+                    .as_ref()
                     .filter(|shop| dead || shop.serves(team, pos));
                 match (action, shop) {
                     (ItemsAction::Swap { from, to }, _) => {

@@ -18,7 +18,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_geometry::{Grid, MAX_BOUND};
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
-use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks};
+use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -46,9 +46,9 @@ mod route_asks;
 mod route_planner;
 mod routing;
 mod segment;
+mod static_bodies;
 mod static_changes;
 mod static_tracking;
-mod statics_dirty;
 mod steering;
 mod terrain;
 mod walker;
@@ -78,9 +78,9 @@ pub use crate::route::Route;
 pub use crate::route_planner::{RoutePlanner, Walkable, Window};
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
+pub use crate::static_bodies::StaticBodies;
 pub use crate::static_changes::StaticChanges;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
-pub use crate::statics_dirty::StaticsDirty;
 pub use crate::terrain::Terrain;
 pub use crate::walker::Walker;
 pub use crate::walking::Walking;
@@ -164,12 +164,16 @@ impl Module for Navigation {
         d.component::<Route>();
         d.component::<Progress>();
         d.scratch::<StaticChanges>();
-        d.cache::<StaticsDirty>();
+        d.cache::<UnitTracker<StaticBodies>>();
         d.cache::<BodyIndex>();
         d.cache::<PathingGrid>();
         d.cache::<RoutePlanner>();
-        d.cache::<StaticTrackingRun>();
-        d.cache::<RoomMakingRun>();
+        d.observer(UnitTracker::<StaticBodies>::aged);
+        d.observer(StaticBodies::part_removed);
+        d.observer(StaticBodies::state_inserted);
+        d.observer(StaticBodies::state_removed);
+        d.one_shot::<StaticTrackingRun, _>(StaticTracking::track_static_bodies);
+        d.one_shot::<RoomMakingRun, _>(RoomMaking::make_room);
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>();
         d.book::<NavigationBook>();
@@ -188,11 +192,7 @@ impl Module for Navigation {
     fn install(cx: &mut InstallCx<'_>) {
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(BodyIndex::new(MAX_BOUND));
-        StaticsDirty::install(world);
-        let run = world.register_system(StaticTracking::track_static_bodies);
-        world.insert_resource(StaticTrackingRun(run));
-        let run = world.register_system(RoomMaking::make_room);
-        world.insert_resource(RoomMakingRun(run));
+        world.init_resource::<UnitTracker<StaticBodies>>();
         schedule.add_systems((
             StaticTracking::track_static_bodies.in_set(NavigationSet::TrackStatics),
             (
@@ -252,7 +252,7 @@ impl Navigation {
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));
         world.insert_resource(PathingGrid::new(grid, walkers, &terrain));
-        world.resource_mut::<StaticsDirty>().set();
+        world.resource_mut::<UnitTracker<StaticBodies>>().mark();
     }
 
     /// The spawn hook that makes room for the body of `entity`, which the mode's spawner just

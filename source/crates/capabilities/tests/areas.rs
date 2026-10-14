@@ -99,7 +99,7 @@ fn an_area_is_state_and_restores() {
         (field, action, warding, source)
     };
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
-    let mut game = Match::client(&declared);
+    let mut game = Match::unscripted(&declared);
     let (field, action, warding, source_type) = loads(&mut game);
     let source = Mode::spawn(&mut game, source_type, Position::ORIGIN, Team::new(0), ());
     let by = Delivering {
@@ -112,7 +112,7 @@ fn an_area_is_state_and_restores() {
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
     let id = Deliveries::spawn_of(&mut game, source, field, Position::ORIGIN, (area, trigger));
-    let mut restored = Match::client(&declared);
+    let mut restored = Match::unscripted(&declared);
     loads(&mut restored);
     Release::restore_into(&game, &mut restored);
     assert_eq!(restored.part::<Area>(id), game.part::<Area>(id));

@@ -1,3 +1,6 @@
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::event::Event;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::panic::{self, AssertUnwindSafe};
@@ -7,7 +10,7 @@ use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, Report, Scratch,
+    ModuleSet, OneShot, Report, Scratch,
 };
 use campfire_math::Num;
 use campfire_orders::Ai;
@@ -91,6 +94,12 @@ impl Declarations for EveryBook {
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
+
+    fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
+
+    fn server_part<H: Component, C: Component + Default>(&mut self) {}
 }
 
 /// Every book a module declares, built empty.
@@ -125,7 +134,7 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     assert!(ParamBook::held(none, false));
     // The install puts each book the match holds and drops the rest: a match of stats holds the
     // stat book, which no longer is the empty one its declaration put, and no combat book.
-    let mut game = Match::client(&[Capability::Stats]);
+    let mut game = Match::unscripted(&[Capability::Stats]);
     let mut built = every_book();
     let rules = BTreeMap::from([(Stat::named("armor").unwrap(), StatRule::default())]);
     built.take::<StatBook>().unwrap();

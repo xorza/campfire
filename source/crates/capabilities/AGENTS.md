@@ -19,9 +19,10 @@ The engine's capabilities and the core under them, a crate each: the core's crat
 ## State
 
 - Every state component is declared once, in its module's `declare`, which the install, the network layer and the script API read, and each module declares only its own: the declaration audit, `src/release/tests/declaration_audit.rs`, checks the rules between declarations.
-- Every resource of a match is declared by what it is: state, `d.resource`, which the installer puts in at its default; scratch, `d.scratch`, clear between ticks; a cache, `d.cache`, built again from state, the map or the install; a tick's report for the host, `d.report`; or a book, `d.book`; a registry of callbacks is declared by each module that calls it, `d.calls`, and by each that gives it a callback, `d.callback`, the key's owner. `Release::unlisted_resources`, which the proving match runs after each tick, fails on a resource none names and on a scratch not clear.
+- Every resource of a match is declared by what it is: state, `d.resource`, which the installer puts in at its default; scratch, `d.scratch`, clear between ticks; a cache, `d.cache`, built again from state, the map or the install; a tick's report for the host, `d.report`; a book, `d.book`; or the id of a system its module runs out of the schedule, `d.one_shot`; a registry of callbacks is declared by each module that calls it, `d.calls`, and by each that gives it a callback, `d.callback`, the key's owner. `Release::unlisted_resources`, which the proving match runs after each tick, fails on a resource none names and on a scratch not clear.
 - A restore checks every value as package data is checked, through the state type's required check: a restore gives an error, never a panic. The snapshot tests flip and draw the bytes of whole matches.
 - What can be derived is derived, not state: stats, tags, supply, the pathing grid.
+- What a client receives from the server it does not compute: a system that computes the server's own state goes through `InstallCx::server`, and a part only a server derives is `d.server_part`; the prediction test reads the systems from a server's schedule.
 
 ## Names and scripts
 

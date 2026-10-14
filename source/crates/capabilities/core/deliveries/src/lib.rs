@@ -74,7 +74,7 @@ impl Module for Deliveries {
         if !cx.calls_for::<Deliverers>() {
             return;
         }
-        if cx.scripts() {
+        if cx.role().scripts() {
             cx.schedule
                 .add_systems(DeliveryHooks::deliver.in_set(DeliverySet::Deliver));
         } else {

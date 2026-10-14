@@ -13,6 +13,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{MatchSpec, Order, Release};
 use campfire_common::{SegmentSeed, Tick};
+use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
@@ -210,7 +211,7 @@ impl Plugin for SimClient {
             world,
             MatchSpec::new(PREDICTION_SEED, rate)
                 .capabilities(set)
-                .predicting(),
+                .role(Role::Client),
         );
         packages.books(rate).install_prediction(world, set);
         mark_unpredicted(world);

@@ -11,10 +11,10 @@ use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_common::SegmentSeed;
-use campfire_declare::{ByType, EntityParts, Module};
+use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptBudgets, ScriptLimits, View};
+use campfire_script::{ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimUpdate, StateRegistry};
 use campfire_store::InputFile;
@@ -734,7 +734,7 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     struct Unlisted;
     let set = Release::capabilities();
     let declared: Vec<Capability> = set.iter().collect();
-    let mut game = Match::client(&declared);
+    let mut game = Match::unscripted(&declared);
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
     let id = Mode::spawn(&mut game, unit_type, Position::ORIGIN, Team::new(0), ());
     assert_eq!(
@@ -757,7 +757,7 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
         let world = Match::new(
             MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
                 .capabilities(Release::capability_set(declared).unwrap())
-                .script_budgets(budgets),
+                .role(Role::Server(Some(budgets))),
         );
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();

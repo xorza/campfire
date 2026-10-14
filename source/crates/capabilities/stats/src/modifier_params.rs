@@ -19,7 +19,7 @@ use crate::unit_stats::UnitStats;
 pub struct ModifierParams<'w, 's> {
     params: Res<'w, ParamBook>,
     index: Res<'w, EntityIndex>,
-    stats: Option<Res<'w, StatBook>>,
+    stats: Res<'w, StatBook>,
     units: Query<
         'w,
         's,
@@ -33,11 +33,10 @@ pub struct ModifierParams<'w, 's> {
 }
 
 impl ModifierParams<'_, '_> {
-    /// `id` as a source; `None` when it is gone, or the match has no stat book.
+    /// `id` as a source; `None` when it is gone.
     pub(crate) fn source(&self, id: StableId) -> Option<ParamSource<'_>> {
         let (&unit_type, level, stats) = self.units.get(self.index.get(id)?).ok()?;
-        let book = self.stats.as_deref()?;
-        Some(ParamSource::of_parts(book, unit_type, level, stats))
+        Some(ParamSource::of_parts(&self.stats, unit_type, level, stats))
     }
 
     /// The param at `place` of `modifier`, held by `action` at `rank`, from `source`, as

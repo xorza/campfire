@@ -1,5 +1,9 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![expect(
+    clippy::needless_pass_by_value,
+    reason = "Bevy systems take `Res` and `Query` by value"
+)]
+#![expect(
     clippy::type_complexity,
     reason = "a Bevy query names its data and its filters in one type"
 )]
@@ -98,9 +102,11 @@ impl Module for Vision {
     /// the grid. What a team sees is the server's: a predicting client holds the units its team sees, as
     /// the server sends them, and reveals nothing.
     fn install(cx: &mut InstallCx<'_>) {
-        if !cx.predicting() {
-            cx.schedule.add_systems(Seeing::see.in_set(VisionSet::See));
-        }
+        cx.server(
+            Seeing::see
+                .run_if(VisionBook::has_grid)
+                .in_set(VisionSet::See),
+        );
     }
 }
 

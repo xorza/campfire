@@ -18,14 +18,14 @@ fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
                 found.push((body.id, body.shape.bound()));
             });
         found.sort_unstable_by_key(|&(id, _)| id);
-        (found, near.grid.built.unwrap().tick)
+        (found, near.built_at().unwrap())
     })
     .unwrap()
 }
 
 #[test]
 fn readers_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
-    let mut game = Match::client(&[]);
+    let mut game = Match::unscripted(&[]);
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
     Units::give_type(&mut game, unit_type, BodyForm::circle(Num::HALF).unwrap());
     let spawn =

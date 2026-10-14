@@ -9,7 +9,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
@@ -136,6 +136,7 @@ impl Module for Production {
         ]);
         d.component::<TrainQueue>();
         d.derived_sent::<PlayerSupply>();
+        d.server_part::<Player, PlayerSupply>();
         d.component::<Rally>();
         d.component::<Builder>();
         d.component::<Site>();
@@ -174,12 +175,9 @@ impl Module for Production {
     /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
-        if cx.predicting() {
-            Production::install_by::<ByHolding>(cx);
-        } else {
-            cx.world
-                .register_required_components::<Player, PlayerSupply>();
-            Production::install_by::<ByVision>(cx);
+        match cx.role() {
+            Role::Server(_) => Production::install_by::<ByVision>(cx),
+            Role::Client => Production::install_by::<ByHolding>(cx),
         }
     }
 }
@@ -205,24 +203,23 @@ impl Production {
 
     /// `install`, each placement testing the units `S` sees.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        let navigation = cx.has(Capability::Navigation);
-        let predicting = cx.predicting();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems(
+        cx.schedule.add_systems(
             ProductionOrders::apply_production_orders::<S>.in_set(ProductionSet::Commands),
         );
-        if !predicting {
-            schedule.add_systems(PlayerSupply::refresh.in_set(ProductionSet::Supply));
-        }
+        cx.server(
+            PlayerSupply::refresh
+                .run_if(SupplyBook::counts)
+                .in_set(ProductionSet::Supply),
+        );
         // A build places a box, which only navigation tests for room, and a worker walks.
-        if !navigation {
-            schedule.add_systems((
+        if !cx.has(Capability::Navigation) {
+            cx.schedule.add_systems((
                 Trains::start_trains.in_set(ProductionSet::Start),
                 Trains::finish_trains.in_set(ProductionSet::Finish),
             ));
             return;
         }
-        schedule.add_systems((
+        cx.schedule.add_systems((
             (Construction::check_builds::<S>, GatherLoop::check_gathers)
                 .chain()
                 .in_set(ProductionSet::CheckBuilds),
@@ -239,9 +236,7 @@ impl Production {
                 .chain()
                 .in_set(ProductionSet::Finish),
         ));
-        if !predicting {
-            schedule.add_systems(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
-        }
+        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
     }
 }
 

@@ -21,9 +21,8 @@ impl<'a, 'w> Installing<'a, 'w> {
 
     /// Installs `M`: its declarations, then its systems.
     pub(super) fn install<M: Module>(&mut self) {
-        let (set, scripts) = (self.cx.set(), self.cx.scripts());
-        let mut installer =
-            Installer::new(self.cx.world, self.cx.schedule, self.registry, set, scripts);
+        let set = self.cx.set();
+        let mut installer = Installer::new(self.cx, self.registry);
         Declaring::new(set, &mut installer).declare::<M>();
         M::install(self.cx);
     }

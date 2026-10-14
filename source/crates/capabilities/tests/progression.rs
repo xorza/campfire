@@ -147,7 +147,7 @@ fn experience_is_state_and_restores() {
         })
     };
     let declared = [Capability::Stats, Capability::Progression];
-    let mut game = Match::client(&declared);
+    let mut game = Match::unscripted(&declared);
     let [on_both, on_valor] = tracks(&mut game);
     // A unit 150 into `level`, at level 2 with a point more than at its spawn, and 10 into
     // `valor`, still at level 1.
@@ -166,7 +166,7 @@ fn experience_is_state_and_restores() {
         Team::new(0),
         (level, experience, points),
     );
-    let mut restored = Match::client(&declared);
+    let mut restored = Match::unscripted(&declared);
     tracks(&mut restored);
     Release::restore_into(&game, &mut restored);
     assert_eq!(restored.part::<Experience>(id), game.part::<Experience>(id));

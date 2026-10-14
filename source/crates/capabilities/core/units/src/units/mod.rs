@@ -38,10 +38,11 @@ use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
 use crate::units::type_origin_book::TypeOriginBook;
 use crate::units::unit_entity::UnitEntity;
-use crate::units::unit_grid::UnitGrid;
+use crate::units::unit_grid::{GridUnits, UnitGrid};
 use crate::units::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_ticks::UnitTicks;
+use crate::units::unit_tracker::UnitTracker;
 use crate::units::unit_type_book::UnitTypeBook;
 use crate::units::units_api::UnitsApi;
 use crate::units::units_call::UnitsCall;
@@ -97,6 +98,7 @@ pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
 pub(crate) mod unit_states;
 pub(crate) mod unit_ticks;
+pub(crate) mod unit_tracker;
 pub(crate) mod unit_type_book;
 pub(crate) mod unit_type_core;
 pub(crate) mod units_api;
@@ -175,6 +177,10 @@ impl Module for Units {
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
         d.cache::<UnitGrid>();
+        d.cache::<UnitTracker<GridUnits>>();
+        d.observer(UnitTracker::<GridUnits>::aged);
+        d.observer(UnitTracker::<GridUnits>::lost_body);
+        d.observer(Units::refill_view);
         d.check::<Position>(Units::within_bounds);
         d.host::<Position, UnitEntity>();
         d.check::<Team>(Units::teams_known);
@@ -216,19 +222,17 @@ impl Module for Units {
         });
     }
 
-    /// Adds the core to a match: the grid of its body units, which its readers build. With scripts, in
-    /// Inputs, every pool starts full and the last tick's failures clear, and as the tick ends,
-    /// its writes to units that never spawned drop.
+    /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
+    /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
+    /// tick ends, its writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_>) {
         let world = &mut *cx.world;
-        world.add_observer(|_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>| {
-            view.refill_next();
-        });
         world
             .register_component_hooks::<UnitType>()
             .on_insert(TagBook::give_tags);
-        UnitGrid::install(world);
-        if cx.scripts() {
+        world.init_resource::<UnitGrid>();
+        world.init_resource::<UnitTracker<GridUnits>>();
+        if cx.role().scripts() {
             cx.schedule.add_systems((
                 UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
                 UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
@@ -250,6 +254,12 @@ impl Units {
     /// Every avatar of `view`, living or dead, of `team` or of every team, by stable id.
     pub fn avatars(view: &View, team: Option<Team>) -> ScriptList {
         view.units_where(|row| Units::is_avatar(row) && team.is_none_or(|team| row.team == team))
+    }
+
+    /// The observer of Bevy's check of change ticks: the script view's next read fills every
+    /// row, as its queries of changed parts may miss a change after the check.
+    fn refill_view(_: On<'_, '_, CheckChangeTicks>, view: NonSend<'_, View>) {
+        view.refill_next();
     }
 
     /// Visits each kind of entity of the core's units, which state types name as their host.

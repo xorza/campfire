@@ -4,7 +4,9 @@
 
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::System;
+use campfire_declare::ServerOnly;
 use campfire_stats::{Modifiers, UnitStats};
 
 use super::*;
@@ -25,18 +27,6 @@ fn reads(access: &FilteredAccess, unpredicted: ComponentId) -> Option<(Vec<Compo
     Some((reads, predicted))
 }
 
-/// The systems that compute the server's own state, which a predicting client does not build;
-/// the mode's `OutOfPlay::refresh`, which no client installs, among them.
-const SERVER_ONLY: [&str; 7] = [
-    "campfire_areas::area_life::AreaLife::trigger",
-    "campfire_combat::dying::Dying::despawn_dead",
-    "campfire_combat::dying::Dying::forget_attackers",
-    "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
-    "campfire_production::player_supply::PlayerSupply::refresh",
-    "campfire_projectiles::flying::Flying::fly",
-    "campfire_vision::seeing::Seeing::see",
-];
-
 /// The names of the systems of the sim's schedule in `world`, built unbuilt.
 fn system_names(world: &mut World) -> Vec<String> {
     let mut schedules = world.resource_mut::<Schedules>();
@@ -50,6 +40,22 @@ fn system_names(world: &mut World) -> Vec<String> {
                 .to_string()
                 .replace("campfire_capabilities::", "")
         })
+        .collect();
+    names.sort();
+    names
+}
+
+/// The names of the systems of the sim's schedule in `world`, built, that only a server builds:
+/// those `InstallCx::server` adds.
+fn server_only(world: &World) -> Vec<String> {
+    let schedule = world.resource::<Schedules>().get(SimUpdate);
+    let schedule = schedule.expect("the sim's schedule");
+    let own = schedule.graph().systems_in_set(ServerOnly.intern());
+    let own = own.expect("a server builds systems of its own");
+    let systems = schedule.systems().expect("the schedule is built");
+    let mut names: Vec<String> = systems
+        .filter(|(key, _)| own.contains(key))
+        .map(|(_, system)| system.name().to_string())
         .collect();
     names.sort();
     names
@@ -75,7 +81,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let mut world = World::new();
     let rate = Match::TEST_RATE;
     let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
-    Release::build(&mut world, spec.clone().predicting().unbuilt());
+    Release::build(&mut world, spec.clone().role(Role::Client).unbuilt());
     let unpredicted = world.register_component::<Unpredicted>();
     let holds = ClientHolds::of(&mut world, set);
     // Each read of a type a client holds of no unit it does not predict, by system, each system
@@ -135,16 +141,16 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     exclusive.sort();
     exclusive.dedup();
     assert_eq!(exclusive, EXCLUSIVE);
-    // The server builds each system that computes its own state, and the client none.
+    // The server builds each system that computes its own state, and the client none: the pay of
+    // attack toggles, the forgetting of attackers, the despawns of the dead and of empty nodes,
+    // the supply's count, the sight, the areas' triggers and the projectiles' flight.
     let mut server = World::new();
-    Release::build(&mut server, spec.unbuilt());
-    let (client, server) = (system_names(&mut world), system_names(&mut server));
-    for name in SERVER_ONLY {
-        assert_eq!(
-            [&server, &client].map(|names| names.iter().any(|built| built == name)),
-            [true, false],
-            "{name}"
-        );
+    Release::build(&mut server, spec);
+    let (client, server) = (system_names(&mut world), server_only(&server));
+    assert_eq!(server.len(), 8, "{server:?}");
+    for name in &server {
+        let name = name.replace("campfire_capabilities::", "");
+        assert!(!client.contains(&name), "{name}");
     }
     unbounded.sort();
     unbounded.dedup();

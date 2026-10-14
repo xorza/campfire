@@ -1,6 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::{MatchSpec, Release};
 use campfire_common::SegmentSeed;
+use campfire_declare::Role;
 use campfire_mode::{ModeInputs, ModeSetup};
 use campfire_package::ModePackages;
 use campfire_script::ScriptBudgets;
@@ -31,7 +32,10 @@ impl MatchBuild {
         let manifest = packages.manifest();
         MatchSpec::new(seed, rate)
             .capabilities(manifest.capabilities)
-            .script_budgets(ScriptBudgets::new(manifest.script_limits, players))
+            .role(Role::Server(Some(ScriptBudgets::new(
+                manifest.script_limits,
+                players,
+            ))))
     }
 
     /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books

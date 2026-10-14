@@ -47,7 +47,7 @@ fn ordering_match() -> Match {
 
 /// A match of `declared`, with production among them.
 fn shop_match_of(declared: &[Capability]) -> Match {
-    Match::client(declared)
+    Match::unscripted(declared)
 }
 
 /// A shop's match: a grunt type to train, a circle of 0.5 m that walks 1 m a tick, a producer type of a queue of 3,

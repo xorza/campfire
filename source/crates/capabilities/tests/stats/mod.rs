@@ -103,7 +103,7 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 /// A match with the stats capability, and combat, whose life a pool may be, a unit type for each
 /// of `types`, the mode's, and a book of their stats, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> Match {
-    let mut game = Match::client(&[Capability::Stats, Capability::Combat]);
+    let mut game = Match::unscripted(&[Capability::Stats, Capability::Combat]);
     let mut book = StatBook::new(&rules(), Num::int(6));
     for data in types {
         let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());

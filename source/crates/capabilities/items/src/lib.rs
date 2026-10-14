@@ -102,7 +102,7 @@ impl Module for Items {
     /// core's scripts, as on the server, the tick's orders trade in Inputs; a client predicts no
     /// trade.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
+        let scripts = cx.role().scripts();
         let schedule = &mut *cx.schedule;
         schedule.add_systems((
             ItemHolds::want_items.in_set(ItemsSet::HoldAtInputs),

@@ -1,4 +1,8 @@
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::component::Component;
+use bevy_ecs::event::Event;
 use bevy_ecs::query::ROQueryItem;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowFill, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent};
@@ -11,6 +15,7 @@ use crate::declare::callbacks::Callbacks;
 use crate::declare::kind_spawn::KindSpawn;
 use crate::declare::kind_visitor::KindVisitor;
 use crate::declare::module_set::ModuleSet;
+use crate::declare::one_shot::OneShot;
 use crate::declare::report::Report;
 use crate::declare::scratch::Scratch;
 
@@ -82,4 +87,15 @@ pub trait Declarations: StateTypes + KindVisitor {
 
     /// The module's script API, which `register` binds and records.
     fn api(&mut self, register: fn(&mut ApiBuilder<'_>));
+
+    /// `observer`, which runs as each event `E` of `B` reaches it.
+    fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>);
+
+    /// `system`, which the module runs out of the schedule, by the id `R` keeps.
+    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static);
+
+    /// `C`, a part derived from the match's state, which every entity that holds `H` spawns
+    /// with on a server's match, by Bevy's required component; a client receives it from the
+    /// server, as it does not compute it.
+    fn server_part<H: Component, C: Component + Default>(&mut self);
 }

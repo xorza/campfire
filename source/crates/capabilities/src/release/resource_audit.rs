@@ -1,3 +1,6 @@
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::event::Event;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
@@ -5,7 +8,7 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, Report, Scratch, SpawnParts,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Scratch, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
@@ -149,4 +152,12 @@ impl Declarations for DeclaredResources {
     fn engine_tags(&mut self, _: &'static [EngineTag]) {}
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
+
+    fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+        self.ids.push(TypeId::of::<R>());
+    }
+
+    fn server_part<H: Component, C: Component + Default>(&mut self) {}
 }
