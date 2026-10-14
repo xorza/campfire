@@ -4,11 +4,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
-- **Client.** The client shows each package's text in the package's own language, and loads no locale package, where design 03 shows the player's language, else the package's own: it has no setting of the player's language. Options: a `--language` argument; the operating system's locale.
-- **Zero Hour.** The import writes W3D's materials into glTF's material model, which holds one pass, no ambient color and no fallback texture, so each part of a W3D material that glTF lacks is lost: the next two items, a missing texture and the ambient color, and the second pass under Research, are its cases. Options: an extension of glTF's material that the client draws; a material file of Campfire's beside each model; or glTF's model, as now, each loss decided alone.
-- **Zero Hour.** A texture no archive holds leaves its triangles untextured in the import, where the game draws `MissingTexture`, a solid color of `0x7FFF00FF`: draw them as the game does, or untextured, as now.
-- **Zero Hour.** The import ignores a vertex material's ambient color, as glTF's material has none: 336 vertex materials of converted models have one other than their diffuse color, which the game lights by the scene's ambient light. Options: a material file with the ambient color, which the client draws; or the diffuse color for both, as now.
-
 ## Research
 
 - **Combat.** Systems read the match's role each tick, a fact the build fixes, where the plan's Direction makes such a fact one of the schedule: `Attacks::strike` checks `Predicting` for each attack going off (`combat/src/attacks.rs`), the held pass for each instance it keeps (`stats/src/held_pass.rs`), and vision's start of `SeenBy` for each unit that spawns (`vision/src/lib.rs`).
@@ -24,8 +19,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Runner.** `resume::the_3v3_match_resumes_from_each_checkpoint_to_the_same_hashes` runs past the bound of 1 s for a test alone: on an i9-13980HX, with `--test-threads 1`, 1.41 to 1.45 s at commit aa1e8aac, where `source/.config/nextest.toml` gives it 0.79 s on an M5.
 - **Runner.** `proving_match::a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics` runs past the bound of 1 s for a test alone: on an i9-13980HX, with `--test-threads 1`, 1.00 to 1.03 s at commit aa1e8aac, and 1.95 s through `./drive.py test` at commit 086b4cf1. The five ticks after each restored draw take most of it, in the navigation's broadphase and collider.
 - **Runner.** `proving_match::a_snapshot_restores_and_a_flawed_one_never_panics` runs at the bound of 1 s for a test alone: on an i9-13980HX, with `--test-threads 1`, 1.11 s at commit e43f95af, and 0.87 s in a later run.
-- **Zero Hour.** The import draws a mesh's first material pass and its first texture stage alone; 275 meshes of converted models have a second pass, which the game draws over the first.
-- **Zero Hour.** The import makes a unit of every object a map places but a road's or bridge's end and a waypoint, whatever its template: the game spawns no object whose template no INI object names, adds props, optimized trees and, in multiplayer, fluff to the client alone, and spawns no shrub when trees are off (`GameLogic::startNewGame`).
 
 ## Ready
 
@@ -33,3 +26,8 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Quic.** **Plan: N1.** No limit holds live connections or new handshakes for each address, where design 15's D13 bounds both by the session's seats for each IPv4 address or IPv6 /64, and `net` gives the endpoint no seat count ([QUIC transport](../docs/design/15-quic-transport.md), D13).
 - **Quic.** **Plan: N2.** UPnP finds no router behind a host firewall that tracks connections when the router answers SSDP searches from a port other than 1900, as Omada's ER605 does: `igd-next` discovers by search alone, and the router's `NOTIFY` announcements, which the firewall lets in, go unread ([QUIC transport](../docs/design/15-quic-transport.md), D12).
 - **Runner.** The proving match runs no `items`, though its layout test says it holds every type of every capability the release runs: `golden/layout.txt` pins neither `items.inventory` nor `actions.use_group`, so a change of their layout at the same `StateRegistry::DATA_VERSION` passes it.
+- **Zero Hour.** The import writes no material file for a vertex material whose ambient color is not its diffuse color, and the material file and the client's shader hold no ambient color, where design 12's D13 gives the file's `ambient`: 336 vertex materials of converted models lose their ambient color.
+- **Zero Hour.** A texture no archive holds leaves its triangles untextured in the import, where design 12's D13 draws them as the game's `MissingTexture`, `0x7FFF00FF`: 22 meshes of one model name `dirtground1.bmp`.
+- **Zero Hour.** The import draws a mesh's first material pass and its first texture stage alone, where design 12's D13 draws its second pass as one more primitive: 275 meshes of converted models lose their second pass.
+- **Zero Hour.** The import makes a unit of every object a map places but a road's or bridge's end and a waypoint, whatever its template, where design 12's D14 drops an object of no INI template and gives an optimized tree, a prop and fluff to the client file `client/maps/<name>/objects.toml`: the sim, its log and its state hash hold objects the original never simulates.
+

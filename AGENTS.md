@@ -27,7 +27,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
 - `source/` — engine and game code, and `drive.py`, the driver of every check ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
 - `../GeneralsX/` — beside this repository, not in it: a checkout of [GeneralsX](https://github.com/fbraz3/GeneralsX), the released Generals and Zero Hour source with TheSuperHackers' fixes, built for Linux and macOS. It is the reference for Zero Hour's formats and rules, and the base of the parity oracle. It is GPL: read it as a specification, and copy no line of it ([Zero Hour](docs/design/12-zero-hour.md#decisions), D2).
 
-`PLAN.md` is the one plan: every open step of the project, in the order it is done, in batches of one commit each, and the foundations ([Issue log](#issue-log)). It lists open items only.
+`PLAN.md` is the one plan: every open step of the project, in the order it is done, in batches of one commit each, and the foundations ([Workflow](#workflow), [Issue log](#issue-log)). It lists open items only.
 
 When code and design disagree, fix one of them, and state which one.
 
@@ -55,6 +55,13 @@ Work goes in vertical slices. A slice ends with something new that the user play
 4. **Implement** the plan as reviewed, step by step, each step ending with `./drive.py check` passing. The slice ends when the user plays it in the client, and a scripted match keeps it working.
 
 No changes to systems outside the plan along the way. A problem found outside the slice, or depth that the slice does not need, goes to the issue log, and a later slice takes it.
+
+The plan, `PLAN.md`, holds the open steps and the foundations ([Issue log](#issue-log)): a step goes when it is done.
+
+- **Batches.** A batch is one commit: the steps that change the same systems, refactorings, fixes and features alike. It says what it touches and why it stands where it does, and ends with `./drive.py check` passing and a stop for review.
+- **Steps.** A step names what the code lacks against its design, or the design it proposes, which moves into `docs/design/` when it is agreed, and the part of the [Direction](#direction) it builds. A problem of the issue log that a step takes carries the step's tag there.
+- **References.** A step's line numbers point to the code as the step was written, and the step refreshes them as it starts.
+- **Checks.** A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
 
 ## Issue log
 
