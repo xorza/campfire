@@ -130,7 +130,7 @@ pub(crate) mod internals {
             budgets: Option<ScriptBudgets>,
         ) -> Match {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate)
+            let spec = MatchSpec::new(SegmentSeed::ZERO, rate)
                 .capabilities(set)
                 .role(Role::Server(budgets));
             Match::test_of(spec)
@@ -168,7 +168,7 @@ pub(crate) mod internals {
         /// skips the units it holds as the server sent them, `Unpredicted`.
         pub fn predicting(declared: &[Capability]) -> Match {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
+            let spec = MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE)
                 .capabilities(set)
                 .role(Role::Client);
             let mut started = Match::test_of(spec);

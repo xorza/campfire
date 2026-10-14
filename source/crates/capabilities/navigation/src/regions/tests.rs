@@ -19,7 +19,7 @@ fn blocked_at(blocked: &[u64], cell: usize) -> bool {
 /// Cells blocked at random, one in `odds` on average, from `seed`.
 fn scatter(cells: usize, seed: u64, odds: u64) -> Vec<u64> {
     let stream = RngStream::new("scatter");
-    let mut rng = Rng::new(&SegmentSeed::new([0; 32]), stream, seed, Tick::ZERO);
+    let mut rng = Rng::new(&SegmentSeed::ZERO, stream, seed, Tick::ZERO);
     let mut blocked = vec![0; cells.div_ceil(64)];
     for cell in 0..cells {
         if rng.below(odds) == 0 {

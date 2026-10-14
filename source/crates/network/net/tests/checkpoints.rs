@@ -13,9 +13,9 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CheckpointFailed, SeedsRanOut, ServerDir, SessionDir, SimServerWorld, TickHashes,
 };
-use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog, SnapshotFingerprint};
-use campfire_runner::{Session, SessionWorld};
-use campfire_sim::{SimWorld, StateRegistry};
+use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
+use campfire_runner::{Replay, Session, SessionWorld};
+use campfire_sim::StateRegistry;
 use campfire_store::internals::Scratch;
 use campfire_store::{EntryKind, InputFile};
 
@@ -80,25 +80,13 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
-    let packages = local.packages();
-    for record in published.checkpoints() {
+    let mut replay = Replay::of(published, local.packages()).unwrap();
+    for record in replay.game().session().log().checkpoints() {
         let file = snapshots.join(record.snapshot.to_string());
         let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();
-        assert_eq!(SnapshotFingerprint::of(&snapshot), record.snapshot);
-        let restored = Session::snapshot_hash(packages, published.header(), &snapshot).unwrap();
-        assert_eq!(restored, record.state_hash);
+        assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
     }
-    let ticks = published.next_tick();
-    let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Session::start_match(published.rewound(), seeds, packages).unwrap();
-    while replay.session().log().next_tick() < ticks {
-        let next = replay.session().log().next_tick();
-        if let Some(record) = replay.session().log().checkpoint_at(next) {
-            assert_eq!(replay.state_hash(), record.state_hash, "tick {next}");
-        }
-        replay.run_tick_alone();
-    }
-    assert_eq!(replay.check_result(), Ok(()));
+    assert_eq!(replay.run(), Ok(()));
 }
 
 #[test]

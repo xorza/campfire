@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use campfire_declare::{ByType, CapabilitySet};
+use campfire_declare::ByType;
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, Walker};
 use campfire_script::View;
@@ -82,11 +82,11 @@ impl Books {
             .check_walkable(ground, navigation, &load.walkers, body_of, name_of)
     }
 
-    /// Puts the books in `world`, a match of the capabilities `set` that runs scripts when
-    /// `scripts` says, whose capabilities are installed and whose scripts are compiled: the mode's
-    /// names in the script view, then each book its owner declares, when the match holds it. A book declared and not built, or built and not declared, is a logic
-    /// error.
-    pub fn install(self, world: &mut World, set: CapabilitySet, scripts: bool) -> ModeInputs {
+    /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
+    /// compiled: the mode's names in the script view, then each book its owner declares, where
+    /// its install put an empty one. A book declared and not built, or built and not declared, is
+    /// a logic error.
+    pub fn install(self, world: &mut World) -> ModeInputs {
         let Books {
             mut built,
             damage_kinds,
@@ -99,20 +99,14 @@ impl Books {
             names.set_table(damage_kinds);
             names.set_table(resources);
         }
-        Books::fill(&mut built, world, set, scripts);
+        Books::fill(&mut built, world);
         inputs
     }
 
     /// Takes each book every module declares out of `built`, which must hold it, and puts it in
-    /// `world`, a match of `set` that runs scripts when `scripts` says, when the match holds it;
-    /// `built` must hold no other book.
-    fn fill(built: &mut BuiltBooks, world: &mut World, set: CapabilitySet, scripts: bool) {
-        let mut fill = BookFill {
-            built,
-            world,
-            set,
-            scripts,
-        };
+    /// `world` where the match holds it; `built` must hold no other book.
+    fn fill(built: &mut BuiltBooks, world: &mut World) {
+        let mut fill = BookFill { built, world };
         Release::declare(Release::capabilities(), &mut fill);
         assert!(built.is_empty(), "each built book is declared: {built:?}");
     }
@@ -121,8 +115,8 @@ impl Books {
     /// and the map's pathing grid for the kinds of its walkers, as a match's mode install puts
     /// it. The client then predicts its units by the rules the server runs: it starts their
     /// actions, and runs none of their effects.
-    pub fn install_prediction(self, world: &mut World, set: CapabilitySet) {
-        let ModeInputs { load, .. } = self.install(world, set, false);
+    pub fn install_prediction(self, world: &mut World) {
+        let ModeInputs { load, .. } = self.install(world);
         load.map.install_pathing(world, load.walkers);
     }
 }

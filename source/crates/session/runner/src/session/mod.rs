@@ -3,7 +3,7 @@ use std::num::NonZeroU64;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{SegmentSeed, StateHash, Tick, Ticks};
+use campfire_common::{StateHash, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
@@ -109,12 +109,9 @@ impl Session {
         header: &SessionHeader,
         snapshot: &[u8],
     ) -> Result<StateHash, SnapshotError> {
-        // The seed is not state, so no seed changes what the restore gives.
-        let seed = SegmentSeed::new([0; 32]);
         let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
-        let mut game = Match::new(MatchBuild::spec(packages, seed, rate, slots));
-        MatchBuild::install_mode(packages, &mut game, slots);
+        let mut game = MatchBuild::restore_target(packages, rate, slots);
         game.restore(snapshot)?;
         Ok(game.state_hash())
     }

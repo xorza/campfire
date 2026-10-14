@@ -49,7 +49,7 @@ fn two_fields() -> Match {
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     // A match without navigation runs no gather, as only navigation tests a box for room.
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
-    let mut world = Match::new(MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set));
+    let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set));
 
     let gold = ResourceId::nth(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);

@@ -10,11 +10,13 @@ use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Scratch,
+    ModuleSet, OneShot, Report, Role, Scratch,
 };
 use campfire_math::Num;
 use campfire_orders::Ai;
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
+use campfire_script::{
+    ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ScriptLimits, ViewColumn,
+};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
@@ -128,10 +130,12 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     .unwrap();
     // A capability's book is held with its owner; an AI's with orders and scripts both; a core
     // book in every match.
-    assert!(ModifierBook::held(stats, false) && !ModifierBook::held(none, true));
-    assert!(ByType::<Ai>::held(orders, true) && !ByType::<Ai>::held(orders, false));
-    assert!(!ByType::<Ai>::held(stats, true));
-    assert!(ParamBook::held(none, false));
+    let scripts = Role::Server(Some(ScriptBudgets::new(ScriptLimits::ROOMY, 1)));
+    let (unscripted, client) = (Role::Server(None), Role::Client);
+    assert!(ModifierBook::held(stats, &client) && !ModifierBook::held(none, &scripts));
+    assert!(ByType::<Ai>::held(orders, &scripts) && !ByType::<Ai>::held(orders, &unscripted));
+    assert!(!ByType::<Ai>::held(orders, &client) && !ByType::<Ai>::held(stats, &scripts));
+    assert!(ParamBook::held(none, &client));
     // The install puts each book the match holds and drops the rest: a match of stats holds the
     // stat book, which no longer is the empty one its declaration put, and no combat book.
     let mut game = Match::unscripted(&[Capability::Stats]);
@@ -139,7 +143,7 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     let rules = BTreeMap::from([(Stat::named("armor").unwrap(), StatRule::default())]);
     built.take::<StatBook>().unwrap();
     built.add(StatBook::new(&rules, Num::ONE));
-    Books::fill(&mut built, &mut game, stats, false);
+    Books::fill(&mut built, &mut game);
     assert!(built.is_empty());
     assert_eq!(game.resource::<StatBook>().len(), 1);
     assert!(!game.contains_resource::<CombatBook>());
@@ -149,14 +153,14 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     assert!(said.ends_with("is declared by its owner"), "{said}");
     let mut missing = every_book();
     missing.take::<ModifierBook>().unwrap();
-    let said = panic_of(|| Books::fill(&mut missing, &mut game, stats, false));
+    let said = panic_of(|| Books::fill(&mut missing, &mut game));
     assert!(
         said.ends_with("ModifierBook is declared and built"),
         "{said}"
     );
     let mut stray = every_book();
     stray.add(StrayBook);
-    let said = panic_of(|| Books::fill(&mut stray, &mut game, stats, false));
+    let said = panic_of(|| Books::fill(&mut stray, &mut game));
     assert!(said.starts_with("each built book is declared"), "{said}");
     assert!(said.contains("StrayBook"), "{said}");
 }

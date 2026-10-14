@@ -8,12 +8,16 @@ mod events;
 mod harness;
 mod input_rules;
 mod match_build;
+mod replay;
 mod session;
 mod session_rules;
 mod slot_rules;
 
 pub use crate::events::script_call_failed::ScriptCallFailed;
 pub use crate::input_rules::InputRules;
+pub use crate::match_build::MatchBuild;
+pub use crate::replay::Replay;
+pub use crate::replay::error::{ReplayError, SnapshotCheckError};
 pub use crate::session::Session;
 pub use crate::session::error::{
     CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
@@ -41,15 +45,13 @@ pub mod bench {
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::harness::arena::Arena;
-    pub use crate::harness::copy_check::CopyCheck;
     pub use crate::harness::fixed_match::FixedMatch;
     pub use crate::harness::fixed_session::FixedSession;
-    pub use crate::harness::golden::Golden;
-    pub use crate::harness::hash_trail::{Difference, HashTrail, MatchHashes};
+    pub use crate::harness::hash_trail::{Difference, HashTrail};
+    pub use crate::harness::match_record::MatchRecord;
     pub use crate::harness::match_units::MatchUnits;
     pub use crate::harness::moba_3v3::Moba3v3;
     pub use crate::harness::proving_match::ProvingMatch;
     pub use crate::harness::scripted::{Aim, Plan};
     pub use crate::harness::scripted_mode::ScriptedMode;
-    pub use crate::match_build::MatchBuild;
 }

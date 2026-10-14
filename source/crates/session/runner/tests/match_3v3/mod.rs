@@ -18,11 +18,8 @@ use campfire_math::Num;
 use campfire_mode::{ModeParam, ModeWorld};
 use campfire_navigation::PathWalker;
 use campfire_progression::Points;
-use campfire_protocol::SessionLog;
-use campfire_runner::internals::{
-    CopyCheck, FixedMatch, Golden, HashTrail, MatchUnits, Moba3v3, ScriptedMode,
-};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::SessionWorld;
+use campfire_runner::internals::{FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode};
 use campfire_script::{ScriptFailures, ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
@@ -41,10 +38,9 @@ const SKIRMISH: u64 = 3200;
 const TICKS: u64 = Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * Moba3v3::CASTS;
 
 #[derive(Debug)]
-struct Run {
+struct Run<'p> {
     fixed: FixedMatch,
-    trail: HashTrail,
-    golden: Golden,
+    record: MatchRecord<'p>,
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
@@ -125,7 +121,7 @@ struct Unit {
 }
 
 /// Player `slot`'s hero, as the pick's end spawned it.
-fn hero_of(run: &Run, slot: u32) -> StableId {
+fn hero_of(run: &Run<'_>, slot: u32) -> StableId {
     let hero = run
         .at_pick_end
         .iter()
@@ -163,9 +159,9 @@ fn units(game: &Match) -> Vec<Unit> {
 
 /// A match of `TICKS` ticks in which each player picks a hero and two spells before tick 0, and
 /// then plays as the MOBA's script says.
-fn run(moba: &ScriptedMode<Moba3v3>) -> Run {
+fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let mut fixed = moba.start();
-    let mut copy = CopyCheck::new(fixed.game_mut());
+    let mut record = MatchRecord::of(fixed.game_mut(), moba.packages(), Moba3v3::PLAYERS);
     let game = fixed.game();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
     // before its count of ticks; the first wave's, set then, its own count later.
@@ -173,17 +169,13 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run {
     let timer = |name| rate.ticks(param_ms(moba, name)).unwrap().get();
     let pick_end = timer("pick_ms") - 1;
     let first_wave = pick_end + timer("first_wave_ms");
-    let mut trail = HashTrail::default();
-    let mut golden = Golden::new(moba.packages(), Moba3v3::PLAYERS);
     let (mut at_pick_end, mut at_first_wave) = (Vec::new(), Vec::new());
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
     let mut showcase = Showcase::default();
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
-        let hashes = copy.check(fixed.game_mut());
-        trail.record_hashes(hashes);
-        golden.record(fixed.game(), hashes.total);
+        record.tick(fixed.game_mut());
         let game = fixed.game();
         let failures = game.non_send::<ScriptFailures>();
         assert!(
@@ -215,8 +207,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run {
     fixed.game_mut().session_mut().reveal_seed();
     Run {
         fixed,
-        trail,
-        golden,
+        record,
         at_pick_end,
         at_first_wave,
         deaths,
@@ -284,7 +275,7 @@ impl Seen {
 }
 
 /// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
-fn placed(run: &Run, x: i16, z: i16) -> StableId {
+fn placed(run: &Run<'_>, x: i16, z: i16) -> StableId {
     let pos = Position::from((x, 0, z));
     let unit = run.at_pick_end.iter().find(|unit| unit.pos == pos);
     unit.expect("a placed unit").id
@@ -298,7 +289,7 @@ mod scripted_match {
     fn a_3v3_match_replays_to_the_same_hashes() {
         let moba = Moba3v3::load();
         let run = run(&moba);
-        run.golden.check("3v3");
+        run.record.check("3v3");
         let melee = assert_start(&moba, &run);
         assert_skirmish(&run);
         assert_camp(&run);
@@ -308,13 +299,13 @@ mod scripted_match {
         showcase::assert_shop(&moba, &run.showcase);
         let world = run.fixed.game();
         showcase::assert_casts(&moba, &run.showcase, world, TICKS);
-        assert_replays(&moba, run.fixed.game(), &run.trail);
+        run.record.assert_replays(run.fixed.game().session().log());
     }
 }
 
 /// The match's state at its end, its scripts, and its units at the pick's end and as the first
 /// wave spawns; the unit type of the first wave's melee creeps.
-fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
+fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     let world = run.fixed.game();
     // State in the order of its fields' names.
     let packages = moba.packages();
@@ -408,7 +399,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run) -> UnitType {
 
 /// The skirmish: first blood and its assist, a tower's kill, the experience a hero's fall
 /// shares, the respawns, mend, haste, and the tower that turns on the diver.
-fn assert_skirmish(run: &Run) {
+fn assert_skirmish(run: &Run<'_>) {
     let heroes = [0, 1, 2, 3, 4, 5].map(|slot| hero_of(run, slot));
     let [cinder, gale, husk, _, rime, _] = heroes;
     let tower = placed(run, -42, 16);
@@ -462,7 +453,7 @@ fn assert_skirmish(run: &Run) {
 
 /// The south camp: its wolf answers Kensho, who struck it, chases him south past its 8 m leash
 /// and goes home; then he fells it, Rime assisting.
-fn assert_camp(run: &Run) {
+fn assert_camp(run: &Run<'_>) {
     let [kensho, rime] = [3, 4].map(|slot| hero_of(run, slot));
     let wolf = placed(run, -18, 12);
     assert_eq!(run.seen.wolf_answers, Some(kensho));
@@ -496,7 +487,7 @@ fn assert_camp(run: &Run) {
 /// The players' gold at the skirmish's end: the income, first blood and its assist, the wolf's
 /// bounty, and the bounty of each creep of the first wave a hero felled, by its kind, `melee` or a
 /// caster's.
-fn assert_gold(run: &Run, melee: UnitType) {
+fn assert_gold(run: &Run<'_>, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
     // 15 for a caster: Cinder fells a caster and a melee creep of the south's west group, 35, and
     // Veil a caster of the north's east group, 15.
@@ -528,7 +519,7 @@ fn assert_gold(run: &Run, melee: UnitType) {
 }
 
 /// Learning: each hero spawns with a point, which a learn spends on a rank its level allows.
-fn assert_learning(run: &Run) {
+fn assert_learning(run: &Run<'_>) {
     let learning = |ranks, points, dead| Learning {
         ranks,
         points,
@@ -563,24 +554,4 @@ fn assert_learning(run: &Run) {
         let ranks: u32 = learned.ranks.iter().map(|&rank| u32::from(rank)).sum();
         assert_eq!(learned.points, level - ranks, "slot {slot}");
     }
-}
-
-/// The match `game`, which recorded `trail`, its log replayed from its file, gives its hash
-/// after every tick and ends where it ended.
-pub(crate) fn assert_replays(moba: &ScriptedMode<Moba3v3>, game: &Match, trail: &HashTrail) {
-    let mut file = Vec::new();
-    game.session().log().encode(&mut file);
-    let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay =
-        Session::start_match(decoded.rewound(), Moba3v3::seeds(), moba.packages()).unwrap();
-    let mut replayed = HashTrail::default();
-    for _ in trail.totals() {
-        replay.run_tick_alone();
-        replayed.record(&replay);
-    }
-    trail.assert_same(&replayed);
-    assert_eq!(
-        replay.session().log().next_tick(),
-        game.session().log().next_tick()
-    );
 }

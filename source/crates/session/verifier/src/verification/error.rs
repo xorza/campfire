@@ -1,10 +1,8 @@
 use campfire_package::ContentError;
 use campfire_protocol::LogError;
-use campfire_runner::StartError;
+use campfire_runner::{ReplayError, SnapshotCheckError, StartError};
 use campfire_store::{PathError, ReadError};
 use thiserror::Error;
-
-use crate::replay::error::{ReplayError, SnapshotCheckError};
 
 /// Why a log file does not verify, by the step that failed.
 #[derive(Debug, Error)]

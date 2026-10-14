@@ -166,7 +166,7 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
 
     // The one in flight, fired in tick 12, carries the roll its attack drew as its windup
     // ended: the first draw of its attacker's roll stream in that tick, on the match's seed.
-    let seed = SegmentSeed::new([0; 32]);
+    let seed = SegmentSeed::ZERO;
     let roll = Rng::new(&seed, ROLL_STREAM, shooter_id.get(), Tick::new(12)).fraction();
     assert_eq!(Projectiles::rolls(&game), [roll]);
 }

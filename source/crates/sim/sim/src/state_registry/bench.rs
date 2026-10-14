@@ -127,7 +127,7 @@ impl SimComponent for Stats {
 fn units_world() -> World {
     let mut world = World::new();
     let rate = TickRate::new(NonZeroU32::new(20).unwrap());
-    SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
+    SimUpdate::prepare(&mut world, SegmentSeed::ZERO, rate);
     for i in 0..UNITS {
         let at = Num::from_int(i).unwrap();
         let id = world.resource_mut::<IdAllocator>().allocate();

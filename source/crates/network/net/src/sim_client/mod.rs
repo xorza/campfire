@@ -77,7 +77,7 @@ pub(crate) mod server_pin;
 pub(crate) mod signer;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
-const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
+const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 
 /// Plays a session on a Lightyear client: answers the server's offer with a delegation of a
 /// session key, sends the player's orders as chained inputs, signed once per message with the
@@ -213,7 +213,7 @@ impl Plugin for SimClient {
                 .capabilities(set)
                 .role(Role::Client),
         );
-        packages.books(rate).install_prediction(world, set);
+        packages.books(rate).install_prediction(world);
         mark_unpredicted(world);
         world.insert_resource(Signer::new(self.session_key, self.entropy));
         world.insert_resource(JoinState::new(

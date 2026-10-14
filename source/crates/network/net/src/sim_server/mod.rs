@@ -417,17 +417,15 @@ impl SimServer {
         world.insert_resource(JournalWatch(journal.watch()));
         world.session_mut().resume_journal(Box::new(journal));
         let signer = ServerSigner::new(server.key, server.entropy);
-        loop {
-            Checkpoints::take_again(world, &snapshots, &signer)
-                .map_err(RestoreMatchError::WriteSnapshot)?;
-            if world.session().log().next_tick() >= ticks {
-                break;
-            }
-            world.run_tick_alone();
-            if world.contains_resource::<TickHashes>() {
+        let resumed = world.session().log().next_tick();
+        world.replay_to(ticks, |world| {
+            let ran = world.session().log().next_tick() > resumed;
+            if ran && world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }
-        }
+            Checkpoints::take_again(world, &snapshots, &signer)
+                .map_err(RestoreMatchError::WriteSnapshot)
+        })?;
         SimServer::open_door(world, terms, server, None);
         Checkpoints::start(world, snapshots, signer);
         // The stop may have come after the tick before this boundary, before the save it made due

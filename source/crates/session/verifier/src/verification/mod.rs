@@ -1,16 +1,14 @@
 use std::path::Path;
 
+use crate::verification::error::VerifyError;
 use campfire_common::StateHash;
 use campfire_log::ErrorReport;
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
-use campfire_runner::SessionWorld;
+use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::InputFile;
 use tracing::warn;
-
-use crate::replay::Replay;
-use crate::verification::error::VerifyError;
 
 pub(crate) mod error;
 
@@ -36,7 +34,9 @@ impl Verification {
         }
         let bytes = InputFile::read(log, SessionLog::MAX_FILE_LEN).map_err(VerifyError::ReadLog)?;
         let decoded = SessionLog::decode(&bytes).map_err(VerifyError::Decode)?;
-        let mut replay = Replay::new(decoded, &store).map_err(VerifyError::Start)?;
+        let packages =
+            Session::packages(&store, &decoded.header().terms).map_err(VerifyError::Start)?;
+        let mut replay = Replay::of(decoded, &packages).map_err(VerifyError::Start)?;
         if let Some(dir) = snapshots {
             for record in replay.game().session().log().checkpoints() {
                 let file = dir.join(record.snapshot.to_string());
@@ -47,7 +47,7 @@ impl Verification {
                     .map_err(VerifyError::Snapshot)?;
             }
         }
-        while replay.run_tick().map_err(VerifyError::Replay)? {}
+        replay.run().map_err(VerifyError::Replay)?;
         Ok(replay.game().state_hash())
     }
 }

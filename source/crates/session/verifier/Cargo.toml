@@ -6,7 +6,6 @@ license.workspace = true
 autotests = false
 
 [dependencies]
-campfire-capabilities.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-package.workspace = true
@@ -22,6 +21,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
+campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }

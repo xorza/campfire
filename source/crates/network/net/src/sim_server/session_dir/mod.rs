@@ -230,14 +230,10 @@ impl RestoredSession {
             .session_mut()
             .resume_journal(Box::new(self.files.journal));
         let signer = ServerSigner::new(server_key, entropy);
-        loop {
-            Checkpoints::take_again(&mut world, &self.files.snapshots, &signer)
-                .map_err(AbortError::Snapshot)?;
-            if world.session().log().next_tick() >= ticks {
-                break;
-            }
-            world.run_tick_alone();
-        }
+        world.replay_to(ticks, |world| {
+            Checkpoints::take_again(world, &self.files.snapshots, &signer)
+                .map_err(AbortError::Snapshot)
+        })?;
         if world.session().log().result().is_none() {
             let result = world.session_result_as(Outcome::Aborted);
             let mut session = world.session_mut();

@@ -59,7 +59,7 @@ impl KernelScene {
     pub fn new(seed: u64) -> KernelScene {
         let stream = RngStream::new("scene");
         KernelScene {
-            rng: Rng::new(&SegmentSeed::new([0; 32]), stream, seed, Tick::ZERO),
+            rng: Rng::new(&SegmentSeed::ZERO, stream, seed, Tick::ZERO),
         }
     }
 

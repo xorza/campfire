@@ -24,7 +24,7 @@ use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_stats::{Life, Modifiers, PoolId, Stats, StatsWorld};
@@ -154,19 +154,9 @@ fn server_and_replay_agree_on_every_tick() {
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
-        let seed = decoded.revealed_seeds().unwrap();
-        let mut replay = Session::start_match(decoded.rewound(), seed, local.packages()).unwrap();
-        let mut replayed = HashTrail::default();
-        for _ in live.totals() {
-            replay.run_tick_alone();
-            replayed.record(&replay);
-        }
-        assert_eq!(live.difference(&replayed), None, "{case}");
-        assert_eq!(
-            replay.session().log().next_tick(),
-            Tick::new(ticks),
-            "{case}"
-        );
+        assert_eq!(decoded.next_tick(), Tick::new(ticks), "{case}");
+        let replayed = Replay::of(decoded, local.packages()).unwrap().trail();
+        assert_eq!(live.difference(&replayed.unwrap()), None, "{case}");
     }
 }
 

@@ -10,9 +10,9 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_progression::Experience;
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::internals::HashTrail;
+use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
-use campfire_sim::SimWorld;
 use campfire_store::internals::Scratch;
 use campfire_units::{Destination, Owner};
 
@@ -77,19 +77,14 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     );
 
     // The log replays to the server's hashes.
-    let world = local.server().world();
+    let world = local.server_mut().world_mut();
+    world.resource_mut::<Session>().reveal_seed();
     let mut bytes = Vec::new();
     world.resource::<Session>().log().encode(&mut bytes);
-    let live = world.resource::<TickHashes>().get().to_vec();
+    let live = HashTrail::of_totals(world.resource::<TickHashes>().get().iter().copied());
     let decoded = SessionLog::decode(&bytes).unwrap();
-    let seeds = InProcessMatch::SEED_CHAIN.seeds();
-    let mut replay = Session::start_match(decoded.rewound(), seeds, local.packages()).unwrap();
-    let mut replayed = Vec::new();
-    for _ in &live {
-        replay.run_tick_alone();
-        replayed.push(replay.state_hash());
-    }
-    assert_eq!(replayed, live);
+    let replayed = Replay::of(decoded, local.packages()).unwrap().trail();
+    live.assert_same(&replayed.unwrap());
 }
 
 #[test]

@@ -21,7 +21,7 @@ use campfire_values::{DeclaredName, Names, ResourceId, Team};
 /// alone moves only the first column; a change of behaviour moves the second, and names itself.
 /// `CAMPFIRE_BLESS=1` writes the record again.
 #[derive(Debug)]
-pub struct Golden {
+pub(crate) struct Golden {
     resources: Vec<ResourceId>,
     players: u32,
     ticks: Vec<GoldenTick>,
@@ -41,7 +41,7 @@ const DIGITS: usize = 16;
 
 impl Golden {
     /// A record of a match of `packages` for `players` players.
-    pub fn new(packages: &ModePackages, players: u32) -> Golden {
+    pub(crate) fn new(packages: &ModePackages, players: u32) -> Golden {
         let names = packages.data().resources.iter();
         let names: Names<ResourceId> = names.map(DeclaredName::as_str).collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
@@ -55,7 +55,7 @@ impl Golden {
 
     /// Records the tick `game` just ran, whose state hash `state_hash` is, as the `CopyCheck` of the
     /// tick gives it: the state is hashed once a tick.
-    pub fn record(&mut self, game: &Match, state_hash: StateHash) {
+    pub(crate) fn record(&mut self, game: &Match, state_hash: StateHash) {
         let behaviour = self.behaviour(game);
         self.ticks.push(GoldenTick {
             state_hash,
@@ -135,7 +135,7 @@ impl Golden {
 
     /// Compares the record with the golden file `name` of the runner's tests, or writes the file
     /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in.
-    pub fn check(&self, name: &str) {
+    pub(crate) fn check(&self, name: &str) {
         let path = Golden::path(name);
         let mut lines = String::new();
         for (tick, at) in self.ticks.iter().enumerate() {

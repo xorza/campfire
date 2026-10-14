@@ -7,6 +7,7 @@ pub(crate) mod fixed_match;
 pub(crate) mod fixed_session;
 pub(crate) mod golden;
 pub(crate) mod hash_trail;
+pub(crate) mod match_record;
 pub(crate) mod match_units;
 pub(crate) mod moba_3v3;
 pub(crate) mod proving_match;

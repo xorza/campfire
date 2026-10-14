@@ -2,8 +2,7 @@ use std::cell::LazyCell;
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use campfire_capabilities::{Match, Release};
-use campfire_common::SegmentSeed;
+use campfire_capabilities::Release;
 use campfire_package::ModePackages;
 use campfire_package::internals::TestMode;
 use campfire_script::ScriptHost;
@@ -38,11 +37,8 @@ pub(crate) fn build(c: &mut Criterion) {
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
-                let seed = SegmentSeed::new([0; 32]);
-                let players = Moba3v3::PLAYERS;
                 let start = Instant::now();
-                let mut game = Match::new(MatchBuild::spec(packages, seed, rate, players));
-                MatchBuild::install_mode(packages, &mut game, players);
+                let game = MatchBuild::restore_target(packages, rate, Moba3v3::PLAYERS);
                 spent += start.elapsed();
                 black_box(game);
             }

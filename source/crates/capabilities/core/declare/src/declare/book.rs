@@ -6,6 +6,7 @@ use campfire_script::View;
 use campfire_sim::Capability;
 
 use crate::declare::capability_set::CapabilitySet;
+use crate::declare::role::Role;
 
 /// Package data a module reads, which its declaration puts in a match empty, and the install
 /// fills from the packages, each book through `Book::load_into`. The module that declares it is its
@@ -20,10 +21,10 @@ pub trait Book: Resource + Default {
     /// from the match as it begins.
     fn share(&self, view: &View);
 
-    /// Whether a match of the capabilities `set`, which runs scripts when `scripts` says, holds
-    /// it: one of its owner's, as it reads it.
-    fn held(set: CapabilitySet, scripts: bool) -> bool {
-        set.runs(Self::OWNER) && (scripts || !Self::SCRIPTS_ONLY)
+    /// Whether a match of the capabilities `set` and of `role` holds it: one of its owner's, as
+    /// it reads it, and one that runs scripts, when only scripts read it.
+    fn held(set: CapabilitySet, role: &Role) -> bool {
+        set.runs(Self::OWNER) && (role.scripts() || !Self::SCRIPTS_ONLY)
     }
 
     /// Puts the book in place of the empty one its owner's declaration put in `world`, and gives

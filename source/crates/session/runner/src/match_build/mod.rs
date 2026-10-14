@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::{MatchSpec, Release};
+use campfire_capabilities::{Match, MatchSpec, Release};
 use campfire_common::SegmentSeed;
 use campfire_declare::Role;
 use campfire_mode::{ModeInputs, ModeSetup};
@@ -10,13 +10,6 @@ use campfire_units::Units;
 
 /// A match of a mode, built from its read packages.
 #[derive(Debug)]
-#[cfg_attr(
-    not(feature = "internals"),
-    expect(
-        unreachable_pub,
-        reason = "the internals facade exports it, for its restore targets"
-    )
-)]
 pub struct MatchBuild;
 
 impl MatchBuild {
@@ -55,10 +48,25 @@ impl MatchBuild {
     /// The first part of `install_mode`: every package's scripts and the books at the match's
     /// rate in place; what the mode's install takes from them.
     pub(crate) fn books(packages: &ModePackages, world: &mut World) -> ModeInputs {
-        let set = packages.manifest().capabilities;
         packages.compile_scripts(|source| Units::compile(world, source));
         let rate = *world.resource::<TickRate>();
-        packages.books(rate).install(world, set, true)
+        packages.books(rate).install(world)
+    }
+
+    /// A restore target: the match of `packages` for `players` players at `rate`, with its books
+    /// and its mode in place and no unit, to restore a snapshot into, as a session that loads a
+    /// save, or a verifier that checks a checkpoint's snapshot, does: the books come from the
+    /// packages, the state from the snapshot. Its seed is zero, as the seed is not state.
+    pub fn restore_target(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
+        let spec = MatchBuild::spec(packages, SegmentSeed::ZERO, rate, players);
+        MatchBuild::restore_target_of(spec, packages, players)
+    }
+
+    /// The restore target of `spec`, the spec of `packages` for `players` players.
+    fn restore_target_of(spec: MatchSpec, packages: &ModePackages, players: u32) -> Match {
+        let mut game = Match::new(spec);
+        MatchBuild::install_mode(packages, &mut game, players);
+        game
     }
 }
 
@@ -67,7 +75,7 @@ pub(crate) mod bench;
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_capabilities::{Match, MatchSpec};
+    use campfire_capabilities::Match;
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
     use campfire_mode::{Mode, ModeInputs};
@@ -78,9 +86,6 @@ pub(crate) mod internals {
 
     use crate::match_build::MatchBuild;
 
-    /// The seed of a match whose randomness no test reads.
-    const ZERO_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
-
     impl MatchBuild {
         /// The match of `packages` at `rate`, for `players` players, with every book in place but
         /// the map's vision grid, and no mode installed, as an arena holds it; it starts
@@ -88,7 +93,7 @@ pub(crate) mod internals {
         /// test to spawn, and fails its test on any warning it logs.
         pub(crate) fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
-            let spec = MatchBuild::spec(packages, ZERO_SEED, rate, players);
+            let spec = MatchBuild::spec(packages, SegmentSeed::ZERO, rate, players);
             let mut game = Match::new(spec).with_log(log);
             let ModeInputs { units, .. } = MatchBuild::books(packages, &mut game);
             Vision::clear_grid(&mut game);
@@ -97,41 +102,28 @@ pub(crate) mod internals {
             game
         }
 
-        /// A restore target: the match of `packages` for `players` players at the mode's
-        /// default rate, with its books in place and no unit, to restore snapshots into, as a
-        /// session that loads a save will: the books come from the packages, the state from the
-        /// snapshot. It fails its test on any warning it logs.
-        pub fn restore_target(packages: &ModePackages, players: u32) -> Match {
+        /// The restore target `restore_target` builds at the mode's default rate, which fails
+        /// its test on any warning it logs.
+        pub fn test_target(packages: &ModePackages, players: u32) -> Match {
             let log = LogCheck::start();
-            let spec = MatchBuild::spec(packages, ZERO_SEED, MatchBuild::rate(packages), players);
-            MatchBuild::restore_target_of(log, packages, players, spec)
+            MatchBuild::restore_target(packages, MatchBuild::rate(packages), players).with_log(log)
         }
 
-        /// The restore target `restore_target` builds, its schedule built with no automatic sync
+        /// The restore target `test_target` builds, its schedule built with no automatic sync
         /// points, so its build panics on every pair of systems that only a sync point keeps in
         /// order, naming them.
-        pub fn restore_target_without_sync_points(packages: &ModePackages, players: u32) -> Match {
+        pub fn test_target_without_sync_points(packages: &ModePackages, players: u32) -> Match {
             let log = LogCheck::start();
-            let spec = MatchBuild::spec(packages, ZERO_SEED, MatchBuild::rate(packages), players);
-            MatchBuild::restore_target_of(log, packages, players, spec.without_sync_points())
+            let rate = MatchBuild::rate(packages);
+            let spec = MatchBuild::spec(packages, SegmentSeed::ZERO, rate, players);
+            let target =
+                MatchBuild::restore_target_of(spec.without_sync_points(), packages, players);
+            target.with_log(log)
         }
 
         /// The default tick rate of the mode `packages` holds.
         const fn rate(packages: &ModePackages) -> TickRate {
             TickRate::new(packages.manifest().tick_hz.default())
-        }
-
-        /// A restore target of `spec`, the spec of `packages` for `players` players, which fails
-        /// its test on any warning `log` takes.
-        fn restore_target_of(
-            log: LogCheck,
-            packages: &ModePackages,
-            players: u32,
-            spec: MatchSpec,
-        ) -> Match {
-            let mut game = Match::new(spec).with_log(log);
-            MatchBuild::install_mode(packages, &mut game, players);
-            game
         }
     }
 }

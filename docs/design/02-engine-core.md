@@ -94,7 +94,7 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `orders` | built | The `orders` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `mode` | built | The mode: its script, state, choices and spawns, on the capabilities below it ([The capabilities' crates](#the-capabilities-crates)) |
 | `package` | built | Reads a mode's packages and their dependencies, each file on demand and checked against its index, and runs the load checks; writes a package and its index |
-| `runner` | built | Builds a match from checked packages and feeds it inputs; owns `SessionRules`, which builds a session's terms and checks them on the server, the client and the verifier |
+| `runner` | built | Builds a match from checked packages and feeds it inputs; replays a published log, checking its checkpoints and its result, for the verifier and the tests; owns `SessionRules`, which builds a session's terms and checks them on the server, the client and the verifier |
 | `verifier` | built | CLI: replays a session log segment and checks the result |
 | `lan-check` | built | The real server and bot clients over QUIC on `127.0.0.1`, on request ([Testing and diagnostics](#testing-and-diagnostics)) |
 | `zero-hour-check` | built | Imports the Zero Hour install `GENERALSZH_DATA` names and checks it, on request |

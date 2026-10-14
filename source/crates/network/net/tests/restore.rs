@@ -7,8 +7,8 @@ use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{EngineRelease, Outcome, SessionLog, SessionPrivate};
-use campfire_runner::{Session, SessionWorld};
-use campfire_sim::SimWorld;
+use campfire_runner::internals::HashTrail;
+use campfire_runner::{Replay, Session};
 use campfire_store::internals::Scratch;
 
 /// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
@@ -102,13 +102,6 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         (result.tick, result.outcome, result.state_hash),
         (Tick::new(cut), Outcome::Aborted, *before.last().unwrap())
     );
-    let seeds = log.revealed_seeds().unwrap();
-    let mut replay = Session::start_match(log.rewound(), seeds, local.packages()).unwrap();
-    let mut replayed = Vec::new();
-    while replay.session().log().next_tick() < Tick::new(cut) {
-        replay.run_tick_alone();
-        replayed.push(replay.state_hash());
-    }
-    assert_eq!(replayed, before);
-    assert_eq!(replay.check_result(), Ok(()));
+    let replayed = Replay::of(log, local.packages()).unwrap().trail();
+    HashTrail::of_totals(before).assert_same(&replayed.unwrap());
 }

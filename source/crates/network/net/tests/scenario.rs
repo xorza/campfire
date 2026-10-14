@@ -10,7 +10,7 @@ use campfire_net::{OrderScript, TickHashes};
 use campfire_orders::OrdersAction;
 use campfire_protocol::SessionLog;
 use campfire_runner::internals::HashTrail;
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::{Life, PoolId, Pools};
 use campfire_units::{Body, Dead};
@@ -148,7 +148,6 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let seed = decoded.revealed_seeds().unwrap();
     let ticks = decoded.next_tick();
     let mut rewound = decoded.rewound();
     let mut applied = Vec::new();
@@ -162,15 +161,10 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
             .all(|&(stamp, tick)| stamp == Tick::new(tick)),
         "{applied:?}"
     );
+    assert_eq!(live.totals().len(), usize::try_from(ticks.get()).unwrap());
     let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Session::start_match(decoded.rewound(), seed, local.packages()).unwrap();
-    let mut replayed = HashTrail::default();
-    for _ in live.totals() {
-        replay.run_tick_alone();
-        replayed.record(&replay);
-    }
-    live.assert_same(&replayed);
-    assert_eq!(replay.session().log().next_tick(), ticks);
+    let replayed = Replay::of(decoded, local.packages()).unwrap().trail();
+    live.assert_same(&replayed.unwrap());
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:

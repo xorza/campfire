@@ -377,7 +377,7 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
     // and so the regions say. Every leg of a route is clear of every post, and a search expands
     // no more cells than are open.
     let stream = RngStream::new("posts");
-    let mut rng = Rng::new(&SegmentSeed::new([0; 32]), stream, 7, Tick::ZERO);
+    let mut rng = Rng::new(&SegmentSeed::ZERO, stream, 7, Tick::ZERO);
     let mut draw = |bound: u64| rng.below(bound);
     for odds in [6, 4, 3] {
         let rows: Vec<String> = (0..12)

@@ -25,8 +25,8 @@ use campfire_protocol::{
 };
 use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_runner::{
-    InputRules, ResultMismatch, ServerInputRefused, Session, SessionWorld, SlotRuleError,
-    StartError, TermsError,
+    InputRules, Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionWorld,
+    SlotRuleError, SnapshotCheckError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_stats::Life;
@@ -34,9 +34,7 @@ use campfire_store::internals::Scratch;
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_units::Destination;
 use campfire_values::Rank;
-use campfire_verifier::{
-    Replay, ReplayError, SnapshotCheckError, Verification, Verified, VerifyError,
-};
+use campfire_verifier::{Verification, Verified, VerifyError};
 
 /// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
@@ -86,6 +84,20 @@ fn packages() -> ModePackages {
 
 fn store() -> PackageStore {
     PackageStore::scan(&PackageDir::workspace("")).unwrap()
+}
+
+/// The packages `log`'s terms name, from the store, as the verifier's binary finds them.
+fn from_store(log: &SessionLog) -> ModePackages {
+    Session::packages(&store(), &log.header().terms).unwrap()
+}
+
+/// What refuses the replay of `log` on the packages its terms name in `store`, as the verifier's
+/// binary starts one; none when it starts.
+fn refusal(log: SessionLog, store: &PackageStore) -> Option<StartError> {
+    let packages = Session::packages(store, &log.header().terms);
+    packages
+        .and_then(|packages| Replay::of(log, &packages).map(drop))
+        .err()
 }
 
 /// A session of the test lane mode at its 30 ticks a second, for its one player, whose inputs
@@ -181,10 +193,14 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     Run { fixed, trail }
 }
 
-/// The replay of `fixed`'s log file, its state after each tick, and how it ended.
-fn replayed(fixed: &FixedMatch) -> (Replay, HashTrail, Result<(), ReplayError>) {
+/// The replay of `fixed`'s log file on `named`, the packages it names, its state after each tick,
+/// and how it ended.
+fn replayed<'p>(
+    fixed: &FixedMatch,
+    named: &'p ModePackages,
+) -> (Replay<'p>, HashTrail, Result<(), ReplayError>) {
     let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
-    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let mut replay = Replay::of(decoded, named).unwrap();
     let mut trail = HashTrail::default();
     let end = loop {
         match replay.run_tick() {
@@ -251,7 +267,8 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
         state_hash: fixed.game().state_hash(),
     };
     assert_eq!(log.result(), Some(&ended));
-    let (replay, trail, end) = replayed(&fixed);
+    let named = from_store(fixed.game().session().log());
+    let (replay, trail, end) = replayed(&fixed, &named);
     assert_eq!(end, Ok(()));
     live.assert_same(&trail);
     // Seeds that reach segment 0 alone do not start the log of two.
@@ -276,7 +293,8 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // restores to another state than it records.
     let forged = StateHash::new([7; 32]);
     let Run { fixed, .. } = checkpointed(&mut snapshot, Some(forged), None);
-    let (replay, _, end) = replayed(&fixed);
+    let named = from_store(fixed.game().session().log());
+    let (replay, _, end) = replayed(&fixed, &named);
     let refused = ReplayError::Checkpoint {
         segment: 1,
         tick: Tick::new(40),
@@ -303,7 +321,11 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
         logged: won,
         ended: Outcome::Aborted,
     };
-    assert_eq!(replayed(&fixed).2, Err(ReplayError::Result(mismatch)));
+    let named = from_store(fixed.game().session().log());
+    assert_eq!(
+        replayed(&fixed, &named).2,
+        Err(ReplayError::Result(mismatch))
+    );
 }
 
 #[test]
@@ -317,7 +339,8 @@ fn run_and_replay_agree_on_every_tick() {
     assert_eq!(hero(game, 0), arrived);
 
     let decoded = SessionLog::decode(&encoded(game.session().log())).unwrap();
-    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let named = from_store(&decoded);
+    let mut replay = Replay::of(decoded, &named).unwrap();
     let mut replayed = HashTrail::default();
     while replay.run_tick().unwrap() {
         replayed.record(replay.game());
@@ -448,7 +471,8 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let bytes = encoded(game.session().log());
     let decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(encoded(&decoded), bytes);
-    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let named = from_store(&decoded);
+    let mut replay = Replay::of(decoded, &named).unwrap();
     let mut replayed = HashTrail::default();
     while replay.run_tick().unwrap() {
         replayed.record(replay.game());
@@ -463,7 +487,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     let signature = FixedSession::server_signature(&to_bot, log.session_id(), log.next_place());
     log.record_server(to_bot, &signature).unwrap();
     log.reveal_seed(FixedSession::seed(0));
-    let refused = Replay::new(log, &store()).err();
+    let refused = refusal(log, &store());
     assert!(
         matches!(
             refused,
@@ -497,7 +521,8 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     };
     let (fixed, live) = play(true, &mut snapshot);
     let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
-    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let named = from_store(&decoded);
+    let mut replay = Replay::of(decoded, &named).unwrap();
     let record = replay
         .game()
         .session()
@@ -574,7 +599,8 @@ impl Seen {
 fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     let Run { fixed, trail } = run(&[&INTO_REACH], 72);
     let decoded = SessionLog::decode(&encoded(fixed.game().session().log())).unwrap();
-    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let named = from_store(&decoded);
+    let mut replay = Replay::of(decoded, &named).unwrap();
     let mut replayed = HashTrail::default();
     let mut seen = Vec::new();
     while replay.run_tick().unwrap() {
@@ -703,8 +729,8 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let store = store();
     let session = session();
     assert!(matches!(
-        Replay::new(session.log(), &store),
-        Err(StartError::Seed(SeedError::NotRevealed))
+        refusal(session.log(), &store),
+        Some(StartError::Seed(SeedError::NotRevealed))
     ));
     assert!(matches!(
         Session::start_match(
@@ -721,7 +747,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         change(&mut terms);
         let mut log = SessionLog::new(session.header(terms)).unwrap();
         log.reveal_seed(FixedSession::seed(0));
-        Replay::new(log, &store).err()
+        refusal(log, &store)
     };
     let refused = [
         other(|terms| terms.release = EngineRelease::new(0, 0, 9)),
@@ -755,7 +781,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     terms.slots.extend([SlotPlan::Open; 2]);
     let mut log = SessionLog::new(session.header(terms)).unwrap();
     log.reveal_seed(FixedSession::seed(0));
-    let refused = Replay::new(log, &store).err();
+    let refused = refusal(log, &store);
     assert!(
         matches!(
             refused,

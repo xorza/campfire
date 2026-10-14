@@ -1,7 +1,8 @@
 use campfire_common::{StateHash, Tick};
-use campfire_runner::ResultMismatch;
 use campfire_sim::SnapshotError;
 use thiserror::Error;
+
+use crate::session::error::ResultMismatch;
 
 /// Why a published log does not replay to what it records. The log is untrusted, so each is an
 /// expected failure.

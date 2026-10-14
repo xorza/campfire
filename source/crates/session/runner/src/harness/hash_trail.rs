@@ -7,9 +7,9 @@ use campfire_sim::{SimWorld, TypeHash};
 /// The state hashes of a match after one tick: by state type, in the registry's order, and in
 /// total.
 #[derive(Debug, Clone, Copy)]
-pub struct MatchHashes<'a> {
-    pub types: &'a [TypeHash],
-    pub total: StateHash,
+pub(crate) struct MatchHashes<'a> {
+    pub(crate) types: &'a [TypeHash],
+    pub(crate) total: StateHash,
 }
 
 /// The state hashes of a match after each tick, in total and, when it was recorded from a world,
@@ -44,7 +44,7 @@ impl HashTrail {
     }
 
     /// Records `hashes`, a tick's, which a `CopyCheck` of the tick gives.
-    pub fn record_hashes(&mut self, hashes: MatchHashes<'_>) {
+    pub(crate) fn record_hashes(&mut self, hashes: MatchHashes<'_>) {
         if self.totals.is_empty() {
             self.names = hashes.types.iter().map(|hash| hash.name).collect();
         }

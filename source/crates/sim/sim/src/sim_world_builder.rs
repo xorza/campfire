@@ -219,7 +219,7 @@ mod tests {
                 .is_some_and(|schedules| schedules.contains(SimUpdate))
                 && world.contains_resource::<StateRegistry>()
         };
-        let mut builder = SimWorldBuilder::new(&mut world, SegmentSeed::new([0; 32]), RATE);
+        let mut builder = SimWorldBuilder::new(&mut world, SegmentSeed::ZERO, RATE);
         assert!(!held(builder.world()));
         builder.build();
         assert!(held(&world));
@@ -247,11 +247,7 @@ mod tests {
         // A builder dropped before `build` would leave its world with no schedule: it panics.
         let dropped = panic::catch_unwind(|| {
             let mut world = World::new();
-            drop(SimWorldBuilder::new(
-                &mut world,
-                SegmentSeed::new([0; 32]),
-                RATE,
-            ));
+            drop(SimWorldBuilder::new(&mut world, SegmentSeed::ZERO, RATE));
         });
         assert_eq!(
             dropped.unwrap_err().downcast_ref::<&str>(),

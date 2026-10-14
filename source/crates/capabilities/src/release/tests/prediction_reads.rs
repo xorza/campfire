@@ -80,7 +80,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let set = Release::capabilities();
     let mut world = World::new();
     let rate = Match::TEST_RATE;
-    let spec = MatchSpec::new(SegmentSeed::new([0; 32]), rate).capabilities(set);
+    let spec = MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set);
     Release::build(&mut world, spec.clone().role(Role::Client).unbuilt());
     let unpredicted = world.register_component::<Unpredicted>();
     let holds = ClientHolds::of(&mut world, set);

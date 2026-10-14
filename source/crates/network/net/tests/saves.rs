@@ -15,7 +15,7 @@ use campfire_net::{
     SessionDir, SimServerWorld,
 };
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
-use campfire_runner::{InputRules, Session, SessionWorld};
+use campfire_runner::{InputRules, Replay, Session};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
 use campfire_store::internals::Scratch;
@@ -153,16 +153,8 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
-    let ticks = published.next_tick();
-    let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Session::start_match(published.rewound(), seeds, local.packages()).unwrap();
-    while replay.session().log().next_tick() < ticks {
-        if replay.session().log().next_tick() == save.tick {
-            assert_eq!(replay.state_hash(), save.state_hash);
-        }
-        replay.run_tick_alone();
-    }
-    assert_eq!(replay.check_result(), Ok(()));
+    let mut replay = Replay::of(published, local.packages()).unwrap();
+    assert_eq!(replay.run(), Ok(()));
 }
 
 #[test]

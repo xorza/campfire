@@ -11,7 +11,7 @@ use campfire_package::ModePackages;
 use campfire_package::internals::TestMode;
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::internals::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
-use campfire_runner::{ResumeError, Session, SessionWorld};
+use campfire_runner::{Replay, ResumeError, Session, SessionWorld};
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_units::Dead;
 
@@ -253,13 +253,6 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     let published = SessionLog::decode(&bytes).unwrap();
     assert_eq!(published.next_tick(), Tick::new(150));
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&record]);
-    let seeds = published.revealed_seeds().unwrap();
-    let mut replay = Session::start_match(published.rewound(), seeds, proving.packages()).unwrap();
-    while replay.session().log().next_tick() < Tick::new(150) {
-        if replay.session().log().next_tick() == Tick::new(100) {
-            assert_eq!(replay.state_hash(), record.state_hash);
-        }
-        replay.run_tick_alone();
-    }
-    assert_eq!(replay.check_result(), Ok(()));
+    let mut replay = Replay::of(published, proving.packages()).unwrap();
+    assert_eq!(replay.run(), Ok(()));
 }

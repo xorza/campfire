@@ -102,7 +102,7 @@ impl Declarations for Installer<'_> {
     }
 
     fn book<B: Book>(&mut self) {
-        if B::held(self.set, self.role.scripts()) {
+        if B::held(self.set, self.role) {
             self.world.insert_resource(B::default());
         }
     }

@@ -9,7 +9,7 @@ use crate::session::session_world::SessionWorld;
 /// A `StateCopy` of a match that follows it tick by tick, checked after each: every state type
 /// of the copy hashes as the match's own, so the copy of what changed missed no write.
 #[derive(Debug)]
-pub struct CopyCheck {
+pub(crate) struct CopyCheck {
     copy: StateCopy,
     /// Each type's hash in the copy and in the match, kept between ticks.
     copied: Vec<TypeHash>,
@@ -18,7 +18,7 @@ pub struct CopyCheck {
 
 impl CopyCheck {
     /// A copy of the state of `game` as it stands.
-    pub fn new(game: &mut Match) -> CopyCheck {
+    pub(crate) fn of(game: &mut Match) -> CopyCheck {
         CopyCheck {
             copy: StateCopy::of(game),
             copied: Vec::new(),
@@ -28,7 +28,7 @@ impl CopyCheck {
 
     /// Brings the copy up to `game`, and panics naming each type whose hash differs; the
     /// match's hashes, which a `HashTrail` and a `Golden` record, so a tick hashes it once.
-    pub fn check(&mut self, game: &mut Match) -> MatchHashes<'_> {
+    pub(crate) fn check(&mut self, game: &mut Match) -> MatchHashes<'_> {
         self.copy.follow(game);
         let registry = game.resource::<StateRegistry>();
         registry.hash_by_type(self.copy.world(), &mut self.copied);

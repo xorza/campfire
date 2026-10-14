@@ -755,7 +755,7 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     let scheduled = |declared: &[Capability]| {
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
         let world = Match::new(
-            MatchSpec::new(SegmentSeed::new([0; 32]), Match::TEST_RATE)
+            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE)
                 .capabilities(Release::capability_set(declared).unwrap())
                 .role(Role::Server(Some(budgets))),
         );

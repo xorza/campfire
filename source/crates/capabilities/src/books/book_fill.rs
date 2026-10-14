@@ -7,8 +7,8 @@ use std::fmt::Debug;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, KindSpawn,
-    KindVisitor, ModuleSet, OneShot, Report, Scratch,
+    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
+    ModuleSet, OneShot, Report, Scratch,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
@@ -18,14 +18,12 @@ use campfire_values::EngineTag;
 use crate::books::built_books::BuiltBooks;
 
 /// The install of the books, a walk of every module's declarations: each declared book is taken
-/// from `built`, which must hold it, and goes in `world`, a match of `set` that runs scripts when
-/// `scripts` says, when the match holds it; one the match does not hold is dropped.
+/// from `built`, which must hold it, and goes in `world` in place of the empty one its owner's
+/// declaration put there; one the match does not hold, as its install put none, is dropped.
 #[derive(Debug)]
 pub(super) struct BookFill<'a> {
     pub(super) built: &'a mut BuiltBooks,
     pub(super) world: &'a mut World,
-    pub(super) set: CapabilitySet,
-    pub(super) scripts: bool,
 }
 
 impl StateTypes for BookFill<'_> {
@@ -56,7 +54,7 @@ impl Declarations for BookFill<'_> {
     fn book<B: Book>(&mut self) {
         let book = self.built.take::<B>();
         let book = book.unwrap_or_else(|| panic!("{} is declared and built", type_name::<B>()));
-        if B::held(self.set, self.scripts) {
+        if self.world.contains_resource::<B>() {
             book.load_into(self.world);
         }
     }

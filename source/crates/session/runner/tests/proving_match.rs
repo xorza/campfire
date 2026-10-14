@@ -14,10 +14,8 @@ use campfire_mode::ModeWorld;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
-use campfire_runner::internals::{
-    CopyCheck, FixedMatch, Golden, MatchBuild, MatchUnits, ProvingMatch,
-};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::internals::{FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
+use campfire_runner::{MatchBuild, Session, SessionWorld};
 use campfire_script::{ScriptFailures, StateValue};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
@@ -212,8 +210,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
     let mut seen = Seen::default();
-    let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
-    let mut copy = CopyCheck::new(fixed.game_mut());
+    let mut record = MatchRecord::of(fixed.game_mut(), proving.packages(), ProvingMatch::PLAYERS);
     let capabilities = proving.packages().manifest().capabilities;
     // The match's setup clears none, so the first tick's messages hold its removals too.
     let start = Removals::of(fixed.game());
@@ -226,15 +223,14 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         assert_eq!(removals.written - removals.held, written, "tick {tick}");
         removed |= removals.held > 0;
         written = removals.written;
-        let state = copy.check(fixed.game_mut()).total;
-        golden.record(fixed.game(), state);
+        record.tick(fixed.game_mut());
         assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
         if fixed.game().save_due() {
             seen.saves.push(tick + 1);
         }
     }
-    golden.check("proving");
+    record.check("proving");
     assert!(removed, "no tick removed a component");
     let world = fixed.game();
     // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by
@@ -349,8 +345,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
     StageClock::install(fixed.game_mut());
-    let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
-    let mut copy = CopyCheck::new(fixed.game_mut());
+    let mut record = MatchRecord::of(fixed.game_mut(), proving.packages(), ProvingMatch::PLAYERS);
     let mut units = Vec::new();
     for tick in 0..ProvingMatch::TICKS {
         let world = fixed.game_mut();
@@ -365,10 +360,9 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
             world.entity_mut(entity).remove::<Inert>().insert(Inert);
         }
         proving.play_tick(&mut fixed, tick);
-        let state = copy.check(fixed.game_mut()).total;
-        golden.record(fixed.game(), state);
+        record.tick(fixed.game_mut());
     }
-    golden.check("proving");
+    record.check("proving");
 }
 
 /// A snapshot of the proving match restores into a match built from its packages, to the same
@@ -382,7 +376,7 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
     for tick in 0..60 {
         proving.play_tick(&mut fixed, tick);
     }
-    let mut target = MatchBuild::restore_target(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut bytes = Vec::new();
     fixed.game().snapshot(&mut bytes);
     target.restore_in_place(&bytes).unwrap();
@@ -422,7 +416,7 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
     for tick in 0..60 {
         proving.play_tick(&mut fixed, tick);
     }
-    let mut target = MatchBuild::restore_target(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut base = Vec::new();
     fixed.game().snapshot(&mut base);
     let mut draws = Draws::new(7);
@@ -468,7 +462,7 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
     for tick in 0..60 {
         proving.play_tick(&mut fixed, tick);
     }
-    let mut target = MatchBuild::restore_target(proving.packages(), ProvingMatch::PLAYERS);
+    let mut target = MatchBuild::test_target(proving.packages(), ProvingMatch::PLAYERS);
     let mut base = Vec::new();
     fixed.game().snapshot(&mut base);
     let mut draws = Draws::new(11);
@@ -512,7 +506,7 @@ fn every_order_the_proving_match_relies_on_is_stated() {
     // keeps apart passes the ambiguity check until the systems around it change.
     let proving = ProvingMatch::load();
     let mut target =
-        MatchBuild::restore_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
+        MatchBuild::test_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
     // Each game system sits in a set its module declares: one ordered by hand runs where Bevy
     // picks, and one between two stages before or after the probe there.
     let sets = Release::module_sets(*target.resource::<CapabilitySet>());

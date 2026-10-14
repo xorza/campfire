@@ -12,7 +12,7 @@ use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_progression::{Experience, Points};
-use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden, MatchUnits};
+use campfire_runner::internals::{FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::{Hook, ScriptFailures};
 use campfire_sim::{SimWorld, StableId};
@@ -64,9 +64,8 @@ mod scripted_match {
     #[test]
     fn the_lane_match_plays_to_its_golden_record() {
         let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
-        let mut golden = Golden::new(session.packages(), session.slots());
         let mut fixed = session.start();
-        let mut copy = CopyCheck::new(fixed.game_mut());
+        let mut record = MatchRecord::of(fixed.game_mut(), session.packages(), session.slots());
         let walker = MatchUnits::of(fixed.game()).hero(0);
         // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
         // it as they meet; the west's strike the runner, so the walker alone fells these.
@@ -116,8 +115,7 @@ mod scripted_match {
                 _ => {}
             }
             fixed.game_mut().run_tick_alone();
-            let state = copy.check(fixed.game_mut()).total;
-            golden.record(fixed.game(), state);
+            record.tick(fixed.game_mut());
             if tick == 0 {
                 east = MatchUnits::of(fixed.game())
                     .all()
@@ -147,7 +145,7 @@ mod scripted_match {
                 seen.push(Progress::of(&fixed, walker));
             }
         }
-        golden.check("lane");
+        record.check("lane");
         // After tick 1: its first ability at rank 1, for its one point. Each creep it fells gives it
         // 60 experience: 120 after the second, past level 2's 100, which gives a point. Its ultimate
         // needs level 3, and its first ability's rank 2 level 2: the point goes to that.

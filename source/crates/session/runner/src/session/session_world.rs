@@ -1,4 +1,5 @@
 use bevy_ecs::world::{Mut, World};
+use campfire_common::Tick;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
 use campfire_protocol::{Checkpoint, Outcome, SessionResult, SlotChangeKind, SnapshotFingerprint};
@@ -31,6 +32,16 @@ pub trait SessionWorld {
     /// tick's removals alone, so a long replay holds them in bounded memory. The sim reads none
     /// of them, and tracks its own changes, so its state is the same either way.
     fn run_tick_alone(&mut self);
+
+    /// Replays the log's sealed ticks up to `tick`, each as `run_tick_alone` runs it, and calls
+    /// `on_boundary` at each boundary from the one the match stands at through `tick`'s, before
+    /// the tick after it runs: a restore takes a checkpoint again there, a verifier checks one.
+    /// Its first error ends the replay.
+    fn replay_to<E>(
+        &mut self,
+        tick: Tick,
+        on_boundary: impl FnMut(&mut World) -> Result<(), E>,
+    ) -> Result<(), E>;
 
     /// Whether a save is due at the boundary before the next tick: the mode asked for one in
     /// the tick before, by `ctx.save()`, or the boundary is at a multiple of the mode's
@@ -128,6 +139,24 @@ impl SessionWorld for World {
     fn run_tick_alone(&mut self) {
         self.run_session_tick();
         self.clear_trackers();
+    }
+
+    fn replay_to<E>(
+        &mut self,
+        tick: Tick,
+        mut on_boundary: impl FnMut(&mut World) -> Result<(), E>,
+    ) -> Result<(), E> {
+        debug_assert!(
+            self.session().log().next_tick() <= tick,
+            "a replay goes forward"
+        );
+        loop {
+            on_boundary(self)?;
+            if self.session().log().next_tick() >= tick {
+                return Ok(());
+            }
+            self.run_tick_alone();
+        }
     }
 
     fn save_due(&self) -> bool {
