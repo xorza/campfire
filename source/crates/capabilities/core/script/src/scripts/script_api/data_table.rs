@@ -36,6 +36,8 @@ campfire_common::enum_all! {
         Item,
         Inventory,
         Shop,
+        Use,
+        Uses,
     }
     pub const ALL;
 }
@@ -77,6 +79,8 @@ impl DataTable {
             DataTable::Item => "An item type, `[items.<id>]`",
             DataTable::Inventory => "A unit type's `inventory`",
             DataTable::Shop => "A unit type's `shop`",
+            DataTable::Use => "A unit type's `use`",
+            DataTable::Uses => "A unit type's `uses`",
         }
     }
 }

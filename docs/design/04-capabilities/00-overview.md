@@ -35,7 +35,7 @@ Every capability says its mechanism in the same terms, so capabilities meet in o
 | `items` | built | Inventories, item types, recipes and shops; later equipment, world items and crafting | [Items](items.md) |
 | `progression` | built | Experience on tracks, levels, points to learn ranks; later perks | [Progression](progression.md) |
 | `quests` | planned | Quests and objectives, dialogue, campaign objectives | [Quests](quests.md) |
-| `interaction` | planned | The `use` and `enter` actions on objects | [Interaction](interaction.md) |
+| `interaction` | built | The `use` action on objects; later the `enter` action | [Interaction](interaction.md) |
 | `production` | built | Train, build and gather actions, construction, supply, tech | [Production](production.md) |
 | `physics` | planned | Vehicles and rigid bodies against the terrain | [Physics](physics.md) |
 | `world` | planned | Large worlds: dormant regions, parallel regions, streaming | [World](world.md) |

@@ -59,6 +59,7 @@ impl ActionParts {
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
         let kind = match KindData::of(data).map_err(ActionProblem::KindField)? {
             KindData::Cast => KindSpec::Cast,
+            KindData::Use => KindSpec::Use,
             KindData::Attack {
                 rate,
                 damage,

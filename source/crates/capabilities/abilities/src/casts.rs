@@ -42,13 +42,13 @@ struct Prepared {
 pub struct Casts;
 
 impl Casts {
-    /// Starts each cast a unit was ordered, in Act: one that passes its checks, its target within
-    /// range, starts, or for a charged action starts to charge; one whose target is beyond range,
-    /// of a unit that walks, walks in range first, its walk in place of any other, and stops there
-    /// to start; any other is dropped, and stops the walk it took. A unit its tags or a forced move
-    /// keep from casting keeps its order, and stands: a cast it started or walked in range for goes
-    /// back to it, and a charge ends, spending nothing. A charge its order released, or that is
-    /// full, resolves.
+    /// Starts each cast or use a unit was ordered, in Act: one that passes its checks, its target
+    /// within range, starts, or for a charged action starts to charge; one whose target is beyond
+    /// range, of a unit that walks, walks in range first, its walk in place of any other, and stops
+    /// there to start; any other is dropped, and stops the walk it took. A unit its tags or a
+    /// forced move keep from casting keeps its order, and stands: a cast it started or walked in
+    /// range for goes back to it, and a charge ends, spending nothing. A charge its order released,
+    /// or that is full, resolves.
     pub(super) fn start_casts(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
@@ -94,11 +94,8 @@ impl Casts {
             let Some(underway) = slots.in_progress() else {
                 continue;
             };
-            let kind = slots
-                .slot(underway.slot())
-                .expect("a slot the unit has")
-                .kind;
-            let blocked = Abilities::blocked(tags, forced, used, Some(kind));
+            let underway_slot = slots.slot(underway.slot()).expect("a slot the unit has");
+            let blocked = Abilities::blocked(tags, forced, used, Some(underway_slot), &book);
             if let InProgress::Charge { .. } = underway {
                 if blocked {
                     slots.interrupt();
@@ -120,7 +117,7 @@ impl Casts {
                 continue;
             };
             let action = book.get(id).expect("a slot's action is in the book");
-            if action.kind.kind() != ActionKind::Cast {
+            if !matches!(action.kind.kind(), ActionKind::Cast | ActionKind::Use) {
                 continue;
             }
             if blocked {
@@ -231,9 +228,11 @@ impl Casts {
             let forced = unit.contains::<ForcedMove>();
             let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
             let due = slots.in_progress().expect("a due cast is under way");
-            let kind = slots.slot(due.slot()).expect("a cast's slot").kind;
+            let slot = slots.slot(due.slot()).expect("a cast's slot");
             let used = unit.get::<UseGroup>();
-            let can_cast = !Abilities::blocked(unit.get::<UnitTags>(), forced, used, Some(kind));
+            let book = world.resource::<ActionBook>();
+            let can_cast =
+                !Abilities::blocked(unit.get::<UnitTags>(), forced, used, Some(slot), book);
             if !can_cast {
                 world
                     .get_mut::<ActionSlots>(entity)
@@ -290,8 +289,8 @@ impl Casts {
             else {
                 continue;
             };
-            let kind = slots.slot(casting.slot).expect("a cast's slot").kind;
-            if Abilities::blocked(tags, forced, used, Some(kind)) {
+            let slot = slots.slot(casting.slot).expect("a cast's slot");
+            if Abilities::blocked(tags, forced, used, Some(slot), &book) {
                 slots.interrupt();
                 continue;
             }

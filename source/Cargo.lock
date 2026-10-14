@@ -2260,6 +2260,7 @@ dependencies = [
  "campfire-declare",
  "campfire-deliveries",
  "campfire-geometry",
+ "campfire-interaction",
  "campfire-items",
  "campfire-log",
  "campfire-math",
@@ -2480,6 +2481,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-interaction"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "campfire-actions",
+ "campfire-declare",
+ "campfire-interaction",
+ "campfire-players",
+ "campfire-script",
+ "campfire-sim",
+ "campfire-units",
+ "campfire-values",
+ "serde",
+]
+
+[[package]]
 name = "campfire-items"
 version = "0.1.0"
 dependencies = [
@@ -2654,6 +2671,7 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-geometry",
+ "campfire-interaction",
  "campfire-math",
  "campfire-navigation",
  "campfire-orders",

@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_areas::AreaData;
 use campfire_combat::CombatData;
+use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ShopData};
 use campfire_orders::AiData;
 use campfire_production::{DropOffData, NodeData, ProductionData, SupplyData};
@@ -54,6 +55,11 @@ pub struct UnitTypeData {
     pub inventory: Option<InventoryData>,
     /// It is a shop: its units sell items.
     pub shop: Option<ShopData>,
+    /// It is an object: units use it.
+    #[serde(rename = "use")]
+    pub usable: Option<UseData>,
+    /// Its units use objects.
+    pub uses: Option<UsesData>,
 }
 
 impl UnitTypeData {
@@ -81,7 +87,7 @@ impl UnitTypeData {
     }
 
     /// The fields of its table, by name, in the order `given` gives them.
-    pub const FIELDS: [&str; 20] = [
+    pub const FIELDS: [&str; 22] = [
         "tags",
         "params",
         "state",
@@ -102,6 +108,8 @@ impl UnitTypeData {
         "area",
         "inventory",
         "shop",
+        "use",
+        "uses",
     ];
 
     /// The name of each field its table gives, a list or map one only when it is not empty.
@@ -127,6 +135,8 @@ impl UnitTypeData {
             area,
             inventory,
             shop,
+            usable,
+            uses,
         } = self;
         let given = [
             !tags.is_empty(),
@@ -149,6 +159,8 @@ impl UnitTypeData {
             area.is_some(),
             inventory.is_some(),
             shop.is_some(),
+            usable.is_some(),
+            uses.is_some(),
         ];
         UnitTypeData::FIELDS
             .into_iter()

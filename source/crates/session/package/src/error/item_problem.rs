@@ -1,4 +1,3 @@
-use campfire_actions::ActionSlots;
 use campfire_values::DeclaredName;
 use thiserror::Error;
 
@@ -16,9 +15,6 @@ pub enum ItemProblem {
     /// An inventory at `at` fills a slot kind with ranks, while an item's action has one.
     #[error("{at}: its inventory fills {kind}, a slot kind with ranks")]
     RankedInventory { at: Place, kind: DeclaredName },
-    /// A unit type at `at` holds more slots, its own and its inventory's, than a unit holds.
-    #[error("{0}: more than {limit} slots with its inventory", limit = ActionSlots::LIMIT)]
-    TooManySlots(Place),
     /// The item costs less, in some resource, than the components it is built from.
     #[error("item {0} costs less than its components")]
     CheaperThanComponents(DeclaredName),

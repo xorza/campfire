@@ -2827,13 +2827,13 @@ static FLAWS: [Flaw; 283] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::UnitType } if action == "dread"),
     ),
-    // The release runs actions of kind `cast`, `attack` and `train` alone yet; an action sits in
+    // The release runs no action of the kind `enter` yet; an action sits in
     // slot kinds of one count of ranks.
     flaw(
         HUSK,
-        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"use\"\n"),
+        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Use } if action == "dread"),
+        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Enter } if action == "dread"),
     ),
     Flaw {
         file: MODE_DATA,

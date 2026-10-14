@@ -198,7 +198,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_resolve(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_hit(ctx, unit, target, hit)` | action | core | since 1.0 |
 | `on_end(ctx, unit, hit)` | action | core | since 1.0 |
-| `on_channel_tick(ctx, unit)` | action | abilities | since 1.0 |
+| `on_channel_tick(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_interrupt(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_interval(ctx, m)` | modifier | stats | since 1.0 |
 | `on_attack(ctx, m, target)` | modifier | combat | since 1.0 |
@@ -286,6 +286,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `drop_off` | production | since 1.0 |
 | `inventory` | items | since 1.0 |
 | `shop` | items | since 1.0 |
+| `use` | interaction | since 1.0 |
+| `uses` | interaction | since 1.0 |
 | `orders` | orders | since 1.0 |
 
 ### The mode's `[combat]`
@@ -589,3 +591,16 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `reach` | items | since 1.0 |
 | `buyers` | items | since 1.0 |
 | `sell_share` | items | since 1.0 |
+
+### A unit type's `use`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `action` | interaction | since 1.0 |
+| `users` | interaction | since 1.0 |
+
+### A unit type's `uses`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `kind` | interaction | since 1.0 |

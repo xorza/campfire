@@ -1,4 +1,4 @@
-use campfire_actions::{ActionDataField, ActionField, ActionKind};
+use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots};
 use campfire_capabilities::UnitStartError;
 use campfire_common::MapName;
 use campfire_mode::ModeError;
@@ -22,6 +22,7 @@ use crate::error::limit::Limit;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
+use crate::error::use_problem::UseProblem;
 use crate::error::way::Way;
 use crate::files::package_name::PackageName;
 
@@ -272,6 +273,13 @@ pub enum LoadProblem {
     /// The mode's item types, its shop or an inventory.
     #[error(transparent)]
     Item(ItemProblem),
+    /// A use, an object or a user.
+    #[error(transparent)]
+    Use(UseProblem),
+    /// A unit type at `at` holds more slots, its own, its inventory's and its use slot, than a
+    /// unit holds.
+    #[error("{0}: more than {limit} slots", limit = ActionSlots::LIMIT)]
+    TooManySlots(Place),
     /// The data at `at` gives `field`, which design 08 plans and the release does not read yet.
     #[error("{at}: {field} is planned, and the release does not read it yet")]
     Planned { field: &'static str, at: Place },

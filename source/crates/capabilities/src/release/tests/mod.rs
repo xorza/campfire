@@ -203,7 +203,7 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 /// Each capability crate's folder under this crate's and its layer, lowest first: a crate
 /// depends only on crates of lower layers, and a capability needs only capabilities of lower
 /// layers, as design 02's structural rules ask. This crate sits above them all.
-const LAYERS: [(&str, u8); 22] = [
+const LAYERS: [(&str, u8); 23] = [
     ("core/state-types", 0),
     ("core/values", 1),
     ("core/visibility", 1),
@@ -216,6 +216,7 @@ const LAYERS: [(&str, u8); 22] = [
     ("core/actions", 8),
     ("combat", 9),
     ("core/deliveries", 9),
+    ("interaction", 9),
     ("items", 9),
     ("progression", 9),
     ("abilities", 10),
@@ -777,4 +778,5 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
 }
 
 mod declaration_audit;
+mod genre_words;
 mod prediction_reads;

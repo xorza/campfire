@@ -1,0 +1,34 @@
+[package]
+name = "campfire-interaction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-actions/internals",
+    "campfire-declare/internals",
+    "campfire-players/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+]
+
+[dependencies]
+campfire-actions.workspace = true
+campfire-declare.workspace = true
+campfire-players.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+campfire-units.workspace = true
+campfire-values.workspace = true
+
+bevy_ecs.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+campfire-interaction = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

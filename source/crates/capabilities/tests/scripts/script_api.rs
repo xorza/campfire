@@ -10,6 +10,7 @@ use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotK
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::{Release, UnitTypeData};
 use campfire_combat::{CombatData, LeechData, ModeCombatData};
+use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
 use campfire_mode::{ChoiceData, ModeData, PlayersData, RelationData, SavesData, TeamData};
@@ -177,6 +178,8 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             Some(Capability::Navigation),
         ),
         (DataTable::UnitType, "shop", Some(Capability::Items)),
+        (DataTable::UnitType, "use", Some(Capability::Interaction)),
+        (DataTable::UnitType, "uses", Some(Capability::Interaction)),
     ];
     for (table, field, owner) in owners {
         assert_eq!(api.data_owner(table, field), owner, "{table:?}.{field}");
@@ -410,6 +413,8 @@ fn the_data_fields_are_the_schemas() {
         table::<ItemData>(),
         table::<InventoryData>(),
         table::<ShopData>(),
+        table::<UseData>(),
+        table::<UsesData>(),
     ];
     // Each table once, its type the one its section names.
     let mut held: Vec<DataTable> = tables.iter().map(|&(table, _)| table).collect();

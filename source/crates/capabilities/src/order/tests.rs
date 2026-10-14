@@ -40,8 +40,15 @@ fn orders_decode_exactly() {
         decode(&[1, 0xAC, 0x02, 1, 0xAC, 0x02]),
         Some((vec![target], OrdersAction::Attack { target }))
     );
-    // `orders` has 5 variants, 0 to 4.
-    assert_eq!(decode::<OrdersAction>(&[1, 0, 5]), None);
+    // A use of 300 by unit 4, variant 5, the last, so the variants before it keep their bytes;
+    // `orders` has 6 variants, 0 to 5.
+    let used = Order::one(id(4), OrdersAction::Use { target });
+    assert_eq!(used.encode(), [1, 4, 5, 0xAC, 0x02]);
+    assert_eq!(
+        decode(&[1, 4, 5, 0xAC, 0x02]),
+        Some((vec![id(4)], OrdersAction::Use { target }))
+    );
+    assert_eq!(decode::<OrdersAction>(&[1, 0, 6]), None);
 
     // Each owner's action follows the units in its own format: a learn of slot 2, variant 0;
     // a cancel of the train at place 3, variant 0; a rally cleared, variant 1 and `None`; a swap

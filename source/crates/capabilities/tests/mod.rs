@@ -4,6 +4,7 @@
 mod abilities;
 mod areas;
 mod combat;
+mod interaction;
 mod items;
 mod mode;
 mod navigation;

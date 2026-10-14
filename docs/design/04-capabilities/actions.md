@@ -63,7 +63,7 @@ A field's value may be one or one per rank; times become whole ticks at load, ro
 - **Charges.** An action with `charges` spawns full, and each start spends one in place of its cooldown check. While it holds fewer than `max`, one comes back each `recharge_ms`, the timer running from the tick the count fell below `max`, as Dota 2's charge restore; a `cooldown_ms` beside it is a lockout between two casts. `ctx.add_charge(unit, id)` gives one at once, up to `max`, and keeps the timer.
 - **Range clamp.** A point aim beyond the range of an action with `clamp_to_range` moves in to the range, along the line from the unit, as League of Legends' Flash does. Any other aim beyond range makes a unit that walks walk in range first: its walk replaces any other, follows a moving unit target, and stops in range, where the cast starts. Failed checks on the way drop the cast and the walk, and a new order ends both; a tag that blocks its group, or a forced move, stops the walk while the cast waits. A unit that does not walk drops the cast.
 - **Toggles.** A cast turns it on, its `cost` paid then; a second cast turns it off as it starts, with no windup, script or cost, so an empty pool can still turn one off; its cooldown starts at each. While on, it holds its `hold` modifier. `cost_per_attack` is paid as each attack goes off, before `on_attack`; `cost_per_second` at each whole second from the tick it turned on. A cost the pools cannot pay turns it off, and so do death and a tag that blocks casting: one rule for every toggle, where Dota 2 lets each choose.
-- **Channels.** A `channel` runs from the tick after it resolves, for `duration_ms`, holding its `hold` modifier, with `on_channel_tick(ctx, unit)` each `tick_ms`, the last at its end at the latest. A new order, death, or a tag that blocks casting interrupts it, as Dota 2 and League of Legends do: `on_interrupt(ctx, unit, target)` runs in Hit of the tick it was cut in, or of the next for a death, and the hold ends. A channel that ends whole runs no hook.
+- **Channels.** A `channel` runs from the tick after it resolves, for `duration_ms`, holding its `hold` modifier, with `on_channel_tick(ctx, unit, target)` each `tick_ms`, the last at its end at the latest. A new order, death, or a tag that blocks its action's group interrupts it, as Dota 2 and League of Legends do, and with `damage_interrupts = true`, damage of more than 0 to its unit, before shields absorb it, as Dota 2's channeled items end on damage: `on_interrupt(ctx, unit, target)` runs in Hit of the tick it was cut in, or of the next for a death or damage, both of Resolve, and the hold ends. A heal cuts none. A channel that ends whole runs no hook.
 - **Charged actions.** A `charge` charges from its start in place of its windup, and resolves when its order is given again or at `max_ms`. A move order keeps it, as Varus walks while he draws; another action's order or a blocking tag cancels it, spending nothing. `ctx.charge`, the share of `max_ms` charged from 0 to 1, and `ctx.origin` and the target, as at its start, reach every hook of the action, its delivery's included.
 
 ### Values and bookkeeping
@@ -77,7 +77,7 @@ A field's value may be one or one per rank; times become whole ticks at load, ro
 | --- | --- | --- | --- |
 | `cast` | `abilities` | `cast` | Ranks, charges, toggles, channels, charged casts |
 | `attack` | `combat` | `attack` | Repeats on its target each period its `rate` stat sets; draws the roll ([Combat](combat.md#weapons)) |
-| `use` | `interaction` | `use` | Aims at a unit with a `use` section; a held use is a channel ([Interaction](interaction.md)) |
+| `use` | `interaction`, run by `abilities` | `use` | Aims at a unit with a `use` section, from its user's use slot; a held use is a channel ([Interaction](interaction.md)) |
 | `enter` | `interaction` | `use` | The unit rides in or garrisons the target |
 | `train` | `production` | `use` | Joins its unit's queue, and spawns a unit type when its time ends ([Production](production.md)) |
 | `build` | `production` | `use` | Places its building's box at a point, with an angle, as a site, or builds a site ([Construction](production.md#construction)) |
@@ -152,7 +152,7 @@ An order names an action and a target ([Orders](control.md#orders)); a `characte
 
 ## Script API
 
-`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing one, the other form failing, and `ctx.area(pos)`, each returning the new unit ([New units at once](../08-script-api.md#rules)); `ctx.reduce_cooldown`, `ctx.reduce_cooldowns`, `ctx.add_charge`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)`, `on_interrupt(ctx, unit, target)`.
+`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing one, the other form failing, and `ctx.area(pos)`, each returning the new unit ([New units at once](../08-script-api.md#rules)); `ctx.reduce_cooldown`, `ctx.reduce_cooldowns`, `ctx.add_charge`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit, target)`, `on_interrupt(ctx, unit, target)`.
 
 ## Network
 

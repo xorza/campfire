@@ -18,6 +18,8 @@ pub enum OrdersAction {
     Build { slot: u8, target: BuildTarget },
     /// End what is under way, drop the target and the destination, and stand.
     Stop,
+    /// Use the object `target` with the use slot: its action runs from that slot.
+    Use { target: StableId },
 }
 
 impl CapabilityAction for OrdersAction {

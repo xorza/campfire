@@ -15,6 +15,7 @@ internals = [
     "campfire-declare/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",
+    "campfire-interaction/internals",
     "campfire-items/internals",
     "campfire-log/internals",
     "campfire-math/internals",
@@ -46,6 +47,7 @@ campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-deliveries.workspace = true
 campfire-geometry = { workspace = true, optional = true }
+campfire-interaction.workspace = true
 campfire-items.workspace = true
 campfire-log = { workspace = true, optional = true }
 campfire-math = { workspace = true, optional = true }

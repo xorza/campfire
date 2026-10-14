@@ -41,7 +41,7 @@ impl Toggles {
                 let Some(next) = times.slot(at).and_then(|time| time.toggle) else {
                     continue;
                 };
-                let group = UseGroup::group(used, slot.kind);
+                let group = UseGroup::group(used, slot, &book);
                 if dead || UnitTags::properties_of(tags).blocks(group) {
                     times.toggle_off(at);
                     continue;

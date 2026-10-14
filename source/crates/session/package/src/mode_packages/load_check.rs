@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroUsize;
 use std::slice;
 
 use campfire_actions::{
@@ -38,6 +39,7 @@ use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
+use crate::error::use_problem::UseProblem;
 use crate::error::way::Way;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
@@ -85,6 +87,14 @@ struct PackageNames<'a> {
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
     actions: &'a BTreeMap<DeclaredName, ActionData>,
+}
+
+/// A unit type of one of the mode's packages: its place, its data, and its package's actions.
+#[derive(Debug)]
+struct PackageType<'p> {
+    at: Place,
+    unit_type: &'p UnitTypeData,
+    actions: &'p BTreeMap<DeclaredName, ActionData>,
 }
 
 /// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
@@ -325,8 +335,9 @@ impl<'a> LoadCheck<'a> {
             ActionProblem::Global(ActionKind::Build) => {
                 LoadProblem::Build(BuildProblem::Global(action))
             }
+            ActionProblem::Global(ActionKind::Use) => LoadProblem::Use(UseProblem::Global(action)),
             ActionProblem::Global(kind) => {
-                unreachable!("only a build and a gather need meters, not a {kind:?}")
+                unreachable!("only a use, a build and a gather need meters, not a {kind:?}")
             }
             ActionProblem::Section(unit_type) => {
                 LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type })
@@ -368,6 +379,7 @@ impl<'a> LoadCheck<'a> {
         self.slot_kinds()?;
         self.choices()?;
         self.items()?;
+        self.uses()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
@@ -1072,8 +1084,10 @@ impl<'a> LoadCheck<'a> {
 
     /// An action `id` of a kind the release runs, with the capability of its kind and the fields
     /// the table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
-    /// `combat`, aimed at a unit, of a range in meters; a `train` of `production`, aimed at
-    /// nothing, of a unit type of its package, `units`, that walks, when the package has it.
+    /// `combat`, aimed at a unit, of a range in meters; a `use` of `interaction` and `abilities`,
+    /// whose casts run it, aimed at a unit;
+    /// a `train` of `production`, aimed at nothing, of a unit type of its package, `units`, that
+    /// walks, when the package has it.
     fn kind(
         &self,
         id: &DeclaredName,
@@ -1085,6 +1099,7 @@ impl<'a> LoadCheck<'a> {
             action.kind,
             ActionKind::Cast
                 | ActionKind::Attack
+                | ActionKind::Use
                 | ActionKind::Train
                 | ActionKind::Build
                 | ActionKind::Gather
@@ -1109,6 +1124,13 @@ impl<'a> LoadCheck<'a> {
         match kind {
             KindData::Cast => {
                 self.require(Capability::Abilities, &at)?;
+            }
+            KindData::Use => {
+                self.require(Capability::Interaction, &at)?;
+                self.require(Capability::Abilities, &at)?;
+                if !matches!(action.targeting, Targeting::Unit(_)) {
+                    return Err(LoadProblem::Use(UseProblem::Aims(id.to_owned())));
+                }
             }
             KindData::Train { unit_type: name } => {
                 self.require(Capability::Production, &at)?;
@@ -1456,14 +1478,14 @@ impl<'a> LoadCheck<'a> {
                 }
             }
         }
+        LoadCheck::slot_count(unit_type, at)?;
         self.inventory(unit_type, at)?;
         self.shop(unit_type, at)?;
         Ok(())
     }
 
     /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
-    /// of one rank, as an item's action has, and its slots and the type's own are no more than a
-    /// unit holds.
+    /// of one rank, as an item's action has.
     fn inventory(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let Some(inventory) = &unit_type.inventory else {
             return Ok(());
@@ -1479,9 +1501,20 @@ impl<'a> LoadCheck<'a> {
                 kind: inventory.kind.clone(),
             }));
         }
+        Ok(())
+    }
+
+    /// The slots of a unit type at `at`, its own, its inventory's and its use slot, are no more
+    /// than a unit holds.
+    fn slot_count(unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let own: usize = unit_type.slots.values().map(Vec::len).sum();
-        if own + usize::from(inventory.slots.get()) > ActionSlots::LIMIT {
-            return Err(LoadProblem::Item(ItemProblem::TooManySlots(at.clone())));
+        let inventory = unit_type
+            .inventory
+            .as_ref()
+            .map_or(0, |inventory| NonZeroUsize::from(inventory.slots).get());
+        let uses = usize::from(unit_type.uses.is_some());
+        if own + inventory + uses > ActionSlots::LIMIT {
+            return Err(LoadProblem::TooManySlots(at.clone()));
         }
         Ok(())
     }
@@ -1580,47 +1613,173 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// No unit type, the mode's or an avatar, and no choice puts actions in a slot kind whose
-    /// slots an inventory fills: those slots are the items'.
+    /// No unit type of any package and no choice puts actions in a slot kind whose slots an
+    /// inventory fills: those slots are the items'.
     fn inventory_kinds(&self) -> Result<(), LoadProblem> {
+        let typed = self.unit_types();
+        let kinds: BTreeSet<&DeclaredName> = typed
+            .iter()
+            .filter_map(|typed| Some(&typed.unit_type.inventory.as_ref()?.kind))
+            .collect();
+        let slotted = self.slotted_in(&typed, &kinds);
+        slotted.map_or(Ok(()), |(at, kind)| {
+            Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
+                at,
+                kind,
+            }))
+        })
+    }
+
+    /// The uses: each `use` section names an action of its package of the `use` kind, and nothing
+    /// else names one, no unit type's slots, no item and no loadout entry, as a use runs only from
+    /// its object; and each `uses` names a slot kind of one rank, as a use's action has, that no
+    /// inventory fills, and in which no unit type and no choice puts actions, as its slot is the
+    /// uses'. A name the package or the mode does not have is the book build's problem.
+    fn uses(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let typed =
-            packages
+        let kinds = &packages.data.slots;
+        let typed = self.unit_types();
+        let inventories: BTreeSet<&DeclaredName> = typed
+            .iter()
+            .filter_map(|typed| Some(&typed.unit_type.inventory.as_ref()?.kind))
+            .collect();
+        let is_use = |actions: &BTreeMap<DeclaredName, ActionData>, id: &DeclaredName| {
+            actions.get(id).map(|action| action.kind == ActionKind::Use)
+        };
+        let mut held = BTreeSet::new();
+        for PackageType {
+            at,
+            unit_type,
+            actions,
+        } in &typed
+        {
+            if let Some(usable) = &unit_type.usable
+                && is_use(actions, &usable.action) == Some(false)
+            {
+                return Err(LoadProblem::Use(UseProblem::NotUse {
+                    at: at.clone(),
+                    action: usable.action.clone(),
+                }));
+            }
+            if let Some(id) = unit_type
+                .slots
+                .values()
+                .flatten()
+                .find(|id| is_use(actions, id) == Some(true))
+            {
+                return Err(LoadProblem::Use(UseProblem::Named {
+                    at: at.clone(),
+                    action: id.clone(),
+                }));
+            }
+            let Some(uses) = &unit_type.uses else {
+                continue;
+            };
+            let Some(kind) = kinds.names().named(uses.kind.as_str()) else {
+                continue;
+            };
+            let at = at.clone();
+            let name = uses.kind.clone();
+            if kinds.ranks(kind) != 1 {
+                return Err(LoadProblem::Use(UseProblem::RankedKind { at, kind: name }));
+            }
+            if inventories.contains(&uses.kind) {
+                return Err(LoadProblem::Use(UseProblem::InventoryKind {
+                    at,
+                    kind: name,
+                }));
+            }
+            held.insert(&uses.kind);
+        }
+        if let Some((at, kind)) = self.slotted_in(&typed, &held) {
+            return Err(LoadProblem::Use(UseProblem::KindSlotted { at, kind }));
+        }
+        let content = &packages.content;
+        let items = content
+            .items
+            .iter()
+            .filter_map(|(id, item)| Some((Place::Item(id.clone()), item.action.as_ref()?)));
+        let loadouts = packages
+            .dependencies
+            .iter()
+            .filter(|dependent| matches!(dependent.kind, DependentKind::Loadout))
+            .flat_map(|dependent| dependent.content.actions.iter())
+            .filter(|(_, action)| action.kind == ActionKind::Use)
+            .map(|(id, _)| (Place::Loadouts, id));
+        let named = items
+            .filter(|(_, id)| is_use(&content.actions, id) == Some(true))
+            .chain(loadouts)
+            .next();
+        named.map_or(Ok(()), |(at, action)| {
+            Err(LoadProblem::Use(UseProblem::Named {
+                at,
+                action: action.clone(),
+            }))
+        })
+    }
+
+    /// Every unit type of the mode's packages, each with its place and its package's actions: the
+    /// mode's, each avatar, and each type a dependency holds, an avatar's summon among them.
+    fn unit_types(&self) -> Vec<PackageType<'a>> {
+        let packages = self.packages;
+        let mode = packages
+            .content
+            .units
+            .iter()
+            .map(|(name, unit_type)| PackageType {
+                at: Place::UnitType(name.clone()),
+                unit_type,
+                actions: &packages.content.actions,
+            });
+        let dependents = packages.dependencies.iter().flat_map(|dependent| {
+            let actions = &dependent.content.actions;
+            let avatar = match &dependent.kind {
+                DependentKind::Avatar(avatar) => Some(PackageType {
+                    at: Place::Avatar(dependent.package.header.name.clone()),
+                    unit_type: &avatar.unit,
+                    actions,
+                }),
+                DependentKind::Loadout | DependentKind::Rules => None,
+            };
+            let held = dependent
                 .content
                 .units
                 .iter()
-                .map(|(name, unit_type)| (Place::UnitType(name.clone()), unit_type))
-                .chain(packages.dependencies.iter().filter_map(
-                    |dependent| match &dependent.kind {
-                        DependentKind::Avatar(avatar) => Some((
-                            Place::Avatar(dependent.package.header.name.clone()),
-                            &avatar.unit,
-                        )),
-                        DependentKind::Loadout | DependentKind::Rules => None,
-                    },
-                ));
-        let typed: Vec<(Place, &UnitTypeData)> = typed.collect();
-        let kinds: BTreeSet<&DeclaredName> = typed
+                .map(move |(name, unit_type)| PackageType {
+                    at: Place::UnitType(name.clone()),
+                    unit_type,
+                    actions,
+                });
+            avatar.into_iter().chain(held)
+        });
+        mode.chain(dependents).collect()
+    }
+
+    /// The first of `typed` and of the mode's choices that puts actions in a slot kind of `kinds`,
+    /// with that kind.
+    fn slotted_in(
+        &self,
+        typed: &[PackageType<'_>],
+        kinds: &BTreeSet<&DeclaredName>,
+    ) -> Option<(Place, DeclaredName)> {
+        let types = typed.iter().filter_map(|typed| {
+            let kind = typed
+                .unit_type
+                .slots
+                .keys()
+                .find(|kind| kinds.contains(kind))?;
+            Some((typed.at.clone(), kind.clone()))
+        });
+        let choices = self
+            .packages
+            .data
+            .choices
             .iter()
-            .filter_map(|(_, unit_type)| Some(&unit_type.inventory.as_ref()?.kind))
-            .collect();
-        for (at, unit_type) in &typed {
-            if let Some(kind) = unit_type.slots.keys().find(|kind| kinds.contains(kind)) {
-                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
-                    at: at.clone(),
-                    kind: kind.clone(),
-                }));
-            }
-        }
-        for (name, choice) in &packages.data.choices {
-            if let Some(kind) = choice.slot.as_ref().filter(|kind| kinds.contains(kind)) {
-                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
-                    at: Place::Choice(name.clone()),
-                    kind: kind.clone(),
-                }));
-            }
-        }
-        Ok(())
+            .filter_map(|(name, choice)| {
+                let kind = choice.slot.as_ref().filter(|kind| kinds.contains(kind))?;
+                Some((Place::Choice(name.clone()), kind.clone()))
+            });
+        types.chain(choices).next()
     }
 
     /// No data gives a field design 08 plans: the mode's `state_version`, or a projectile type's

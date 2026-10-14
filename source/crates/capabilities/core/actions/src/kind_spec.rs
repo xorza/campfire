@@ -5,13 +5,14 @@ use crate::gather_spec::GatherSpec;
 use crate::weapon::Weapon;
 
 /// What is special about an action as a match runs it, with what its kind needs: a cast; an
-/// attack, with what its weapon deals; a train, with the unit type it makes; or a build, with the
-/// unit type of the building it places; or a gather, with what it gathers. The load runs no other
-/// kind.
+/// attack, with what its weapon deals; a use of an object; a train, with the unit type it makes;
+/// or a build, with the unit type of the building it places; or a gather, with what it gathers.
+/// The load runs no other kind.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KindSpec {
     Cast,
     Attack(Weapon),
+    Use,
     Train(UnitType),
     Build(UnitType),
     Gather(GatherSpec),
@@ -23,6 +24,7 @@ impl KindSpec {
         match self {
             KindSpec::Cast => ActionKind::Cast,
             KindSpec::Attack(_) => ActionKind::Attack,
+            KindSpec::Use => ActionKind::Use,
             KindSpec::Train(_) => ActionKind::Train,
             KindSpec::Build(_) => ActionKind::Build,
             KindSpec::Gather(_) => ActionKind::Gather,
@@ -33,7 +35,11 @@ impl KindSpec {
     pub const fn weapon(self) -> Option<Weapon> {
         match self {
             KindSpec::Attack(weapon) => Some(weapon),
-            KindSpec::Cast | KindSpec::Train(_) | KindSpec::Build(_) | KindSpec::Gather(_) => None,
+            KindSpec::Cast
+            | KindSpec::Use
+            | KindSpec::Train(_)
+            | KindSpec::Build(_)
+            | KindSpec::Gather(_) => None,
         }
     }
 }

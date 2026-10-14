@@ -76,13 +76,13 @@ impl Hook {
     pub(crate) const fn param_names(self) -> &'static [&'static str] {
         match self {
             Hook::OnMatchStart => &["ctx"],
-            Hook::OnChannelTick | Hook::OnThink => &["ctx", "unit"],
+            Hook::OnThink => &["ctx", "unit"],
             Hook::OnInterval => &["ctx", "m"],
             Hook::OnPlayerJoin | Hook::OnPlayerLeave => &["ctx", "player"],
             Hook::OnGenerate => &["ctx", "region"],
             Hook::CalcDamage => &["ctx", "d"],
             Hook::CalcHeal => &["ctx", "h"],
-            Hook::OnResolve | Hook::OnInterrupt => &["ctx", "unit", "target"],
+            Hook::OnResolve | Hook::OnChannelTick | Hook::OnInterrupt => &["ctx", "unit", "target"],
             Hook::OnEnd => &["ctx", "unit", "hit"],
             Hook::OnAttack => &["ctx", "m", "target"],
             Hook::OnAttackHit | Hook::OnDamageTaken => &["ctx", "m", "d"],

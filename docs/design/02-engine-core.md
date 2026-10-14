@@ -90,6 +90,7 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `abilities` | built | The `abilities` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `progression` | built | The `progression` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `production` | built | The `production` capability ([The capabilities' crates](#the-capabilities-crates)) |
+| `interaction` | built | The `interaction` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `items` | built | The `items` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `orders` | built | The `orders` capability ([The capabilities' crates](#the-capabilities-crates)) |
 | `mode` | built | The mode: its script, state, choices and spawns, on the capabilities below it ([The capabilities' crates](#the-capabilities-crates)) |
@@ -137,6 +138,7 @@ Each module is a crate, as Bevy's are, so each import between modules is a depen
 | 8 | `campfire-actions` | `capabilities/core/actions` | — | — |
 | 9 | `campfire-combat` | `capabilities/combat` | stats | — |
 | 9 | `campfire-deliveries` | `capabilities/core/deliveries` | — | — |
+| 9 | `campfire-interaction` | `capabilities/interaction` | — | — |
 | 9 | `campfire-items` | `capabilities/items` | stats | — |
 | 9 | `campfire-progression` | `capabilities/progression` | stats | — |
 | 10 | `campfire-abilities` | `capabilities/abilities` | stats | — |
@@ -146,10 +148,10 @@ Each module is a crate, as Bevy's are, so each import between modules is a depen
 | 10 | `campfire-vision` | `capabilities/vision` | — | — |
 | 11 | `campfire-production` | `capabilities/production` | — | navigation, stats, vision |
 | 12 | `campfire-mode` | `capabilities/mode` | — | combat, items, navigation, production, progression, stats, vision |
-| 12 | `campfire-orders` | `capabilities/orders` | navigation, stats | production, vision |
+| 12 | `campfire-orders` | `capabilities/orders` | navigation, stats | interaction, production, vision |
 | 13 | `campfire-capabilities` | `capabilities` | — | — |
 
-- **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, live in the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, and on `vision`, whose sight it reads.
+- **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, live in the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, on `interaction`, whose use slot a use order fills, and on `vision`, whose sight it reads.
 - **Contracts.** A capability asks another for its work through a part of `units` that both read, never by writing the other's state, as 0 A.D.'s components ask a walk of `UnitMotion` through its interface. Each such part is the state or the report of the capability that pursues it, kept in `units` so the capabilities that ask need no dependency on it: `Dead`, `ForcedMove`, and a walk's `Destination` with `ArrivedShort`, which navigation pursues and answers ([Navigation](04-capabilities/navigation.md), Walking a route). So `abilities`, which walks a caster into range, depends on no navigation.
 - **Visibility.** An item that another crate uses becomes `pub`; the rest stays `pub(crate)`. A crate's published surface is its `lib.rs`, which names only the crate's own items: `net`, `runner`, `client` and the rest depend on the home crate of each type they name.
 - **Tests.** A test that builds a whole `Match` lives in the top crate's `tests/`, one binary, in a module for each capability crate and for each of the core's crates: `release` composes the match there, and every crate it tests is a dependency of that crate. A test of a crate's own types, with no `Match`, stays a unit test in its crate. So no crate has a dev-dependency on a crate above it, and no test build holds a second copy of a crate, whose types would not be the match's. A test helper that another crate's tests use is behind `internals`, and one that needs a higher crate is a method of an extension trait in the top crate's `internals`. The tests that play a session or a network match live alike in the top crate of their own, `harness`, which holds the match harness and every crate those tests read. A crate's dev-dependencies are itself with `internals`, the test infrastructure of a base crate, `store`'s scratch and pinned files, `log`'s `LogCheck`, `common`'s allocation audit and `codec` for a type's encoded form, `math` for the numbers a crate's values hold, and outside test tools; a binary, which cannot dev-depend on itself, dev-depends on the dependencies whose helpers its tests read. `common`'s test of the feature refuses any other. `harness` is all test code, its benches included, so it has no `internals` of its own and no dev-dependency: it depends, with their `internals`, on every crate its tests read.

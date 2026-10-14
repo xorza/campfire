@@ -59,8 +59,9 @@ impl Channels {
             .get::<ActionSlots>()
             .expect("a unit whose channel runs has slots");
         let forced = unit.contains::<ForcedMove>();
-        let blocked = Self::blocked(slots, unit.get(), forced, unit.get());
-        let tick = Self::channel_tick(world.resource::<ActionBook>(), slots);
+        let book = world.resource::<ActionBook>();
+        let blocked = Self::blocked(slots, unit.get(), forced, unit.get(), book);
+        let tick = Self::channel_tick(book, slots);
         world
             .get_mut::<ActionSlots>(entity)
             .expect("a unit whose channel runs has slots")
@@ -68,8 +69,8 @@ impl Channels {
     }
 
     /// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its
-    /// rank, as the action started, with the unit and, for `on_interrupt`, the target, when the
-    /// action's script defines it; a failed call applies nothing, and is recorded.
+    /// rank, as the action started, with the unit and the target, when the action's script defines
+    /// it; a failed call applies nothing, and is recorded.
     fn channel_call(
         batch: &mut ScriptBatch<'_>,
         now: Tick,
@@ -97,12 +98,9 @@ impl Channels {
             ..CallStart::cast(id, rank, caster, package, now)
         };
         let pool = Pool::of(owner);
-        batch.hook_call(start, hook, Some(caster), |batch| match hook {
-            Hook::OnInterrupt => {
-                let target = Abilities::target(ctx.view(), aim.target);
-                batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))
-            }
-            _ => batch.call_hook(pool, script, hook, (ctx.clone(), handle)),
+        let target = Abilities::target(ctx.view(), aim.target);
+        batch.hook_call(start, hook, Some(caster), |batch| {
+            batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))
         });
     }
 
@@ -127,23 +125,24 @@ impl Channels {
             if !slots.channel_due() {
                 continue;
             }
-            let blocked = Self::blocked(&slots, tags, forced, used);
+            let blocked = Self::blocked(&slots, tags, forced, used, &book);
             let tick = Self::channel_tick(&book, &slots);
             slots.step_channel(now, blocked, tick);
         }
     }
 
-    /// Whether the tags of a unit that holds `slots` keep its channel from running, as its slot's
-    /// kind says, under a forced move when `forced`, and of the use group `used`.
+    /// Whether the tags of a unit that holds `slots` keep its channel from running, as its slot
+    /// and its action in `book` say, under a forced move when `forced`, and of the use group
+    /// `used`.
     fn blocked(
         slots: &ActionSlots,
         tags: Option<&UnitTags>,
         forced: bool,
         used: Option<&UseGroup>,
+        book: &ActionBook,
     ) -> bool {
         let channel = slots.channeling().and_then(|slot| slots.slot(slot));
-        let kind = channel.map(|slot| slot.kind);
-        Abilities::blocked(tags, forced, used, kind)
+        Abilities::blocked(tags, forced, used, channel, book)
     }
 
     /// The time between the ticks of the channel `slots` runs, if one runs.

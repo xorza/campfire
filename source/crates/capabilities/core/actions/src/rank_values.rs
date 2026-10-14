@@ -35,11 +35,13 @@ pub struct RankValues {
     pub(crate) charge: Option<Ticks>,
 }
 
-/// How long a channel runs, and the time between its ticks, in ticks, both at least one.
+/// How long a channel runs, and the time between its ticks, in ticks, both at least one, and
+/// whether damage of more than 0 to its unit cuts it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelRule {
     pub(crate) duration: Ticks,
     pub tick: Ticks,
+    pub(crate) damage_interrupts: bool,
 }
 
 /// How many charges an action holds at most, and the ticks one takes to come back.
@@ -52,8 +54,8 @@ pub struct ChargeRule {
 impl RankValues {
     /// The fields of `data` at each of its `ranks` ranks, times in ticks at `rate`, what its
     /// cost's names take from by `target`; an error for a per-rank array of another length, a
-    /// field that does not hold at a rank, a build's or a gather's range that is global at a
-    /// rank, or a time that does not count in ticks.
+    /// field that does not hold at a rank, a use's, a build's or a gather's range that is global
+    /// at a rank, or a time that does not count in ticks.
     pub(crate) fn all(
         data: &ActionData,
         ranks: u8,
@@ -64,7 +66,10 @@ impl RankValues {
             return Err(ActionProblem::RankCount(ranks));
         }
         let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
-        let meters = matches!(data.kind, ActionKind::Build | ActionKind::Gather);
+        let meters = matches!(
+            data.kind,
+            ActionKind::Use | ActionKind::Build | ActionKind::Gather
+        );
         let mut loaded = LoadedRanks {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
@@ -97,6 +102,7 @@ impl RankValues {
                         Ok::<_, TimeTooLarge>(ChannelRule {
                             duration: ticks(channel.duration_ms)?,
                             tick: ticks(channel.tick_ms)?,
+                            damage_interrupts: channel.damage_interrupts,
                         })
                     })
                     .transpose()?,

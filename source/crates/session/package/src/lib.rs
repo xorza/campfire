@@ -47,6 +47,7 @@ pub use crate::error::load_problem::LoadProblem;
 pub use crate::error::locale_problem::LocaleProblem;
 pub use crate::error::place::Place;
 pub use crate::error::script_problem::ScriptProblem;
+pub use crate::error::use_problem::UseProblem;
 pub use crate::error::way::Way;
 pub use crate::error::{ContentError, LoadError, PackageRef, StoreError, WriteError};
 pub use crate::file_index::FileIndex;

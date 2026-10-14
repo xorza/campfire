@@ -29,7 +29,7 @@ pub enum ActionProblem {
     /// A gather's `bounce` is no distance from 0.
     #[error("its bounce is no distance from 0")]
     Bounce,
-    /// A build or a gather reaches globally at a rank, where it needs meters.
+    /// A use, a build or a gather reaches globally at a rank, where it needs meters.
     #[error("its range is global at a rank, where its kind needs meters")]
     Global(ActionKind),
     /// The projectile type its delivery names lacks its `projectile` section.

@@ -155,8 +155,8 @@ impl ActionSlots {
         times.insert(at, actions.len());
     }
 
-    /// The same slots with `count` empty slots of `kind`, an inventory's, of one rank, after the
-    /// slots of that kind, as a new unit's are, before it has times.
+    /// The same slots with `count` empty slots of `kind`, an inventory's or a use slot's, of one
+    /// rank, after the slots of that kind, as a new unit's are, before it has times.
     #[must_use]
     pub fn with_empty(mut self, kind: SlotKind, count: u8) -> ActionSlots {
         let rank = Some(Rank::FIRST);
@@ -420,6 +420,14 @@ impl ActionSlots {
             self.underway = None;
             self.interrupted = Some(self.channel_call(ActionCall { aim, start }));
         }
+    }
+
+    /// Whether damage of more than 0 to the unit cuts the channel under way: its rule, as `book`
+    /// gives it, says so.
+    pub fn damage_cuts(&self, book: &ActionBook) -> bool {
+        let channel = self.channeling().and_then(|slot| self.slot(slot));
+        let rule = channel.and_then(|slot| slot.values_in(book)?.channel);
+        rule.is_some_and(|rule| rule.damage_interrupts)
     }
 
     /// `call` of the channel in its slot, at the action and rank the slot holds.

@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, ActionTarget};
+use campfire_actions::{ActionSlots, ActionTarget, SlotTimes};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::Num;
@@ -12,6 +12,7 @@ use campfire_production::{
 use campfire_script::{Effect, Frame};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Destination, SpawnPoint};
+use campfire_values::ActionId;
 
 use crate::Orders;
 
@@ -42,17 +43,25 @@ pub enum UnitOrder {
     /// Gather with the gather in `slot` at `target`, a node, or a drop-off for the load it
     /// carries, off any path; the loop walks the unit.
     Gather { slot: u8, target: StableId },
+    /// Use the object `target` with the use slot `slot`, filled with `action`, the object's, unless
+    /// it holds it already, as `Slot` starts an action.
+    Use {
+        slot: u8,
+        action: ActionId,
+        target: StableId,
+    },
 }
 
-/// The parts of a unit that an order reads and changes: where it stands and where it spawned,
-/// its actions, the path it walks, where it walks to, its route there, and its build and gather
-/// orders.
+/// The parts of a unit that an order reads and changes: where it stands and where it spawned, its
+/// actions and their times, the path it walks, where it walks to, its route there, and its build
+/// and gather orders.
 #[derive(Debug, QueryData)]
 #[query_data(mutable, derive(Debug))]
 pub struct OrderedUnit {
     pub pos: &'static Position,
     pub(crate) spawn: Option<&'static SpawnPoint>,
     pub(crate) slots: Option<&'static mut ActionSlots>,
+    pub(crate) times: Option<&'static mut SlotTimes>,
     pub(crate) walker: Option<&'static mut PathWalker>,
     pub(crate) destination: Option<&'static mut Destination>,
     pub(crate) route: Option<&'static mut Route>,
@@ -76,22 +85,24 @@ impl Effect for UnitOrder {
 
 impl UnitOrder {
     /// Applies the order, which its source checked, to `unit`, within `bounds`, in `now`: every
-    /// order of every source applies here. A move or a reset drops the unit's target and leaves
-    /// its path until it is told to follow it again; a move's point clamps to the bounds, and a
-    /// slot's point to the ground within them, at the unit's height. A group's move asks for its
-    /// route at once, as one of its party. An attack on another target cancels one in its windup;
-    /// a slot's cast or train replaces an action not resolved yet, or releases the charge of its
-    /// own slot. A stop ends what is under way, with nothing spent, drops the target and the
-    /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's
-    /// build order, its point taken into the bounds, and a gather its gather loop, each dropping
-    /// the target and the destination; every other order ends both. Every order cuts a channel
-    /// and ends a cast that walks in range, with its walk, and an attack cancels a charge.
-    /// Whether the unit now resets, and takes no order until it is home.
+    /// order of every source applies here. A move or a reset drops the unit's target and leaves its
+    /// path until it is told to follow it again; a move's point clamps to the bounds, and a slot's
+    /// point to the ground within them, at the unit's height. A group's move asks for its route at
+    /// once, as one of its party. An attack on another target cancels one in its windup; a slot's
+    /// cast or train replaces an action not resolved yet, or releases the charge of its own slot; a
+    /// use fills its slot afresh with its object's action, unless it holds it, and then starts as a
+    /// slot's cast. A stop ends what is under way, with nothing spent, drops the target and the
+    /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's build
+    /// order, its point taken into the bounds, and a gather its gather loop, each dropping the
+    /// target and the destination; every other order ends both. Every order cuts a channel and ends
+    /// a cast that walks in range, with its walk, and an attack cancels a charge. Whether the unit
+    /// now resets, and takes no order until it is home.
     pub fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) -> bool {
         let OrderedUnitItem {
             pos: &at,
             spawn,
             mut slots,
+            times,
             walker,
             mut destination,
             route,
@@ -129,6 +140,19 @@ impl UnitOrder {
                 if let Some(slots) = &mut slots {
                     slots.order(slot, target);
                 }
+                return false;
+            }
+            UnitOrder::Use {
+                slot,
+                action,
+                target,
+            } => {
+                let slots = slots.as_mut().expect("a user has slots");
+                if slots.slot(slot).and_then(|held| held.action) != Some(action) {
+                    let mut times = times.expect("a user's slots have times");
+                    slots.fill(&mut times, slot, Some(action));
+                }
+                slots.order(slot, ActionTarget::Unit(target));
                 return false;
             }
             UnitOrder::FollowPath => {

@@ -9,7 +9,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionTarget, CastSpends, SlotKind, UseGroup};
+use campfire_actions::{ActionBook, ActionSlot, ActionTarget, CastSpends, UseGroup};
 use campfire_common::Ticks;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
@@ -115,15 +115,16 @@ impl Abilities {
     }
 
     /// Whether a unit with `tags`, under a forced move when `forced`, of the use group `used`, is
-    /// kept from the action of a slot of `kind`: from using it, for a slot of its use group, else,
-    /// and with no slot, from casting it.
+    /// kept from the action in `slot`, as `book` gives it: from using it, for a slot of its use
+    /// group or a use, else, and with no slot, from casting it.
     fn blocked(
         tags: Option<&UnitTags>,
         forced: bool,
         used: Option<&UseGroup>,
-        kind: Option<SlotKind>,
+        slot: Option<ActionSlot>,
+        book: &ActionBook,
     ) -> bool {
-        let group = kind.map_or(Block::Cast, |kind| UseGroup::group(used, kind));
+        let group = slot.map_or(Block::Cast, |slot| UseGroup::group(used, slot, book));
         UnitTags::blocks(tags, forced, group)
     }
 

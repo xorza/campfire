@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListsOf};
+use campfire_actions::{ActionBook, ActionSlots, ActionTarget, EffectListBook, ListsOf};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorldCrate};
@@ -239,12 +239,13 @@ impl DamagePass {
         }
     }
 
-    /// Deals `damage`, its amount weighed, in this tick, a negative amount as 0: shields absorb
-    /// it, then the life pool takes the rest. The source is recorded as the target's attacker;
-    /// when the damage took the target to zero, the source is its killer if it still exists, and
-    /// the others that damaged it within the assist window assisted. A living source heals by its
-    /// `leech` stat, `attack` for an attack's damage and `other` for the rest, times the life
-    /// taken. Each write follows the reads it needs, which go to `scratch`.
+    /// Deals `damage`, its amount weighed, in this tick, a negative amount as 0: more than 0 cuts a
+    /// channel that damage interrupts, then shields absorb it, and the life pool takes the rest.
+    /// The source is recorded as the target's attacker; when the damage took the target to zero,
+    /// the source is its killer if it still exists, and the others that damaged it within the
+    /// assist window assisted. A living source heals by its `leech` stat, `attack` for an attack's
+    /// damage and `other` for the rest, times the life taken. Each write follows the reads it
+    /// needs, which go to `scratch`.
     fn deal(world: &mut World, damage: Damage, scratch: &mut PassScratch) -> Landed {
         let Some(entity) = DamagePass::damageable(world, damage.target) else {
             return Landed::Nothing;
@@ -253,6 +254,13 @@ impl DamagePass {
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = damage.amount.max(Num::ZERO);
+        let slots = world.get::<ActionSlots>(entity);
+        if left > Num::ZERO
+            && slots.is_some_and(|slots| slots.damage_cuts(world.resource::<ActionBook>()))
+        {
+            let slots = world.get_mut::<ActionSlots>(entity);
+            slots.expect("a unit whose channel runs").cut_channel();
+        }
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
             let takes_effect = TagEffect::of(world, entity);

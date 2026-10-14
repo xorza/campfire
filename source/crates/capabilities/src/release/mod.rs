@@ -11,6 +11,7 @@ use campfire_declare::{
     ModuleVisitor, Phase, Role,
 };
 use campfire_deliveries::Deliveries;
+use campfire_interaction::Interaction;
 use campfire_items::Items;
 use campfire_mode::{MatchEnd, Mode, ModeLoad, ModeSetup};
 use campfire_navigation::Navigation;
@@ -80,6 +81,7 @@ impl Release {
         v.module::<Abilities>();
         v.module::<Production>();
         v.module::<Items>();
+        v.module::<Interaction>();
         v.module::<Orders>();
     }
 

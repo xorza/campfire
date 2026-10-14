@@ -7,6 +7,7 @@ members = [
     "crates/capabilities/abilities",
     "crates/capabilities/areas",
     "crates/capabilities/combat",
+    "crates/capabilities/interaction",
     "crates/capabilities/items",
     "crates/capabilities/mode",
     "crates/capabilities/navigation",
@@ -41,6 +42,7 @@ campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
 campfire-geometry = { path = "crates/capabilities/core/geometry" }
 campfire-harness = { path = "crates/test/harness" }
 campfire-players = { path = "crates/capabilities/core/players" }
+campfire-interaction = { path = "crates/capabilities/interaction" }
 campfire-items = { path = "crates/capabilities/items" }
 campfire-mode = { path = "crates/capabilities/mode" }
 campfire-navigation = { path = "crates/capabilities/navigation" }

@@ -38,6 +38,14 @@ pub struct TagTerm<'a> {
 }
 
 impl FilterData {
+    /// The filter of every unit: all relations, and no tag.
+    pub const fn all() -> FilterData {
+        FilterData {
+            relations: RelationSet::All,
+            tags: Vec::new(),
+        }
+    }
+
     /// `text` as a filter; `None` unless its set of relations is one of the sets and each of its
     /// tags is a name.
     pub fn parse(text: &str) -> Option<FilterData> {

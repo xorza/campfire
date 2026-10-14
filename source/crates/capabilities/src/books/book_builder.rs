@@ -8,6 +8,7 @@ use campfire_actions::{
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
+use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
 use campfire_navigation::Walker;
@@ -294,6 +295,8 @@ impl<'a> BookBuilder<'a> {
         built.add(SupplyBook(parts.supply));
         built.add(parts.items);
         built.add(parts.shops);
+        built.add(parts.use_specs);
+        built.add(parts.use_slots);
         built.add(parts.types);
         let ModeNames {
             damage_kinds,
@@ -809,8 +812,8 @@ impl<'a> BookBuilder<'a> {
     /// The parts `at` spawns with, each in its book: its start of its stats, with `combat`, its
     /// combat section as the type spawns with it, its sight, the body of its `collision` section,
     /// its tracks, whether it builds, what it holds as a node, whether it gathers, its inventory,
-    /// its shop, and its slots of the package's `actions`; an error for a name the mode does not
-    /// declare, or for stats that make no unit.
+    /// its shop, its use of the package's `actions` and its use slot, and its slots of `actions`;
+    /// an error for a name the mode does not declare, or for stats that make no unit.
     fn parts(
         &mut self,
         at: TypeAt<'_>,
@@ -841,8 +844,19 @@ impl<'a> BookBuilder<'a> {
         let inventory = inventory.transpose().map_err(unknown)?;
         let shop = file.shop.as_ref().map(|shop| self.shop(shop));
         let shop = shop.transpose().map_err(unknown)?;
+        let usable = file
+            .usable
+            .as_ref()
+            .map(|usable| self.usable(usable, actions));
+        let usable = usable.transpose().map_err(unknown)?;
+        let uses = file.uses.as_ref().map(|uses| {
+            let kind = input.data.slots.names().named(uses.kind.as_str());
+            kind.map(UseSlot::new)
+                .ok_or_else(|| UnknownName::new(NameKind::SlotKind, &uses.kind))
+        });
+        let uses = uses.transpose().map_err(unknown)?;
         let slots = self
-            .slots(file, actions, inventory.as_ref())
+            .slots(file, actions, inventory.as_ref(), uses)
             .map_err(unknown)?;
         let package = &input.packages[usize::from(at.package)];
         let slotted = |kind| {
@@ -871,6 +885,8 @@ impl<'a> BookBuilder<'a> {
         books.inventories.set_some(unit_type, inventory);
         books.use_groups.set_some(unit_type, group);
         books.shops.set_some(unit_type, shop);
+        books.use_specs.set_some(unit_type, usable);
+        books.use_slots.set_some(unit_type, uses);
         books.slots.set_some(unit_type, slots);
         Ok(())
     }
@@ -898,6 +914,19 @@ impl<'a> BookBuilder<'a> {
         ))
     }
 
+    /// The use of a unit type's `use` section, its action among the package's `actions` and its
+    /// users among the mode's tags; an error for a name the package or the mode does not have.
+    fn usable(
+        &self,
+        data: &UseData,
+        actions: &BTreeMap<&str, ActionId>,
+    ) -> Result<UseSpec, UnknownName> {
+        let action = actions.get(data.action.as_str()).copied();
+        let action = action.ok_or_else(|| UnknownName::new(NameKind::Ability, &data.action))?;
+        let users = Filter::resolve(&data.users, self.books.types.tags())?;
+        Ok(UseSpec::new(action, users))
+    }
+
     /// The kind of walker of `at`, of its file and its body, when it walks; an error for a box
     /// body, which only a type that stands has.
     fn walker(&mut self, at: TypeAt<'_>) -> Result<(), BookError> {
@@ -913,13 +942,15 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The slots of `file`: the package's `actions` it names, kind after kind, each at its kind's
-    /// first rank, then an empty slot of its `inventory`'s kind for each inventory slot; none for
-    /// a type with neither, and an error for a kind the mode does not declare.
+    /// first rank, then an empty slot of its `inventory`'s kind for each inventory slot, and the
+    /// empty slot of its use slot's kind; none for a type with none of them, and an error for a
+    /// kind the mode does not declare.
     fn slots(
         &self,
         file: &UnitTypeData,
         actions: &BTreeMap<&str, ActionId>,
         inventory: Option<&(Inventory, UseGroup)>,
+        uses: Option<UseSlot>,
     ) -> Result<Option<ActionSlots>, UnknownName> {
         let slots = &self.input.data.slots;
         let mut held = Vec::new();
@@ -929,13 +960,17 @@ impl<'a> BookBuilder<'a> {
             let rank = slots.first_rank(kind);
             held.extend(ids.iter().map(|id| (actions[id.as_str()], kind, rank)));
         }
-        if held.is_empty() && inventory.is_none() {
+        if held.is_empty() && inventory.is_none() && uses.is_none() {
             return Ok(None);
         }
         held.sort_by_key(|&(_, kind, _)| kind);
         let slots = ActionSlots::new(held);
-        Ok(Some(match inventory {
+        let slots = match inventory {
             Some((inventory, group)) => inventory.extend_slots(slots, *group),
+            None => slots,
+        };
+        Ok(Some(match uses {
+            Some(uses) => slots.with_empty(uses.kind(), 1),
             None => slots,
         }))
     }

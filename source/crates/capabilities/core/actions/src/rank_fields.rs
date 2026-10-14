@@ -21,11 +21,13 @@ pub struct RankFields {
     pub charge_ms: Option<u64>,
 }
 
-/// A channel at one rank: how long it runs, and the time between its ticks, both positive.
+/// A channel at one rank: how long it runs, and the time between its ticks, both positive, and
+/// whether damage of more than 0 to its unit cuts it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RankChannel {
     pub duration_ms: u64,
     pub tick_ms: u64,
+    pub damage_interrupts: bool,
 }
 
 /// A toggle's cost at one rank: in the caster's pools, paid as each attack goes off, or at each

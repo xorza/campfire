@@ -35,9 +35,11 @@ impl SupplyCostBook {
             .map_while(|at| book.get(ActionId::new(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
-                KindSpec::Cast | KindSpec::Attack(_) | KindSpec::Build(_) | KindSpec::Gather(_) => {
-                    0
-                }
+                KindSpec::Cast
+                | KindSpec::Attack(_)
+                | KindSpec::Use
+                | KindSpec::Build(_)
+                | KindSpec::Gather(_) => 0,
             })
             .collect();
         SupplyCostBook {

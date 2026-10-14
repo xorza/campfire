@@ -4,39 +4,27 @@ The one plan of the project: every open step, in the order it is done, in batche
 
 Every batch moves the engine toward the [Direction](AGENTS.md#direction), and each step names the part it builds. Line numbers point to the code as each step was written; a step refreshes its references as it starts. A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
 
-## 1. Use
-
-`capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. U1 adds the `use` kind, beside `actions`' `UseGroup`. M2 reads the code as the release tests do.
-
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 1 to 3. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
-
-**The capability model's redesign,** M2 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M2 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the [Direction](AGENTS.md#direction) gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
-
-### U1. The `use` kind
-
-(`capabilities`, `package`, `client`; D4, D5.) The `use` and `uses` sections and their load checks; the `use` order; `damage_interrupts`; `on_channel_tick`'s target; the script API reference generated again. Check: a use resolves on its object; a unit without `uses`, one that `users` refuses and one out of range that cannot walk drop the order; a held use is cut by a new order, a block of `use`, a death and, with `damage_interrupts`, by damage, not by a heal; a second use of the same object keeps its slot, and one of another object fills it afresh.
-
-### M2. Genre words stay out of the engine
-
-(`capabilities`: the release tests.) A test reads every capability crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
-
-## 2. The shrine
+## 1. The shrine
 
 `packages/test/moba`, `client`.
+
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 1 and 2. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+
+**The capability model's redesign,** M3 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M3 to M10 open its closed sets. Each new section of a unit type an M step adds is built as the [Direction](AGENTS.md#direction) gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, when its units carry state of it, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### U2. The shrine
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 3. Gravity
+## 2. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
 ### G1. Gravity
 
-(`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
+(`capabilities`, `package`, `packages/test/moba`; D13.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 4. Queues and capacities
+## 3. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -48,9 +36,9 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 5. Work and haul
+## 4. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 4, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 3, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -62,7 +50,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 6. The genre proofs
+## 5. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -90,7 +78,7 @@ What each step of M3 to M9 may move of the goldens; a step that moves a column i
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 7. The network
+## 6. The network
 
 `quic`, `net`.
 
@@ -104,7 +92,7 @@ What each step of M3 to M9 may move of the goldens; a step that moves a column i
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 8. Planned
+## 7. Planned
 
 ### P1. LAN listing
 

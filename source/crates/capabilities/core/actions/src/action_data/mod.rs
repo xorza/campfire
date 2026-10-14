@@ -110,12 +110,15 @@ pub enum Toggle {
     CostPerSecond(BTreeMap<DeclaredName, Ranked<Number>>),
 }
 
-/// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`.
+/// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`; with
+/// `damage_interrupts`, damage of more than 0 to its unit cuts it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChannelData {
     pub duration_ms: Ranked<Number>,
     pub tick_ms: Ranked<Number>,
+    #[serde(default)]
+    pub damage_interrupts: bool,
 }
 
 /// An action's `charges`: the uses it stores, at most `max`, each coming back `recharge_ms`
@@ -361,7 +364,8 @@ impl ActionData {
             .transpose()
     }
 
-    /// Its channel at `rank`: a length and a time between ticks, neither 0.
+    /// Its channel at `rank`: a length and a time between ticks, neither 0, and whether damage
+    /// cuts it.
     fn channel_at(&self, rank: Rank) -> Result<Option<RankChannel>, ActionField> {
         let field = ActionField::Channel;
         self.channel
@@ -375,6 +379,7 @@ impl ActionData {
                 Ok(RankChannel {
                     duration_ms,
                     tick_ms,
+                    damage_interrupts: channel.damage_interrupts,
                 })
             })
             .transpose()

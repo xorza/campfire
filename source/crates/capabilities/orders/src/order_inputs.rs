@@ -4,6 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget, Targets};
 use campfire_declare::Scratch;
+use campfire_interaction::{UnitUse, Using};
 use campfire_navigation::{GroupBox, Party, PartyKey};
 use campfire_players::TickCommands;
 use campfire_production::BuildTarget;
@@ -47,14 +48,15 @@ impl OrderInputs {
     /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit
     /// that is not a living enemy or that none of its weapons selects, a slot's action of a kind
     /// other than a cast, a train or a gather, a gather at no unit, a build of a slot that holds
-    /// none, and an order whose unit target its player's vision group does not see: a client can
-    /// send anything. A move to two units or more that walk moves them as
+    /// none, a use by a unit with no use slot or that the object's users do not select, and an
+    /// order whose unit target its player's vision group does not see: a client can send
+    /// anything. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
         (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
         mut orders: TickCommands<'_, '_, OrdersAction>,
         book: Res<'_, ActionBook>,
-        (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
+        (targets, visible, using): (Targets<'_, '_>, SeenTargets<'_, '_, S>, Using<'_, '_>),
         units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut movers: Local<'_, Vec<Mover>>,
@@ -142,6 +144,14 @@ impl OrderInputs {
                         (kind == Some(ActionKind::Build) && !hidden)
                             .then_some(UnitOrder::Build { slot, target })
                     }
+                    OrdersAction::Use { target } => using
+                        .of(entity, target)
+                        .filter(|_| sees(target))
+                        .map(|UnitUse { slot, action }| UnitOrder::Use {
+                            slot,
+                            action,
+                            target,
+                        }),
                     OrdersAction::Stop => Some(UnitOrder::Stop),
                     OrdersAction::Move { .. } => unreachable!("a move was checked as a group"),
                 };

@@ -8,6 +8,9 @@ use campfire_units::UnitEntity;
 use campfire_values::Block;
 use serde::{Deserialize, Serialize};
 
+use crate::action_book::ActionBook;
+use crate::action_kind::ActionKind;
+use crate::action_slots::ActionSlot;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
 
@@ -27,10 +30,15 @@ impl UseGroup {
         self.0
     }
 
-    /// The group a tag blocks of the action in a slot of `kind`, of a unit with `used`: `use` for
-    /// a slot of its use group, whatever its action's kind, else `cast`.
-    pub fn group(used: Option<&UseGroup>, kind: SlotKind) -> Block {
-        if used.is_some_and(|used| used.0 == kind) {
+    /// The group a tag blocks of the action in `slot`, a cast's or a use's, of a unit with `used`,
+    /// as `book` gives its kind: `use` for a slot of its use group, whatever its action's kind,
+    /// and for a use, else `cast`.
+    pub fn group(used: Option<&UseGroup>, slot: ActionSlot, book: &ActionBook) -> Block {
+        let kind = slot
+            .action
+            .and_then(|id| book.get(id))
+            .map(|action| action.kind.kind());
+        if used.is_some_and(|used| used.0 == slot.kind) || kind == Some(ActionKind::Use) {
             Block::Use
         } else {
             Block::Cast

@@ -1255,6 +1255,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         channel: Some(ChannelData {
             duration_ms: Ranked::One(int(300)),
             tick_ms: Ranked::One(int(100)),
+            damage_interrupts: false,
         }),
         ..cast()
     };
@@ -1305,13 +1306,11 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
 fn a_channel_ticks_from_the_tick_after_its_cast_and_an_order_a_stun_a_death_or_its_slot_emptied_cuts_it()
  {
     // Drain: a channel of 300 ms, 9 ticks at 30 a second, that ticks each 100 ms, 3 ticks, and
-    // holds Ward, a shield of 100. Each tick strikes the enemies within 5 m for 10; a cut one
-    // strikes its target for 7.
+    // holds Ward, a shield of 100. Each tick strikes its target for 10; a cut one strikes it
+    // for 7.
     let script = r#"
-fn on_channel_tick(ctx, caster) {
-    for unit in ctx.find(caster, caster.pos, 5, "enemies") {
-        ctx.damage(unit, 10, "true");
-    }
+fn on_channel_tick(ctx, caster, target) {
+    ctx.damage(target, 10, "true");
 }
 fn on_interrupt(ctx, caster, target) {
     ctx.damage(target, 7, "true");
@@ -1332,6 +1331,7 @@ fn on_interrupt(ctx, caster, target) {
         channel: Some(ChannelData {
             duration_ms: Ranked::One(int(300)),
             tick_ms: Ranked::One(int(100)),
+            damage_interrupts: false,
         }),
         hold: Some(DeclaredName::new("ward").unwrap()),
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
