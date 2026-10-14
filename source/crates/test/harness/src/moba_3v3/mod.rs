@@ -25,7 +25,6 @@ use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
 use campfire_runner::InputRules;
 
-#[cfg(feature = "internals")]
 pub(crate) mod bench;
 
 /// The hero each slot picks.

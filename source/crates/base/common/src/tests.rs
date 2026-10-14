@@ -520,7 +520,8 @@ const TEST_INFRASTRUCTURE: [&str; 5] = [
     "campfire-store",
 ];
 
-/// The top crate of the session's and the network's tests, which dev-depends on what they read.
+/// The top crate of the session's and the network's tests: all of it is test code, its `tests/`
+/// among it, and it depends on what they read.
 const TOP_TEST_CRATE: &str = "campfire-harness";
 
 /// The entries of `manifest`'s `internals` feature.
@@ -548,7 +549,7 @@ fn internals_entries(manifest: &str) -> Vec<&str> {
 /// with it turns it on, as a test of one crate uses another's helpers; and no crate has a `bench`
 /// feature beside it. A dev-dependency on another crate of the workspace is test infrastructure,
 /// or, of a crate with no feature of its own, as a binary, which cannot dev-depend on itself, a
-/// dependency whose helpers its tests read; the top test crate dev-depends on what its tests read.
+/// dependency whose helpers its tests read.
 fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
     let has = |manifest: &str, feature: &str| {
         section(manifest, "features").any(|line| line.starts_with(&format!("{feature} = ")))
@@ -582,10 +583,7 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
             }
             let workspace = manifests.iter().any(|(crate_name, _)| crate_name == other);
             let read = !own && dependencies.iter().any(|line| dependency(line) == other);
-            let allowed = other == name
-                || TEST_INFRASTRUCTURE.contains(&other)
-                || read
-                || name == TOP_TEST_CRATE;
+            let allowed = other == name || TEST_INFRASTRUCTURE.contains(&other) || read;
             if workspace && !allowed {
                 problems.push(format!(
                     "{name} dev-depends on {other}, past its tests' rule"
@@ -810,7 +808,7 @@ fn unnamed_dependencies<'a>(manifest: &'a str, production: &str) -> Vec<&'a str>
 }
 
 /// The production code of each of `crates`, in their order: each source's that no crate nested
-/// in its folder holds.
+/// in its folder holds; all of the top test crate's, as all of it is test code.
 fn production_by_crate(crates: &[Crate]) -> Vec<String> {
     let mut code = vec![String::new(); crates.len()];
     for file in sources() {
@@ -819,7 +817,15 @@ fn production_by_crate(crates: &[Crate]) -> Vec<String> {
             .enumerate()
             .filter(|(_, krate)| file.path.starts_with(&format!("{}/", krate.path)))
             .max_by_key(|(_, krate)| krate.path.len());
-        if let (Some((at, _)), Some(production)) = (holder, file.production()) {
+        let Some((at, krate)) = holder else {
+            continue;
+        };
+        let production = if krate.name == TOP_TEST_CRATE {
+            Some(file.text.clone())
+        } else {
+            file.production()
+        };
+        if let Some(production) = production {
             code[at].push_str(&production);
         }
     }

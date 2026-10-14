@@ -990,7 +990,6 @@ fn pass_through_delay_lines(app: &mut App) {
     app.add_systems(Update, DelayLine::pin_round_trip);
 }
 
-#[cfg(feature = "internals")]
 pub(crate) mod bench {
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::Duration;

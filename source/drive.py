@@ -198,6 +198,9 @@ class Workspace:
     # The members that depend on each member, by a dependency of any kind, target or feature.
     dependents: Mapping[str, frozenset[str]]
     benches: frozenset[str]
+    # The members with an `internals` feature, which a bench crate needs on, but the top test
+    # crate, all of whose code is test code.
+    internals: frozenset[str]
     # Each member that turns `internals` on through a normal, required dependency on a member.
     unifies_internals: tuple[str, ...]
     target: Path
@@ -239,6 +242,9 @@ def workspace() -> Workspace:
             package["name"]
             for package in packages
             if any("bench" in target["kind"] for target in package["targets"])
+        ),
+        internals=frozenset(
+            package["name"] for package in packages if "internals" in package["features"]
         ),
         unifies_internals=tuple(
             package["name"]
@@ -338,8 +344,10 @@ def bench_step(args: list[str]) -> Step:
     # Every run selects the same crates, the ones with a `[[bench]]`, so a case measures the same
     # code whichever cases run: `--workspace` would unify the client's Bevy features into the
     # shared crates, and one `-p` would give its dependencies fewer.
-    packages = [arg for name in sorted(workspace().benches) for arg in ("-p", name)]
-    argv = cargo("bench", "--features", "internals", "--locked", *packages, *args)
+    benches = sorted(workspace().benches)
+    packages = [arg for name in benches for arg in ("-p", name)]
+    features = ",".join(f"{name}/internals" for name in benches if name in workspace().internals)
+    argv = cargo("bench", "--features", features, "--locked", *packages, *args)
     return Step("bench", Kind.PROGRAM, argv, always_runs=True)
 
 

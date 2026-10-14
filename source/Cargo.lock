@@ -2326,7 +2326,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-geometry",
- "campfire-harness",
  "campfire-items",
  "campfire-log",
  "campfire-math",

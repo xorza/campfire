@@ -7,13 +7,12 @@ publish = false
 autotests = false
 
 # The match harness and the tests and benches that play matches through it: the top crate of the
-# session's and the network's tests, as `campfire-capabilities` is of the capabilities'. Every
-# test build turns on its dependencies' `internals`, as it reads their test types.
-[features]
-internals = ["dep:criterion"]
-
+# session's and the network's tests, as `campfire-capabilities` is of the capabilities'. All of it
+# is test code, so it has no `internals` of its own, and it depends, with their `internals`, on
+# every crate its tests read.
 [dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
+campfire-areas = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 campfire-common = { workspace = true, features = ["internals"] }
@@ -30,15 +29,18 @@ campfire-package = { workspace = true, features = ["internals"] }
 campfire-players = { workspace = true, features = ["internals"] }
 campfire-production = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
+campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-protocol = { workspace = true, features = ["internals"] }
 campfire-quic = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }
 campfire-sim = { workspace = true, features = ["internals"] }
+campfire-state-types = { workspace = true, features = ["internals"] }
 campfire-stats = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
+campfire-verifier = { workspace = true, features = ["internals"] }
 campfire-visibility = { workspace = true, features = ["internals"] }
 campfire-vision = { workspace = true, features = ["internals"] }
 
@@ -46,16 +48,9 @@ bevy_app.workspace = true
 bevy_ecs.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
-criterion = { workspace = true, optional = true }
+criterion.workspace = true
 lightyear.workspace = true
 secp256k1.workspace = true
-
-[dev-dependencies]
-campfire-areas = { workspace = true, features = ["internals"] }
-campfire-harness = { workspace = true, features = ["internals"] }
-campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-state-types = { workspace = true, features = ["internals"] }
-campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true
@@ -71,4 +66,3 @@ bench = false
 [[bench]]
 name = "harness"
 harness = false
-required-features = ["internals"]

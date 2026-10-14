@@ -30,5 +30,4 @@ pub use crate::proving_match::ProvingMatch;
 pub use crate::scripted::{Aim, Plan};
 pub use crate::scripted_mode::ScriptedMode;
 
-#[cfg(feature = "internals")]
 pub mod bench;
