@@ -1,8 +1,7 @@
 use campfire_codec::BinaryError;
 use campfire_import::ZeroHourError;
-use campfire_package::{ClassTextureError, ContentError, LoadError};
+use campfire_package::{ContentError, LoadError};
 use campfire_store::{DurableCreateError, DurableError, PathError};
-use campfire_values::PackagePath;
 use thiserror::Error;
 
 /// Why the check did not run to its verdict.
@@ -25,11 +24,4 @@ pub(crate) enum CheckError {
     Read(#[source] ContentError),
     #[error("a grid of the imported package does not decode")]
     Decode(#[source] BinaryError),
-    /// A texture class's texture is none the atlas takes.
-    #[error("{path} is no terrain texture")]
-    Texture {
-        path: PackagePath,
-        #[source]
-        error: ClassTextureError,
-    },
 }

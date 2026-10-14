@@ -1,4 +1,9 @@
-use campfire_package::{BlendShape, BlendTile, GameData, TerrainAtlas, TerrainCell, TerrainParts};
+use bevy_math::{UVec2, Vec2};
+use campfire_package::{GroundQuad, Overlay, TerrainQuads};
+
+use crate::zero_hour::game_data::GameData;
+use crate::zero_hour::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};
+use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
 /// What each cell of Zero Hour's terrain draws, as `WorldHeightMap` gives it to the heightmap's
 /// renderer, in `f32` as the game computes it. A cell is named on the game's axes, `[x, y]`, `x`
@@ -20,19 +25,19 @@ pub(crate) struct TerrainCells<'a> {
 /// none, whose split the tile takes too; and its third blend over both, with its own split,
 /// when it has one and the game draws them.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct CellDraw {
-    pub(crate) tile: [[f32; 2]; 4],
-    pub(crate) blend: Layer,
-    pub(crate) extra: Option<Layer>,
+struct CellDraw {
+    tile: [[f32; 2]; 4],
+    blend: Layer,
+    extra: Option<Layer>,
 }
 
 /// A layer of a cell: its texture coordinates and its alpha at each corner, and whether its two
 /// triangles meet on the diagonal from corner 1 to corner 3, not from 0 to 2.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Layer {
-    pub(crate) uv: [[f32; 2]; 4],
-    pub(crate) alpha: [u8; 4],
-    pub(crate) flip: bool,
+struct Layer {
+    uv: [[f32; 2]; 4],
+    alpha: [u8; 4],
+    flip: bool,
 }
 
 /// A tile's coordinates over a cell, and whether a cliff stretched them.
@@ -80,18 +85,82 @@ impl<'a> TerrainCells<'a> {
     }
 
     /// The cells the game draws on each axis: all but the last sample's.
-    pub(crate) const fn drawn(&self) -> [usize; 2] {
+    const fn drawn(&self) -> [usize; 2] {
         [self.columns - 1, self.rows - 1]
     }
 
     /// The height of the sample `[x, y]`, in steps.
-    pub(crate) fn height(&self, [x, y]: [usize; 2]) -> i32 {
+    fn height(&self, [x, y]: [usize; 2]) -> i32 {
         i32::from(self.samples[self.at([x, y])])
+    }
+
+    /// The terrain file's quads of the cells the game draws (design 16, D1): each cell's tile as
+    /// its ground, and its blend and its third blend as overlays, in that order, each when it has
+    /// one of some alpha: a custom edge's blend has none, as the import draws no custom edge.
+    /// Of `n` rows of cells, the file's cell `[column, row]` is the game's `[column, n − 1 − row]`,
+    /// its corners 0 to 3 the game's 3 to 0, so the game's diagonal from corner 0 to 2 is the
+    /// file's from 1 to 3.
+    pub(crate) fn quads(&self) -> TerrainQuads {
+        let [columns, rows] = self.drawn();
+        let mut ground = Vec::with_capacity(columns * rows);
+        let mut overlays = Vec::new();
+        for row in 0..rows {
+            for column in 0..columns {
+                let draw = self.cell([column, rows - 1 - row]);
+                ground.push(GroundQuad {
+                    uv: TerrainCells::file_corners(draw.tile).map(Vec2::from),
+                    flip: !draw.blend.flip,
+                });
+                let cell = u32::try_from(row * columns + column).expect("a map's cells fit u32");
+                let layers = [Some(draw.blend), draw.extra].into_iter().flatten();
+                for layer in layers.filter(|layer| layer.alpha != [0; 4]) {
+                    overlays.push(Overlay {
+                        cell,
+                        uv: TerrainCells::file_corners(layer.uv).map(Vec2::from),
+                        alpha: TerrainCells::file_corners(layer.alpha),
+                        flip: !layer.flip,
+                    });
+                }
+            }
+        }
+        TerrainQuads {
+            columns: u32::try_from(self.columns).expect("a map's columns fit u32"),
+            ground,
+            overlays,
+        }
+    }
+
+    /// How many cells the game draws draw a tile, a blend's or a third blend's when the game
+    /// draws them, that the atlas holds no texture of; a custom edge's blend draws no tile.
+    pub(crate) fn untextured(&self) -> usize {
+        let [columns, rows] = self.drawn();
+        let blend = |index: Option<u16>| {
+            let blend = &self.terrain.blends[usize::from(index?)];
+            blend.custom_edge.is_none().then_some(blend.tile)
+        };
+        (0..rows)
+            .flat_map(|y| (0..columns).map(move |x| [x, y]))
+            .filter(|&at| {
+                let cell = self.terrain_cell(at);
+                let extra = blend(cell.extra_blend).filter(|_| self.game.three_way_blends);
+                [Some(cell.tile), blend(cell.blend), extra]
+                    .into_iter()
+                    .flatten()
+                    .any(|tile| self.atlas.tile(usize::from(tile >> 2)).is_none())
+            })
+            .count()
+    }
+
+    /// The game's corners 0 to 3 of a cell as the file's: its north-west first.
+    const fn file_corners<T: Copy>(
+        [south_west, south_east, north_east, north_west]: [T; 4],
+    ) -> [T; 4] {
+        [north_west, north_east, south_east, south_west]
     }
 
     /// What the cell `[x, y]` draws, as `getUVData`, `getAlphaUVData` and
     /// `getExtraAlphaUVData` give it.
-    pub(crate) fn cell(&self, at: [usize; 2]) -> CellDraw {
+    fn cell(&self, at: [usize; 2]) -> CellDraw {
         let cell = self.terrain_cell(at);
         let tile = self.tile_uv(at, cell.tile).uv;
         let (blend, stretched) = match cell.blend {
@@ -210,7 +279,7 @@ impl<'a> TerrainCells<'a> {
     )]
     fn tile_uv(&self, at: [usize; 2], tile: u16) -> TileUv {
         let base = usize::from(tile >> 2);
-        let Some([x, y]) = self.atlas.tile(base) else {
+        let Some(UVec2 { x, y }) = self.atlas.tile(base) else {
             return TileUv {
                 uv: [[0.0; 2]; 4],
                 stretched: false,
@@ -235,7 +304,7 @@ impl<'a> TerrainCells<'a> {
             let matched =
                 class.filter(|&class| self.class_of(usize::from(cliff.tile >> 2)) == Some(class));
             if let Some(class) = matched {
-                let [left, top] = self.atlas.class(class);
+                let UVec2 { x: left, y: top } = self.atlas.class(class);
                 let side = self.terrain.classes[class].width * TerrainAtlas::TILE;
                 let bottom = (top + side) as f32;
                 let width = TerrainAtlas::WIDTH as f32;
@@ -272,7 +341,7 @@ impl<'a> TerrainCells<'a> {
         if slope < STRETCH_LIMIT {
             return None;
         }
-        let [left, top] = self.atlas.class(class).map(|texel| texel as f32);
+        let Vec2 { x: left, y: top } = self.atlas.class(class).as_vec2();
         let side = (self.terrain.classes[class].width * TerrainAtlas::TILE) as f32;
         let (right, bottom) = (left + side, top + side);
         let divisor = (TILE_LIMIT / slope).clamp(1.0, TILE_LIMIT);

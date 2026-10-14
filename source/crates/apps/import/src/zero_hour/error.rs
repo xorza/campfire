@@ -2,7 +2,7 @@ use std::fmt;
 use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
-use campfire_package::{TerrainError, WriteError};
+use campfire_package::{TerrainFileError, WriteError};
 use campfire_store::{PathError, ReadError};
 use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;
@@ -211,6 +211,9 @@ pub enum MapError {
     /// The terrain names past what it holds.
     #[error("its terrain names past what it holds")]
     Terrain(#[source] TerrainError),
+    /// The terrain converts to no terrain file: a cliff's coordinates are not finite.
+    #[error("its terrain converts to no terrain file")]
+    TerrainFile(#[source] TerrainFileError),
     /// An object, by its index among those the game keeps, lies at no position or angle the
     /// engine holds.
     #[error("object {0} lies at no position or angle the engine holds")]
@@ -233,6 +236,33 @@ pub enum MapError {
     /// Two object templates give one unit type name.
     #[error("{first} and {second} give one unit type name")]
     UnitTypeClash { first: String, second: String },
+}
+
+/// Why a map's terrain is not one the import converts: a count or an index that reaches past
+/// what it holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TerrainError {
+    /// Its cells fill no whole rows of its columns.
+    #[error("its cells fill no whole rows")]
+    Shape,
+    /// A cell, a blend or a cliff's UVs name a tile past its tiles.
+    #[error("tile {0} is past its tiles")]
+    Tile(u16),
+    /// A cell names a blend past its blends.
+    #[error("blend {0} is past its blends")]
+    Blend(u16),
+    /// A cell names cliff UVs past its list.
+    #[error("cliff UVs {0} are past its list")]
+    CliffUv(u16),
+    /// A texture class, by its index, reaches past its tiles.
+    #[error("texture class {0} reaches past its tiles")]
+    Class(usize),
+    /// An edge class, by its index, reaches past its edge tiles.
+    #[error("edge class {0} reaches past its edge tiles")]
+    EdgeClassTiles(usize),
+    /// A blend names an edge class past its edge classes.
+    #[error("edge class {0} is past its edge classes")]
+    EdgeClass(u16),
 }
 
 /// A packing the game reads that the importer does not.

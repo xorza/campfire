@@ -55,6 +55,9 @@ pub(crate) mod look;
 pub(crate) mod package_source;
 pub(crate) mod player_camera;
 pub(crate) mod scene_lights;
+pub(crate) mod terrain_image;
+pub(crate) mod terrain_meshes;
+pub(crate) mod terrain_view;
 pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 
@@ -88,7 +91,7 @@ struct Palette {
 #[derive(Component, Debug)]
 struct Ground;
 
-/// Present when a game's module draws the map's ground, so the view draws no plane of its own.
+/// Present when the map has a terrain to draw, so the view draws no plane of its own.
 #[derive(Resource, Debug)]
 pub(crate) struct GroundDrawn;
 
@@ -194,8 +197,8 @@ impl Plugin for View {
 }
 
 impl View {
-    /// Sets the background, the map's lights or one plain sun, the view's own ground unless a
-    /// game's module draws one, and the palette.
+    /// Sets the background, the map's lights or one plain sun, the view's own ground unless the
+    /// map's terrain is drawn, and the palette.
     fn set_scene(
         drawn: Option<Res<'_, GroundDrawn>>,
         data: Option<Res<'_, ClientData>>,

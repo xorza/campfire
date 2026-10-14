@@ -39,7 +39,7 @@ impl SceneLights {
             .lights
             .iter()
             .map(|sun| {
-                let way = Vec3::from_array(sun.direction);
+                let way = sun.direction;
                 let up = if way.cross(Vec3::Y) == Vec3::ZERO {
                     Vec3::Z
                 } else {
@@ -79,11 +79,11 @@ mod tests {
             lights: vec![
                 MapLight {
                     color: [1.0, 0.5, 0.0],
-                    direction: [0.0, -1.0, 0.0],
+                    direction: Vec3::NEG_Y,
                 },
                 MapLight {
                     color: [0.25, 0.25, 0.25],
-                    direction: [1.0, -1.0, 0.0],
+                    direction: Vec3::new(1.0, -1.0, 0.0),
                 },
             ],
         };

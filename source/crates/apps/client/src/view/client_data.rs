@@ -92,7 +92,7 @@ impl ClientData {
 
     /// The bytes of the file at `path`; none for a file the package lacks, and none, logged, for
     /// one that does not read.
-    fn read_file(files: &PackageReader, path: &PackagePath) -> Option<Vec<u8>> {
+    pub(super) fn read_file(files: &PackageReader, path: &PackagePath) -> Option<Vec<u8>> {
         match files.read_file(path) {
             Ok(bytes) => Some(bytes),
             Err(ContentError::Missing { .. }) => None,
@@ -117,7 +117,10 @@ impl ClientData {
     }
 
     /// `result`'s value; none, logged with `path`, for its error.
-    fn logged<T, E: Error + 'static>(path: &PackagePath, result: Result<T, E>) -> Option<T> {
+    pub(super) fn logged<T, E: Error + 'static>(
+        path: &PackagePath,
+        result: Result<T, E>,
+    ) -> Option<T> {
         result
             .map_err(|problem| error!(path = %path, error = %ErrorReport::of(&problem), "a client data file does not read"))
             .ok()

@@ -76,7 +76,7 @@ impl CameraRig {
             least: 12.0,
             most: 24.0,
         },
-        scroll: [20.0, 20.0],
+        scroll: Vec2::splat(20.0),
         turn: 3.0,
         drag_turn: 0.01,
         zoom_notch: 1.0,
@@ -125,11 +125,8 @@ impl CameraRig {
         let turn = Quat::from_rotation_y(self.yaw);
         let right = turn * Vec3::X;
         let forward = turn * Vec3::NEG_Z;
-        let [across, along] = [
-            across * self.file.scroll[0] * seconds,
-            along * self.file.scroll[1] * seconds,
-        ];
-        let moved = right * across + forward * along;
+        let step = Vec2::new(across, along) * self.file.scroll * seconds;
+        let moved = right * step.x + forward * step.y;
         self.pivot = self.bounded(self.pivot + Vec2::new(moved.x, moved.z));
     }
 
@@ -291,7 +288,7 @@ mod tests {
             least: 120.0,
             most: 310.0,
         },
-        scroll: [700.0, 875.0],
+        scroll: Vec2::new(700.0, 875.0),
         turn: 3.0,
         drag_turn: 0.01,
         zoom_notch: 10.0,

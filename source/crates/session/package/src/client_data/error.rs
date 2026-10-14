@@ -1,0 +1,53 @@
+use thiserror::Error;
+
+/// Why a terrain file is none the client draws (design 16): a shape, an index, a number or a
+/// rectangle past what it holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TerrainFileError {
+    /// Its grid has fewer than two columns, or its ground quads fill no whole rows of its cells.
+    #[error("its ground quads fill no whole rows of its cells")]
+    Shape,
+    /// An overlay, by its index, names a cell past the ground's.
+    #[error("overlay {0} names a cell past the ground's")]
+    Cell(usize),
+    /// A texture coordinate is not finite.
+    #[error("a texture coordinate is not finite")]
+    Coordinate,
+    /// Its texture has no texel, or no level, or more levels than its sides halve to.
+    #[error("its texture has no texel or no level, or more levels than its sides hold")]
+    Texture,
+    /// A copy, by its index, lies past the texture, or its place or size lies off the texels its
+    /// last level halves to.
+    #[error("copy {0} lies past the texture or off its levels' texels")]
+    Copy(usize),
+    /// A border wrap, by its index, lies past the texture, is wider than its rectangle, or lies
+    /// off the texels its last level halves to.
+    #[error("border wrap {0} lies past the texture, is too wide, or lies off its levels' texels")]
+    Wrap(usize),
+    /// A factor of its surface is not from 0 to 1.
+    #[error("a factor of its surface is not from 0 to 1")]
+    Surface,
+}
+
+/// Why a texture of the package is none a composed texture takes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum TextureLevelsError {
+    /// It starts with no KTX2 identifier.
+    #[error("it is no KTX2 file")]
+    NotKtx2,
+    /// A field or a level runs past its end.
+    #[error("it runs past its end")]
+    Short,
+    /// Its format, by its Vulkan number, is not `R8G8B8A8_SRGB`.
+    #[error("its format {0} is not R8G8B8A8_SRGB")]
+    Format(u32),
+    /// It is no 2D texture of texels, one face and no layers, or its data is supercompressed.
+    #[error("it is no plain 2D texture")]
+    NotPlain,
+    /// It holds fewer levels than are wanted of it.
+    #[error("it has {held} levels, fewer than {wanted}")]
+    Levels { held: u32, wanted: u32 },
+    /// A level, by its number, is not its size's bytes.
+    #[error("level {0} is not its size's bytes")]
+    LevelBytes(u32),
+}

@@ -1,100 +1,86 @@
+use bevy_math::UVec2;
 use campfire_values::PackagePath;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::zero_hour::error::TerrainError;
 
-/// Zero Hour's terrain of one map, `client/maps/<name>/terrain.bin`, through `Binary`: what each cell
-/// draws, and the tiles, blends and cliff UVs the cells name, as the map's `BlendTileData` holds
-/// them, each index a cell names checked to be in its list; and the lights it is drawn in.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct Terrain {
+/// Zero Hour's terrain of one map: what each cell draws, and the tiles, blends and cliff UVs the
+/// cells name, as the map's `BlendTileData` holds them, each index a cell names checked to be in
+/// its list.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Terrain {
     parts: TerrainParts,
-    lighting: TerrainLighting,
-}
-
-/// The light the terrain is drawn in, the game's for the map's time of day, as its renderer
-/// lights each vertex: the ambient color, and each light's diffuse color, added as it meets the
-/// vertex's normal, each channel of the sum clamped to 0 to 1 and multiplying the texture's.
-/// Colors are the game's numbers, 1 a texture's full color.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TerrainLighting {
-    pub ambient: [f32; 3],
-    /// At most `TerrainLighting::MOST`.
-    pub lights: Vec<TerrainLight>,
-}
-
-/// A directional light of the terrain: its diffuse color, and the way its light goes, on the
-/// engine's axes, as the game keeps it, of no length it checks.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct TerrainLight {
-    pub diffuse: [f32; 3],
-    pub direction: [f32; 3],
 }
 
 /// A terrain's fields, as `Terrain::new` checks them.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TerrainParts {
-    pub columns: u32,
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct TerrainParts {
+    pub(crate) columns: u32,
     /// One for each sample of the map's heights, in their order.
-    pub cells: Vec<TerrainCell>,
+    pub(crate) cells: Vec<TerrainCell>,
     /// The count of source tiles, 64 texels on a side, that the texture classes cut.
-    pub tiles: u32,
+    pub(crate) tiles: u32,
     /// The texture classes, each a texture `Terrain.ini` names, cut into tiles from its first.
-    pub classes: Vec<TextureClass>,
+    pub(crate) classes: Vec<TextureClass>,
     /// The count of source tiles that the edge classes cut.
-    pub edge_tiles: u32,
-    pub edge_classes: Vec<TextureClass>,
-    pub blends: Vec<BlendTile>,
-    pub cliffs: Vec<CliffUv>,
+    pub(crate) edge_tiles: u32,
+    pub(crate) edge_classes: Vec<TextureClass>,
+    pub(crate) blends: Vec<BlendTile>,
+    pub(crate) cliffs: Vec<CliffUv>,
 }
 
 /// What one cell draws. A tile is a quarter of a source tile, as the original indexes them: the
 /// source tile `tile >> 2`, and its quarter the low two bits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TerrainCell {
-    pub tile: u16,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TerrainCell {
+    pub(crate) tile: u16,
     /// The blend over the tile, an index into the blends.
-    pub blend: Option<u16>,
+    pub(crate) blend: Option<u16>,
     /// The third texture's blend, over the first, an index into the blends.
-    pub extra_blend: Option<u16>,
+    pub(crate) extra_blend: Option<u16>,
     /// UVs that fit a cliff's tile to its slope, an index into the cliffs.
-    pub cliff_uv: Option<u16>,
+    pub(crate) cliff_uv: Option<u16>,
     /// Whether the cell is a cliff, as the map painted it.
-    pub cliff: bool,
+    pub(crate) cliff: bool,
 }
 
 /// A texture of the terrain and the source tiles it is cut into: `tiles` of them from
 /// `first_tile`, `width` to a row.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TextureClass {
-    pub first_tile: u32,
-    pub tiles: u32,
-    pub width: u32,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextureClass {
+    pub(crate) first_tile: u32,
+    pub(crate) tiles: u32,
+    pub(crate) width: u32,
     /// The class's name in `Terrain.ini`.
-    pub name: String,
-    /// The package's texture that `Terrain.ini` gives the class; none when it names none, or one
-    /// the install lacks, which the game draws as no texture.
-    pub texture: Option<PackagePath>,
+    pub(crate) name: String,
+    /// The texture `Terrain.ini` gives the class; none when it names none, or a TGA the install
+    /// lacks, which the game draws as no texture.
+    pub(crate) texture: Option<ClassTexture>,
+}
+
+/// A class's texture: the package's file of it, and its size in texels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClassTexture {
+    pub(crate) path: PackagePath,
+    pub(crate) size: UVec2,
 }
 
 /// A tile blended over a cell's own: its tile, as a cell's, and the alpha pattern that fades it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub struct BlendTile {
-    pub tile: u16,
-    pub shape: BlendShape,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BlendTile {
+    pub(crate) tile: u16,
+    pub(crate) shape: BlendShape,
     /// The pattern fades the other way.
-    pub inverted: bool,
+    pub(crate) inverted: bool,
     /// The cell's two triangles flip, as a third texture over a diagonal blend needs.
-    pub flipped: bool,
+    pub(crate) flipped: bool,
     /// An edge class whose tile replaces the alpha pattern, an index into the edge classes.
-    pub custom_edge: Option<u16>,
+    pub(crate) custom_edge: Option<u16>,
 }
 
 /// The direction a blend's alpha fades: across the cell, or along one of its diagonals, over a
 /// corner or, `long`, over all but one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum BlendShape {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BlendShape {
     Horizontal,
     Vertical,
     RightDiagonal { long: bool },
@@ -103,35 +89,20 @@ pub enum BlendShape {
 
 /// UVs that stretch a tile over a cliff: the tile, and a `[u, v]` for each corner, upper left,
 /// lower left, lower right and upper right, as the map stores them.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-pub struct CliffUv {
-    pub tile: u16,
-    pub corners: [[f32; 2]; 4],
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct CliffUv {
+    pub(crate) tile: u16,
+    pub(crate) corners: [[f32; 2]; 4],
     /// The cell's two triangles flip.
-    pub flip: bool,
+    pub(crate) flip: bool,
     /// The original's editor bent the UVs to fit.
-    pub mutant: bool,
-}
-
-impl TerrainLighting {
-    /// The most lights the game draws the terrain in (`MAX_GLOBAL_LIGHTS`).
-    pub const MOST: usize = 3;
+    pub(crate) mutant: bool,
 }
 
 impl Terrain {
-    /// The terrain of `terrain` in `lighting`; an error unless its cells fill whole rows, every
-    /// index each cell, blend and cliff names is in its list, each class's tiles are within its
-    /// count, and its lighting has at most three lights and finite numbers.
-    pub fn new(terrain: TerrainParts, lighting: TerrainLighting) -> Result<Terrain, TerrainError> {
-        let numbers = lighting
-            .lights
-            .iter()
-            .flat_map(|light| light.diffuse.into_iter().chain(light.direction))
-            .chain(lighting.ambient);
-        if lighting.lights.len() > TerrainLighting::MOST || !numbers.into_iter().all(f32::is_finite)
-        {
-            return Err(TerrainError::Lighting);
-        }
+    /// The terrain of `terrain`; an error unless its cells fill whole rows, every index each
+    /// cell, blend and cliff names is in its list, and each class's tiles are within its count.
+    pub(crate) fn new(terrain: TerrainParts) -> Result<Terrain, TerrainError> {
         let columns = usize::try_from(terrain.columns)
             .ok()
             .ok_or(TerrainError::Shape)?;
@@ -180,38 +151,16 @@ impl Terrain {
             terrain.edge_tiles,
             TerrainError::EdgeClassTiles,
         )?;
-        Ok(Terrain {
-            parts: terrain,
-            lighting,
-        })
+        Ok(Terrain { parts: terrain })
     }
 
-    pub const fn parts(&self) -> &TerrainParts {
+    pub(crate) const fn parts(&self) -> &TerrainParts {
         &self.parts
-    }
-
-    pub const fn lighting(&self) -> &TerrainLighting {
-        &self.lighting
-    }
-}
-
-/// A package's file is untrusted, so a terrain `new` refuses fails to decode.
-impl<'de> Deserialize<'de> for Terrain {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Terrain, D::Error> {
-        #[derive(Debug, Deserialize)]
-        struct Fields {
-            parts: TerrainParts,
-            lighting: TerrainLighting,
-        }
-        let Fields { parts, lighting } = Fields::deserialize(deserializer)?;
-        Terrain::new(parts, lighting).map_err(D::Error::custom)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use campfire_codec::{Binary, BinaryError};
-
     use super::*;
 
     /// A terrain of 2 × 2 cells, each naming each list's one entry.
@@ -232,7 +181,7 @@ mod tests {
                 tiles: 2,
                 width: 1,
                 name: "Sand".to_owned(),
-                texture: Some(PackagePath::parse("client/textures/art/terrain/sand.ktx2").unwrap()),
+                texture: None,
             }],
             edge_tiles: 0,
             edge_classes: Vec::new(),
@@ -252,58 +201,16 @@ mod tests {
         }
     }
 
-    /// An ambient color and one light.
-    fn lighting() -> TerrainLighting {
-        TerrainLighting {
-            ambient: [0.2, 0.2, 0.25],
-            lights: vec![TerrainLight {
-                diffuse: [0.8, 0.75, 0.7],
-                direction: [-0.5, -0.7, 0.5],
-            }],
-        }
-    }
-
     #[test]
-    fn a_terrain_s_lighting_has_at_most_three_lights_of_finite_numbers() {
-        let (parts, lighting) = (parts(), lighting());
-        // At most three lights, each number finite.
-        let lit = |change: fn(&mut TerrainLighting)| {
-            let mut lighting = lighting.clone();
-            change(&mut lighting);
-            Terrain::new(parts.clone(), lighting).unwrap_err()
-        };
-        assert_eq!(
-            lit(|lighting| lighting.lights = vec![lighting.lights[0]; 4]),
-            TerrainError::Lighting
-        );
-        assert_eq!(
-            lit(|lighting| lighting.ambient[1] = f32::NAN),
-            TerrainError::Lighting
-        );
-        assert_eq!(
-            lit(|lighting| lighting.lights[0].direction[2] = f32::INFINITY),
-            TerrainError::Lighting
-        );
-    }
-
-    #[test]
-    fn a_terrain_decodes_only_with_each_index_in_its_list() {
-        let (parts, lighting) = (parts(), lighting());
-        let terrain = Terrain::new(parts.clone(), lighting.clone()).unwrap();
-        let bytes = Binary::encode(&terrain);
-        assert_eq!(Binary::decode::<Terrain>(&bytes).unwrap(), terrain);
-        let trailing = [bytes.as_slice(), &[0]].concat();
-        assert_eq!(
-            Binary::decode::<Terrain>(&trailing),
-            Err(BinaryError::NotCanonical)
-        );
-
+    fn a_terrain_holds_only_with_each_index_in_its_list() {
+        let parts = parts();
+        assert_eq!(Terrain::new(parts.clone()).unwrap().parts(), &parts);
         // Tile 7 is source tile 1 of 2; tile 8 would be source tile 2. Each list holds one entry,
         // so index 1 is past it.
         let with = |change: fn(&mut TerrainParts)| {
             let mut parts = parts.clone();
             change(&mut parts);
-            Terrain::new(parts, lighting.clone()).unwrap_err()
+            Terrain::new(parts).unwrap_err()
         };
         assert_eq!(
             with(|parts| parts.cells.pop().map(drop).unwrap()),
@@ -344,15 +251,5 @@ mod tests {
             with(|parts| parts.edge_classes.push(parts.classes[0].clone())),
             TerrainError::EdgeClassTiles(0)
         );
-        let mut short = parts;
-        short.tiles = 1;
-        let encoded = Binary::encode(&Terrain {
-            parts: short,
-            lighting,
-        });
-        assert!(matches!(
-            Binary::decode::<Terrain>(&encoded),
-            Err(BinaryError::Malformed(_))
-        ));
     }
 }

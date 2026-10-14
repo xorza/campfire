@@ -1,3 +1,5 @@
+use bevy_math::UVec2;
+
 use crate::texture::error::TextureError;
 use crate::texture::ktx2_image::Ktx2Image;
 use crate::texture::mip_chain::MipChain;
@@ -87,6 +89,11 @@ impl TgaFile {
             height,
             rgba,
         })
+    }
+
+    /// Its width and height, in texels.
+    pub(crate) const fn size(&self) -> UVec2 {
+        UVec2::new(self.width, self.height)
     }
 
     /// Its KTX2 file: 8-bit RGBA, with its full chain of levels.

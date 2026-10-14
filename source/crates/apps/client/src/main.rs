@@ -59,8 +59,8 @@ use crate::shop_panel::ShopPanel;
 use crate::view::View;
 use crate::view::package_source::PackageSource;
 use crate::view::player_camera::PlayerCamera;
+use crate::view::terrain_view::TerrainView;
 use crate::view::unit_models::UnitModels;
-use crate::zero_hour::terrain_view::TerrainView;
 
 mod args;
 mod bot;
@@ -76,7 +76,6 @@ mod pointer;
 mod shop_panel;
 mod ui_style;
 mod view;
-mod zero_hour;
 
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.

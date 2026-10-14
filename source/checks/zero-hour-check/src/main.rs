@@ -3,9 +3,10 @@
 //! rules package, which a run on another OS must match. Then it checks that Tournament Desert
 //! imports as a multiplayer game of the original spawns it: 270 × 340 height samples; of its 580
 //! objects, once its 176 road ends are dropped, 142 placed units of 41 types and 438 client
-//! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks that
-//! every cell of its terrain the client draws has a texture for each tile it draws, and that it
-//! loads in a match of the imported mode, which plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
+//! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks its
+//! terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and border
+//! wraps, each logged for review; that the import reports no cell of its terrain whose tile has
+//! no texture; and that it loads in a match of the imported mode, which plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
 //! passes as one that checked.
 //!
 //! Run it with `cargo run --release -p campfire-zero-hour-check [-- <run root>]`.
@@ -23,10 +24,7 @@ use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_mode::HeightGrid;
-use campfire_package::{
-    ClassTexture, ClientObjects, ContentError, GameData, ModePackages, PackageReader, Terrain,
-    TerrainAtlas,
-};
+use campfire_package::{ClientObjects, ContentError, ModePackages, PackageReader, TerrainFile};
 use campfire_runner::SessionWorld;
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
@@ -34,7 +32,7 @@ use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
-use crate::failure::Failure;
+use crate::failure::{Failure, TerrainDrawn};
 
 mod command_line;
 mod error;
@@ -42,6 +40,16 @@ mod failure;
 
 /// The map the check plays.
 const MAP: &str = "tournament_desert";
+
+/// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
+/// its overlays; a copy for each tile its classes' textures load; and a border wrap for each
+/// class's block.
+const TERRAIN: TerrainDrawn = TerrainDrawn {
+    quads: 269 * 339,
+    overlays: 19_041,
+    copies: 300,
+    wraps: 19,
+};
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -136,7 +144,18 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     if markers != 28 {
         failures.push(Failure::Markers(markers));
     }
-    let untextured = untextured(files)?;
+    let terrain = read(files, &TerrainFile::path(MAP))?;
+    let terrain = Binary::decode::<TerrainFile>(&terrain).map_err(CheckError::Decode)?;
+    let drawn = TerrainDrawn {
+        quads: terrain.quads().ground.len(),
+        overlays: terrain.quads().overlays.len(),
+        copies: terrain.texture().copies.len(),
+        wraps: terrain.texture().wraps.len(),
+    };
+    if drawn != TERRAIN {
+        failures.push(Failure::Terrain(drawn));
+    }
+    let untextured = imported.untextured_cells[&map];
     if untextured > 0 {
         failures.push(Failure::Untextured(untextured));
     }
@@ -147,6 +166,10 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         objects,
         looks,
         markers,
+        quads = drawn.quads,
+        overlays = drawn.overlays,
+        copies = drawn.copies,
+        wraps = drawn.wraps,
         untextured,
         "Tournament Desert loaded"
     );
@@ -160,49 +183,6 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     };
     info!(%tick, "Tournament Desert played a tick");
     Ok(failures)
-}
-
-/// How many cells of the map's terrain that the client draws, all but its last row and column,
-/// draw a tile, a blend's or a third blend's when the game draws them, with no texture in the
-/// atlas the client builds: a class with no texture, or whose texture holds too few tiles, or
-/// that the atlas has no room for. A texture that does not read fails the check.
-fn untextured(files: &PackageReader) -> Result<usize, CheckError> {
-    let bytes = read(files, &format!("client/maps/{MAP}/terrain.bin"))?;
-    let terrain = Binary::decode::<Terrain>(&bytes).map_err(CheckError::Decode)?;
-    let path = PackagePath::parse(GameData::PATH).expect("a constant package path");
-    let game_data = Toml::parse::<GameData>(&read_text(files, &path)?)
-        .map_err(|error| CheckError::Read(ContentError::Data { path, error }))?;
-    let parts = terrain.parts();
-    let mut textures = Vec::new();
-    for class in &parts.classes {
-        let Some(path) = &class.texture else {
-            textures.push(None);
-            continue;
-        };
-        let bytes = files.read_file(path).map_err(CheckError::Read)?;
-        let texture = ClassTexture::of_ktx2(&bytes).map_err(|error| CheckError::Texture {
-            path: path.clone(),
-            error,
-        })?;
-        textures.push(Some(texture));
-    }
-    let atlas = TerrainAtlas::new(parts, &textures);
-    let columns = parts.columns as usize;
-    let rows = parts.cells.len() / columns;
-    let blend = |index: Option<u16>| index.map(|index| parts.blends[usize::from(index)].tile);
-    // The package's rows run from the game's north, so the game's last row is its first.
-    let drawn =
-        (1..rows).flat_map(|row| (0..columns - 1).map(move |column| row * columns + column));
-    Ok(drawn
-        .filter(|&at| {
-            let cell = &parts.cells[at];
-            let extra = blend(cell.extra_blend).filter(|_| game_data.three_way_blends);
-            [Some(cell.tile), blend(cell.blend), extra]
-                .into_iter()
-                .flatten()
-                .any(|tile| atlas.tile(usize::from(tile >> 2)).is_none())
-        })
-        .count())
 }
 
 /// How many of `names` there are of each name.

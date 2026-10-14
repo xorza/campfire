@@ -37,6 +37,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-package = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

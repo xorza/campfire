@@ -2,32 +2,28 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::ops::RangeInclusive;
 
-use campfire_package::{BlendShape, BlendTile, CliffUv, TerrainCell, TerrainParts, TextureClass};
 use miniz_oxide::inflate::decompress_to_vec_zlib_with_limit;
 
 use crate::zero_hour::chunk_reader::{ChunkReader, RawChunk};
 use crate::zero_hour::error::{Chunk, MapError, Packing};
 use crate::zero_hour::map_object::MapObject;
 use crate::zero_hour::ref_pack::RefPack;
+use crate::zero_hour::terrain::{
+    BlendShape, BlendTile, CliffUv, TerrainCell, TerrainParts, TextureClass,
+};
 
 /// A map as the game reads its `.map` file, `WorldHeightMap`'s chunks: its heights, its
-/// terrain's tiles and blends, and the objects the game keeps, in the file's order.
+/// terrain's tiles and blends, the objects the game keeps, in the file's order, and its objects'
+/// lights.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct MapFile {
     pub(crate) heights: MapHeights,
     /// Its cells in the file's order, one for each sample of the heights.
     pub(crate) terrain: TerrainParts,
     pub(crate) objects: Vec<MapObject>,
-    pub(crate) lighting: MapLighting,
-}
-
-/// A map's lights for its time of day (`GlobalLighting`): the terrain's and the objects', three
-/// each, on the game's axes, a light the file does not give as the game starts it, dark and
-/// straight down.
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct MapLighting {
-    pub(crate) terrain: [GameLight; 3],
-    pub(crate) objects: [GameLight; 3],
+    /// The three lights its objects are drawn in at its time of day (`GlobalLighting`), on the
+    /// game's axes, a light the file does not give as the game starts it, dark and straight down.
+    pub(crate) lights: [GameLight; 3],
 }
 
 /// One of the game's global lights: its ambient and diffuse colors, and the way its light goes,
@@ -111,13 +107,12 @@ impl MapFile {
             objects.ok_or(MapError::Missing(Chunk::ObjectsList))?,
             &names,
         )?;
-        let lighting =
-            MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
+        let lights = MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
         Ok(MapFile {
             heights,
             terrain,
             objects,
-            lighting,
+            lights,
         })
     }
 
@@ -343,9 +338,10 @@ impl MapFile {
     /// `GlobalLighting` versions 1 to 3 (`WorldHeightMap::ParseLightingDataChunk`): the map's
     /// time of day, then for each of the four, the first terrain light and the first object
     /// light, from version 2 the two other object lights, from version 3 the two other terrain
-    /// lights; and the shadows' color, which the import does not keep. The lights of the map's
-    /// time of day.
-    fn lighting(chunk: RawChunk<'_>) -> Result<MapLighting, MapError> {
+    /// lights; and the shadows' color, which the import does not keep. The object lights of the
+    /// map's time of day: the terrain is lit by them (design 16, D3), so its own are read and
+    /// dropped, each still refused when a number of it is not finite.
+    fn lighting(chunk: RawChunk<'_>) -> Result<[GameLight; 3], MapError> {
         MapFile::version(&chunk, Chunk::GlobalLighting, 1..=3)?;
         let version = chunk.version;
         let mut body = chunk.body;
@@ -355,21 +351,18 @@ impl MapFile {
             .filter(|time| (1..=4).contains(time))
             .ok_or(MapError::TimeOfDay(time))?
             - 1;
-        let mut times = [MapLighting {
-            terrain: [GameLight::DARK; 3],
-            objects: [GameLight::DARK; 3],
-        }; 4];
-        for lighting in &mut times {
-            lighting.terrain[0] = MapFile::light(&mut body)?;
-            lighting.objects[0] = MapFile::light(&mut body)?;
+        let mut times = [[GameLight::DARK; 3]; 4];
+        for lights in &mut times {
+            MapFile::light(&mut body)?;
+            lights[0] = MapFile::light(&mut body)?;
             if version >= 2 {
-                for light in &mut lighting.objects[1..] {
+                for light in &mut lights[1..] {
                     *light = MapFile::light(&mut body)?;
                 }
             }
             if version >= 3 {
-                for light in &mut lighting.terrain[1..] {
-                    *light = MapFile::light(&mut body)?;
+                for _ in 1..3 {
+                    MapFile::light(&mut body)?;
                 }
             }
         }
@@ -641,13 +634,12 @@ mod tests {
                 (0..18_u8).flat_map(|at| (f32::from(time) + f32::from(at) / 32.0).to_le_bytes()),
             );
         }
-        let lighting = read(1, &one).unwrap();
-        // The night, the fourth: its first terrain light is floats 0 to 8, its first object light
-        // 9 to 17; the others as the game starts them.
-        assert_eq!(lighting.terrain[0].ambient, [4.0, 4.031_25, 4.0625]);
-        assert_eq!(lighting.objects[0].position, [4.468_75, 4.5, 4.531_25]);
-        assert_eq!(lighting.terrain[1..], [GameLight::DARK; 2]);
-        assert_eq!(lighting.objects[1..], [GameLight::DARK; 2]);
+        let lights = read(1, &one).unwrap();
+        // The night, the fourth: its first terrain light is floats 0 to 8, which the import drops,
+        // its first object light 9 to 17; the others as the game starts them.
+        assert_eq!(lights[0].ambient, [4.28125, 4.3125, 4.34375]);
+        assert_eq!(lights[0].position, [4.468_75, 4.5, 4.531_25]);
+        assert_eq!(lights[1..], [GameLight::DARK; 2]);
         // A time of day of 0 or 5 is none of the four; a float not finite is refused.
         for time in [0, 5] {
             let mut other = one.clone();
@@ -767,13 +759,7 @@ mod tests {
                 position: [time, at, 2.0],
             }
         };
-        assert_eq!(
-            read.lighting,
-            MapLighting {
-                terrain: [0, 1, 2].map(light),
-                objects: [3, 4, 5].map(light),
-            }
-        );
+        assert_eq!(read.lights, [3, 4, 5].map(light));
     }
 
     #[test]

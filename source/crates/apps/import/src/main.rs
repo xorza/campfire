@@ -41,6 +41,7 @@ fn main() -> ExitCode {
             rules,
             skipped_models,
             missing_textures,
+            untextured_cells,
         }) => {
             for skipped in &skipped_models {
                 let model = &skipped.name;
@@ -61,12 +62,18 @@ fn main() -> ExitCode {
                     "a model names a texture no archive holds, and draws untextured"
                 );
             }
+            for (map, &cells) in &untextured_cells {
+                if cells > 0 {
+                    warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
+                }
+            }
             info!(
                 packages = %args.out.display(),
                 %fingerprint,
                 %rules,
                 skipped_models = skipped_models.len(),
                 missing_textures = missing_textures.len(),
+                untextured_cells = untextured_cells.values().sum::<usize>(),
                 "imported"
             );
             ExitCode::from(ExitStatus::Success)

@@ -1,3 +1,4 @@
+use bevy_math::Vec2;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -16,7 +17,7 @@ pub struct CameraFile {
     /// Its height above the point in view, in meters, which it starts at the most of.
     pub height: CameraHeight,
     /// Meters a second a key or the screen's edge scrolls it across the screen and along it.
-    pub scroll: [f32; 2],
+    pub scroll: Vec2,
     /// Radians a second a key turns it.
     pub turn: f32,
     /// Radians a pixel of a drag turns it.
@@ -48,8 +49,8 @@ impl CameraFile {
 
     fn holds(&self) -> bool {
         let speeds = [
-            self.scroll[0],
-            self.scroll[1],
+            self.scroll.x,
+            self.scroll.y,
             self.turn,
             self.drag_turn,
             self.zoom_notch,
@@ -79,7 +80,7 @@ impl<'de> Deserialize<'de> for CameraFile {
             yaw: f32,
             field_of_view: f32,
             height: CameraHeight,
-            scroll: [f32; 2],
+            scroll: Vec2,
             turn: f32,
             drag_turn: f32,
             zoom_notch: f32,

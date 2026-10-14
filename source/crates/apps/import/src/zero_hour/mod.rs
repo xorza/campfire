@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use bevy_math::UVec2;
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
-    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, GameData, MapLights,
-    ModelScale, PackageWriter, TextureClass, WriteError,
+    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
+    PackageWriter, TerrainFile, WriteError,
 };
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
@@ -24,6 +25,7 @@ use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
 use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni, PlacedAs};
 use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
+use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
 use crate::zero_hour::unit_types::UnitTypes;
 
@@ -31,6 +33,7 @@ pub(crate) mod archive_path;
 pub(crate) mod big_archive;
 pub(crate) mod chunk_reader;
 pub(crate) mod error;
+pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
 pub(crate) mod game_version;
 pub(crate) mod hierarchy;
@@ -49,6 +52,9 @@ pub(crate) mod object_ini;
 pub(crate) mod pose;
 pub(crate) mod ref_pack;
 pub(crate) mod rules_package;
+pub(crate) mod terrain;
+pub(crate) mod terrain_atlas;
+pub(crate) mod terrain_cells;
 pub(crate) mod terrain_ini;
 pub(crate) mod unit_types;
 pub(crate) mod w3d_chunks;
@@ -57,8 +63,8 @@ pub(crate) mod w3d_file;
 pub(crate) mod w3d_mesh;
 
 /// What an import wrote: the package's fingerprint, the models the objects name that the
-/// package lacks, and the textures its models name that no archive holds, which they draw
-/// untextured.
+/// package lacks, the textures its models name that no archive holds, which they draw
+/// untextured, and each map's count of cells whose terrain draws a tile of no texture.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The imported package's.
@@ -67,6 +73,7 @@ pub struct Imported {
     pub rules: Fingerprint,
     pub skipped_models: Vec<SkippedModel>,
     pub missing_textures: Vec<String>,
+    pub untextured_cells: BTreeMap<MapName, usize>,
 }
 
 /// A model the objects name that the package lacks, and why.
@@ -127,8 +134,6 @@ impl<'a> ZeroHour<'a> {
         write("locale/en.ftl", MODE_TEXT.as_bytes())?;
         let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
-        let text = Toml::write(&game_data.game_data());
-        write(GameData::PATH, text.as_bytes())?;
         let camera = game_data.camera_file().ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
         write(CameraFile::PATH, text.as_bytes())?;
@@ -141,6 +146,8 @@ impl<'a> ZeroHour<'a> {
         } = models.report();
         let mut unit_types = UnitTypes::default();
         let mut names = BTreeMap::<MapName, String>::new();
+        let mut untextured_cells = BTreeMap::new();
+        let mut class_sizes = BTreeMap::new();
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
             if let Some(first) = names.insert(name.clone(), map.path.to_string()) {
@@ -150,30 +157,27 @@ impl<'a> ZeroHour<'a> {
                 });
             }
             let bytes = self.install.read(&map.path)?;
-            let imported = MapFile::read(&bytes)
-                .and_then(|mut file| {
-                    let terrain = &mut file.terrain;
-                    for class in terrain.classes.iter_mut().chain(&mut terrain.edge_classes) {
-                        class.texture = self.class_texture(class, &terrain_types);
-                    }
-                    let sources = MapSources {
-                        ini: &ini,
-                        types: &mut unit_types,
-                        looks: &looks,
-                        lights: game_data.global_lights(),
-                    };
-                    MapImport::new(&file, sources)
-                })
-                .map_err(|error| ZeroHourError::Map {
-                    map: map.path.to_string(),
-                    error,
-                })?;
+            let in_map = |error| ZeroHourError::Map {
+                map: map.path.to_string(),
+                error,
+            };
+            let mut file = MapFile::read(&bytes).map_err(in_map)?;
+            let terrain = &mut file.terrain;
+            for class in terrain.classes.iter_mut().chain(&mut terrain.edge_classes) {
+                class.texture = self.class_texture(class, &terrain_types, &mut class_sizes)?;
+            }
+            let sources = MapSources {
+                ini: &ini,
+                types: &mut unit_types,
+                looks: &looks,
+                lights: game_data.global_lights(),
+                game: game_data.game_data(),
+            };
+            let imported = MapImport::new(&file, sources).map_err(in_map)?;
+            untextured_cells.insert(name.clone(), imported.untextured);
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
             write(&format!("map/{name}/heights.bin"), &imported.heights)?;
-            write(
-                &format!("client/maps/{name}/terrain.bin"),
-                &imported.terrain,
-            )?;
+            write(&TerrainFile::path(name.as_str()), &imported.terrain)?;
             write(&MapLights::path(name.as_str()), imported.lights.as_bytes())?;
             write(
                 &ClientObjects::path(name.as_str()),
@@ -198,6 +202,7 @@ impl<'a> ZeroHour<'a> {
             rules,
             skipped_models: skipped,
             missing_textures,
+            untextured_cells,
         })
     }
 
@@ -315,13 +320,37 @@ impl ZeroHour<'_> {
         Ok(into)
     }
 
-    /// The package's texture of `class`: the file `Art\Terrain\` holds by the name its terrain
-    /// type gives, as `readTexClass` opens it; none for a class no type names, or a file the
-    /// install lacks.
-    fn class_texture(&self, class: &TextureClass, types: &TerrainIni) -> Option<PackagePath> {
-        let file = types.texture(&class.name)?;
+    /// The texture of `class`: the TGA `Art\Terrain\` holds by the name its terrain type gives,
+    /// as `readTexClass` opens it, its size read once into `sizes`; none for a class no type
+    /// names, or a TGA the install lacks.
+    fn class_texture(
+        &self,
+        class: &TextureClass,
+        types: &TerrainIni,
+        sizes: &mut BTreeMap<ArchivePath, UVec2>,
+    ) -> Result<Option<ClassTexture>, ZeroHourError> {
+        let Some(file) = types.texture(&class.name) else {
+            return Ok(None);
+        };
         let path = ArchivePath::of(&format!("art\\terrain\\{file}"));
-        self.install.contains(&path).then(|| path.texture_path())
+        if path.extension() != Some("tga") || !self.install.contains(&path) {
+            return Ok(None);
+        }
+        let size = if let Some(&size) = sizes.get(&path) {
+            size
+        } else {
+            let bytes = self.install.read(&path)?;
+            let tga = TgaFile::read(&bytes).map_err(|error| ZeroHourError::Texture {
+                path: path.to_string(),
+                error,
+            })?;
+            sizes.insert(path.clone(), tga.size());
+            tga.size()
+        };
+        Ok(Some(ClassTexture {
+            path: path.texture_path(),
+            size,
+        }))
     }
 }
 
@@ -336,6 +365,7 @@ mod tests {
     use crate::texture::internals::ktx2;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::error::VersionDifference;
+    use crate::zero_hour::game_data::GameData;
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
     use crate::zero_hour::map_file::internals::map;
@@ -367,6 +397,10 @@ mod tests {
         // its import gives, and its two unit types the package's.
         let imported = zero_hour.write(&scratch.path("one")).unwrap();
         let fingerprint = imported.fingerprint;
+        // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
+        // of the 3 × 2 cells the game draws is untextured.
+        let named = MapName::new("fixture_map").unwrap();
+        assert_eq!(imported.untextured_cells, [(named.clone(), 6)].into());
         // Beside it, the rules package as the workspace holds it, which the imported mode, of
         // its manifest and mode data, depends on and loads with.
         assert_eq!(scratch.names("one"), ["game", "zero-hour"]);
@@ -385,7 +419,6 @@ mod tests {
             scratch.read("one/zero-hour/package.index"),
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
-        let named = MapName::new("fixture_map").unwrap();
         let mode = ModePackages::from_dir(&scratch.path("one/game"), &named);
         assert!(mode.is_ok(), "{mode:?}");
         assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
@@ -397,10 +430,13 @@ mod tests {
             scratch.names("one/game/client/maps/fixture_map"),
             ["lights.toml", "objects.toml", "terrain.bin"]
         );
-        // The class whose type's texture the install holds names it; the other names none.
+        // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
+        // texels; the other names none.
         let mut file = MapFile::read(&map(8)).unwrap();
-        let sand = PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap();
-        file.terrain.classes[0].texture = Some(sand);
+        file.terrain.classes[0].texture = Some(ClassTexture {
+            path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
+            size: UVec2::new(2, 1),
+        });
         let mut ini = ObjectIni::default();
         for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
             ini.read(objects.as_bytes()).unwrap();
@@ -412,6 +448,10 @@ mod tests {
             types: &mut types,
             looks: &looks,
             lights: 3,
+            game: GameData {
+                adjust_cliff_textures: true,
+                three_way_blends: false,
+            },
         };
         let expected = MapImport::new(&file, sources).unwrap();
         assert_eq!(
@@ -437,13 +477,6 @@ mod tests {
         assert_eq!(scratch.read_text("one/game/data/units.toml"), types.toml());
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
         assert_eq!(camera.unwrap().field_of_view, 50.0);
-        assert_eq!(
-            Toml::parse::<GameData>(&scratch.read_text("one/game/client/game_data.toml")).unwrap(),
-            GameData {
-                adjust_cliff_textures: true,
-                three_way_blends: false,
-            }
-        );
         // Each texture once, at its path in the archives, as its conversion gives it.
         let [rock, sign] = ktx2();
         assert_eq!(

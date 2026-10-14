@@ -27,14 +27,19 @@ mod package_view;
 mod package_walk;
 mod package_writer;
 mod texts;
-mod zero_hour;
 
 pub use crate::avatar_unit::AvatarUnit;
 pub use crate::client_data::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_data::client_objects::{ClientObject, ClientObjects};
 pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits, ModelScale};
+pub use crate::client_data::error::{TerrainFileError, TextureLevelsError};
 pub use crate::client_data::map_lights::{MapLight, MapLights};
 pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
+pub use crate::client_data::terrain_file::{
+    BorderWrap, GroundQuad, Overlay, TerrainFile, TerrainQuads, TerrainSurface, TerrainTexture,
+    TextureCopy,
+};
+pub use crate::client_data::texture_levels::TextureLevels;
 pub use crate::dependent::{Dependent, DependentKind};
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
@@ -75,14 +80,6 @@ pub use crate::package_text::PackageText;
 pub use crate::package_view::{PackageView, ViewKind};
 pub use crate::package_writer::PackageWriter;
 pub use crate::texts::Texts;
-pub use crate::zero_hour::class_texture::ClassTexture;
-pub use crate::zero_hour::error::{ClassTextureError, TerrainError};
-pub use crate::zero_hour::game_data::GameData;
-pub use crate::zero_hour::terrain::{
-    BlendShape, BlendTile, CliffUv, Terrain, TerrainCell, TerrainLight, TerrainLighting,
-    TerrainParts, TextureClass,
-};
-pub use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
 #[cfg(feature = "internals")]
 pub mod internals {

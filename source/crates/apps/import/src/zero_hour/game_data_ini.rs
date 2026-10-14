@@ -1,6 +1,8 @@
-use campfire_package::{CameraFile, CameraHeight, GameData, TerrainLighting};
+use bevy_math::Vec2;
+use campfire_package::{CameraFile, CameraHeight};
 
 use crate::zero_hour::error::IniError;
+use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::ini_text::IniText;
 
 /// What the import reads of Zero Hour's `GameData.ini` files, as `GlobalData` reads them: each
@@ -62,6 +64,9 @@ impl Default for GameDataIni {
 }
 
 impl GameDataIni {
+    /// The most lights the game draws a map in (`MAX_GLOBAL_LIGHTS`).
+    const MOST_LIGHTS: usize = 3;
+
     /// Reads one INI file of `GameData` blocks.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
         let text = IniText::of(bytes);
@@ -81,7 +86,7 @@ impl GameDataIni {
                     let lights = line.int()?;
                     self.global_lights = usize::try_from(lights)
                         .ok()
-                        .filter(|&lights| lights <= TerrainLighting::MOST)
+                        .filter(|&lights| lights <= GameDataIni::MOST_LIGHTS)
                         .ok_or(IniError::Range { line: line.number })?;
                 }
                 (true, word) => {
@@ -107,7 +112,7 @@ impl GameDataIni {
         }
     }
 
-    /// What the client reads of it.
+    /// What the terrain's conversion reads of it.
     pub(crate) const fn game_data(&self) -> GameData {
         GameData {
             adjust_cliff_textures: self.adjust_cliff_textures,
@@ -115,7 +120,7 @@ impl GameDataIni {
         }
     }
 
-    /// How many of each map's lights the terrain and the objects are drawn in.
+    /// How many of each map's object lights the terrain and the objects are drawn in.
     pub(crate) const fn global_lights(&self) -> usize {
         self.global_lights
     }
@@ -140,7 +145,7 @@ impl GameDataIni {
                 least: self.min_camera_height,
                 most: self.max_camera_height.max(self.min_camera_height),
             },
-            scroll: [speed(self.horizontal_scroll), speed(self.vertical_scroll)],
+            scroll: Vec2::new(speed(self.horizontal_scroll), speed(self.vertical_scroll)),
             turn: self.rotate_speed * FRAMES,
             drag_turn: DRAG_TURN,
             zoom_notch: ZOOM_HEIGHT,

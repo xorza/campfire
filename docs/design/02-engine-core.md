@@ -414,6 +414,7 @@ Exact versions are pinned across the workspace. Each release tag pins its Rust t
 | RNG | `blake3` keyed hash, in `math` | A PRF by specification, counter-based as [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic; own range sampling. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Binary encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0, through `codec` |
 | Data files, log lines | `toml`, `serde_json` | Through `codec` |
+| Client files' vectors | `bevy_math`, in `package` and `import` | glam's `Vec2`, `Vec3` and `UVec2` at Bevy's pinned version, so the client draws them with no conversion; only its `std` and `serialize` features. They are floats for the presentation alone: the sim's vectors are `math`'s |
 | Fixed buffers | `arrayvec`, in `common` and `sim` | The batches an encode or a hash fills; already in the build through `blake3` |
 | State hashes | `blake3` | At checkpoints and the result; every tick in the goldens |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |

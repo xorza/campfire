@@ -1,3 +1,4 @@
+use bevy_math::Vec3;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -15,7 +16,7 @@ pub struct MapLights {
 #[serde(deny_unknown_fields)]
 pub struct MapLight {
     pub color: [f32; 3],
-    pub direction: [f32; 3],
+    pub direction: Vec3,
 }
 
 impl MapLights {
@@ -26,9 +27,7 @@ impl MapLights {
         let finite = |values: [f32; 3]| values.iter().all(|value| value.is_finite());
         let holds = finite(ambient)
             && lights.iter().all(|light| {
-                finite(light.color)
-                    && finite(light.direction)
-                    && light.direction.iter().any(|&axis| axis != 0.0)
+                finite(light.color) && light.direction.is_finite() && light.direction != Vec3::ZERO
             });
         holds.then_some(MapLights { ambient, lights })
     }
@@ -74,7 +73,7 @@ mod tests {
             lights.lights,
             [MapLight {
                 color: [0.8, 0.7, 0.6],
-                direction: [-0.5, -0.7, 0.5],
+                direction: Vec3::new(-0.5, -0.7, 0.5),
             }]
         );
         assert_eq!(

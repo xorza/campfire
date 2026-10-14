@@ -1,42 +1,57 @@
 use std::collections::BTreeSet;
 
+use bevy_math::Vec3;
 use campfire_codec::{Binary, Toml};
 use campfire_math::Num;
 use campfire_mode::HeightGrid;
 use campfire_package::{
-    ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, Terrain, TerrainLight,
-    TerrainLighting, TerrainParts,
+    ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, TerrainFile, TerrainSurface,
 };
 use serde::Serialize;
 
 use crate::zero_hour::error::MapError;
+use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::map_file::{GameLight, MapFile, MapHeights};
 use crate::zero_hour::map_object::Placement;
 use crate::zero_hour::object_ini::{ObjectIni, PlacedAs};
+use crate::zero_hour::terrain::{Terrain, TerrainParts};
+use crate::zero_hour::terrain_atlas::TerrainAtlas;
+use crate::zero_hour::terrain_cells::TerrainCells;
 use crate::zero_hour::unit_types::UnitTypes;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
-/// `client/maps/<name>/objects.toml`.
+/// `client/maps/<name>/objects.toml`; and how many cells its terrain draws a tile of with no
+/// texture.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
     pub(crate) heights: Vec<u8>,
     pub(crate) terrain: Vec<u8>,
+    pub(crate) untextured: usize,
     pub(crate) lights: String,
     pub(crate) objects: String,
 }
 
 /// What a map import reads and adds to beside its file: the object INI, the unit types of the
-/// maps so far, the looks of the package's `client/units.toml`, and how many of the map's lights
-/// the game draws.
+/// maps so far, the looks of the package's `client/units.toml`, how many of the map's lights
+/// the game draws, and the settings of `GameData.ini` its terrain is drawn by.
 #[derive(Debug)]
 pub(crate) struct MapSources<'a> {
     pub(crate) ini: &'a ObjectIni,
     pub(crate) types: &'a mut UnitTypes,
     pub(crate) looks: &'a ClientUnits,
     pub(crate) lights: usize,
+    pub(crate) game: GameData,
 }
+
+/// The terrain's surface, rough, of no metal or specular, as the import's materials are (design
+/// 12, D13).
+const SURFACE: TerrainSurface = TerrainSurface {
+    metallic: 0.0,
+    roughness: 1.0,
+    specular: 0.0,
+};
 
 /// A cell of the heightmap, 10 units wide (`MAP_XY_FACTOR`).
 const CELL: i64 = 10;
@@ -86,50 +101,43 @@ struct MarkerParams {
 }
 
 impl MapImport {
-    /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain in the
-    /// same order, lit by its first `lights` terrain lights; its objects as a multiplayer game
-    /// spawns them (design 12, D14), none of a template no INI object names, an optimized tree,
-    /// a prop and fluff as client objects, of a look of `looks`, or none when it has none, and
-    /// every other as a unit of the type `types` names, the bridge-like ones first, in the map's
-    /// order; its waypoints as markers; bounds that hold its heights and every point its sim
-    /// places; and its first `lights` object lights, as the game draws
-    /// `NumberGlobalLights` of each. The terrain's ambient color is its first light's, and the
-    /// objects' theirs, as the game takes them.
+    /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
+    /// as a terrain file, its texture the atlas the game builds of its classes; its objects as a
+    /// multiplayer game spawns them (design 12, D14), none of a template no INI object names, an
+    /// optimized tree, a prop and fluff as client objects, of a look of `looks`, or none when it
+    /// has none, and every other as a unit of the type `types` names, the bridge-like ones first,
+    /// in the map's order; its waypoints as markers; bounds that hold its heights and every point
+    /// its sim places; and its first `lights` object lights, as the game draws `NumberGlobalLights`
+    /// of each, which the terrain is lit by too; their ambient color is the first light's, as the
+    /// game takes it.
     pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<MapImport, MapError> {
         let MapSources {
             ini,
             types,
             looks,
             lights,
+            game,
         } = sources;
         let heights = MapImport::heights(&file.heights)?;
-        let lighting = &file.lighting;
-        let terrain_lighting = TerrainLighting {
-            ambient: lighting.terrain[0].ambient,
-            lights: lighting.terrain[..lights]
-                .iter()
-                .map(|light| TerrainLight {
-                    diffuse: light.diffuse,
-                    direction: MapImport::axes(light),
-                })
-                .collect(),
-        };
         let map_lights = MapLights::new(
-            lighting.objects[0].ambient,
-            lighting.objects[..lights].iter().map(|light| MapLight {
+            file.lights[0].ambient,
+            file.lights[..lights].iter().map(|light| MapLight {
                 color: light.diffuse,
                 direction: MapImport::axes(light),
             }),
         )
         .ok_or(MapError::Lighting)?;
-        let terrain = Terrain::new(
-            TerrainParts {
-                cells: MapImport::flipped(&file.terrain.cells, file.heights.width),
-                ..file.terrain.clone()
-            },
-            terrain_lighting,
-        )
+        let terrain = Terrain::new(TerrainParts {
+            cells: MapImport::flipped(&file.terrain.cells, file.heights.width),
+            ..file.terrain.clone()
+        })
         .map_err(MapError::Terrain)?;
+        let atlas = TerrainAtlas::new(terrain.parts());
+        let cells = TerrainCells::new(terrain.parts(), heights.samples(), &atlas, game);
+        let untextured = cells.untextured();
+        let quads = cells.quads();
+        let terrain = TerrainFile::new(quads, atlas.into_texture(), SURFACE)
+            .map_err(MapError::TerrainFile)?;
         let mut low = heights.origin();
         let mut high = heights.far_corner();
         let mut take = |point: [Num; 2]| {
@@ -218,6 +226,7 @@ impl MapImport {
             map: Toml::write(&map),
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
+            untextured,
             lights: Toml::write(&map_lights),
             objects: Toml::write(&client),
         })
@@ -225,9 +234,9 @@ impl MapImport {
 
     /// The way `light` goes on the engine's axes: the game's `x`, `y` and `z` are its `x`, `−z`
     /// and `y`.
-    fn axes(light: &GameLight) -> [f32; 3] {
+    fn axes(light: &GameLight) -> Vec3 {
         let [x, y, z] = light.position;
-        [x, z, -y]
+        Vec3::new(x, z, -y)
     }
 
     /// The heights on the engine's axes. The original's sample of column `i` and row `j` lies at
@@ -270,12 +279,13 @@ impl MapImport {
 #[cfg(test)]
 mod tests {
     use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
-    use campfire_package::{BlendShape, BlendTile, ClientUnit};
+    use campfire_package::ClientUnit;
     use campfire_values::DeclaredName;
 
     use super::*;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+    use crate::zero_hour::terrain::{BlendShape, BlendTile};
 
     /// The import of `file` of the fixture install's objects, with the looks of its client
     /// objects but the prop of no model's, drawn in `lights` lights.
@@ -299,6 +309,10 @@ mod tests {
             types,
             looks: &looks,
             lights,
+            game: GameData {
+                adjust_cliff_textures: true,
+                three_way_blends: true,
+            },
         };
         MapImport::new(file, sources)
     }
@@ -308,24 +322,12 @@ mod tests {
         let mut file = MapFile::read(&map(8)).unwrap();
         let mut types = UnitTypes::default();
         let imported = import(&file, &mut types, 3).unwrap();
-        let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
         // The afternoon's lights: light `l` of time 2 has ambient [2, l, 0], diffuse [2, l, 1]
-        // and position [2, l, 2], which is the engine's [2, 2, −l]. The terrain's ambient is its
-        // light 0's, the objects' their light 3's.
-        let terrain_light = |at: f32| TerrainLight {
-            diffuse: [2.0, at, 1.0],
-            direction: [2.0, 2.0, -at],
-        };
-        assert_eq!(
-            *terrain.lighting(),
-            TerrainLighting {
-                ambient: [2.0, 0.0, 0.0],
-                lights: vec![terrain_light(0.0), terrain_light(1.0), terrain_light(2.0)],
-            }
-        );
+        // and position [2, l, 2], which is the engine's [2, 2, −l]. The objects' lights are 3 to
+        // 5, after the terrain's 0 to 2, which the import drops; their ambient is light 3's.
         let object_light = |at: f32| MapLight {
             color: [2.0, at, 1.0],
-            direction: [2.0, 2.0, -at],
+            direction: Vec3::new(2.0, 2.0, -at),
         };
         assert_eq!(
             Toml::parse::<MapLights>(&imported.lights).unwrap(),
@@ -336,14 +338,12 @@ mod tests {
         );
         // Drawn in two lights, each keeps its first two.
         let two = import(&file, &mut types, 2).unwrap();
-        let terrain = Binary::decode::<Terrain>(&two.terrain).unwrap();
-        assert_eq!(terrain.lighting().lights.len(), 2);
         assert_eq!(
             Toml::parse::<MapLights>(&two.lights).unwrap().lights.len(),
             2
         );
         // An object light it draws that goes no way is refused; one it does not draw is not.
-        file.lighting.objects[1].position = [0.0; 3];
+        file.lights[1].position = [0.0; 3];
         let refused = import(&file, &mut types, 3).map(drop);
         assert_eq!(refused, Err(MapError::Lighting));
         assert!(import(&file, &mut types, 1).is_ok());
@@ -371,8 +371,7 @@ mod tests {
         // The file's row 2 is the engine's row 0, so its cell of column x and row y is the
         // engine's (2 − y) · 4 + x: its last, a cliff of tile 3, the engine's 3; its first, a
         // cliff of tile 0, the engine's 8; its cell 2, of cliff UVs, the engine's 10.
-        let terrain = Binary::decode::<Terrain>(&imported.terrain).unwrap();
-        let cells = &terrain.parts().cells;
+        let cells = MapImport::flipped(&file.terrain.cells, file.heights.width);
         assert_eq!(cells.len(), 12);
         assert!(cells[3].cliff && cells[3].tile == 3);
         assert!(cells[8].cliff && cells[8].tile == 0);
@@ -380,8 +379,28 @@ mod tests {
         assert_eq!(cells[5].blend, Some(0));
         assert_eq!(cells[6].extra_blend, Some(0));
         assert_eq!(cells.iter().filter(|cell| cell.cliff).count(), 2);
+        // The terrain file: the game draws 3 × 2 cells. Its overlays are the blend of the game's
+        // cell [1, 1], the file's [1, 0], and the third blend of [2, 1], the file's [2, 0]. Its
+        // classes have no texture here, so no tile copies, each block keeps its border, and every
+        // cell is untextured.
+        let terrain = Binary::decode::<TerrainFile>(&imported.terrain).unwrap();
         assert_eq!(
-            terrain.parts().blends,
+            (terrain.quads().columns, terrain.quads().ground.len()),
+            (4, 6)
+        );
+        let overlays: Vec<u32> = terrain
+            .quads()
+            .overlays
+            .iter()
+            .map(|overlay| overlay.cell)
+            .collect();
+        assert_eq!(overlays, [1, 2]);
+        assert!(terrain.texture().copies.is_empty());
+        assert_eq!(terrain.texture().wraps.len(), 2);
+        assert_eq!(terrain.surface(), SURFACE);
+        assert_eq!(imported.untextured, 6);
+        assert_eq!(
+            file.terrain.blends,
             [BlendTile {
                 tile: 4,
                 shape: BlendShape::LeftDiagonal { long: true },
