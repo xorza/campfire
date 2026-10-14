@@ -10,38 +10,42 @@ use crate::zero_hour::ini_text::{IniLine, IniText};
 /// draw modules show by default.
 #[derive(Debug, Default)]
 pub(crate) struct ObjectIni {
-    /// Each object by its name, of its case, as `ThingFactory::findTemplate` finds it, a later
-    /// definition replacing an earlier one.
+    /// Each object by its name, of its case, as `ThingFactory::findTemplate` finds it.
     objects: BTreeMap<String, IniObject>,
 }
 
-/// An object: its name as the INI writes it, the object it reskins, its own draw modules, and
-/// the fields of its own that say how the game draws it: its kinds, its fence's width and its
-/// asset scale, none of them given when absent.
-#[derive(Debug)]
+/// An object as the game holds it once read, a reskin a copy of its base with its own fields
+/// over it (`ThingTemplate::copyFrom`): its name as the INI writes it, its draw modules, and the
+/// fields that say how the game draws and places it: its kinds, its fence's width, its asset
+/// scale and whether it is a landmark bridge, each the game's default when absent.
+#[derive(Debug, Clone)]
 pub(crate) struct IniObject {
     pub(crate) name: String,
-    base: Option<String>,
     draws: Vec<DrawModule>,
     kinds: ObjectKinds,
-    fence_width: Option<f32>,
-    scale: Option<ModelScale>,
+    fence_width: f32,
+    scale: ModelScale,
+    is_bridge: bool,
 }
 
 /// The kinds of an object's `KindOf` that decide who draws its placed objects
-/// (`GameLogic::startNewGame`): an optimized tree and a prop the client alone draws, and an
-/// object a build clears, which is fluff, the client's too, unless it is a fence.
+/// (`GameLogic::startNewGame`): an optimized tree and a prop the client alone draws; an object a
+/// build clears, which is fluff, the client's too, unless it is a fence; and a wall a unit walks
+/// on top of, which the game spawns with the bridges.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
     prop: bool,
     cleared_by_build: bool,
+    walk_on_top_of_wall: bool,
 }
 
-/// Who draws an object a map places, as a multiplayer game spawns it (design 12, D14): the
-/// client's tree buffer, its prop buffer, or the sim, as a unit.
+/// Who draws an object a map places, as a multiplayer game spawns it (design 12, D14): a unit of
+/// the sim placed before every other, as the game spawns bridge-like objects in a pass of their
+/// own; the client's tree buffer; its prop buffer; or the sim, as a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlacedAs {
+    Bridge,
     Tree,
     Prop,
     Unit,
@@ -98,6 +102,7 @@ const MODEL_DRAWS: [&str; 11] = [
 const OPTIMIZED_TREE: &str = "optimized_tree";
 const PROP: &str = "prop";
 const CLEARED_BY_BUILD: &str = "cleared_by_build";
+const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
 
 /// The keywords that open a block wherever they start a line.
 const OPEN_WITH_VALUE: [&str; 8] = [
@@ -166,12 +171,24 @@ enum Block {
 #[derive(Debug, Default)]
 struct Reading {
     stack: Vec<Block>,
-    object: Option<IniObject>,
+    object: Option<OpenObject>,
     draw: Option<DrawModule>,
 }
 
+/// An object being read: whether it reskins another, whose fields its table cannot set, and
+/// whether its draw modules are still its base's, which its first own one drops.
+#[derive(Debug)]
+struct OpenObject {
+    object: IniObject,
+    reskin: bool,
+    copied_draws: bool,
+}
+
 impl ObjectIni {
-    /// Reads one INI file, adding its objects to those read before.
+    /// Reads one INI file, adding its objects to those read before. An object of a name read
+    /// before, and a reskin of a base not yet read, are refused: no known install holds either,
+    /// where the game's release build parses the second definition into the first, and refuses
+    /// a reskin of no base.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
         let text = IniText::of(bytes);
         let mut reading = Reading::default();
@@ -181,6 +198,8 @@ impl ObjectIni {
                 if let Some(done) = reading.end(line.number)? {
                     self.objects.insert(done.name.clone(), done);
                 }
+            } else if reading.stack.is_empty() {
+                reading.open(self.object_of(&word, &line)?);
             } else {
                 reading.line(&word, &line)?;
             }
@@ -204,52 +223,41 @@ impl ObjectIni {
         self.objects.get(&name)
     }
 
-    /// The draw modules `object` has: its own, or, for a reskin that declares none, its base's,
-    /// as the game drops every copied draw module at an object's first own one.
-    pub(crate) fn draws<'a>(&'a self, object: &'a IniObject) -> &'a [DrawModule] {
-        self.chain(object)
-            .find(|at| at.base.is_none() || !at.draws.is_empty())
-            .map_or(&[], |at| &at.draws)
-    }
-
-    /// Who draws an object of `object` a map places: an optimized tree the tree buffer; a prop,
-    /// or fluff, an object a build clears whose fence is 0 wide, the prop buffer, as a
-    /// multiplayer game forces fluff onto it; any other the sim. A reskin keeps its base's kinds,
-    /// which its table cannot set, and gives its own fence's width or keeps its base's.
-    pub(crate) fn placed_as(&self, object: &IniObject) -> PlacedAs {
-        let kinds = self
-            .chain(object)
-            .find(|at| at.base.is_none())
-            .map(|at| at.kinds);
-        let kinds = kinds.unwrap_or_default();
-        let fence_width = self.chain(object).find_map(|at| at.fence_width);
-        if kinds.optimized_tree {
-            PlacedAs::Tree
-        } else if kinds.prop || (kinds.cleared_by_build && fence_width.unwrap_or(0.0) == 0.0) {
-            PlacedAs::Prop
-        } else {
-            PlacedAs::Unit
+    /// The object a top-level line of `word` opens: a new one, or a copy of the reskin's base.
+    fn object_of(&self, word: &str, at: &IniLine<'_>) -> Result<OpenObject, IniError> {
+        let line = at.number;
+        let base = match word {
+            "object" => None,
+            "objectreskin" => Some(*at.tokens.get(2).ok_or(IniError::NoName { line })?),
+            _ => return Err(IniError::NotBlock { line }),
+        };
+        let name = *at.tokens.get(1).ok_or(IniError::NoName { line })?;
+        if self.objects.contains_key(name) {
+            return Err(IniError::Redefined { line });
         }
-    }
-
-    /// The asset scale every drawable of `object` takes: its `Scale`, which a reskin cannot set,
-    /// 1 when it gives none.
-    pub(crate) fn scale(&self, object: &IniObject) -> ModelScale {
-        let own = self.chain(object).find(|at| at.base.is_none());
-        own.and_then(|at| at.scale).unwrap_or_default()
-    }
-
-    /// `object`, then the object it reskins, and so on: a chain ends at an object, or at a name
-    /// the files lack; a cycle, which the game cannot build, ends after as many steps as there are
-    /// objects.
-    fn chain<'a>(&'a self, object: &'a IniObject) -> impl Iterator<Item = &'a IniObject> {
-        let mut next = Some(object);
-        std::iter::from_fn(move || {
-            let at = next?;
-            next = at.base.as_ref().and_then(|base| self.objects.get(base));
-            Some(at)
+        let object = match base {
+            None => IniObject {
+                name: name.to_owned(),
+                draws: Vec::new(),
+                kinds: ObjectKinds::default(),
+                fence_width: 0.0,
+                scale: ModelScale::ONE,
+                is_bridge: false,
+            },
+            Some(base) => IniObject {
+                name: name.to_owned(),
+                ..self
+                    .objects
+                    .get(base)
+                    .ok_or(IniError::NoBase { line })?
+                    .clone()
+            },
+        };
+        Ok(OpenObject {
+            object,
+            reskin: base.is_some(),
+            copied_draws: base.is_some(),
         })
-        .take(self.objects.len() + 1)
     }
 
     /// Sets `kinds` by a `KindOf` line's flags, as `BitFlags::parse` does: `NONE` clears them;
@@ -290,6 +298,7 @@ impl ObjectIni {
                 OPTIMIZED_TREE => kinds.optimized_tree = set,
                 PROP => kinds.prop = set,
                 CLEARED_BY_BUILD => kinds.cleared_by_build = set,
+                WALK_ON_TOP_OF_WALL => kinds.walk_on_top_of_wall = set,
                 _ => {}
             }
         }
@@ -373,6 +382,32 @@ impl ObjectIni {
 }
 
 impl IniObject {
+    pub(crate) fn draws(&self) -> &[DrawModule] {
+        &self.draws
+    }
+
+    /// Who draws an object of it a map places: a bridge-like object, a landmark bridge or a wall
+    /// a unit walks on, the sim before every other; an optimized tree the tree buffer; a prop, or
+    /// fluff, an object a build clears whose fence is 0 wide, the prop buffer, as a multiplayer
+    /// game forces fluff onto it; any other the sim.
+    pub(crate) const fn placed_as(&self) -> PlacedAs {
+        let kinds = self.kinds;
+        if self.is_bridge || kinds.walk_on_top_of_wall {
+            PlacedAs::Bridge
+        } else if kinds.optimized_tree {
+            PlacedAs::Tree
+        } else if kinds.prop || (kinds.cleared_by_build && self.fence_width == 0.0) {
+            PlacedAs::Prop
+        } else {
+            PlacedAs::Unit
+        }
+    }
+
+    /// The asset scale every drawable of it takes: its `Scale`.
+    pub(crate) const fn scale(&self) -> ModelScale {
+        self.scale
+    }
+
     /// The name a package gives it, of its name's bytes, each char of Latin-1 one, as a map's
     /// template writes it.
     pub(crate) fn import_name(&self) -> ImportName {
@@ -386,19 +421,28 @@ impl IniObject {
 }
 
 impl Reading {
+    fn open(&mut self, object: OpenObject) {
+        self.object = Some(object);
+        self.stack.push(Block::Object);
+    }
+
     /// Closes the innermost block; the object it closes, if it is one.
     fn end(&mut self, line: usize) -> Result<Option<IniObject>, IniError> {
         match self.stack.pop().ok_or(IniError::StrayEnd { line })? {
             Block::Object => Ok(Some(
-                self.object.take().expect("an object block holds an object"),
+                self.object
+                    .take()
+                    .expect("an object block holds an object")
+                    .object,
             )),
             Block::Draw { .. } => {
                 let done = self.draw.take().expect("a draw block holds a module");
-                self.object
-                    .as_mut()
-                    .expect("a draw is in an object")
-                    .draws
-                    .push(done);
+                let open = self.object.as_mut().expect("a draw is in an object");
+                if open.copied_draws {
+                    open.object.draws.clear();
+                    open.copied_draws = false;
+                }
+                open.object.draws.push(done);
                 Ok(None)
             }
             // `parseConditionState` requires each state to name its model, `NONE` or one.
@@ -410,25 +454,12 @@ impl Reading {
     /// A line other than `End`, of its first word in lowercase, `word`.
     fn line(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
         let (tokens, line) = (&*at.tokens, at.number);
-        match self.stack.last_mut() {
-            None => {
-                let base = match word {
-                    "object" => None,
-                    "objectreskin" => Some(tokens.get(2).ok_or(IniError::NoName { line })?),
-                    _ => return Err(IniError::NotBlock { line }),
-                };
-                let name = tokens.get(1).ok_or(IniError::NoName { line })?;
-                self.object = Some(IniObject {
-                    name: (*name).to_owned(),
-                    base: base.map(|base| (*base).to_owned()),
-                    draws: Vec::new(),
-                    kinds: ObjectKinds::default(),
-                    fence_width: None,
-                    scale: None,
-                });
-                self.stack.push(Block::Object);
-            }
-            Some(Block::Draw { kind, states }) => {
+        let top = self
+            .stack
+            .last_mut()
+            .expect("a line below the top level is in a block");
+        match top {
+            Block::Draw { kind, states } => {
                 let module = self.draw.as_mut().expect("a draw block holds a module");
                 match word {
                     "defaultconditionstate" | "conditionstate" if *kind == DrawKind::Family => {
@@ -458,7 +489,7 @@ impl Reading {
                     _ => {}
                 }
             }
-            Some(Block::DefaultState { named }) => {
+            Block::DefaultState { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
                 ObjectIni::default_field(module, word, tokens, line)?;
@@ -466,7 +497,7 @@ impl Reading {
                     self.stack.push(Block::Other);
                 }
             }
-            Some(Block::Object) if word == "draw" => {
+            Block::Object if word == "draw" => {
                 let module = tokens
                     .get(1)
                     .map(|kind| kind.to_ascii_lowercase())
@@ -484,25 +515,27 @@ impl Reading {
                 });
                 self.stack.push(Block::Draw { kind, states: 0 });
             }
-            Some(Block::Object) if matches!(word, "kindof" | "fencewidth" | "scale") => {
-                let object = self
+            Block::Object if matches!(word, "kindof" | "fencewidth" | "scale" | "isbridge") => {
+                let open = self
                     .object
                     .as_mut()
                     .expect("an object block holds an object");
+                let object = &mut open.object;
                 // A reskin's table sets its fence's width; the game's release build skips a field
-                // the table lacks, as its kinds and its scale.
+                // the table lacks, as its kinds, its scale and whether it is a bridge.
                 match word {
-                    "fencewidth" => object.fence_width = Some(at.real()?),
-                    _ if object.base.is_some() => {}
+                    "fencewidth" => object.fence_width = at.real()?,
+                    _ if open.reskin => {}
                     "kindof" => ObjectIni::kind_of(&mut object.kinds, &tokens[1..], line)?,
+                    "isbridge" => object.is_bridge = at.yes()?,
                     _ => {
                         let scale = ModelScale::new(at.real()?);
-                        object.scale = Some(scale.ok_or(IniError::Scale { line })?);
+                        object.scale = scale.ok_or(IniError::Scale { line })?;
                     }
                 }
             }
-            Some(_) if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
-            Some(_) => {}
+            _ if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+            _ => {}
         }
         Ok(())
     }
@@ -582,8 +615,9 @@ End
 ";
 
     /// `Data\INI\Object.ini` of the fixture install: two reskins of the tank, one with its own
-    /// draw module, a later tree of no model, a prop of a lone mesh at a scale of 1.5 and its
-    /// reskin, an optimized tree, fluff, and the fixture map's tank and its fence.
+    /// draw module, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
+    /// reskin, an optimized tree, fluff, a wall a unit walks on, and the fixture map's tank and
+    /// its fence.
     pub(crate) const OBJECTS: &str = "ObjectReskin TankCamo Tank\r
 End\r
 ObjectReskin TankRed Tank\r
@@ -596,7 +630,7 @@ ObjectReskin TankRed Tank\r
     End\r
   End\r
 End\r
-Object Tree\r
+Object Stump\r
   Draw = W3DPropDraw ModuleTag_01\r
     ModelName = NONE\r
   End\r
@@ -635,6 +669,9 @@ Object Bush\r
 End\r
 Object AmericaTankCrusader\r
   KindOf = VEHICLE\r
+End\r
+Object FortressWall\r
+  KindOf = WALK_ON_TOP_OF_WALL IMMOBILE\r
 End\r
 Object Rocks1\r
   KindOf = CLEARED_BY_BUILD\r
@@ -695,14 +732,26 @@ Object Emptied
   KindOf = PROP
   KindOf = NONE PROP
 End
+Object Bridge
+  IsBridge = Yes
+End
+ObjectReskin BridgeRed Bridge
+  IsBridge = No
+End
+Object Wall
+  KindOf = WALK_ON_TOP_OF_WALL PROP
+End
+Object Crossing
+  IsBridge = no
+End
 ";
 
     fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
-        ini.draws(&ini.objects[name]).to_vec()
+        ini.objects[name].draws().to_vec()
     }
 
     #[test]
-    fn objects_give_their_default_models_and_looks_with_reskins_and_later_definitions() {
+    fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
         let mut ini = ObjectIni::default();
         ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
         ini.read(OBJECTS.as_bytes()).unwrap();
@@ -712,10 +761,12 @@ End
             [
                 "AmericaTankCrusader",
                 "Bush",
+                "FortressWall",
                 "Oak",
                 "Rock",
                 "RockRed",
                 "Rocks1",
+                "Stump",
                 "Tank",
                 "TankCamo",
                 "TankRed",
@@ -769,40 +820,46 @@ End
             ..DefaultLook::default()
         };
         assert_eq!(draws_of(&ini, "TankRed"), [model("TANK", red)]);
-        // The later tree replaces the earlier, and its `NONE` is no model; a first state of no
-        // flag is the default.
-        let tree = draws_of(&ini, "Tree");
-        assert_eq!((tree[0].kind, &tree[0].model), (DrawKind::Prop, &None));
+        // The tree names its model by `ModelName`; the stump's `NONE` is no model; a first state
+        // of no flag is the default.
+        let tree = DrawModule {
+            kind: DrawKind::Tree,
+            model: Some("PTOak01".to_owned()),
+            look: DefaultLook::default(),
+        };
+        assert_eq!(draws_of(&ini, "Tree"), [tree]);
+        let stump = draws_of(&ini, "Stump");
+        assert_eq!((stump[0].kind, &stump[0].model), (DrawKind::Prop, &None));
         assert_eq!(
             draws_of(&ini, "Rock"),
             [model("Rock01", DefaultLook::default())]
         );
-        // A reskin of a base the files lack has no draw module.
-        let mut lost = ObjectIni::default();
-        lost.read(b"ObjectReskin Lost Nowhere\nEnd\n").unwrap();
-        assert!(draws_of(&lost, "Lost").is_empty());
         // A template finds its object of its case alone, as `findTemplate` does.
         assert_eq!(
             ini.object(b"Tank").map(|tank| tank.name.as_str()),
             Some("Tank")
         );
         assert!(ini.object(b"tank").is_none());
-        let tree = DrawModule {
-            kind: DrawKind::Tree,
-            model: Some("PTOak01".to_owned()),
-            look: DefaultLook::default(),
-        };
-        let mut first = ObjectIni::default();
-        first.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
-        assert_eq!(draws_of(&first, "Tree"), [tree]);
+        // A name read before, in this file or an earlier one, and a reskin whose base is not yet
+        // read, are refused at their line.
+        let mut again = ObjectIni::default();
+        again.read(b"Object Rock\nEnd\n").unwrap();
+        assert_eq!(
+            again.read(b"Object Sand\nEnd\nObjectReskin Rock Sand\nEnd\n"),
+            Err(IniError::Redefined { line: 3 })
+        );
+        assert_eq!(
+            again.read(b"ObjectReskin Gravel Pebble\nEnd\nObject Pebble\nEnd\n"),
+            Err(IniError::NoBase { line: 1 })
+        );
     }
 
     #[test]
     fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
         let mut ini = ObjectIni::default();
         ini.read(PLACED.as_bytes()).unwrap();
-        let placed = |name: &str| ini.placed_as(&ini.objects[name]);
-        let scale = |name: &str| ini.scale(&ini.objects[name]).get();
+        let placed = |name: &str| ini.objects[name].placed_as();
+        let scale = |name: &str| ini.objects[name].scale().get();
         // A tree, a prop, and fluff: a build clears it, and its fence is 0 wide, or none; a fence
         // a build clears, and an object of neither kind, are units.
         assert_eq!(placed("Oak"), PlacedAs::Tree);
@@ -824,6 +881,12 @@ End
         assert_eq!(placed("Added"), PlacedAs::Tree);
         assert_eq!(placed("Removed"), PlacedAs::Unit);
         assert_eq!(placed("Emptied"), PlacedAs::Unit);
+        // A landmark bridge and a wall a unit walks on are bridge-like, whatever else they are;
+        // a bridge's reskin is one, as its table cannot say otherwise.
+        assert_eq!(placed("Bridge"), PlacedAs::Bridge);
+        assert_eq!(placed("BridgeRed"), PlacedAs::Bridge);
+        assert_eq!(placed("Wall"), PlacedAs::Bridge);
+        assert_eq!(placed("Crossing"), PlacedAs::Unit);
         // A list mixes no forms, and `NONE` follows none; a scale is positive.
         let read = |text: &str| ObjectIni::default().read(text.as_bytes());
         for kinds in [

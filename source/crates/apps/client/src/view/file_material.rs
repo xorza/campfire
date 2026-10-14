@@ -160,8 +160,13 @@ mod tests {
             base_color: [1.0, 0.5, 0.25, 0.75],
             texture: None,
             emissive: [0.5, 0.0, 0.0],
+            metallic: 0.0,
+            roughness: 1.0,
+            specular: 0.0,
+            unlit: false,
             blend,
             depth_write,
+            depth_bias: 0,
             double_sided: false,
         };
         let cutoff = 96.0 / 255.0;

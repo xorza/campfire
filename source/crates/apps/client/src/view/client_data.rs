@@ -127,8 +127,13 @@ models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
 "#;
         let flash = br#"base_color = [1.0, 1.0, 1.0, 1.0]
 emissive = [1.0, 0.0, 0.0]
+metallic = 0.0
+roughness = 1.0
+specular = 0.0
+unlit = false
 blend = { mode = "add" }
 depth_write = false
+depth_bias = 0
 double_sided = true
 "#;
         let files = package(

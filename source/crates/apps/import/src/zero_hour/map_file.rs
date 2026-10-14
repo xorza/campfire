@@ -503,9 +503,9 @@ pub(crate) mod internals {
     /// A map of 4 × 3 samples with a border of 1, its terrain's `BlendTileData` of `version`,
     /// beside a chunk the import skips. Its objects: a tank, a rock 4.5 below the ground at an
     /// angle past π, and a waypoint, which the import keeps; a road's end; a tree past the
-    /// heights, a prop 1 above the ground, its reskin, fluff, a prop of no model, a template no
-    /// object names and one of another case; and an object too high for the game to keep, which
-    /// it does not.
+    /// heights, a prop 1 above the ground, its reskin, fluff, a wall a unit walks on, a prop of no
+    /// model, a template no object names and one of another case; and an object too high for the
+    /// game to keep, which it does not.
     pub(crate) fn map(version: u16) -> Vec<u8> {
         let mut writer = ChunkWriter::default();
         let heights = [
@@ -593,6 +593,7 @@ pub(crate) mod internals {
             object(&mut writer, [5.0, 5.0, 1.0], 0.0, 0, "Rock", None),
             object(&mut writer, [5.0, -5.0, 0.0], 0.0, 0, "RockRed", None),
             object(&mut writer, [0.0, 5.0, 0.0], 0.0, 0, "Bush", None),
+            object(&mut writer, [10.0, 0.0, 0.0], 0.0, 0, "FortressWall", None),
             object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "Ghost", None),
             object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "Nowhere", None),
             object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0, "rock", None),
@@ -739,6 +740,7 @@ mod tests {
                 b"Rock",
                 b"RockRed",
                 b"Bush",
+                b"FortressWall",
                 b"Ghost",
                 b"Nowhere",
                 b"rock",

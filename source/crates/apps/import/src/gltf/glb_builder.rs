@@ -1,7 +1,7 @@
 use campfire_codec::Json;
 
 use crate::gltf::gltf_document::{
-    Accessor, Asset, Buffer, BufferView, GltfDocument, Image, Sampler, Scene, Texture,
+    Accessor, Asset, Buffer, BufferView, GltfDocument, Image, Material, Sampler, Scene, Texture,
 };
 
 /// A glTF document and its one buffer, which `encode` writes as a GLB file: a 12-byte header,
@@ -100,6 +100,23 @@ impl GlbBuilder {
             source: document.images.len() - 1,
         });
         document.textures.len() - 1
+    }
+
+    /// `material`'s index, with each extension it uses in `extensionsUsed`, in name order.
+    pub(crate) fn material(&mut self, material: Material) -> usize {
+        let unlit = material
+            .extensions
+            .unlit
+            .is_some()
+            .then_some("KHR_materials_unlit");
+        let used = &mut self.document.extensions_used;
+        for extension in ["KHR_materials_specular"].into_iter().chain(unlit) {
+            if let Err(at) = used.binary_search(&extension) {
+                used.insert(at, extension);
+            }
+        }
+        self.document.materials.push(material);
+        self.document.materials.len() - 1
     }
 
     /// The GLB file's bytes.

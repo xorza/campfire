@@ -399,8 +399,10 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     }
 }
 
-/// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 283] = [
+/// Flaws of the manifest, the data's sections, the tracks, the slot kinds' levels, the call
+/// budget, and an action's delivery, spawn and move: each to a copy of the packages, and the
+/// problem it fails the load with.
+static DATA_FLAWS: &[Flaw] = &[
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1006,6 +1008,10 @@ static FLAWS: [Flaw; 283] = [
             )
         },
     ),
+];
+
+/// Flaws of an effect's amount, a handle, a state field and a script's compile.
+static SCRIPT_FLAWS: &[Flaw] = &[
     // An amount of i64::MAX, 2⁶³ − 1, is past what a sim number holds, whose most is
     // (2⁶³ − 1) / 2²⁴.
     flaw(
@@ -1308,6 +1314,11 @@ static FLAWS: [Flaw; 283] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "spawn_avatars"),
     ),
+];
+
+/// Flaws of a weapon, a place on the map, an AI, the visibility, the names the release plans,
+/// a cooldown cut, a hold, a stat change and the loops of stats.
+static ACTION_FLAWS: &[Flaw] = &[
     // A weapon has a rate, a damage and a damage kind the mode declares, aims at a unit within
     // meters, and has no field only a cast runs; no other kind has a weapon's fields.
     flaw(
@@ -1688,6 +1699,11 @@ static FLAWS: [Flaw; 283] = [
         "hero-veil",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
     ),
+];
+
+/// Flaws of a pool, a match's start, a stat change, a modifier's owner, an aura, a way's params,
+/// a name a script gives, a text and an engine stat.
+static STAT_FLAWS: &[Flaw] = &[
     // Pools: each a unit lists, a cost names or a script reads is declared, and the life pool is
     // among a combatant's; no pool shares a name with a player resource, and no more than eight.
     flaw(
@@ -2334,6 +2350,11 @@ static FLAWS: [Flaw; 283] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(name)) if name == "north"),
     ),
+];
+
+/// Flaws of the map, its layers, the slot kinds, production, gathering, a use, a player
+/// resource, a player modifier, a relation and a loadout.
+static MAP_FLAWS: &[Flaw] = &[
     // A marker tag a script names is some marker's; a point fits the map's metric; a region is a
     // box within the bounds, of a marker with no point; a placed unit walks only a path it
     // names; marker names differ.
@@ -2929,9 +2950,9 @@ static FLAWS: [Flaw; 283] = [
     },
 ];
 
-#[test]
-fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
-    for flaw in &FLAWS {
+/// Each of `flaws` fails the load of the packages it edits, in its package, with its problem.
+fn fails_each(flaws: &[Flaw]) {
+    for flaw in flaws {
         let edits = [(flaw.file, flaw.edit)]
             .into_iter()
             .chain(flaw.also.iter().copied());
@@ -2946,7 +2967,26 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         };
         assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
     }
+}
 
+#[test]
+fn every_flaw_of_the_data_or_a_delivery_fails_its_load_with_its_own_problem() {
+    fails_each(DATA_FLAWS);
+}
+
+#[test]
+fn every_flaw_of_a_script_fails_its_load_with_its_own_problem() {
+    fails_each(SCRIPT_FLAWS);
+}
+
+#[test]
+fn every_flaw_of_an_action_or_a_loop_of_stats_fails_its_load_with_its_own_problem() {
+    fails_each(ACTION_FLAWS);
+}
+
+#[test]
+fn every_flaw_of_a_stat_a_modifier_or_a_text_fails_its_load_with_its_own_problem() {
+    fails_each(STAT_FLAWS);
     // `has_modifier` only names a modifier: Rime's passive's script may ask for the Slow it
     // gives no param of, where an application of it is a flaw.
     let asks = Edit::Replace(
@@ -2954,7 +2994,15 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         r#"if m.carrier.has_modifier("slow") { m.stacks += 1; }"#,
     );
     assert!(load(&edited([(STILLNESS, asks)])).is_ok());
+}
 
+#[test]
+fn every_flaw_of_the_map_or_the_economy_fails_its_load_with_its_own_problem() {
+    fails_each(MAP_FLAWS);
+}
+
+#[test]
+fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {
         let text = PackageTree::of(TestMode::Moba3v3)

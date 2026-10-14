@@ -6,9 +6,12 @@ pub(crate) enum Failure {
     /// Its heights are not 270 × 340 samples.
     #[display("its heights are {columns} × {rows} samples, not 270 × 340")]
     Heights { columns: u32, rows: u32 },
-    /// It places other than 580 units of 63 types.
-    #[display("it places {units} units of {types} types, not 580 of 63")]
+    /// It places other than 142 units of 41 types.
+    #[display("it places {units} units of {types} types, not 142 of 41")]
     Units { units: usize, types: usize },
+    /// It has other than 438 client objects of 22 looks.
+    #[display("it has {objects} client objects of {looks} looks, not 438 of 22")]
+    ClientObjects { objects: usize, looks: usize },
     /// It has other than 28 markers.
     #[display("it has {_0} markers, not 28")]
     Markers(usize),

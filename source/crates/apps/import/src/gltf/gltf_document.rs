@@ -1,10 +1,12 @@
 use serde::Serialize;
 
 /// The subset of glTF 2.0's JSON a model of the importer uses: one scene, nodes, meshes of
-/// triangles, materials, and textures by URI.
+/// triangles, materials, and textures by URI, and the extensions its materials use.
 #[derive(Debug, Default, Serialize)]
 pub(crate) struct GltfDocument {
     pub(crate) asset: Asset,
+    #[serde(rename = "extensionsUsed", skip_serializing_if = "Vec::is_empty")]
+    pub(crate) extensions_used: Vec<&'static str>,
     pub(crate) scene: usize,
     pub(crate) scenes: Vec<Scene>,
     pub(crate) nodes: Vec<Node>,
@@ -122,7 +124,35 @@ pub(crate) struct Material {
     pub(crate) alpha_cutoff: Option<f32>,
     #[serde(rename = "doubleSided")]
     pub(crate) double_sided: bool,
+    pub(crate) extensions: MaterialExtensions,
 }
+
+/// A material's extensions: its specular strength, and whether it is lit.
+#[derive(Debug, Serialize)]
+pub(crate) struct MaterialExtensions {
+    #[serde(rename = "KHR_materials_specular")]
+    pub(crate) specular: Specular,
+    #[serde(
+        rename = "KHR_materials_unlit",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) unlit: Option<Unlit>,
+}
+
+/// `KHR_materials_specular`: the strength of the specular reflection, 1 a dielectric's usual.
+#[derive(Debug, Serialize)]
+pub(crate) struct Specular {
+    #[serde(rename = "specularFactor")]
+    pub(crate) factor: f32,
+}
+
+/// `KHR_materials_unlit`, an empty object.
+#[derive(Debug, Serialize)]
+#[expect(
+    clippy::empty_structs_with_brackets,
+    reason = "serde writes a unit struct as null, where the extension is an empty object"
+)]
+pub(crate) struct Unlit {}
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Pbr {

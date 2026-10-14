@@ -90,8 +90,9 @@ impl MapImport {
     /// same order, lit by its first `lights` terrain lights; its objects as a multiplayer game
     /// spawns them (design 12, D14), none of a template no INI object names, an optimized tree,
     /// a prop and fluff as client objects, of a look of `looks`, or none when it has none, and
-    /// every other as a unit of the type `types` names; its waypoints as markers; bounds that hold its heights and
-    /// every point its sim places; and its first `lights` object lights, as the game draws
+    /// every other as a unit of the type `types` names, the bridge-like ones first, in the map's
+    /// order; its waypoints as markers; bounds that hold its heights and every point its sim
+    /// places; and its first `lights` object lights, as the game draws
     /// `NumberGlobalLights` of each. The terrain's ambient color is its first light's, and the
     /// objects' theirs, as the game takes them.
     pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<MapImport, MapError> {
@@ -138,6 +139,7 @@ impl MapImport {
             }
             point
         };
+        let mut bridges = Vec::new();
         let mut units = Vec::new();
         let mut client = ClientObjects::default();
         let mut markers = Vec::new();
@@ -177,7 +179,8 @@ impl MapImport {
                     height,
                     degrees,
                 } = object.placement().ok_or(MapError::Placement(at))?;
-                if ini.placed_as(template) != PlacedAs::Unit {
+                let placed = template.placed_as();
+                if matches!(placed, PlacedAs::Tree | PlacedAs::Prop) {
                     let look = template.import_name().declared();
                     if looks.objects.contains_key(&look) {
                         client.objects.push(ClientObject {
@@ -189,21 +192,26 @@ impl MapImport {
                     }
                     continue;
                 }
-                units.push(UnitToml {
+                let unit = UnitToml {
                     unit_type: types.name(&object.template)?.as_str().to_owned(),
                     team: NEUTRAL,
                     pos: take(ground),
                     angle: degrees,
                     height,
-                });
+                };
+                match placed {
+                    PlacedAs::Bridge => bridges.push(unit),
+                    _ => units.push(unit),
+                }
             }
         }
+        bridges.append(&mut units);
         let map = MapToml {
             bounds: BoundsToml {
                 min: low,
                 max: high,
             },
-            units,
+            units: bridges,
             markers,
         };
         Ok(MapImport {
@@ -386,7 +394,9 @@ mod tests {
         // The tank at the original's (30, 5) stands at x 30, z −5, turned π/2 in `f32`,
         // 1,509,949,482 steps of 2⁻²⁴ degrees. The rock at (−10, 15), 4.5 below the ground,
         // turned 4.729842 − 2π = −1.5533433 in `f32`, −1,493,172,475.64 steps, so
-        // −1,493,172,476. The waypoint at (12.5, 7.5) is marker `w3`. The road's end is none.
+        // −1,493,172,476. The wall at (10, 0), which the map lists after both, comes first, as the
+        // game spawns bridge-like objects before the others. The waypoint at (12.5, 7.5) is marker
+        // `w3`. The road's end is none.
         let map: MapData = Toml::parse(&imported.map).unwrap();
         let decimal = |text: &str| text.parse::<Num>().unwrap();
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
@@ -402,6 +412,7 @@ mod tests {
         assert_eq!(
             map.units,
             [
+                unit("fortresswall", ground("10", "0"), 0, Num::ZERO),
                 unit(
                     "americatankcrusader",
                     ground("30", "-5"),
@@ -458,7 +469,7 @@ mod tests {
         );
         assert_eq!(
             types.toml(),
-            "[units.americatankcrusader]\n\n[units.rocks1]\n"
+            "[units.americatankcrusader]\n\n[units.fortresswall]\n\n[units.rocks1]\n"
         );
     }
 

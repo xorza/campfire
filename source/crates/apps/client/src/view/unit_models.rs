@@ -194,8 +194,13 @@ mod tests {
             base_color: [1.0; 4],
             texture: None,
             emissive: [0.0; 3],
+            metallic: 0.0,
+            roughness: 1.0,
+            specular: 0.0,
+            unlit: false,
             blend: Blend::Add,
             depth_write: false,
+            depth_bias: 0,
             double_sided: false,
         };
         // Files for the tank's `tank_3` in package 1, and for `tank_0` in package 0 alone.

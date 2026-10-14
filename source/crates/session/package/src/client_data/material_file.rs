@@ -2,7 +2,8 @@ use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 /// A material file, `client/materials/<name>.toml`, which overrides the glTF material of that name
-/// whole, for what glTF's material cannot say. Colors are linear, as glTF's factors are.
+/// whole, for what glTF's material cannot say, so it holds all a glTF material of the import
+/// holds. Colors are linear, as glTF's factors are.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MaterialFile {
@@ -12,8 +13,20 @@ pub struct MaterialFile {
     pub texture: Option<MaterialTexture>,
     /// Red, green and blue, each 0 to 1, added as light.
     pub emissive: [f32; 3],
+    /// How metallic and how rough it is, each 0 to 1, as glTF's factors.
+    pub metallic: f32,
+    pub roughness: f32,
+    /// The strength of its specular reflection, 0 to 1, as `KHR_materials_specular`'s factor: 1
+    /// a dielectric's usual reflectance.
+    pub specular: f32,
+    /// Whether it is drawn of its colors and texture alone, of no light, as `KHR_materials_unlit`.
+    pub unlit: bool,
     pub blend: Blend,
     pub depth_write: bool,
+    /// Its order over the primitive it covers, a layer of the same vertices: its depth moved
+    /// toward the camera by that many steps of the depth buffer, and its sort after the ones
+    /// under it, as Bevy's depth bias does; 0 for a primitive that covers none.
+    pub depth_bias: i32,
     pub double_sided: bool,
 }
 
@@ -57,13 +70,28 @@ mod tests {
         let text = r#"
             base_color = [1.0, 0.5, 0.25, 1.0]
             emissive = [0.0, 0.0, 0.0]
+            metallic = 0.0
+            roughness = 1.0
+            specular = 0.0
+            unlit = true
             blend = { mode = "alpha_mask", cutoff = 0.375 }
             depth_write = true
+            depth_bias = 2
             double_sided = false
             texture = { path = "client/textures/art/textures/fx.ktx2", clamp_u = true, clamp_v = false }
         "#;
         let material: MaterialFile = Toml::parse(text).unwrap();
         assert_eq!(material.blend, Blend::AlphaMask { cutoff: 0.375 });
+        assert_eq!(
+            (
+                material.metallic,
+                material.roughness,
+                material.specular,
+                material.unlit
+            ),
+            (0.0, 1.0, 0.0, true)
+        );
+        assert_eq!(material.depth_bias, 2);
         assert_eq!(
             material.texture.as_ref().unwrap().path.as_str(),
             "client/textures/art/textures/fx.ktx2"
@@ -88,5 +116,7 @@ mod tests {
             );
         }
         assert!(Toml::parse::<MaterialFile>(&text.replace("alpha_mask", "glow")).is_err());
+        // Each of a glTF material's fields is the file's to give.
+        assert!(Toml::parse::<MaterialFile>(&text.replace("unlit = true", "")).is_err());
     }
 }

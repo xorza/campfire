@@ -43,6 +43,7 @@ Every change moves the engine toward one shape. The rules and the tests that hol
 - **One word, one meaning:** module, owner, kind, part, callback (`Hook` is the scripts' alone), `*File`, `*Data`, `*Spec`, `*Book`.
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or at the load is a fact of the schedule, not a check each tick.
 - **Each crate depends only on lower layers:** no two crates of one layer depend on each other, and no crate's top modules import each other in a cycle. What is the sim's lives in `sim`, and `math` holds the numbers every crate shares. A capability asks another for its work through a contract below both, never by writing its state.
+- **One rendering pipeline for every game.** The client draws every game by one pipeline: one material and lighting model, Bevy's physically based standard material, and the generic formats it reads, glTF and the client files. An importer converts its game's materials, lights and formats to them, as near the original as it can, and writes down what the conversion loses. Where a game needs what the pipeline cannot say, the pipeline gains a general feature that any game may use, as the material file's blends and depth bias, never a path, a flag or a shader for one game. Only the importer knows its game.
 - **Bevy's own mechanisms, not hand-made ones:** run conditions and `If` parameters, observers, one-shot systems, required components, sparse-set storage, plugin groups.
 
 ## Workflow

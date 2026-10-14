@@ -332,6 +332,12 @@ pub enum IniError {
     /// An object's `Scale` is not positive, or not finite.
     #[error("line {line}: an object's scale is not positive")]
     Scale { line: usize },
+    /// An `Object` or an `ObjectReskin` of a name read before.
+    #[error("line {line}: an object of this name is read before")]
+    Redefined { line: usize },
+    /// An `ObjectReskin` of a base not read before it.
+    #[error("line {line}: a reskin's base is not read before it")]
+    NoBase { line: usize },
 }
 
 /// Why a W3D file's bytes are no model the importer converts.
@@ -361,6 +367,9 @@ pub enum W3dError {
     /// A mesh is of a geometry the importer does not draw, as a camera-aligned one.
     #[error("a mesh is of geometry {0:#x}")]
     Geometry(u32),
+    /// A material pass holds more texture stages than the game's two.
+    #[error("a pass holds more than two texture stages")]
+    Stages,
 }
 
 /// Why a model the objects name does not convert.
@@ -388,4 +397,7 @@ pub enum ModelError {
     /// A shader blends by factors no shipped shader uses.
     #[error("a shader blends by source {src} and destination {dest}")]
     Shader { src: u8, dest: u8 },
+    /// A shader mixes its detail stage by a color function no shipped shader uses.
+    #[error("a shader mixes its detail stage by function {0}")]
+    DetailFunction(u8),
 }

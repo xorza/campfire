@@ -1,15 +1,16 @@
 //! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into a
 //! new directory below the run root and logs the fingerprints of the imported package and the
 //! rules package, which a run on another OS must match. Then it checks that Tournament Desert
-//! imports as the original holds it: 270 × 340 height samples, 580 placed units of 63 types, and
-//! 28 markers, once its 176 road ends are dropped; that every cell of its terrain the client draws
-//! has a texture for each tile it draws; and that it loads in a match of the imported mode, which
-//! plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
+//! imports as a multiplayer game of the original spawns it: 270 × 340 height samples; of its 580
+//! objects, once its 176 road ends are dropped, 142 placed units of 41 types and 438 client
+//! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks that
+//! every cell of its terrain the client draws has a texture for each tile it draws, and that it
+//! loads in a match of the imported mode, which plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
 //! passes as one that checked.
 //!
 //! Run it with `cargo run --release -p campfire-zero-hour-check [-- <run root>]`.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::env;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
@@ -23,7 +24,8 @@ use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_mode::HeightGrid;
 use campfire_package::{
-    ClassTexture, ContentError, GameData, ModePackages, PackageReader, Terrain, TerrainAtlas,
+    ClassTexture, ClientObjects, ContentError, GameData, ModePackages, PackageReader, Terrain,
+    TerrainAtlas,
 };
 use campfire_runner::SessionWorld;
 use campfire_store::DurableFile;
@@ -113,14 +115,23 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     }
     let placed = &packages.map().units;
     let units = placed.len();
-    let types = placed
-        .iter()
-        .map(|unit| &unit.unit_type)
-        .collect::<BTreeSet<_>>()
-        .len();
-    if (units, types) != (580, 63) {
+    let by_type = tally(placed.iter().map(|unit| unit.unit_type.as_str()));
+    let types = by_type.len();
+    if (units, types) != (142, 41) {
         failures.push(Failure::Units { units, types });
     }
+    let path =
+        PackagePath::parse(&ClientObjects::path(MAP)).expect("a map's file is a package path");
+    let client = Toml::parse::<ClientObjects>(&read_text(files, &path)?)
+        .map_err(|error| CheckError::Read(ContentError::Data { path, error }))?;
+    let objects = client.objects.len();
+    let by_look = tally(client.objects.iter().map(|object| object.look.as_str()));
+    let looks = by_look.len();
+    if (objects, looks) != (438, 22) {
+        failures.push(Failure::ClientObjects { objects, looks });
+    }
+    info!(units = %listed(&by_type), "Tournament Desert's units by type");
+    info!(objects = %listed(&by_look), "Tournament Desert's client objects by look");
     let markers = packages.map().markers.len();
     if markers != 28 {
         failures.push(Failure::Markers(markers));
@@ -133,6 +144,8 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         samples = %format!("{} × {}", grid.columns(), grid.rows()),
         units,
         types,
+        objects,
+        looks,
         markers,
         untextured,
         "Tournament Desert loaded"
@@ -157,14 +170,7 @@ fn untextured(files: &PackageReader) -> Result<usize, CheckError> {
     let bytes = read(files, &format!("client/maps/{MAP}/terrain.bin"))?;
     let terrain = Binary::decode::<Terrain>(&bytes).map_err(CheckError::Decode)?;
     let path = PackagePath::parse(GameData::PATH).expect("a constant package path");
-    let text = files.read_file(&path).map_err(CheckError::Read)?;
-    let text = String::from_utf8(text).map_err(|error| {
-        CheckError::Read(ContentError::NotText {
-            path: path.clone(),
-            error: error.utf8_error(),
-        })
-    })?;
-    let game_data = Toml::parse::<GameData>(&text)
+    let game_data = Toml::parse::<GameData>(&read_text(files, &path)?)
         .map_err(|error| CheckError::Read(ContentError::Data { path, error }))?;
     let parts = terrain.parts();
     let mut textures = Vec::new();
@@ -197,6 +203,35 @@ fn untextured(files: &PackageReader) -> Result<usize, CheckError> {
                 .any(|tile| atlas.tile(usize::from(tile >> 2)).is_none())
         })
         .count())
+}
+
+/// How many of `names` there are of each name.
+fn tally<'a>(names: impl IntoIterator<Item = &'a str>) -> BTreeMap<&'a str, usize> {
+    let mut counts = BTreeMap::new();
+    for name in names {
+        *counts.entry(name).or_default() += 1;
+    }
+    counts
+}
+
+/// `counts` for a log: `name × count`, in the order of the names.
+fn listed(counts: &BTreeMap<&str, usize>) -> String {
+    let entries: Vec<String> = counts
+        .iter()
+        .map(|(name, count)| format!("{name} × {count}"))
+        .collect();
+    entries.join(", ")
+}
+
+/// The text of the package's file at `path`.
+fn read_text(files: &PackageReader, path: &PackagePath) -> Result<String, CheckError> {
+    let bytes = files.read_file(path).map_err(CheckError::Read)?;
+    String::from_utf8(bytes).map_err(|error| {
+        CheckError::Read(ContentError::NotText {
+            path: path.clone(),
+            error: error.utf8_error(),
+        })
+    })
 }
 
 /// The bytes of the package's file at `path`.

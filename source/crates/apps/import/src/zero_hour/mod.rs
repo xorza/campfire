@@ -215,8 +215,8 @@ impl<'a> ZeroHour<'a> {
         let mut types = BTreeMap::<String, String>::new();
         let unhidden = DefaultLook::default();
         for object in ini.objects() {
-            let scale = ini.scale(object);
-            let draws = ini.draws(object);
+            let scale = object.scale();
+            let draws = object.draws();
             let entries =
                 ZeroHour::models(draws.iter().map(|draw| (draw, &draw.look)), scale, models)?;
             if entries.is_empty() {
@@ -229,8 +229,8 @@ impl<'a> ZeroHour<'a> {
                     second: object.name.clone(),
                 });
             }
-            let drawn: Vec<&DrawModule> = match ini.placed_as(object) {
-                PlacedAs::Unit => Vec::new(),
+            let drawn: Vec<&DrawModule> = match object.placed_as() {
+                PlacedAs::Bridge | PlacedAs::Unit => Vec::new(),
                 PlacedAs::Tree => draws
                     .iter()
                     .filter(|draw| draw.kind == DrawKind::Tree)
@@ -526,7 +526,8 @@ mod tests {
         // Each model the objects name once, as its conversion gives it; its material file; and
         // each object's models with the nodes its default look hides. The tank's turret is hidden
         // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
-        // box and the marker's `NULL` draw nothing; the emitter and the absent model are skipped.
+        // box and the marker's `NULL` draw nothing; the emitter, the absent model and the tree's,
+        // which the fixture install lacks, are skipped, in the order of their objects' names.
         assert_eq!(
             imported.skipped_models,
             [
@@ -537,6 +538,10 @@ mod tests {
                 SkippedModel {
                     name: "spray".to_owned(),
                     reason: SkipReason::Emitter,
+                },
+                SkippedModel {
+                    name: "ptoak01".to_owned(),
+                    reason: SkipReason::Missing,
                 },
             ]
         );
