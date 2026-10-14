@@ -91,10 +91,6 @@ struct Palette {
 #[derive(Component, Debug)]
 struct Ground;
 
-/// Present when the map has a terrain to draw, so the view draws no plane of its own.
-#[derive(Resource, Debug)]
-pub(crate) struct GroundDrawn;
-
 /// How the match ended for the client's team.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Standing {
@@ -198,9 +194,8 @@ impl Plugin for View {
 
 impl View {
     /// Sets the background, the map's lights or one plain sun, the view's own ground unless the
-    /// map's terrain is drawn, and the palette.
+    /// map has a terrain, and the palette.
     fn set_scene(
-        drawn: Option<Res<'_, GroundDrawn>>,
         data: Option<Res<'_, ClientData>>,
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
@@ -222,7 +217,7 @@ impl View {
                 ));
             }
         }
-        if drawn.is_none() {
+        if data.as_deref().is_none_or(|data| data.terrain.is_none()) {
             commands.spawn((
                 Ground,
                 Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),

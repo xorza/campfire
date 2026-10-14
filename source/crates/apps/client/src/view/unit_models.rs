@@ -373,7 +373,7 @@ mod tests {
         };
         let data = ClientData {
             units: vec![looks],
-            heights: GroundHeights::of(&grid),
+            heights: Some(GroundHeights::of(&grid, None)),
             objects: ClientObjects {
                 objects: vec![
                     object("oak", 3, -2, 1, 90),

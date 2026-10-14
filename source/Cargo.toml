@@ -73,6 +73,7 @@ campfire-store = { path = "crates/base/store" }
 campfire-verifier = { path = "crates/session/verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }
+async-lock = "=3.4.2"
 backtrace = "=0.3.76"
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",

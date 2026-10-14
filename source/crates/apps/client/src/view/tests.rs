@@ -239,7 +239,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
                 .collect(),
             ..ClientUnits::default()
         }],
-        heights: GroundHeights::of(&grid),
+        heights: Some(GroundHeights::of(&grid, None)),
         ..ClientData::default()
     };
     let origins: TypeOriginBook = [TypeOrigin {

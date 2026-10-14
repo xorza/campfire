@@ -1,12 +1,18 @@
+use std::fmt;
 use std::future::ready;
 use std::io;
 use std::path::{Component, Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
+use async_lock::{Semaphore, SemaphoreGuardArc};
 use bevy::asset::io::{
-    AssetReader, AssetReaderError, AssetReaderFuture, PathStream, Reader, VecReader,
+    AssetReader, AssetReaderError, AssetReaderFuture, PathStream, Reader, ReaderNotSeekableError,
+    STACK_FUTURE_SIZE, SeekableReader, StackFuture, VecReader,
 };
 use bevy::tasks::ConditionalSendFuture;
+use bevy::tasks::futures_lite::AsyncRead;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_values::PackagePath;
@@ -16,23 +22,54 @@ use tracing::error;
 /// mode's 0, then its path in that package, as `0/client/models/tank.glb`, so a model's textures
 /// resolve by their paths beside it. Each read goes through the package's reader, which checks
 /// the bytes against the package's index; Bevy runs it on its IO pool, not the frame's thread.
-#[derive(Debug)]
+///
+/// At most `MODELS_AT_ONCE` glTF models load at a time (design 17, D9): a model's read waits for
+/// a permit, which its reader holds until the asset server drops it after the load. Bevy's glTF
+/// loader waits on a task scope, and its thread runs the next queued load inside that wait, so
+/// with no bound the loads nest as deep as there are models (Bevy #21954); a load that waits
+/// for a permit yields instead. No model's load waits on another model's, which would hold every
+/// permit and wait forever once four did: Bevy's glTF loader loads its textures apart and reads
+/// a `.gltf`'s buffers, which are no models.
+#[derive(Debug, Clone)]
 pub(crate) struct PackageSource {
     /// By place.
     packages: Vec<PackageReader>,
+    models: Arc<Semaphore>,
 }
+
+/// A file's bytes, and the permit of a model's load, which ends as the asset server drops it.
+struct HeldReader {
+    bytes: VecReader,
+    permit: Option<SemaphoreGuardArc>,
+}
+
+/// The models that load at once.
+const MODELS_AT_ONCE: usize = 4;
 
 impl PackageSource {
     /// The source's name, which an asset path of it names.
     pub(crate) const NAME: &'static str = "package";
 
     pub(crate) fn of(packages: &ModePackages) -> PackageSource {
-        PackageSource {
-            packages: packages
+        PackageSource::new(
+            packages
                 .packages()
                 .map(|view| view.package.files.clone())
                 .collect(),
+        )
+    }
+
+    fn new(packages: Vec<PackageReader>) -> PackageSource {
+        PackageSource {
+            packages,
+            models: Arc::new(Semaphore::new(MODELS_AT_ONCE)),
         }
+    }
+
+    /// Whether the file at `path` is a glTF model, whose load holds a permit.
+    fn is_model(path: &Path) -> bool {
+        path.extension()
+            .is_some_and(|extension| extension == "glb" || extension == "gltf")
     }
 
     /// The asset path of the file at `path` in the package at `place`.
@@ -71,7 +108,17 @@ impl PackageSource {
 
 impl AssetReader for PackageSource {
     fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
-        ready(self.read_bytes(path).map(VecReader::new))
+        async move {
+            let permit = if PackageSource::is_model(path) {
+                Some(self.models.acquire_arc().await)
+            } else {
+                None
+            };
+            Ok(HeldReader {
+                bytes: VecReader::new(self.read_bytes(path)?),
+                permit,
+            })
+        }
     }
 
     // A package holds no Bevy meta files: every asset loads by its loader's defaults.
@@ -93,6 +140,39 @@ impl AssetReader for PackageSource {
         _: &'a Path,
     ) -> impl ConditionalSendFuture<Output = Result<bool, AssetReaderError>> {
         ready(Ok(false))
+    }
+}
+
+impl AsyncRead for HeldReader {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        context: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        Pin::new(&mut self.get_mut().bytes).poll_read(context, buf)
+    }
+}
+
+impl Reader for HeldReader {
+    fn read_to_end<'a>(
+        &'a mut self,
+        buf: &'a mut Vec<u8>,
+    ) -> StackFuture<'a, io::Result<usize>, STACK_FUTURE_SIZE> {
+        self.bytes.read_to_end(buf)
+    }
+
+    fn seekable(&mut self) -> Result<&mut dyn SeekableReader, ReaderNotSeekableError> {
+        self.bytes.seekable()
+    }
+}
+
+impl fmt::Debug for HeldReader {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("HeldReader")
+            .field("bytes", &self.bytes.bytes.len())
+            .field("permit", &self.permit.is_some())
+            .finish()
     }
 }
 
@@ -119,106 +199,4 @@ pub(crate) mod internals {
 }
 
 #[cfg(test)]
-mod tests {
-    use bevy::asset::RenderAssetUsages;
-    use bevy::image::{CompressedImageFormats, Image, ImageSampler, ImageType};
-    use bevy::render::render_resource::TextureFormat;
-    use bevy::tasks::block_on;
-    use campfire_store::InputFile;
-    use campfire_store::internals::Scratch;
-
-    use super::*;
-    use crate::view::package_source::internals::package;
-
-    #[test]
-    fn a_path_reads_its_packages_file_checked_against_its_index() {
-        let scratch = Scratch::new();
-        let mode = package(
-            &scratch,
-            "mode",
-            &[("client/models/tank.glb", b"glTF tank")],
-        );
-        let other = package(
-            &scratch,
-            "other",
-            &[("client/models/tank.glb", b"glTF other")],
-        );
-        let source = PackageSource {
-            packages: vec![mode, other],
-        };
-        let read = |path: &str| {
-            block_on(async {
-                let mut reader = source.read(Path::new(path)).await?;
-                let mut bytes = Vec::new();
-                reader.read_to_end(&mut bytes).await.unwrap();
-                Ok::<_, AssetReaderError>(bytes)
-            })
-        };
-        // Each package's file by its place, the mode's 0.
-        assert_eq!(read("0/client/models/tank.glb").unwrap(), b"glTF tank");
-        assert_eq!(read("1/client/models/tank.glb").unwrap(), b"glTF other");
-        // A place of no package, a path of no file, and a path no package holds are not found.
-        for path in [
-            "2/client/models/tank.glb",
-            "0/client/models/jeep.glb",
-            "x/a",
-            "0/../a",
-        ] {
-            assert!(
-                matches!(read(path), Err(AssetReaderError::NotFound(_))),
-                "{path}"
-            );
-        }
-        // A file whose bytes are not its row's does not read.
-        scratch.write("mode/client/models/tank.glb", b"glTF tamk");
-        assert!(matches!(
-            read("0/client/models/tank.glb"),
-            Err(AssetReaderError::Io(_))
-        ));
-        // The asset path of a package's file names the source.
-        let path = PackagePath::parse("client/models/tank.glb").unwrap();
-        assert_eq!(
-            PackageSource::asset_path(1, &path),
-            "package://1/client/models/tank.glb"
-        );
-    }
-
-    #[test]
-    fn bevys_ktx2_loader_reads_the_imports_textures_with_their_levels() {
-        // The DDS's 8 × 8 DXT1 blocks and its 4 levels, 32 + 8 + 8 + 8 bytes; the TGA's 2 × 1
-        // texels as RGBA8 and its 2 levels, 8 + 4 bytes; both sRGB.
-        // The import's test pins them.
-        let fixture = |name: &str| {
-            let fixtures = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
-            InputFile::read(&fixtures.join(name), 1 << 10).unwrap()
-        };
-        let (dxt1, rgba) = (fixture("dxt1.ktx2"), fixture("rgba.ktx2"));
-        let read = |bytes: &[u8]| {
-            let image = Image::from_buffer(
-                bytes,
-                ImageType::Extension("ktx2"),
-                CompressedImageFormats::BC,
-                true,
-                ImageSampler::Default,
-                RenderAssetUsages::default(),
-            )
-            .unwrap();
-            let descriptor = &image.texture_descriptor;
-            let size = descriptor.size;
-            (
-                descriptor.format,
-                [size.width, size.height],
-                descriptor.mip_level_count,
-                image.data.map(|data| data.len()),
-            )
-        };
-        assert_eq!(
-            read(&dxt1),
-            (TextureFormat::Bc1RgbaUnormSrgb, [8, 8], 4, Some(56))
-        );
-        assert_eq!(
-            read(&rgba),
-            (TextureFormat::Rgba8UnormSrgb, [2, 1], 2, Some(12))
-        );
-    }
-}
+mod tests;

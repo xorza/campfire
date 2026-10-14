@@ -28,6 +28,7 @@ campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
+async-lock.workspace = true
 bevy.workspace = true
 clap.workspace = true
 lightyear.workspace = true

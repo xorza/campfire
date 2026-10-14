@@ -198,10 +198,11 @@ fn add_ends(
         });
     }
     // Bevy builds its asset sources as its asset plugin is added, so the packages' goes first.
-    let source = Arc::clone(packages);
+    // Every reader the builder makes shares the one source's bound on the models that load.
+    let source = PackageSource::of(packages);
     app.register_asset_source(
         PackageSource::NAME,
-        AssetSourceBuilder::new(move || Box::new(PackageSource::of(&source))),
+        AssetSourceBuilder::new(move || Box::new(source.clone())),
     );
     app.add_plugins((
         DefaultPlugins

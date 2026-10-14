@@ -4,19 +4,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 **Slice 5, units that drive.** The user starts Tournament Desert in the client, finds America's command center and dozer at their start, selects the dozer, and drives it round the cliffs to the other start, at its speed and turn rate, on the drawn ground. The design is [Units that drive](docs/design/17-units-that-drive.md); the facts are [Zero Hour research](docs/research/zero-hour.md#movement). The Zero Hour check plays the drive, and loads every imported map.
 
-## 1. The client starts and stands on the drawn ground
-
-`client`: `view`. First, as the crash it fixes ends most starts of Tournament Desert, so no play test of a later batch waits on it.
-
-### U1. At most four models load at a time
-
-(`client`; Units that drive D9; **Client**, "The client aborts with a stack overflow".) The client depends on `async-lock`, already in the build through Bevy. `PackageSource` takes a permit of a semaphore of four before it opens a `.glb`, and its reader holds the permit until it drops; a read that waits for one yields. Check: with four `.glb` readers held, a fifth read stays pending, and runs as one drops; the asset server holds a reader for its whole load, which a test of a loader that reads, then awaits a signal before it returns, pins; the user starts Tournament Desert ten times in a row with no crash.
-
-### U2. The ground's diagonals from the terrain
-
-(`client`; Units that drive D8; **Client**, "`view/ground_heights.rs` places units by Zero Hour's `getHeightMapHeight`".) `ClientData` reads the map's terrain file; `GroundHeights` takes each cell's diagonal from it, the cell's ground quad's flip, or the diagonal from the first sample with none, and its height and its ray's hit lie on the cell's two triangles everywhere on the grid, a point off it the nearest sample's; the border ring's rule goes. `TerrainView` draws from `ClientData`'s file, and the view draws its plane when the map has no terrain, so `GroundDrawn` goes. Check: a fixture grid of a flipped and an unflipped cell, a point on each triangle of each, the ray's hit on each, and a point off the grid, each height computed by hand; a map with no terrain file draws the plane.
-
-## 2. Walkers turn, and imported maps load
+## 1. Walkers turn, and imported maps load
 
 `values`, `units`, `navigation`, `mode`, the test packages; `client`: `view`. Before the import, which writes the stat, the tags and the walls.
 
@@ -28,7 +16,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`mode`, `navigation`, the test packages; Units that drive D5.) The map load accepts placed static bodies that overlap walls and each other, and still refuses a box past the bounds; mode data gains `[navigation] spawn_tags`, resolved at the load, and the load checks only the markers of those tags; the lane and proving modes name theirs. Design 08's load rules and navigation's Map checks say so. Check: a fixture map of a box over a wall and of two boxes that overlap loads; a box past the bounds does not; a marker of a spawn tag in a wall's margin does not, one of another tag does; the test modes load and play as before.
 
-## 3. The selection
+## 2. The selection
 
 `client`: `orders`, `pointer`, `view`.
 
@@ -36,7 +24,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`client`; Units that drive D7.) The client gains a selection of the player's own units: a left click on one selects it alone, a left drag the units whose ground point lies in its rectangle, and a click or a drag that meets none leaves the selection as it is; a right click sends the selection one group order, an attack on an enemy under the cursor, else a move to the ground point; the selection starts as the avatar. `view` draws a ring under each selected unit, of its radius. The ability and item keys act on the avatar as now. Check: each click, drag and right click on a fixture of units gives the selection and the order computed by hand; the proving mode plays as now.
 
-## 4. Zero Hour's units drive
+## 3. Zero Hour's units drive
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. Last, as it needs the turn rate, the load's rules and the selection to play.
 

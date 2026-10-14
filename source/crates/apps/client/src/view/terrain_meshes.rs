@@ -35,17 +35,10 @@ struct Samples {
 }
 
 impl TerrainMeshes {
-    /// The meshes of `quads` over `grid`, their texture `size` texels at its first level; none
-    /// unless the ground's quads are the grid's cells.
-    pub(crate) fn of(
-        quads: &TerrainQuads,
-        size: UVec2,
-        grid: &HeightGrid,
-    ) -> Option<TerrainMeshes> {
-        let cells = (grid.columns() as usize - 1) * (grid.rows() as usize - 1);
-        if quads.columns != grid.columns() || quads.ground.len() != cells {
-            return None;
-        }
+    /// The meshes of `quads` over `grid`, whose cells they are, their texture `size` texels at
+    /// its first level.
+    pub(crate) fn of(quads: &TerrainQuads, size: UVec2, grid: &HeightGrid) -> TerrainMeshes {
+        debug_assert!(quads.fits(grid), "a terrain over the grid's cells");
         let samples = Samples::of(grid);
         // A file's texture sides lie far below 2²⁴, exact in an f32.
         let size = size.as_vec2();
@@ -61,7 +54,7 @@ impl TerrainMeshes {
                     .map(|alpha| Vec4::new(1.0, 1.0, 1.0, f32::from(alpha) / 255.0)),
             );
         }
-        Some(TerrainMeshes { ground, overlay })
+        TerrainMeshes { ground, overlay }
     }
 }
 
@@ -212,7 +205,7 @@ mod tests {
 
     #[test]
     fn a_quad_lies_on_its_cell_s_samples_with_their_normals_its_coordinates_and_its_diagonal() {
-        let meshes = TerrainMeshes::of(&quads(), UVec2::new(64, 32), &grid()).unwrap();
+        let meshes = TerrainMeshes::of(&quads(), UVec2::new(64, 32), &grid());
         let ground = &meshes.ground;
         assert_eq!(ground.positions.len(), 16);
         // Cell 0's corners: the samples [0, 0], [1, 0], [1, 1] and [0, 1].
@@ -282,12 +275,5 @@ mod tests {
             [0.0, 1.0, 0.2, 0.0]
         );
         assert_eq!(overlay.indices, [0, 2, 1, 0, 3, 2]);
-        // A file of another grid's shape has no meshes.
-        let mut wide = quads();
-        wide.columns = 4;
-        assert!(TerrainMeshes::of(&wide, UVec2::new(64, 32), &grid()).is_none());
-        let mut short = quads();
-        short.ground.pop();
-        assert!(TerrainMeshes::of(&short, UVec2::new(64, 32), &grid()).is_none());
     }
 }

@@ -8,7 +8,7 @@ use campfire_log::ErrorReport;
 use campfire_mode::HeightGrid;
 use campfire_package::{
     CameraFile, ClientObjects, ClientUnits, ContentError, MapLights, MaterialFile, ModePackages,
-    PackageReader,
+    PackageReader, TerrainFile,
 };
 use campfire_values::PackagePath;
 use tracing::error;
@@ -19,8 +19,9 @@ use crate::view::ground_heights::GroundHeights;
 /// looks, `client/units.toml`, by its place, and every material file, `client/materials/<name>.toml`,
 /// by its package's place and its name; the map's heightmap and the ground's heights from it; and
 /// the mode's own package's camera, `client/camera.toml`, the map's lights,
-/// `client/maps/<map>/lights.toml`, and its client objects, `client/maps/<map>/objects.toml`,
-/// whose looks are its package's. Each file is read once, as the view
+/// `client/maps/<map>/lights.toml`, its client objects, `client/maps/<map>/objects.toml`,
+/// whose looks are its package's, and its terrain, `client/maps/<map>/terrain.bin`, kept when its
+/// quads are the heights' cells. Each file is read once, as the view
 /// starts, and checked against its package's index; one that does not read is logged, and drawn
 /// as if it were not there.
 #[derive(Resource, Debug, Default)]
@@ -29,6 +30,9 @@ pub(crate) struct ClientData {
     pub(crate) materials: BTreeMap<(u16, String), MaterialFile>,
     pub(crate) grid: Option<HeightGrid>,
     pub(crate) heights: Option<GroundHeights>,
+    /// The map's terrain over its heights; none for a map of no heights, of no terrain file, or
+    /// of one that does not read or is not the heights' shape.
+    pub(crate) terrain: Option<TerrainFile>,
     /// The mode's own package's camera file.
     pub(crate) camera: Option<CameraFile>,
     /// The map's lights, which its units are drawn in.
@@ -57,14 +61,29 @@ impl ClientData {
         data
     }
 
-    /// Reads the mode's own package's files of `map`: its heights, the camera, the map's lights
-    /// and its client objects.
+    /// Reads the mode's own package's files of `map`: its heights and its terrain over them, the
+    /// camera, the map's lights and its client objects.
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         let heights = format!("map/{map}/heights.bin");
         let heights = PackagePath::parse(&heights).expect("a map's name is a package path's");
         self.grid = ClientData::read_file(mode, &heights)
             .and_then(|bytes| ClientData::logged(&heights, Binary::decode::<HeightGrid>(&bytes)));
-        self.heights = self.grid.as_ref().and_then(GroundHeights::of);
+        let terrain = PackagePath::parse(&TerrainFile::path(map.as_str()))
+            .expect("a map's name is a package path's");
+        self.terrain = self.grid.as_ref().and_then(|grid| {
+            let bytes = ClientData::read_file(mode, &terrain)?;
+            let file = ClientData::logged(&terrain, Binary::decode::<TerrainFile>(&bytes))?;
+            let fits = file.quads().fits(grid);
+            if !fits {
+                error!(path = %terrain, "a map's terrain is not the shape of its heights");
+            }
+            fits.then_some(file)
+        });
+        let quads = self.terrain.as_ref().map(TerrainFile::quads);
+        self.heights = self
+            .grid
+            .as_ref()
+            .map(|grid| GroundHeights::of(grid, quads));
         self.camera = ClientData::toml(mode, CameraFile::PATH, Toml::parse);
         self.lights = ClientData::toml(mode, &MapLights::path(map.as_str()), Toml::parse);
         let objects = ClientObjects::path(map.as_str());
@@ -128,104 +147,4 @@ impl ClientData {
 }
 
 #[cfg(test)]
-mod tests {
-    use campfire_math::Num;
-    use campfire_package::Blend;
-    use campfire_store::internals::Scratch;
-
-    use super::*;
-    use crate::view::package_source::internals::package;
-
-    #[test]
-    fn a_package_gives_its_units_and_its_material_files_and_skips_what_does_not_read() {
-        let scratch = Scratch::new();
-        let units = br#"[units.tank]
-models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
-"#;
-        let flash = br#"base_color = [1.0, 1.0, 1.0, 1.0]
-emissive = [1.0, 0.0, 0.0]
-metallic = 0.0
-roughness = 1.0
-specular = 0.0
-unlit = false
-blend = { mode = "add" }
-depth_write = false
-depth_bias = 0
-double_sided = true
-"#;
-        let files = package(
-            &scratch,
-            "mode",
-            &[
-                ("client/units.toml", units),
-                ("client/materials/tank_3.toml", flash),
-                ("client/materials/broken.toml", b"blend = 1"),
-                ("client/materials/notes.txt", b"no material"),
-            ],
-        );
-        let none = package(&scratch, "bare", &[("data/units.toml", b"")]);
-        let mut data = ClientData::default();
-        data.read_package(0, &files);
-        data.read_package(1, &none);
-        // The tank's model, with the node it hides; a package with no units has none.
-        let tank = &data.units[0].units["tank"].models[0];
-        assert_eq!(
-            (tank.model.as_str(), tank.hide.as_slice()),
-            ("client/models/tank.glb", &["tank.flash".to_owned()][..])
-        );
-        assert!(data.units[1].units.is_empty());
-        // The material file by its package and name; the one that does not read, and the file
-        // that is no TOML, are not there.
-        let keys: Vec<&(u16, String)> = data.materials.keys().collect();
-        assert_eq!(keys, [&(0, "tank_3".to_owned())]);
-        assert_eq!(data.materials[&(0, "tank_3".to_owned())].blend, Blend::Add);
-    }
-
-    #[test]
-    fn a_map_gives_its_lights_and_its_client_objects_and_skips_what_does_not_read() {
-        let scratch = Scratch::new();
-        let lights = b"ambient = [0.25, 0.25, 0.25]
-lights = [{ color = [1.0, 1.0, 1.0], direction = [0.0, -1.0, 0.0] }]
-";
-        let objects = br#"[[objects]]
-look = "oak"
-pos = [3, "-2.5"]
-height = 1
-angle = 90
-"#;
-        let map = MapName::new("desert").unwrap();
-        let mode = package(
-            &scratch,
-            "mode",
-            &[
-                ("client/maps/desert/lights.toml", lights),
-                ("client/maps/desert/objects.toml", objects),
-            ],
-        );
-        let mut data = ClientData::default();
-        data.read_map(&mode, &map);
-        // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°.
-        assert_eq!(data.lights.unwrap().lights.len(), 1);
-        let oak = &data.objects.objects[0];
-        assert_eq!(data.objects.objects.len(), 1);
-        assert_eq!(oak.look.as_str(), "oak");
-        assert_eq!(oak.pos, [Num::int(3), Num::int(-5) / Num::int(2)]);
-        assert_eq!((oak.height, oak.angle), (Num::ONE, Num::int(90)));
-        // A map of no objects file has none, as one whose file does not read; no heights or
-        // camera file gives none either.
-        let broken = package(
-            &scratch,
-            "broken",
-            &[(
-                "client/maps/desert/objects.toml",
-                b"[[objects]]\nlook = 1\n",
-            )],
-        );
-        for files in [package(&scratch, "bare", &[]), broken] {
-            let mut data = ClientData::default();
-            data.read_map(&files, &map);
-            assert!(data.objects.objects.is_empty());
-            assert!(data.lights.is_none() && data.camera.is_none() && data.heights.is_none());
-        }
-    }
-}
+mod tests;

@@ -22,6 +22,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Client.** **Plan: U1.** The client aborts with a stack overflow on an `IO Task Pool` thread in about one start of three of Tournament Desert: Bevy's glTF loader waits on a task scope for a model's images, and the waiting thread runs the next queued glTF load inside that wait, so about 130 model loads nest on one stack (`view/unit_models.rs` loads every look's models at once).
-- **Client.** **Plan: U2.** `view/ground_heights.rs` places units by Zero Hour's `getHeightMapHeight`, each cell split on one fixed diagonal, where the Direction draws every game by one pipeline and only the importer knows its game; the terrain it stands for now splits each cell on the diagonal its terrain file gives, so a unit on a flipped cell stands off the drawn ground.
 - **Zero Hour.** The import draws each object by its default state's model on every map, where the game draws its night model on a night map and its snow model on a snowy map, the condition state that best matches `NIGHT` and `SNOW` (`Drawable::setTimeOfDay`, `W3DTerrainVisual::addProp`): 15 of the 150 shipped maps are night maps and 17 snowy ones.

@@ -1,4 +1,5 @@
 use bevy_math::{UVec2, Vec2};
+use campfire_mode::HeightGrid;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -149,6 +150,15 @@ impl TerrainFile {
     }
 }
 
+impl TerrainQuads {
+    /// Whether its ground quads are `grid`'s cells: its columns are the grid's, and it has a
+    /// ground quad for each cell.
+    pub fn fits(&self, grid: &HeightGrid) -> bool {
+        let cells = (grid.columns() as usize - 1) * (grid.rows() as usize - 1);
+        self.columns == grid.columns() && self.ground.len() == cells
+    }
+}
+
 impl TerrainTexture {
     /// An error unless it has a texel and a level, its sides halve to a texel at each level, and
     /// every copy and border wrap lies within it, each place and size on texels each level halves
@@ -214,6 +224,7 @@ impl<'de> Deserialize<'de> for TerrainFile {
 #[cfg(test)]
 mod tests {
     use campfire_codec::Binary;
+    use campfire_math::Num;
 
     use super::*;
 
@@ -272,6 +283,14 @@ mod tests {
             TerrainFile::path("tournament_desert"),
             "client/maps/tournament_desert/terrain.bin"
         );
+        // Its two cells are those of a grid of 3 × 2 samples, not of 3 × 3 or of 2 × 2.
+        let grid = |columns: u32, rows: u32| {
+            let samples = vec![0; (columns * rows) as usize];
+            HeightGrid::new([Num::ZERO; 2], Num::ONE, Num::ONE, columns, samples).unwrap()
+        };
+        assert!(file.quads().fits(&grid(3, 2)));
+        assert!(!file.quads().fits(&grid(3, 3)));
+        assert!(!file.quads().fits(&grid(2, 2)));
         let refused = |change: fn(&mut TerrainQuads, &mut TerrainTexture, &mut TerrainSurface)| {
             let (mut quads, mut texture, mut surface) = parts();
             change(&mut quads, &mut texture, &mut surface);
