@@ -1,3 +1,4 @@
+use campfire_values::PackagePath;
 use derive_more::Display;
 
 /// A path inside the install's archives, as the game finds a file by it: its ASCII lowercase,
@@ -7,6 +8,16 @@ use derive_more::Display;
 pub(crate) struct ArchivePath(String);
 
 impl ArchivePath {
+    /// Where the texture at this path goes in the package: `client/textures/` and its path
+    /// with `/` between names, its extension `.ktx2`.
+    pub(crate) fn texture_path(&self) -> PackagePath {
+        let path = format!(
+            "client/textures/{}.ktx2",
+            self.without_extension().replace('\\', "/")
+        );
+        PackagePath::parse(&path).expect("an archive path is a package path")
+    }
+
     /// The path the game finds `path` by: `/` read as `\`, letters folded to lowercase.
     pub(crate) fn of(path: &str) -> ArchivePath {
         ArchivePath(path.replace('/', "\\").to_ascii_lowercase())

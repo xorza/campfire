@@ -52,6 +52,8 @@ pub(crate) mod ref_pack;
 pub(crate) mod rules_package;
 pub(crate) mod terrain_ini;
 pub(crate) mod unit_types;
+pub(crate) mod w3d_chunks;
+pub(crate) mod w3d_fields;
 pub(crate) mod w3d_file;
 pub(crate) mod w3d_mesh;
 
@@ -172,7 +174,7 @@ impl<'a> ZeroHour<'a> {
                 TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
                 TextureKind::Tga => TgaFile::read(&bytes).map_err(texture)?.ktx2(),
             };
-            write(ZeroHour::texture_path(&path).as_str(), &ktx2)?;
+            write(path.texture_path().as_str(), &ktx2)?;
         }
         write("data/units.toml", unit_types.toml().as_bytes())?;
         let mut skipped_models = Vec::new();
@@ -316,19 +318,7 @@ impl ZeroHour<'_> {
     fn class_texture(&self, class: &TextureClass, types: &TerrainIni) -> Option<PackagePath> {
         let file = types.texture(&class.name)?;
         let path = ArchivePath::of(&format!("art\\terrain\\{file}"));
-        self.install
-            .contains(&path)
-            .then(|| ZeroHour::texture_path(&path))
-    }
-
-    /// Where the texture at `path` in the archives goes: `client/textures/` and its path with `/`
-    /// between names, its extension `.ktx2`.
-    pub(crate) fn texture_path(path: &ArchivePath) -> PackagePath {
-        let path = format!(
-            "client/textures/{}.ktx2",
-            path.without_extension().replace('\\', "/")
-        );
-        PackagePath::parse(&path).expect("an archive path is a package path")
+        self.install.contains(&path).then(|| path.texture_path())
     }
 
     /// Where the model `name` goes: `client/models/<name>.glb`.

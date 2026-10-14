@@ -6,7 +6,6 @@ use campfire_package::{Blend, MaterialFile, MaterialTexture};
 use crate::gltf::glb_builder::{CLAMP_TO_EDGE, GlbBuilder, REPEAT};
 use crate::gltf::gltf_document::{Attributes, Material, Mesh, Node, Pbr, Primitive, TextureRef};
 use crate::texture::srgb::Srgb;
-use crate::zero_hour::ZeroHour;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::{ModelError, ZeroHourError};
 use crate::zero_hour::hierarchy::Hierarchy;
@@ -462,7 +461,7 @@ impl ModelBuilder {
         };
         let emissive = key.material.emissive.map(ModelBuilder::linear);
         let texture = key.texture.as_ref().map(|(path, flags)| MaterialTexture {
-            path: ZeroHour::texture_path(path),
+            path: path.texture_path(),
             clamp_u: flags & CLAMP_U != 0,
             clamp_v: flags & CLAMP_V != 0,
         });

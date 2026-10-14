@@ -22,8 +22,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Import.** The modules of `zero_hour` import each other in two cycles, which the cycle test of top modules does not see: `w3d_file` with `hierarchy`, `hlod` and `w3d_mesh` (`w3d_file` takes `Hierarchy`, `Hlod` and `W3dMesh`, and each of the three takes `w3d_file`'s `Chunks` and `Fields`); and `zero_hour` with `model_import` (`zero_hour` takes `Converted` and `ModelImport`, and `model_import` takes `ZeroHour` for `ZeroHour::texture_path`).
-- **Runner.** The proving match runs no `items`, though its layout test says it holds every type of every capability the release runs: `golden/layout.txt` pins neither `items.inventory` nor `actions.use_group`, so a change of their layout at the same `StateRegistry::DATA_VERSION` passes it.
 - **Zero Hour.** The import writes no material file for a vertex material whose ambient color is not its diffuse color, and the material file and the client's shader hold no ambient color, where design 12's D13 gives the file's `ambient`: 336 vertex materials of converted models lose their ambient color.
 - **Zero Hour.** A texture no archive holds leaves its triangles untextured in the import, where design 12's D13 draws them as the game's `MissingTexture`, `0x7FFF00FF`: 22 meshes of one model name `dirtground1.bmp`.
 - **Zero Hour.** The import draws a mesh's first material pass and its first texture stage alone, where design 12's D13 draws its second pass as one more primitive: 275 meshes of converted models lose their second pass.

@@ -1,7 +1,8 @@
 use campfire_package::Blend;
 
 use crate::zero_hour::error::W3dError;
-use crate::zero_hour::w3d_file::{Chunks, Fields};
+use crate::zero_hour::w3d_chunks::W3dChunks;
+use crate::zero_hour::w3d_fields::W3dFields;
 
 /// A W3D mesh, what a model draws of it: its full name, its flags, its vertices, its triangles,
 /// and its first material pass, as `MeshModelClass` reads them. Every float but a texture
@@ -131,9 +132,9 @@ impl W3dMesh {
         let mut materials = Vec::new();
         let mut textures = Vec::new();
         let mut pass = None;
-        for chunk in Chunks::of(body) {
+        for chunk in W3dChunks::of(body) {
             let chunk = chunk?;
-            let mut fields = Fields::of(chunk.body);
+            let mut fields = W3dFields::of(chunk.body);
             match chunk.id {
                 HEADER => {
                     fields.u32()?;
@@ -158,19 +159,19 @@ impl W3dMesh {
                 TRIANGLES => triangles = W3dMesh::triangles(&mut fields)?,
                 SHADERS => shaders = W3dMesh::shaders(&mut fields)?,
                 VERTEX_MATERIALS => {
-                    for material in Chunks::of(chunk.body) {
+                    for material in W3dChunks::of(chunk.body) {
                         let material = material?;
                         if material.id != VERTEX_MATERIAL {
                             continue;
                         }
-                        let info = Chunks::of(material.body)
+                        let info = W3dChunks::of(material.body)
                             .find(|inner| matches!(inner, Ok(inner) if inner.id == VERTEX_MATERIAL_INFO))
                             .ok_or(W3dError::Missing)??;
                         materials.push(W3dMesh::vertex_material(info.body)?);
                     }
                 }
                 TEXTURES => {
-                    for texture in Chunks::of(chunk.body) {
+                    for texture in W3dChunks::of(chunk.body) {
                         let texture = texture?;
                         if texture.id == TEXTURE {
                             textures.push(W3dMesh::texture(texture.body)?);
@@ -299,7 +300,7 @@ impl W3dMesh {
     }
 
     /// `W3dTriStruct`s: each triangle's three vertices, then what the importer does not read.
-    fn triangles(fields: &mut Fields<'_>) -> Result<Vec<[u32; 3]>, W3dError> {
+    fn triangles(fields: &mut W3dFields<'_>) -> Result<Vec<[u32; 3]>, W3dError> {
         Ok(fields
             .records::<32>()?
             .iter()
@@ -312,7 +313,7 @@ impl W3dMesh {
     }
 
     /// `W3dShaderStruct`s, each of 16 bytes.
-    fn shaders(fields: &mut Fields<'_>) -> Result<Vec<Shader>, W3dError> {
+    fn shaders(fields: &mut W3dFields<'_>) -> Result<Vec<Shader>, W3dError> {
         Ok(fields
             .records::<16>()?
             .iter()
@@ -326,7 +327,7 @@ impl W3dMesh {
             .collect())
     }
 
-    fn vectors(fields: &mut Fields<'_>) -> Result<Vec<[f32; 3]>, W3dError> {
+    fn vectors(fields: &mut W3dFields<'_>) -> Result<Vec<[f32; 3]>, W3dError> {
         Ok(fields
             .records::<12>()?
             .iter()
@@ -341,9 +342,9 @@ impl W3dMesh {
     /// `W3dVertexMaterialStruct`: flags, then ambient, diffuse, specular and emissive colors of
     /// four bytes each, then shininess, opacity and translucency.
     fn vertex_material(body: &[u8]) -> Result<VertexMaterial, W3dError> {
-        let mut fields = Fields::of(body);
+        let mut fields = W3dFields::of(body);
         fields.u32()?;
-        let color = |fields: &mut Fields<'_>| -> Result<[u8; 3], W3dError> {
+        let color = |fields: &mut W3dFields<'_>| -> Result<[u8; 3], W3dError> {
             let bytes = fields.take(4)?;
             Ok([bytes[0], bytes[1], bytes[2]])
         };
@@ -364,9 +365,9 @@ impl W3dMesh {
     fn texture(body: &[u8]) -> Result<Texture, W3dError> {
         let mut name = None;
         let mut flags = 0;
-        for chunk in Chunks::of(body) {
+        for chunk in W3dChunks::of(body) {
             let chunk = chunk?;
-            let mut fields = Fields::of(chunk.body);
+            let mut fields = W3dFields::of(chunk.body);
             match chunk.id {
                 TEXTURE_NAME => name = Some(fields.name(chunk.body.len())?),
                 TEXTURE_INFO => flags = fields.u16()?,
@@ -386,9 +387,9 @@ impl W3dMesh {
         let mut shaders = None;
         let mut colors = None;
         let mut stage = None;
-        for chunk in Chunks::of(body) {
+        for chunk in W3dChunks::of(body) {
             let chunk = chunk?;
-            let mut fields = Fields::of(chunk.body);
+            let mut fields = W3dFields::of(chunk.body);
             match chunk.id {
                 VERTEX_MATERIAL_IDS if materials.is_none() => {
                     materials = Some(Ids::of(fields.u32s()?)?);
@@ -399,9 +400,9 @@ impl W3dMesh {
                 TEXTURE_STAGE if stage.is_none() => {
                     let mut textures = None;
                     let mut coordinates = None;
-                    for inner in Chunks::of(chunk.body) {
+                    for inner in W3dChunks::of(chunk.body) {
                         let inner = inner?;
-                        let mut fields = Fields::of(inner.body);
+                        let mut fields = W3dFields::of(inner.body);
                         match inner.id {
                             TEXTURE_IDS if textures.is_none() => {
                                 textures = Some(Ids::of(fields.u32s()?)?);
@@ -492,7 +493,8 @@ impl Shader {
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    use crate::zero_hour::w3d_file::internals::{chunk, name};
+    use crate::zero_hour::w3d_chunks::internals::chunk;
+    use crate::zero_hour::w3d_fields::internals::name;
 
     impl Shader {
         /// An opaque, textured shader that writes depth.
@@ -698,7 +700,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::w3d_file::internals::chunk;
+    use crate::zero_hour::w3d_chunks::internals::chunk;
 
     /// A textured skin of three vertices and two triangles, of every list the reader reads.
     fn skin() -> W3dMesh {

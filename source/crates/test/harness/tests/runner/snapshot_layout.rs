@@ -7,6 +7,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::path::PathBuf;
 
+use campfire_capabilities::Release;
 use campfire_harness::ProvingMatch;
 use campfire_log::ErrorReport;
 use campfire_sim::StateRegistry;
@@ -38,8 +39,13 @@ fn differing<'a>(pinned: &'a str, now: &'a str) -> Vec<&'a str> {
 
 #[test]
 fn a_state_types_layout_changes_only_with_the_snapshot_version() {
-    // The proving match holds every type of every capability the release runs, and the mode's.
+    // The proving match holds every type of every capability the release runs, and the mode's:
+    // its mode declares each.
     let proving = ProvingMatch::load();
+    assert_eq!(
+        proving.packages().manifest().capabilities,
+        Release::capabilities()
+    );
     let fixed = proving.start();
     let registry = fixed.game().resource::<StateRegistry>();
     let mut now = format!("data_version {}\n", StateRegistry::DATA_VERSION);

@@ -1,5 +1,6 @@
 use crate::zero_hour::error::W3dError;
-use crate::zero_hour::w3d_file::{Chunks, Fields};
+use crate::zero_hour::w3d_chunks::W3dChunks;
+use crate::zero_hour::w3d_fields::W3dFields;
 
 /// A W3D HLOD: its name, its hierarchy's, and its sub-objects, each a render object by its full
 /// name on a pivot. Every shipped HLOD has one level of detail, the one read.
@@ -29,21 +30,21 @@ impl Hlod {
         let mut header = None;
         let mut sub_objects = Vec::new();
         let mut arrays = 0;
-        for chunk in Chunks::of(body) {
+        for chunk in W3dChunks::of(body) {
             let chunk = chunk?;
             match chunk.id {
                 HEADER => {
-                    let mut fields = Fields::of(chunk.body);
+                    let mut fields = W3dFields::of(chunk.body);
                     fields.u32()?;
                     let levels = fields.u32()?;
                     header = Some((levels, fields.name(NAME)?, fields.name(NAME)?));
                 }
                 LOD_ARRAY => {
                     arrays += 1;
-                    for inner in Chunks::of(chunk.body) {
+                    for inner in W3dChunks::of(chunk.body) {
                         let inner = inner?;
                         if inner.id == SUB_OBJECT {
-                            let mut fields = Fields::of(inner.body);
+                            let mut fields = W3dFields::of(inner.body);
                             let pivot = usize::try_from(fields.u32()?).expect("a u32 fits usize");
                             sub_objects.push(SubObject {
                                 pivot,
@@ -70,7 +71,8 @@ impl Hlod {
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    use crate::zero_hour::w3d_file::internals::{chunk, name};
+    use crate::zero_hour::w3d_chunks::internals::chunk;
+    use crate::zero_hour::w3d_fields::internals::name;
 
     impl Hlod {
         /// The HLOD chunk the game reads as this HLOD, of `levels` levels of detail, each

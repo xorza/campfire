@@ -1,5 +1,6 @@
 use crate::zero_hour::error::W3dError;
-use crate::zero_hour::w3d_file::{Chunks, Fields};
+use crate::zero_hour::w3d_chunks::W3dChunks;
+use crate::zero_hour::w3d_fields::W3dFields;
 
 /// A W3D hierarchy: its name and its pivots, each placed in its parent's frame.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,9 +33,9 @@ impl Hierarchy {
     pub(crate) fn read(body: &[u8]) -> Result<Hierarchy, W3dError> {
         let mut name = None;
         let mut pivots = Vec::new();
-        for chunk in Chunks::of(body) {
+        for chunk in W3dChunks::of(body) {
             let chunk = chunk?;
-            let mut fields = Fields::of(chunk.body);
+            let mut fields = W3dFields::of(chunk.body);
             match chunk.id {
                 HEADER => {
                     fields.u32()?;
@@ -42,7 +43,7 @@ impl Hierarchy {
                 }
                 PIVOTS => {
                     for (at, record) in fields.records::<PIVOT>()?.iter().enumerate() {
-                        let mut pivot = Fields::of(record);
+                        let mut pivot = W3dFields::of(record);
                         let name = pivot.name(NAME)?;
                         let parent = match pivot.u32()? {
                             u32::MAX => None,
@@ -84,7 +85,8 @@ impl Hierarchy {
 #[cfg(test)]
 pub(crate) mod internals {
     use super::*;
-    use crate::zero_hour::w3d_file::internals::{chunk, name};
+    use crate::zero_hour::w3d_chunks::internals::chunk;
+    use crate::zero_hour::w3d_fields::internals::name;
 
     impl Hierarchy {
         /// The hierarchy chunk the game reads as this hierarchy.

@@ -1,12 +1,14 @@
-data_version 13
+data_version 14
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
+actions.use_group dbfe58d458cf8fc1
 areas.area 6e7395840db07855
 areas.area_trigger 5b5d033e67c80f93
 combat.kept 6f07fc05a6a4e4ce
 combat.on_death a4f4b17fec8c8db4
 combat.recent_attackers 58e017c445524785
 combat.respawn b1604652186dcd98
+items.inventory 632c105c9e56cebf
 mode.choices c36f705c3f6b53e9
 mode.match_end c04adfc1d93b84d1
 mode.state c3f62d7fc481570a
