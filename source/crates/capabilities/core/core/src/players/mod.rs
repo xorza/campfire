@@ -38,6 +38,7 @@ pub struct Players;
 impl Module for Players {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         Players::kinds(d);

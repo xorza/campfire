@@ -19,6 +19,7 @@ use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::scripts_call::ScriptsCall;
+use crate::units::arrived_short::ArrivedShort;
 use crate::units::avatar::Avatar;
 use crate::units::body::Body;
 use crate::units::body_form::BodyForm;
@@ -26,6 +27,7 @@ use crate::units::body_unit::BodyUnit;
 use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::destination::Destination;
 use crate::units::engine_tag::EngineTag;
 use crate::units::facing::Facing;
 use crate::units::forced_move::ForcedMove;
@@ -57,6 +59,7 @@ use crate::units::units_column::{StateRowReads, UnitsColumn};
 use crate::units::view::View;
 
 pub(crate) mod action_id;
+pub(crate) mod arrived_short;
 pub(crate) mod avatar;
 pub(crate) mod bits256;
 pub(crate) mod block;
@@ -68,6 +71,7 @@ pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod dead;
 pub(crate) mod delivery_entity;
+pub(crate) mod destination;
 pub(crate) mod engine_tag;
 pub(crate) mod entity_filters;
 pub(crate) mod entity_kind;
@@ -179,6 +183,7 @@ pub struct Units;
 impl Module for Units {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<UnitsSet>();
@@ -188,6 +193,7 @@ impl Module for Units {
         d.component::<Body>();
         d.component::<BodyUnit>();
         d.component::<Dead>();
+        d.component::<Destination>();
         d.component::<Facing>();
         d.component::<ForcedMove>();
         d.component::<Lifespan>();
@@ -206,6 +212,7 @@ impl Module for Units {
         d.derived::<DeliveryEntity>();
         d.derived::<UnitTags>();
         d.derived::<Avatar>();
+        d.derived::<ArrivedShort>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
         d.cache::<UnitGrid>();
@@ -234,6 +241,10 @@ impl Module for Units {
         d.part::<BodyUnit, SpawnPoint>(|at| at.pos().map(SpawnPoint::new));
         d.part::<BodyUnit, Body>(|at| at.of_type::<BodyForm>().map(|form| form.at(at.angle())));
         d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
+        // A unit that walks, which its move step tells, takes a destination.
+        d.part::<BodyUnit, Destination>(|at| {
+            at.of_type::<MoveStep>().map(|_| Destination::default())
+        });
     }
 
     /// Adds the core to a match: the grid of its body units, which its readers build. With scripts, in

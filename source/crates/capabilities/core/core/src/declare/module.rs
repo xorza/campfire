@@ -10,8 +10,11 @@ pub trait Module {
     /// The capability it is; none for the core's.
     const CAPABILITY: Option<Capability>;
     /// The capabilities it builds on, which install before it and which a match that declares it
-    /// declares.
+    /// declares: without one, it does not run.
     const NEEDS: &'static [Capability];
+    /// The capabilities it reads when the match has them, and runs without. With `NEEDS`, its
+    /// crate's dependencies on other capabilities, which a release test holds equal.
+    const USES: &'static [Capability];
 
     fn declare<D: Declarations>(d: &mut D);
 

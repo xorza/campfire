@@ -5,14 +5,14 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_core::{
-    ApiError, Body, CallError, DashDelivery, DashTo, Dead, Effect, ForcedMove, Frame, MapBook, View,
+    ApiError, Body, CallError, DashDelivery, DashTo, Dead, Destination, Effect, ForcedMove, Frame,
+    MapBook, View,
 };
 use campfire_deliveries::Teleported;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimWorld, StableId};
 
 use crate::body_index::BodyIndex;
-use crate::destination::Destination;
 use crate::navigation_column::NavigationColumn;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;

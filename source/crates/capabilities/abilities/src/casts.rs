@@ -10,12 +10,11 @@ use campfire_actions::{
 };
 use campfire_common::Tick;
 use campfire_core::{
-    ActionId, Body, CallError, CallStart, Ctx, DashDelivery, Dead, ForcedMove, Hook, Owner,
-    PlayerResources, PlayerRows, PlayersWorldCrate, Pool, ScriptBatch, ScriptValue,
-    ScriptsWorldCrate, Team, Unit, UnitTags,
+    ActionId, ArrivedShort, Body, CallError, CallStart, Ctx, DashDelivery, Dead, Destination,
+    ForcedMove, Hook, Owner, PlayerResources, PlayerRows, PlayersWorldCrate, Pool, ScriptBatch,
+    ScriptValue, ScriptsWorldCrate, Team, Unit, UnitTags,
 };
 use campfire_deliveries::{Deliverers, Delivering};
-use campfire_navigation::{Destination, Route};
 use campfire_script::ScriptId;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
@@ -69,7 +68,7 @@ impl Casts {
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&mut Destination>,
-                Option<&Route>,
+                Option<&ArrivedShort>,
                 Option<&UseGroup>,
             ),
             Without<Dead>,
@@ -88,7 +87,7 @@ impl Casts {
             tags,
             forced,
             mut destination,
-            route,
+            arrived,
             used,
         ) in &mut units
         {
@@ -117,7 +116,7 @@ impl Casts {
             let approached = phase == OrderPhase::Approaching;
             // An item sold in the tick of its order leaves its slot with no action to start.
             let Some(id) = slot.action else {
-                Self::drop_cast(&mut slots, destination.as_mut(), route, approached);
+                Self::drop_cast(&mut slots, destination.as_mut(), arrived, approached);
                 continue;
             };
             let action = book.get(id).expect("a slot's action is in the book");
@@ -126,7 +125,7 @@ impl Casts {
             }
             if blocked {
                 if approached {
-                    Self::walk(destination.as_mut(), route, None);
+                    Self::walk(destination.as_mut(), arrived, None);
                 }
                 slots.interrupt();
                 continue;
@@ -162,13 +161,13 @@ impl Casts {
                     checked
                 });
             let Some(checked) = checked else {
-                Self::drop_cast(&mut slots, destination.as_mut(), route, approached);
+                Self::drop_cast(&mut slots, destination.as_mut(), arrived, approached);
                 continue;
             };
             if !checked.in_range(position, shape, &targets) {
                 match (destination.is_some(), checked.aimed_at(&targets)) {
                     (true, Some(to)) => {
-                        Self::walk(destination.as_mut(), route, Some(to));
+                        Self::walk(destination.as_mut(), arrived, Some(to));
                         slots.approach();
                     }
                     _ => slots.stop(),
@@ -176,7 +175,7 @@ impl Casts {
                 continue;
             }
             if approached {
-                Self::walk(destination.as_mut(), route, None);
+                Self::walk(destination.as_mut(), arrived, None);
             }
             slots.begin(&checked, position, now);
         }
@@ -186,11 +185,11 @@ impl Casts {
     fn drop_cast(
         slots: &mut ActionSlots,
         destination: Option<&mut Mut<'_, Destination>>,
-        route: Option<&Route>,
+        arrived: Option<&ArrivedShort>,
         approached: bool,
     ) {
         if approached {
-            Self::walk(destination, route, None);
+            Self::walk(destination, arrived, None);
         }
         slots.stop();
     }
@@ -198,11 +197,11 @@ impl Casts {
     /// Walks the unit of `destination`, one that walks, to `to`, or stops it.
     fn walk(
         destination: Option<&mut Mut<'_, Destination>>,
-        route: Option<&Route>,
+        arrived: Option<&ArrivedShort>,
         to: Option<Position>,
     ) {
         if let Some(destination) = destination {
-            Destination::walk_to(destination, route, to);
+            Destination::walk_to(destination, arrived, to);
         }
     }
 

@@ -3,8 +3,9 @@ use bevy_ecs::query::{Added, QueryState, With, Without};
 use bevy_ecs::system::{Commands, Local, Query};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ByType, CallError, Dead, Hook, Pool, ScriptsWorldCrate, UnitType};
-use campfire_navigation::Destination;
+use campfire_core::{
+    ByType, CallError, Dead, Destination, Hook, Pool, ScriptsWorldCrate, UnitType,
+};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{SimTick, StableId};
 use campfire_stats::UnitPools;

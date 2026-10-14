@@ -11,12 +11,11 @@ use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_core::{
-    DashTo, Dead, ForcedMove, MapBook, MoveStep, Owner, PlayerResources, PlayersWorld, Relations,
-    ResourceId, StateValue, SyncAll, SyncNone, Team, Units, UnitsWorld,
+    DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, PlayerResources, PlayersWorld,
+    Relations, ResourceId, StateValue, SyncAll, SyncNone, Team, Units, UnitsWorld,
 };
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
-use campfire_navigation::Destination;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,

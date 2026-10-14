@@ -5,9 +5,8 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_common::{PlayerSlot, StateHash};
-use campfire_core::{Owner, StateValue};
+use campfire_core::{Destination, Owner, StateValue};
 use campfire_mode::{Leaver, ModeWorld, PlayersData};
-use campfire_navigation::Destination;
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_progression::Experience;

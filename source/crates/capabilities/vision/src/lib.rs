@@ -74,7 +74,8 @@ impl ModuleSet for VisionSet {
 
 impl Module for Vision {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
-    const NEEDS: &'static [Capability] = &[Capability::Combat];
+    const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<VisionSet>();

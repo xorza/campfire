@@ -121,6 +121,11 @@ impl ModuleSet for ProductionSet {
 impl Module for Production {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[
+        Capability::Navigation,
+        Capability::Stats,
+        Capability::Vision,
+    ];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ProductionSet>();

@@ -113,7 +113,6 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let wide = Body::new(Num::int(3)).unwrap();
     game.entity_mut(grunt).insert(wide);
     assert!(!route.check(&game, grunt));
-    assert!(!Destination::default().check(&game, grunt));
 }
 
 /// The match's and the players' entities stand at their named ids, and each state type on them

@@ -12,8 +12,8 @@ use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_common::SegmentSeed;
 use campfire_core::{
-    ByType, EntityParts, Player, PlayerResources, ScriptBudgets, ScriptLimits, Team, UnitTypeCore,
-    View,
+    ByType, EntityParts, Module, Player, PlayerResources, ScriptBudgets, ScriptLimits, Team,
+    UnitTypeCore, View,
 };
 use campfire_orders::Ai;
 use campfire_sim::internals::SimWorldInternals;
@@ -47,14 +47,14 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             &[Projectiles],
             CapabilityError::Needs {
                 capability: Projectiles,
-                needs: Combat,
+                needs: Stats,
             },
         ),
         (
             &[Abilities],
             CapabilityError::Needs {
                 capability: Abilities,
-                needs: Combat,
+                needs: Stats,
             },
         ),
         (
@@ -68,7 +68,7 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             &[Navigation, Orders],
             CapabilityError::Needs {
                 capability: Orders,
-                needs: Combat,
+                needs: Stats,
             },
         ),
     ] {
@@ -214,11 +214,11 @@ const LAYERS: [(&str, u8); 19] = [
     ("core/deliveries", 5),
     ("items", 5),
     ("progression", 5),
+    ("abilities", 6),
     ("areas", 6),
     ("navigation", 6),
     ("projectiles", 6),
     ("vision", 6),
-    ("abilities", 7),
     ("production", 7),
     ("mode", 8),
     ("orders", 8),
@@ -234,25 +234,32 @@ fn layer(name: &str) -> Option<u8> {
 
 const MANIFEST_LEN: usize = 1 << 16;
 
+/// The `campfire-<name>` crates among the dependencies of the crate in `folder` that `LAYERS`
+/// lists, by `<name>`, in the manifest's order.
+fn layered_dependencies(folder: &str) -> Vec<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let path = root.join(folder).join("Cargo.toml");
+    let manifest = InputFile::read_text(&path, MANIFEST_LEN).unwrap();
+    let dependencies = manifest
+        .split("\n[")
+        .find_map(|section| section.strip_prefix("dependencies]\n"))
+        .expect("a capability crate has dependencies");
+    dependencies
+        .lines()
+        .filter_map(|line| line.strip_prefix("campfire-"))
+        .map(|name| &name[..name.find(['.', ' ']).unwrap()])
+        .filter(|name| layer(name).is_some())
+        .map(str::to_owned)
+        .collect()
+}
+
 #[test]
 fn a_capability_crate_depends_only_on_lower_layers() {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut edges = Vec::new();
     for (folder, own) in LAYERS {
-        let path = root.join(folder).join("Cargo.toml");
-        let manifest = InputFile::read_text(&path, MANIFEST_LEN).unwrap();
-        let dependencies = manifest
-            .split("\n[")
-            .find_map(|section| section.strip_prefix("dependencies]\n"))
-            .expect("a capability crate has dependencies");
-        for line in dependencies.lines() {
-            let Some(name) = line.strip_prefix("campfire-") else {
-                continue;
-            };
-            let name = &name[..name.find(['.', ' ']).unwrap()];
-            if let Some(layer) = layer(name) {
-                edges.push((folder, name.to_owned(), layer >= own));
-            }
+        for name in layered_dependencies(folder) {
+            let layer = layer(&name).expect("a layered dependency");
+            edges.push((folder, name, layer >= own));
         }
     }
     assert!(
@@ -269,6 +276,55 @@ fn a_capability_crate_depends_only_on_lower_layers() {
         [],
         "dependencies on the same layer or a higher one"
     );
+}
+
+/// Each capability of the release's list, with what it needs and what it uses.
+#[derive(Debug, Default)]
+struct Edges(Vec<(Capability, &'static [Capability], &'static [Capability])>);
+
+impl ModuleVisitor for Edges {
+    fn module<M: Module>(&mut self) {
+        if let Some(capability) = M::CAPABILITY {
+            self.0.push((capability, M::NEEDS, M::USES));
+        }
+    }
+}
+
+#[test]
+fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
+    let mut rows = Edges::default();
+    Release::modules(&mut rows);
+    let mut found = Vec::new();
+    for (capability, needs, uses) in rows.0 {
+        let name = capability.name();
+        let folder = LAYERS
+            .iter()
+            .map(|&(folder, _)| folder)
+            .find(|folder| folder.rsplit('/').next() == Some(name))
+            .expect("each capability of the release is a crate of `LAYERS`");
+        let mut depends: Vec<String> = layered_dependencies(folder)
+            .into_iter()
+            .filter(|dependency| {
+                Capability::ALL
+                    .iter()
+                    .any(|other| other.name() == dependency)
+            })
+            .collect();
+        depends.sort();
+        let mut edges: Vec<String> = needs
+            .iter()
+            .chain(uses)
+            .map(|edge| edge.name().to_owned())
+            .collect();
+        edges.sort();
+        let twice = needs.iter().any(|need| uses.contains(need));
+        if depends != edges || twice {
+            found.push(format!(
+                "{name}: depends on {depends:?}, needs and uses {edges:?}"
+            ));
+        }
+    }
+    assert_eq!(found, Vec::<String>::new());
 }
 
 /// Visits each source file under `dir` with its production code, by its path from `dir`.

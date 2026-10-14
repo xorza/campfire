@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::UnitEntity;
+use campfire_core::{ArrivedShort, UnitEntity};
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::de::Error;
@@ -16,6 +16,7 @@ use crate::progress::Progress;
 /// the planner, and the waypoints of the route planned last, the next one first among those left.
 /// A unit with no destination has no goal, and so no ask.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[require(ArrivedShort)]
 pub struct Route {
     goal: Option<Goal>,
     waypoints: Vec<Position>,
@@ -63,11 +64,6 @@ impl Route {
         self.goal.is_some_and(|goal| goal.asked.is_none())
             && !self.reached
             && self.ahead().is_empty()
-    }
-
-    /// Whether it arrived short of `goal`.
-    pub fn arrived_short_of(&self, goal: Position) -> bool {
-        self.goal() == Some(goal) && self.arrived_short()
     }
 
     /// Asks the planner in `tick` for a route to `goal`, as one of `party` when it has one; the

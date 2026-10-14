@@ -1,14 +1,15 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Allow, Has, With, Without};
+use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use campfire_core::{Block, Body, Dead, ForcedMove, MapBook, MoveStep, Placed, UnitTags};
+use campfire_core::{
+    ArrivedShort, Block, Body, Dead, Destination, ForcedMove, MapBook, MoveStep, Placed, UnitTags,
+};
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
 use crate::collider::Collider;
-use crate::destination::Destination;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::Route;
@@ -122,6 +123,17 @@ impl Walking {
                 route.splice(steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             }
+        }
+    }
+
+    /// Sets each walker's `ArrivedShort` from its route, where the route changed since the last
+    /// gap: the goal its route ends short of, while it stands at that end, or none.
+    pub(super) fn report_short(
+        mut walkers: Query<'_, '_, (&Route, &mut ArrivedShort), Changed<Route>>,
+    ) {
+        for (route, mut short) in &mut walkers {
+            let goal = route.goal().filter(|_| route.arrived_short());
+            short.set_if_neq(ArrivedShort::of(goal));
         }
     }
 

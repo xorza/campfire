@@ -62,6 +62,7 @@ impl ModuleSet for DeliverySet {
 impl Module for Deliveries {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<DeliverySet>();

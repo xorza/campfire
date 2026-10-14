@@ -4,8 +4,10 @@ use bevy_ecs::query::{Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionBook, ActionSlots, KindSpec};
-use campfire_core::{Body, Dead, Owner, PlayersWorldCrate, StatusTags, Team, UnitTags};
-use campfire_navigation::{Destination, Navigation, Route};
+use campfire_core::{
+    ArrivedShort, Body, Dead, Destination, Owner, PlayersWorldCrate, StatusTags, Team, UnitTags,
+};
+use campfire_navigation::Navigation;
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
 
 use crate::Production;
@@ -37,7 +39,7 @@ pub(super) type Worker = (
     &'static ActionSlots,
     &'static Gatherer,
     Option<&'static Destination>,
-    Option<&'static Route>,
+    Option<&'static ArrivedShort>,
     Option<&'static UnitTags>,
 );
 

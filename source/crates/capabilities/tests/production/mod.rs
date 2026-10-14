@@ -7,13 +7,12 @@ use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_core::{
-    ActionId, BodyForm, ByType, Dead, MoveStep, Owner, PerType, Players, PlayersWorld,
+    ActionId, BodyForm, ByType, Dead, Destination, MoveStep, Owner, PerType, Players, PlayersWorld,
     PlayersWorldCrate, ResourceAmount, ResourceId, SpawnAt, SpawnPoint, Spawner, Team, TypeScope,
     UnitType, UnitTypeCore, Units,
 };
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_navigation::Destination;
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};

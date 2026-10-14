@@ -11,7 +11,6 @@ internals = [
     "campfire-core/internals",
     "campfire-deliveries/internals",
     "campfire-math/internals",
-    "campfire-navigation/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-stats/internals",
@@ -24,7 +23,6 @@ campfire-common.workspace = true
 campfire-core.workspace = true
 campfire-deliveries.workspace = true
 campfire-math.workspace = true
-campfire-navigation.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-stats.workspace = true

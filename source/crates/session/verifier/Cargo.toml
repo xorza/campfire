@@ -22,9 +22,9 @@ tracing.workspace = true
 
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
+campfire-core = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
-campfire-navigation = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-package = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }

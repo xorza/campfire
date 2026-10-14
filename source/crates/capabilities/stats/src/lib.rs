@@ -209,6 +209,7 @@ impl ModuleSet for StatsSet {
 impl Module for Stats {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<StatsSet>();

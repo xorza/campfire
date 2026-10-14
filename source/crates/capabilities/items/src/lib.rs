@@ -79,6 +79,7 @@ impl ModuleSet for ItemsSet {
 impl Module for Items {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ItemsSet>();

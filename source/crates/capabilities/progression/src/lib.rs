@@ -69,6 +69,7 @@ impl ModuleSet for ProgressionSet {
 impl Module for Progression {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ProgressionSet>();

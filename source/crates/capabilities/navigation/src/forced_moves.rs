@@ -2,14 +2,13 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
-use campfire_core::{Body, DashTo, Dead, ForcedMove, Goal, MapBook};
+use campfire_core::{Body, DashTo, Dead, Destination, ForcedMove, Goal, MapBook};
 use campfire_deliveries::Deliveries;
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
 
 use crate::body_index::BodyIndex;
-use crate::destination::Destination;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::Route;

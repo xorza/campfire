@@ -8,11 +8,10 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_core::{
-    Body, BodyForm, Filter, Owner, Players, PlayersWorld, ResourceId, Team, TypeScope, UnitCore,
-    UnitType, UnitTypeCore, UnitTypes, View,
+    Body, BodyForm, Destination, Filter, Owner, Players, PlayersWorld, ResourceId, Team, TypeScope,
+    UnitCore, UnitType, UnitTypeCore, UnitTypes, View,
 };
 use campfire_math::{Num, Vec3};
-use campfire_navigation::Destination;
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
 use campfire_values::{Rank, RelationSet};

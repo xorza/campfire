@@ -1,8 +1,10 @@
 use bevy_ecs::world::World;
-use campfire_core::{BodyForm, MoveStep, Team, TypeScope, UnitType, UnitTypeCore, Units};
+use campfire_core::{
+    BodyForm, Destination, MoveStep, Team, TypeScope, UnitType, UnitTypeCore, Units,
+};
 use campfire_math::Num;
 use campfire_mode::Mode;
-use campfire_navigation::{Destination, Navigation};
+use campfire_navigation::Navigation;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
 

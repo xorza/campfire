@@ -173,9 +173,9 @@ mod tests {
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use campfire_core::Dead;
+    use campfire_core::{Dead, Destination};
     use campfire_items::Inventory;
-    use campfire_navigation::Destination;
+    use campfire_navigation::Route;
     use campfire_progression::Points;
     use campfire_projectiles::Projectile;
     use campfire_sim::{Capability, Position};
@@ -187,8 +187,8 @@ mod tests {
 
     #[test]
     fn a_capability_the_mode_lacks_registers_no_component() {
-        // Of each list: the core's, a unit's place and its death, stats', navigation's,
-        // progression's, projectiles', items'.
+        // Of each list: the core's, a unit's place, its death and where it walks, stats',
+        // navigation's, progression's, projectiles', items'.
         let registered = |declared: &[Capability]| {
             let mut app = App::new();
             app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -204,6 +204,7 @@ mod tests {
                 registry.is_registered::<Level>(),
                 registry.is_registered::<Dead>(),
                 registry.is_registered::<Destination>(),
+                registry.is_registered::<Route>(),
                 registry.is_registered::<Points>(),
                 registry.is_registered::<Projectile>(),
                 registry.is_registered::<Inventory>(),
@@ -211,7 +212,7 @@ mod tests {
         };
         assert_eq!(
             registered(&[]),
-            [true, false, true, false, false, false, false]
+            [true, false, true, true, false, false, false, false]
         );
         let declared = [
             Capability::Stats,
@@ -221,6 +222,6 @@ mod tests {
             Capability::Projectiles,
             Capability::Items,
         ];
-        assert_eq!(registered(&declared), [true; 7]);
+        assert_eq!(registered(&declared), [true; 8]);
     }
 }

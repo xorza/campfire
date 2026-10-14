@@ -2,7 +2,10 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_common::Tick;
-use campfire_core::{Block, Body, BodyForm, Dead, Layer, MapBook, PathId, Team, UnitType, Units};
+use campfire_core::{
+    ArrivedShort, Block, Body, BodyForm, Dead, Destination, Layer, MapBook, PathId, Team, UnitType,
+    Units,
+};
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
@@ -753,7 +756,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     let short = place(3, 1).unwrap();
     assert_eq!(*game.part::<Position>(walker), short);
     assert_eq!(game.part::<Destination>(walker).get(), None);
-    assert!(game.part::<Route>(walker).arrived_short_of(goal));
+    assert!(game.part::<ArrivedShort>(walker).of_goal(goal));
     // Sent there again, as an order would, it plans nothing, and stays with no destination.
     let entity = game.unit_entity(walker);
     let changed = |game: &Match| {

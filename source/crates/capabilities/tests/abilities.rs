@@ -24,15 +24,15 @@ use campfire_combat::{
 use campfire_common::{PlayerSlot, StateHash, Tick, Ticks};
 use campfire_core::internals::{FailedCall, FailureKind};
 use campfire_core::{
-    ActionId, ApiError, Block, Body, Book, Dead, ForcedMove, Hook, MoveStep, NameKind, Owner,
-    Players, PlayersWorld, PlayersWorldCrate, Pool, ResourceId, ScriptBudgets, ScriptLimits,
+    ActionId, ApiError, Block, Body, Book, Dead, Destination, ForcedMove, Hook, MoveStep, NameKind,
+    Owner, Players, PlayersWorld, PlayersWorldCrate, Pool, ResourceId, ScriptBudgets, ScriptLimits,
     StateDecl, StateDefault, StateType, StateValue, SyncNone, SyncTo, SyncedStateDecl, TagData,
     Team, TrackId, TypeScope, UnitState, UnitTags, UnitType, UnitTypeCore, Units,
 };
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
-use campfire_navigation::{Destination, Navigation};
+use campfire_navigation::Navigation;
 use campfire_orders::{AiData, Orders, OrdersAction};
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, Thresholds, TrackData, TrackSet,

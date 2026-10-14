@@ -221,7 +221,7 @@ impl GatherView<'_, '_> {
 
     /// What the worker of `entity` does in its loop this tick.
     pub(crate) fn step(&self, entity: Entity) -> Step {
-        let Ok((_, _, &from, body, &team, owner, slots, gatherer, destination, route, tags)) =
+        let Ok((_, _, &from, body, &team, owner, slots, gatherer, destination, arrived, tags)) =
             self.workers.get(entity)
         else {
             return Step::Hold;
@@ -254,7 +254,7 @@ impl GatherView<'_, '_> {
                     return search();
                 };
                 if !self.reaches(from, body, gather, place) {
-                    return place.walk_from(from, destination, route);
+                    return place.walk_from(from, destination, arrived);
                 }
                 let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
                 if node.holder().is_none() {
@@ -295,7 +295,7 @@ impl GatherView<'_, '_> {
                     };
                 };
                 if !self.reaches(from, body, gather, place) {
-                    return place.walk_from(from, destination, route);
+                    return place.walk_from(from, destination, arrived);
                 }
                 if !self.joins(owner, load) {
                     return Step::Stand;

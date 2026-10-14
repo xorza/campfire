@@ -7,11 +7,11 @@ use campfire_actions::{
     ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
 };
 use campfire_core::{
-    Body, ByType, Dead, MapBook, Owner, PlayerResources, PlayerRows, PlayerRowsMut, SpawnAt,
-    Spawner, Team, UnitType,
+    Body, ByType, Dead, Destination, MapBook, Owner, PlayerResources, PlayerRows, PlayerRowsMut,
+    SpawnAt, Spawner, Team, UnitType,
 };
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Destination, Navigation, Walker};
+use campfire_navigation::{Navigation, Walker};
 use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_values::Relation;

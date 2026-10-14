@@ -1,8 +1,8 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::{ActionBook, ActionRange, ActionSlots, Targets};
-use campfire_core::{Body, Dead, Team};
-use campfire_navigation::{Destination, NavigationBook, OnPath, PathWalker, Route};
+use campfire_core::{ArrivedShort, Body, Dead, Destination, Team};
+use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_sim::Position;
 
 /// The destinations units walk to on their own: along their paths, and after their attack targets.
@@ -25,14 +25,14 @@ impl Destinations {
                 &mut PathWalker,
                 Option<&ActionSlots>,
                 &mut Destination,
-                Option<&Route>,
+                Option<&ArrivedShort>,
                 Option<&Body>,
             ),
             Without<Dead>,
         >,
     ) {
         let paths = &navigation.paths;
-        for (&position, path, mut walker, slots, mut destination, route, body) in &mut walkers {
+        for (&position, path, mut walker, slots, mut destination, arrived, body) in &mut walkers {
             let busy = |slots: &ActionSlots| slots.attack_target().is_some() || slots.approaching();
             if walker.left() || slots.is_some_and(busy) {
                 continue;
@@ -43,7 +43,7 @@ impl Destinations {
                 walker.advance();
                 waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
             }
-            Destination::walk_to(&mut destination, route, waypoint);
+            Destination::walk_to(&mut destination, arrived, waypoint);
         }
     }
 
@@ -62,13 +62,13 @@ impl Destinations {
                 &Team,
                 &mut ActionSlots,
                 &mut Destination,
-                Option<&Route>,
+                Option<&ArrivedShort>,
                 Option<&Body>,
             ),
             Without<Dead>,
         >,
     ) {
-        for (&position, &team, mut slots, mut destination, route, body) in &mut chasers {
+        for (&position, &team, mut slots, mut destination, arrived, body) in &mut chasers {
             let Some(target) = slots.attack_target() else {
                 continue;
             };
@@ -83,14 +83,14 @@ impl Destinations {
             match aimed {
                 None => {
                     slots.set_attack_target(None);
-                    Destination::walk_to(&mut destination, route, None);
+                    Destination::walk_to(&mut destination, arrived, None);
                 }
                 Some((unit, ActionRange::Meters(range)))
                     if !targets.reaches(position, Body::shape_of(body), range, &unit) =>
                 {
-                    Destination::walk_to(&mut destination, route, Some(unit.pos));
+                    Destination::walk_to(&mut destination, arrived, Some(unit.pos));
                 }
-                Some(_) => Destination::walk_to(&mut destination, route, None),
+                Some(_) => Destination::walk_to(&mut destination, arrived, None),
             }
         }
     }

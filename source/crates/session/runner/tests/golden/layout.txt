@@ -1,4 +1,4 @@
-data_version 12
+data_version 13
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
 areas.area 6e7395840db07855
@@ -14,7 +14,6 @@ mode.state_all c33c02ec0710e582
 mode.timers f2c0b67432eabbba
 mode.unanswered_deaths 1d3f29d21a9dae54
 mode.unanswered_slot_events 103324541a7503a3
-navigation.destination 9357c772f3c477f9
 navigation.on_path b153d46f94b8fc9a
 navigation.path_walker 54c6412a9193bc13
 navigation.progress 3e51401372f33a6f
@@ -51,6 +50,7 @@ stats.pools 1a2e521912094b8d
 units.body 928bee7234a1783a
 units.body_unit 6f07fc05a6a4e4ce
 units.dead 6f07fc05a6a4e4ce
+units.destination 23559fe6d37131a3
 units.facing 23383379c1ff56bf
 units.forced_move c2bb4db43aabd421
 units.lifespan 5597d043d0e0b825

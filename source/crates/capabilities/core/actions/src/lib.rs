@@ -196,6 +196,7 @@ impl ModuleSet for ActionsSet {
 impl Module for Actions {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ActionsSet>();

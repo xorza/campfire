@@ -145,6 +145,15 @@ impl ModuleSet for ModeSet {
 impl Module for Mode {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[
+        Capability::Combat,
+        Capability::Items,
+        Capability::Navigation,
+        Capability::Production,
+        Capability::Progression,
+        Capability::Stats,
+        Capability::Vision,
+    ];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ModeSet>();

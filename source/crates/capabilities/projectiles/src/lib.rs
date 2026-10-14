@@ -77,7 +77,8 @@ impl ModuleSet for ProjectilesSet {
 
 impl Module for Projectiles {
     const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
-    const NEEDS: &'static [Capability] = &[Capability::Combat];
+    const NEEDS: &'static [Capability] = &[Capability::Stats];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.engine_tags(&[Projectiles::TAG]);

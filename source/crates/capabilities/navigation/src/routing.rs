@@ -1,11 +1,10 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_core::{Body, Dead};
+use campfire_core::{Body, Dead, Destination};
 use campfire_sim::{Position, SimTick};
 
 use crate::body_index::BodyIndex;
-use crate::destination::Destination;
 use crate::party::{Party, PartyKey};
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;

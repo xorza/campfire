@@ -5,11 +5,11 @@ use campfire_actions::{
     ActionBook, ActionCheck, ActionSlots, ActionTarget, KindSpec, Purse, SlotAim, SlotTimes,
 };
 use campfire_core::{
-    Body, Dead, MapBook, Owner, PlayerResources, PlayerRows, Team, UnitTags, UnitType,
+    ArrivedShort, Body, Dead, Destination, MapBook, Owner, PlayerResources, PlayerRows, Team,
+    UnitTags, UnitType,
 };
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Destination, Route};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
 use campfire_values::Relation;
@@ -56,7 +56,7 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
             UnitPoolsReadOnly,
             &'static Builder,
             Option<&'static Destination>,
-            Option<&'static Route>,
+            Option<&'static ArrivedShort>,
             Option<&'static UnitTags>,
         ),
         Without<Dead>,
@@ -237,11 +237,11 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     }
 
     /// What the builder of `entity` does with its order this tick: out of range of its target's
-    /// box, it walks to the box's point nearest it, unless its route arrived short of that point,
+    /// box, it walks to the box's point nearest it, unless it arrived short of that point,
     /// which ends the order; in range, a point's build starts when it passes its checks, by
     /// `held`, and ends else; a builder of a site builds when the site takes it.
     pub(crate) fn step(&self, entity: Entity, held: &[Held]) -> Step {
-        let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, route, _)) =
+        let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, arrived, _)) =
             self.builders.get(entity)
         else {
             return Step::End;
@@ -260,7 +260,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                 panic!("a building's body is a box");
             };
             let to = boxed.nearest_point(placed.pos, from);
-            return if Destination::gives_up(destination, route, to) {
+            return if Destination::gives_up(destination, arrived, to) {
                 Step::End
             } else {
                 Step::Walk(to)

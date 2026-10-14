@@ -67,7 +67,7 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `common` | built | The vocabulary of crates that do not depend on each other: the player slot, ticks, segment seed, 32-byte hex values, a package's fingerprint, the TLS key a server presents and a TLS session's channel binding, exit statuses; behind `internals`, the allocation audit of each crate's `tests/alloc` |
 | `codec` | built | The one gateway of serialization, a proxy crate: postcard, TOML and JSON, each with one configuration, one canonical form and one error type ([Serialization](#serialization)) |
 | `schedule` | built | The build settings of the sim's schedules, a proxy crate: a schedule that fails on ambiguity and redundant edges, and the probes' variant with no sync points |
-| `math` | built | Fixed-point numbers, 3D vectors, exact ground-plane vectors, trig, exact integer roots, exact 256-bit products and sums, counter-based RNG, SIMD lanes |
+| `math` | built | Fixed-point numbers, 3D vectors, exact ground-plane vectors, trig, integer roots, directions, counter-based RNG, SIMD lanes, each operation one `i128` step rounded once ([Determinism core](09-determinism-core.md), D8) |
 | `protocol` | built | Signatures, session key delegations, the handshake, input chains, the seed chain and the session log, with no IO ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | built | The Rhai host: compiles scripts and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
@@ -118,32 +118,33 @@ A module is built when the workspace has its crate, `campfire-<module>`, in a fo
 
 ### The capabilities' crates
 
-Before the split, `campfire-capabilities` held 59,000 lines of production code and 32,000 of tests in 24 modules, whose layers only a test of text held. Each module is a crate, as Bevy's are, and each import between modules becomes a dependency that Cargo checks: an import against the graph does not build. A crate's dependencies are the modules its production code imports today, so the split moves no code between modules; F44 then ties each capability crate's dependencies to its needs and uses.
+Before the split, `campfire-capabilities` held 59,000 lines of production code and 32,000 of tests in 24 modules, whose layers only a test of text held. Each module is a crate, as Bevy's are, and each import between modules becomes a dependency that Cargo checks: an import against the graph does not build. A crate's dependencies are the modules its production code imports today, so the split moves no code between modules. A capability's dependency on another is a need, without which it does not run, or a use, which it reads when the match has it, as `Module::NEEDS` and `Module::USES` declare them: a release test holds each capability crate's dependencies on other capabilities equal to the two, as the table's last columns give them.
 
-| Layer | Crate | Modules | Folder | Depends on, of these crates |
-| --- | --- | --- | --- | --- |
-| 0 | `campfire-state-types` | `state_types` | `capabilities/core/state-types` | none |
-| 0 | `campfire-values` | `values` | `capabilities/core/values` | none |
-| 1 | `campfire-geometry` | `geometry` | `capabilities/core/geometry` | values |
-| 1 | `campfire-visibility` | `visibility` | `capabilities/core/visibility` | state-types |
-| 2 | `campfire-core` | `scripts`, `declare`, `units`, `players`, which import each other until F50 and F53 split them | `capabilities/core/core` | values, geometry, state-types, visibility |
-| 3 | `campfire-stats` | `stats` | `capabilities/stats` | core, geometry, state-types, values |
-| 4 | `campfire-actions` | `actions` | `capabilities/core/actions` | core, geometry, state-types, stats, values |
-| 5 | `campfire-combat` | `combat` | `capabilities/combat` | actions, core, state-types, stats, values |
-| 5 | `campfire-deliveries` | `deliveries` | `capabilities/core/deliveries` | actions, core, values |
-| 5 | `campfire-items` | `items` | `capabilities/items` | actions, core, geometry, state-types, stats, values |
-| 5 | `campfire-progression` | `progression` | `capabilities/progression` | actions, core, state-types, stats, values |
-| 6 | `campfire-areas` | `areas` | `capabilities/areas` | actions, core, deliveries, geometry, state-types, stats, values |
-| 6 | `campfire-navigation` | `navigation` | `capabilities/navigation` | actions, core, deliveries, geometry, state-types, values |
-| 6 | `campfire-projectiles` | `projectiles` | `capabilities/projectiles` | actions, core, deliveries, geometry, state-types, stats, values |
-| 6 | `campfire-vision` | `vision` | `capabilities/vision` | core, geometry, state-types, values |
-| 7 | `campfire-abilities` | `abilities` | `capabilities/abilities` | actions, core, deliveries, navigation, stats, values |
-| 7 | `campfire-production` | `production` | `capabilities/production` | actions, core, geometry, navigation, state-types, stats, values, vision |
-| 8 | `campfire-mode` | `mode` | `capabilities/mode` | actions, combat, core, geometry, items, navigation, production, progression, state-types, stats, values, visibility, vision |
-| 8 | `campfire-orders` | `orders` | `capabilities/orders` | actions, core, geometry, navigation, production, state-types, stats, values, vision |
-| 9 | `campfire-capabilities` | `release`, `books`, `Match`, the senders' `Order` and its `Action` | `capabilities` | every crate above |
+| Layer | Crate | Modules | Folder | Depends on, of these crates | Needs | Uses |
+| --- | --- | --- | --- | --- | --- | --- |
+| 0 | `campfire-state-types` | `state_types` | `capabilities/core/state-types` | none | — | — |
+| 0 | `campfire-values` | `values` | `capabilities/core/values` | none | — | — |
+| 1 | `campfire-geometry` | `geometry` | `capabilities/core/geometry` | values | — | — |
+| 1 | `campfire-visibility` | `visibility` | `capabilities/core/visibility` | state-types | — | — |
+| 2 | `campfire-core` | `scripts`, `declare`, `units`, `players`, which import each other until F50 and F53 split them | `capabilities/core/core` | values, geometry, state-types, visibility | — | — |
+| 3 | `campfire-stats` | `stats` | `capabilities/stats` | core, geometry, state-types, values | — | — |
+| 4 | `campfire-actions` | `actions` | `capabilities/core/actions` | core, geometry, state-types, stats, values | — | — |
+| 5 | `campfire-combat` | `combat` | `capabilities/combat` | actions, core, state-types, stats, values | stats | — |
+| 5 | `campfire-deliveries` | `deliveries` | `capabilities/core/deliveries` | actions, core, values | — | — |
+| 5 | `campfire-items` | `items` | `capabilities/items` | actions, core, geometry, state-types, stats, values | stats | — |
+| 5 | `campfire-progression` | `progression` | `capabilities/progression` | actions, core, state-types, stats, values | stats | — |
+| 6 | `campfire-abilities` | `abilities` | `capabilities/abilities` | actions, core, deliveries, stats, values | stats | — |
+| 6 | `campfire-areas` | `areas` | `capabilities/areas` | actions, core, deliveries, geometry, state-types, stats, values | stats | — |
+| 6 | `campfire-navigation` | `navigation` | `capabilities/navigation` | actions, core, deliveries, geometry, state-types, values | — | — |
+| 6 | `campfire-projectiles` | `projectiles` | `capabilities/projectiles` | actions, core, deliveries, geometry, state-types, stats, values | stats | — |
+| 6 | `campfire-vision` | `vision` | `capabilities/vision` | core, geometry, state-types, values | — | — |
+| 7 | `campfire-production` | `production` | `capabilities/production` | actions, core, geometry, navigation, state-types, stats, values, vision | — | navigation, stats, vision |
+| 8 | `campfire-mode` | `mode` | `capabilities/mode` | actions, combat, core, geometry, items, navigation, production, progression, state-types, stats, values, visibility, vision | — | combat, items, navigation, production, progression, stats, vision |
+| 8 | `campfire-orders` | `orders` | `capabilities/orders` | actions, core, geometry, navigation, production, state-types, stats, values, vision | navigation, stats | production, vision |
+| 9 | `campfire-capabilities` | `release`, `books`, `Match`, the senders' `Order` and its `Action` | `capabilities` | every crate above | — | — |
 
 - **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, move from `orders` to the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, and on `vision`, whose sight it reads.
+- **Contracts.** A capability asks another for its work through a part of `units` that both read, never by writing the other's state, as 0 A.D.'s components ask a walk of `UnitMotion` through its interface. Each such part is the state or the report of the capability that pursues it, kept in `units` so the capabilities that ask need no dependency on it: `Dead`, `ForcedMove`, and a walk's `Destination` with `ArrivedShort`, which navigation pursues and answers ([Navigation](04-capabilities/navigation.md), Walking a route). So `abilities`, which walks a caster into range, depends on no navigation, and stands on layer 6.
 - **Visibility.** An item that another crate uses becomes `pub`; the rest stays `pub(crate)`. A crate's published surface is its `lib.rs`, which names only the crate's own items: `net`, `runner`, `client` and the rest depend on the home crate of each type they name.
 - **Tests.** A test that builds a whole `Match` lives in the top crate's `tests/`, one binary, in a module for each capability crate and for each module of `campfire-core`: `release` composes the match there, and every crate it tests is a dependency of that crate. A test of a crate's own types, with no `Match`, stays a unit test in its crate. So no crate has a dev-dependency on a crate above it, and no test build holds a second copy of a crate, whose types would not be the match's. Each `#[cfg(test)] test_world` that another crate's tests use becomes `internals`, and a test helper that needs a higher crate is a method of an extension trait in the top crate's `internals`.
 - **Dependencies.** A crate's `internals` turns on `internals` in each of its dependencies that has the feature, so its self dev-dependency gives its tests every dependency's `internals`. Its other dev-dependencies are only tools its tests use that are not its dependencies: `campfire-codec` for a unit test of a type's encoded form, as every format goes through it, and `campfire-store`, with its `internals`, for the files a test reads.

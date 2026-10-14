@@ -15,8 +15,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
 use campfire_core::{
-    Body, BodyUnit, ByType, Declarations, InstallCx, Module, ModuleSet, MoveStep, Phase, SetPlace,
-    SpawnHooks,
+    Body, BodyUnit, ByType, Declarations, Destination, InstallCx, Module, ModuleSet, MoveStep,
+    Phase, SetPlace, SpawnHooks,
 };
 use campfire_geometry::{Grid, MAX_BOUND};
 use campfire_math::Num;
@@ -27,7 +27,6 @@ pub mod bench;
 mod body_index;
 mod broadphase;
 mod collider;
-mod destination;
 mod error;
 mod forced_moves;
 mod group_box;
@@ -61,7 +60,6 @@ mod walls;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
-pub use crate::destination::Destination;
 pub use crate::error::MapProblem;
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::group_box::GroupBox;
@@ -91,21 +89,48 @@ pub use crate::walking::Walking;
 pub use crate::wall::Wall;
 pub use crate::walls::Walls;
 
-campfire_common::enum_all! {
-    /// Navigation's steps.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum NavigationSet {
-        /// The static index and the pathing grid take the static bodies as the tick starts.
-        TrackStatics,
-        /// Units route and move.
-        Move,
-        /// The static bodies are taken again, and walkers collide.
-        Collide,
-        /// The units out of the map's bounds come back in.
-        Bounds,
-    }
-    /// Every step.
-    pub const ALL;
+/// Navigation's steps.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum NavigationSet {
+    /// The static index and the pathing grid take the static bodies as the tick starts.
+    TrackStatics,
+    /// Units route and move.
+    Move,
+    /// The static bodies are taken again, and walkers collide.
+    Collide,
+    /// The units out of the map's bounds come back in.
+    Bounds,
+    /// Each walker's `ArrivedShort` follows its route, in a gap, so a capability that reads it
+    /// in a stage reads the route as the stage began.
+    Report(SimEdge),
+}
+
+impl NavigationSet {
+    /// The steps in the stages and after Collide.
+    const STEPS: [NavigationSet; 4] = [
+        NavigationSet::TrackStatics,
+        NavigationSet::Move,
+        NavigationSet::Collide,
+        NavigationSet::Bounds,
+    ];
+
+    /// The steps, then a report in each gap, `SimEdge::Start` first.
+    const ALL: [NavigationSet; NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = NavigationSet::STEPS.len();
+        let mut all = [NavigationSet::Report(SimEdge::Start);
+            NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()];
+        let mut at = 0;
+        while at < steps {
+            all[at] = NavigationSet::STEPS[at];
+            at += 1;
+        }
+        let mut stage = 0;
+        while stage < SimSet::ALL.len() {
+            all[steps + 1 + stage] = NavigationSet::Report(SimEdge::After(SimSet::ALL[stage]));
+            stage += 1;
+        }
+        all
+    };
 }
 
 impl ModuleSet for NavigationSet {
@@ -118,6 +143,7 @@ impl ModuleSet for NavigationSet {
             NavigationSet::Move => SetPlace::Phase(Phase::Move),
             NavigationSet::Collide => SetPlace::Phase(Phase::Collide),
             NavigationSet::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
+            NavigationSet::Report(edge) => SetPlace::Gap(edge),
         }
     }
 }
@@ -130,11 +156,11 @@ pub struct Navigation;
 impl Module for Navigation {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
     const NEEDS: &'static [Capability] = &[];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<NavigationSet>();
         d.callback::<SpawnHooks>(Capability::Navigation, Navigation::make_room);
-        d.component::<Destination>();
         d.component::<PathWalker>();
         d.component::<OnPath>();
         d.component::<Route>();
@@ -151,10 +177,7 @@ impl Module for Navigation {
         d.book::<NavigationBook>();
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
-        // A unit that walks, which its move step tells, takes a destination, a route and a progress.
-        d.part::<BodyUnit, Destination>(|at| {
-            at.of_type::<MoveStep>().map(|_| Destination::default())
-        });
+        // A unit that walks, which its move step tells, takes a route and a progress.
         d.part::<BodyUnit, Route>(|at| at.of_type::<MoveStep>().map(|_| Route::default()));
         d.part::<BodyUnit, Progress>(|at| at.of_type::<MoveStep>().map(|_| Progress::default()));
     }
@@ -189,6 +212,11 @@ impl Module for Navigation {
                 .in_set(NavigationSet::Collide),
             Walking::keep_in_bounds.in_set(NavigationSet::Bounds),
         ));
+        for set in NavigationSet::ALL {
+            if let NavigationSet::Report(_) = set {
+                schedule.add_systems(Walking::report_short.in_set(set));
+            }
+        }
     }
 }
 

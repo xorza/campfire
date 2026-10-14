@@ -81,7 +81,8 @@ impl ModuleSet for AreasSet {
 
 impl Module for Areas {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
-    const NEEDS: &'static [Capability] = &[Capability::Combat];
+    const NEEDS: &'static [Capability] = &[Capability::Stats];
+    const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<AreasSet>();

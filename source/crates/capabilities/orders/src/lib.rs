@@ -75,7 +75,8 @@ pub struct Orders;
 
 impl Module for Orders {
     const CAPABILITY: Option<Capability> = Some(Capability::Orders);
-    const NEEDS: &'static [Capability] = &[Capability::Combat, Capability::Navigation];
+    const NEEDS: &'static [Capability] = &[Capability::Navigation, Capability::Stats];
+    const USES: &'static [Capability] = &[Capability::Production, Capability::Vision];
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<OrdersSet>();
@@ -89,8 +90,8 @@ impl Module for Orders {
     /// Adds orders to a match: in Inputs, after the orders of the capabilities before it, the
     /// tick's orders are checked and become current; in Think, the resets whose units arrived
     /// end, then the units due this tick think; in Act, before combat starts attacks, units walk
-    /// their paths and chase their targets. It builds on the core `Units` installs, on combat and
-    /// on navigation. Without the core's scripts, as on a client, no unit thinks. An order's
+    /// their paths and chase their targets. It builds on the core `Units` installs, on navigation
+    /// and on stats. Without the core's scripts, as on a client, no unit thinks. An order's
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {

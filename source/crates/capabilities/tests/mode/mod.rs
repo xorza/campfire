@@ -20,11 +20,12 @@ use campfire_combat::{
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_core::internals::FailureKind;
 use campfire_core::{
-    ActionId, ApiError, Body, BodyForm, Book, ByType, CallError, Dead, Facing, HeldPlayerUnits,
-    Layer, MatchEntity, ModifierId, MoveStep, NameKind, OutOfPlay, Owner, ParamProblem, PathId,
-    Player, PlayersWorld, Pool, Relations, ResourceId, ScriptBudgets, ScriptFailures, ScriptLimits,
-    ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncAll, SyncNone, SyncTo,
-    SyncedStateDecl, Team, TrackId, TypeScope, UnitTags, UnitType, UnitTypeCore, Units, View,
+    ActionId, ApiError, Body, BodyForm, Book, ByType, CallError, Dead, Destination, Facing,
+    HeldPlayerUnits, Layer, MatchEntity, ModifierId, MoveStep, NameKind, OutOfPlay, Owner,
+    ParamProblem, PathId, Player, PlayersWorld, Pool, Relations, ResourceId, ScriptBudgets,
+    ScriptFailures, ScriptLimits, ScriptRole, StateDecl, StateDefault, StateType, StateValue,
+    SyncAll, SyncNone, SyncTo, SyncedStateDecl, Team, TrackId, TypeScope, UnitTags, UnitType,
+    UnitTypeCore, Units, View,
 };
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
@@ -33,9 +34,7 @@ use campfire_mode::{
     InputValue, MapPoint, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
     UnansweredSlotEvents, *,
 };
-use campfire_navigation::{
-    Destination, ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker,
-};
+use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
 use campfire_script::ScriptId;
