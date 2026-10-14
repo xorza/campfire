@@ -20,6 +20,10 @@ impl Layer {
     pub const fn index(self) -> usize {
         self.0 as usize
     }
+
+    pub const fn get(self) -> u8 {
+        self.0
+    }
 }
 
 impl NameId for Layer {

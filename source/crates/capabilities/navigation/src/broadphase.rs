@@ -1,5 +1,4 @@
-use campfire_geometry::CellLevels;
-use campfire_units::Layer;
+use campfire_geometry::{CellKey, CellLevels};
 
 use crate::body_index::BodyIndex;
 use crate::collider::Collider;
@@ -14,62 +13,45 @@ use crate::collider::contact::Contact;
 /// coarser level that overlap lie less than the coarser cell apart, so each occupied cell pairs
 /// its walkers with those of the nine cells around its own at each coarser level of its layer;
 /// a wide walker so costs its own level's few cells, not every walker's. A sort, not a grid over
-/// the map, as a map may be wide and its bodies few. A walker and a static body come from the
-/// static index, so a wide structure does not make the cells wide, and two static bodies never
-/// part. The buffers stay between ticks, so a tick allocates nothing once they have grown, and
-/// costs `n log n` and the pairs of bodies in cells side by side.
+/// the map, as a map may be wide and its bodies few; each walker's cell is one `CellKey` above its
+/// index, so the sort and every search compare one number, as `BodyGrid`'s do. A walker and a
+/// static body come from the static index, so a wide structure does not make the cells wide, and
+/// two static bodies never part. The buffers stay between ticks, so a tick allocates nothing once
+/// they have grown, and costs `n log n` and the pairs of bodies in cells side by side.
 #[derive(Debug, Default)]
 pub(crate) struct Broadphase {
-    /// Each walker's place and index, sorted by layer, level and cell, row by row, then by index.
+    /// Each walker's cell above its index, sorted by layer, level and cell, row by row, then by
+    /// index.
     entries: Vec<Entry>,
     /// The occupied cells, in the order of `entries`, each with its run of entries.
     cells: Vec<Cell>,
     contacts: Vec<Contact>,
 }
 
-/// A walker's cell and its index among the colliders.
+/// A walker's cell, the high half, above its index among the colliders.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Entry {
-    place: Place,
-    index: usize,
-}
-
-/// A cell of a layer's level, ordered as its layer, level, row and column.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Place {
-    layer: Layer,
-    level: u8,
-    row: i64,
-    column: i64,
-}
+struct Entry(u128);
 
 /// An occupied cell, and the run of `entries` in it.
 #[derive(Debug, Clone, Copy)]
 struct Cell {
-    place: Place,
+    key: CellKey,
     start: usize,
     end: usize,
 }
 
-impl Place {
-    /// The cell `rows` below and `columns` to the right of this one.
-    const fn beside(self, rows: i64, columns: i64) -> Place {
-        Place {
-            row: self.row + rows,
-            column: self.column + columns,
-            ..self
-        }
+impl Entry {
+    fn new(cell: CellKey, index: usize) -> Entry {
+        let index = u64::try_from(index).expect("colliders fit u64");
+        Entry((u128::from(cell.to_bits()) << 64) | u128::from(index))
     }
 
-    /// The cell of `level`, at or above this one's, that holds this one.
-    const fn within(self, level: u8) -> Place {
-        let up = level - self.level;
-        Place {
-            level,
-            row: self.row >> up,
-            column: self.column >> up,
-            ..self
-        }
+    const fn cell(self) -> CellKey {
+        CellKey::from_bits((self.0 >> 64) as u64)
+    }
+
+    const fn index(self) -> usize {
+        self.0 as u64 as usize
     }
 }
 
@@ -91,20 +73,20 @@ impl Broadphase {
         self.entries
             .extend(walkers.clone().map(|(index, collider)| {
                 let level = levels.level(collider.radius());
-                let place = Place {
-                    layer: collider.layer,
+                let cell = CellKey::new(
+                    collider.layer.get(),
                     level,
-                    row: levels.index(level, collider.point.z.to_bits()),
-                    column: levels.index(level, collider.point.x.to_bits()),
-                };
-                Entry { place, index }
+                    levels.index(level, collider.point.z.to_bits()),
+                    levels.index(level, collider.point.x.to_bits()),
+                );
+                Entry::new(cell, index)
             }));
         self.entries.sort_unstable();
         for (at, entry) in self.entries.iter().enumerate() {
             match self.cells.last_mut() {
-                Some(cell) if cell.place == entry.place => cell.end = at + 1,
+                Some(cell) if cell.key == entry.cell() => cell.end = at + 1,
                 _ => self.cells.push(Cell {
-                    place: entry.place,
+                    key: entry.cell(),
                     start: at,
                     end: at + 1,
                 }),
@@ -115,24 +97,21 @@ impl Broadphase {
             let run = &self.entries[cell.start..cell.end];
             for (offset, a) in run.iter().enumerate() {
                 for b in &run[offset + 1..] {
-                    Broadphase::check(colliders, a.index, b.index, &mut self.contacts);
+                    Broadphase::check(colliders, a.index(), b.index(), &mut self.contacts);
                 }
             }
-            let place = cell.place;
+            let key = cell.key;
             let right = self
                 .cells
                 .get(at + 1)
-                .filter(|next| next.place == place.beside(0, 1));
-            while self
-                .cells
-                .get(below)
-                .is_some_and(|other| other.place < place.beside(1, -1))
-            {
+                .filter(|next| next.key == key.beside(0, 1));
+            let (first, last) = (key.beside(1, -1), key.beside(1, 1));
+            while self.cells.get(below).is_some_and(|other| other.key < first) {
                 below += 1;
             }
             let under = self.cells[below..]
                 .iter()
-                .take_while(|other| other.place <= place.beside(1, 1));
+                .take_while(|other| other.key <= last);
             for other in right.into_iter().chain(under) {
                 Broadphase::pair(
                     colliders,
@@ -180,16 +159,16 @@ impl Broadphase {
         cell: Cell,
         contacts: &mut Vec<Contact>,
     ) {
-        let (place, run) = (cell.place, &entries[cell.start..cell.end]);
+        let (key, run) = (cell.key, &entries[cell.start..cell.end]);
         let mut level = coarser;
-        while let Some(first) = level.first().map(|other| other.place)
-            && first.layer == place.layer
+        while let Some(first) = level.first().map(|other| other.key)
+            && first.layer() == key.layer()
         {
-            let around = place.within(first.level);
+            let around = key.within(first.level());
             for rows in -1..=1 {
                 let (from, to) = (around.beside(rows, -1), around.beside(rows, 1));
-                let start = level.partition_point(|other| other.place < from);
-                let near = level[start..].iter().take_while(|other| other.place <= to);
+                let start = level.partition_point(|other| other.key < from);
+                let near = level[start..].iter().take_while(|other| other.key <= to);
                 for other in near {
                     Broadphase::pair(colliders, run, &entries[other.start..other.end], contacts);
                 }
@@ -200,19 +179,17 @@ impl Broadphase {
 
     /// How many of `cells` lead it in the layer and level of its first.
     fn level_len(cells: &[Cell]) -> usize {
-        let Some(first) = cells.first().map(|cell| cell.place) else {
+        let Some(first) = cells.first().map(|cell| cell.key) else {
             return 0;
         };
-        cells.partition_point(|cell| {
-            (cell.place.layer, cell.place.level) == (first.layer, first.level)
-        })
+        cells.partition_point(|cell| cell.key.same_level(first))
     }
 
     /// Checks each walker of `run` against each of `others`.
     fn pair(colliders: &[Collider], run: &[Entry], others: &[Entry], contacts: &mut Vec<Contact>) {
         for a in run {
             for b in others {
-                Broadphase::check(colliders, a.index, b.index, contacts);
+                Broadphase::check(colliders, a.index(), b.index(), contacts);
             }
         }
     }
@@ -293,6 +270,7 @@ pub(crate) mod internals {
 mod tests {
     use campfire_geometry::Shape;
     use campfire_math::{Num, Vec3};
+    use campfire_units::Layer;
 
     use super::internals::{scene, statics};
     use super::*;
@@ -382,7 +360,7 @@ mod tests {
             let mut held: Vec<u8> = broadphase
                 .cells
                 .iter()
-                .map(|cell| cell.place.level)
+                .map(|cell| cell.key.level())
                 .collect();
             held.sort_unstable();
             held.dedup();

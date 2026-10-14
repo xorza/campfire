@@ -13,11 +13,19 @@ pub struct CellLevels {
 }
 
 impl CellLevels {
-    /// Levels from a base cell of `base`, positive.
+    /// The narrowest base cell, an eighth of a meter, 2²¹ bits: the rows and columns of positions
+    /// within `Position::BOUND`, 2⁴⁴ bits, then lie within ±2²³, as a `CellKey` holds them.
+    pub const MIN_BASE: Num = Num::from_bits(1 << 21);
+
+    /// Levels from a base cell of `base`, or of `MIN_BASE` when `base` is narrower.
     pub const fn new(base: Num) -> CellLevels {
-        debug_assert!(base.to_bits() > 0, "a cell of a positive side");
+        let min = CellLevels::MIN_BASE.to_bits();
         CellLevels {
-            base: base.to_bits(),
+            base: if base.to_bits() < min {
+                min
+            } else {
+                base.to_bits()
+            },
         }
     }
 
@@ -71,6 +79,15 @@ mod tests {
         // 2¹² · 0.7 = 2,867.2 m falls short of 4,096.
         let walkers = CellLevels::new(Num::int(7) / 10);
         assert_eq!(walkers.level(Num::int(2048)), 13);
+        // A base narrower than an eighth of a meter takes an eighth.
+        assert_eq!(
+            CellLevels::new(Num::from_bits(5)),
+            CellLevels::new(CellLevels::MIN_BASE)
+        );
+        assert_eq!(
+            CellLevels::new(Num::from_bits(5)).cell(0),
+            Num::ONE.to_bits() / 8
+        );
         // Rows round down on both sides of 0, and nest: a cell's row a level up is its own
         // halved, rounded down.
         assert_eq!(

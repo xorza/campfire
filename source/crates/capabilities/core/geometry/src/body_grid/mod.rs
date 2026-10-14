@@ -2,6 +2,7 @@ use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 use campfire_values::{RowDirectory, RowEntries};
 
+use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
 use crate::shape::Shape;
 
@@ -54,56 +55,17 @@ pub struct Placed<K> {
 
 /// A body's place in a build's order: its cell's key above its stable id, so a sort compares one
 /// number, and where it lies among the bodies placed. A sort of these moves 32 bytes an entry,
-/// where one of the bodies moves each whole body.
+/// where one of the bodies moves each whole body. Every cell is of layer 0.
 #[derive(Debug, Clone, Copy)]
 struct Order {
     key: u128,
     placed: u32,
 }
 
-/// A cell of a level, packed so that cells order as their level, row and column do: the level
-/// in the top 8 bits, the row and the column, each offset by 2²⁷, in 28 bits each. A body's
-/// rows and columns lie within ±2²⁰, as positions lie within ±2⁴⁴ bits and a cell is at least a
-/// meter, 2²⁴ bits; a search's rows and columns past ±2²⁷ clamp to the ends, where no body is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct CellKey(u64);
-
-impl CellKey {
-    /// The offset of a row or a column.
-    const MIDDLE: i64 = 1 << 27;
-    const MASK: u64 = (1 << 28) - 1;
-
-    const fn new(level: u8, row: i64, column: i64) -> CellKey {
-        CellKey(((level as u64) << 56) | (CellKey::place(row) << 28) | CellKey::place(column))
-    }
-
-    /// A row or a column, clamped to its 28 bits and offset into them.
-    const fn place(index: i64) -> u64 {
-        let index = if index < -CellKey::MIDDLE {
-            -CellKey::MIDDLE
-        } else if index >= CellKey::MIDDLE {
-            CellKey::MIDDLE - 1
-        } else {
-            index
-        };
-        (index + CellKey::MIDDLE).cast_unsigned()
-    }
-
-    /// The cell of an `Order`'s key, its high half.
-    const fn of_order(key: u128) -> CellKey {
-        CellKey((key >> 64) as u64)
-    }
-
-    const fn level(self) -> u8 {
-        (self.0 >> 56) as u8
-    }
-
-    const fn row(self) -> i64 {
-        ((self.0 >> 28) & CellKey::MASK).cast_signed() - CellKey::MIDDLE
-    }
-
-    const fn column(self) -> i64 {
-        (self.0 & CellKey::MASK).cast_signed() - CellKey::MIDDLE
+impl Order {
+    /// The cell of its key, the high half.
+    const fn cell(self) -> CellKey {
+        CellKey::from_bits((self.key >> 64) as u64)
     }
 }
 
@@ -140,10 +102,9 @@ impl<K: Copy> BodyGrid<K> {
                 let level = levels.level(body.shape.bound());
                 let (row, column) = (at.z.to_bits(), at.x.to_bits());
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
-                debug_assert!(row.abs() < CellKey::MIDDLE && column.abs() < CellKey::MIDDLE);
-                let cell = CellKey::new(level, row, column);
+                let cell = CellKey::new(0, level, row, column);
                 Order {
-                    key: (u128::from(cell.0) << 64) | u128::from(body.id.get()),
+                    key: (u128::from(cell.to_bits()) << 64) | u128::from(body.id.get()),
                     placed: u32::try_from(placed).expect("bodies fit u32"),
                 }
             }));
@@ -154,7 +115,7 @@ impl<K: Copy> BodyGrid<K> {
             .extend(self.order.iter().map(|order| placed[order.placed as usize]));
         self.cells.clear();
         self.cells
-            .extend(self.order.iter().map(|order| CellKey::of_order(order.key)));
+            .extend(self.order.iter().map(|order| order.cell()));
         self.widest.clear();
         for (body, &cell) in self.entries.iter().zip(&self.cells) {
             let (level, bound) = (cell.level(), body.shape.bound());
@@ -203,8 +164,8 @@ impl<K: Copy> BodyGrid<K> {
                 let (RowEntries::Row(run) | RowEntries::Layer(run)) = found;
                 let cells = &self.cells[run.clone()];
                 let (first, last) = (
-                    CellKey::new(level, row, *columns.start()),
-                    CellKey::new(level, row, *columns.end()),
+                    CellKey::clamped(0, level, row, *columns.start()),
+                    CellKey::clamped(0, level, row, *columns.end()),
                 );
                 let start = cells.partition_point(|&cell| cell < first);
                 let end = start + cells[start..].partition_point(|&cell| cell <= last);
