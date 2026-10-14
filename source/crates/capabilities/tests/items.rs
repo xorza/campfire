@@ -367,6 +367,12 @@ impl ShopRead {
         game.run_system_once(read).unwrap()
     }
 
+    /// The nearest shop unit whose buyers select `unit`.
+    fn nearest(game: &mut Match, unit: StableId) -> Option<StableId> {
+        let read = move |shopping: Shopping<'_, '_>| shopping.nearest_for(unit);
+        game.run_system_once(read).unwrap()
+    }
+
     /// The items the shop unit `shop` sells.
     fn items(game: &mut Match, shop: StableId) -> Vec<ItemId> {
         let read = move |shopping: Shopping<'_, '_>| shopping.shop(shop).unwrap().items().to_vec();
@@ -597,16 +603,26 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // A shop that leaves the dead out, as Warcraft III's does, serves the hero only once it lives
     // again, and within its reach: from 5 m, the reach, a potion of 50; from a bit past it, none.
     // An order that names a unit that is no shop, the hero itself, is dropped.
-    let living = spawn_shop(&mut game, living);
-    step(&mut game, &[buy(2, living)]);
+    let living_shop = spawn_shop(&mut game, living);
+    step(&mut game, &[buy(2, living_shop)]);
     assert_eq!(gold(&game), 250);
     let entity = game.unit_entity(hero);
     game.entity_mut(entity).remove::<Dead>();
     *game.part_mut::<Position>(hero) = Position::from((5, 0, 0));
-    step(&mut game, &[buy(2, living), buy(2, hero)]);
+    step(&mut game, &[buy(2, living_shop), buy(2, hero)]);
     assert_eq!(gold(&game), 200);
     let past = Vec3::new(Num::int(5) + Num::from_bits(1), Num::ZERO, Num::ZERO);
     *game.part_mut::<Position>(hero) = Position::new(past).unwrap();
-    step(&mut game, &[buy(2, living)]);
+    step(&mut game, &[buy(2, living_shop)]);
     assert_eq!(gold(&game), 200);
+
+    // The nearest shop whose buyers select the hero, in its reach or not, as a panel shows it:
+    // of the two at the origin, 5 m and a bit away, the lower stable id; then one at (8, 0, 0),
+    // 3 m away; and once the hero is dead, the one that serves the dead.
+    let nearest = |game: &mut Match| ShopRead::nearest(game, hero);
+    assert_eq!(nearest(&mut game), Some(shop));
+    let near = Mode::spawn(&mut game, living, (8, 0, 0), Team::new(0), ());
+    assert_eq!(nearest(&mut game), Some(near));
+    game.insert_parts(hero, Dead);
+    assert_eq!(nearest(&mut game), Some(shop));
 }

@@ -620,6 +620,7 @@ mod tests {
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
     use campfire_units::BodyUnit;
+    use campfire_values::UnitType;
 
     use super::*;
     use crate::view::View;
@@ -656,6 +657,9 @@ mod tests {
                 BodyUnit,
                 pos.unwrap(),
                 Team::new(0),
+                // A type the client data draws with no model, as every type of a view with no
+                // looks.
+                UnitType::new(0),
                 life(600),
             ))
             .id();

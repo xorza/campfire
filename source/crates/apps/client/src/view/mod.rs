@@ -120,7 +120,7 @@ type NewUnits<'w, 's> = Query<
         Has<Dead>,
         Has<Unpredicted>,
         Option<&'static Body>,
-        Option<&'static UnitType>,
+        &'static UnitType,
         Option<&'static Facing>,
     ),
     (With<BodyUnit>, Without<Drawing>, Allow<Unpredicted>),
@@ -265,13 +265,13 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.as_deref().and_then(|data| data.heights.as_ref());
-        for (unit, &pos, team, walks, owned, own, dead, received, body, unit_type, facing) in &units
+        for (unit, &pos, team, walks, owned, own, dead, received, body, &unit_type, facing) in
+            &units
         {
             let at = ground(pos, heights);
             let models = looks
                 .as_deref()
-                .zip(unit_type)
-                .map_or(&[][..], |(looks, &unit_type)| looks.models(unit_type));
+                .map_or(&[][..], |looks| looks.models(unit_type));
             if !models.is_empty() {
                 let degrees = facing.map_or(0.0, |facing| facing.degrees().float());
                 let turn = Transform::from_rotation(Quat::from_rotation_y(degrees.to_radians()));

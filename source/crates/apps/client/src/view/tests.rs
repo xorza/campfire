@@ -19,6 +19,10 @@ use campfire_values::{DeclaredName, PackagePath};
 use super::*;
 use crate::view::unit_looks::ModelParts;
 
+/// A unit type the client data draws with no model, as every type of a view with no looks: its
+/// units take the figure of their team.
+const UNDRAWN: UnitType = UnitType::new(0);
+
 /// A view with no window, whose clock moves only as a test sets it.
 fn view() -> App {
     let mut app = App::new();
@@ -61,7 +65,13 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let team = Team::new(0);
     let predicted = app
         .world_mut()
-        .spawn((ids.allocate(), BodyUnit, Position::from((2, 0, 3)), team))
+        .spawn((
+            ids.allocate(),
+            BodyUnit,
+            Position::from((2, 0, 3)),
+            team,
+            UNDRAWN,
+        ))
         .id();
     let received = app
         .world_mut()
@@ -70,6 +80,7 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
             BodyUnit,
             Position::from((0, 0, 0)),
             team,
+            UNDRAWN,
             Unpredicted,
         ))
         .id();
@@ -145,6 +156,7 @@ fn a_drawing_shows_its_unit_as_it_stands_after_a_rollback() {
             BodyUnit,
             Position::from((0, 0, 0)),
             Team::new(1),
+            UNDRAWN,
         ))
         .id();
     app.update();

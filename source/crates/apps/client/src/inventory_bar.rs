@@ -1,0 +1,251 @@
+use std::fmt::Write as _;
+
+use bevy::app::{App, Plugin, Startup, Update};
+use bevy::ecs::component::Component;
+use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::observer::On;
+use bevy::ecs::query::Allow;
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy::picking::events::{Click, DragDrop, Pointer};
+use bevy::picking::pointer::PointerButton;
+use bevy::text::TextColor;
+use bevy::ui::widget::Text;
+use bevy::ui::{BackgroundColor, FlexDirection, JustifyContent, Node, PositionType, UiRect, Val};
+use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
+use campfire_capabilities::Order;
+use campfire_common::Tick;
+use campfire_items::{Inventory, ItemStack, ItemsAction, Shopping};
+use campfire_net::PendingOrders;
+use campfire_sim::{SimTick, TickRate, Unpredicted};
+
+use crate::item_names::ItemTexts;
+use crate::own_player::OwnPlayer;
+use crate::ui_style::{self, BACK, TEXT};
+use crate::view::ViewSystems;
+
+/// The inventory bar, always shown (design 13, D10): each of the own avatar's inventory slots,
+/// with its key, its item's name, its stack or uses, and its cooldown. A right click on a slot
+/// sells its item at the nearest shop unit, when it serves the avatar; a slot dragged onto
+/// another swaps them.
+#[derive(Debug)]
+pub(crate) struct InventoryBar;
+
+/// A slot of the bar: the inventory slot it shows, from 0.
+#[derive(Component, Debug, Clone, Copy)]
+struct BarSlot(u8);
+
+/// The own avatar's inventory, its slot kind, its slots' times and its slots.
+type Carriers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Inventory,
+        Option<&'static UseGroup>,
+        Option<&'static SlotTimes>,
+        Option<&'static ActionSlots>,
+    ),
+    Allow<Unpredicted>,
+>;
+
+/// The bar's slots, as many as the keys that cast an inventory slot's action.
+const SLOTS: u8 = 6;
+
+impl Plugin for InventoryBar {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Startup, InventoryBar::spawn);
+        app.add_systems(Update, InventoryBar::show.after(ViewSystems));
+    }
+}
+
+impl InventoryBar {
+    fn spawn(mut commands: Commands<'_, '_>) {
+        let bar = Node {
+            position_type: PositionType::Absolute,
+            bottom: Val::Px(12.0),
+            width: Val::Percent(100.0),
+            justify_content: JustifyContent::Center,
+            column_gap: Val::Px(6.0),
+            ..Node::default()
+        };
+        let bar = commands.spawn(bar).id();
+        for at in 0..SLOTS {
+            let slot = Node {
+                width: Val::Px(120.0),
+                height: Val::Px(64.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(4.0)),
+                ..Node::default()
+            };
+            commands
+                .spawn((
+                    BarSlot(at),
+                    slot,
+                    BackgroundColor(BACK),
+                    Text::default(),
+                    ui_style::font(),
+                    TextColor(TEXT),
+                    ChildOf(bar),
+                ))
+                .observe(InventoryBar::sell)
+                .observe(InventoryBar::swap);
+        }
+    }
+
+    /// Writes each slot's line: its key, and the item it holds, with its stack or uses and its
+    /// cooldown in whole seconds; its key alone when it is empty or the avatar has fewer slots.
+    fn show(
+        own: OwnPlayer<'_, '_>,
+        carriers: Carriers<'_, '_>,
+        (names, tick, rate): (
+            Res<'_, ItemTexts>,
+            Option<Res<'_, SimTick>>,
+            Option<Res<'_, TickRate>>,
+        ),
+        (slots, mut texts): (Query<'_, '_, (Entity, &BarSlot)>, Query<'_, '_, &mut Text>),
+        mut line: Local<'_, String>,
+    ) {
+        let avatar = own.avatar();
+        let carrier = avatar.and_then(|avatar| carriers.get(avatar.entity).ok());
+        let first = carrier.and_then(|(_, group, _, held)| Some(held?.first_of(group?.kind())));
+        let now = tick.map(|tick| tick.start());
+        let hz = rate.map(|rate| rate.hz().get());
+        for (entity, &BarSlot(at)) in &slots {
+            line.clear();
+            write!(line, "{}", at + 1).expect("a String takes any text");
+            let carried = carrier
+                .and_then(|(inventory, ..)| inventory.slots().get(usize::from(at)).copied())
+                .flatten();
+            if let Some(carried) = carried {
+                let times = carrier.and_then(|(_, _, times, _)| times);
+                let ready = first
+                    .and_then(|first| times?.slot(first + at))
+                    .map(|time| time.ready_at);
+                write_slot(
+                    &mut line,
+                    names.of(carried.item),
+                    carried,
+                    ready,
+                    now.zip(hz),
+                );
+            }
+            ui_style::set_text(&mut texts, entity, &line);
+        }
+    }
+
+    /// A right click on a slot sells its item at the nearest shop unit whose buyers select the
+    /// avatar, which the sim refuses unless it serves the avatar.
+    fn sell(
+        click: On<'_, '_, Pointer<Click>>,
+        slots: Query<'_, '_, &BarSlot>,
+        own: OwnPlayer<'_, '_>,
+        shopping: Shopping<'_, '_>,
+        mut orders: ResMut<'_, PendingOrders>,
+    ) {
+        if click.button != PointerButton::Secondary {
+            return;
+        }
+        let (Ok(&BarSlot(slot)), Some(avatar)) = (slots.get(click.entity), own.avatar()) else {
+            return;
+        };
+        let Some(shop) = shopping.nearest_for(avatar.id) else {
+            return;
+        };
+        orders.push(Order::one(avatar.id, ItemsAction::Sell { slot, shop }));
+    }
+
+    /// A slot dropped onto another swaps the two.
+    fn swap(
+        drop: On<'_, '_, Pointer<DragDrop>>,
+        slots: Query<'_, '_, &BarSlot>,
+        own: OwnPlayer<'_, '_>,
+        mut orders: ResMut<'_, PendingOrders>,
+    ) {
+        let (Ok(&BarSlot(to)), Ok(&BarSlot(from)), Some(avatar)) = (
+            slots.get(drop.entity),
+            slots.get(drop.dropped),
+            own.avatar(),
+        ) else {
+            return;
+        };
+        if from != to {
+            orders.push(Order::one(avatar.id, ItemsAction::Swap { from, to }));
+        }
+    }
+}
+
+/// Writes after a slot's key the item `carried`, named `name`: its stack past one, its uses left,
+/// and, at `clock`, the tick now and the ticks a second, the whole seconds until its action is
+/// ready at `ready`, rounded up.
+fn write_slot(
+    line: &mut String,
+    name: &str,
+    carried: ItemStack,
+    ready: Option<Tick>,
+    clock: Option<(Tick, u32)>,
+) {
+    write!(line, " {name}").expect("a String takes any text");
+    if carried.count.get() > 1 {
+        write!(line, " x{}", carried.count).expect("a String takes any text");
+    }
+    if let Some(uses) = carried.uses {
+        write!(line, " ({uses})").expect("a String takes any text");
+    }
+    if let (Some(ready), Some((now, hz))) = (ready, clock)
+        && ready > now
+    {
+        let left = ready.get() - now.get();
+        let seconds = left.div_ceil(u64::from(hz));
+        write!(line, "\n{seconds} s").expect("a String takes any text");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use bevy::ecs::system::{IntoSystem, System};
+    use bevy::ecs::world::World;
+    use campfire_items::ItemId;
+
+    use super::*;
+
+    #[test]
+    fn the_bar_takes_no_conflicting_access() {
+        // Bevy checks that a system's queries do not conflict as it initializes the system.
+        let mut world = World::new();
+        let mut bar = IntoSystem::into_system(InventoryBar::show);
+        bar.initialize(&mut world);
+    }
+
+    #[test]
+    fn a_slot_shows_its_item_its_stack_or_uses_and_its_seconds_left() {
+        let line = |carried, ready, clock| {
+            let mut line = String::from("2");
+            write_slot(&mut line, "Health Potion", carried, ready, clock);
+            line
+        };
+        let potions = ItemStack {
+            item: ItemId::nth(0),
+            count: NonZeroU32::new(3).unwrap(),
+            uses: Some(NonZeroU32::new(1).unwrap()),
+        };
+        // At 30 ticks a second, ready 31 ticks on: 2 s, rounded up; ready now: no cooldown.
+        let clock = Some((Tick::new(100), 30));
+        assert_eq!(
+            line(potions, Some(Tick::new(131)), clock),
+            "2 Health Potion x3 (1)\n2 s"
+        );
+        assert_eq!(
+            line(potions, Some(Tick::new(100)), clock),
+            "2 Health Potion x3 (1)"
+        );
+        let sword = ItemStack {
+            count: NonZeroU32::MIN,
+            uses: None,
+            ..potions
+        };
+        assert_eq!(line(sword, None, None), "2 Health Potion");
+    }
+}

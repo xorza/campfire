@@ -59,10 +59,15 @@ impl Shop {
         self.sells.contains(&item)
     }
 
+    /// Whether its buyers select `buyer`, in its reach or not.
+    pub(crate) const fn selects(&self, buyer: Buyer) -> bool {
+        self.buyers.selects(buyer.relation, buyer.tags)
+    }
+
     /// Whether it serves `buyer`: a unit its buyers select, dead from anywhere, as a dead unit
     /// stands nowhere, else one that `reaches` says its reach meets from the shop's edge.
     pub(crate) fn serves(&self, buyer: Buyer, reaches: impl FnOnce(Num) -> bool) -> bool {
-        self.buyers.selects(buyer.relation, buyer.tags) && (buyer.dead || reaches(self.reach))
+        self.selects(buyer) && (buyer.dead || reaches(self.reach))
     }
 
     /// What a sale of `count` items of `cost` each gives back: the sell share of their cost,

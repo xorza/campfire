@@ -10,12 +10,14 @@ campfire-areas.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-items.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-net.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
+campfire-players.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-protocol.workspace = true

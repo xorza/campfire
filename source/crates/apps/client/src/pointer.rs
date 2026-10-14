@@ -5,7 +5,10 @@ use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::system::{Query, Res, Single, SystemParam};
 use bevy::math::primitives::InfinitePlane3d;
 use bevy::math::{Vec2, Vec3};
+use bevy::picking::hover::HoverMap;
+use bevy::picking::pointer::PointerId;
 use bevy::transform::components::{GlobalTransform, Transform};
+use bevy::ui::Node;
 use bevy::window::{PrimaryWindow, Window};
 use campfire_sim::{StableId, Unpredicted};
 use campfire_units::Dead;
@@ -27,6 +30,8 @@ pub(crate) struct Pointer<'w, 's> {
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
     data: Option<Res<'w, ClientData>>,
+    hovers: Option<Res<'w, HoverMap>>,
+    nodes: Query<'w, 's, (), With<Node>>,
 }
 
 /// The living units the client holds, and the drawing of each.
@@ -45,6 +50,16 @@ pub(crate) struct Pointed {
 }
 
 impl Pointer<'_, '_> {
+    /// Whether the cursor is over a node of the UI, the shop panel or the inventory bar, which
+    /// takes its clicks from the match.
+    pub(crate) fn over_ui(&self) -> bool {
+        let hits = self
+            .hovers
+            .as_deref()
+            .and_then(|hovers| hovers.get(&PointerId::Mouse));
+        hits.is_some_and(|hits| hits.keys().any(|&hit| self.nodes.contains(hit)))
+    }
+
     /// The player's own avatar, once the client plays and holds it.
     pub(crate) fn own_avatar(&self) -> Option<Pointed> {
         Some(Pointed {

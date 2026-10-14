@@ -20,9 +20,9 @@ use crate::view::float_num::FloatNum;
 use crate::view::scene_lights::EXPOSURE;
 
 /// The player's camera, as its package's camera file and the game's controls move it: the arrow
-/// keys and the window's edges scroll it, the wheel and the keypad's 8 and 2 zoom it, a drag of
-/// the middle button and the keypad's 4 and 6 turn it, and a click of the middle button or the
-/// keypad's 5 sets it back. It starts over the middle of the map's heightmap, or the origin, and
+/// keys and the window's edges scroll it, the wheel, the keypad's 8 and 2 and Alt with Up and Down
+/// zoom it, a drag of the middle button, the keypad's 4 and 6 and Alt with Left and Right turn
+/// it, and a click of the middle button, the keypad's 5 or Alt with Backspace sets it back. It starts over the middle of the map's heightmap, or the origin, and
 /// stays over the heightmap.
 #[derive(Debug)]
 pub(crate) struct PlayerCamera;
@@ -83,6 +83,11 @@ impl PlayerCamera {
         let seconds = time.delta_secs();
         let now = time.elapsed_secs_f64();
         let held = |key| keys.pressed(key);
+        // Alt turns the arrows from scrolling to turning and zooming, for a keyboard with no
+        // keypad (design 13, D12).
+        let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
+        let arrow = |key| !alt && held(key);
+        let alt_arrow = |key| alt && held(key);
         let axis = |minus: bool, plus: bool| f32::from(i8::from(plus) - i8::from(minus));
         let cursor = window.cursor_position();
         let edge =
@@ -90,12 +95,12 @@ impl PlayerCamera {
         let [left, right] = edge(cursor.map(|cursor| cursor.x), window.width());
         let [top, bottom] = edge(cursor.map(|cursor| cursor.y), window.height());
         let across = axis(
-            held(KeyCode::ArrowLeft) || left,
-            held(KeyCode::ArrowRight) || right,
+            arrow(KeyCode::ArrowLeft) || left,
+            arrow(KeyCode::ArrowRight) || right,
         );
         let along = axis(
-            held(KeyCode::ArrowDown) || bottom,
-            held(KeyCode::ArrowUp) || top,
+            arrow(KeyCode::ArrowDown) || bottom,
+            arrow(KeyCode::ArrowUp) || top,
         );
         if across != 0.0 || along != 0.0 {
             rig.scroll(across, along, seconds);
@@ -110,17 +115,21 @@ impl PlayerCamera {
         if notches != 0.0 {
             rig.wheel(notches);
         }
-        match (held(KeyCode::Numpad8), held(KeyCode::Numpad2)) {
+        let zoom_in = held(KeyCode::Numpad8) || alt_arrow(KeyCode::ArrowUp);
+        let zoom_out = held(KeyCode::Numpad2) || alt_arrow(KeyCode::ArrowDown);
+        match (zoom_in, zoom_out) {
             (true, false) => rig.zoom_key(false, seconds),
             (false, true) => rig.zoom_key(true, seconds),
             _ => {}
         }
-        match (held(KeyCode::Numpad4), held(KeyCode::Numpad6)) {
+        let turn_left = held(KeyCode::Numpad4) || alt_arrow(KeyCode::ArrowLeft);
+        let turn_right = held(KeyCode::Numpad6) || alt_arrow(KeyCode::ArrowRight);
+        match (turn_left, turn_right) {
             (true, false) => rig.turn_key(true, seconds),
             (false, true) => rig.turn_key(false, seconds),
             _ => {}
         }
-        if keys.just_pressed(KeyCode::Numpad5) {
+        if keys.just_pressed(KeyCode::Numpad5) || alt && keys.just_pressed(KeyCode::Backspace) {
             rig.reset();
         }
         if let Some(cursor) = cursor {

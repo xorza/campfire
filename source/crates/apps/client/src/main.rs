@@ -50,9 +50,12 @@ use crate::args::Args;
 use crate::bot::Bot;
 use crate::connection::Connection;
 use crate::hud::Hud;
+use crate::inventory_bar::InventoryBar;
+use crate::item_names::ItemNames;
 use crate::link_watch::LinkWatch;
 use crate::local_keys::LocalKeys;
 use crate::orders::Orders;
+use crate::shop_panel::ShopPanel;
 use crate::view::View;
 use crate::view::package_source::PackageSource;
 use crate::view::player_camera::PlayerCamera;
@@ -63,11 +66,15 @@ mod args;
 mod bot;
 mod connection;
 mod hud;
+mod inventory_bar;
+mod item_names;
 mod link_watch;
 mod local_keys;
 mod orders;
 mod own_player;
 mod pointer;
+mod shop_panel;
+mod ui_style;
 mod view;
 mod zero_hour;
 
@@ -167,8 +174,9 @@ fn main() -> ExitCode {
     ProcessExit::code(exit)
 }
 
-/// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD and the
-/// orders, with the keys of a local match that `pace` follows, and the models of `packages`.
+/// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD, the
+/// orders, the shop panel and the inventory bar, with the keys of a local match that `pace`
+/// follows, and the models and item names of `packages`.
 fn add_ends(
     app: &mut App,
     script: Option<OrderScript>,
@@ -216,6 +224,11 @@ fn add_ends(
         },
         Hud,
         Orders,
+        ItemNames {
+            packages: Arc::clone(packages),
+        },
+        ShopPanel,
+        InventoryBar,
     ));
 }
 
