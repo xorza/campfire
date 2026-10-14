@@ -9,7 +9,7 @@
 //! no texture; and that it loads in a match of the imported mode, which plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
 //! passes as one that checked.
 //!
-//! Run it with `cargo run --release -p campfire-zero-hour-check [-- <run root>]`.
+//! Run it with `./drive.py zero-hour [run root]`, which builds it with the `release-dev` profile.
 
 use std::collections::BTreeMap;
 use std::env;

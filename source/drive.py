@@ -780,7 +780,7 @@ def zero_hour(args: list[str]) -> int:
     return run_steps("zero-hour", [
         Step(
             "zero hour", Kind.PROGRAM,
-            cargo("run", "--release", "--locked", "-p", "campfire-zero-hour-check", "--", *args),
+            cargo("run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *args),
             always_runs=True,
         )
     ])
