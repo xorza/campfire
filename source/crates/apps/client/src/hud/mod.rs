@@ -623,6 +623,7 @@ mod tests {
     use campfire_values::UnitType;
 
     use super::*;
+    use crate::selection::Selection;
     use crate::view::View;
 
     #[test]
@@ -633,6 +634,7 @@ mod tests {
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
+        app.init_resource::<Selection>();
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         Unpredicted::register(app.world_mut());
         app.add_plugins((View, Hud));

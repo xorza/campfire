@@ -22,4 +22,5 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
+- **Client.** A right click on a unit the avatar may use orders an attack or a move, never the use: `Orders::click` (`client/src/orders.rs`) orders no `Use`, where [Bodies, uses, shop and gravity](../docs/design/13-bodies-uses-shop-gravity.md#decisions), D6, orders the use before an attack or a move.
 - **Zero Hour.** The import draws each object by its default state's model on every map, where the game draws its night model on a night map and its snow model on a snowy map, the condition state that best matches `NIGHT` and `SNOW` (`Drawable::setTimeOfDay`, `W3DTerrainVisual::addProp`): 15 of the 150 shipped maps are night maps and 17 snowy ones.

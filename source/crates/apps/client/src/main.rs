@@ -1,9 +1,9 @@
 //! Game client: joins a session over QUIC, predicts the player's own avatar, and draws the
-//! match as capsules on the ground; a right click walks the avatar there. With `--bot <orders
-//! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
-//! With `--key <file>`, the player's main key is the file's, made when missing; without it, the
-//! player is a new key each run. With `--data <directory>`, the client writes the newest receipt
-//! of its session there; without it, it writes none. With `--local`, it plays the mode alone on a
+//! match; a left click or drag selects the player's own units, and a right click orders them.
+//! With `--bot <orders file>`, it opens no window and renders nothing, and plays the file's
+//! `OrderScript` instead. With `--key <file>`, the player's main key is the file's, made when
+//! missing; without it, the player is a new key each run. With `--data <directory>`, the client
+//! writes the newest receipt of its session there; without it, it writes none. With `--local`, it plays the mode alone on a
 //! local server, a thread of its own process, whose data goes in `server` under the data
 //! directory, `--data` then needed; each `--server-bot <slot>=<orders file>` gives the server a bot
 //! there, and every other slot but the player's is open. P pauses a local match, the keys 1 to 4
@@ -55,6 +55,7 @@ use crate::item_names::ItemNames;
 use crate::link_watch::LinkWatch;
 use crate::local_keys::LocalKeys;
 use crate::orders::Orders;
+use crate::selecting::Selecting;
 use crate::shop_panel::ShopPanel;
 use crate::view::View;
 use crate::view::package_source::PackageSource;
@@ -73,6 +74,8 @@ mod local_keys;
 mod orders;
 mod own_player;
 mod pointer;
+mod selecting;
+mod selection;
 mod shop_panel;
 mod ui_style;
 mod view;
@@ -174,8 +177,8 @@ fn main() -> ExitCode {
 }
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD, the
-/// orders, the shop panel and the inventory bar, with the keys of a local match that `pace`
-/// follows, and the models and item names of `packages`.
+/// selection, the orders, the shop panel and the inventory bar, with the keys of a local match
+/// that `pace` follows, and the models and item names of `packages`.
 fn add_ends(
     app: &mut App,
     script: Option<OrderScript>,
@@ -223,6 +226,7 @@ fn add_ends(
             packages: Arc::clone(packages),
         },
         Hud,
+        Selecting,
         Orders,
     ));
     // The item names, the shop and the inventory read the items' books, which a mode of no

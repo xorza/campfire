@@ -4,14 +4,15 @@ use bevy::camera::Camera;
 use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::system::{Query, Res, Single, SystemParam};
 use bevy::math::primitives::InfinitePlane3d;
-use bevy::math::{Vec2, Vec3};
+use bevy::math::{Rect, Vec2, Vec3};
 use bevy::picking::hover::HoverMap;
 use bevy::picking::pointer::PointerId;
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::ui::Node;
 use bevy::window::{PrimaryWindow, Window};
+use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, Unpredicted};
-use campfire_units::Dead;
+use campfire_units::{Dead, Owner};
 use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
@@ -34,19 +35,26 @@ pub(crate) struct Pointer<'w, 's> {
     nodes: Query<'w, 's, (), With<Node>>,
 }
 
-/// The living units the client holds, and the drawing of each.
+/// The living units the client holds: each one's stable id, its team, the player who controls
+/// it, and its drawing.
 type LivingUnits<'w, 's> = Query<
     'w,
     's,
-    (&'static StableId, &'static Team, &'static Drawing),
+    (
+        &'static StableId,
+        &'static Team,
+        Option<&'static Owner>,
+        &'static Drawing,
+    ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
-/// A unit the player may point at: its stable id and its team.
+/// A unit the player may point at: its stable id, its team, and the player who controls it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Pointed {
     pub(crate) id: StableId,
     pub(crate) team: Team,
+    pub(crate) owner: Option<PlayerSlot>,
 }
 
 impl Pointer<'_, '_> {
@@ -60,40 +68,95 @@ impl Pointer<'_, '_> {
         hits.is_some_and(|hits| hits.keys().any(|&hit| self.nodes.contains(hit)))
     }
 
-    /// The player's own avatar, once the client plays and holds it.
-    pub(crate) fn own_avatar(&self) -> Option<Pointed> {
-        Some(Pointed {
-            id: self.own.avatar()?.id,
-            team: self.own.team()?,
-        })
+    /// The cursor's point of the window, in logical pixels from its top left; none when the
+    /// cursor is off the window.
+    pub(crate) fn cursor(&self) -> Option<Vec2> {
+        self.window.cursor_position()
     }
 
     /// The point of the ground under the cursor, when the cursor is over the window and the ground:
     /// the drawn ground of a map with heights, else the plane at height 0.
     pub(crate) fn ground(&self) -> Option<Vec3> {
         let (camera, place) = *self.camera;
-        let cursor = self.window.cursor_position()?;
-        let ray = camera.viewport_to_world(place, cursor).ok()?;
+        let ray = camera.viewport_to_world(place, self.cursor()?).ok()?;
         match self.data.as_deref().and_then(|data| data.heights.as_ref()) {
             Some(heights) => heights.hit(ray.origin, *ray.direction),
             None => ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)),
         }
     }
 
-    /// The living unit, other than the player's own avatar, drawn over `point` of the ground.
-    pub(crate) fn unit_at(&self, point: Vec3) -> Option<Pointed> {
-        let own = self.own_avatar().map(|own| own.id);
+    /// The living unit drawn over `point` of the ground, of those not in `except`, a list in
+    /// stable id order.
+    pub(crate) fn unit_at(&self, point: Vec3, except: &[StableId]) -> Option<Pointed> {
+        debug_assert!(
+            except.is_sorted(),
+            "a binary search needs the list in order"
+        );
+        self.nearest(point, |unit| except.binary_search(&unit.id).is_err())
+    }
+
+    /// The living unit of the player's own drawn over `point` of the ground.
+    pub(crate) fn own_unit_at(&self, point: Vec3) -> Option<StableId> {
+        let slot = self.own.slot();
+        let unit = self.nearest(point, |unit| unit.owned_by(slot))?;
+        Some(unit.id)
+    }
+
+    /// Adds to `out` each living unit of the player's own whose ground point shows within `rect`
+    /// of the window, in logical pixels, edges included.
+    pub(crate) fn own_units_within(&self, rect: Rect, out: &mut Vec<StableId>) {
+        let (camera, place) = *self.camera;
+        let shown = self
+            .drawn()
+            .map(|(unit, at, _)| (unit, camera.world_to_viewport(place, at).ok()));
+        out.extend(shown_within(rect, self.own.slot(), shown));
+    }
+
+    /// Of the living units, the one drawn over `point` that `keep` keeps, as `nearest_over` picks.
+    fn nearest(&self, point: Vec3, keep: impl Fn(Pointed) -> bool) -> Option<Pointed> {
         let drawn = self
-            .units
-            .iter()
-            .filter(|&(&id, _, _)| Some(id) != own)
-            .filter_map(|(&id, &team, drawn)| {
-                let (transform, shape) = self.drawings.get(drawn.root()).ok()?;
-                let center = Vec2::new(transform.translation.x, transform.translation.z);
-                Some((Pointed { id, team }, center, shape.footing))
-            });
+            .drawn()
+            .filter(|&(unit, _, _)| keep(unit))
+            .map(|(unit, at, footing)| (unit, Vec2::new(at.x, at.z), footing));
         nearest_over(Vec2::new(point.x, point.z), drawn)
     }
+
+    /// Each living unit with a drawing: where the drawing stands, and what it covers of the
+    /// ground.
+    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3, Footing)> {
+        self.units.iter().filter_map(|(&id, &team, owner, drawn)| {
+            let (transform, shape) = self.drawings.get(drawn.root()).ok()?;
+            let unit = Pointed {
+                id,
+                team,
+                owner: owner.map(|owner| owner.slot()),
+            };
+            Some((unit, transform.translation, shape.footing))
+        })
+    }
+}
+
+impl Pointed {
+    /// Whether the player of `slot` controls it; a client of no slot, a spectator's, controls no
+    /// unit.
+    fn owned_by(self, slot: Option<PlayerSlot>) -> bool {
+        slot.is_some() && self.owner == slot
+    }
+}
+
+/// Of `units`, each with the point of the window its ground point shows at, if it shows, the
+/// stable ids of those the player of `slot` controls whose point lies within `rect`, edges
+/// included.
+fn shown_within(
+    rect: Rect,
+    slot: Option<PlayerSlot>,
+    units: impl Iterator<Item = (Pointed, Option<Vec2>)>,
+) -> impl Iterator<Item = StableId> {
+    units
+        .filter(move |&(unit, shown)| {
+            unit.owned_by(slot) && shown.is_some_and(|shown| rect.contains(shown))
+        })
+        .map(|(unit, _)| unit.id)
 }
 
 /// Of the drawings on the ground, each a unit's center and what it covers, the unit whose drawing
@@ -130,6 +193,7 @@ mod tests {
         let mut unit = || Pointed {
             id: ids.allocate(),
             team: Team::new(0),
+            owner: None,
         };
         // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25,
         // an avatar at x = 4, and a unit of a higher id drawn where the first stands.
@@ -167,5 +231,42 @@ mod tests {
         let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), drawings.into_iter());
         assert_eq!(at(10.4, 1.9), Some(building));
         assert_eq!(at(11.0, 0.0), None);
+    }
+
+    #[test]
+    fn a_drag_selects_the_players_own_units_shown_within_its_rectangle() {
+        let mut ids = IdAllocator::default();
+        let (own, other) = (PlayerSlot::new(0), PlayerSlot::new(1));
+        let mut unit = |owner: Option<PlayerSlot>| Pointed {
+            id: ids.allocate(),
+            team: Team::new(0),
+            owner,
+        };
+        // A rectangle from (10, 20) to (110, 70), dragged from its bottom right corner.
+        let rect = Rect::from_corners(Vec2::new(110.0, 70.0), Vec2::new(10.0, 20.0));
+        let [inside, edge, outside, behind, others, unowned] = [
+            unit(Some(own)),
+            unit(Some(own)),
+            unit(Some(own)),
+            unit(Some(own)),
+            unit(Some(other)),
+            unit(None),
+        ];
+        let units = [
+            // Inside; on the left edge; 0.5 px past the bottom edge; behind the camera, shown
+            // nowhere.
+            (inside, Some(Vec2::new(60.0, 45.0))),
+            (edge, Some(Vec2::new(10.0, 50.0))),
+            (outside, Some(Vec2::new(60.0, 70.5))),
+            (behind, None),
+            // Inside, another player's, and no player's.
+            (others, Some(Vec2::new(60.0, 45.0))),
+            (unowned, Some(Vec2::new(60.0, 45.0))),
+        ];
+        let within = |slot| shown_within(rect, slot, units.into_iter()).collect::<Vec<_>>();
+        assert_eq!(within(Some(own)), [inside.id, edge.id]);
+        assert_eq!(within(Some(other)), [others.id]);
+        // A spectator, of no slot, controls none, not even a unit no player controls.
+        assert_eq!(within(None), []);
     }
 }

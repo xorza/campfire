@@ -4,17 +4,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 **Slice 5, units that drive.** The user starts Tournament Desert in the client, finds America's command center and dozer at their start, selects the dozer, and drives it round the cliffs to the other start, at its speed and turn rate, on the drawn ground. The design is [Units that drive](docs/design/17-units-that-drive.md); the facts are [Zero Hour research](docs/research/zero-hour.md#movement). The Zero Hour check plays the drive, and loads every imported map.
 
-## 1. The selection
+## 1. Zero Hour's units drive
 
-`client`: `orders`, `pointer`, `view`.
-
-### U5. Select and order a group
-
-(`client`; Units that drive D7.) The client gains a selection of the player's own units: a left click on one selects it alone, a left drag the units whose ground point lies in its rectangle, and a click or a drag that meets none leaves the selection as it is; a right click sends the selection one group order, an attack on an enemy under the cursor, else a move to the ground point; the selection starts as the avatar. `view` draws a ring under each selected unit, of its radius. The ability and item keys act on the avatar as now. Check: each click, drag and right click on a fixture of units gives the selection and the order computed by hand; the proving mode plays as now.
-
-## 2. Zero Hour's units drive
-
-`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. Last, as it needs the turn rate, the load's rules and the selection to play.
+`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. It needs the turn rate, the load's rules and the selection to play.
 
 ### U6. Unit types move and have bodies
 

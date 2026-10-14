@@ -1,3 +1,5 @@
+use std::slice;
+
 use bevy::app::{App, Plugin, Update};
 use bevy::ecs::query::Allow;
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -14,16 +16,18 @@ use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_progression::ProgressionAction;
 use campfire_sim::{Position, StableId, Unpredicted};
+use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
-use crate::pointer::Pointer;
-use crate::view::ViewSystems;
+use crate::pointer::{Pointed, Pointer};
+use crate::selection::{Selection, SelectionSystems};
 
-/// Turns the player's clicks and keys into orders for their avatar: a right click on an enemy
-/// attacks it, and anywhere else but the UI walks there; Q, W, E and R cast the abilities of slots 0 to 3,
-/// and with Ctrl held learn their next rank; 1 to 6 cast the actions of the inventory's slots; S
-/// stops it. A key aims as its slot's action takes: at the unit under the cursor, at the ground
-/// point under it, or at nothing (design 13, D11).
+/// Turns the player's clicks and keys into orders: a right click orders the selection, as one
+/// group order, to attack an enemy under the cursor, and anywhere else but the UI to walk there,
+/// and S stops it (design 17, D7); Q, W, E and R cast the avatar's abilities of slots 0 to 3, and
+/// with Ctrl held learn their next rank; 1 to 6 cast the actions of its inventory's slots. A key
+/// aims as its slot's action takes: at the unit under the cursor, at the ground point under it,
+/// or at nothing (design 13, D11).
 #[derive(Debug)]
 pub(crate) struct Orders;
 
@@ -56,29 +60,30 @@ impl Plugin for Orders {
                 Orders::cast.run_if(Orders::cast_pressed),
                 Orders::stop.run_if(input_just_pressed(STOP_KEY)),
             )
-                .after(ViewSystems),
+                .after(SelectionSystems),
         );
     }
 }
 
 impl Orders {
-    fn click(pointer: Pointer<'_, '_>, mut orders: ResMut<'_, PendingOrders>) {
+    fn click(
+        pointer: Pointer<'_, '_>,
+        own: OwnPlayer<'_, '_>,
+        selection: Res<'_, Selection>,
+        mut orders: ResMut<'_, PendingOrders>,
+    ) {
         if pointer.over_ui() {
             return;
         }
-        let (Some(avatar), Some(point)) = (pointer.own_avatar(), pointer.ground()) else {
+        let Some(point) = pointer.ground() else {
             return;
         };
-        let action = match pointer.unit_at(point) {
-            Some(unit) if unit.team != avatar.team => OrdersAction::Attack { target: unit.id },
-            _ => {
-                let (Some(x), Some(z)) = (meters(point.x), meters(point.z)) else {
-                    return;
-                };
-                OrdersAction::Move { x, z }
-            }
-        };
-        orders.push(Order::one(avatar.id, action));
+        let under = pointer.unit_at(point, selection.get());
+        let order = Orders::click_action(under, own.team(), point)
+            .and_then(|action| selection.order(action));
+        if let Some(order) = order {
+            orders.push(order);
+        }
     }
 
     fn cast(
@@ -96,7 +101,7 @@ impl Orders {
         };
         let ground = pointer.ground();
         let under = ground
-            .and_then(|point| pointer.unit_at(point))
+            .and_then(|point| pointer.unit_at(point, slice::from_ref(&avatar.id)))
             .map(|unit| unit.id);
         let point = ground.and_then(position);
         let learn = keys.any_pressed(LEARN_KEYS);
@@ -128,9 +133,28 @@ impl Orders {
         }
     }
 
-    fn stop(pointer: Pointer<'_, '_>, mut orders: ResMut<'_, PendingOrders>) {
-        if let Some(avatar) = pointer.own_avatar() {
-            orders.push(Order::one(avatar.id, OrdersAction::Stop));
+    fn stop(selection: Res<'_, Selection>, mut orders: ResMut<'_, PendingOrders>) {
+        if let Some(order) = selection.order(OrdersAction::Stop) {
+            orders.push(order);
+        }
+    }
+
+    /// What a right click at `point` of the ground orders a player of `team`: an attack on
+    /// `under`, the unit under the cursor, when it is of another team, else a move to the point;
+    /// none far off any map.
+    fn click_action(
+        under: Option<Pointed>,
+        team: Option<Team>,
+        point: Vec3,
+    ) -> Option<OrdersAction> {
+        match under {
+            Some(unit) if team.is_some_and(|team| unit.team != team) => {
+                Some(OrdersAction::Attack { target: unit.id })
+            }
+            _ => Some(OrdersAction::Move {
+                x: meters(point.x)?,
+                z: meters(point.z)?,
+            }),
         }
     }
 
@@ -252,5 +276,35 @@ mod tests {
             Orders::slot_action(2, true, target),
             Action::Progression(ProgressionAction::Learn { slot: 2 })
         );
+    }
+
+    #[test]
+    fn a_right_click_attacks_an_enemy_under_the_cursor_and_else_walks_to_the_ground_point() {
+        let mut ids = IdAllocator::default();
+        let (north, south) = (Team::new(0), Team::new(1));
+        let mut unit = |team| Pointed {
+            id: ids.allocate(),
+            team,
+            owner: None,
+        };
+        let (enemy, friend) = (unit(south), unit(north));
+        let point = Vec3::new(3.0, 1.0, -2.5);
+        // To (3, −2.5): x = 3, z = −5 / 2, the height not sent.
+        let walk = Some(OrdersAction::Move {
+            x: Num::int(3),
+            z: Num::int(-5) / Num::int(2),
+        });
+        let click = |under, team| Orders::click_action(under, team, point);
+        assert_eq!(
+            click(Some(enemy), Some(north)),
+            Some(OrdersAction::Attack { target: enemy.id })
+        );
+        assert_eq!(click(Some(friend), Some(north)), walk);
+        assert_eq!(click(None, Some(north)), walk);
+        // A client of no team has no enemy.
+        assert_eq!(click(Some(enemy), None), walk);
+        // A ground point far off any map orders nothing.
+        let far = Vec3::new(1e15, 0.0, 0.0);
+        assert_eq!(Orders::click_action(None, Some(north), far), None);
     }
 }

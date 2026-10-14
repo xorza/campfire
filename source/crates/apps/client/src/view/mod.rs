@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
+use std::f32::consts::FRAC_PI_2;
 
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
 use bevy::asset::{Assets, Handle};
 use bevy::camera::ClearColor;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
@@ -15,7 +17,7 @@ use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
 use bevy::material::AlphaMode;
-use bevy::math::primitives::{Capsule3d, Cuboid, Cylinder, Plane3d, Sphere};
+use bevy::math::primitives::{Annulus, Capsule3d, Cuboid, Cylinder, Plane3d, Sphere};
 use bevy::math::{EulerRot, Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
@@ -28,11 +30,12 @@ use campfire_areas::{Area, AreaReach};
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
 use campfire_projectiles::Projectile;
-use campfire_sim::{EntityIndex, Position, Unpredicted};
+use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Body, BodyUnit, Dead, Facing, MoveStep, Owner};
 use campfire_values::{Team, UnitType};
 use lightyear::prelude::Predicted;
 
+use crate::selection::{Selection, SelectionSystems};
 use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
@@ -85,6 +88,17 @@ struct Palette {
     /// By team index: the first playing team, the second, and any other.
     teams: [Handle<StandardMaterial>; 3],
     dead: Handle<StandardMaterial>,
+    /// A flat ring whose inner radius is 1, which a selected unit's ring scales to its reach.
+    ring: Handle<Mesh>,
+    selected: Handle<StandardMaterial>,
+}
+
+/// The ring under a selected unit, a child of the root of the unit's drawing, which the unit's
+/// despawn takes along.
+#[derive(Debug, Clone, Copy)]
+struct Ringed {
+    unit: StableId,
+    ring: Entity,
 }
 
 /// On a drawing's root that turns as its unit faces: one of models, which turn whole; a figure
@@ -167,6 +181,11 @@ type NewAreas<'w, 's> = Query<
 const AREA_THICKNESS: f32 = 0.02;
 const AREA_LIFT: f32 = 0.03;
 
+/// A selected unit's ring: its width, as a share of its inner radius, and how far over the
+/// ground it lies, over an area's disc and under the HUD's target ring.
+const RING_WIDTH: f32 = 0.12;
+const RING_LIFT: f32 = 0.035;
+
 /// The match's end, in the frame it reaches the match's entity, which the client holds
 /// unpredicted.
 type Ended<'w, 's> = Query<'w, 's, &'static MatchEnd, (Added<MatchEnd>, Allow<Unpredicted>)>;
@@ -198,6 +217,12 @@ impl Plugin for View {
                 .in_set(ViewSystems),
         );
         app.add_systems(Update, View::show_end);
+        app.add_systems(
+            Update,
+            View::ring_selection
+                .after(ViewSystems)
+                .after(SelectionSystems),
+        );
     }
 }
 
@@ -247,6 +272,12 @@ impl View {
             reach: materials.add(StandardMaterial {
                 base_color: Color::srgba(1.0, 0.6, 0.2, 0.35),
                 alpha_mode: AlphaMode::Blend,
+                ..StandardMaterial::default()
+            }),
+            ring: meshes.add(Annulus::new(1.0, 1.0 + RING_WIDTH).mesh()),
+            selected: materials.add(StandardMaterial {
+                base_color: Color::srgb(0.3, 0.95, 0.4),
+                unlit: true,
                 ..StandardMaterial::default()
             }),
         };
@@ -553,6 +584,62 @@ impl View {
                 glide.head(drawn, to, time.elapsed());
             }
         }
+    }
+
+    /// Rings each selected unit on the ground, at its reach, once its drawing stands, and takes
+    /// the ring from a unit that leaves the selection. It looks again when the selection
+    /// changes, or while a selected unit waits for its drawing.
+    fn ring_selection(
+        selection: Res<'_, Selection>,
+        index: Res<'_, EntityIndex>,
+        palette: Res<'_, Palette>,
+        units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
+        shapes: Query<'_, '_, &Shape>,
+        mut ringed: Local<'_, Vec<Ringed>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let selected = selection.get();
+        if !selection.is_changed() && ringed.len() == selected.len() {
+            return;
+        }
+        ringed.retain(|ringed| {
+            let kept = selected.binary_search(&ringed.unit).is_ok();
+            if !kept {
+                commands.entity(ringed.ring).try_despawn();
+            }
+            kept
+        });
+        let before = ringed.len();
+        for &unit in selected {
+            if ringed[..before]
+                .binary_search_by_key(&unit, |ringed| ringed.unit)
+                .is_ok()
+            {
+                continue;
+            }
+            let Some(root) = index
+                .get(unit)
+                .and_then(|unit| units.get(unit).ok())
+                .map(Drawing::root)
+            else {
+                continue;
+            };
+            let Ok(shape) = shapes.get(root) else {
+                continue;
+            };
+            let ring = commands
+                .spawn((
+                    Mesh3d(palette.ring.clone()),
+                    MeshMaterial3d(palette.selected.clone()),
+                    Transform::from_translation(Vec3::Y * RING_LIFT)
+                        .with_rotation(Quat::from_rotation_x(-FRAC_PI_2))
+                        .with_scale(Vec3::splat(shape.reach())),
+                    ChildOf(root),
+                ))
+                .id();
+            ringed.push(Ringed { unit, ring });
+        }
+        ringed.sort_unstable_by_key(|ringed| ringed.unit);
     }
 
     /// Moves each root along its glide, by the fixed clock as it runs now, at any speed of a

@@ -1,4 +1,3 @@
-use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
 use bevy::asset::{AssetApp, AssetPlugin, AssetServer};
@@ -9,6 +8,7 @@ use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
+use campfire_common::PlayerSlot;
 use campfire_math::Num;
 use campfire_mode::HeightGrid;
 use campfire_package::{ClientModel, ClientUnit, ClientUnits, ModelScale};
@@ -23,13 +23,14 @@ use crate::view::unit_looks::ModelParts;
 /// units take the figure of their team.
 const UNDRAWN: UnitType = UnitType::new(0);
 
-/// A view with no window, whose clock moves only as a test sets it.
+/// A view with no window and an empty selection, whose clock moves only as a test sets it.
 fn view() -> App {
     let mut app = App::new();
     app.add_plugins((TimePlugin, AssetPlugin::default()));
     app.init_asset::<Mesh>();
     app.init_asset::<StandardMaterial>();
     app.init_resource::<EntityIndex>();
+    app.init_resource::<Selection>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     Unpredicted::register(app.world_mut());
     app.add_plugins(View);
@@ -344,4 +345,65 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     let disc = world.get::<Transform>(disc).unwrap();
     assert_eq!(disc.scale, Vec3::new(2.5, 1.0, 2.5));
     assert_eq!(disc.translation, Vec3::Y * AREA_LIFT);
+}
+
+#[test]
+fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selection() {
+    let mut app = view();
+    let mut ids = IdAllocator::default();
+    let team = Team::new(0);
+    let [tower_id, hero_id] = [ids.allocate(), ids.allocate()];
+    let tower = app
+        .world_mut()
+        .spawn((tower_id, BodyUnit, Position::from((0, 0, 0)), team, UNDRAWN))
+        .id();
+    // The rings under `unit`'s drawing: the scale of each.
+    let rings = |world: &World, unit: Entity| -> Vec<Vec3> {
+        let ring = &world.resource::<Palette>().ring;
+        let root = world.get::<Drawing>(unit).unwrap().root();
+        world
+            .get::<Children>(root)
+            .unwrap()
+            .iter()
+            .copied()
+            .filter(|&child| {
+                world
+                    .get::<Mesh3d>(child)
+                    .is_some_and(|mesh| mesh.0 == *ring)
+            })
+            .map(|child| {
+                let transform = world.get::<Transform>(child).unwrap();
+                assert_eq!(transform.translation, Vec3::Y * RING_LIFT);
+                transform.scale
+            })
+            .collect()
+    };
+    // The tower and the hero, not held yet, selected: the tower, of no owner and no walk, is a
+    // structure of reach 0.9 m, ringed as it is drawn.
+    app.world_mut()
+        .resource_mut::<Selection>()
+        .pick(&[tower_id, hero_id]);
+    app.update();
+    assert_eq!(rings(app.world(), tower), [Vec3::splat(0.9)]);
+    // The hero arrives, a player's, of reach 0.5 m: ringed as it is drawn, with no change of the
+    // selection.
+    let hero = app
+        .world_mut()
+        .spawn((
+            hero_id,
+            BodyUnit,
+            Position::from((4, 0, 0)),
+            team,
+            UNDRAWN,
+            Owner::new(PlayerSlot::new(0)),
+        ))
+        .id();
+    app.update();
+    assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
+    assert_eq!(rings(app.world(), tower).len(), 1);
+    // The hero alone selected: the tower's ring goes, the hero keeps its one.
+    app.world_mut().resource_mut::<Selection>().pick(&[hero_id]);
+    app.update();
+    assert_eq!(rings(app.world(), tower), []);
+    assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
 }
