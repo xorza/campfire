@@ -440,14 +440,16 @@ fn crates() -> Vec<Crate> {
             .any(|inner: &DirEntry| inner.name == "Cargo.toml")
         {
             let manifest = read(dir.join("Cargo.toml").to_str().unwrap());
+            // Joined by `/` on every OS, as a source file's path is.
+            let path: Vec<&str> = dir
+                .strip_prefix(source())
+                .unwrap()
+                .components()
+                .map(|part| part.as_os_str().to_str().unwrap())
+                .collect();
             found.push(Crate {
                 folder: dir.file_name().unwrap().to_str().unwrap().to_owned(),
-                path: dir
-                    .strip_prefix(source())
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_owned(),
+                path: path.join("/"),
                 name: package_name(&manifest).to_owned(),
                 manifest,
             });
