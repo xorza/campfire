@@ -37,6 +37,11 @@ fn view() -> App {
     app
 }
 
+/// A spot at `point`, turned none, as a unit of no facing stands.
+const fn still(point: Vec3) -> Spot {
+    Spot { point, yaw: 0.0 }
+}
+
 /// The root of `entity`'s drawing, its glide, and where it stands.
 fn root(world: &World, entity: Entity) -> (Entity, Glide, Vec3) {
     let root = world.get::<Drawing>(entity).unwrap().root();
@@ -90,7 +95,7 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     assert_eq!(
         (glide, at),
         (
-            Glide::ticked(Vec3::new(2.0, 0.0, 3.0)),
+            Glide::ticked(still(Vec3::new(2.0, 0.0, 3.0))),
             Vec3::new(2.0, 0.0, 3.0)
         )
     );
@@ -99,7 +104,7 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     assert!(world.get::<Figure>(figure).is_some());
     assert_eq!(
         root(world, received).1,
-        Glide::timed(Vec3::ZERO, Duration::ZERO)
+        Glide::timed(still(Vec3::ZERO), Duration::ZERO)
     );
 
     // The predicted unit moves to x = 4 in a tick; the received one's new place, x = 2, arrives.
@@ -111,13 +116,13 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     app.update();
     let world = app.world();
     let ticked = Glide::Ticked {
-        before: Vec3::new(2.0, 0.0, 3.0),
-        last: Vec3::new(4.0, 0.0, 3.0),
+        before: still(Vec3::new(2.0, 0.0, 3.0)),
+        last: still(Vec3::new(4.0, 0.0, 3.0)),
     };
     assert_eq!(root(world, predicted).1, ticked);
     let timed = Glide::Timed {
-        from: Vec3::ZERO,
-        to: Vec3::new(2.0, 0.0, 0.0),
+        from: still(Vec3::ZERO),
+        to: still(Vec3::new(2.0, 0.0, 0.0)),
         since: Duration::ZERO,
     };
     assert_eq!(root(world, received).1, timed);
@@ -136,6 +141,18 @@ fn a_drawing_follows_its_units_clock_and_goes_with_it() {
     let world = app.world();
     assert_eq!(root(world, predicted).2, Vec3::new(3.0, 0.0, 3.0));
     assert_eq!(root(world, received).2, Vec3::new(1.0, 0.0, 0.0));
+
+    // The received unit turns to face 90° and stands: its drawing glides from where it stands
+    // to that yaw, π/2.
+    app.world_mut()
+        .entity_mut(received)
+        .insert(Facing::of(Num::int(90)));
+    app.update();
+    let Glide::Timed { from, to, .. } = root(app.world(), received).1 else {
+        panic!("a received unit's glide is timed");
+    };
+    assert_eq!(from.point, Vec3::new(1.0, 0.0, 0.0));
+    assert_eq!((to.point, to.yaw), (Vec3::new(2.0, 0.0, 0.0), FRAC_PI_2));
 
     // Gone, a unit takes its whole drawing along.
     app.world_mut().despawn(predicted);
@@ -267,12 +284,16 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         .id();
     app.update();
     let world = app.world();
-    // Its root stands at the ground's 4 m and its own 2 m, with its shape and no figure; its one
-    // child is its model, turned a quarter about y, at its scale of 1.25, with the node its look
-    // hides.
+    // Its root stands at the ground's 4 m and its own 2 m, turned a quarter about y, with its
+    // shape and no figure, and turns as its unit faces; its one child is its model, at its scale
+    // of 1.25, with the node its look hides.
     let (root, _, translation) = root(world, unit);
     assert_eq!(translation, Vec3::new(3.0, 6.0, 0.0));
     assert!(world.get::<Shape>(root).is_some() && world.get::<Look>(root).is_none());
+    assert!(world.get::<Turns>(root).is_some());
+    let turn = Quat::from_rotation_y(90.0_f32.to_radians());
+    let turned = world.get::<Transform>(root).unwrap().rotation;
+    assert!(turned.abs_diff_eq(turn, 1e-6), "{turned}");
     let children = world.get::<Children>(root).unwrap();
     assert_eq!(children.len(), 1);
     let model = world.entity(children[0]);
@@ -285,8 +306,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         })
     );
     let transform = model.get::<Transform>().unwrap();
-    let turn = Quat::from_rotation_y(90.0_f32.to_radians());
-    assert!(transform.rotation.abs_diff_eq(turn, 1e-6));
+    assert_eq!(transform.rotation, Quat::IDENTITY);
     assert_eq!(transform.scale, Vec3::splat(1.25));
 }
 

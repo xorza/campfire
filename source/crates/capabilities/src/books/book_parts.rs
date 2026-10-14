@@ -14,7 +14,7 @@ use campfire_production::{
 use campfire_progression::{TrackBook, TrackSet};
 use campfire_projectiles::ProjectileSpec;
 use campfire_stats::{Life, ModifierBook, ParamTables, Pools};
-use campfire_units::{BodyForm, MoveStep, UnitTypeBook};
+use campfire_units::{BodyForm, MoveStep, TurnStep, UnitTypeBook};
 use campfire_vision::Sight;
 
 /// What the builder loads package by package: the unit types and tags, the tracks, the
@@ -39,6 +39,7 @@ pub(crate) struct BookParts {
     pub(super) pools: ByType<Pools>,
     pub(super) deaths: ByType<OnDeath>,
     pub(super) steps: ByType<MoveStep>,
+    pub(super) turns: ByType<TurnStep>,
     pub(super) bodies: ByType<BodyForm>,
     /// The tracks of each type that gains experience.
     pub(super) type_tracks: ByType<TrackSet>,

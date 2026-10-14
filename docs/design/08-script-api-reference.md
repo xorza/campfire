@@ -305,6 +305,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `layers` | navigation | since 1.0 |
+| `spawn_tags` | navigation | since 1.0 |
 
 ### A slot kind, `[[slots]]`
 

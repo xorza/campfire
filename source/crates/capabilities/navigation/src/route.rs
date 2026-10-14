@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::{ArrivedShort, UnitEntity};
+use campfire_units::{ArrivedShort, Facing, UnitEntity};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -13,8 +13,8 @@ use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 
 /// A walker's long route to its destination: the goal it serves, with its ask while it waits for
-/// the planner, and the waypoints of the route planned last, the next one first among those left.
-/// A unit with no destination has no goal, and so no ask.
+/// the planner, the waypoints of the route planned last, the next one first among those left,
+/// and where the leg to the next began. A unit with no destination has no goal, and so no ask.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[require(ArrivedShort)]
 pub struct Route {
@@ -23,6 +23,9 @@ pub struct Route {
     next: u32,
     /// Whether the last waypoint is the goal, not the nearest place to it the walker reaches.
     reached: bool,
+    /// Where the leg to the next waypoint began: the walker's place as the route or its last
+    /// detour began, or the waypoint it passed last; none before its first route.
+    from: Option<Position>,
 }
 
 /// Where a route goes, and its ask while it waits for one.
@@ -92,8 +95,9 @@ impl Route {
         }
     }
 
-    /// Takes the planner's answer to its ask: `waypoints`, the last the goal when `reached`.
-    pub(crate) fn answer(&mut self, waypoints: &[Position], reached: bool) {
+    /// Takes the planner's answer to its ask: `waypoints`, the last the goal when `reached`, from
+    /// the walker's place `from`.
+    pub(crate) fn answer(&mut self, from: Position, waypoints: &[Position], reached: bool) {
         let goal = self
             .goal
             .as_mut()
@@ -103,6 +107,7 @@ impl Route {
         self.waypoints.extend_from_slice(waypoints);
         self.next = 0;
         self.reached = reached;
+        self.from = Some(from);
     }
 
     /// Serves `goal` in place of the goal the route reaches, as its last waypoint.
@@ -125,6 +130,7 @@ impl Route {
         self.waypoints.clear();
         self.next = 0;
         self.reached = false;
+        self.from = None;
     }
 
     /// The waypoints the walker has yet to reach, the next first.
@@ -132,9 +138,16 @@ impl Route {
         &self.waypoints[self.next as usize..]
     }
 
-    /// Goes by `short` in place of the next `skipped` waypoints. When it replaces the last, the
-    /// route ends on the goal only if `reached`: if `short` ends on it.
-    pub(crate) fn splice(&mut self, short: &[Position], skipped: usize, reached: bool) {
+    /// Goes by `short` in place of the next `skipped` waypoints, from the walker's place `from`.
+    /// When it replaces the last, the route ends on the goal only if `reached`: if `short` ends
+    /// on it.
+    pub(crate) fn splice(
+        &mut self,
+        from: Position,
+        short: &[Position],
+        skipped: usize,
+        reached: bool,
+    ) {
         let ahead = self.next as usize;
         if ahead + skipped == self.waypoints.len() {
             self.reached = reached;
@@ -142,12 +155,29 @@ impl Route {
         self.waypoints
             .splice(..ahead + skipped, short.iter().copied());
         self.next = 0;
+        self.from = Some(from);
     }
 
-    /// Marks the next waypoint reached.
+    /// Marks the next waypoint reached, where the next leg begins.
     pub(crate) fn advance(&mut self) {
         debug_assert!(!self.ahead().is_empty());
+        self.from = Some(self.waypoints[self.next as usize]);
         self.next += 1;
+    }
+
+    /// The way the walker faces on its leg to the next waypoint: from where the leg began to the
+    /// waypoint, so it holds for the whole leg, whatever each step's rounding (design 17, D2);
+    /// past a leg of no length, the next leg's. None with no waypoint ahead off where it stands.
+    pub fn way(&self) -> Option<Facing> {
+        let mut from = self.from?.get();
+        for waypoint in self.ahead() {
+            let to = waypoint.get();
+            if let Some(way) = Facing::along([to.x - from.x, to.z - from.z]) {
+                return Some(way);
+            }
+            from = to;
+        }
+        None
     }
 }
 
@@ -167,7 +197,8 @@ impl Replication for Route {
     type Sending = SentPredicted;
 }
 
-/// A snapshot is untrusted, so a next waypoint past the last fails to decode.
+/// A snapshot is untrusted, so a next waypoint past the last, or waypoints ahead with no place
+/// their leg began, fail to decode.
 impl<'de> Deserialize<'de> for Route {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -176,21 +207,82 @@ impl<'de> Deserialize<'de> for Route {
             waypoints: Vec<Position>,
             next: u32,
             reached: bool,
+            from: Option<Position>,
         }
         let Fields {
             goal,
             waypoints,
             next,
             reached,
+            from,
         } = Fields::deserialize(deserializer)?;
         if next as usize > waypoints.len() {
             return Err(D::Error::custom("a route's next waypoint past its last"));
+        }
+        if from.is_none() && (next as usize) < waypoints.len() {
+            return Err(D::Error::custom("a route's leg with no start"));
         }
         Ok(Route {
             goal,
             waypoints,
             next,
             reached,
+            from,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Binary;
+    use campfire_math::Num;
+
+    use super::*;
+
+    #[test]
+    fn a_route_faces_each_legs_way_from_where_the_leg_began() {
+        let at = |x: i16, z: i16| Position::from((x, 0, z));
+        let degrees = |route: &Route| route.way().map(Facing::degrees);
+        let mut route = Route::default();
+        assert_eq!(degrees(&route), None);
+        // From (0, 0), to (0, 0) again, then (4, 0), then (4, −3): the leg of no length is passed
+        // over, so the way is along `x`, 0°.
+        route.ask(at(4, -3), Tick::new(0), None);
+        route.answer(at(0, 0), &[at(0, 0), at(4, 0), at(4, -3)], true);
+        assert_eq!(degrees(&route), Some(Num::ZERO));
+        // Past (0, 0) and (4, 0), the leg from (4, 0) to (4, −3) is along `−z`, 90°, wherever
+        // the walker stands on it.
+        route.advance();
+        route.advance();
+        assert_eq!(degrees(&route), Some(Num::int(90)));
+        // A detour from (5, −1) to (4, −1), along `−x`, 180°, in place of the next waypoint.
+        route.splice(at(5, -1), &[at(4, -1)], 0, false);
+        assert_eq!(degrees(&route), Some(Num::int(180)));
+        // At the end, none; cleared, none.
+        route.advance();
+        route.advance();
+        assert_eq!(degrees(&route), None);
+        route.clear();
+        assert_eq!(degrees(&route), None);
+    }
+
+    #[test]
+    fn a_route_of_waypoints_ahead_and_no_leg_start_does_not_decode() {
+        let mut route = Route::default();
+        route.ask(Position::from((1, 0, 0)), Tick::new(0), None);
+        route.answer(
+            Position::from((0, 0, 0)),
+            &[Position::from((1, 0, 0))],
+            true,
+        );
+        assert_eq!(
+            Binary::decode::<Route>(&Binary::encode(&route)).ok(),
+            Some(route.clone())
+        );
+        route.from = None;
+        assert!(Binary::decode::<Route>(&Binary::encode(&route)).is_err());
+        // Past its last waypoint, it needs none.
+        route.next = 1;
+        assert!(Binary::decode::<Route>(&Binary::encode(&route)).is_ok());
     }
 }

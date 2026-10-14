@@ -249,7 +249,7 @@ mod tests {
         let goal = eighths(64, 0);
         let mut route = Route::default();
         route.ask(goal, Tick::new(0), None);
-        route.answer(&[goal], true);
+        route.answer(eighths(7, 0), &[goal], true);
         let steered = Steered {
             id,
             pos: eighths(7, 0),
@@ -288,7 +288,7 @@ mod tests {
         let goal = eighths(48, 0);
         let mut route = Route::default();
         route.ask(goal, Tick::new(0), None);
-        route.answer(&[goal], true);
+        route.answer(eighths(0, 0), &[goal], true);
         let detours = [true, false].map(|gathering| {
             let mut planner = RoutePlanner::new(&cells);
             let mut steering = Steering::default();

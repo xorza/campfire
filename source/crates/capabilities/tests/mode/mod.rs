@@ -547,6 +547,7 @@ fn mode_files() -> ModeFiles {
                 layers: ["ground", "air"]
                     .map(|name| DeclaredName::new(name).unwrap())
                     .into(),
+                spawn_tags: Vec::new(),
             },
             slots: slot_kinds(),
             choices: choices(),

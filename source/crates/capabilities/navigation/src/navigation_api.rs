@@ -83,7 +83,7 @@ impl NavigationApi {
             ctx.queue(teleport.map_err(ApiError::fail)?)
         })
         .shared_data(DataTable::Mode, &["navigation"], &[])
-        .data::<ModeNavigationData>(&["layers"], &[]);
+        .data::<ModeNavigationData>(&["layers", "spawn_tags"], &[]);
     }
 
     fn dash(ctx: &Ctx, unit: &Unit, to: DashTo, speed: Num) -> Checked<()> {

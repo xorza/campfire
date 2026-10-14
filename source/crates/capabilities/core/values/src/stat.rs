@@ -23,6 +23,7 @@ campfire_common::enum_all! {
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub enum EngineStat {
         MoveSpeed,
+        TurnRate,
     }
     pub const ALL;
 }
@@ -37,6 +38,7 @@ impl EngineStat {
     pub const fn name(self) -> &'static str {
         match self {
             EngineStat::MoveSpeed => "move_speed",
+            EngineStat::TurnRate => "turn_rate",
         }
     }
 }
@@ -100,6 +102,7 @@ mod tests {
             Stat::deserialize(IntoDeserializer::<value::Error>::into_deserializer(name)).unwrap()
         };
         assert_eq!(read("move_speed"), Stat::Engine(EngineStat::MoveSpeed));
+        assert_eq!(read("turn_rate"), Stat::Engine(EngineStat::TurnRate));
         assert_eq!(read("armor"), armor);
     }
 }

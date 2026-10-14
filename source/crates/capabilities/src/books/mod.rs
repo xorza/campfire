@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_declare::ByType;
-use campfire_mode::ModeInputs;
+use campfire_mode::{ModeInputs, WalkCheck};
 use campfire_navigation::{MapProblem, Walker};
 use campfire_script::View;
 use campfire_units::{BodyForm, MapBook, UnitTypeBook};
@@ -38,6 +38,8 @@ pub struct Books {
     built: BuiltBooks,
     damage_kinds: Arc<Names<DamageKind>>,
     resources: Arc<Names<ResourceId>>,
+    /// The tags of the markers the mode's units spawn at, which the map's walk check reads.
+    spawn_tags: Box<[DeclaredName]>,
     inputs: ModeInputs,
 }
 
@@ -78,8 +80,13 @@ impl Books {
         let ground = self.built.get::<MapBook>().expect("the ground is built");
         let navigation = self.built.get().expect("the paths and walls are built");
         let load = &self.inputs.load;
-        load.map
-            .check_walkable(ground, navigation, &load.walkers, body_of, name_of)
+        let check = WalkCheck {
+            ground,
+            navigation,
+            walkers: &load.walkers,
+            spawn_tags: &self.spawn_tags,
+        };
+        load.map.check_walkable(check, body_of, name_of)
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
@@ -92,6 +99,7 @@ impl Books {
             damage_kinds,
             resources,
             inputs,
+            ..
         } = self;
         {
             let view = world.non_send::<View>();

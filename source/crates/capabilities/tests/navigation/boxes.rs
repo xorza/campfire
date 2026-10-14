@@ -189,12 +189,13 @@ fn a_dash_at_a_box_ends_touching_it() {
 }
 
 #[test]
-fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
+fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_that_stand() {
     // Boxes of 2 by 2 m, a tower of 0.9 m at (5, 2), and a building from (6, 0) to (8, 1), in the
-    // corridor from (0, 0) to (10, 4). A box at (3, 2) ends 1.1 m from the tower's center, clear
-    // of its 0.9 m; one at (4.2, 2) overlaps it. One at (7, 1.5) overlaps the building, and one at
-    // (7, 2.5) clears it. One at (9.5, 2) reaches past the bounds. Two side by side at (1, 2) and
-    // (3, 2) touch, and have room; at (1, 2) and (2.5, 2) they overlap, and the second is refused.
+    // corridor from (0, 0) to (10, 4). A box at (3, 2) clears the tower; one at (4.2, 2) overlaps
+    // it, and loads, as the bodies block alike (design 17, D5). One at (7, 1.5) overlaps the
+    // building's wall, and loads too, as one at (7, 2.5) does. One at (9.5, 2) reaches past the
+    // bounds, and is refused. Two side by side at (1, 2) and (3, 2) touch, and two at (1, 2) and
+    // (2.5, 2) overlap: both load.
     let point = MapPoint::ground;
     let rules = ModeNavigationData::default();
     let body_of = |unit_type: &str| match unit_type {
@@ -231,8 +232,8 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
     let num = |text: &str| text.parse::<Num>().unwrap();
     // The tower and the creep come first among the placed units, at 0 and 1.
     assert_eq!(check(&[(num("3"), num("2"))], false), Ok(()));
-    assert_eq!(check(&[(num("4.2"), num("2"))], false), blocked(2));
-    assert_eq!(check(&[(num("7"), num("1.5"))], true), blocked(2));
+    assert_eq!(check(&[(num("4.2"), num("2"))], false), Ok(()));
+    assert_eq!(check(&[(num("7"), num("1.5"))], true), Ok(()));
     assert_eq!(check(&[(num("7"), num("2.5"))], true), Ok(()));
     assert_eq!(check(&[(num("9.5"), num("2"))], false), blocked(2));
     assert_eq!(
@@ -241,7 +242,7 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
     );
     assert_eq!(
         check(&[(num("1"), num("2")), (num("2.5"), num("2"))], false),
-        blocked(2)
+        Ok(())
     );
 }
 

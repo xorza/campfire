@@ -41,6 +41,16 @@ pub struct ResolvedMap {
     pub vision: VisionBook,
 }
 
+/// What a map's walk check reads beside the map: its ground, with the bounds; its paths and
+/// walls; each kind of unit that walks; and the tags of the markers its mode's units spawn at.
+#[derive(Debug, Clone, Copy)]
+pub struct WalkCheck<'a> {
+    pub ground: &'a MapBook,
+    pub navigation: &'a NavigationBook,
+    pub walkers: &'a [Walker],
+    pub spawn_tags: &'a [DeclaredName],
+}
+
 impl ModeMap {
     /// The names of `teams`; an error for two of one name, or more than a team index counts.
     fn team_names(teams: &[TeamManifest]) -> Result<Names<Team>, ModeError> {
@@ -204,24 +214,28 @@ impl ModeMap {
         Ok(markers)
     }
 
-    /// Checks that each placed box has room, and that the map can be walked by every kind of
-    /// unit that walks, of `walkers`, for the widest of each layer, among the map's placed units
-    /// that cannot walk, whose bodies `body_of` gives by unit type, and none for a type that
-    /// walks; `name_of` names a type in a problem. A box has room as a placement needs it: within
-    /// the bounds, its inside clear of the walls of its layer and of every other placed unit of
-    /// its layer that cannot walk. Every marker's point and waypoint is a place that walker may
-    /// stand, and every waypoint is in a reachable set of the one before it, by the regions a
-    /// match plans its routes with. A narrower walker of the layer has every cell the widest has
-    /// open. A map with no `[navigation]` cells, or a mode with no walker, has nothing more to
-    /// check.
+    /// Checks that each placed box lies within the bounds, and that the map can be walked by
+    /// every kind of unit that walks, of `check`'s walkers, for the widest of each layer, among
+    /// the map's placed units that cannot walk, whose bodies `body_of` gives by unit type, and
+    /// none for a type that walks; `name_of` names a type in a problem. Placed bodies may overlap
+    /// the walls and each other, as they block alike; a placement in a match refuses an overlap
+    /// (design 17, D5). Every point of a marker of a spawn tag, and every waypoint, is a place
+    /// that walker may stand, and every waypoint is in a reachable set of the one before it, by
+    /// the regions a match plans its routes with. A narrower walker of the layer has every cell
+    /// the widest has open. A map with no `[navigation]` cells, or a mode with no walker, has
+    /// nothing more to check.
     pub fn check_walkable(
         &self,
-        ground: &MapBook,
-        navigation: &NavigationBook,
-        walkers: &[Walker],
+        check: WalkCheck<'_>,
         body_of: impl Fn(UnitType) -> Option<BodyForm>,
         name_of: impl Fn(UnitType) -> DeclaredName,
     ) -> Result<(), MapProblem> {
+        let WalkCheck {
+            ground,
+            navigation,
+            walkers,
+            spawn_tags,
+        } = check;
         let bounds = &ground.bounds;
         let NavigationBook {
             paths,
@@ -241,13 +255,7 @@ impl ModeMap {
             let Shape::Box(boxed) = body.shape else {
                 continue;
             };
-            let mut others = structures
-                .iter()
-                .filter(|(other, held)| *other != at && held.layer == body.layer);
-            let walls = Some(placed_walls);
-            let clear = Walls::room_for(walls, *bounds, body.pos, &boxed, body.layer)
-                && !others.any(|(_, other)| other.overlaps_box(body.pos, &boxed));
-            if !clear {
+            if !Walls::room_for(None, *bounds, body.pos, &boxed, body.layer) {
                 return Err(MapProblem::BoxBlocked {
                     unit: at,
                     unit_type: name_of(self.placed[at].unit_type),
@@ -273,7 +281,9 @@ impl ModeMap {
             let clearance = grid.clearance(walker);
             let walkable = Walkable::of(clearance, &statics);
             let stands = |pos: Position| !walkable.blocks(Segment::new(pos, pos));
-            for marker in &self.markers {
+            let spawns =
+                |marker: &&MarkerSpec| marker.tags.iter().any(|tag| spawn_tags.contains(tag));
+            for marker in self.markers.iter().filter(spawns) {
                 if marker.pos.is_some_and(|pos| !stands(pos)) {
                     let marker = declared(&marker.name);
                     return Err(MapProblem::MarkerBlocked { marker });

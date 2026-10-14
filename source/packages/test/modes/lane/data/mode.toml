@@ -101,3 +101,8 @@ name = "team-west"
 
 [teams.east]
 name = "team-east"
+
+# The tags of the markers the mode spawns units at, which the map load checks a walker can
+# stand on.
+[navigation]
+spawn_tags = ["spawn"]

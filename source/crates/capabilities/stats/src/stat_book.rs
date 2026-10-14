@@ -196,6 +196,15 @@ impl StatBook {
         let hz = NonZeroI64::from(rate.hz()).get();
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
     }
+
+    /// How far a unit with `values` turns a tick at `rate`, in degrees: its `turn_rate`, at
+    /// least 0, divided by the tick rate, rounded once; `None` when the mode declares no turn
+    /// rate.
+    pub fn turn_step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
+        let turn = self.engine(values, EngineStat::TurnRate)?.max(Num::ZERO);
+        let hz = NonZeroI64::from(rate.hz()).get();
+        Some(turn.checked_div_int(hz).expect("a turn a tick fits"))
+    }
 }
 
 impl Book for StatBook {

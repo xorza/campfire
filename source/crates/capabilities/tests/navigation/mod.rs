@@ -6,12 +6,14 @@ use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
     MapData, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData, PlacedUnitData,
-    ResolvedMap, TeamManifest, WallData,
+    ResolvedMap, TeamManifest, WalkCheck, WallData,
 };
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
-use campfire_units::{ArrivedShort, Body, BodyForm, Dead, Destination, Layer, MapBook, Units};
+use campfire_units::{
+    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units,
+};
 use campfire_values::{Block, PathId, Team, UnitType};
 use campfire_values::{DeclaredName, Names};
 
@@ -66,6 +68,10 @@ fn a_unit_walks_to_its_destination_exactly() {
         .unwrap()
     );
     assert_eq!(*game.part::<Position>(still), Position::from((9, 0, 9)));
+    // With no turn rate, each faces its way at once: along `+z`, 270°; the one that stands keeps
+    // its spawn's 0°.
+    assert_eq!(game.part::<Facing>(straight).degrees(), Num::int(270));
+    assert_eq!(game.part::<Facing>(still).degrees(), Num::ZERO);
     // Straight along z, one meter a tick: done in the fifth tick, and the destination dropped.
     for z in 2..=5 {
         game.step();
@@ -74,6 +80,33 @@ fn a_unit_walks_to_its_destination_exactly() {
     assert_eq!(game.part::<Destination>(straight).get(), None);
     game.step();
     assert_eq!(*game.part::<Position>(straight), Position::from((0, 0, 5)));
+}
+
+#[test]
+fn a_walker_turns_at_its_turn_rate_and_walks_once_it_faces_its_way() {
+    // From 0°, along `x`, to a goal along `−z`, 90°, at 3° a tick: it stands while more than
+    // 11.25° is left, through tick 26, at 78°, 12° short; in tick 27 it turns to 81°, 9° short,
+    // and walks its meter; then it turns on as it walks, to 90° in tick 30.
+    let mut game = walk_match();
+    let walker = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, -10))));
+    game.insert_parts(walker, TurnStep::new(Num::int(3)).unwrap());
+    for tick in 1..=26 {
+        game.step();
+        assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(3 * tick));
+        assert_eq!(
+            *game.part::<Position>(walker),
+            Position::from((0, 0, 0)),
+            "tick {tick}"
+        );
+    }
+    game.step();
+    assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(81));
+    assert_eq!(*game.part::<Position>(walker), Position::from((0, 0, -1)));
+    for _ in 28..=30 {
+        game.step();
+    }
+    assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(90));
+    assert_eq!(*game.part::<Position>(walker), Position::from((0, 0, -4)));
 }
 
 #[test]
@@ -844,7 +877,13 @@ fn check_walkable(
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
     let body = |unit_type| body_of(name(unit_type));
-    map.check_walkable(&ground, &navigation, walkers, body, named)
+    let check = WalkCheck {
+        ground: &ground,
+        navigation: &navigation,
+        walkers,
+        spawn_tags: &rules.spawn_tags,
+    };
+    map.check_walkable(check, body, named)
 }
 
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
@@ -865,7 +904,12 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let half = Num::HALF;
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
-    let rules = ModeNavigationData::default();
+    let rules = ModeNavigationData {
+        spawn_tags: ["spawn", "camp"]
+            .map(|tag| DeclaredName::new(tag).unwrap())
+            .into(),
+        ..ModeNavigationData::default()
+    };
     let check = |towers: &[(i64, i64)], neutral| {
         check_walkable(
             &corridor(towers, neutral),
@@ -893,6 +937,17 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     };
     assert_eq!(check(&[(2, 1)], (8, 3)), blocked("spawn"));
     assert_eq!(check(&[(7, 3)], (8, 3)), blocked("camp"));
+    // A marker of no spawn tag of the mode's is not checked: with `spawn` alone, the tower by the
+    // camp loads.
+    let spawn_only = ModeNavigationData {
+        spawn_tags: vec![DeclaredName::new("spawn").unwrap()],
+        ..ModeNavigationData::default()
+    };
+    let by_camp = corridor(&[(7, 3)], (8, 3));
+    assert_eq!(
+        check_walkable(&by_camp, &[ground(half)], &spawn_only, corridor_body),
+        Ok(())
+    );
 
     // Each layer's widest walker is checked against the bodies of its layer alone: an air walker
     // passes over the towers that close the lane, and a cloud by the camp blocks it there, but
@@ -962,16 +1017,21 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
             waypoint: 1,
         })
     );
+    let spawning = ModeNavigationData {
+        spawn_tags: vec![DeclaredName::new("spawn").unwrap()],
+        ..ModeNavigationData::default()
+    };
     let round = walled(vec![wall(None, &[(0, 0), (2, 0), (2, 2), (0, 2)])]);
     let spawn = DeclaredName::new("spawn").unwrap();
     let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
     assert_eq!(
-        check_walkable(&round, &both, &rules, corridor_body),
+        check_walkable(&round, &both, &spawning, corridor_body),
         blocked
     );
     let air = DeclaredName::new("air").unwrap();
     let layered = ModeNavigationData {
         layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],
+        spawn_tags: Vec::new(),
     };
     let refused = [
         (

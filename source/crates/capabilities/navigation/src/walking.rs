@@ -4,7 +4,9 @@ use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
 use campfire_geometry::Placed;
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, MapBook, MoveStep};
+use campfire_units::{
+    ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
+};
 use campfire_values::{Block, UnitTags};
 
 use crate::body_index::{BodyIndex, IndexedBody};
@@ -113,7 +115,7 @@ impl Walking {
                 gathering: UnitTags::passes(tags),
             };
             if let Some(detour) = steering.steer(&mut planner, &grid, &statics, steered, &route) {
-                route.splice(steering.short(), detour.skipped, detour.reached);
+                route.splice(at, steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             }
         }
@@ -156,29 +158,46 @@ impl Walking {
     /// and its route when the route reached the goal: one that ends short stays, arrived short, so
     /// an order that sends the unit there again plans nothing. A unit whose route waits for the
     /// planner walks the one it has, if any. One its tags or a forced move stop keeps both.
+    ///
+    /// First it turns toward its leg's way, at its turn step, or at once with none, and it stands
+    /// this tick unless it then faces within `Facing::WITHIN` of the way (design 17, D2).
     pub(super) fn move_units(
         mut units: Query<
             '_,
             '_,
             (
-                &mut Position,
+                (&mut Position, &mut Facing),
                 &mut Destination,
                 &mut Route,
                 &mut Progress,
-                &MoveStep,
+                (&MoveStep, Option<&TurnStep>),
                 Option<&UnitTags>,
                 Has<ForcedMove>,
             ),
             Without<Dead>,
         >,
     ) {
-        for (mut position, mut destination, mut route, mut progress, step, tags, forced) in
-            &mut units
+        for (
+            (mut position, mut facing),
+            mut destination,
+            mut route,
+            mut progress,
+            (step, turn),
+            tags,
+            forced,
+        ) in &mut units
         {
             if !Self::walks(Some(&destination), tags, forced) {
                 continue;
             }
             let mut at = position.get();
+            if let Some(way) = route.way() {
+                let turned = facing.toward(way, turn.copied());
+                facing.set_if_neq(turned.facing);
+                if !turned.faces {
+                    continue;
+                }
+            }
             let mut left = step.get();
             loop {
                 let Some(&waypoint) = route.ahead().first() else {

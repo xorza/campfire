@@ -48,6 +48,15 @@ fn trig_exact_points() {
     assert_eq!(Num::ONE.atan2(Num::ZERO), Num::FRAC_PI_2);
     assert_eq!((-Num::ONE).atan2(Num::ZERO), -Num::FRAC_PI_2);
     assert_eq!(Num::ONE.atan2(Num::ONE), quarter_pi);
+    // In degrees, rounded once from the wide angle, the axes and the diagonals are exact.
+    let degrees = |y: Num, x: Num| y.atan2_degrees(x);
+    assert_eq!(degrees(Num::ZERO, Num::ZERO), Num::ZERO);
+    assert_eq!(degrees(Num::ZERO, Num::ONE), Num::ZERO);
+    assert_eq!(degrees(Num::ONE, Num::ZERO), Num::int(90));
+    assert_eq!(degrees(Num::ZERO, -Num::ONE), Num::int(180));
+    assert_eq!(degrees(-Num::ONE, Num::ZERO), Num::int(-90));
+    assert_eq!(degrees(Num::ONE, Num::ONE), Num::int(45));
+    assert_eq!(degrees(Num::MIN, Num::MIN), Num::int(-135));
     // The ends of the range, where a ratio of the two parts would overflow.
     let cases = [
         (Num::MIN, Num::ZERO, -Num::FRAC_PI_2),
@@ -108,14 +117,20 @@ fn sin_cos_max_ulp(from: i64, to: i64, count: i64) -> f64 {
     worst
 }
 
-/// Largest error in ulp of `atan2` over a grid of points in `[−range, range]²`.
-fn atan2_max_ulp(range: i64, steps: i64) -> f64 {
+/// Largest error in ulp of `angle` over a grid of points `(x, y)` in `[−range, range]²`, against
+/// `reference` of the same point in `f64`.
+fn angle_max_ulp(
+    range: i64,
+    steps: i64,
+    angle: fn(Num, Num) -> Num,
+    reference: fn(f64, f64) -> f64,
+) -> f64 {
     let mut worst = 0.0_f64;
     for i in 0..=steps {
         for j in 0..=steps {
             let y = n(-range + 2 * range / steps * i + 7);
             let x = n(-range + 2 * range / steps * j + 3);
-            worst = worst.max(ulp_error(y.atan2(x), to_f64(y).atan2(to_f64(x))));
+            worst = worst.max(ulp_error(angle(y, x), reference(to_f64(y), to_f64(x))));
         }
     }
     worst
@@ -131,8 +146,19 @@ fn sin_cos_within_bound() {
 
 #[test]
 fn atan2_within_bound() {
-    let worst = atan2_max_ulp(50 * ONE, 400).max(atan2_max_ulp(ONE / 64, 200));
+    let sweep = |range, steps| angle_max_ulp(range, steps, Num::atan2, f64::atan2);
+    let worst = sweep(50 * ONE, 400).max(sweep(ONE / 64, 200));
     assert!(worst <= ATAN2_ULP, "atan2 off by {worst} ulp");
+}
+
+#[test]
+fn atan2_degrees_within_bound() {
+    // Rounded once, as `atan2` is: within half a unit and the reference's own error, where the
+    // radians scaled by 180 / π miss by up to 29 units.
+    let degrees = |y: f64, x: f64| y.atan2(x).to_degrees();
+    let sweep = |range, steps| angle_max_ulp(range, steps, Num::atan2_degrees, degrees);
+    let worst = sweep(50 * ONE, 400).max(sweep(ONE / 64, 200));
+    assert!(worst <= ATAN2_ULP, "atan2_degrees off by {worst} ulp");
 }
 
 const SIN_COS_ULP: f64 = 0.501;
@@ -147,6 +173,7 @@ proptest! {
         let minus = (-n(a)).sin_cos();
         prop_assert_eq!(minus, SinCos { sin: -plus.sin, cos: plus.cos });
         prop_assert_eq!((-n(a)).atan2(n(b)), -n(a).atan2(n(b)));
+        prop_assert_eq!((-n(a)).atan2_degrees(n(b)), -n(a).atan2_degrees(n(b)));
     }
 
     #[test]

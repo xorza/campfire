@@ -273,6 +273,13 @@ impl Num {
     pub fn atan2(self, x: Num) -> Num {
         trig::atan2(self, x)
     }
+
+    /// The angle of the point `(x, self)` in degrees, in `[−180, 180]`, rounded once from the
+    /// angle `atan2` finds before it rounds; `0` for the origin.
+    #[must_use]
+    pub fn atan2_degrees(self, x: Num) -> Num {
+        trig::atan2_degrees(self, x)
+    }
 }
 
 /// Narrows an exact result; `None` when it does not fit.

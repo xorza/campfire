@@ -96,7 +96,7 @@ pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
-pub use crate::mode_map::{ModeMap, ResolvedMap};
+pub use crate::mode_map::{ModeMap, ResolvedMap, WalkCheck};
 pub use crate::mode_names::ModeNames;
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec};

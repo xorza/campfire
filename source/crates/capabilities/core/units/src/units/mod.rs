@@ -36,6 +36,7 @@ use crate::units::spawn_hooks::SpawnHooks;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::status_tags::StatusTags;
 use crate::units::tag_book::TagBook;
+use crate::units::turn_step::TurnStep;
 use crate::units::type_origin_book::TypeOriginBook;
 use crate::units::unit_entity::UnitEntity;
 use crate::units::unit_grid::{GridUnits, UnitGrid};
@@ -89,6 +90,7 @@ pub(crate) mod status_tags;
 pub(crate) mod tag_book;
 pub(crate) mod tag_data;
 pub(crate) mod tag_effect;
+pub(crate) mod turn_step;
 pub(crate) mod type_origin_book;
 pub(crate) mod unit_core;
 pub(crate) mod unit_entity;
@@ -159,6 +161,7 @@ impl Module for Units {
         d.component::<ForcedMove>();
         d.component::<Lifespan>();
         d.component::<MoveStep>();
+        d.component::<TurnStep>();
         d.sim_component::<Position>();
         d.component::<Owner>();
         d.component::<SpawnPoint>();
@@ -206,6 +209,7 @@ impl Module for Units {
         d.api(UnitsApi::register);
         d.api(View::register_queries);
         d.book::<ByType<MoveStep>>();
+        d.book::<ByType<TurnStep>>();
         d.book::<ByType<BodyForm>>();
         // The spawner gives a unit the facing of its angle, which its body turns by; this part
         // holds every unit to one.
@@ -216,6 +220,7 @@ impl Module for Units {
                 .map(|form| form.at(Facing::angle_of(at)))
         });
         d.part::<BodyUnit, MoveStep>(|at| at.of_type::<MoveStep>().copied());
+        d.part::<BodyUnit, TurnStep>(|at| at.of_type::<TurnStep>().copied());
         // A unit that walks, which its move step tells, takes a destination.
         d.part::<BodyUnit, Destination>(|at| {
             at.of_type::<MoveStep>().map(|_| Destination::default())

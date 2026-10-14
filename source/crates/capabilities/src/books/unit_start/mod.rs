@@ -1,20 +1,21 @@
 use campfire_combat::{CombatData, OnDeath};
 use campfire_sim::TickRate;
 use campfire_stats::{Life, Meter, PoolId, Pools, StatBook};
-use campfire_units::MoveStep;
+use campfire_units::{MoveStep, TurnStep};
 use campfire_values::{EngineStat, Stat, UnitType};
 
 use crate::books::error::UnitStartError;
 
 /// What a new unit of a type starts with of its stats, in ticks at the match's rate: its life and
 /// its other pools, full at their maxima at level 1, whether it stays when it dies, when it has a
-/// `combat` section, and how far it walks a tick.
+/// `combat` section, and how far it walks and turns a tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct UnitStart {
     pub(crate) life: Option<Life>,
     pub(crate) pools: Option<Pools>,
     pub(crate) on_death: Option<OnDeath>,
     pub(crate) step: Option<MoveStep>,
+    pub(crate) turn: Option<TurnStep>,
 }
 
 /// What a unit type's start is made of: the mode's stats, `book`, its life pool, `life`, which a
@@ -32,7 +33,8 @@ pub(crate) struct StartOf<'a> {
 
 impl UnitStart {
     /// The start `of` makes. Each pool's maximum is the stat of its maximum at level 1, and the
-    /// move step is the book's at level 1 at the rate, as a refresh computes them. A type has
+    /// move and turn steps are the book's at level 1 at the rate, as a refresh computes them; a
+    /// type turns only when it walks. A type has
     /// `combat` exactly when it has the life pool: a unit that can die is one that combat kills.
     pub(crate) fn new(of: StartOf<'_>) -> Result<UnitStart, UnitStartError> {
         let StartOf {
@@ -81,11 +83,21 @@ impl UnitStart {
                 .expect("a type gives only a stat the mode declares");
             MoveStep::new(step).expect("the book's step is never negative")
         });
+        let turns = book
+            .named(&Stat::Engine(EngineStat::TurnRate))
+            .is_some_and(|id| book.gives(unit_type, id));
+        let turn = (moves && turns).then(|| {
+            let turn = book
+                .turn_step(&values, rate)
+                .expect("a type gives only a stat the mode declares");
+            TurnStep::new(turn).expect("the book's turn step is never negative")
+        });
         Ok(UnitStart {
             life: full_life,
             pools,
             on_death,
             step,
+            turn,
         })
     }
 }

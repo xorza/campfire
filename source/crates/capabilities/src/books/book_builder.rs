@@ -276,6 +276,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.pools);
         built.add(parts.deaths);
         built.add(parts.steps);
+        built.add(parts.turns);
         built.add(parts.bodies);
         built.add(parts.type_tracks);
         built.add(parts.builders);
@@ -307,6 +308,7 @@ impl<'a> BookBuilder<'a> {
             built,
             damage_kinds,
             resources,
+            spawn_tags: self.input.data.navigation.spawn_tags.clone().into(),
             inputs: ModeInputs {
                 units: parts.units,
                 load: ModeLoad {
@@ -825,6 +827,7 @@ impl<'a> BookBuilder<'a> {
             pools,
             on_death,
             step,
+            turn,
         } = self.start(at, combat)?;
         let unknown = |name| at.unknown(name);
         let (file, input, unit_type) = (at.unit.file, self.input, at.unit_type);
@@ -868,6 +871,7 @@ impl<'a> BookBuilder<'a> {
         books.pools.set_some(unit_type, pools);
         books.deaths.set_some(unit_type, on_death);
         books.steps.set_some(unit_type, step);
+        books.turns.set_some(unit_type, turn);
         books.bodies.set_some(unit_type, body);
         books
             .sights

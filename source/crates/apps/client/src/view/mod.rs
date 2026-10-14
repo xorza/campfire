@@ -9,14 +9,14 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::lifecycle::RemovedComponents;
-use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
+use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
 use bevy::material::AlphaMode;
 use bevy::math::primitives::{Capsule3d, Cuboid, Cylinder, Plane3d, Sphere};
-use bevy::math::{Quat, Vec3};
+use bevy::math::{EulerRot, Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::{Fixed, Time};
@@ -37,7 +37,7 @@ use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
-use crate::view::glide::{Glide, TickClock};
+use crate::view::glide::{Glide, Spot, TickClock};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Look, Pose, Shape};
 use crate::view::scene_lights::{SceneLights, Sun};
@@ -87,6 +87,11 @@ struct Palette {
     dead: Handle<StandardMaterial>,
 }
 
+/// On a drawing's root that turns as its unit faces: one of models, which turn whole; a figure
+/// leans by its own rotation, and turns none.
+#[derive(Component, Debug)]
+struct Turns;
+
 /// The ground the match is drawn on, which shows the match's result once it ends.
 #[derive(Component, Debug)]
 struct Ground;
@@ -125,9 +130,13 @@ type NewUnits<'w, 's> = Query<
     (With<BodyUnit>, Without<Drawing>, Allow<Unpredicted>),
 >;
 
-/// The drawn units the client only receives whose sim place changed.
-type MovedUnits<'w, 's> =
-    Query<'w, 's, (&'static Position, &'static Drawing), (Changed<Position>, With<Unpredicted>)>;
+/// The drawn units the client only receives whose sim place or facing changed.
+type MovedUnits<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Position, Option<&'static Facing>, &'static Drawing),
+    (Or<(Changed<Position>, Changed<Facing>)>, With<Unpredicted>),
+>;
 
 /// A projectile in flight: a ball at the height of a unit's chest.
 const SHOT_RADIUS: f32 = 0.2;
@@ -271,14 +280,18 @@ impl View {
                 .as_deref()
                 .map_or(&[][..], |looks| looks.models(unit_type));
             if !models.is_empty() {
-                let degrees = facing.map_or(0.0, |facing| facing.degrees().float());
-                let turn = Quat::from_rotation_y(degrees.to_radians());
+                let spot = Spot {
+                    point: at,
+                    yaw: yaw(facing),
+                };
                 let root = commands
                     .spawn((
                         DrawingOf(unit),
-                        Transform::from_translation(at),
+                        Turns,
+                        Transform::from_translation(at)
+                            .with_rotation(Quat::from_rotation_y(spot.yaw)),
                         Visibility::default(),
-                        View::rest(at, received, &time),
+                        View::rest(spot, received, &time),
                         Shape::of(owned, walks, body),
                     ))
                     .id();
@@ -286,7 +299,7 @@ impl View {
                     commands.spawn((
                         WorldAssetRoot(model.scene.clone()),
                         model.parts.clone(),
-                        Transform::from_rotation(turn).with_scale(Vec3::splat(model.scale)),
+                        Transform::from_scale(Vec3::splat(model.scale)),
                         ChildOf(root),
                     ));
                 }
@@ -326,7 +339,14 @@ impl View {
                     DrawingOf(unit),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(at, received, &time),
+                    View::rest(
+                        Spot {
+                            point: at,
+                            yaw: 0.0,
+                        },
+                        received,
+                        &time,
+                    ),
                     look,
                     shape,
                 ))
@@ -358,7 +378,14 @@ impl View {
                     DrawingOf(shot),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(at, received, &time),
+                    View::rest(
+                        Spot {
+                            point: at,
+                            yaw: 0.0,
+                        },
+                        received,
+                        &time,
+                    ),
                 ))
                 .add_child(ball);
         }
@@ -395,7 +422,14 @@ impl View {
                     DrawingOf(area),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(at, received, &time),
+                    View::rest(
+                        Spot {
+                            point: at,
+                            yaw: 0.0,
+                        },
+                        received,
+                        &time,
+                    ),
                 ))
                 .add_child(disc);
         }
@@ -469,33 +503,36 @@ impl View {
         }
     }
 
-    /// A drawing at rest `point`: one that follows the ticks the client runs, or one that glides to
-    /// each place the client receives, if `received`.
-    fn rest(point: Vec3, received: bool, time: &Time) -> Glide {
+    /// A drawing at rest at `spot`: one that follows the ticks the client runs, or one that glides
+    /// to each spot the client receives, if `received`.
+    fn rest(spot: Spot, received: bool, time: &Time) -> Glide {
         if received {
-            Glide::timed(point, time.elapsed())
+            Glide::timed(spot, time.elapsed())
         } else {
-            Glide::ticked(point)
+            Glide::ticked(spot)
         }
     }
 
-    /// Gives each predicted unit's drawing the unit's place after the tick, in every tick the
-    /// client runs, a rollback's included, so the last two ticks it draws between are the ones
-    /// that hold now.
+    /// Gives each predicted unit's drawing the unit's place and facing after the tick, in every
+    /// tick the client runs, a rollback's included, so the last two ticks it draws between are
+    /// the ones that hold now.
     fn step(
-        units: Query<'_, '_, (&Position, &Drawing)>,
+        units: Query<'_, '_, (&Position, Option<&Facing>, &Drawing)>,
         data: Option<Res<'_, ClientData>>,
         mut roots: Query<'_, '_, &mut Glide>,
     ) {
         let heights = data.as_deref().and_then(|data| data.heights.as_ref());
-        for (&pos, drawing) in &units {
+        for (&pos, facing, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
-                glide.tick(ground(pos, heights));
+                glide.tick(Spot {
+                    point: ground(pos, heights),
+                    yaw: yaw(facing),
+                });
             }
         }
     }
 
-    /// Starts a glide to each received unit's new sim place.
+    /// Starts a glide to each received unit's new sim place and facing.
     fn follow(
         time: Res<'_, Time>,
         units: MovedUnits<'_, '_>,
@@ -503,9 +540,17 @@ impl View {
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
         let heights = data.as_deref().and_then(|data| data.heights.as_ref());
-        for (&pos, drawing) in &units {
+        for (&pos, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
-                glide.head(transform.translation, ground(pos, heights), time.elapsed());
+                let drawn = Spot {
+                    point: transform.translation,
+                    yaw: transform.rotation.to_euler(EulerRot::YXZ).0,
+                };
+                let to = Spot {
+                    point: ground(pos, heights),
+                    yaw: yaw(facing),
+                };
+                glide.head(drawn, to, time.elapsed());
             }
         }
     }
@@ -515,17 +560,21 @@ impl View {
     fn glide(
         time: Res<'_, Time>,
         fixed: Res<'_, Time<Fixed>>,
-        mut roots: Query<'_, '_, (&Glide, &mut Transform)>,
+        mut roots: Query<'_, '_, (&Glide, &mut Transform, Has<Turns>)>,
     ) {
         let clock = TickClock {
             timestep: fixed.timestep(),
             fraction: fixed.overstep_fraction(),
         };
-        for (glide, mut transform) in &mut roots {
-            let translation = glide.at(time.elapsed(), clock);
+        for (glide, mut transform, turns) in &mut roots {
+            let spot = glide.at(time.elapsed(), clock);
             // A drawing at rest keeps its transform, unchanged, until it glides again.
-            if transform.translation != translation {
-                transform.translation = translation;
+            if transform.translation != spot.point {
+                transform.translation = spot.point;
+            }
+            let rotation = Quat::from_rotation_y(spot.yaw);
+            if turns && transform.rotation != rotation {
+                transform.rotation = rotation;
             }
         }
     }
@@ -582,6 +631,12 @@ fn lean_toward(from: Vec3, to: Vec3) -> Quat {
         Vec3::Y.cross(way).normalize_or(Vec3::X),
         LEAN * way.length(),
     )
+}
+
+/// The yaw a drawing turns by, in radians, of a unit facing `facing`; none for one that faces
+/// none.
+fn yaw(facing: Option<&Facing>) -> f32 {
+    facing.map_or(0.0, |facing| facing.degrees().float().to_radians())
 }
 
 /// A sim place in the renderer's floats: its height above the ground, which `heights` gives

@@ -40,6 +40,7 @@ The engine reads only the stats its mechanisms need; one the mode does not decla
 | Stat | Engine use |
 | --- | --- |
 | `move_speed` | Meters a second, within its limits and `max_move_speed`; a step a tick, rounded once |
+| `turn_rate` | Degrees a second a walker turns toward its way, at least 0; a turn a tick, rounded once. A walker of none turns at once ([Units that drive](../17-units-that-drive.md#decisions), D2) |
 | A pool's `max` and `regen` | Its maximum, and what it gains a second: regen ÷ tick rate a tick, the remainder carried, so a second gains exactly the regen |
 | A weapon's `rate` and `damage` | Attacks a second and each one's damage ([Combat](combat.md#weapons)); the period is the tick rate over the rate, rounded up, at least a tick longer than the windup |
 

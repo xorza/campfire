@@ -17,7 +17,7 @@ use campfire_sim::{
 };
 use campfire_stats::*;
 use campfire_units::{
-    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, UnitTypeCore, Units,
+    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, TurnStep, UnitTypeCore, Units,
 };
 use campfire_values::{
     Block, ModifierId, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags, UnitType,
@@ -53,6 +53,7 @@ fn rules() -> BTreeMap<Stat, StatRule> {
     ];
     [
         (Stat::Engine(EngineStat::MoveSpeed), speed),
+        (Stat::Engine(EngineStat::TurnRate), free),
         (armor_stat(), armor),
     ]
     .into_iter()
@@ -133,6 +134,7 @@ fn unit(game: &mut Match, unit_type: u16) -> Entity {
         Units::give_type(game, unit_type, pools);
     }
     Units::give_type(game, unit_type, MoveStep::new(Num::ZERO).unwrap());
+    Units::give_type(game, unit_type, TurnStep::new(Num::ZERO).unwrap());
     let id = Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), ());
     game.unit_entity(id)
 }
@@ -159,7 +161,8 @@ fn modifier_data(aura: Option<AuraData>) -> ModifierData {
 #[test]
 fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
-    // attack speed 0.625 + 0.0625 and move speed 4 + 0.25. Its health is a pool as its mana is
+    // attack speed 0.625 + 0.0625, move speed 4 + 0.25 and turn rate 90° + 6°. Its health is a
+    // pool as its mana is
     // in a match with no life pool, and its life where health is the life pool: the amounts are
     // the same.
     let hero = stats(&[
@@ -172,6 +175,11 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
             Stat::Engine(EngineStat::MoveSpeed),
             Num::int(4),
             sixteenths(4),
+        ),
+        (
+            Stat::Engine(EngineStat::TurnRate),
+            Num::int(90),
+            Num::int(6),
         ),
     ]);
     for bound in [false, true] {
@@ -187,6 +195,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
             let value = |name| values[book.named(&stat(name)).unwrap().index()];
             (
                 game.get::<MoveStep>(unit).unwrap().get(),
+                game.get::<TurnStep>(unit).unwrap().get(),
                 value("attack_speed"),
                 value("attack_damage"),
             )
@@ -194,8 +203,10 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         let pools = |game: &Match| [HEALTH, MANA].map(|pool| amounts(game, unit, pool));
         // At level 1: 4 m/s, 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 0.625
         // attacks a second; damage 51; full health of 380 and mana of 250.
-        let (step, rate, damage) = get(&game);
+        // It turns 90° ÷ 30 = 3° a tick.
+        let (step, turn, rate, damage) = get(&game);
         assert_eq!(step, Num::from_bits(2_236_962));
+        assert_eq!(turn, Num::int(3));
         assert_eq!((rate, damage), (sixteenths(10), Num::int(51)));
         let full = |amount| (Num::int(amount), Num::int(amount));
         assert_eq!(pools(&game), [full(380), full(250)], "{bound}");
@@ -214,8 +225,11 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         }
         *game.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
         game.step();
-        let (step, rate, damage) = get(&game);
+        // It turns 90° + 6° × 17 = 192° a second, 6.4° a tick, 107 374 182.4 bits, to
+        // 107 374 182.
+        let (step, turn, rate, damage) = get(&game);
         assert_eq!(step, Num::from_bits(2_796_203));
+        assert_eq!(turn, Num::from_bits(107_374_182));
         assert_eq!((rate, damage), (sixteenths(27), Num::int(102)));
         let regen = Num::from_bits(838_860);
         let health = (Num::int(1592) + regen, Num::int(1672));

@@ -1,0 +1,80 @@
+use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
+use campfire_declare::PerType;
+use campfire_math::Num;
+use campfire_sim::{Capability, SimComponent};
+use campfire_state_types::{DataKind, Replication, SentPredicted};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::units::move_step::MoveStep;
+use crate::units::unit_entity::UnitEntity;
+
+/// How far a walker turns in one tick, in degrees, never negative: the effect of its turn rate,
+/// which its stats give (design 17, D2). A walker of none turns at once.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct TurnStep(Num);
+
+impl TurnStep {
+    /// `None` for a negative step.
+    pub const fn new(step: Num) -> Option<TurnStep> {
+        if step.to_bits() < 0 {
+            return None;
+        }
+        Some(TurnStep(step))
+    }
+
+    pub const fn get(self) -> Num {
+        self.0
+    }
+}
+
+impl SimComponent for TurnStep {
+    const NAME: &'static str = "units.turn_step";
+    type Host = UnitEntity;
+
+    // Its decode keeps it at 0 or more; only a unit that walks turns.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        world.get::<MoveStep>(entity).is_some()
+    }
+}
+
+impl Replication for TurnStep {
+    const KIND: DataKind = DataKind::Unit;
+    type Sending = SentPredicted;
+}
+
+/// A snapshot is untrusted, so a negative step fails to decode.
+impl<'de> Deserialize<'de> for TurnStep {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TurnStep, D::Error> {
+        TurnStep::new(Num::deserialize(deserializer)?)
+            .ok_or_else(|| D::Error::custom("negative turn step"))
+    }
+}
+
+impl PerType for TurnStep {
+    const OWNER: Option<Capability> = None;
+    const SCRIPTS_ONLY: bool = false;
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Binary;
+
+    use super::*;
+
+    #[test]
+    fn turn_steps_are_never_negative() {
+        assert_eq!(TurnStep::new(-Num::EPSILON), None);
+        assert_eq!(TurnStep::new(Num::ZERO).map(TurnStep::get), Some(Num::ZERO));
+        let negative = Binary::encode(&-Num::EPSILON);
+        assert!(Binary::decode::<TurnStep>(&negative).is_err());
+        let three = Binary::encode(&Num::int(3));
+        assert_eq!(
+            Binary::decode::<TurnStep>(&three).ok(),
+            TurnStep::new(Num::int(3))
+        );
+    }
+}

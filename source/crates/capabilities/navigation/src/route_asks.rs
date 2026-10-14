@@ -95,9 +95,10 @@ impl RouteAsks {
         self.read(units);
         let (Some(grid), Some(planner)) = (grid, planner) else {
             for next in &self.waiting {
-                let (.., mut route, _) = units.get_mut(next.entity).expect("a unit read this tick");
+                let (_, _, &at, mut route, _) =
+                    units.get_mut(next.entity).expect("a unit read this tick");
                 let goal = route.goal().expect("a unit that asked a route has a goal");
-                route.answer(&[goal], true);
+                route.answer(at, &[goal], true);
             }
             return;
         };
@@ -175,7 +176,7 @@ impl RouteAsks {
         let goal = route.goal().expect("a unit that asked a route has a goal");
         let walkable = Walkable::of(grid.clearance(Walker::walking(body)), statics);
         let outcome = planner.plan(walkable, at, goal, &mut self.waypoints);
-        route.answer(&self.waypoints, outcome.reached);
+        route.answer(at, &self.waypoints, outcome.reached);
     }
 
     /// Plans the routes of the party whose asks are `run` of `parties`, two at least, by stable
@@ -209,8 +210,9 @@ impl RouteAsks {
             planner,
             party,
             &mut |entity, waypoints, reached| {
-                let (.., mut route, _) = units.get_mut(entity).expect("a unit read this tick");
-                route.answer(waypoints, reached);
+                let (_, _, &at, mut route, _) =
+                    units.get_mut(entity).expect("a unit read this tick");
+                route.answer(at, waypoints, reached);
             },
         )
     }

@@ -39,6 +39,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+campfire-codec.workspace = true
 campfire-navigation = { workspace = true, features = ["internals"] }
 
 [lints]

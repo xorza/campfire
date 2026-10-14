@@ -136,11 +136,50 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     }
 }
 
+/// An angle in radians at 2⁻⁶², its magnitude and its sign, before it rounds to a `Num`.
+#[derive(Debug, Clone, Copy)]
+struct WideAngle {
+    magnitude: u64,
+    negative: bool,
+}
+
 pub(super) fn atan2(y: Num, x: Num) -> Num {
+    let Some(angle) = atan2_wide(y, x) else {
+        return Num::ZERO;
+    };
+    let magnitude = to_num_magnitude(angle.magnitude);
+    Num::from_bits(if angle.negative {
+        -magnitude
+    } else {
+        magnitude
+    })
+}
+
+/// `atan2` in degrees, from its angle at 2⁻⁶² times 180 over π at 2⁻⁶², rounded once: the
+/// radians' own rounding never reaches the degrees, where it would grow 57 times.
+pub(super) fn atan2_degrees(y: Num, x: Num) -> Num {
+    let Some(angle) = atan2_wide(y, x) else {
+        return Num::ZERO;
+    };
+    // The magnitude is below 2⁶⁴, and 180 · 2²⁴ below 2³², so the product fits `i128`.
+    let degrees = Rounding::NearestEven.divide(
+        i128::from(angle.magnitude) * (180 << Num::FRAC_BITS),
+        PI_WIDE,
+    );
+    let magnitude = to_i64(degrees);
+    Num::from_bits(if angle.negative {
+        -magnitude
+    } else {
+        magnitude
+    })
+}
+
+/// The angle of `(x, y)` at 2⁻⁶²; `None` for the origin.
+fn atan2_wide(y: Num, x: Num) -> Option<WideAngle> {
     let y_abs = y.to_bits().unsigned_abs();
     let x_abs = x.to_bits().unsigned_abs();
     if y_abs == 0 && x_abs == 0 {
-        return Num::ZERO;
+        return None;
     }
     let steep = y_abs > x_abs;
     let (small, large) = if steep {
@@ -199,11 +238,9 @@ pub(super) fn atan2(y: Num, x: Num) -> Num {
     if x.to_bits() < 0 {
         angle = PI_MAGNITUDE - angle;
     }
-    let magnitude = to_num_magnitude(angle);
-    Num::from_bits(if y.to_bits() < 0 {
-        -magnitude
-    } else {
-        magnitude
+    Some(WideAngle {
+        magnitude: angle,
+        negative: y.to_bits() < 0,
     })
 }
 

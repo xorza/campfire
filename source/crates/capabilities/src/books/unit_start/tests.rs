@@ -20,6 +20,7 @@ fn mana() -> Stat {
 }
 
 const MOVE_SPEED: Stat = Stat::Engine(EngineStat::MoveSpeed);
+const TURN_RATE: Stat = Stat::Engine(EngineStat::TurnRate);
 
 /// The one unit type the tests' books know.
 const TYPE: UnitType = UnitType::new(0);
@@ -53,6 +54,7 @@ fn start_of<'a>(
         (health(), health_rule),
         (mana(), StatRule::default()),
         (MOVE_SPEED, StatRule::default()),
+        (TURN_RATE, StatRule::default()),
     ]);
     let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
     let mut book = StatBook::new(&rules, decimal("6.0"));
@@ -109,6 +111,30 @@ fn a_start_takes_its_values_at_level_1_from_the_stat_book() {
     assert_eq!(fast.step.unwrap().get(), Num::from_bits(3_355_443));
     let backward = start(&speed(-1), Some(&stay), &life(&health), 30).unwrap();
     assert_eq!(backward.step.unwrap().get(), Num::ZERO);
+
+    // A turn rate of 90° a second turns 3° a tick at 30 ticks a second and 4.5° at 20; a negative
+    // one turns none. A type that turns but does not walk has no turn step, nor one of no turn
+    // rate.
+    let turning = |rate: &str| {
+        caster(|stats| {
+            let value = StatValue {
+                base: decimal(rate),
+                per_level: Num::ZERO,
+            };
+            stats.insert(TURN_RATE, value);
+        })
+    };
+    let turn = |stats: &StatsData, hz| {
+        let unit = start(stats, Some(&stay), &life(&health), hz).unwrap();
+        unit.turn.map(TurnStep::get)
+    };
+    assert_eq!(turn(&turning("90"), 30), Some(Num::int(3)));
+    assert_eq!(turn(&turning("90"), 20), Some(decimal("4.5")));
+    assert_eq!(turn(&turning("-5"), 30), Some(Num::ZERO));
+    assert_eq!(turn(&caster(|_| ()), 30), None);
+    let mut rooted = turning("90");
+    rooted.0.remove(&MOVE_SPEED);
+    assert_eq!(turn(&rooted, 30), None);
 
     // No combat section, no move speed, no pools: nothing of any.
     let still = caster(|stats| {

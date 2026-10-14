@@ -428,13 +428,13 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 26 of a unit, vision's `SeenBy` and items'
-    // `UseGroup` among them, and the 44 books, 13 of the core's, interaction's two among them.
+    // player, the mode's three of the match, the 27 of a unit, vision's `SeenBy` and items'
+    // `UseGroup` among them, and the 45 books, 14 of the core's, interaction's two among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 31);
-    assert_eq!(audit.books.len(), 44);
+    assert_eq!(audit.parts.len(), 32);
+    assert_eq!(audit.books.len(), 45);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
-    assert_eq!(core.count(), 13);
+    assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
     // installer adds for their modules.
     assert_eq!(
