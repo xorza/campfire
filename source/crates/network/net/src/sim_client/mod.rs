@@ -65,8 +65,6 @@ use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 use crate::watch_teams::WatchTeams;
 
-#[cfg(feature = "internals")]
-pub(crate) mod bench;
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod client_layout;
@@ -75,6 +73,7 @@ pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
 pub(crate) mod signer;
+pub(crate) mod sim_client_world;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;

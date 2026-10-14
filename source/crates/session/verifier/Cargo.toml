@@ -5,6 +5,17 @@ edition.workspace = true
 license.workspace = true
 autotests = false
 
+[features]
+internals = [
+    "campfire-common/internals",
+    "campfire-log/internals",
+    "campfire-package/internals",
+    "campfire-protocol/internals",
+    "campfire-runner/internals",
+    "campfire-sim/internals",
+    "campfire-store/internals",
+]
+
 [dependencies]
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
@@ -20,19 +31,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-campfire-actions = { workspace = true, features = ["internals"] }
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
-campfire-math = { workspace = true, features = ["internals"] }
-campfire-orders = { workspace = true, features = ["internals"] }
-campfire-package = { workspace = true, features = ["internals"] }
-campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-runner = { workspace = true, features = ["internals"] }
-campfire-script = { workspace = true, features = ["internals"] }
-campfire-stats = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-campfire-units = { workspace = true, features = ["internals"] }
-campfire-values = { workspace = true, features = ["internals"] }
+campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

@@ -3,8 +3,6 @@ use std::ffi::OsString;
 
 use campfire_common::PlayerSlot;
 use campfire_net::SlotBotFileError;
-use campfire_state_types::{DataKind, Recipients};
-use campfire_visibility::SpectatorFog;
 use clap::error::ErrorKind;
 
 use super::*;
@@ -135,11 +133,8 @@ fn the_command_line_reads_the_hosts_visibility_or_its_flaw() {
         args.host,
         HostVisibility {
             settings: vec![
-                SettingValue::Audience(
-                    DataKind::Inventory,
-                    Recipients::ALLIES | Recipients::SPECTATORS
-                ),
-                SettingValue::Spectators(SpectatorFog::Teams),
+                "inventory=allies,spectators".parse().unwrap(),
+                "spectators=teams".parse().unwrap(),
             ],
             max_spectators: 3,
         }

@@ -7,11 +7,12 @@ license.workspace = true
 [dependencies]
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-harness.workspace = true
 campfire-import.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-mode.workspace = true
 campfire-package.workspace = true
-campfire-runner = { workspace = true, features = ["internals"] }
+campfire-runner.workspace = true
 campfire-store.workspace = true
 campfire-values.workspace = true
 

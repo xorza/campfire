@@ -3,16 +3,16 @@ name = "campfire-net"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-capabilities/internals",
     "campfire-combat/internals",
+    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-items/internals",
     "campfire-log/internals",
-    "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
@@ -21,14 +21,16 @@ internals = [
     "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-protocol/internals",
+    "campfire-quic/internals",
+    "campfire-runner/internals",
+    "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-stats/internals",
+    "campfire-store/internals",
     "campfire-units/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
-    "dep:campfire-math",
-    "dep:criterion",
 ]
 
 [dependencies]
@@ -40,7 +42,6 @@ campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-items.workspace = true
 campfire-log.workspace = true
-campfire-math = { workspace = true, optional = true }
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
@@ -65,7 +66,6 @@ bevy_ecs.workspace = true
 bevy_replicon.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
-criterion = { workspace = true, optional = true }
 getrandom.workspace = true
 lightyear.workspace = true
 lightyear_serde.workspace = true
@@ -73,29 +73,9 @@ secp256k1.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-# The integration tests read the test types `internals` gives, so a plain test run builds them.
-
 [dev-dependencies]
-campfire-capabilities = { workspace = true, features = ["internals"] }
+campfire-math = { workspace = true, features = ["internals"] }
 campfire-net = { workspace = true, features = ["internals"] }
-campfire-projectiles = { workspace = true, features = ["internals"] }
-campfire-protocol = { workspace = true, features = ["internals"] }
-campfire-runner = { workspace = true, features = ["internals"] }
-campfire-script = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"
-
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
-[lib]
-bench = false
-
-[[bench]]
-name = "net"
-harness = false
-required-features = ["internals"]
 
 [lints]
 workspace = true

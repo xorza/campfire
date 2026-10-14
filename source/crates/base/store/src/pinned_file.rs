@@ -4,6 +4,7 @@ use std::path::Path;
 
 use crate::durable_file::DurableFile;
 use crate::durable_file::error::DurableError;
+use crate::input_file::InputFile;
 use crate::path_error::PathError;
 
 /// A file a test pins: it holds what the test makes, and a run with `CAMPFIRE_BLESS=1` writes it
@@ -24,6 +25,12 @@ impl<'a> PinnedFile<'a> {
     /// Writes `now` into the file when the run blesses, and gives whether it did.
     pub fn bless(&self, now: &[u8]) -> Result<bool, PathError<DurableError>> {
         self.write_if(PinnedFile::blessing(), now)
+    }
+
+    /// Writes `now` into the file when the run blesses, and else asserts that the file, of at
+    /// most `max` bytes, holds `now` byte for byte: the rule of a file a test compares whole.
+    pub fn pin(&self, now: &[u8], max: usize) {
+        self.pin_if(PinnedFile::blessing(), now, max);
     }
 
     /// Whether the run writes the pinned files again, by `CAMPFIRE_BLESS`.
@@ -55,6 +62,22 @@ impl<'a> PinnedFile<'a> {
         }
     }
 
+    fn pin_if(&self, blessing: bool, now: &[u8], max: usize) {
+        let blessed = self.write_if(blessing, now);
+        if blessed.unwrap_or_else(|error| panic!("{error}")) {
+            return;
+        }
+        let pinned = InputFile::read(self.path, max).unwrap_or_else(|error| {
+            panic!("{error}; {}=1 writes it", PinnedFile::BLESS);
+        });
+        assert!(
+            pinned == now,
+            "{} differs; {}=1 writes it again",
+            self.path.display(),
+            PinnedFile::BLESS
+        );
+    }
+
     fn write_if(&self, blessing: bool, now: &[u8]) -> Result<bool, PathError<DurableError>> {
         if blessing {
             DurableFile::write(self.path, now)?;
@@ -76,7 +99,6 @@ mod tests {
     use std::panic;
 
     use super::*;
-    use crate::input_file::InputFile;
     use crate::scratch::Scratch;
 
     #[test]
@@ -107,5 +129,11 @@ mod tests {
             InputFile::read_if_present(&path, 16).unwrap().as_deref(),
             Some(&b"made"[..])
         );
+        // A pin compares the file whole when the run does not bless, and else writes it.
+        file.pin_if(false, b"made", 16);
+        assert!(panic::catch_unwind(|| file.pin_if(false, b"other", 16)).is_err());
+        assert!(panic::catch_unwind(|| file.pin_if(false, b"made", 2)).is_err());
+        file.pin_if(true, b"other", 16);
+        file.pin_if(false, b"other", 16);
     }
 }

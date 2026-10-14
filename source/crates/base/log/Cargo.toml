@@ -5,7 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = []
+internals = [
+    "campfire-common/internals",
+    "campfire-store?/internals",
+]
 # The binaries' start: the terminal and the JSON file, which a worker of `store` writes. Only a
 # binary turns it on, so no crate of the deterministic core depends on `store`.
 start = ["dep:campfire-store"]

@@ -1,0 +1,325 @@
+//! Fog of war over the network: a client receives only the units its team sees.
+
+use bevy_app::App;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::query::Allow;
+use campfire_common::Tick;
+use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_math::Num;
+use campfire_navigation::{Progress, Route};
+use campfire_net::{
+    CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+};
+use campfire_orders::OrdersAction;
+use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
+use campfire_units::{Owner, SpawnPoint, Units, UnitsWorld};
+use campfire_values::{Relation, Relations, Team};
+use campfire_vision::SeenBy;
+use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
+
+/// Frames of match: one tick each.
+const MATCH_FRAMES: usize = 90;
+/// A move along the hero's line from its spawn, z = −2.
+const fn move_to(x: i64) -> OrdersAction {
+    OrdersAction::Move {
+        x: Num::int(x),
+        z: Num::int(-2),
+    }
+}
+
+/// The unit of `app` that `pick` finds first, in stable id order.
+fn unit(app: &App, pick: impl Fn(&App, Entity) -> bool) -> (StableId, Entity) {
+    let mut units = app.world().resource::<EntityIndex>().iter();
+    units.find(|&(_, entity)| pick(app, entity)).unwrap()
+}
+
+/// What the server's last tick left: the west team sees the east tower, and the hero's x.
+#[derive(Debug, Clone, Copy)]
+struct Server {
+    seen: bool,
+    hero_x: Num,
+}
+
+#[test]
+fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    local.start_match();
+    // Without the per-tick hash from here on, as in production: the ticks and the replication run
+    // all the same.
+    let hashes = local
+        .server_mut()
+        .world_mut()
+        .remove_resource::<TickHashes>();
+    assert!(hashes.is_some());
+    let east_tower = Position::from((8, 0, -3));
+    let (tower, tower_entity) = unit(local.server(), |app, entity| {
+        app.world().get::<Position>(entity) == Some(&east_tower)
+    });
+    let (_, hero) = unit(local.server(), |app, entity| {
+        app.world().entity(entity).contains::<Owner>()
+    });
+
+    // By sim tick, from 0; `None` for the ticks the lobby ran before the loop.
+    let mut server: Vec<Option<Server>> = Vec::new();
+    // By frame: the client holds the tower.
+    let mut on_client = Vec::new();
+    let mut arrived_in = None;
+    for frame in 0..MATCH_FRAMES {
+        match frame {
+            10 => local.order(0, move_to(4)),
+            40 => local.order(0, move_to(0)),
+            _ => {}
+        }
+        local.step();
+        let world = local.server().world();
+        let ticks_run = usize::try_from(world.resource::<SimTick>().start().get()).unwrap();
+        if ticks_run > server.len() {
+            let seen = world.get::<SeenBy>(tower_entity).unwrap().get().unwrap();
+            server.resize(ticks_run - 1, None);
+            server.push(Some(Server {
+                seen: seen.contains(Team::new(0)),
+                hero_x: world.get::<Position>(hero).unwrap().get().x,
+            }));
+        }
+        let client = local.client(0).world();
+        let held = client.entity_of(tower);
+        if let (Some(entity), None) = (held, arrived_in) {
+            assert!(client.entity(entity).contains::<Unpredicted>());
+            arrived_in = Some(sent_in(&local, entity));
+        }
+        on_client.push(held.is_some());
+    }
+
+    // The hero walks ¼ m a tick from (0, −2) and sees 6 m. The tower's cell spans x 8 to 9 and z
+    // −3 to −2, its center (8.5, −2.5): from x = 2.5 it is √(6² + 0.5²) ≈ 6.02 m away, hidden;
+    // from x = 2.75, √(5.75² + 0.5²) ≈ 5.77 m, seen. Then the hero walks back, out of sight.
+    let hidden_at = Num::from_bits(10 << (Num::FRAC_BITS - 2));
+    let seen_at = Num::from_bits(11 << (Num::FRAC_BITS - 2));
+    let seen = |tick: &Option<Server>| tick.is_some_and(|tick| tick.seen);
+    let first = server.iter().position(seen).unwrap();
+    let last = server.iter().rposition(seen).unwrap();
+    let hero_x = |tick: usize| server[tick].unwrap().hero_x;
+    assert_eq!(hero_x(first - 1), hidden_at);
+    assert_eq!(hero_x(first), seen_at);
+    assert_eq!(hero_x(last), seen_at);
+    assert_eq!(hero_x(last + 1), hidden_at);
+    assert!(server[first..=last].iter().all(seen));
+
+    // The client holds the tower from the message of the tick it came into sight in, and not
+    // before, and has dropped it by the end.
+    assert_eq!(arrived_in, Some(Tick::new(u64::try_from(first).unwrap())));
+    let held_from = on_client.iter().position(|&held| held).unwrap();
+    let held_until = on_client.iter().rposition(|&held| held).unwrap();
+    assert!(on_client[held_from..=held_until].iter().all(|&held| held));
+    // Frame `f` runs tick `f` past the lobby's ticks, and a tick's message reaches the client a
+    // frame later: it holds the tower from the frame after the first tick that sees it to the
+    // frame after the last.
+    let lobby = server.iter().position(Option::is_some).unwrap();
+    assert_eq!(
+        (held_from, held_until),
+        (first + 1 - lobby, last + 1 - lobby)
+    );
+
+    // The state only an owner's prediction reads reaches the owner's link alone: the client's
+    // hero, which walked, holds its route and its progress; a west creep, which the client sees
+    // walk and no player owns, holds neither there, though the server's does.
+    let client = local.client(0).world();
+    let (hero_id, _) = unit(local.server(), |app, entity| {
+        app.world().get::<Owner>(entity).is_some()
+    });
+    let on_client = |id| client.entity_of(id).unwrap();
+    let hero_on_client = client.entity(on_client(hero_id));
+    assert!(hero_on_client.contains::<Route>() && hero_on_client.contains::<Progress>());
+    let (creep, creep_entity) = unit(local.server(), |app, entity| {
+        let unit = app.world().entity(entity);
+        unit.contains::<Progress>()
+            && !unit.contains::<Owner>()
+            && unit.get::<Team>() == Some(&Team::new(0))
+    });
+    assert!(
+        local
+            .server()
+            .world()
+            .entity(creep_entity)
+            .contains::<Route>()
+    );
+    let creep_on_client = client.entity(on_client(creep));
+    assert!(creep_on_client.contains::<Position>());
+    assert!(!creep_on_client.contains::<Route>() && !creep_on_client.contains::<Progress>());
+}
+
+/// The stable ids of the units `client`'s world holds, predicted or not, in order.
+fn held(local: &mut InProcessMatch, client: usize) -> Vec<StableId> {
+    let world = local.client_mut(client).world_mut();
+    let mut units = world.query_filtered::<&StableId, Allow<Unpredicted>>();
+    let mut ids: Vec<StableId> = units.iter(world).copied().collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_sits() {
+    // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    local.start_match();
+    let east_tower = Position::from((8, 0, -3));
+    let (tower, tower_entity) = unit(local.server(), |app, entity| {
+        app.world().get::<Position>(entity) == Some(&east_tower)
+    });
+    let hero = local.avatar(0);
+    let (west, east) = (Team::new(0), Team::new(1));
+    Units::set_relation(
+        local.server_mut().world_mut(),
+        west,
+        east,
+        Relation::Neutral,
+    );
+    for _ in 0..10 {
+        local.step();
+    }
+    let seen = local.server().world().get::<SeenBy>(tower_entity).unwrap();
+    assert!(!seen.get().unwrap().contains(west));
+    assert!(held(&mut local, 0).contains(&hero));
+    assert!(!held(&mut local, 0).contains(&tower));
+
+    // A second login of the player takes the seat in a new app: it holds the hero and not the
+    // hidden tower, and the relations a script set before it sat.
+    let second = local.add_client(0);
+    let playing = |local: &InProcessMatch| {
+        let state = local.client(second).world().resource::<JoinState>();
+        state.clock().is_some()
+    };
+    for _ in 0..300 {
+        if playing(&local) {
+            break;
+        }
+        local.step();
+    }
+    assert!(playing(&local));
+    for _ in 0..5 {
+        local.step();
+    }
+    let units = held(&mut local, second);
+    assert!(units.contains(&hero), "{units:?}");
+    assert!(!units.contains(&tower), "{units:?}");
+    let relations = |app: &App| app.world().held_relations().cloned();
+    assert_ne!(relations(local.server()), Some(Relations::default()));
+    assert_eq!(relations(local.client(second)), relations(local.server()));
+    assert_eq!(local.log().take::<LinkLost>().len(), 1);
+
+    // A client whose player has no slot is refused, and told so, and its link held no unit.
+    let stranger = local.add_client(1);
+    for _ in 0..60 {
+        local.step();
+    }
+    assert!(
+        local
+            .client(stranger)
+            .world()
+            .resource::<JoinState>()
+            .clock()
+            .is_none()
+    );
+    assert_eq!(held(&mut local, stranger), []);
+    assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    assert_eq!(
+        local.log().take::<LinkLost>(),
+        [LinkLost {
+            cause: LinkLossCause::ClientClosed(CloseCode::JoinRefused)
+        }]
+    );
+}
+
+/// The sim tick of the server message that last updated `entity` on the client.
+fn sent_in(local: &InProcessMatch, entity: Entity) -> Tick {
+    let client = local.client(0).world();
+    let history = client.get::<ConfirmHistory>(entity).unwrap();
+    let net_tick = client
+        .resource::<ReplicationCheckpointMap>()
+        .get(history.last_tick())
+        .unwrap();
+    let clock = local.server().world().resource::<MatchClock>();
+    clock.sim_tick(net_tick).unwrap()
+}
+
+/// How a client holds a unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Held {
+    owner: Owner,
+    team: Team,
+    /// Whether it holds the unit's spawn point, a kind only the owner's client receives.
+    owners_kinds: bool,
+    predicted: bool,
+}
+
+/// How `client` holds `id`; none when it holds no such unit.
+fn held_as(local: &InProcessMatch, client: usize, id: StableId) -> Option<Held> {
+    let world = local.client(client).world();
+    let id = world.entity(world.resource::<EntityIndex>().get(id)?);
+    Some(Held {
+        owner: *id.get()?,
+        team: *id.get()?,
+        owners_kinds: id.contains::<SpawnPoint>(),
+        predicted: !id.contains::<Unpredicted>(),
+    })
+}
+
+#[test]
+fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
+    // A duo, player 0 west and player 1 east. Player 0's hero passes to player 1, and to the east
+    // with it, as a capture does (design 14, D17, D18): a new `Owner` and `Team` inserted.
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.start_match();
+    let hashes = local
+        .server_mut()
+        .world_mut()
+        .remove_resource::<TickHashes>();
+    assert!(hashes.is_some());
+    let (hero, other) = (local.avatar(0), local.avatar(1));
+    let on_server = |local: &InProcessMatch, unit| {
+        let world = local.server().world();
+        let unit = world.entity(world.resource::<EntityIndex>().get(unit).unwrap());
+        (*unit.get::<Owner>().unwrap(), *unit.get::<Team>().unwrap())
+    };
+    let (west_owner, west) = on_server(&local, hero);
+    let (east_owner, east) = on_server(&local, other);
+    assert_ne!(west, east);
+    for _ in 0..5 {
+        local.step();
+    }
+    let owned = |owner, team| Held {
+        owner,
+        team,
+        owners_kinds: true,
+        predicted: true,
+    };
+    assert_eq!(held_as(&local, 0, hero), Some(owned(west_owner, west)));
+
+    let entity = local
+        .server()
+        .world()
+        .resource::<EntityIndex>()
+        .get(hero)
+        .unwrap();
+    local
+        .server_mut()
+        .world_mut()
+        .entity_mut(entity)
+        .insert((east_owner, east));
+    for _ in 0..5 {
+        local.step();
+    }
+    // The east client takes the hero, which the east now sees, with its owner's kinds, and
+    // predicts it; the west client, which still sees it, holds its new owner and team, none of
+    // the owner's kinds, and takes it as the server sends it.
+    assert_eq!(held_as(&local, 1, hero), Some(owned(east_owner, east)));
+    let seen = Held {
+        owners_kinds: false,
+        predicted: false,
+        ..owned(east_owner, east)
+    };
+    assert_eq!(held_as(&local, 0, hero), Some(seen));
+}

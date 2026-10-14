@@ -1,0 +1,81 @@
+//! The verifier's binary on the log and the snapshot a match of the test lane mode writes, which
+//! the harness's tests pin in `tests/fixtures`.
+
+use std::path::Path;
+use std::process::Command;
+
+use campfire_log::LogEvent;
+use campfire_package::PackageDir;
+use campfire_protocol::{SessionLog, SnapshotFingerprint};
+use campfire_sim::StateRegistry;
+use campfire_store::InputFile;
+use campfire_store::internals::Scratch;
+use campfire_verifier::{Verification, Verified};
+
+/// The pinned file `name` of the fixtures, at most `max` bytes.
+fn fixture(name: &str, max: usize) -> Vec<u8> {
+    let path = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures")).join(name);
+    InputFile::read(&path, max).unwrap()
+}
+
+#[test]
+fn the_binary_logs_the_last_state_hash() {
+    let log = fixture("headless.campfire-log", SessionLog::MAX_FILE_LEN);
+    let mut snapshot = fixture("headless.snapshot", StateRegistry::MAX_SNAPSHOT_LEN);
+    // A directory of this run's own, which goes when the test ends, passed or failed.
+    let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
+    let dir = scratch.root().to_str().unwrap();
+    let path = format!("{dir}/headless.log");
+    scratch.write(&path, &log);
+    // Logged without color, as standard error is not a terminal here, at `info`, and to no file,
+    // whatever the environment says.
+    let verifier = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
+            .args(args)
+            .env("RUST_LOG", "info")
+            .env_remove("CAMPFIRE_LOG")
+            .env_remove("CAMPFIRE_LOG_FILTER")
+            .output()
+            .unwrap()
+    };
+    // Every package of the workspace: what the verifier holds.
+    let packages = PackageDir::workspace("");
+    let hash = Verification::file(&packages, Path::new(&path), None).unwrap();
+    let packages = packages.to_str().unwrap();
+    let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
+    // With no snapshot, and with the checkpoint's snapshot named by its fingerprint.
+    let snapshots = format!("{dir}/snapshots");
+    scratch.create_dir(&snapshots);
+    let named = format!("{snapshots}/{}", SnapshotFingerprint::of(&snapshot));
+    scratch.write(&named, &snapshot);
+    for args in [&[packages, &path][..], &[packages, &path, &snapshots]] {
+        let output = verifier(args);
+        assert!(output.status.success(), "{output:?}");
+        let logged = String::from_utf8(output.stderr).unwrap();
+        assert!(logged.ends_with(&success), "{logged}");
+        assert!(output.stdout.is_empty());
+    }
+    // A snapshot of other bytes under the checkpoint's name.
+    *snapshot.last_mut().unwrap() ^= 1;
+    scratch.write(&named, &snapshot);
+    let output = verifier(&[packages, &path, &snapshots]);
+    assert_eq!(output.status.code(), Some(1));
+    let logged = String::from_utf8(output.stderr).unwrap();
+    let refused = format!(
+        "the log does not verify file={path} error=a checkpoint's snapshot does not check: the \
+         snapshot is not the one its checkpoint names\n"
+    );
+    assert!(logged.ends_with(&refused), "{logged}");
+
+    let corrupt = format!("{dir}/headless-truncated.log");
+    scratch.write(&corrupt, &log[..log.len() - 1]);
+    let output = verifier(&[packages, &corrupt]);
+    assert_eq!(output.status.code(), Some(1));
+    let logged = String::from_utf8(output.stderr).unwrap();
+    let refused = format!(
+        "the log does not verify file={corrupt} error=the log does not decode: session log ends inside a field\n"
+    );
+    assert!(logged.ends_with(&refused), "{logged}");
+
+    assert_eq!(verifier(&[]).status.code(), Some(2));
+}

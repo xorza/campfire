@@ -71,9 +71,6 @@ impl MatchBuild {
 }
 
 #[cfg(feature = "internals")]
-pub(crate) mod bench;
-
-#[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_capabilities::Match;
     use campfire_common::SegmentSeed;
@@ -91,7 +88,7 @@ pub(crate) mod internals {
         /// the map's vision grid, and no mode installed, as an arena holds it; it starts
         /// with the match's entity alone, spawns the mode's unit types as the mode does for a
         /// test to spawn, and fails its test on any warning it logs.
-        pub(crate) fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
+        pub fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
             let spec = MatchBuild::spec(packages, SegmentSeed::ZERO, rate, players);
             let mut game = Match::new(spec).with_log(log);

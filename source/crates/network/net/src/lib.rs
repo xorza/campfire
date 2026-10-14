@@ -10,8 +10,6 @@ mod close_code;
 mod dismissed;
 mod events;
 mod faults;
-#[cfg(feature = "internals")]
-mod harness;
 mod input_ack;
 mod input_message;
 mod join;
@@ -111,20 +109,15 @@ pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "internals")]
-pub mod bench {
-    use criterion::Criterion;
-
-    use crate::{sim_client, sim_server};
-
-    /// Runs each bench of the crate whose id criterion's filter takes.
-    pub fn run(c: &mut Criterion) {
-        sim_client::bench::client_frame(c);
-        sim_server::bench::server_frame(c);
-    }
-}
-
-#[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::harness::in_process_match::link_model::LinkModel;
-    pub use crate::harness::in_process_match::{End, InProcessMatch, LinkLayout, MatchSetup};
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
+    pub use crate::sim_client::sim_client_world::internals::SimClientWorldInternals;
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
+    pub use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
 }

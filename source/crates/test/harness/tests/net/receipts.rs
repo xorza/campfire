@@ -1,0 +1,218 @@
+//! Receipts: each player of a match whose server keeps a journal gets a receipt of the inputs the
+//! journal synced, keeps it, and writes it to the client's data directory; the journal the server
+//! leaves when it stops holds every input a receipt names. A receipt not written is logged, and
+//! the client plays on.
+
+use std::thread;
+use std::time::Duration;
+
+use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
+use campfire_math::Num;
+use campfire_net::{
+    JoinState, JournalWatch, LeaveRequest, PlayerLink, ReceiptRefused, ReceiptUnsaved, ServerDir,
+    SessionDir,
+};
+use campfire_orders::OrdersAction;
+use campfire_protocol::internals::TestKey;
+use campfire_protocol::{Controller, ServerInput, SignedReceipt};
+use campfire_runner::Session;
+use campfire_store::internals::Scratch;
+use campfire_store::{EntryKind, InputFile};
+use secp256k1::Secp256k1;
+
+/// The most bytes a test reads of a receipt file: one receipt, a few hundred.
+const RECEIPT_LEN: usize = 4096;
+#[test]
+fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
+    let scratch = Scratch::new();
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(scratch.path("data"));
+    local.start_match();
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+    // 150 steps of 1/60 s: two and a half seconds of the server's clock, which gives receipts
+    // once a second. A receipt names only what the journal's writer synced, by the disk's real
+    // time, so the match waits for the sync, then plays one more second.
+    for _ in 0..150 {
+        local.step();
+    }
+    let watch = local.server().world().resource::<JournalWatch>().0.clone();
+    while !watch.settled() {
+        thread::sleep(Duration::from_millis(1));
+    }
+    for _ in 0..60 {
+        local.step();
+    }
+    let world = local.server().world();
+    let id = world.resource::<Session>().log().session_id();
+    let server = TestKey::server().x_only_public_key().0;
+    let secp = Secp256k1::verification_only();
+    let mut kept = Vec::new();
+    for client in 0..2 {
+        let slot = world.get::<PlayerLink>(local.link(client)).unwrap().slot();
+        let state = local.client(client).world().resource::<JoinState>();
+        let receipt = *state.receipt().expect("a receipt of the synced inputs");
+        assert_eq!(
+            (receipt.receipt.session_id, receipt.receipt.slot),
+            (id, slot)
+        );
+        assert!(
+            receipt
+                .receipt
+                .signed_by(&secp, &server, &receipt.signature)
+        );
+        let file = scratch
+            .path("data")
+            .join(format!("client-{client}"))
+            .join("receipts")
+            .join(format!("{id}.receipt"));
+        // The writer thread writes it in its own time: once the file holds it, it stays.
+        let written = || {
+            InputFile::read_if_present(&file, RECEIPT_LEN)
+                .unwrap()
+                .map(|bytes| SignedReceipt::decode(&bytes))
+        };
+        for _ in 0..1000 {
+            if written() == Some(Ok(receipt)) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert_eq!(written(), Some(Ok(receipt)));
+        kept.push(receipt.receipt);
+    }
+
+    // A crash after the journal's last sync: the log the journal rebuilds holds each slot's
+    // chain past the seq its receipt names, under the delegation it names.
+    local.stop_server();
+    let stopped = ServerDir::open(&scratch.path("data")).unwrap();
+    let restored = SessionDir::find(&stopped)
+        .unwrap()
+        .unwrap()
+        .restore()
+        .unwrap()
+        .unwrap();
+    for receipt in kept {
+        let Some(Controller::Player { chain, .. }) = restored.log.controller(receipt.slot) else {
+            panic!("slot {} has no player", receipt.slot.get());
+        };
+        assert!(chain.next_seq() > receipt.seq, "{receipt:?}");
+        let (_, delegation) = restored
+            .log
+            .header()
+            .players()
+            .find(|&(slot, _)| slot == receipt.slot)
+            .unwrap();
+        assert_eq!(*delegation.id(), receipt.delegation);
+    }
+}
+
+#[test]
+fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
+    // A file holds the place of client 0's receipts' directory, so its receipts are not written,
+    // on every OS; client 1's are.
+    let scratch = Scratch::new();
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::PERFECT,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(scratch.path("data"));
+    let place = scratch.path("data").join("client-0").join("receipts");
+    scratch.write(&place, b"");
+    local.start_match();
+    local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
+    // The writer fails in its own time, after a receipt came; the client's `Faults` logs it.
+    let mut unsaved = Vec::new();
+    for _ in 0..2000 {
+        local.step();
+        unsaved.extend(local.log().take::<ReceiptUnsaved>());
+        if !unsaved.is_empty() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(1));
+    }
+    assert!(!unsaved.is_empty());
+    // The client keeps its receipt and plays on.
+    let state = local.client(0).world().resource::<JoinState>();
+    assert!(state.receipt().is_some());
+    assert!(state.clock().is_some());
+    assert_eq!(scratch.kind(&place), Some(EntryKind::File));
+}
+
+#[test]
+fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
+    // Through links of 3 steps each way and up to 2 more, player 0 orders a move, which the
+    // journal syncs; then, in one step, it leaves and the server gives receipts. The receipt of
+    // the move crosses the leave on the way: the client keeps it, as the newest, and refuses
+    // none, until the server ends the link, after which it takes no receipt.
+    let scratch = Scratch::new();
+    let mut local = InProcessMatch::new(MatchSetup::duo(
+        LinkModel::DELAYED,
+        InProcessMatch::SEED_CHAIN,
+    ));
+    local.keep_data(scratch.path("data"));
+    local.start_match();
+    local.hold_receipts();
+    let watch = local.server().world().resource::<JournalWatch>().0.clone();
+    let settle = |local: &mut InProcessMatch| {
+        for _ in 0..30 {
+            local.step();
+        }
+        while !watch.settled() {
+            thread::sleep(Duration::from_millis(1));
+        }
+    };
+    local.order(
+        0,
+        OrdersAction::Move {
+            x: Num::int(3),
+            z: Num::int(-2),
+        },
+    );
+    settle(&mut local);
+    let slot = local
+        .server()
+        .world()
+        .get::<PlayerLink>(local.link(0))
+        .unwrap()
+        .slot();
+    let session = local.server().world().resource::<Session>();
+    let Some(Controller::Player { chain, .. }) = session.log().controller(slot) else {
+        panic!("slot {} has no player", slot.get());
+    };
+    let last = chain.next_seq() - 1;
+    let receipt = |local: &InProcessMatch| {
+        let state = local.client(0).world().resource::<JoinState>();
+        state.receipt().map(|kept| kept.receipt.seq)
+    };
+    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    let left = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().left();
+    local
+        .client_mut(0)
+        .world_mut()
+        .insert_resource(LeaveRequest);
+    local.give_receipts();
+    local.step();
+    assert!(left(&local));
+    assert!(receipt(&local).is_none_or(|seq| seq < last));
+    let took_leave = |local: &InProcessMatch| {
+        local
+            .server_inputs()
+            .iter()
+            .any(|input| matches!(input, ServerInput::Leave { slot: gone, .. } if *gone == slot))
+    };
+    let mut steps = 0;
+    while receipt(&local) != Some(last) || !took_leave(&local) {
+        assert!(steps < 30, "the receipt and the leave cross");
+        local.step();
+        steps += 1;
+    }
+    // The server ended its end of the link as it took the leave; the network ends the client's.
+    local.cut_link(0);
+    local.step();
+    assert!(left(&local));
+    assert_eq!(receipt(&local), None);
+    assert_eq!(local.log().take::<ReceiptRefused>(), []);
+}

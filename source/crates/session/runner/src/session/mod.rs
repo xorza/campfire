@@ -378,6 +378,3 @@ impl Session {
         Session::resume_match(log.rewound(), seeds, packages, segment, snapshot)
     }
 }
-
-#[cfg(feature = "internals")]
-pub(crate) mod bench;

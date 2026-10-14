@@ -8,16 +8,21 @@ autotests = false
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-capabilities/internals",
+    "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-geometry/internals",
     "campfire-items/internals",
+    "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-progression/internals",
     "campfire-projectiles/internals",
     "campfire-script/internals",
+    "campfire-sim/internals",
     "campfire-stats/internals",
+    "campfire-store/internals",
     "campfire-units/internals",
     "campfire-values/internals",
 ]
@@ -55,8 +60,6 @@ unic-langid.workspace = true
 
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
-campfire-script = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

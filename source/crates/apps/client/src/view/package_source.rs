@@ -124,7 +124,7 @@ mod tests {
     use bevy::image::{CompressedImageFormats, Image, ImageSampler, ImageType};
     use bevy::render::render_resource::TextureFormat;
     use bevy::tasks::block_on;
-    use campfire_import::internals as import;
+    use campfire_store::InputFile;
     use campfire_store::internals::Scratch;
 
     use super::*;
@@ -187,7 +187,12 @@ mod tests {
     fn bevys_ktx2_loader_reads_the_imports_textures_with_their_levels() {
         // The DDS's 8 × 8 DXT1 blocks and its 4 levels, 32 + 8 + 8 + 8 bytes; the TGA's 2 × 1
         // texels as RGBA8 and its 2 levels, 8 + 4 bytes; both sRGB.
-        let [dxt1, rgba] = import::ktx2_fixtures();
+        // The import's test pins them.
+        let fixture = |name: &str| {
+            let fixtures = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures"));
+            InputFile::read(&fixtures.join(name), 1 << 10).unwrap()
+        };
+        let (dxt1, rgba) = (fixture("dxt1.ktx2"), fixture("rgba.ktx2"));
         let read = |bytes: &[u8]| {
             let image = Image::from_buffer(
                 bytes,

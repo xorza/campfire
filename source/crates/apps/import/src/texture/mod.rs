@@ -9,7 +9,7 @@ pub(crate) mod srgb;
 pub(crate) mod texture_format;
 pub(crate) mod tga_file;
 
-#[cfg(feature = "internals")]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::texture::dds_file::DdsFile;
     use crate::texture::dds_file::internals::dds;
@@ -31,5 +31,28 @@ pub(crate) mod internals {
             DdsFile::read(&rock).expect("a fixture DDS reads").ktx2(),
             TgaFile::read(&sign).expect("a fixture TGA reads").ktx2(),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use campfire_store::internals::PinnedFile;
+
+    use crate::texture::internals::ktx2;
+
+    #[test]
+    fn the_clients_fixtures_are_the_textures_the_import_writes() {
+        // The client's test of Bevy's KTX2 loader reads them, as it depends on no import: a DDS
+        // of DXT1 blocks, 8 × 8 with its 4 levels, BC1; and a 32-bit TGA of 2 × 1, RGBA8 with its
+        // 2 levels. `CAMPFIRE_BLESS=1` writes them again.
+        let fixtures = Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../client/tests/fixtures"
+        ));
+        for (name, bytes) in ["dxt1.ktx2", "rgba.ktx2"].into_iter().zip(ktx2()) {
+            PinnedFile::new(&fixtures.join(name)).pin(&bytes, 1 << 10);
+        }
     }
 }

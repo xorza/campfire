@@ -6,7 +6,13 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
+    "campfire-log/internals",
+    "campfire-math/internals",
     "campfire-mode/internals",
+    "campfire-package/internals",
+    "campfire-sim/internals",
+    "campfire-store/internals",
     "campfire-values/internals",
 ]
 
@@ -31,10 +37,7 @@ toml.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-geometry = { workspace = true, features = ["internals"] }
 campfire-import = { workspace = true, features = ["internals"] }
-campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

@@ -176,7 +176,6 @@ mod tests {
     use campfire_items::Inventory;
     use campfire_navigation::Route;
     use campfire_progression::Points;
-    use campfire_projectiles::Projectile;
     use campfire_sim::{Capability, Position};
     use campfire_stats::Level;
     use campfire_units::{Dead, Destination};
@@ -188,7 +187,7 @@ mod tests {
     #[test]
     fn a_capability_the_mode_lacks_registers_no_component() {
         // Of each list: the core's, a unit's place, its death and where it walks, stats',
-        // navigation's, progression's, projectiles', items'.
+        // navigation's, progression's, items'.
         let registered = |declared: &[Capability]| {
             let mut app = App::new();
             app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -206,22 +205,20 @@ mod tests {
                 registry.is_registered::<Destination>(),
                 registry.is_registered::<Route>(),
                 registry.is_registered::<Points>(),
-                registry.is_registered::<Projectile>(),
                 registry.is_registered::<Inventory>(),
             ]
         };
         assert_eq!(
             registered(&[]),
-            [true, false, true, true, false, false, false, false]
+            [true, false, true, true, false, false, false]
         );
         let declared = [
             Capability::Stats,
             Capability::Combat,
             Capability::Navigation,
             Capability::Progression,
-            Capability::Projectiles,
             Capability::Items,
         ];
-        assert_eq!(registered(&declared), [true; 8]);
+        assert_eq!(registered(&declared), [true; 7]);
     }
 }

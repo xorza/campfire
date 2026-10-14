@@ -61,7 +61,7 @@ impl<'p> Replay<'p> {
 
     /// Runs every tick the log holds after those that ran, as `run` does, and gives `ran` the
     /// world after each.
-    fn run_each(&mut self, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
+    pub fn run_each(&mut self, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
         let start = self.game.session().log().next_tick();
         self.game.replay_to(self.ticks, |world| {
             if world.session().log().next_tick() > start {
@@ -115,22 +115,5 @@ impl<'p> Replay<'p> {
 
     pub const fn game(&self) -> &Match {
         &self.game
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::harness::hash_trail::HashTrail;
-    use crate::replay::Replay;
-    use crate::replay::error::ReplayError;
-
-    impl Replay<'_> {
-        /// Runs every tick the log holds after those that ran, as `run` does; the state after
-        /// each, which the match that wrote the log must have held.
-        pub fn trail(&mut self) -> Result<HashTrail, ReplayError> {
-            let mut trail = HashTrail::default();
-            self.run_each(|world| trail.record(world))?;
-            Ok(trail)
-        }
     }
 }

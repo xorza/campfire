@@ -18,6 +18,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use campfire_codec::{Binary, Toml};
 use campfire_common::{ExitStatus, MapName};
+use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_mode::HeightGrid;
@@ -25,7 +26,6 @@ use campfire_package::{
     ClassTexture, ContentError, GameData, ModePackages, PackageReader, Terrain, TerrainAtlas,
 };
 use campfire_runner::SessionWorld;
-use campfire_runner::internals::FixedSession;
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
 use tracing::{error, info};

@@ -20,6 +20,7 @@ members = [
     "crates/session/*",
     "crates/network/*",
     "crates/apps/*",
+    "crates/test/*",
     "checks/*",
 ]
 
@@ -39,6 +40,7 @@ campfire-combat = { path = "crates/capabilities/combat" }
 campfire-declare = { path = "crates/capabilities/core/declare" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
 campfire-geometry = { path = "crates/capabilities/core/geometry" }
+campfire-harness = { path = "crates/test/harness" }
 campfire-players = { path = "crates/capabilities/core/players" }
 campfire-items = { path = "crates/capabilities/items" }
 campfire-mode = { path = "crates/capabilities/mode" }

@@ -5,7 +5,11 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = []
+internals = [
+    "campfire-common/internals",
+    "campfire-log/internals",
+    "campfire-store/internals",
+]
 
 [dependencies]
 campfire-common.workspace = true
@@ -29,7 +33,6 @@ tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-campfire-common = { workspace = true, features = ["internals"] }
 bevy_state.workspace = true
 bevy_time.workspace = true
 campfire-quic = { workspace = true, features = ["internals"] }

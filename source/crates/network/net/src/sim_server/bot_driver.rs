@@ -34,8 +34,8 @@ pub(crate) struct BotDriver {
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
 #[derive(Debug)]
-struct DrivenBot {
-    slot: PlayerSlot,
+pub(super) struct DrivenBot {
+    pub(super) slot: PlayerSlot,
     script: BotScript,
     since: Tick,
 }
@@ -58,7 +58,7 @@ impl BotDriver {
     /// The bots of the plan's `slots` that play their script from the start, from tick `next` of
     /// `log` on: a slot that changed hands since, as a restore finds one a player took, plays it
     /// no more, and gets the takeover script once its player left it to a bot.
-    fn planned(
+    pub(super) fn planned(
         slots: impl IntoIterator<Item = SlotBot>,
         log: &SessionLog,
         next: Tick,
@@ -180,56 +180,7 @@ impl DrivenBot {
 
 #[cfg(test)]
 mod tests {
-    use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
-    use campfire_protocol::{AfterLeave, LeaveReason, SlotPlan};
-    use campfire_runner::internals::FixedSession;
-    use campfire_runner::{InputRules, SessionWorld};
-
     use super::*;
-    use crate::harness::in_process_match::InProcessMatch;
-
-    #[test]
-    fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
-        // Slot 1 is the plan's bot; player 1 takes it over and leaves it to a bot again. A
-        // restore from there finds the slot changed hands: it plays the takeover script, which
-        // `follow_controllers` gives it, and the plan's no more.
-        let rules = PlayersData {
-            late_join: true,
-            bot_takeover: true,
-            leaver: Leaver::Bot,
-        };
-        let saves = SavesData {
-            by: SaveBy::Player,
-            autosave_ms: None,
-        };
-        let packages = InProcessMatch::lane_mode(rules, saves);
-        let tick_hz = packages.manifest().tick_hz.default();
-        let plan = [SlotPlan::Player, SlotPlan::Bot];
-        let mut fixed = FixedSession::planned(packages, tick_hz, InputRules::LAN, plan).start();
-        let script = OrderScript::parse("[[order]]\ntick = 2\nmove = [1, 0]\n").unwrap();
-        let planned = |log: &SessionLog| {
-            let slots = [SlotBot::new(1, script.clone())];
-            BotDriver::planned(slots, log, Tick::new(0))
-                .iter()
-                .map(|driven| driven.slot.get())
-                .collect::<Vec<_>>()
-        };
-        assert_eq!(planned(fixed.game().session().log()), [1]);
-        fixed.join(1).unwrap();
-        let slot = PlayerSlot::new(1);
-        fixed
-            .serve(ServerInput::Leave {
-                slot,
-                reason: LeaveReason::Asked,
-                becomes: AfterLeave::Bot,
-            })
-            .unwrap();
-        assert_eq!(
-            fixed.game().session().log().controller(slot),
-            Some(Controller::Bot)
-        );
-        assert_eq!(planned(fixed.game().session().log()), <[u32; 0]>::default());
-    }
 
     #[test]
     fn a_bot_built_later_skips_what_its_script_had_for_the_ticks_before() {

@@ -145,5 +145,54 @@ impl SimServerWorld for World {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_common::{PlayerSlot, Tick};
+    use campfire_runner::SessionWorld;
+
+    use crate::sim_server::bot_driver::BotDriver;
+    use crate::sim_server::local_session::LocalSession;
+    use crate::sim_server::receipts::Receipts;
+    use crate::sim_server::server_bots::SlotBot;
+
+    /// What a server's world gives the tests and benches of any crate.
+    pub trait SimServerWorldInternals {
+        /// Makes the server a local one, which runs on a thread of its one player's client, as
+        /// the client's local server makes it.
+        fn host_locally(&mut self);
+
+        /// Makes the server give its receipts in its next update, as if their second passed.
+        fn give_receipts(&mut self);
+
+        /// Holds the server's next round of receipts until `give_receipts`, so a test, not the
+        /// real clock, says when they go out.
+        fn hold_receipts(&mut self);
+
+        /// The slots of the plan's bots of `slots` that play their script from tick `next` of
+        /// the world's session on, as a server that starts or restores builds its driver.
+        fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot>;
+    }
+
+    impl SimServerWorldInternals for World {
+        fn host_locally(&mut self) {
+            self.insert_resource(LocalSession);
+        }
+
+        fn give_receipts(&mut self) {
+            self.resource_mut::<Receipts>().due_now();
+        }
+
+        fn hold_receipts(&mut self) {
+            self.resource_mut::<Receipts>().hold();
+        }
+
+        fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
+            let planned = BotDriver::planned(slots, self.session().log(), next);
+            planned.iter().map(|driven| driven.slot).collect()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

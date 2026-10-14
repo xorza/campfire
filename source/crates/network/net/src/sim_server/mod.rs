@@ -71,8 +71,6 @@ use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
 use crate::sim_server::viewer::Viewer;
 
-#[cfg(feature = "internals")]
-pub(crate) mod bench;
 pub(crate) mod bot_driver;
 pub(crate) mod checkpoint_thread;
 pub(crate) mod checkpoints;

@@ -223,7 +223,6 @@ impl MapImport {
 
 #[cfg(test)]
 mod tests {
-    use campfire_geometry::Bounds;
     use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
     use campfire_package::{BlendShape, BlendTile};
     use campfire_values::{DeclaredName, Scalar};
@@ -369,7 +368,7 @@ mod tests {
             }]
         );
         // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15.
-        let bounds: Bounds = Toml::parse("min = [-10, -15]\nmax = [30, 10]").unwrap();
+        let bounds = Toml::parse("min = [-10, -15]\nmax = [30, 10]").unwrap();
         assert_eq!(map.bounds, bounds);
         assert_eq!(
             types.toml(),

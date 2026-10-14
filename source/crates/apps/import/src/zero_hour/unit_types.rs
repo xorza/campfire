@@ -52,16 +52,21 @@ impl UnitTypes {
 
 #[cfg(test)]
 mod tests {
-    use campfire_capabilities::UnitTypeData;
     use serde::Deserialize;
+    use serde::de::IgnoredAny;
 
     use super::*;
 
     #[test]
     fn templates_become_unit_types_unless_two_take_one_name() {
+        // Each type's section reads as the engine's unit type where the import's package loads.
         #[derive(Debug, Deserialize)]
         struct Units {
-            units: BTreeMap<DeclaredName, UnitTypeData>,
+            #[expect(
+                clippy::zero_sized_map_values,
+                reason = "the test reads each section's name alone"
+            )]
+            units: BTreeMap<DeclaredName, IgnoredAny>,
         }
         let mut types = UnitTypes::default();
         assert_eq!(types.name(b"Rocks1").unwrap().as_str(), "rocks1");

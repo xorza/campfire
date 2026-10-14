@@ -5,7 +5,10 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = ["dep:criterion"]
+internals = [
+    "campfire-common/internals",
+    "dep:criterion",
+]
 
 [dependencies]
 campfire-codec.workspace = true
