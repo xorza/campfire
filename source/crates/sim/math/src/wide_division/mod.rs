@@ -1,7 +1,7 @@
 //! The division of two `u128`s, exact on every platform, each by its fastest way: x86-64 divides
-//! 128 by 64 bits in one instruction, which Rust's `u128` division takes for a divisor and a
-//! quotient that fit 64 bits; ARM has no such instruction, and for those its library division
-//! takes longer than a float estimate and its exact correction.
+//! 128 by 64 bits in one instruction, which it takes inline for a divisor and a quotient that fit
+//! 64 bits, where Rust's `u128` division is a library call; ARM has no such instruction, and for
+//! those its library division takes longer than a float estimate and its exact correction.
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
 mod aarch64;
