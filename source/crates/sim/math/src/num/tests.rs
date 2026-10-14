@@ -103,6 +103,17 @@ fn mul_overflow_boundary() {
     // 2³⁸ · −2 = −2³⁹, exactly MIN; 2³⁸ · 2 = 2³⁹ is one past MAX.
     assert_eq!(big.checked_mul(-two), Some(Num::MIN));
     assert_eq!(big.checked_mul(two), None);
+    // Saturating, the one past MAX stops at MAX, and MIN times −1, one past MAX too, as well;
+    // the ends of the bits stop at the ends of the range.
+    assert_eq!(big.saturating_mul(two), Num::MAX);
+    assert_eq!(big.saturating_mul(-two), Num::MIN);
+    assert_eq!(Num::MIN.saturating_mul(-Num::ONE), Num::MAX);
+    assert_eq!(Num::saturating_from_bits(i128::MAX), Num::MAX);
+    assert_eq!(
+        Num::saturating_from_bits(i128::from(i64::MIN) - 1),
+        Num::MIN
+    );
+    assert_eq!(Num::saturating_from_bits(-7), Num::from_bits(-7));
 }
 
 #[test]
@@ -325,6 +336,9 @@ proptest! {
     fn mul_matches_exact_rounding(a in bits(), b in bits()) {
         let expected = exact(nearest_even(i128::from(a) * i128::from(b), i128::from(ONE)));
         prop_assert_eq!(n(a).checked_mul(n(b)), expected);
+        // Saturating, it is the product where it fits, and an end of the range past it.
+        let saturated = expected.unwrap_or(if (a < 0) == (b < 0) { Num::MAX } else { Num::MIN });
+        prop_assert_eq!(n(a).saturating_mul(n(b)), saturated);
     }
 
     #[test]

@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Num, Ratio, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
@@ -109,8 +109,8 @@ impl Metric {
     }
 
     /// Whether the straight path from `from` to `to` comes within `reach` of the body `shape` at
-    /// `pos`, decided exactly and without a square root; and if it does, the share of the path at
-    /// its point nearest the body, the first where it enters a box.
+    /// `pos`, each distance to the nearest bit; and if it does, the place along the path of its
+    /// point nearest the body, the first where it enters a box, its distance from `from`.
     pub fn meets(
         self,
         from: Position,
@@ -118,9 +118,9 @@ impl Metric {
         pos: Position,
         shape: Shape,
         reach: Num,
-    ) -> Option<Ratio<i128, i128>> {
+    ) -> Option<Num> {
         let approach = self.approach(shape, pos, from, to, reach);
-        (approach.nearest != Ordering::Greater).then_some(approach.share)
+        (approach.nearest != Ordering::Greater).then_some(approach.place)
     }
 }
 
@@ -212,14 +212,14 @@ mod tests {
         let num = |value| Num::from_int(value).unwrap();
         let (from, to) = (Position::from((0, 0, 0)), Position::from((10, 0, 0)));
         let point = Shape::POINT;
-        // Beside the path 2 m off, at 4 m along: met within 2, the share 4/10, and not within
+        // Beside the path 2 m off, at 4 m along: met within 2, at 4 m along, and not within
         // 2 less a bit. Behind the start and past the end, the ends count.
         let cases = [
-            (Position::from((4, 0, 2)), num(2), Some(Ratio::new(2, 5))),
+            (Position::from((4, 0, 2)), num(2), Some(num(4))),
             (Position::from((4, 0, 2)), num(2) - Num::EPSILON, None),
-            (Position::from((-1, 0, 0)), num(1), Some(Ratio::ZERO)),
+            (Position::from((-1, 0, 0)), num(1), Some(Num::ZERO)),
             (Position::from((-2, 0, 0)), num(1), None),
-            (Position::from((12, 0, 0)), num(2), Some(Ratio::ONE)),
+            (Position::from((12, 0, 0)), num(2), Some(num(10))),
             (Position::from((12, 0, 0)), num(1), None),
         ];
         for (at, reach, expected) in cases {
@@ -234,26 +234,26 @@ mod tests {
         );
         // 3 m up: a planar map ignores the height, a spatial one counts it, √(4 + 9) > 3.
         let above = Position::from((4, 3, 2));
-        // Its share of the path is the point's along it, 4 m of 10, either way.
-        let along = Some(Ratio::new(2, 5));
+        // Its place on the path is the point's along it, 4 m, either way.
+        let along = Some(num(4));
         assert_eq!(Metric::Planar.meets(from, to, above, point, num(2)), along);
         assert_eq!(Metric::Spatial.meets(from, to, above, point, num(3)), None);
         assert_eq!(Metric::Spatial.meets(from, to, above, point, num(4)), along);
         // A path of no length meets what is within reach of its point.
         let still = Metric::Planar.meets(from, from, Position::from((0, 0, 1)), point, num(1));
-        assert_eq!(still, Some(Ratio::ZERO));
+        assert_eq!(still, Some(Num::ZERO));
         // A box of 4 × 2 m at 5 m along, through which the path runs: met where it enters, at
         // 3 m, whatever the reach.
         let body = Shape::Box(BodyBox::new([num(4), num(2)], Num::ZERO).unwrap());
         let entered = Metric::Planar.meets(from, to, Position::from((5, 0, 0)), body, Num::ZERO);
-        assert_eq!(entered, Some(Ratio::new(3, 10)));
+        assert_eq!(entered, Some(num(3)));
         // A reach and a radius whose sum passes every number reach every distance, as
         // `reaches` counts them: met at the path's nearest point, 4 m along, and come within.
         let huge = Shape::Circle(Num::MAX);
         let far = Position::from((4, 0, 900));
         assert_eq!(
             Metric::Planar.meets(from, to, far, huge, Num::MAX),
-            Some(Ratio::new(2, 5))
+            Some(num(4))
         );
         assert!(huge.comes_within(far, from, to, Num::MAX));
         assert!(Metric::Planar.reaches(from, huge, Num::MAX, far, point));

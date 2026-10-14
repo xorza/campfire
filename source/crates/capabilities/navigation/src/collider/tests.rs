@@ -134,12 +134,25 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
     );
 }
 
+/// How far `parted`, an axis of an offset `reach` long along one whose axis is `along` and whose
+/// square is `square`, lies past the exact axis, away from zero: the exact one, below 2³⁷,
+/// within 2⁻¹⁰ of a bit by `f64`.
+#[expect(
+    clippy::float_arithmetic,
+    clippy::cast_precision_loss,
+    reason = "f64 is only the accuracy reference"
+)]
+fn past_exact(parted: i128, along: i128, reach: i128, square: i128) -> f64 {
+    let exact = along.abs() as f64 * reach as f64 / (square as f64).sqrt();
+    parted.abs() as f64 - exact
+}
+
 #[test]
 fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
     // Offsets in bits from the first body to the second, with their radii in meters. The
     // squared lengths 2, 74, 2⁴⁹ + 2²⁵ + 1 and 2⁷⁰ + 24 690·2³⁵ + 12 345² + 2⁶⁸ are not
-    // squares; 81, 25·2⁴⁰ and 1 are. The last four pairs stand at `MAX_BOUND`, 2,048 m,
-    // where the product of an offset and the reach squares past `u128`.
+    // squares; 81, 25·2⁴⁰ and 1 are. The last four pairs stand at `MAX_BOUND`, 2,048 m, the
+    // widest reach.
     let cases: [([i64; 2], [i64; 2]); 8] = [
         ([1, 1], [1, 1]),
         ([0, -9], [1, 1]),
@@ -174,19 +187,12 @@ fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
         let square = along[0] * along[0] + along[1] * along[1];
         let parted = [0, 1].map(|axis| along[axis] + moved[1][axis] - moved[0][axis]);
         for axis in 0..2 {
-            // `n` is the exact |along| · reach ÷ √square rounded up when
-            // (n − 1)² · square < along² · reach² ≤ n² · square, or both are 0.
-            let n = parted[axis].unsigned_abs();
-            let product = (along[axis] * reach).unsigned_abs();
-            let exact = U256::product(product, product);
-            let square = square.cast_unsigned();
+            // Each axis lies from the exact |along| · reach ÷ √square to less than a bit past it,
+            // away from the other body.
             let case = format!("{offset:?} with radii {radii:?}, axis {axis}");
             assert_eq!(parted[axis].signum(), along[axis].signum(), "{case}");
-            assert!(exact <= U256::product(n.pow(2), square), "{case}");
-            assert!(
-                n == 0 || U256::product((n - 1).pow(2), square) < exact,
-                "{case}"
-            );
+            let past = past_exact(parted[axis], along[axis], reach, square);
+            assert!((-1e-3..1.0 + 1e-3).contains(&past), "{case} {past}");
             // Both walk, so they share the change, the second taking the odd bit.
             let change = parted[axis] - along[axis];
             assert_eq!(moved[0][axis], -(change / 2), "{case}");

@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 
@@ -9,12 +11,23 @@ pub trait FloorRoot {
     fn floor_root(self) -> Self;
 }
 
-/// The integer square root nearest to the exact one, for values below 2¹²⁶, whose roots are
-/// below 2⁶³ and nearest roots at most 2⁶³. A root is never exactly a half, as `(k + ½)²` is not
-/// an integer.
-pub(crate) trait NearestRoot {
+/// The integer square root rounded to nearest or up, from the floor root. A root is never
+/// exactly a half, as `(k + ½)²` is not an integer.
+pub trait RoundedRoot {
+    /// The integer root nearest to the exact one, for values below 2¹²⁶, whose roots are below
+    /// 2⁶³ and nearest roots at most 2⁶³.
     #[must_use]
     fn nearest_root(self) -> Self;
+
+    /// The least integer whose square is at least `self`.
+    #[must_use]
+    fn ceil_root(self) -> Self;
+
+    /// How the nearest root orders against `other`, at most 2⁶³, with no root: it lies below
+    /// `r ≥ 1` exactly when the value is at most `r² − r`, as the root lies below `r − ½` exactly
+    /// when the value lies below `(r − ½)² = r² − r + ¼`, and above `r` exactly when the value
+    /// passes `r² + r`.
+    fn nearest_root_cmp(self, other: Self) -> Ordering;
 }
 
 impl FloorRoot for u128 {
@@ -24,7 +37,7 @@ impl FloorRoot for u128 {
     /// predicts as not taken, so a caller that waits on the root waits on no correction.
     #[expect(
         clippy::inline_always,
-        reason = "left to the inliner, the call stays, and costs `atomic/floor_root/narrow` 10 % on a Ryzen and 22 % on an M2"
+        reason = "left to the inliner, the call stays, and costs `atomic/root/floor_narrow` 10 % on a Ryzen and 22 % on an M2"
     )]
     #[inline(always)]
     fn floor_root(self) -> u128 {
@@ -38,7 +51,26 @@ impl FloorRoot for u128 {
     }
 }
 
-impl NearestRoot for u128 {
+impl RoundedRoot for u128 {
+    fn ceil_root(self) -> u128 {
+        let root = self.floor_root();
+        // The floor root is below 2⁶⁴, so its square fits. The step sits in an `if`: a select in
+        // its place made `integration/collision/crowded` 4 % slower.
+        if root * root < self { root + 1 } else { root }
+    }
+
+    fn nearest_root_cmp(self, other: u128) -> Ordering {
+        debug_assert!(other <= 1 << 63);
+        let square = other * other;
+        if self > square + other {
+            Ordering::Greater
+        } else if other > 0 && self <= square - other {
+            Ordering::Less
+        } else {
+            Ordering::Equal
+        }
+    }
+
     /// Each path's estimate, rounded, `n`, which is the nearest root unless the root lies within
     /// the estimate's error of a half. `n` is the nearest exactly when `n² − n < value ≤ n² + n`,
     /// as `(n ± ½)² = n² ± n + ¼`; the rare steps correct the rest, as in `floor_root`.

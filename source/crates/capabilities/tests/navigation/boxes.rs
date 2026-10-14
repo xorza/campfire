@@ -104,7 +104,7 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
     assert_eq!(*game.part::<Position>(walker), Position::from((540, 0, 56)));
     assert!(farthest > Num::int(559), "{farthest:?}");
     // A walker of 1 m that stands half a meter into its long edge at z = 50, far from its ends:
-    // the Collide stage moves it out to touch, to z = 51.
+    // the Collide stage moves it out to touch, to z = 51, and a bit past, the push's slack.
     let pushed = Navigation::body(
         &mut game,
         quarters(-1600, 198),
@@ -113,22 +113,19 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
         Num::ONE,
     );
     game.step();
-    assert_eq!(
-        *game.part::<Position>(pushed),
-        Position::from((-400, 0, 51))
-    );
+    assert_eq!(*game.part::<Position>(pushed), past((-400, 0, 51), [0, 1]));
 }
 
 #[test]
 fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     // A box of 4 by 2 m at the origin, square to the axes, and a walker of 1 m that stands half a
-    // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, exactly, and
-    // leaves the box where it stands.
+    // meter into its edge at x = 2: the Collide stage moves it out to touch, to x = 3, and a bit
+    // past, the push's slack, and leaves the box where it stands.
     let mut game = walk_match();
     let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(4, 2));
     let walker = Navigation::body(&mut game, quarters(10, 0), None, Some(QUARTER), Num::ONE);
     game.step();
-    assert_eq!(*game.part::<Position>(walker), Position::from((3, 0, 0)));
+    assert_eq!(*game.part::<Position>(walker), past((3, 0, 0), [1, 0]));
     assert_eq!(*game.part::<Position>(building), Position::from((0, 0, 0)));
 }
 
@@ -145,11 +142,17 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     game.step();
     Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
     assert_eq!(*game.part::<Position>(walker), quarters(5, 1));
-    // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch.
+    // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch, and
+    // a bit past.
     let mut bare = walk_match();
     let walker = Navigation::body(&mut bare, quarters(1, 0), None, Some(QUARTER), QUARTER);
     Navigation::body_on(&mut bare, (0, 0, 0), None, None, boxed(2, 2));
-    assert_eq!(*bare.part::<Position>(walker), quarters(5, 0));
+    let touching = quarters(5, 0).get();
+    let past_it = Vec3::new(touching.x + Num::EPSILON, touching.y, touching.z);
+    assert_eq!(
+        *bare.part::<Position>(walker),
+        Position::new(past_it).unwrap()
+    );
 }
 
 #[test]
@@ -240,4 +243,15 @@ fn a_placed_box_needs_room_from_the_walls_and_the_bodies_that_stand() {
         check(&[(num("1"), num("2")), (num("2.5"), num("2"))], false),
         blocked(2)
     );
+}
+
+/// `at`, in meters, moved by `bits` along x and z.
+fn past(at: (i16, i16, i16), bits: [i64; 2]) -> Position {
+    let at = Position::from(at).get();
+    let moved = Vec3::new(
+        at.x + Num::from_bits(bits[0]),
+        at.y,
+        at.z + Num::from_bits(bits[1]),
+    );
+    Position::new(moved).unwrap()
 }

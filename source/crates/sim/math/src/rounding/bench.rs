@@ -2,8 +2,8 @@ use std::hint::black_box;
 
 use criterion::{Criterion, Throughput};
 
-use crate::floor_root::bench::values;
 use crate::num::bench::COUNT;
+use crate::root::bench::values;
 use crate::rounding::Rounding;
 
 /// The modes the inputs take in turn.

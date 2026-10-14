@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ShotHits, Targets};
 use campfire_core::{BodyUnit, ByType, Team, UnitType, UnitsNear};
 use campfire_deliveries::{Deliveries, Teleported};
-use campfire_math::Ratio;
+use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};
 use campfire_stats::Life;
 
@@ -60,7 +60,7 @@ impl Flying {
         >,
         (mut order, mut met, mut flying): (
             Local<'_, Ordered>,
-            Local<'_, Vec<(Ratio<i128, i128>, StableId)>>,
+            Local<'_, Vec<(Num, StableId)>>,
             Local<'_, Vec<StableId>>,
         ),
         mut near: UnitsNear<'_, '_>,

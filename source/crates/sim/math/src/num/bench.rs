@@ -18,7 +18,8 @@ fn spread(seed: u64, span: i64) -> Vec<Num> {
 }
 
 /// `Num`'s arithmetic and its functions, each over `COUNT` inputs: products and quotients of values
-/// within ±1000, and their product over a third, `mul_div`, rounded once, roots, the sine and
+/// within ±1000, the products also stopped at the range, `saturating_mul`, as a stat's steps take
+/// them, and their product over a third, `mul_div`, rounded once, roots, the sine and
 /// cosine of angles within ±8 and of huge ones, and `atan2`, also of points near an axis.
 pub(crate) fn num(c: &mut Criterion) {
     let one = Num::ONE.to_bits();
@@ -38,6 +39,13 @@ pub(crate) fn num(c: &mut Criterion) {
         b.iter(|| {
             for (&x, &y) in small.iter().zip(&other) {
                 black_box(black_box(x) * y);
+            }
+        });
+    });
+    group.bench_function("saturating_mul", |b| {
+        b.iter(|| {
+            for (&x, &y) in small.iter().zip(&other) {
+                black_box(black_box(x).saturating_mul(y));
             }
         });
     });

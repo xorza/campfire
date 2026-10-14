@@ -1,4 +1,4 @@
-use crate::floor_root::FloorRoot;
+use crate::root::FloorRoot;
 use crate::simd::f64x4::F64x4;
 use crate::simd::i64x4::I64x4;
 

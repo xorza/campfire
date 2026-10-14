@@ -67,7 +67,7 @@ impl Srgb {
 
 #[cfg(test)]
 mod tests {
-    use campfire_math::U256;
+    use std::cmp::Ordering;
 
     use super::*;
 
@@ -77,16 +77,40 @@ mod tests {
     /// The denominator of the curve's base, `269025 / 25`.
     const BASE: u128 = 10_761;
 
+    /// The product of three factors, exact, in base-2³² digits, the least significant first: the
+    /// test's own reference past 128 bits (design 09, D12), at most 384 bits, so 12 digits.
+    fn product(factors: [u128; 3]) -> [u64; 12] {
+        let mut digits = [0_u64; 12];
+        digits[0] = 1;
+        for factor in factors {
+            let factor =
+                [0, 1, 2, 3].map(|at| u64::try_from((factor >> (32 * at)) & 0xFFFF_FFFF).unwrap());
+            let mut out = [0_u64; 12];
+            for (i, &x) in digits.iter().enumerate().filter(|&(_, &x)| x != 0) {
+                let mut carry = 0;
+                for (j, &y) in factor.iter().enumerate() {
+                    let sum = x * y + out[i + j] + carry;
+                    out[i + j] = sum & 0xFFFF_FFFF;
+                    carry = sum >> 32;
+                }
+                out[i + 4] += carry;
+            }
+            digits = out;
+        }
+        digits
+    }
+
     /// Whether `light` is `SCALE · (n / BASE)^(12/5)` rounded to nearest: `(2L − 1)⁵ · BASE¹² ≤
     /// (2 · SCALE)⁵ · n¹² < (2L + 1)⁵ · BASE¹²`, each side under 2²⁴⁷.
     fn on_curve(light: u32, n: u128) -> bool {
-        let side = |odd: u128| U256::product(odd.pow(5), BASE.pow(6)).checked_mul(BASE.pow(6));
-        let target = U256::product((2 * u128::from(SCALE)).pow(5), n.pow(6)).checked_mul(n.pow(6));
+        let side = |odd: u128| product([odd.pow(5), BASE.pow(6), BASE.pow(6)]);
+        let target = product([(2 * u128::from(SCALE)).pow(5), n.pow(6), n.pow(6)]);
         let (low, high) = (
             side(2 * u128::from(light) - 1),
             side(2 * u128::from(light) + 1),
         );
-        low <= target && target < high
+        let order = |a: [u64; 12], b: [u64; 12]| a.iter().rev().cmp(b.iter().rev());
+        order(low, target) != Ordering::Greater && order(target, high) == Ordering::Less
     }
 
     /// Whether `light` is `SCALE · num / den` rounded to nearest; `den` is never twice a tie.

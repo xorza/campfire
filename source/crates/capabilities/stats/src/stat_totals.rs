@@ -1,4 +1,4 @@
-use campfire_math::{Num, Rounding, U256};
+use campfire_math::Num;
 
 use crate::stat_op::StatOp;
 
@@ -32,24 +32,14 @@ impl StatTotals {
         }
     }
 
-    /// `(add) × (1 + pct) × (1 − cut)`, the cut from 0 to 1, each sum stopped at the range of a
-    /// number, the product rounded once to nearest and stopped at that range too.
+    /// `(add) × (1 + pct) × (1 − cut)`, the cut from 0 to 1, each sum and each product stopped
+    /// at the range of a number, each product rounded to nearest: within a bit of the product
+    /// rounded once (design 09, D11).
     pub fn value(self) -> Num {
         let one = 1_i128 << Num::FRAC_BITS;
-        let base = saturate(self.add).to_bits();
-        let gain = saturate(one + self.pct).to_bits();
-        let kept = one - self.cut.clamp(0, one);
-        let negative = (base < 0) != (gain < 0);
-        let magnitude = u128::from(base.unsigned_abs()) * u128::from(gain.unsigned_abs());
-        let product = U256::product(magnitude, kept.cast_unsigned())
-            .shr_rounded(2 * Num::FRAC_BITS, Rounding::NearestEven)
-            .map_or(i128::MAX, |bits| i128::try_from(bits).unwrap_or(i128::MAX));
-        saturate(if negative { -product } else { product })
+        let kept = Num::saturating_from_bits(one - self.cut.clamp(0, one));
+        Num::saturating_from_bits(self.add)
+            .saturating_mul(Num::saturating_from_bits(one + self.pct))
+            .saturating_mul(kept)
     }
-}
-
-/// `bits` as a number, at the end of the range of numbers when past it.
-fn saturate(bits: i128) -> Num {
-    let bits = bits.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
-    Num::from_bits(i64::try_from(bits).expect("clamped to the range"))
 }

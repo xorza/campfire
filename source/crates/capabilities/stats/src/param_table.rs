@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_math::{Num, ProductSum};
+use campfire_math::{Num, Rounding};
 use campfire_values::{DeclaredName, NameTable, Param, Rank, Ranked, Scalar, Stat};
 
 use crate::param_source::ParamSource;
@@ -121,9 +121,11 @@ impl ParamTable {
     }
 
     /// The param at `at` of run `run` at `rank`, a scaling table's of `source`: `base + per_level
-    /// × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − the type's value)`, summed
-    /// exactly, rounded once, and at the end of the range of numbers when past it; with no
-    /// source, level 1 and stats of 0. Each param holds `rank`, as the load or the call checked.
+    /// × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − the type's value)`: each stat
+    /// stopped at the range of a number, each product of a ratio rounded to nearest, the sum
+    /// exact, and at the end of the range of numbers when past it, so products past the range
+    /// still cancel (design 09, D11); with no source, level 1 and stats of 0. Each param holds
+    /// `rank`, as the load or the call checked.
     pub fn value(
         &self,
         run: usize,
@@ -136,11 +138,11 @@ impl ParamTable {
             ParamValue::Ranked(ranked) => return *ranked.get(rank).expect(HELD),
             ParamValue::Scaled(scaled) => scaled,
         };
-        let one = 1_i128 << Num::FRAC_BITS;
         let levels = i128::from(source.map_or(1, ParamSource::level).saturating_sub(1));
-        let mut sum = ProductSum::ZERO;
-        sum.add(scaled.base.get(rank).expect(HELD).to_bits(), one);
-        sum.add(scaled.per_level.to_bits(), levels * one);
+        let base = i128::from(scaled.base.get(rank).expect(HELD).to_bits());
+        // A base, a gain a level over fewer than 2³² levels, and each ratio's product, below 2¹⁰³,
+        // sum far within `i128`.
+        let mut sum = base + i128::from(scaled.per_level.to_bits()) * levels;
         if let Some(source) = source {
             let ratios = &self.ratios[scaled.ratios_start as usize..scaled.ratios_end as usize];
             for ratio in ratios {
@@ -149,10 +151,12 @@ impl ParamTable {
                 } else {
                     source.stat_bits(ratio.stat)
                 };
-                sum.add(ratio.ratio.to_bits(), stat);
+                let stat = i128::from(Num::saturating_from_bits(stat).to_bits());
+                let product = i128::from(ratio.ratio.to_bits()) * stat;
+                sum += Rounding::NearestEven.shift_right(product, Num::FRAC_BITS);
             }
         }
-        Scalar::Decimal(sum.saturating_num())
+        Scalar::Decimal(Num::saturating_from_bits(sum))
     }
 }
 
@@ -167,7 +171,7 @@ mod tests {
     use crate::stat_book::StatBook;
 
     #[test]
-    fn a_scaling_param_rounds_its_sum_once_ties_to_even_and_stops_at_the_range() {
+    fn a_scaling_param_rounds_each_product_ties_to_even_and_stops_at_the_range() {
         // A ratio of ε on a stat of ±0.5, ±1.5 and 2.5 is ±ε/2, ±3ε/2 and 5ε/2: each a tie, to
         // the even neighbour, 0, ±2ε and 2ε, as every rounding of a number. Away from zero they
         // were ±ε, ±2ε and 3ε.

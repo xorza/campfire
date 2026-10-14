@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use campfire_core::Layer;
-use campfire_geometry::{BodyBox, MAX_BOUND, Shape};
-use campfire_math::{CeilRoot, Num, Rounding, U256, Vec3};
+use campfire_geometry::{BodyBox, Shape};
+use campfire_math::{Direction, Num, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::collider::contact::Contact;
@@ -24,26 +24,25 @@ pub struct Collider {
     pub(crate) gathering: bool,
 }
 
-/// How one body lies from another that it overlaps: the offset to it along x and z, its square,
-/// and the two radii together, in bits of a `Num`.
+/// How one body lies from another that it overlaps: the offset to it along x and z, and the two
+/// radii together, in bits of a `Num`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Overlap {
     dx: i128,
     dz: i128,
-    square: i128,
     reach: i128,
 }
 
 impl Collider {
     /// Pushes the two colliders of each of `contacts`, in order, apart along the line between
     /// them, on the ground plane, until their centres lie the sum of their radii apart, each
-    /// coordinate of that offset rounded away from zero to a whole bit, so they end touching or
-    /// apart: each contact sees the pushes of the
-    /// contacts before it, and one they parted already is skipped. A unit that walks into one
-    /// that stands takes the whole overlap, so no unit shoves another aside; two that both walk,
-    /// or both stand, share it, the higher id taking the odd bit of each coordinate; one that may
-    /// not be pushed leaves the whole overlap to the other. Two on one spot part along x, the
-    /// higher id towards +x.
+    /// coordinate of that offset rounded away from zero past the direction's own rounding, so
+    /// they end touching or apart, less than a bit past it on each axis: each contact sees the
+    /// pushes of the contacts before it, and one they parted already is skipped. A unit that
+    /// walks into one that stands takes the whole overlap, so no unit shoves another aside; two
+    /// that both walk, or both stand, share it, the higher id taking the odd bit of each
+    /// coordinate; one that may not be pushed leaves the whole overlap to the other. Two on one
+    /// spot part along x, the higher id towards +x.
     pub(crate) fn resolve(colliders: &mut [Collider], contacts: &[Contact]) {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
         for &Contact { first, second } in contacts {
@@ -107,12 +106,7 @@ impl Collider {
         let dz = i128::from(other.point.z.to_bits() - self.point.z.to_bits());
         let reach = i128::from(self.shape.bound().to_bits() + other.shape.bound().to_bits());
         let square = dx * dx + dz * dz;
-        (square < reach * reach).then_some(Overlap {
-            dx,
-            dz,
-            square,
-            reach,
-        })
+        (square < reach * reach).then_some(Overlap { dx, dz, reach })
     }
 
     fn part(a: &mut Collider, b: &mut Collider) {
@@ -126,19 +120,15 @@ impl Collider {
             }
             return;
         }
-        let Some(Overlap {
-            dx,
-            dz,
-            square,
-            reach,
-        }) = a.overlap(b)
-        else {
+        let Some(Overlap { dx, dz, reach }) = a.overlap(b) else {
             return;
         };
-        let change = if square == 0 {
-            [reach, 0]
-        } else {
-            [dx, dz].map(|along| Collider::reaching(along, reach, square) - along)
+        let change = match Direction::of([dx, dz]) {
+            None => [reach, 0],
+            Some(direction) => {
+                let parted = direction.scaled_away(reach);
+                [0, 1].map(|axis| parted[axis] - [dx, dz][axis])
+            }
         };
         let moves = match (a.movable, b.movable) {
             (true, true) if a.walking != b.walking => (a.walking, b.walking),
@@ -151,22 +141,6 @@ impl Collider {
         });
         a.point = Collider::moved(a.point, back.map(|along| -along));
         b.point = Collider::moved(b.point, [0, 1].map(|axis| change[axis] - back[axis]));
-    }
-
-    /// `along`, one component of an offset whose length is `√square` bits, on the offset that
-    /// points the same way and is `reach` bits long, its magnitude rounded up to a whole bit, so
-    /// the two bodies end touching or apart. That magnitude is `√x` for `x = along² · reach² ÷
-    /// square`, and a whole `k` is at least `√x` exactly when `k² ≥ ⌈x⌉`. Both bodies' radii are
-    /// within `MAX_BOUND`, 2³⁵ bits, so `|along| < reach ≤ 2³⁶`: the product's square,
-    /// below 2¹⁴⁴, is a `U256`, and `x`, at most `reach²` as `along² ≤ square`, fits `u128`, as
-    /// does `square`, below `reach²`, as the bodies overlap.
-    fn reaching(along: i128, reach: i128, square: i128) -> i128 {
-        debug_assert!(reach <= 2 * i128::from(MAX_BOUND.to_bits()));
-        let product = (along * reach).unsigned_abs();
-        let least = U256::product(product, product)
-            .div_rounded(square.cast_unsigned(), Rounding::Ceiling)
-            .expect("at most the reach's square");
-        least.ceil_root().cast_signed() * along.signum()
     }
 
     /// `point` moved by `by` bits along x and z; its height stays.

@@ -38,8 +38,8 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
     Polygon::new(points).unwrap()
 }
 
-/// The squared distance from `pos` to the nearest point of `body` at `centre`; 0 inside.
-fn distance(body: &BodyBox, centre: Position, pos: Position) -> Ratio<U256, u128> {
+/// The distance from `pos` to the nearest point of `body` at `centre`, in bits; 0 inside.
+fn distance(body: &BodyBox, centre: Position, pos: Position) -> i128 {
     body.frame().nearest_to(flat(pos) - flat(centre)).distance
 }
 
@@ -47,9 +47,10 @@ fn flat_vec3(off: Flat) -> Vec3 {
     Vec3::new(Num::from_bits(off[0]), Num::ZERO, Num::from_bits(off[1]))
 }
 
-/// Where the path from `start` along `path` crosses the segment from `a` to `b`, as a share of
-/// the path, by the two lines' cross products; none for parallel lines or no crossing.
-fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<Ratio<i128, i128>> {
+/// Where the path from `start` along `path` crosses the segment from `a` to `b`, by the two
+/// lines' cross products: its share of the path, `t / den`, as `[t, den]` with `den` positive;
+/// none for parallel lines or no crossing.
+fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<[i128; 2]> {
     let edge = b - a;
     let den = path.cross(edge);
     if den == 0 {
@@ -57,12 +58,9 @@ fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<Ratio<i128, i12
     }
     let to_a = a - start;
     let sign = den.signum();
-    let (t, u) = (to_a.cross(edge) * sign, to_a.cross(path) * sign);
-    let within = |num: i128| {
-        let share = Ratio::new(num, den.abs());
-        Ratio::ZERO <= share && share <= Ratio::ONE
-    };
-    (within(t) && within(u)).then(|| Ratio::new(t, den.abs()))
+    let (t, u, den) = (to_a.cross(edge) * sign, to_a.cross(path) * sign, den.abs());
+    let within = |num: i128| 0 <= num && num <= den;
+    (within(t) && within(u)).then_some([t, den])
 }
 
 #[test]
@@ -229,15 +227,13 @@ fn the_nearest_point_lies_on_the_nearest_edge_or_corner() {
     let probe = at("3", "-3");
     let point = turned.nearest_point(centre, probe);
     assert_eq!(turned.nearest(centre, point, Num::EPSILON), Ordering::Less);
-    // Each coordinate rounds by half a bit at most, so the way to the point is within a bit of
-    // the exact distance d, and its square within 2d + 1 of d².
-    let way = (flat(point) - flat(probe)).length_squared();
-    let slack = 2 * (way.floor_root() + 1) + 1;
-    let gap = distance(&turned, centre, probe);
-    assert!(
-        Ratio::whole(U256::from_u128(way - slack)) < gap
-            && gap < Ratio::whole(U256::from_u128(way + slack))
-    );
+    // Each coordinate rounds by half a bit at most, so the way to the point lies within a bit
+    // of the exact distance, and the box's distance, rounded, within half a bit more.
+    let way = (flat(point) - flat(probe))
+        .length_squared()
+        .nearest_root()
+        .cast_signed();
+    assert!((distance(&turned, centre, probe) - way).abs() <= 2);
 }
 
 #[test]
@@ -270,39 +266,32 @@ fn twice_the_scale_sees_halves_of_a_bit() {
 fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let body = made("4", "2", "0");
     let centre = at("0", "0");
-    let share = |num: i128, den: i128| Ratio::new(num, den);
     let approach =
         |from: Position, to: Position, reach: &str| body.approach(centre, from, to, num(reach));
-    // Through it along x from -10: it enters at x = -2, 8 of the path's 20 m; from the other
-    // end, at x = 2, 8 m in too.
+    // Through it along x from -10: it enters at x = -2, 8 m along the path's 20 m; from the
+    // other end, at x = 2, 8 m in too.
     let through = approach(at("-10", "0"), at("10", "0"), "0");
     assert_eq!(
         through,
         Approach {
             nearest: Ordering::Equal,
-            share: share(2, 5)
+            place: num("8")
         }
     );
     assert_eq!(
         approach(at("-10", "0"), at("10", "0"), "1").nearest,
         Ordering::Less
     );
-    assert_eq!(
-        approach(at("10", "0"), at("-10", "0"), "0").share,
-        share(2, 5)
-    );
+    assert_eq!(approach(at("10", "0"), at("-10", "0"), "0").place, num("8"));
     // From inside: at its start.
-    assert_eq!(
-        approach(at("0", "0"), at("10", "0"), "0").share,
-        Ratio::ZERO
-    );
+    assert_eq!(approach(at("0", "0"), at("10", "0"), "0").place, Num::ZERO);
     // Along z = 3, 2 m off the edge at z = 1 from x = -2 to 2: the first of that stretch.
     let beside = approach(at("-10", "3"), at("10", "3"), "2");
     assert_eq!(
         beside,
         Approach {
             nearest: Ordering::Equal,
-            share: share(2, 5)
+            place: num("8")
         }
     );
     // As a yes or no through the shape, which tests the spans first: touching at the reach is
@@ -328,14 +317,14 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
         num("2") - Num::EPSILON,
     );
     assert_eq!(short.nearest, Ordering::Greater);
-    // From (5, 5) to (10, 0), the corner (2, 1) is nearest a tenth of the way, 7/√2 m off,
-    // 24.5 m²: within 5, past 4.9, 24.01 m².
+    // From (5, 5) to (10, 0), the corner (2, 1) is nearest a tenth of the way, 1/√2 m along,
+    // 2²⁴/√2 = 11,863,283.2 bits, and 7/√2 m off, 4.95 m: within 5, past 4.9.
     let corner = approach(at("5", "5"), at("10", "0"), "5");
     assert_eq!(
         corner,
         Approach {
             nearest: Ordering::Less,
-            share: share(1, 10)
+            place: Num::from_bits(11_863_283)
         }
     );
     assert_eq!(
@@ -348,18 +337,18 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
         still,
         Approach {
             nearest: Ordering::Equal,
-            share: Ratio::ZERO
+            place: Num::ZERO
         }
     );
-    // Past its end: the end is nearest, 1 m short of the edge.
+    // Past its end: the end is nearest, 1 m short of the edge, 7 m along.
     let short_of = approach(at("-10", "0"), at("3", "0"), "1");
-    assert_eq!(short_of.share, share(8, 13));
+    assert_eq!(short_of.place, num("8"));
     let stops = approach(at("10", "0"), at("3", "0"), "1");
     assert_eq!(
         stops,
         Approach {
             nearest: Ordering::Equal,
-            share: Ratio::ONE
+            place: num("7")
         }
     );
 }
@@ -369,29 +358,36 @@ fn a_body_is_pushed_out_of_a_box() {
     let body = made("4", "2", "0");
     let centre = at("0", "0");
     let point = |x: &str, z: &str| at(x, z).get();
-    // Half a meter into the edge at x = 2, from outside and from inside: out to touch it.
+    let bit = Num::EPSILON;
+    let past = |x: &str, z: &str, by: [Num; 2]| {
+        let at = point(x, z);
+        Vec3::new(at.x + by[0], at.y, at.z + by[1])
+    };
+    // Half a meter into the edge at x = 2, from outside and from inside: out to touch it, and
+    // `PUSH_SLACK`, a bit, past it, as the edge's normal is exact.
     assert_eq!(
         body.push_out(centre, point("2.5", "0"), Num::ONE),
-        Some(point("3", "0"))
+        Some(past("3", "0", [bit, Num::ZERO]))
     );
     assert_eq!(
         body.push_out(centre, point("1.5", "0"), Num::ONE),
-        Some(point("3", "0"))
+        Some(past("3", "0", [bit, Num::ZERO]))
     );
-    // Off the corner (2, 1) by (0.5, 0.5): out to 1 m from it along the diagonal, 2²⁴/√2 =
-    // 11 863 283.2 bits along each axis, rounded up to 11 863 284, so it ends 16 777 217.1
-    // bits from the corner, past its radius of 2²⁴, and a second push finds no overlap.
+    // Off the corner (2, 1) by (0.5, 0.5) m: 2²³·√2 = 11 863 283.2 bits from it, measured
+    // 11 863 283, so out by 2²⁴ − 11 863 283 + 1 = 4 913 934 bits along the diagonal, 3 474 676.07
+    // along each axis, rounded up to 3 474 677: it ends 11 863 285 bits from the corner along
+    // each axis, 16 777 218.6 bits away, 2.6 bits past touching.
     let off_corner = body
         .push_out(centre, point("2.5", "1.5"), Num::ONE)
         .unwrap();
-    assert_eq!(off_corner.x.to_bits(), 45_417_716);
-    assert_eq!(off_corner.z.to_bits(), 28_640_500);
+    assert_eq!(off_corner.x.to_bits(), 45_417_717);
+    assert_eq!(off_corner.z.to_bits(), 28_640_501);
     assert_eq!(body.push_out(centre, off_corner, Num::ONE), None);
     // At the centre of a square, every edge is as near: out through the first, at z = -1.
     let square = made("2", "2", "0");
     assert_eq!(
         square.push_out(centre, point("0", "0"), Num::ONE),
-        Some(point("0", "-2"))
+        Some(past("0", "-2", [Num::ZERO, -bit]))
     );
     // Clear of it, and touching it, no push.
     assert_eq!(body.push_out(centre, point("3.5", "0"), Num::ONE), None);
@@ -400,31 +396,25 @@ fn a_body_is_pushed_out_of_a_box() {
     let upright = made("4", "2", "90");
     assert_eq!(
         upright.push_out(centre, point("0", "2.5"), Num::ONE),
-        Some(point("0", "3"))
+        Some(past("0", "3", [Num::ZERO, bit]))
     );
-    // Turned 30°, its half edges are a = (29 058 990, 16 777 216) and b = (−8 388 608,
-    // 14 529 495) bits, and a body of 1 m moves along a normal `n` of the edge or the way from
-    // the corner, by `n · (2²⁴·√|n|² − out) ÷ |n|²`, where `off` lies `out ÷ √|n|²` beyond the
-    // edge or the corner, each coordinate rounded away from the box.
+    // Turned 30°, off the edge from a to a + b at 1.25·a, off the corner a + b by (0.25, 0.25) m,
+    // and inside at (1, 0) m, 0.5 m from the edge from −a − b to a − b, the nearest: each ends
+    // apart, within three bits of touching.
     let turned = made("4", "2", "30");
-    let bits = |x: i64, z: i64| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
-    let cases = [
-        // Off the edge from a to a + b, 1.25·a: n = a, out = a · 0.25·a = 281 474 983 662 184,
-        // a move of (7 264 747.32, 4 194 303.90), rounded (7 264 748, 4 194 304).
-        (bits(36_323_738, 20_971_520), bits(43_588_486, 25_165_824)),
-        // Off the corner a + b = (20 670 382, 31 306 711) by (0.25, 0.25) m: n = (2²², 2²²),
-        // out = 2⁴⁵, a move of 2²⁴/√2 − 2²² = 7 668 979.20 along each axis, rounded 7 668 980.
-        (bits(24_864_686, 35_501_015), bits(32_533_666, 43_169_995)),
-        // Inside at (1, 0) m, 0.5 m from the edge from −a − b to a − b, the nearest of 0.5,
-        // 1.13, 1.5 and 2.87 m: n = (2²⁵, −58 117 980), out = −562 949 923 109 444, a move of
-        // (12 582 911.999 999 999 2, −21 794 242.499 999 998 7), rounded (12 582 912,
-        // −21 794 243).
-        (bits(16_777_216, 0), bits(29_360_128, -21_794_243)),
-    ];
-    for (from, to) in cases {
-        let moved = turned.push_out(centre, from, Num::ONE);
-        assert_eq!(moved, Some(to), "{from:?}");
-        assert_eq!(turned.push_out(centre, to, Num::ONE), None, "{from:?}");
+    let bits =
+        |x: i64, z: i64| Position::new(Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z)));
+    for from in [
+        bits(36_323_738, 20_971_520),
+        bits(24_864_686, 35_501_015),
+        bits(16_777_216, 0),
+    ] {
+        let from = from.unwrap();
+        assert!(
+            turned.push_out(centre, from.get(), Num::ONE).is_some(),
+            "{from:?}"
+        );
+        check_push(&turned, centre, from, Num::ONE);
     }
     // The height stays.
     let high = Vec3::new(num("2.5"), num("7"), Num::ZERO);
@@ -593,7 +583,8 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
         expected,
         "{body:?} {probe:?}"
     );
-    let within = Closer::new(body.frame(), square_bits(reach)).holds(flat(probe) - flat(centre));
+    let reach_bits = i128::from(reach.to_bits());
+    let within = Closer::new(body.frame(), reach_bits).holds(flat(probe) - flat(centre));
     assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
 }
 
@@ -607,19 +598,28 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
     assert_eq!(comes_within, approach.nearest == Ordering::Less, "{case}");
     let by_shape = Shape::Box(*body).comes_within(centre, from, to, reach);
     assert_eq!(by_shape, comes_within, "{case}");
+    let length = Direction::of(path.to_array()).map_or(0, |direction| direction.length());
     let meets = body.frame().meets_path(start, path);
-    assert_eq!(meets, body.frame().entry(start, path).is_some(), "{case}");
+    assert_eq!(
+        meets,
+        body.frame().entry(start, path, length).is_some(),
+        "{case}"
+    );
     let corners = body.frame().corners();
+    // The first crossing of an edge, by its share of the path, at its place along it: each
+    // rounding, of the length and of the place, is half a bit, so within a bit of it.
     let enters = (0..4)
         .filter_map(|edge| crossing(start, path, corners[edge], corners[(edge + 1) % 4]))
+        .map(|[t, den]| Rounding::NearestEven.divide(t * length, den))
         .min();
     let enters = if body.holds(centre, from) {
-        Some(Ratio::ZERO)
+        Some(0)
     } else {
         enters
     };
     if let Some(enters) = enters {
-        assert_eq!(approach.share, enters, "{body:?} {from:?} {to:?}");
+        let place = i128::from(approach.place.to_bits());
+        assert!((place - enters).abs() <= 1, "{case} {place} {enters}");
         assert_eq!(approach.nearest, Num::ZERO.cmp(&reach));
         return;
     }
@@ -632,11 +632,12 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
     );
 }
 
-/// A body pushed out ends touching the box or apart, so a second push finds no overlap, and
-/// less than 2 bits past touching, as each coordinate rounds outward by less than a bit; one
-/// left alone did not overlap it.
+/// A body pushed out ends apart from the box, so a second push finds no overlap, and within
+/// three bits of touching: `PUSH_SLACK`, the measure's half bit, and under a bit for the rounding
+/// of each coordinate; the measure of the end takes half a bit more. One left alone did not
+/// overlap it.
 fn check_push(body: &BodyBox, centre: Position, probe: Position, radius: Num) {
-    let two_bits = Num::from_bits(2);
+    let four_bits = Num::from_bits(4);
     match body.push_out(centre, probe.get(), radius) {
         Some(moved) => {
             let case = format!("{body:?} {centre:?} {probe:?} {radius:?}");
@@ -648,7 +649,7 @@ fn check_push(body: &BodyBox, centre: Position, probe: Position, radius: Num) {
                 "{case}"
             );
             assert_eq!(
-                body.nearest(centre, moved, radius + two_bits),
+                body.nearest(centre, moved, radius + four_bits),
                 Ordering::Less,
                 "{case}"
             );
@@ -746,73 +747,10 @@ fn random_boxes(scale: i64) {
     assert!(overlapping > 50 && apart > 50, "{overlapping} {apart}");
 }
 
-/// Whether `k` moves a body of `radius` out along a normal of square `square` whose component
-/// is `along`, from `out` beyond its line: `k · square + along · out ≥ along · radius · √square`.
-fn moves_out(k: i128, along: i128, out: i128, square: i128, radius: i128) -> bool {
-    let side = k * square + along * out;
-    let product = (along * radius).unsigned_abs();
-    let bound = U256::product(product, product)
-        .checked_mul(square.unsigned_abs())
-        .unwrap();
-    side >= 0 && U256::product(side.unsigned_abs(), side.unsigned_abs()) >= bound
-}
-
-#[test]
-fn a_push_is_the_least_whole_move_and_its_first_try_two_below_it_at_most() {
-    // Every small case, against a scan from 0: the least `k` that moves the body out.
-    for square in 1..40_i128 {
-        for along in (0..=square).filter(|along| along * along <= square) {
-            for radius in 1..12_i128 {
-                for out in -60..60_i128 {
-                    if radius * radius * square <= out * out.abs() {
-                        continue;
-                    }
-                    // k · square ≥ along · (radius · square + |out|) passes, as square ≥ √square.
-                    let most = along * (radius * square + out.abs());
-                    let least = (0..=most)
-                        .find(|&k| moves_out(k, along, out, square, radius))
-                        .unwrap();
-                    let case = format!("{along} {out} {square} {radius}");
-                    let root = FineRoot::of(square.unsigned_abs());
-                    assert_eq!(outward(along, out, square, radius, root), least, "{case}");
-                    let first = first_outward(along, out, square, radius, root);
-                    assert!(least - 2 <= first && first <= least, "{case}");
-                }
-            }
-        }
-    }
-    // At the bound: a body of 2,048 m, 2³⁵ bits, against an edge just short of 4,094 m, along an
-    // axis, `along` its length, and at 45°, `along` its length ÷ √2: from inside, an edge's length
-    // behind the line, `out` = −square; from the line; from near the body's reach, the length
-    // times 2³⁵ − 1 bits; and between. Then off a corner by the least way, 1 bit, its square 1, to
-    // 2³⁵ − 1 bits.
-    let radius = 1_i128 << 35;
-    let meter = i128::from(Num::ONE.to_bits());
-    let (axis, aslant) = (4093 * meter, 2894 * meter);
-    for (along, square) in [(axis, axis * axis), (aslant, 2 * aslant * aslant)] {
-        let length = square.cast_unsigned().floor_root().cast_signed();
-        let root = FineRoot::of(square.unsigned_abs());
-        for out in [
-            -square,
-            0,
-            length * (radius - 1),
-            length * (radius >> 1) + 12_345,
-        ] {
-            let k = outward(along, out, square, radius, root);
-            let case = format!("{along} {out}");
-            assert!(moves_out(k, along, out, square, radius), "{case}");
-            assert!(!moves_out(k - 1, along, out, square, radius), "{case}");
-            let first = first_outward(along, out, square, radius, root);
-            assert!(k - 2 <= first && first <= k, "{case}");
-        }
-    }
-    assert_eq!(outward(1, 1, 1, radius, FineRoot::of(1)), radius - 1);
-}
-
 #[test]
 fn a_body_at_the_bound_is_pushed_out_of_the_longest_box() {
-    // The longest box, turned 45°, and a body of 2,048 m into it: each push ends touching or
-    // apart, under 2 bits past touching. The box's half edges are 2 046.95 m along (√½, √½) and
+    // The longest box, turned 45°, and a body of 2,048 m into it: each push ends apart, within
+    // three bits of touching. The box's half edges are 2 046.95 m along (√½, √½) and
     // 0.5 m along (−√½, √½), so its long edge's line lies 0.5 m from the centre, its short edge's
     // 2 046.95 m, and a corner at (1 447.06, 1 447.77) m: 1 447.41 ∓ 0.35, 1 447.41 + 0.35.
     let longest = made("4093.9", "1", "45");

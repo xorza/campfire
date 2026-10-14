@@ -1,6 +1,6 @@
 # campfire-math
 
-The exact numbers every crate of the sim shares: the fixed-point `Num`, vectors, roots, trig, the rounding of a quotient, and the random sequences. Every result is the same bits on every machine. The design is [Determinism core](../../../../docs/design/09-determinism-core.md) and [Math in 128 bits](../../../../docs/design/16-math-128-bits.md); the repository's `AGENTS.md` comes first.
+The numbers every crate of the sim shares: the fixed-point `Num`, vectors, roots, trig, the rounding of a quotient, and the random sequences. Every result is the same bits on every machine. The design is [Determinism core](../../../../docs/design/09-determinism-core.md), whose D8 to D12 give the rule below; the repository's `AGENTS.md` comes first.
 
 ## The rule
 

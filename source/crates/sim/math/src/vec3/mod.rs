@@ -203,6 +203,15 @@ impl Vec3 {
         }
     }
 
+    /// Its axes in bits, `[x, y, z]`, widened for the products of a `Direction`.
+    pub const fn to_bits(self) -> [i128; 3] {
+        [
+            self.x.to_bits() as i128,
+            self.y.to_bits() as i128,
+            self.z.to_bits() as i128,
+        ]
+    }
+
     /// The squared length in raw units, 2⁻⁴⁸ each, exact: each square is at most 2¹²⁶, so three
     /// fit a `u128`. It orders distances exactly, where rounded lengths can tie.
     pub const fn length_squared_bits(self) -> u128 {

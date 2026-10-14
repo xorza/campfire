@@ -3,7 +3,7 @@ use campfire_actions::{ShotHit, ShotHits, Targets};
 use campfire_core::{BodyGrid, Team};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
 use campfire_geometry::Shape;
-use campfire_math::{Num, Ratio, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_values::Hit;
 
@@ -22,7 +22,7 @@ pub(crate) struct Flights<'a> {
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line flies.
     pub(crate) grid: Option<&'a BodyGrid<Entity>>,
-    pub(crate) met: &'a mut Vec<(Ratio<i128, i128>, StableId)>,
+    pub(crate) met: &'a mut Vec<(Num, StableId)>,
 }
 
 /// A projectile in flight this tick: its stable id, its team, its type's spec, where it is,
@@ -170,16 +170,18 @@ impl Flights<'_> {
                 if !selects || struck.contains(Struck { by, id: unit.id }) {
                     return;
                 }
-                if let Some(share) = metric.meets(from, to, unit.pos, unit.shape, half) {
-                    met.push((share, unit.id));
+                if let Some(place) = metric.meets(from, to, unit.pos, unit.shape, half) {
+                    met.push((place, unit.id));
                 }
             });
         }
-        // The shares of the step order where it meets each unit exactly, then the unit's id.
+        // The places along the step order where it meets each unit, to the nearest bit, then the
+        // unit's id. A place lies on the step as its end was rounded, so within a bit or two of
+        // the step's length, and stops there.
         self.met.sort_unstable();
         for at in 0..self.met.len() {
-            let (share, struck) = self.met[at];
-            let travelled = share.of(step);
+            let (place, struck) = self.met[at];
+            let travelled = place.min(step);
             let pos = from
                 .get()
                 .checked_add(direction.checked_mul(travelled).expect("within a step"))

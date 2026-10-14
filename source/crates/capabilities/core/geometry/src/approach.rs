@@ -1,13 +1,13 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Num, Ratio, U256, Vec3};
+use campfire_math::{Direction, Num, RoundedRoot, Vec3};
 
-/// How near a straight path comes to a point: its nearest distance against a reach, and the share
-/// of the path at its nearest point.
+/// How near a straight path comes to a body: its nearest distance against a reach, and the place
+/// along the path of its nearest point, both to the nearest bit (design 09, D9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Approach {
     pub nearest: Ordering,
-    pub(crate) share: Ratio<i128, i128>,
+    pub(crate) place: Num,
 }
 
 impl Approach {
@@ -19,41 +19,39 @@ impl Approach {
     }
 
     /// The approach of the path `path`, the offset from its start to its end, to the point `off`
-    /// from its start, against `reach`, exactly and without a square root; a negative reach is
-    /// nearer than any distance.
+    /// from its start, against `reach`; a negative reach is nearer than any distance. Beyond an
+    /// end the distance is the end's, its nearest root measured against the reach with no root;
+    /// between them it is the distance from the path's line.
     pub fn of(path: Vec3, off: Vec3, reach: Num) -> Approach {
-        let length = path.length_squared_bits();
-        let raw = |v: Vec3| [v.x, v.y, v.z].map(|n| i128::from(n.to_bits()));
-        let along: i128 = raw(off).iter().zip(raw(path)).map(|(a, b)| a * b).sum();
         if reach < Num::ZERO {
             return Approach {
                 nearest: Ordering::Greater,
-                share: Ratio::ZERO,
+                place: Num::ZERO,
             };
         }
         let reach = u128::from(reach.to_bits().cast_unsigned());
-        let reach = reach * reach;
-        if length == 0 || along <= 0 {
+        let (path_bits, off_bits) = (path.to_bits(), off.to_bits());
+        let along: i128 = off_bits.iter().zip(path_bits).map(|(a, b)| a * b).sum();
+        let at_start = Approach {
+            nearest: off.length_squared_bits().nearest_root_cmp(reach),
+            place: Num::ZERO,
+        };
+        let Some(direction) = Direction::of(path_bits) else {
+            return at_start;
+        };
+        if along <= 0 {
+            return at_start;
+        }
+        let place = |bits: i128| Num::from_bits(i64::try_from(bits).expect("a place on a path"));
+        if along.cast_unsigned() >= path.length_squared_bits() {
             return Approach {
-                nearest: off.length_squared_bits().cmp(&reach),
-                share: Ratio::ZERO,
+                nearest: (off - path).length_squared_bits().nearest_root_cmp(reach),
+                place: place(direction.length()),
             };
         }
-        let along = along.cast_unsigned();
-        if along >= length {
-            return Approach {
-                nearest: (off - path).length_squared_bits().cmp(&reach),
-                share: Ratio::ONE,
-            };
-        }
-        // The squared distance from the line, times the squared length: exact in 256 bits.
-        let apart = U256::product(off.length_squared_bits(), length);
-        let allowed = U256::product(reach, length).checked_add(U256::product(along, along));
-        let allowed = allowed.expect("squares of offsets within the world's bound fit 256 bits");
-        // A squared length within the world's bound is below 2⁹⁴, so both fit an i128.
         Approach {
-            nearest: apart.cmp(&allowed),
-            share: Ratio::new(along.cast_signed(), length.cast_signed()),
+            nearest: direction.apart(off_bits).cast_unsigned().cmp(&reach),
+            place: place(direction.along(off_bits)),
         }
     }
 }

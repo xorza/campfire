@@ -4,9 +4,9 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::floor_root::NearestRoot;
 use crate::num::decimal::Decimal;
 use crate::num::error::{IntToNumError, ParseNumError};
+use crate::root::RoundedRoot;
 use crate::rounding::Rounding;
 
 #[cfg(feature = "internals")]
@@ -129,6 +129,25 @@ impl Num {
             Some(bits) => Some(Num(bits)),
             None => None,
         }
+    }
+
+    /// The number of `bits`, at the end of the range of numbers when past it.
+    pub const fn saturating_from_bits(bits: i128) -> Num {
+        if bits < i64::MIN as i128 {
+            Num::MIN
+        } else if bits > i64::MAX as i128 {
+            Num::MAX
+        } else {
+            Num::from_wide_bits(bits)
+        }
+    }
+
+    /// `self × rhs`, rounded once to nearest, ties to even, and at the end of the range of
+    /// numbers when past it: a step of a compound value, as a stat's (design 09, D11).
+    #[must_use]
+    pub const fn saturating_mul(self, rhs: Num) -> Num {
+        let product = self.0 as i128 * rhs.0 as i128;
+        Num::saturating_from_bits(Rounding::NearestEven.shift_right(product, Self::FRAC_BITS))
     }
 
     pub const fn checked_mul(self, rhs: Num) -> Option<Num> {
