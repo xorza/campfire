@@ -38,7 +38,7 @@ pub(crate) mod internals {
         pub fn comes_within(self, pos: Position, reach: Num) -> bool {
             let path = Metric::Planar.offset(self.from, self.to);
             let off = Metric::Planar.offset(self.from, pos);
-            Approach::of(path, off, reach).nearest == Ordering::Less
+            Approach::nearest_of(path, off, reach) == Ordering::Less
         }
     }
 }

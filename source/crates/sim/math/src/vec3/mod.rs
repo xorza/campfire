@@ -156,9 +156,11 @@ impl Vec3 {
         // ratio below is at most 1, and each move at most its offset.
         let distance = offset.checked_length()?.to_bits();
         let moves = StepMoves::new(step.to_bits(), distance).of([offset.x, offset.y, offset.z]);
+        // A move ends between the start and the target, so its sum cannot wrap, and the wrapping
+        // step skips the check a release build makes.
         let advance = |from: Num, moved: Num| {
-            from.checked_add(moved)
-                .expect("a move ends between the start and the target")
+            debug_assert!(from.checked_add(moved).is_some());
+            Num::from_bits(from.to_bits().wrapping_add(moved.to_bits()))
         };
         Some(Vec3::new(
             advance(self.x, moves[0]),
@@ -265,9 +267,11 @@ fn unit_component(component: Num, length: u64, scale: f64) -> Num {
     let mut rest = (magnitude << Num::FRAC_BITS)
         .wrapping_sub(quotient.wrapping_mul(length))
         .cast_signed();
+    // The quotient is at most 2²⁴ + 1 and the rest within ±2⁶³, so no step wraps, and the
+    // wrapping steps skip the checks a release build makes.
     if rest < 0 {
-        quotient -= 1;
-        rest += length.cast_signed();
+        quotient = quotient.wrapping_sub(1);
+        rest = rest.wrapping_add(length.cast_signed());
     }
     // The rounding and the sign are as random as the components, so both are arithmetic, which
     // takes no branch to mispredict.
@@ -277,10 +281,10 @@ fn unit_component(component: Num, length: u64, scale: f64) -> Num {
         reason = "the lazy operators branch on a random rounding"
     )]
     let up = (twice_rest > length) | ((twice_rest == length) & (quotient & 1 == 1));
-    let quotient = (quotient + u64::from(up)).cast_signed();
+    let quotient = quotient.wrapping_add(u64::from(up)).cast_signed();
     // All ones for a negative component, so the xor and the subtraction negate.
     let sign = component.to_bits() >> 63;
-    Num::from_bits((quotient ^ sign) - sign)
+    Num::from_bits((quotient ^ sign).wrapping_sub(sign))
 }
 
 impl Add for Vec3 {

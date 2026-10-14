@@ -13,7 +13,9 @@ use crate::kernel_scene::KernelScene;
 /// `Grid`'s runs of the cells a body blocks, over `COUNT` bodies at whole centimeters within
 /// 20 m of the origin on a grid of half-meter cells over 48 m square, as the pathing grid marks a
 /// body's cells for a walker of 0.5 m: a circle of 0.2 to 5 m, `spans_closer`, and a box of sides
-/// 1 to 9 m at a whole degree, `box_spans_closer`. Each counts the cells of its runs.
+/// 1 to 9 m at a whole degree, `box_spans_closer`. Each counts the cells of its runs. And the
+/// cells a walker's segment, from a point within 20 m of the origin to one within 5 m of that,
+/// touches, as a route's way is tested: `touches`, which visits every cell.
 pub(crate) fn grid(c: &mut Criterion) {
     let mut scene = KernelScene::new(5);
     let bodies: Vec<(Position, Num, BodyBox)> = (0..COUNT)
@@ -27,6 +29,13 @@ pub(crate) fn grid(c: &mut Criterion) {
             let angle = Num::from_int(scene.below(360).cast_signed()).unwrap();
             let body = BodyBox::new(size, angle).unwrap();
             (Position::new(scene.point(20)).unwrap(), radius, body)
+        })
+        .collect();
+    let segments: Vec<(Position, Position)> = (0..COUNT)
+        .map(|_| {
+            let from = scene.point(20);
+            let to = from + scene.point(5);
+            (Position::new(from).unwrap(), Position::new(to).unwrap())
         })
         .collect();
     let edge = Num::int(24);
@@ -49,6 +58,18 @@ pub(crate) fn grid(c: &mut Criterion) {
             let mut cells = 0;
             for (at, _, body) in &bodies {
                 grid.box_spans_closer(black_box(*at), body, reach, |run| cells += run.len());
+            }
+            black_box(cells);
+        });
+    });
+    group.bench_function("touches", |bench| {
+        bench.iter(|| {
+            let mut cells = 0;
+            for &(from, to) in &segments {
+                grid.touches(black_box(from), to, |_| {
+                    cells += 1;
+                    false
+                });
             }
             black_box(cells);
         });

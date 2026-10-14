@@ -72,7 +72,9 @@ impl Shape {
                 centre.to_bits(),
                 extent.to_bits().saturating_add(reach_bits),
             );
-            low - centre >= far || centre - high >= far
+            // Positions lie within the world's bound, so the differences cannot wrap, and the
+            // wrapping steps skip the checks a release build makes.
+            low.wrapping_sub(centre) >= far || centre.wrapping_sub(high) >= far
         };
         if clear(centre.x, ends.map(|end| end.x), extent[0])
             || clear(centre.z, ends.map(|end| end.z), extent[1])
@@ -82,8 +84,8 @@ impl Shape {
         match self {
             Shape::Circle(radius) => {
                 let path = from.ground_offset(to);
-                let approach = Approach::of_circle(path, from.ground_offset(pos), reach, *radius);
-                approach.nearest == Ordering::Less
+                let off = from.ground_offset(pos);
+                Approach::nearest_of_circle(path, off, reach, *radius) == Ordering::Less
             }
             Shape::Box(body) => body.comes_within(pos, from, to, reach),
         }

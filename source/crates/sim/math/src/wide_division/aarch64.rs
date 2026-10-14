@@ -38,15 +38,17 @@ fn narrow_quotient(numerator: u128, divisor: u64) -> WideDivision {
         let float_rest = ((rest >> 32) as i64 as f64).mul_add(TWO_POW_32, f64::from(rest as u32));
         (float_rest * reciprocal).floor() as i64
     };
-    let mut quotient = i128::from(estimate) + i128::from(step);
-    let mut rest = rest - i128::from(step) * i128::from(divisor);
+    // The step is below 2¹⁶ in magnitude and the rest below 2¹⁵ divisors, so each value stays
+    // within 2⁸¹: the wrapping steps skip the checks a release build makes.
+    let mut quotient = i128::from(estimate).wrapping_add(i128::from(step));
+    let mut rest = rest.wrapping_sub(i128::from(step).wrapping_mul(i128::from(divisor)));
     let wide_divisor = i128::from(divisor);
     if rest < 0 {
-        quotient -= 1;
-        rest += wide_divisor;
+        quotient = quotient.wrapping_sub(1);
+        rest = rest.wrapping_add(wide_divisor);
     } else if rest >= wide_divisor {
-        quotient += 1;
-        rest -= wide_divisor;
+        quotient = quotient.wrapping_add(1);
+        rest = rest.wrapping_sub(wide_divisor);
     }
     WideDivision {
         quotient: quotient as u128,

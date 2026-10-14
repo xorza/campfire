@@ -31,7 +31,8 @@ fn scene(seed: u64) -> Vec<(BodyBox, Position, Position)> {
         .collect()
 }
 
-/// A box's primitives over `COUNT` inputs: a point's reach to a box, and two boxes' overlap.
+/// A box's primitives over `COUNT` inputs: a point's reach of 3 m to a box, two boxes' overlap,
+/// and two boxes' reach of 3 m, `reach_box`, as `Metric::reaches` takes it.
 pub(crate) fn body_box(c: &mut Criterion) {
     let mut group = c.benchmark_group("atomic/body_box");
     group.throughput(Throughput::Elements(COUNT as u64));
@@ -49,6 +50,13 @@ pub(crate) fn body_box(c: &mut Criterion) {
         bench.iter(|| {
             for ((body, centre, _), (other, other_centre, _)) in points.iter().zip(&others) {
                 black_box(body.overlaps(*centre, other, black_box(*other_centre)));
+            }
+        });
+    });
+    group.bench_function("reach_box", |bench| {
+        bench.iter(|| {
+            for ((body, centre, _), (other, other_centre, _)) in points.iter().zip(&others) {
+                black_box(body.nearest_box(*centre, other, black_box(*other_centre), reach));
             }
         });
     });

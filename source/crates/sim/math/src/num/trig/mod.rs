@@ -78,13 +78,16 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
         .wrapping_sub(quadrant.wrapping_mul(HALF_PI_REDUCE));
     let r = to_i64(rest >> (REDUCE_BITS - WIDE_BITS));
 
-    let index = (r + (1 << (WIDE_BITS - SIN_COS_STEP_BITS - 1))) >> (WIDE_BITS - SIN_COS_STEP_BITS);
-    let b = r - (index << (WIDE_BITS - SIN_COS_STEP_BITS));
+    // Every value from here is at most 1 in magnitude, 2⁶², so no sum, difference or negation of
+    // two wraps: the wrapping steps skip the checks a release build makes.
+    let index =
+        r.wrapping_add(1 << (WIDE_BITS - SIN_COS_STEP_BITS - 1)) >> (WIDE_BITS - SIN_COS_STEP_BITS);
+    let b = r.wrapping_sub(index << (WIDE_BITS - SIN_COS_STEP_BITS));
     let entry = to_index(index.unsigned_abs());
     // The index's sign and the quadrant are as random as the angles, so each turns the values
     // by arithmetic, which takes no branch to mispredict.
     let sin_a = if index < 0 {
-        -SIN_TABLE[entry]
+        SIN_TABLE[entry].wrapping_neg()
     } else {
         SIN_TABLE[entry]
     };
@@ -95,17 +98,19 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     // takes `mul_by_quadruple` with that factor times 4, as `mul` would give it.
     let (b4, b2) = (b << 2, mul_by_quadruple(b, b << 2));
     let b2_4 = b2 << 2;
-    let sin_b = b - mul_by_quadruple(
-        mul_by_quadruple(INV_6 - mul_by_quadruple(b2, INV_120 << 2), b2_4),
+    let sin_b = b.wrapping_sub(mul_by_quadruple(
+        mul_by_quadruple(INV_6.wrapping_sub(mul_by_quadruple(b2, INV_120 << 2)), b2_4),
         b4,
-    );
-    let cos_b = WIDE_ONE
-        - mul_by_quadruple(
-            INV_2 - mul_by_quadruple(INV_24 - mul_by_quadruple(b2, INV_720 << 2), b2_4),
+    ));
+    let cos_b = WIDE_ONE.wrapping_sub(mul_by_quadruple(
+        INV_2.wrapping_sub(mul_by_quadruple(
+            INV_24.wrapping_sub(mul_by_quadruple(b2, INV_720 << 2)),
             b2_4,
-        );
-    let sin = mul(sin_a, cos_b) + mul(cos_a, sin_b);
-    let cos = mul(cos_a, cos_b) - mul(sin_a, sin_b);
+        )),
+        b2_4,
+    ));
+    let sin = mul(sin_a, cos_b).wrapping_add(mul(cos_a, sin_b));
+    let cos = mul(cos_a, cos_b).wrapping_sub(mul(sin_a, sin_b));
 
     // Quadrants 0 to 3 give (sin, cos), (cos, −sin), (−sin, −cos) and (−cos, sin): an odd one
     // swaps the two, the upper two negate the first, and the middle two the second.
@@ -115,8 +120,16 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     } else {
         (sin, cos)
     };
-    let sin = if quadrant & 2 == 2 { -sin } else { sin };
-    let cos = if (quadrant + 1) & 2 == 2 { -cos } else { cos };
+    let sin = if quadrant & 2 == 2 {
+        sin.wrapping_neg()
+    } else {
+        sin
+    };
+    let cos = if (quadrant + 1) & 2 == 2 {
+        cos.wrapping_neg()
+    } else {
+        cos
+    };
     SinCos {
         sin: to_num_narrow(sin),
         cos: to_num_narrow(cos),
@@ -237,13 +250,15 @@ const fn wide_magnitude(value: i128) -> u64 {
     value as u64
 }
 
-/// The `Num` nearest to a value at 2⁻⁶², ties to even, rounded on `i64`. The added half of
-/// `to_num_magnitude` measured 10 % slower here on an M2, where `sin_cos` waits on it.
+/// The `Num` nearest to a value at 2⁻⁶², ties to even, rounded on `i64`: up when the rest
+/// passes half less the floor's last bit, so a rest past half, or of half from an odd floor. The
+/// added half of `to_num_magnitude` measured 10 % slower here on an M2, where `sin_cos` waits on
+/// it.
 const fn to_num_narrow(value: i64) -> Num {
     const SHIFT: u32 = WIDE_BITS - Num::FRAC_BITS;
     let floor = value >> SHIFT;
-    let rest = (value & ((1 << SHIFT) - 1)).cast_unsigned() as u128;
-    let up = Rounding::NearestEven.rounds_up(rest, 1 << (SHIFT - 1), rest == 0, floor & 1 == 1);
+    let rest = value & ((1 << SHIFT) - 1);
+    let up = rest > (1 << (SHIFT - 1)) - (floor & 1);
     Num::from_bits(floor + up as i64)
 }
 

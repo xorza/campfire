@@ -365,7 +365,7 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
             grid.box_spans_closer(centre, &body, reach, mark);
         });
         let expected: Vec<usize> = (0..grid.cells())
-            .filter(|&cell| body.closer_twice(reach)(off(cell)))
+            .filter(|&cell| body.closer_twice(reach).holds_point(off(cell)))
             .collect();
         assert_eq!(closer, expected, "{body:?} at {centre:?} within {reach:?}");
         let half = i128::from(cell.to_bits());

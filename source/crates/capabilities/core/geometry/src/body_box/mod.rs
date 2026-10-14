@@ -7,10 +7,14 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::approach::Approach;
 use crate::body_bound::MAX_BOUND;
+use crate::body_box::closer::{Closer, HalfDirections, LineBounds, LinesOnDemand, Reach};
+use crate::body_box::edges::{Edges, Part};
 use crate::polygon::Polygon;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
+mod closer;
+mod edges;
 
 /// A box body: a parallelogram on the ground plane around its unit's position, held as its two
 /// half edges `a` and `b`, each `[x, z]`, rounded once as it was made. Its corners are the
@@ -48,21 +52,6 @@ enum Feature {
 struct Nearest {
     distance: i128,
     feature: Feature,
-}
-
-/// A box's test of the points closer than a reach to it, as `Frame::nearest_to` measures them,
-/// with what each point's test shares made once: the corners, the edges from each to the next,
-/// their squared lengths, and the directions of the half edges, which edges 0 and 2 and edges 1
-/// and 3 run along.
-#[derive(Debug, Clone, Copy)]
-struct Closer {
-    frame: Frame,
-    area: i128,
-    reach: i128,
-    corners: [Flat; 4],
-    edges: [Flat; 4],
-    lengths: [i128; 4],
-    directions: [Direction<2>; 2],
 }
 
 impl BodyBox {
@@ -167,8 +156,16 @@ impl BodyBox {
 
     /// How far it reaches from its position along x and along z.
     pub fn extent(&self) -> [Num; 2] {
+        // Each half edge's component is within `MAX_BOUND`, so the sum of two magnitudes cannot
+        // wrap, and the wrapping steps skip the checks a release build makes.
         let [a, b] = self.half;
-        [0, 1].map(|axis| Num::from_bits(a[axis].to_bits().abs() + b[axis].to_bits().abs()))
+        [0, 1].map(|axis| {
+            let magnitude = a[axis]
+                .to_bits()
+                .unsigned_abs()
+                .wrapping_add(b[axis].to_bits().unsigned_abs());
+            Num::from_bits(magnitude.cast_signed())
+        })
     }
 
     /// How the distance from `pos` to the box at `centre` lies against `reach`: past it when `pos`
@@ -178,10 +175,18 @@ impl BodyBox {
         let off = flat(pos) - flat(centre);
         let extent = self.extent();
         let reach_bits = reach.to_bits();
-        if (0..2).any(|axis| off[axis].abs() > extent[axis].to_bits().saturating_add(reach_bits)) {
+        let far = |axis: usize| {
+            extent[axis]
+                .to_bits()
+                .saturating_add(reach_bits)
+                .cast_unsigned()
+        };
+        if (0..2).any(|axis| off[axis].unsigned_abs() > far(axis)) {
             return Ordering::Greater;
         }
-        Closer::new(self.frame(), i128::from(reach.to_bits())).against(off)
+        let edges = Edges::of(self.frame());
+        let mut lines = LinesOnDemand::new(&edges, Reach::of(i128::from(reach.to_bits())));
+        edges.against(off, &mut lines)
     }
 
     /// The point of the box at `centre` nearest `pos`, each coordinate rounded to the nearest bit:
@@ -190,7 +195,10 @@ impl BodyBox {
         let frame = self.frame();
         let off = flat(pos) - flat(centre);
         let corners = frame.corners();
-        let point = match frame.nearest_to(off).feature {
+        let point = match frame
+            .nearest_to(off, &mut HalfDirections::new(frame))
+            .feature
+        {
             Feature::Inside => off,
             Feature::Corner(corner) => corners[corner],
             Feature::Edge(edge) => {
@@ -233,9 +241,13 @@ impl BodyBox {
                 place: bits(place),
             };
         }
-        let mut best = (frame.nearest_to(start).distance, 0);
+        let mut directions = HalfDirections::new(frame);
+        let mut best = (frame.nearest_to(start, &mut directions).distance, 0);
         let mut take = |candidate: (i128, i128)| best = best.min(candidate);
-        take((frame.nearest_to(start + path).distance, length));
+        take((
+            frame.nearest_to(start + path, &mut directions).distance,
+            length,
+        ));
         // Apart from the box, a path comes nearest at one of its ends, or where a corner's
         // nearest point lies inside it.
         if let Some(direction) = direction {
@@ -273,18 +285,39 @@ impl BodyBox {
         let start = flat(from) - flat(centre);
         let path = flat(to) - flat(from);
         let reach = i128::from(reach.to_bits());
-        let closer = Closer::new(frame, reach);
-        if frame.meets_path(start, path) || closer.holds(start) || closer.holds(start + path) {
+        let edges = Edges::of(frame);
+        let mut lines = LinesOnDemand::new(&edges, Reach::of(reach));
+        if frame.meets_path(start, path)
+            || edges.closer_point(start, &mut lines)
+            || edges.closer_point(start + path, &mut lines)
+        {
             return true;
         }
-        let Some(direction) = Direction::of(path.to_array()) else {
-            return false;
-        };
+        // A corner beside the path is measured from the path's line: its bounds decide most,
+        // and the path's direction, made only then, the rest. A path of no length has none.
         let length = path.dot(path);
-        frame.corners().into_iter().any(|corner| {
+        if length == 0 {
+            return false;
+        }
+        let bounds = LineBounds::of(length, reach);
+        let mut direction = None;
+        edges.corners.into_iter().any(|corner| {
             let off = corner - start;
             let along = off.dot(path);
-            0 < along && along < length && direction.apart(off.to_array()) < reach
+            if along <= 0 || along >= length {
+                return false;
+            }
+            let across = cross(off, path).unsigned_abs();
+            if across >= bounds.far {
+                false
+            } else if across < bounds.near {
+                true
+            } else {
+                let direction = *direction.get_or_insert_with(|| {
+                    Direction::of(path.to_array()).expect("a path of a length")
+                });
+                direction.apart(off.to_array()) < reach
+            }
         })
     }
 
@@ -297,16 +330,31 @@ impl BodyBox {
     pub fn push_out(&self, centre: Position, point: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
         let off = Flat::ground(point) - flat(centre);
-        let Nearest { distance, feature } = frame.nearest_to(off);
+        // A point outside the box at least `radius` away is not overlapped: most points a search
+        // finds lie so, and the lines' bounds decide it, as `nearest_to`'s distance would, with
+        // no direction.
+        let edges = Edges::of(frame);
+        let mut lines = LinesOnDemand::new(&edges, Reach::of(i128::from(radius.to_bits())));
+        let outside = edges.probe(&edges.row(off[1]), off[0]).is_some();
+        if outside && edges.against(off, &mut lines) != Ordering::Less {
+            return None;
+        }
+        let directions = &mut lines.directions;
+        let Nearest { distance, feature } = frame.nearest_to(off, directions);
         let moved = match feature {
-            Feature::Inside => frame.out_through(frame.nearest_edge_inside(off), off, radius),
+            Feature::Inside => {
+                let edge = frame.nearest_edge_inside(off, directions);
+                frame.out_through(edge, off, radius, directions)
+            }
             _ if distance >= i128::from(radius.to_bits()) => return None,
-            Feature::Edge(edge) => frame.out_through(edge, off, radius),
+            Feature::Edge(edge) => frame.out_through(edge, off, radius, directions),
             Feature::Corner(corner) => {
                 // Off a corner the push runs along the way from it, across the line through
                 // the corner square to that way.
                 let corner = frame.corners()[corner];
-                touching(off, off - corner, corner, radius)
+                let away = Direction::of((off - corner).to_array())
+                    .expect("a point off a corner lies apart from it");
+                touching(off, away, corner, radius)
             }
         };
         let ground = moved + flat(centre);
@@ -333,25 +381,44 @@ impl BodyBox {
         other_centre: Position,
         reach: Num,
     ) -> Ordering {
-        let (ours, theirs) = (self.frame(), other.frame());
         let apart = flat(other_centre) - flat(centre);
+        // A gap along an axis past both extents and the reach is at least a unit past the
+        // reach, so is every distance between the boxes, and so their order: most boxes a
+        // search finds lie so.
+        let (our_extent, their_extent) = (self.extent(), other.extent());
+        let far = |axis: usize| {
+            let extents = our_extent[axis].to_bits() + their_extent[axis].to_bits();
+            extents.saturating_add(reach.to_bits()).cast_unsigned()
+        };
+        if (0..2).any(|axis| apart[axis].unsigned_abs() > far(axis)) {
+            return Ordering::Greater;
+        }
+        let (ours, theirs) = (self.frame(), other.frame());
         let reach = i128::from(reach.to_bits());
         if ours.meets(apart, theirs, false) {
             return 0.cmp(&reach);
         }
-        // Apart, two convex shapes come nearest at a corner of one.
-        let from_ours = ours
-            .corners()
-            .map(|corner| theirs.nearest_to(corner - apart).distance);
-        let from_theirs = theirs
-            .corners()
-            .map(|corner| ours.nearest_to(corner + apart).distance);
-        let nearest = from_ours
-            .into_iter()
-            .chain(from_theirs)
-            .min()
-            .expect("eight corners");
-        nearest.cmp(&reach)
+        // Apart, two convex shapes come nearest at a corner of one: the nearest corner's order
+        // against the reach is the least of the eight corners' orders, each as `Edges::against`
+        // measures it, and the first closer one ends the search.
+        let (our_edges, their_edges) = (Edges::of(ours), Edges::of(theirs));
+        let reach = Reach::of(reach);
+        let mut our_lines = LinesOnDemand::new(&our_edges, reach);
+        let mut their_lines = LinesOnDemand::new(&their_edges, reach);
+        let mut nearest = Ordering::Greater;
+        for corner in our_edges.corners {
+            nearest = nearest.min(their_edges.against(corner - apart, &mut their_lines));
+            if nearest == Ordering::Less {
+                return nearest;
+            }
+        }
+        for corner in their_edges.corners {
+            nearest = nearest.min(our_edges.against(corner + apart, &mut our_lines));
+            if nearest == Ordering::Less {
+                return nearest;
+            }
+        }
+        nearest
     }
 
     /// Whether the insides of the box at `centre` and `polygon` share a point: an edge of the
@@ -372,12 +439,11 @@ impl BodyBox {
 
     /// The test of whether a point, from the box's position in halves of a bit, comes closer
     /// than `reach` to the box, exactly: as a grid's cell centres, whole only in halves, see it.
-    pub(crate) fn closer_twice(&self, reach: Num) -> impl Fn(Flat) -> bool {
+    pub(crate) fn closer_twice(&self, reach: Num) -> Closer {
         let reach = reach
             .checked_mul_int(2)
             .expect("a reach within a body and a walker doubles");
-        let closer = Closer::new(self.frame_twice(), i128::from(reach.to_bits()));
-        move |off| closer.holds(off)
+        Closer::new(self.frame_twice(), i128::from(reach.to_bits()))
     }
 
     /// The test of whether the insides of the box and of a square share a point, from the
@@ -429,62 +495,65 @@ impl Frame {
 
     /// The corners from the position, counterclockwise.
     fn corners(&self) -> [Flat; 4] {
+        // Each half edge is within `MAX_BOUND` at twice the scale, so no sum or difference wraps,
+        // and the wrapping steps skip the checks a release build makes.
         let [a, b] = self.halves;
-        [-(a + b), a - b, a + b, b - a]
+        let flat = |x: i64, z: i64| Flat::from_nums([Num::from_bits(x), Num::from_bits(z)]);
+        let sum = [a[0].wrapping_add(b[0]), a[1].wrapping_add(b[1])];
+        let difference = [a[0].wrapping_sub(b[0]), a[1].wrapping_sub(b[1])];
+        [
+            flat(sum[0].wrapping_neg(), sum[1].wrapping_neg()),
+            flat(difference[0], difference[1]),
+            flat(sum[0], sum[1]),
+            flat(difference[0].wrapping_neg(), difference[1].wrapping_neg()),
+        ]
     }
 
     /// The two slab values of `off`, each `cross` of it with a half edge: it lies within the
     /// box when both are within `quarter_area` of 0.
-    const fn slabs(&self, off: Flat) -> [i128; 2] {
+    fn slabs(&self, off: Flat) -> [i128; 2] {
         let [a, b] = self.halves;
-        [off.cross(b), a.cross(off)]
-    }
-
-    fn holds(&self, off: Flat) -> bool {
-        let area = self.quarter_area();
-        self.slabs(off).iter().all(|value| value.abs() <= area)
+        [cross(off, b), cross(a, off)]
     }
 
     /// The directions of the half edges: edges 0 and 2 run along the first, 1 and 3 along the
     /// second.
     fn directions(&self) -> [Direction<2>; 2] {
-        self.halves
-            .map(|half| Direction::of(half.to_array()).expect("a box's half edge has a length"))
+        [0, 1].map(|half| self.direction(half))
+    }
+
+    /// The direction of half edge `half`, 0 or 1.
+    fn direction(&self, half: usize) -> Direction<2> {
+        Direction::of(self.halves[half].to_array()).expect("a box's half edge has a length")
     }
 
     /// The nearest point's distance from `off`, to the nearest unit, and what of the box it is;
     /// the first edge on a tie.
-    fn nearest_to(&self, off: Flat) -> Nearest {
-        if self.holds(off) {
+    fn nearest_to(&self, off: Flat, directions: &mut HalfDirections) -> Nearest {
+        let edges = Edges::of(*self);
+        let Some(probe) = edges.probe(&edges.row(off[1]), off[0]) else {
             return Nearest {
                 distance: 0,
                 feature: Feature::Inside,
             };
-        }
-        let corners = self.corners();
-        let directions = self.directions();
+        };
+        // A half edge's direction only for an edge whose inside is nearest: none for a point
+        // nearest a corner, one for a point beside an edge.
         let mut best: Option<Nearest> = None;
         for edge in 0..4 {
-            let (start, end) = (corners[edge], corners[(edge + 1) % 4]);
-            let along_edge = end - start;
-            let off_start = off - start;
-            let along = off_start.dot(along_edge);
-            let length = along_edge.dot(along_edge);
-            let found = if along <= 0 {
-                Nearest {
-                    distance: distance(off_start),
-                    feature: Feature::Corner(edge),
-                }
-            } else if along >= length {
-                Nearest {
-                    distance: distance(off - end),
-                    feature: Feature::Corner((edge + 1) % 4),
-                }
-            } else {
-                Nearest {
-                    distance: directions[edge % 2].apart(off_start.to_array()),
+            let found = match edges.part(&probe, edge) {
+                Part::Corner(corner) => Nearest {
+                    distance: edges
+                        .corner_square(&probe, corner)
+                        .cast_unsigned()
+                        .nearest_root()
+                        .cast_signed(),
+                    feature: Feature::Corner(corner),
+                },
+                Part::Line => Nearest {
+                    distance: edges.apart(&probe, edge, directions.of_half(edge % 2)),
                     feature: Feature::Edge(edge),
-                }
+                },
             };
             if best.is_none_or(|best| found.distance < best.distance) {
                 best = Some(found);
@@ -498,36 +567,42 @@ impl Frame {
     /// unless one of the box's two slab axes or the path's normal separates them. Along a slab
     /// the path runs from its start's value to its end's; across the path, the box spans its
     /// half edges' crosses with the path either side of 0, and the path lies at its start's.
+    /// Within the world's bound each value stays below 2¹⁰⁰, so the wrapping steps, here and in
+    /// `passes_through`, skip the checks a release build makes.
     fn meets_path(&self, start: Flat, path: Flat) -> bool {
         let area = self.quarter_area();
         let (from, along) = (self.slabs(start), self.slabs(path));
         let slab_apart = (0..2).any(|slab| {
-            let (from, to) = (from[slab], from[slab] + along[slab]);
-            from.min(to) > area || from.max(to) < -area
+            let (from, to) = (from[slab], from[slab].wrapping_add(along[slab]));
+            from.min(to) > area || from.max(to) < area.wrapping_neg()
         });
         let [a, b] = self.halves;
-        !slab_apart && path.cross(start).abs() <= path.cross(a).abs() + path.cross(b).abs()
+        let across = |half: Flat| cross(path, half).unsigned_abs();
+        !slab_apart && across(start) <= across(a).wrapping_add(across(b))
     }
 
     /// The edge nearest `off`, which lies inside the box, each edge's distance to the nearest
     /// unit; the first on a tie.
-    fn nearest_edge_inside(&self, off: Flat) -> usize {
-        let (corners, directions) = (self.corners(), self.directions());
-        let depth = |edge: usize| directions[edge % 2].apart((off - corners[edge]).to_array());
-        (0..4).min_by_key(|&edge| depth(edge)).expect("four edges")
-    }
-
-    /// The outward normal of `edge`, as long as the edge.
-    fn normal(&self, edge: usize) -> Flat {
+    fn nearest_edge_inside(&self, off: Flat, directions: &mut HalfDirections) -> usize {
         let corners = self.corners();
-        let along = corners[(edge + 1) % 4] - corners[edge];
-        Flat::new(along.to_array()[1], -along.to_array()[0])
+        let mut depth = |edge: usize| {
+            directions
+                .of_half(edge % 2)
+                .apart((off - corners[edge]).to_array())
+        };
+        (0..4).min_by_key(|&edge| depth(edge)).expect("four edges")
     }
 
     /// Where `off` goes along `edge`'s outward normal to leave a body of `radius` touching the
     /// edge's line from outside.
-    fn out_through(&self, edge: usize, off: Flat, radius: Num) -> Flat {
-        touching(off, self.normal(edge), self.corners()[edge], radius)
+    fn out_through(
+        &self,
+        edge: usize,
+        off: Flat,
+        radius: Num,
+        directions: &mut HalfDirections,
+    ) -> Flat {
+        touching(off, directions.normal(edge), self.corners()[edge], radius)
     }
 
     /// Whether the boxes' insides share a point, with `open`; or, without, whether they touch
@@ -544,13 +619,17 @@ impl Frame {
         let [their_a, their_b] = other.halves;
         let centre = self.slabs(apart);
         let (a_spread, b_spread) = (self.slabs(their_a), self.slabs(their_b));
+        // `|centre| > bound` exactly when `centre + bound`, unsigned, passes twice the bound,
+        // where a centre below `−bound` wraps past it; open, the bound is the limit less one, as
+        // `|centre| ≥ limit` is `|centre| > limit − 1`. A box and an offset within the world's
+        // bound keep each value below 2¹⁰⁰, so no sum wraps.
         (0..2).any(|slab| {
-            let limit = area + a_spread[slab].abs() + b_spread[slab].abs();
-            if open {
-                centre[slab].abs() >= limit
-            } else {
-                centre[slab].abs() > limit
-            }
+            let limit = area
+                .cast_unsigned()
+                .wrapping_add(a_spread[slab].unsigned_abs())
+                .wrapping_add(b_spread[slab].unsigned_abs());
+            let bound = limit.wrapping_sub(u128::from(open));
+            centre[slab].cast_unsigned().wrapping_add(bound) > bound << 1
         })
     }
 
@@ -581,107 +660,32 @@ impl Frame {
         let area = self.quarter_area();
         let (from, along) = (self.slabs(start), self.slabs(path));
         let slab_apart = (0..2).any(|slab| {
-            let (from, to) = (from[slab], from[slab] + along[slab]);
-            from.min(to) >= area || from.max(to) <= -area
+            let (from, to) = (from[slab], from[slab].wrapping_add(along[slab]));
+            from.min(to) >= area || from.max(to) <= area.wrapping_neg()
         });
         let [a, b] = self.halves;
-        let across_apart = path.length_squared() > 0
-            && path.cross(start).abs() >= path.cross(a).abs() + path.cross(b).abs();
+        let across = |half: Flat| cross(path, half).unsigned_abs();
+        let across_apart =
+            (path[0] != 0 || path[1] != 0) && across(start) >= across(a).wrapping_add(across(b));
         !slab_apart && !across_apart
     }
 }
 
-impl Closer {
-    /// The test of the points closer than `reach` units to `frame`.
-    fn new(frame: Frame, reach: i128) -> Closer {
-        let corners = frame.corners();
-        let edges = [0, 1, 2, 3].map(|edge| corners[(edge + 1) % 4] - corners[edge]);
-        Closer {
-            frame,
-            area: frame.quarter_area(),
-            reach,
-            corners,
-            edges,
-            lengths: edges.map(|edge| edge.dot(edge)),
-            directions: frame.directions(),
-        }
-    }
+/// `a · b`, exact: one widening product of two `i64`s, which cannot overflow.
+const fn product(a: i64, b: i64) -> i128 {
+    (a as i128).wrapping_mul(b as i128)
+}
 
-    /// Whether `off` lies closer than `reach` to the box, each distance to the nearest unit:
-    /// inside it, at 0, or nearer than that to an edge or a corner, the first found ending the
-    /// search.
-    fn holds(&self, off: Flat) -> bool {
-        if self.inside(off) {
-            return self.reach > 0;
-        }
-        // Each edge is one compare against the reach, not `edge_against`'s order compared after:
-        // that made `grid/box_spans_closer` 26 % slower on a Ryzen.
-        let reach = self.reach.cast_unsigned();
-        (0..4).any(|edge| {
-            let off_start = off - self.corners[edge];
-            let along = off_start.dot(self.edges[edge]);
-            if along <= 0 {
-                off_start.length_squared().nearest_root_cmp(reach) == Ordering::Less
-            } else if along >= self.lengths[edge] {
-                let off_end = off - self.corners[(edge + 1) % 4];
-                off_end.length_squared().nearest_root_cmp(reach) == Ordering::Less
-            } else {
-                self.directions[edge % 2].apart(off_start.to_array()) < self.reach
-            }
-        })
-    }
-
-    /// How the distance from `off` to the box lies against `reach`: inside it, 0; else the
-    /// nearest of its edges' distances, each measured against `reach` alone, with no compare of
-    /// one with another, and the first closer one ending the search.
-    fn against(&self, off: Flat) -> Ordering {
-        if self.inside(off) {
-            return 0.cmp(&self.reach);
-        }
-        let mut nearest = Ordering::Greater;
-        for edge in 0..4 {
-            match self.edge_against(off, edge) {
-                Ordering::Less => return Ordering::Less,
-                order => nearest = nearest.min(order),
-            }
-        }
-        nearest
-    }
-
-    fn inside(&self, off: Flat) -> bool {
-        self.frame
-            .slabs(off)
-            .iter()
-            .all(|value| value.abs() <= self.area)
-    }
-
-    /// How the distance from `off` to `edge`, its nearest point on it, to the nearest unit, lies
-    /// against `reach`: a corner's when the nearest is an end, measured with no root, else the
-    /// distance from the edge's line.
-    fn edge_against(&self, off: Flat, edge: usize) -> Ordering {
-        let reach = self.reach.cast_unsigned();
-        let off_start = off - self.corners[edge];
-        let along = off_start.dot(self.edges[edge]);
-        if along <= 0 {
-            off_start.length_squared().nearest_root_cmp(reach)
-        } else if along >= self.lengths[edge] {
-            let off_end = off - self.corners[(edge + 1) % 4];
-            off_end.length_squared().nearest_root_cmp(reach)
-        } else {
-            let apart = self.directions[edge % 2].apart(off_start.to_array());
-            apart.cast_unsigned().cmp(&reach)
-        }
-    }
+/// `Flat::cross`, for a box and an offset within the world's bound, at twice the scale, whose
+/// products stay below 2¹⁰⁰: their difference cannot wrap, and the wrapping step skips the
+/// check a release build makes.
+fn cross(a: Flat, b: Flat) -> i128 {
+    product(a[0], b[1]).wrapping_sub(product(a[1], b[0]))
 }
 
 /// Where `pos` stands on the ground plane, in a `Num`'s bits.
 const fn flat(pos: Position) -> Flat {
     Flat::ground(pos.get())
-}
-
-/// The length of `off`, to the nearest unit.
-fn distance(off: Flat) -> i128 {
-    off.length_squared().nearest_root().cast_signed()
 }
 
 /// The number of `bits`, a place on a path within the world's bound.
@@ -699,8 +703,7 @@ const PUSH_SLACK: i128 = 1;
 /// lies beyond that line, each axis rounded away from the box. As the box grown by the radius
 /// is convex, a point that lies on the outer side of the line through the touching point across
 /// `normal` does not overlap the box, so the end lies apart, within three bits of touching.
-fn touching(off: Flat, normal: Flat, on: Flat, radius: Num) -> Flat {
-    let direction = Direction::of(normal.to_array()).expect("a normal has a length");
+fn touching(off: Flat, direction: Direction<2>, on: Flat, radius: Num) -> Flat {
     let beyond = direction.along((off - on).to_array());
     let reach = i128::from(radius.to_bits()) - beyond + PUSH_SLACK;
     debug_assert!(

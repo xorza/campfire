@@ -1,8 +1,25 @@
 use campfire_codec::Binary;
+use campfire_math::FloorRoot;
 use campfire_math::internals::SplitMix64;
 
 use super::*;
 use crate::shape::Shape;
+
+impl Frame {
+    fn holds(&self, off: Flat) -> bool {
+        let area = self.quarter_area().cast_unsigned();
+        self.slabs(off)
+            .iter()
+            .all(|value| value.unsigned_abs() <= area)
+    }
+}
+
+impl Closer {
+    /// Whether `off` lies closer than the reach to the box, as its row's test decides.
+    pub(crate) fn holds_point(&self, off: Flat) -> bool {
+        self.holds(&self.row(off[1]), off[0])
+    }
+}
 
 impl BodyBox {
     /// Whether `pos` lies inside the box at `centre` or on its edge.
@@ -40,7 +57,10 @@ fn polygon(body: &BodyBox, centre: Position) -> Polygon {
 
 /// The distance from `pos` to the nearest point of `body` at `centre`, in bits; 0 inside.
 fn distance(body: &BodyBox, centre: Position, pos: Position) -> i128 {
-    body.frame().nearest_to(flat(pos) - flat(centre)).distance
+    let frame = body.frame();
+    frame
+        .nearest_to(flat(pos) - flat(centre), &mut HalfDirections::new(frame))
+        .distance
 }
 
 fn flat_vec3(off: Flat) -> Vec3 {
@@ -243,12 +263,12 @@ fn twice_the_scale_sees_halves_of_a_bit() {
     // 1.5 m along x lies half a meter off the edge: not closer than half a meter, closer than a
     // bit more.
     let off = Flat::new(twice(1, 1 << 24), 0);
-    assert!(!body.closer_twice(Num::HALF)(off));
-    assert!(body.closer_twice(Num::HALF + Num::EPSILON)(off));
+    assert!(!body.closer_twice(Num::HALF).holds_point(off));
+    assert!(body.closer_twice(Num::HALF + Num::EPSILON).holds_point(off));
     // Half a bit past the edge: closer than a bit, not than nothing.
     let off = Flat::new(twice(1, 1), 0);
-    assert!(body.closer_twice(Num::EPSILON)(off));
-    assert!(!body.closer_twice(Num::ZERO)(off));
+    assert!(body.closer_twice(Num::EPSILON).holds_point(off));
+    assert!(!body.closer_twice(Num::ZERO).holds_point(off));
     // A square of 1 m centred 1.5 m along x touches the box's edge; half a bit nearer, it
     // overlaps.
     let half = 1 << 24;
@@ -549,7 +569,12 @@ impl Draws {
 /// against `reach`, by `Approach`, which knows nothing of boxes.
 fn by_approaches(paths: impl Iterator<Item = (Flat, Flat)>, reach: Num) -> Ordering {
     paths
-        .map(|(path, off)| Approach::of(flat_vec3(path), flat_vec3(off), reach).nearest)
+        .map(|(path, off)| {
+            let (path, off) = (flat_vec3(path), flat_vec3(off));
+            let nearest = Approach::of(path, off, reach).nearest;
+            assert_eq!(Approach::nearest_of(path, off, reach), nearest);
+            nearest
+        })
         .min()
         .unwrap()
 }
@@ -584,8 +609,116 @@ fn check_point(body: &BodyBox, centre: Position, probe: Position, reach: Num) {
         "{body:?} {probe:?}"
     );
     let reach_bits = i128::from(reach.to_bits());
-    let within = Closer::new(body.frame(), reach_bits).holds(flat(probe) - flat(centre));
+    let within = Closer::new(body.frame(), reach_bits).holds_point(flat(probe) - flat(centre));
     assert_eq!(within, expected == Ordering::Less, "{body:?} {probe:?}");
+    // At both scales the shared terms decide as each edge's own measures do.
+    let off = flat(probe) - flat(centre);
+    for (frame, off, reach) in [
+        (body.frame(), off, reach_bits),
+        (body.frame_twice(), off * 2, reach_bits * 2),
+    ] {
+        let by_edges = by_edges(frame, off, reach);
+        let edges = Edges::of(frame);
+        let against = edges.against(off, &mut LinesOnDemand::new(&edges, Reach::of(reach)));
+        assert_eq!(against, by_edges, "{body:?} {probe:?}");
+        let closer = Closer::new(frame, reach).holds_point(off);
+        assert_eq!(closer, by_edges == Ordering::Less, "{body:?} {probe:?}");
+    }
+}
+
+#[test]
+fn a_distance_near_the_reach_decides_as_the_direction_measures_it() {
+    // Every point within 3 units of the point the reach straight out from each edge's middle, of
+    // boxes at awkward angles, at both scales: where the lines' bounds leave the measure to the
+    // direction, and either side of them, against each edge's own measure.
+    for angle in ["0", "1", "17.3", "45", "89.9", "123.4", "200", "271"] {
+        let body = made("3.7", "1.3", angle);
+        for frame in [body.frame(), body.frame_twice()] {
+            let corners = frame.corners();
+            for reach in [0, 1, 2, 5, 1000, 1 << 20, 3 << 23] {
+                let edges = Edges::of(frame);
+                let closer = Closer::new(frame, reach);
+                for edge in 0..4 {
+                    let (start, end) = (corners[edge], corners[(edge + 1) % 4]);
+                    let along = (end - start).to_array();
+                    // The outward normal of a counterclockwise edge, scaled to the reach.
+                    let normal = [along[1], -along[0]];
+                    let length = (normal[0] * normal[0] + normal[1] * normal[1])
+                        .cast_unsigned()
+                        .floor_root()
+                        .cast_signed();
+                    let middle = start.to_array();
+                    let target = [0, 1]
+                        .map(|axis| middle[axis] + along[axis] / 2 + normal[axis] * reach / length);
+                    for dx in -3..=3 {
+                        for dz in -3..=3 {
+                            let off = Flat::new(target[0] + dx, target[1] + dz);
+                            let expected = by_edges(frame, off, reach);
+                            let mut lines = LinesOnDemand::new(&edges, Reach::of(reach));
+                            assert_eq!(edges.against(off, &mut lines), expected, "{angle} {reach}");
+                            let holds = closer.holds_point(off);
+                            assert_eq!(holds, expected == Ordering::Less, "{angle} {reach}");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_path_past_a_corner_near_the_reach_decides_as_the_direction_measures_it() {
+    // Level paths 20 m long, either side of the reach above a tilted box's top corner, which
+    // is the box's nearest point to them: where the path's bounds leave the corner's measure to
+    // its direction, and either side of them.
+    let centre = at("0", "0");
+    for angle in ["17.3", "45", "123.4"] {
+        let body = made("3.7", "1.3", angle);
+        let top = body
+            .frame()
+            .corners()
+            .into_iter()
+            .max_by_key(|corner| corner[1])
+            .unwrap();
+        for reach in [1, 2, 5, 1000, 1 << 20] {
+            for gap in -3..=3 {
+                let z = top[1] + reach + gap;
+                let point = |x: i64| {
+                    Position::new(Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z)))
+                        .unwrap()
+                };
+                let (from, to) = (point(top[0] - (10 << 24)), point(top[0] + (10 << 24)));
+                let reach = Num::from_bits(reach);
+                check_path(&body, centre, from, to, reach);
+            }
+        }
+    }
+}
+
+/// How the distance from `off` to `frame` lies against `reach`, each edge's measure from its own
+/// corners and direction: inside, 0; else the nearest of the edges' orders.
+fn by_edges(frame: Frame, off: Flat, reach: i128) -> Ordering {
+    if frame.holds(off) {
+        return 0.cmp(&reach);
+    }
+    let (corners, directions) = (frame.corners(), frame.directions());
+    let reach = reach.cast_unsigned();
+    (0..4)
+        .map(|edge| {
+            let (start, end) = (corners[edge], corners[(edge + 1) % 4]);
+            let along_edge = end - start;
+            let along = (off - start).dot(along_edge);
+            if along <= 0 {
+                (off - start).length_squared().nearest_root_cmp(reach)
+            } else if along >= along_edge.dot(along_edge) {
+                (off - end).length_squared().nearest_root_cmp(reach)
+            } else {
+                let apart = directions[edge % 2].apart((off - start).to_array());
+                apart.cast_unsigned().cmp(&reach)
+            }
+        })
+        .min()
+        .unwrap()
 }
 
 /// A path's approach agrees with its crossings of the edges where it meets the box, and else

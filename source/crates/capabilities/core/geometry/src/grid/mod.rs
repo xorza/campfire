@@ -75,17 +75,24 @@ impl Grid {
     /// The square of the distance from `pos` to the nearest center of the cells from column and
     /// row `low` to `high`, both in, on the ground plane, in halves of a bit, exactly.
     pub fn box_distance(&self, low: [usize; 2], high: [usize; 2], pos: Position) -> u128 {
-        let step = i128::from(self.cell.to_bits());
+        // Centres and positions lie within 2⁴⁸ halves of a bit, so each offset fits `i64` and
+        // each square `i128`, and the wrapping steps skip the checks a release build makes.
+        let step = self.cell.to_bits();
         let min = self.bounds.min();
-        let index = |index: usize| i128::try_from(index).expect("a cell of the grid");
-        let at = Halves::ground(pos).to_array();
+        let index = |index: usize| i64::try_from(index).expect("a cell of the grid");
+        let at = Halves::ground(pos);
         let offset = |axis: usize| {
-            let center = |index: i128| Halves::of(min[axis]) + step * (2 * index + 1);
+            let first = min[axis].to_bits().wrapping_mul(2);
+            let center = |index: i64| {
+                first.wrapping_add(step.wrapping_mul(index.wrapping_mul(2).wrapping_add(1)))
+            };
             let nearest = at[axis].clamp(center(index(low[axis])), center(index(high[axis])));
-            at[axis] - nearest
+            i128::from(at[axis].wrapping_sub(nearest))
         };
         let (dx, dz) = (offset(0), offset(1));
-        (dx * dx + dz * dz).cast_unsigned()
+        dx.wrapping_mul(dx)
+            .wrapping_add(dz.wrapping_mul(dz))
+            .cast_unsigned()
     }
 
     /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
@@ -160,11 +167,13 @@ impl Grid {
             let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
             first..=end
         };
+        let closer = body.closer_twice(reach);
         self.runs(
             span(1),
             span(0),
             centre,
-            body.closer_twice(reach),
+            |z| closer.row(z),
+            |row, x| closer.holds(row, x),
             &mut mark,
         );
     }
@@ -210,30 +219,42 @@ impl Grid {
             first..=end
         };
         let covers = body.overlaps_square_twice(cell);
-        self.runs(span(1), span(0), centre, covers, &mut mark);
+        let hits = |&z: &i64, x: i64| covers(Flat::new(i128::from(x), i128::from(z)));
+        self.runs(span(1), span(0), centre, |z| z, hits, &mut mark);
     }
 
     /// Calls `mark` with each of `rows`' run of the cells of `columns` whose centres, as offsets
-    /// from `centre` in halves of a bit, `hit` holds of, for a convex shape: a row's cells are one
-    /// run. Rows in order.
-    fn runs(
+    /// from `centre` in halves of a bit, `hits` holds of, given what `row` makes of the offset
+    /// across of each row, for a convex shape: a row's cells are one run. Rows in order. Each
+    /// offset lies within twice the world's bound, in halves of a bit, so a column's is the first
+    /// column's and its steps of two cells, exact in `i64`.
+    fn runs<R>(
         &self,
         rows: RangeInclusive<i128>,
         columns: RangeInclusive<i128>,
         centre: Flat,
-        hit: impl Fn(Flat) -> bool,
+        row: impl Fn(i64) -> R,
+        hits: impl Fn(&R, i64) -> bool,
         mark: &mut impl FnMut(Range<usize>),
     ) {
         let index = |value: i128| usize::try_from(value).expect("a cell of the grid");
         let centre = centre.to_array();
-        let offset = |axis: usize, index: i128| self.center_twice_along(axis, index) - centre[axis];
+        let offset = |axis: usize, index: i128| {
+            i64::try_from(self.center_twice_along(axis, index) - centre[axis])
+                .expect("an offset within twice the world's bound")
+        };
+        let (column_zero, pitch) = (offset(0, 0), 2 * self.cell.to_bits());
+        let along = |column: i128| {
+            let column = i64::try_from(column).expect("a cell of the grid");
+            column_zero.wrapping_add(column.wrapping_mul(pitch))
+        };
         let mut last = None;
-        for row in rows {
-            let across = offset(1, row);
-            let hits = |column: i128| hit(Flat::new(offset(0, column), across));
+        for z in rows {
+            let terms = row(offset(1, z));
+            let hits = |column: i128| hits(&terms, along(column));
             last = Run::of_row(*columns.start(), *columns.end(), last, hits);
             if let Some(Run { first, end }) = last {
-                let start = index(row) * self.columns();
+                let start = index(z) * self.columns();
                 mark(start + index(first)..start + index(end) + 1);
             }
         }
@@ -422,11 +443,11 @@ impl Grid {
         let last = |axis: usize| i128::from(self.size[axis]) - 1;
         let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
         let first_column = (Rounding::Ceiling.divide(a[0], cell) - 1).max(0);
-        let last_column = b[0].div_euclid(cell).min(last(0));
+        let last_column = Rounding::Floor.divide(b[0], cell).min(last(0));
         let index = |at: i128| usize::try_from(at).expect("a cell of the grid");
         let mut rows = |column: i128, low: Quotient, high: Quotient| {
-            let first = index((low.ceil() - 1).max(0));
-            let end = index((high.floor.min(last(1)) + 1).max(0));
+            let first = index(low.ceil().wrapping_sub(1).max(0));
+            let end = index(high.floor.min(last(1)).wrapping_add(1).max(0));
             hit(index(column), first..end.max(first))
         };
         if dx == 0 {
@@ -436,10 +457,15 @@ impl Grid {
         }
         // The segment's z at `x`, times `dx`, over `scale`: a column's span runs from the line
         // before it, or `a`, to the line after it, or `b`. A segment that starts or ends past the
-        // grid's columns spans the first or the last column only to that column's line.
-        let scale = dx * cell;
-        let at = |x: i128| Quotient::of(a[1] * dx + (x - a[0]) * dz, scale);
-        let step = Quotient::of(cell * dz, scale);
+        // grid's columns spans the first or the last column only to that column's line. Within
+        // the world's bound each product stays below 2⁹⁵, so the wrapping steps skip the checks
+        // a release build makes.
+        let scale = dx.wrapping_mul(cell);
+        let at = |x: i128| {
+            let z = a[1].wrapping_mul(dx);
+            Quotient::of(z.wrapping_add(x.wrapping_sub(a[0]).wrapping_mul(dz)), scale)
+        };
+        let step = Quotient::of(cell.wrapping_mul(dz), scale);
         let mut line = at((first_column + 1) * cell);
         let mut start = at(a[0].max(first_column * cell));
         let end = at(b[0].min((last_column + 1) * cell));
@@ -550,27 +576,35 @@ struct Quotient {
 }
 
 impl Quotient {
-    /// `value` over `by`, which is positive.
-    const fn of(value: i128, by: i128) -> Quotient {
-        let floor = value.div_euclid(by);
+    /// `value` over `by`, which is positive. A segment's values within the world's bound stay
+    /// below 2¹⁰⁰, and every floor and rest within them, so the wrapping steps here skip the
+    /// checks a release build makes.
+    fn of(value: i128, by: i128) -> Quotient {
+        // The floor of a positive divisor's quotient, as `div_euclid` gives it: `Rounding`'s
+        // division takes one native division for magnitudes within 64 bits, where `i128`'s is a
+        // library call.
+        let floor = Rounding::Floor.divide(value, by);
         Quotient {
             floor,
-            rest: value - floor * by,
+            rest: value.wrapping_sub(floor.wrapping_mul(by)),
         }
     }
 
     /// The quotient rounded up.
     const fn ceil(self) -> i128 {
-        self.floor + (self.rest != 0) as i128
+        self.floor.wrapping_add((self.rest != 0) as i128)
     }
 
     /// The sum of the values of `self` and `other`, over the same `by`.
     const fn plus(self, other: Quotient, by: i128) -> Quotient {
-        let rest = self.rest + other.rest;
-        let carry = (rest >= by) as i128;
+        let rest = self.rest.wrapping_add(other.rest);
+        let carry = rest >= by;
         Quotient {
-            floor: self.floor + other.floor + carry,
-            rest: rest - carry * by,
+            floor: self
+                .floor
+                .wrapping_add(other.floor)
+                .wrapping_add(carry as i128),
+            rest: if carry { rest.wrapping_sub(by) } else { rest },
         }
     }
 }

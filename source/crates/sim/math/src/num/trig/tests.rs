@@ -164,3 +164,26 @@ proptest! {
         prop_assert_eq!(i128::from(to_num_magnitude(magnitude)), wide(i128::from(magnitude)));
     }
 }
+
+#[test]
+fn a_wide_value_rounds_to_the_nearest_num_ties_to_even() {
+    // A `Num`'s last place is 2³⁸ at 2⁻⁶²: half of it, 2³⁷, ties to the even neighbour, 0 from 0
+    // and 2 from 1; a bit more rounds up and a bit less down; negative values mirror it.
+    let half = 1_i64 << 37;
+    let place = 1_i64 << 38;
+    let cases = [
+        (half, 0),
+        (half + 1, 1),
+        (half - 1, 0),
+        (place + half, 2),
+        (place + half - 1, 1),
+        (-half, 0),
+        (-half - 1, -1),
+        (-place - half, -2),
+        (-place - half + 1, -1),
+        (0, 0),
+    ];
+    for (value, bits) in cases {
+        assert_eq!(to_num_narrow(value), Num::from_bits(bits), "{value}");
+    }
+}

@@ -48,20 +48,24 @@ fn ratio(step: i64, distance: i64) -> f64 {
 fn estimated(offset: Num, step: i64, distance: i64, ratio: f64) -> Num {
     let magnitude = offset.to_bits().unsigned_abs();
     let estimate = magnitude.cast_signed() as f64 * ratio;
-    let mut moved = (estimate + TWO_POW_52).to_bits() - TWO_POW_52.to_bits();
+    let mut moved = (estimate + TWO_POW_52)
+        .to_bits()
+        .wrapping_sub(TWO_POW_52.to_bits());
     let distance = distance.cast_unsigned();
     let rest = (magnitude.wrapping_mul(step.cast_unsigned()))
         .wrapping_sub(moved.wrapping_mul(distance))
         .cast_signed();
     let (twice, reach) = (rest.wrapping_mul(2), distance.cast_signed());
     let odd = moved & 1 == 1;
+    // The move is below 2⁵⁰, so no step wraps, and the wrapping steps skip the checks a release
+    // build makes.
     if twice > reach || (twice == reach && odd) {
-        moved += 1;
+        moved = moved.wrapping_add(1);
     } else if twice < reach.wrapping_neg() || (twice == reach.wrapping_neg() && odd) {
-        moved -= 1;
+        moved = moved.wrapping_sub(1);
     }
     // All ones for a negative offset, so the xor and the subtraction negate, with no branch on
     // a random sign.
     let sign = offset.to_bits() >> 63;
-    Num::from_bits((moved.cast_signed() ^ sign) - sign)
+    Num::from_bits((moved.cast_signed() ^ sign).wrapping_sub(sign))
 }

@@ -61,10 +61,12 @@ impl RoundedRoot for u128 {
 
     fn nearest_root_cmp(self, other: u128) -> Ordering {
         debug_assert!(other <= 1 << 63);
-        let square = other * other;
-        if self > square + other {
+        // `other²` is at most 2¹²⁶, and at least `other`: neither its sum with `other` nor its
+        // difference wraps, and the wrapping steps skip the checks a release build makes.
+        let square = other.wrapping_mul(other);
+        if self > square.wrapping_add(other) {
             Ordering::Greater
-        } else if other > 0 && self <= square - other {
+        } else if other > 0 && self <= square.wrapping_sub(other) {
             Ordering::Less
         } else {
             Ordering::Equal
@@ -74,6 +76,8 @@ impl RoundedRoot for u128 {
     /// Each path's estimate, rounded, `n`, which is the nearest root unless the root lies within
     /// the estimate's error of a half. `n` is the nearest exactly when `n² − n < value ≤ n² + n`,
     /// as `(n ± ½)² = n² ± n + ¼`; the rare steps correct the rest, as in `floor_root`.
+    /// A step moves a root by one within the estimate's error, far from either end of its type,
+    /// so the steps wrap, which skips the checks a release build makes.
     #[expect(
         clippy::inline_always,
         reason = "the paths of `floor_root`, whose call the inliner keeps at a cost of 10 % to 22 %"
@@ -87,6 +91,27 @@ impl RoundedRoot for u128 {
             Far::of(self).nearest()
         })
     }
+}
+
+/// The nearest root of a value from 2¹⁰² to below 2¹²⁶, as `nearest_root` takes it, with its
+/// estimate inline, for a caller whose values all lie there and that waits on the root.
+pub(crate) fn nearest_wide(value: u128) -> WideRoot {
+    debug_assert!((NEAR_END..1 << 126).contains(&value));
+    let far = Far::inline(value);
+    WideRoot {
+        root: far.nearest(),
+        half_reciprocal: far.half_reciprocal,
+    }
+}
+
+/// The nearest root of a wide value, and half the float reciprocal its estimate took: the
+/// estimate lies within 2⁻⁵¹ of the value's root, and that within ½ of the nearest, 2⁻⁶³ of it at
+/// the least root of 2⁵¹, and the reciprocal rounds once, so twice it lies within 2⁻⁵⁰·⁶ of
+/// `1 / root`, and is known before the root's integer steps.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct WideRoot {
+    pub(crate) root: u64,
+    pub(crate) half_reciprocal: f64,
 }
 
 /// The floor root of a value below 2⁶⁴, on `u64`, whose steps are single instructions: the float
@@ -188,13 +213,15 @@ impl Near {
         reason = "the rounding of an estimate that integer steps correct"
     )]
     fn nearest(self) -> u64 {
-        let mut root = (self.estimate + TWO_POW_52).to_bits() - TWO_POW_52.to_bits();
+        let mut root = (self.estimate + TWO_POW_52)
+            .to_bits()
+            .wrapping_sub(TWO_POW_52.to_bits());
         loop {
             let (rest, reach) = (self.residual(root), root.cast_signed());
             if rest > reach {
-                root += 1;
-            } else if rest <= -reach && root > 0 {
-                root -= 1;
+                root = root.wrapping_add(1);
+            } else if rest <= reach.wrapping_neg() && root > 0 {
+                root = root.wrapping_sub(1);
             } else {
                 return root;
             }
@@ -216,9 +243,16 @@ struct Far {
     value: u128,
     base: u64,
     offset: f64,
+    half_reciprocal: f64,
 }
 
 impl Far {
+    #[inline(never)]
+    fn of(value: u128) -> Far {
+        Far::inline(value)
+    }
+
+    /// `of` inline, for a caller whose values all take this path.
     #[expect(
         clippy::cast_possible_truncation,
         clippy::cast_precision_loss,
@@ -226,8 +260,12 @@ impl Far {
         clippy::float_arithmetic,
         reason = "the f64 root is only an estimate, which integer steps correct"
     )]
-    #[inline(never)]
-    fn of(value: u128) -> Far {
+    #[expect(
+        clippy::inline_always,
+        reason = "the estimate of a caller that waits on it"
+    )]
+    #[inline(always)]
+    fn inline(value: u128) -> Far {
         debug_assert!(value >= NEAR_END);
         // The value's bits from 2²² up, as two parts below 2⁵³ that convert exactly, as a single
         // instruction each: the bits dropped are below 2⁻⁸⁰ of the value.
@@ -250,8 +288,9 @@ impl Far {
         // down, so its offset is never negative, and the sum stays exact in its last place.
         Far {
             value,
-            base: base - (1 << 15),
+            base: base.wrapping_sub(1 << 15),
             offset: residual.mul_add(half_reciprocal, TWO_POW_15),
+            half_reciprocal,
         }
     }
 
@@ -283,7 +322,9 @@ impl Far {
         reason = "the rounding of an estimate that integer steps correct"
     )]
     fn nearest(self) -> u64 {
-        let rounded = (self.offset + TWO_POW_52).to_bits() - TWO_POW_52.to_bits();
+        let rounded = (self.offset + TWO_POW_52)
+            .to_bits()
+            .wrapping_sub(TWO_POW_52.to_bits());
         let mut root = self.base.saturating_add(rounded);
         // Below 2¹²⁶, roots are at most 2⁶³, so the residual is within `i128`.
         loop {
@@ -293,9 +334,9 @@ impl Far {
                 .wrapping_sub(Far::square(root).cast_signed());
             let reach = i128::from(root);
             if rest > reach {
-                root += 1;
-            } else if rest <= -reach {
-                root -= 1;
+                root = root.wrapping_add(1);
+            } else if rest <= reach.wrapping_neg() {
+                root = root.wrapping_sub(1);
             } else {
                 return root;
             }

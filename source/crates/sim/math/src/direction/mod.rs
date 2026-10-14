@@ -1,5 +1,7 @@
-use crate::root::RoundedRoot;
-use crate::rounding::Rounding;
+use std::ops::Neg;
+
+use crate::root;
+use crate::root::{RoundedRoot, WideRoot};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -28,27 +30,44 @@ impl<const N: usize> Direction<N> {
     /// least 62, so the unit's axes lie within 2⁻⁶² of the true ones.
     pub fn of(vector: [i128; N]) -> Option<Direction<N>> {
         debug_assert!(vector.iter().all(|axis| axis.abs() < WIDEST));
-        let square: u128 = vector
-            .iter()
-            .map(|&axis| (axis * axis).cast_unsigned())
-            .sum();
+        let square = Direction::square(vector);
         if square == 0 {
             return None;
         }
         let fine = (126 - (128 - square.leading_zeros())) / 2;
-        let root = (square << (2 * fine)).nearest_root().cast_signed();
-        // An axis is at most the length, below 2ʷ for a square of 2w bits, so shifted it stays
-        // below 2^(w + 62 + fine) ≤ 2¹²⁵.
-        let unit = vector.map(|axis| {
-            let axis = Rounding::NearestEven.divide(axis << (FRACTION + fine), root);
-            i64::try_from(axis).expect("a unit's axis is at most 1")
-        });
-        let length = if fine == 0 {
-            root
-        } else {
-            Rounding::NearestEven.shift_right(root, fine)
-        };
-        Some(Direction { unit, length })
+        let WideRoot {
+            root,
+            half_reciprocal,
+        } = root::nearest_wide(square << (2 * fine));
+        let divisor = UnitDivisor::new(root, half_reciprocal, FRACTION + fine);
+        let unit = vector.map(|axis| divisor.unit(axis));
+        Some(Direction {
+            unit,
+            length: Direction::<N>::unscaled(root, fine),
+        })
+    }
+
+    /// The square of the length of `vector`, each axis within ±2⁴⁷: each square, one widening
+    /// product, is below 2⁹⁴, so three cannot wrap, and the wrapping steps skip the checks a
+    /// release build makes.
+    #[expect(clippy::cast_possible_truncation, reason = "an axis below 2⁴⁷")]
+    fn square(vector: [i128; N]) -> u128 {
+        vector.iter().fold(0, |sum: u128, &axis| {
+            let magnitude = u128::from(axis.unsigned_abs() as u64);
+            sum.wrapping_add(magnitude.wrapping_mul(magnitude))
+        })
+    }
+
+    /// `root / 2^fine`, rounded to nearest, ties to even: adding `2^(fine − 1) − 1` and the
+    /// floor's last bit before the shift rounds a rest past half up, a rest of half up from an odd
+    /// floor only, and a smaller rest down, below 2⁶⁴ for a root of at most 2⁶³.
+    const fn unscaled(root: u64, fine: u32) -> i128 {
+        debug_assert!(root <= 1 << 63 && fine <= 62);
+        if fine == 0 {
+            return root as i128;
+        }
+        let odd = (root >> fine) & 1;
+        ((root + (1 << (fine - 1)) - 1 + odd) >> fine) as i128
     }
 
     /// The length of the vector it was taken from, rounded to the nearest unit.
@@ -63,9 +82,10 @@ impl<const N: usize> Direction<N> {
         let dot = off
             .iter()
             .zip(self.unit)
-            .map(|(&axis, unit)| axis * i128::from(unit))
-            .sum();
-        Rounding::NearestEven.shift_right(dot, FRACTION)
+            .fold(0, |dot: i128, (&axis, unit)| {
+                dot.wrapping_add(Direction::<N>::product(axis, unit))
+            });
+        Direction::<N>::nearest_unit(dot)
     }
 
     /// The vector along the direction `length` units long, `length` from 0 to 2⁴⁷, each axis's
@@ -80,23 +100,59 @@ impl<const N: usize> Direction<N> {
             .iter()
             .all(|&unit| unit == 0 || unit.unsigned_abs() == 1 << FRACTION);
         let cover = if exact { 0 } else { length };
+        // Each magnitude is below 2¹⁰⁹, so adding a unit less one rounds up with no wrap.
         self.unit.map(|unit| {
-            let magnitude = i128::from(unit.unsigned_abs()) * length + cover;
-            Rounding::Ceiling.shift_right(magnitude, FRACTION) * i128::from(unit.signum())
+            let magnitude = (Direction::<N>::product(length, unit).unsigned_abs()
+                + cover.cast_unsigned())
+            .wrapping_add((1 << FRACTION) - 1)
+                >> FRACTION;
+            let magnitude = magnitude.cast_signed();
+            match unit.signum() {
+                1 => magnitude,
+                -1 => -magnitude,
+                _ => 0,
+            }
         })
+    }
+
+    /// `axis · unit`, exact: an axis within ±2⁴⁷ and a unit's axis within ±2⁶², one widening
+    /// product of two `i64`s, below 2¹⁰⁹, which cannot overflow.
+    #[expect(clippy::cast_possible_truncation, reason = "an axis within ±2⁴⁷")]
+    const fn product(axis: i128, unit: i64) -> i128 {
+        (axis as i64 as i128).wrapping_mul(unit as i128)
+    }
+
+    /// `value / 2⁶²`, rounded to nearest, ties to even, for a value within ±2¹¹²: adding
+    /// `2⁶¹ − 1` and the floor's last bit before the shift rounds a rest past half up, a rest of
+    /// half up from an odd floor only, and a smaller rest down, with no wrap.
+    const fn nearest_unit(value: i128) -> i128 {
+        const HALF_LESS_ONE: i128 = (1 << (FRACTION - 1)) - 1;
+        let odd = (value >> FRACTION) & 1;
+        value.wrapping_add(HALF_LESS_ONE + odd) >> FRACTION
     }
 }
 
 impl Direction<2> {
+    /// The direction a quarter turn clockwise, of `[z, −x]` for a direction of `[x, z]`: what `of`
+    /// gives for that vector, as its square, its root and its length are the same, and each axis
+    /// of the unit rounds as its negation does.
+    #[must_use]
+    pub const fn turned(&self) -> Direction<2> {
+        Direction {
+            unit: [self.unit[1], self.unit[0].wrapping_neg()],
+            length: self.length,
+        }
+    }
+
     /// How far `off`, each axis within ±2⁴⁷, lies from the line along the direction through the
     /// origin: its cross product with the unit vector, rounded to the nearest unit.
     pub fn apart(&self, off: [i128; 2]) -> i128 {
         debug_assert!(off.iter().all(|axis| axis.abs() < WIDEST));
         let [x, z] = off;
-        let [unit_x, unit_z] = self.unit.map(i128::from);
-        Rounding::NearestEven
-            .shift_right(x * unit_z - z * unit_x, FRACTION)
-            .abs()
+        let [unit_x, unit_z] = self.unit;
+        let cross =
+            Direction::<2>::product(x, unit_z).wrapping_sub(Direction::<2>::product(z, unit_x));
+        Direction::<2>::nearest_unit(cross).abs()
     }
 }
 
@@ -104,21 +160,132 @@ impl Direction<3> {
     /// How far `off`, each axis within ±2⁴⁷, lies from the line along the direction through the
     /// origin: the length of its cross product with the unit vector, each axis rounded to the
     /// nearest unit, then the nearest root of their squares, below 2⁹⁸.
+    #[expect(clippy::cast_possible_truncation, reason = "a cross axis below 2⁴⁹")]
     pub fn apart(&self, off: [i128; 3]) -> i128 {
         debug_assert!(off.iter().all(|axis| axis.abs() < WIDEST));
         let [x, y, z] = off;
-        let [unit_x, unit_y, unit_z] = self.unit.map(i128::from);
-        let cross = [
-            y * unit_z - z * unit_y,
-            z * unit_x - x * unit_z,
-            x * unit_y - y * unit_x,
+        let [unit_x, unit_y, unit_z] = self.unit;
+        let cross = |a: i128, unit_b: i64, b: i128, unit_a: i64| {
+            let product = Direction::<3>::product;
+            Direction::<3>::nearest_unit(product(a, unit_b).wrapping_sub(product(b, unit_a)))
+        };
+        // Each axis of the cross product is below 2⁴⁹ in magnitude, so a square is one widening
+        // product below 2⁹⁸, and three cannot wrap.
+        let square = [
+            cross(y, unit_z, z, unit_y),
+            cross(z, unit_x, x, unit_z),
+            cross(x, unit_y, y, unit_x),
         ]
-        .map(|axis| Rounding::NearestEven.shift_right(axis, FRACTION));
-        let square: u128 = cross
-            .iter()
-            .map(|&axis| (axis * axis).cast_unsigned())
-            .sum();
+        .iter()
+        .fold(0, |sum: u128, &axis| {
+            let magnitude = u128::from(axis.unsigned_abs() as u64);
+            sum.wrapping_add(magnitude.wrapping_mul(magnitude))
+        });
         square.nearest_root().cast_signed()
+    }
+}
+
+/// The divisor of a unit's axes, a root `d` from 2⁶² to 2⁶³, as the square it is taken from
+/// has 125 or 126 bits, and what each axis's quotient shares: the float reciprocal the root's
+/// estimate took, within 2⁻⁵⁰·⁶ of `1 / d`, so the three quotients take no division and their
+/// estimates wait on no integer step of the root, and `scale`, it times 2^(`shift` − 11),
+/// exactly so of `2^(shift − 11) / d`.
+#[derive(Debug, Clone, Copy)]
+struct UnitDivisor {
+    root: u64,
+    shift: u32,
+    reciprocal: f64,
+    scale: f64,
+}
+
+impl UnitDivisor {
+    /// The power of two each estimate counts in: a quotient over it stays below 2⁵².
+    const COARSE: u32 = 11;
+
+    #[expect(
+        clippy::float_arithmetic,
+        reason = "a float reciprocal that `unit` corrects exactly"
+    )]
+    #[inline]
+    fn new(root: u64, half_reciprocal: f64, shift: u32) -> UnitDivisor {
+        debug_assert!((1 << 62..=1 << 63).contains(&root));
+        debug_assert!((FRACTION..=FRACTION + 62).contains(&shift));
+        let power = f64::from_bits(u64::from(1023 + 1 + shift - UnitDivisor::COARSE) << 52);
+        UnitDivisor {
+            root,
+            shift,
+            reciprocal: 2.0 * half_reciprocal,
+            scale: half_reciprocal * power,
+        }
+    }
+
+    /// `axis · 2^shift / d`, rounded to nearest, ties to even, for an axis at most the length
+    /// whose square's root is `d` at that scale, so a quotient `Q` at most 2⁶² and a hair. The
+    /// magnitude, below 2⁴⁷, is exact in f64, and its product with `scale`, `Q / 2¹¹` within
+    /// 2⁻⁵⁰·⁶ of itself, so within 1.4, rounds once to an integer below 2⁵², which fills the low
+    /// bits of 2⁵²: `q`, it times 2¹¹, lies within 2¹¹ · 1.9 of `Q`. The rest `N − q · d` of the
+    /// numerator `N` is then below 2⁷⁵ in magnitude, within `i128`, and its ratio to `d`, its
+    /// float times `reciprocal` with one rounding, lies within 2⁻³⁷ of `Q − q`, below 2¹²: its
+    /// nearest integer takes `q` to `m`, the nearest to `Q` or one off it when `Q` lies within
+    /// 2⁻³⁷ of a half. The rest `N − m · d`, below `d · (½ + 2⁻³⁷)` in magnitude, fits an `i64`,
+    /// so its low 64 bits are exact, and against half of `d` one step corrects `m`, rarely taken.
+    /// `m` stays within 2⁶² and a hair, so no step can wrap.
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_precision_loss,
+        clippy::cast_sign_loss,
+        reason = "a float estimate that the integer steps correct exactly"
+    )]
+    #[inline(always)]
+    fn unit(self, axis: i128) -> i64 {
+        /// 2⁵², whose last place is 1: a float from 0 to below 2⁵² added to it rounds to the
+        /// nearest integer, ties to even, which fills its low bits.
+        const TWO_POW_52: f64 = 4_503_599_627_370_496.0;
+        /// 1.5 · 2⁵², whose last place is 1: a float within 2⁵¹ of 0 added to it rounds to the
+        /// nearest integer, which fills its low bits.
+        const SIGNED_52: f64 = 6_755_399_441_055_744.0;
+        /// 2³², exact in f64.
+        const TWO_POW_32: f64 = 4_294_967_296.0;
+        debug_assert!(axis.unsigned_abs() < 1 << 47);
+        let magnitude = axis.unsigned_abs() as u64;
+        let numerator = u128::from(magnitude) << self.shift;
+        let coarse = (magnitude.cast_signed() as f64).mul_add(self.scale, TWO_POW_52);
+        let estimate = (coarse.to_bits() - TWO_POW_52.to_bits()) << UnitDivisor::COARSE;
+        let rest = numerator
+            .wrapping_sub(u128::from(estimate) * u128::from(self.root))
+            .cast_signed();
+        let float_rest = ((rest >> 32) as i64 as f64).mul_add(TWO_POW_32, f64::from(rest as u32));
+        let step = (float_rest.mul_add(self.reciprocal, SIGNED_52).to_bits())
+            .wrapping_sub(SIGNED_52.to_bits())
+            .cast_signed();
+        let mut nearest = estimate.wrapping_add_signed(step);
+        let rest = (numerator as u64)
+            .wrapping_sub(nearest.wrapping_mul(self.root))
+            .cast_signed();
+        // `2 · rest` against `d`, as `rest` against half of `d`: a tie only for an even `d`.
+        let half = (self.root >> 1).cast_signed();
+        let tie = self.root & 1 == 0 && nearest & 1 == 1;
+        if rest > half || (rest == half && tie) {
+            nearest = nearest.wrapping_add(1);
+        } else if rest < -half || (rest == -half && tie) {
+            nearest = nearest.wrapping_sub(1);
+        }
+        // All ones for a negative axis, so the xor and the subtraction negate.
+        let sign = (axis >> 127) as i64;
+        (nearest.cast_signed() ^ sign).wrapping_sub(sign)
+    }
+}
+
+/// The opposite direction: what `of` gives for the negated vector, as each axis of the unit
+/// rounds as its negation does. A unit's axis is at most 2⁶², so its negation cannot wrap.
+impl<const N: usize> Neg for Direction<N> {
+    type Output = Direction<N>;
+
+    fn neg(self) -> Direction<N> {
+        Direction {
+            unit: self.unit.map(i64::wrapping_neg),
+            length: self.length,
+        }
     }
 }
 

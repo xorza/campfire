@@ -96,23 +96,18 @@ impl Rounding {
     pub const fn shift_right(self, value: i128, shift: u32) -> i128 {
         debug_assert!(0 < shift && shift < 128);
         let floor = value >> shift;
-        let divisor = 1_u128 << shift;
-        // The floor is at most half the value, so one more fits, and the mask is below the
-        // divisor: the wrapping steps skip the checks a release build makes.
-        let rest = value.cast_unsigned() & divisor.wrapping_sub(1);
-        let up = self.rounds_up(rest, divisor >> 1, rest == 0, floor & 1 == 1);
-        floor.wrapping_add(up as i128)
-    }
-
-    /// Whether a quotient that is not negative rounds up from its floor, `odd` or not: `exact`
-    /// when it has no rest, and its rest measured against half the divisor as `rest` against
-    /// `half`, on whatever scale its caller's range keeps exact and cheapest.
-    pub(crate) const fn rounds_up(self, rest: u128, half: u128, exact: bool, odd: bool) -> bool {
-        match self {
-            Rounding::NearestEven => rest > half || (rest == half && odd),
-            Rounding::Floor => false,
-            Rounding::Ceiling => !exact,
-        }
+        let mask = (1_u128 << shift).wrapping_sub(1);
+        let rest = value.cast_unsigned() & mask;
+        // The quotient rounds up when the rest passes a threshold: to nearest, half less the
+        // floor's last bit, so a rest past half, or of half from an odd floor; up, 0; down, the
+        // mask, which no rest passes. The floor is at most half the value, so one more fits, and
+        // the wrapping step skips the check a release build makes.
+        let threshold = match self {
+            Rounding::NearestEven => (mask - (mask >> 1)) - (floor & 1).cast_unsigned(),
+            Rounding::Floor => mask,
+            Rounding::Ceiling => 0,
+        };
+        floor.wrapping_add((rest > threshold) as i128)
     }
 }
 
@@ -191,13 +186,5 @@ mod tests {
                 }
             }
         }
-        // The rule alone: past half up, below half down, at half up from an odd floor only; up
-        // for any rest, or never.
-        let nearest = Rounding::NearestEven;
-        assert!(nearest.rounds_up(3, 2, false, false) && !nearest.rounds_up(1, 2, false, true));
-        assert!(nearest.rounds_up(2, 2, false, true) && !nearest.rounds_up(2, 2, false, false));
-        assert!(Rounding::Ceiling.rounds_up(0, 2, false, false));
-        assert!(!Rounding::Ceiling.rounds_up(0, 2, true, true));
-        assert!(!Rounding::Floor.rounds_up(3, 2, false, true));
     }
 }
