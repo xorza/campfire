@@ -39,7 +39,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::RandomKey;
-use campfire_sim::TickRate;
+use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
 use campfire_values::{Team, TeamSet};
 use lightyear::prelude::Connect;
@@ -224,12 +224,18 @@ fn add_ends(
         },
         Hud,
         Orders,
-        ItemNames {
-            packages: Arc::clone(packages),
-        },
-        ShopPanel,
-        InventoryBar,
     ));
+    // The item names, the shop and the inventory read the items' books, which a mode of no
+    // `items` has none of.
+    if packages.manifest().capabilities.contains(Capability::Items) {
+        app.add_plugins((
+            ItemNames {
+                packages: Arc::clone(packages),
+            },
+            ShopPanel,
+            InventoryBar,
+        ));
+    }
 }
 
 /// The packages of the mode the arguments name; the exit code when they do not load.

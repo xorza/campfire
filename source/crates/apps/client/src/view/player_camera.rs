@@ -2,16 +2,16 @@ use bevy::app::{App, Plugin, Startup, Update};
 use bevy::camera::{Camera3d, PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::message::MessageReader;
-use bevy::ecs::query::With;
+use bevy::ecs::query::{Changed, With};
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::{MouseButton, MouseScrollUnit, MouseWheel};
 use bevy::math::Vec2;
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use bevy::window::{PrimaryWindow, Window};
+use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 
 use crate::view::ViewSystems;
 use crate::view::camera_rig::CameraRig;
@@ -19,13 +19,25 @@ use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
 use crate::view::scene_lights::EXPOSURE;
 
-/// The player's camera, as its package's camera file and the game's controls move it: the arrow
-/// keys and the window's edges scroll it, the wheel, the keypad's 8 and 2 and Alt with Up and Down
-/// zoom it, a drag of the middle button, the keypad's 4 and 6 and Alt with Left and Right turn
-/// it, and a click of the middle button, the keypad's 5 or Alt with Backspace sets it back. It starts over the middle of the map's heightmap, or the origin, and
-/// stays over the heightmap.
+/// The player's camera, as its package's camera file and the client's controls move it: the
+/// arrow keys and the window's edges scroll it, the wheel, the keypad's 8 and 2 and Alt with Up
+/// and Down zoom it, the keypad's 4 and 6 and Alt with Left and Right turn it, a drag of the
+/// middle button pans it, keeping the ground it grabbed under the cursor, as an editor's and an
+/// RTS's do, and with Ctrl orbits it, turning and tilting; a click of the middle button, the
+/// keypad's 5 or Alt with Backspace sets it back. It starts over the middle of the map's
+/// heightmap, or the origin, and stays over the heightmap. The window keeps the cursor within it
+/// while it has the focus, so the cursor reaches the edges that scroll, and lets it go when it
+/// loses the focus.
 #[derive(Debug)]
 pub(crate) struct PlayerCamera;
+
+/// The primary window and its cursor, in a frame the window changed.
+type FocusChanged<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Window, &'static mut CursorOptions),
+    (With<PrimaryWindow>, Changed<Window>),
+>;
 
 /// The pixels from the window's edge within which the cursor scrolls, as the game's 3.
 const EDGE: f32 = 3.0;
@@ -41,6 +53,7 @@ impl Plugin for PlayerCamera {
                 .chain()
                 .before(ViewSystems),
         );
+        app.add_systems(Update, PlayerCamera::confine);
     }
 }
 
@@ -78,6 +91,7 @@ impl PlayerCamera {
         mut wheel: MessageReader<'_, '_, MouseWheel>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         time: Res<'_, Time>,
+        data: Option<Res<'_, ClientData>>,
         mut rig: ResMut<'_, CameraRig>,
     ) {
         let seconds = time.delta_secs();
@@ -134,12 +148,37 @@ impl PlayerCamera {
         }
         if let Some(cursor) = cursor {
             if buttons.just_pressed(MouseButton::Middle) {
-                rig.press(cursor, now);
+                if keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+                    rig.press_orbit(cursor, now);
+                } else {
+                    let pivot = rig.pivot();
+                    let ground = data
+                        .as_deref()
+                        .and_then(|data| data.heights.as_ref())
+                        .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
+                    let screen = Vec2::new(window.width(), window.height());
+                    rig.press_pan(cursor, screen, ground, now);
+                }
             }
             rig.drag_to(cursor);
         }
         if buttons.just_released(MouseButton::Middle) {
             rig.release(now);
+        }
+    }
+
+    /// Keeps the cursor within the window while the window has the focus, and lets it go when
+    /// the window loses it, as a window's focus changes.
+    fn confine(mut windows: FocusChanged<'_, '_>) {
+        for (window, mut cursor) in &mut windows {
+            let grab = if window.focused {
+                CursorGrabMode::Confined
+            } else {
+                CursorGrabMode::None
+            };
+            if cursor.grab_mode != grab {
+                cursor.grab_mode = grab;
+            }
         }
     }
 
@@ -172,5 +211,37 @@ impl PlayerCamera {
             fov,
             ..PerspectiveProjection::default()
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bevy::ecs::system::RunSystemOnce;
+    use bevy::ecs::world::World;
+
+    use super::*;
+
+    #[test]
+    fn the_cursor_stays_in_the_window_while_it_has_the_focus() {
+        let mut world = World::new();
+        let window = world
+            .spawn((
+                Window {
+                    focused: true,
+                    ..Window::default()
+                },
+                CursorOptions::default(),
+                PrimaryWindow,
+            ))
+            .id();
+        let grab = |world: &mut World| {
+            world.run_system_once(PlayerCamera::confine).unwrap();
+            world.get::<CursorOptions>(window).unwrap().grab_mode
+        };
+        assert_eq!(grab(&mut world), CursorGrabMode::Confined);
+        world.get_mut::<Window>(window).unwrap().focused = false;
+        assert_eq!(grab(&mut world), CursorGrabMode::None);
+        world.get_mut::<Window>(window).unwrap().focused = true;
+        assert_eq!(grab(&mut world), CursorGrabMode::Confined);
     }
 }
