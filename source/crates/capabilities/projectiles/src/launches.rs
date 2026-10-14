@@ -1,10 +1,10 @@
 use std::slice;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Scratch, UnitType};
+use campfire_declare::Scratch;
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
-use campfire_values::{ActionStart, DamageKind, Rank};
+use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
 
 use crate::projectile::Flight;
 

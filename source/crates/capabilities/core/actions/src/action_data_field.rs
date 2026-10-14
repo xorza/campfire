@@ -1,4 +1,4 @@
-use campfire_core::{ApiVersion, Status};
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_sim::Capability::{Abilities, Combat, Production, Projectiles};
 

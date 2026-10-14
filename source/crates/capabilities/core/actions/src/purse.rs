@@ -1,4 +1,4 @@
-use campfire_core::{PlayerResources, ResourceAmount};
+use campfire_players::{PlayerResources, ResourceAmount};
 use campfire_stats::{PoolCost, PoolMeters};
 
 /// What a unit pays an action's cost from: its pools, and the resources of the player that owns

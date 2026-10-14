@@ -10,7 +10,7 @@ use bevy_ecs::component::{Component, ComponentId, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::World;
-use campfire_core::CapabilitySet;
+use campfire_declare::CapabilitySet;
 use campfire_sim::{SimResource, StableId, Unpredicted};
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
 

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_core::Report;
+use campfire_declare::Report;
 
 /// The boundary the mode last asked for a save at, by `ctx.save()`: the end of the tick it asked
 /// in. Not state: a checkpoint, which the log records, is what a save leaves.

@@ -1,4 +1,4 @@
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
 /// The mode's `[supply]`: the mode counts supply, and no player's cap passes `max`.

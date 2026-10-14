@@ -1,7 +1,8 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_core::{Effect, Frame, ModifierId, Tag};
+use campfire_script::{Effect, Frame};
 use campfire_sim::StableId;
+use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
 use crate::applier::Applier;

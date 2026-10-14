@@ -1,10 +1,11 @@
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::Targets;
-use campfire_core::{ByType, Team, UnitType, UnitsNear};
+use campfire_declare::ByType;
 use campfire_geometry::Shape;
 use campfire_sim::Position;
 use campfire_stats::{Held, HeldModifiers};
-use campfire_values::Relation;
+use campfire_units::UnitsNear;
+use campfire_values::{Relation, Team, UnitType};
 
 use crate::area::Area;
 use crate::area_spec::{AreaSpec, Inside};

@@ -7,12 +7,12 @@ use campfire_capabilities::{
     BookInput, BookKind, BookPackage, Books, PackageContent, Release, UnitTypeData,
 };
 use campfire_common::{Fingerprint, MapName};
-use campfire_core::{EngineTag, ScriptBook, UnknownName};
 use campfire_mode::{MapData, ModeData};
-use campfire_script::{ScriptHost, ScriptId};
+use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{EdgeError, StatGraph, StatId};
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_units::ScriptBook;
+use campfire_values::{DeclaredName, EngineTag, PackagePath};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;

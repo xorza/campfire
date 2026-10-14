@@ -1,4 +1,4 @@
-use campfire_core::{Bits256, ResourceId};
+use campfire_values::{Bits256, ResourceId};
 
 /// A set of the mode's player resources, one bit each.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

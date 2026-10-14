@@ -1,8 +1,9 @@
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, Status,
-    TrackId, Unit,
-};
 use campfire_math::Num;
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, Status,
+    Unit,
+};
+use campfire_values::TrackId;
 
 use crate::progression_column::ProgressionColumn;
 use crate::progression_effect::ProgressionEffect;

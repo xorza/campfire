@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::Scratch;
+use campfire_declare::Scratch;
 use campfire_sim::StableId;
 
 use crate::damage::Damage;

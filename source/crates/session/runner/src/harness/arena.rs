@@ -3,14 +3,14 @@ use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, Order};
 use campfire_common::PlayerSlot;
-use campfire_core::{ActionId, ModifierId, ScriptFailure, ScriptFailures, Team};
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
 use campfire_package::internals::PackageTree;
+use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{PoolId, Stats};
-use campfire_values::{DeclaredName, Names};
+use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Team};
 use campfire_vision::Vision;
 
 use crate::match_build::MatchBuild;

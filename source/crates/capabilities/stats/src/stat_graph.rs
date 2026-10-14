@@ -1,4 +1,4 @@
-use campfire_core::{NameKind, UnknownName};
+use campfire_script::{NameKind, UnknownName};
 use campfire_values::Stat;
 
 use crate::error::EdgeError;

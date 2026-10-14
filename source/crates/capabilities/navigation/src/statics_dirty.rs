@@ -7,8 +7,9 @@ use bevy_ecs::query::{Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::World;
-use campfire_core::{Body, Cache, Dead, MoveStep};
+use campfire_declare::Cache;
 use campfire_sim::{Position, StableId, Unpredicted};
+use campfire_units::{Body, Dead, MoveStep};
 
 /// Whether a unit may have become a static body, or stopped being one, since the static index
 /// last took the static bodies: a living unit that cannot walk. A static body that moves or

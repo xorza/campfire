@@ -2,14 +2,12 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{
-    ActionId, Book, HookSet, ModifierId, NameKind, ParamProblem, ScriptBook, ScriptRole,
-    StatusTags, TagSet, UnitTypes, UnknownName, View,
-};
+use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::ScriptId;
+use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{DeclaredName, Names, Rank, Stat};
+use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
+use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Rank, Stat, TagSet};
 
 use crate::application::{Application, NewInstance};
 use crate::applier::Applier;
@@ -51,7 +49,7 @@ pub struct ModifierEntry {
 #[derive(Debug)]
 pub struct ModifierLoad<'a, S> {
     pub scripts: &'a ScriptBook,
-    pub types: &'a mut UnitTypes,
+    pub types: &'a mut UnitTypeBook,
     pub stat: S,
     pub rate: TickRate,
 }
@@ -314,7 +312,7 @@ impl Book for ModifierBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {
-        view.names_mut().modifiers = Arc::clone(self.names());
+        view.names_mut().set_table(Arc::clone(self.names()));
     }
 }
 
@@ -322,8 +320,9 @@ impl Book for ModifierBook {
 pub(crate) mod internals {
     use std::sync::Arc;
 
-    use campfire_core::{HookSet, ModifierId, TagSet};
     use campfire_math::Num;
+    use campfire_script::HookSet;
+    use campfire_values::{ModifierId, TagSet};
 
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;

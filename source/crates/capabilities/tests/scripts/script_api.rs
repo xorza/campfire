@@ -10,7 +10,6 @@ use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotK
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::{Release, UnitTypeData};
 use campfire_combat::{CombatData, LeechData, ModeCombatData};
-use campfire_core::*;
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
 use campfire_mode::{ChoiceData, ModeData, PlayersData, RelationData, SavesData};
@@ -19,26 +18,23 @@ use campfire_orders::AiData;
 use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData, SupplyData};
 use campfire_progression::TrackData;
 use campfire_projectiles::ProjectileData;
-use campfire_script::ScriptHost;
+use campfire_script::*;
 use campfire_sim::Capability;
 use campfire_stats::{AuraData, ModifierData};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
+use campfire_units::{CollisionData, TagData};
+use campfire_values::TagProperty;
 use campfire_vision::VisionData;
-use rhai::Engine;
 use serde::de::{self, Deserialize, Deserializer, Visitor};
 
-/// Each function of `engine`: its name, and the type of its first parameter.
-fn functions(engine: &Engine) -> Vec<(String, Option<TypeId>)> {
-    let mut functions = engine.collect_fn_metadata(
-        None,
-        |info| {
-            let first = info.metadata.param_types.first().copied();
-            Some((info.metadata.name.to_string(), first))
-        },
-        true,
-    );
-    functions.sort_unstable();
+/// Each function `host`'s engine binds: its name, and the type of its first parameter.
+fn functions(host: &ScriptHost) -> Vec<(String, Option<TypeId>)> {
+    let mut functions: Vec<_> = host
+        .bound_functions()
+        .into_iter()
+        .map(|function| (function.name, function.params.first().copied()))
+        .collect();
     functions.dedup();
     functions
 }
@@ -46,9 +42,9 @@ fn functions(engine: &Engine) -> Vec<(String, Option<TypeId>)> {
 #[test]
 fn the_registry_holds_exactly_what_the_engine_binds() {
     let mut host = ScriptHost::new(NonZeroU64::MIN);
-    let before = functions(host.engine_mut());
+    let before = functions(&host);
     let api = Release::bind_script_api(&mut host);
-    let mut bound: Vec<String> = functions(host.engine_mut())
+    let mut bound: Vec<String> = functions(&host)
         .into_iter()
         .filter(|function| !before.contains(function))
         .map(|(name, _)| name)
@@ -87,25 +83,16 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
 fn each_form_that_takes_a_num_takes_an_integer_in_its_place_too() {
     // Each function the API binds, by its name and its parameters' types; Rhai's own before it
     // binds aside.
-    let forms = |engine: &Engine| {
-        let mut forms = engine.collect_fn_metadata(
-            None,
-            |info| {
-                Some((
-                    info.metadata.name.to_string(),
-                    info.metadata.param_types.to_vec(),
-                ))
-            },
-            true,
-        );
-        forms.sort_unstable();
-        forms.dedup();
-        forms
+    let forms = |host: &ScriptHost| {
+        let functions = host.bound_functions().into_iter();
+        functions
+            .map(|function| (function.name, function.params))
+            .collect::<Vec<_>>()
     };
     let mut host = ScriptHost::new(NonZeroU64::MIN);
-    let before = forms(host.engine_mut());
+    let before = forms(&host);
     Release::bind_script_api(&mut host);
-    let bound: Vec<(String, Vec<TypeId>)> = forms(host.engine_mut())
+    let bound: Vec<(String, Vec<TypeId>)> = forms(&host)
         .into_iter()
         .filter(|form| !before.contains(form))
         .collect();

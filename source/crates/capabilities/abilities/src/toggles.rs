@@ -1,9 +1,10 @@
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::{ActionBook, ActionSlots, SlotTimes, TogglePer, UseGroup};
-use campfire_core::{Dead, UnitTags};
 use campfire_sim::TickClock;
 use campfire_stats::{PoolBook, UnitPools};
+use campfire_units::Dead;
+use campfire_values::UnitTags;
 
 use crate::Abilities;
 

@@ -1,10 +1,11 @@
 use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
-use campfire_core::{
-    ActionId, ApiBuilder, ApiError, ApiVersion, Block, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, ScriptValue, Status, TagProperty, Unit,
-};
 use campfire_math::Num;
+use campfire_script::{
+    ApiBuilder, ApiError, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
+    ScriptValue, Status, Unit,
+};
 use campfire_sim::{Capability, Position};
+use campfire_values::{ActionId, Block, TagProperty};
 
 use crate::abilities_effect::AbilitiesEffect;
 

@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_core::Callbacks;
+use campfire_declare::Callbacks;
 use campfire_sim::Capability;
 
 /// What a cast that resolved spends of the unit of the entity besides its slot, the slot's:

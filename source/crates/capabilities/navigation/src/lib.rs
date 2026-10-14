@@ -14,13 +14,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
-use campfire_core::{
-    Body, BodyUnit, ByType, Declarations, Destination, InstallCx, Module, ModuleSet, MoveStep,
-    Phase, SetPlace, SpawnHooks,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_geometry::{Grid, MAX_BOUND};
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
+use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks};
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -292,7 +290,7 @@ impl Navigation {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_core::Book;
+    use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
 

@@ -1,4 +1,4 @@
-use campfire_core::{ApiBuilder, DataTable};
+use campfire_script::{ApiBuilder, DataTable};
 
 use crate::inventory_data::InventoryData;
 use crate::item_data::ItemData;

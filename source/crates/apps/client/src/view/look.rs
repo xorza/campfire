@@ -6,7 +6,7 @@ use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
-use campfire_core::Body;
+use campfire_units::Body;
 
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
@@ -133,8 +133,8 @@ impl Shape {
 #[cfg(test)]
 mod tests {
     use bevy::ecs::world::World;
-    use campfire_core::BodyForm;
     use campfire_math::Num;
+    use campfire_units::BodyForm;
 
     use super::*;
 

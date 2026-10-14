@@ -2,11 +2,12 @@ use std::cmp::Ordering;
 
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_core::{Body, Dead, MapBook, MoveStep, OnMatch, Relations, Team, UnitTags};
 use campfire_geometry::Shape;
 use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook, Walls};
+use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
-use campfire_values::Relation;
+use campfire_units::{Body, Dead, MapBook, MoveStep};
+use campfire_values::{Relation, Relations, Team, UnitTags};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildSpec, PlacementCheck};

@@ -2,9 +2,11 @@ use std::panic;
 
 use campfire_capabilities::Match;
 use campfire_common::PlayerSlot;
-use campfire_core::*;
+use campfire_players::*;
 use campfire_sim::Capability;
 use campfire_stats::PlayerModifiers;
+use campfire_units::{Player, UnitsWorld};
+use campfire_values::{Relations, Team};
 
 #[test]
 fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_one_unstarted() {

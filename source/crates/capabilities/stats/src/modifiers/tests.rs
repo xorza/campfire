@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use campfire_codec::Binary;
 use campfire_common::Ticks;
-use campfire_core::StateValue;
+use campfire_script::StateValue;
 use campfire_sim::IdAllocator;
 
 use super::*;

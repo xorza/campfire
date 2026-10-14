@@ -18,15 +18,7 @@ use campfire_combat::{
     PassQueue, RecentAttackers, Respawn,
 };
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_core::internals::FailureKind;
-use campfire_core::{
-    ActionId, ApiError, Body, BodyForm, Book, ByType, CallError, Dead, Destination, Facing,
-    HeldPlayerUnits, Layer, MatchEntity, ModifierId, MoveStep, NameKind, OutOfPlay, Owner,
-    ParamProblem, PathId, Player, PlayersWorld, Pool, Relations, ResourceId, ScriptBudgets,
-    ScriptFailures, ScriptLimits, ScriptRole, StateDecl, StateDefault, StateType, StateValue,
-    SyncAll, SyncNone, SyncTo, SyncedStateDecl, Team, TrackId, TypeScope, UnitTags, UnitType,
-    UnitTypeCore, Units, View,
-};
+use campfire_declare::{Book, ByType};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
 use campfire_math::{Num, Vec3};
@@ -35,9 +27,15 @@ use campfire_mode::{
     UnansweredSlotEvents, *,
 };
 use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker};
+use campfire_players::{OutOfPlay, PlayersWorld};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
-use campfire_script::ScriptId;
+use campfire_script::internals::FailureKind;
+use campfire_script::{
+    ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
+    ScriptLimits, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,
+    SyncedStateDecl, View,
+};
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimComponent, SimResource, SimTick, SlotEvent,
     SlotEventKind, StableId, TickRate,
@@ -47,9 +45,14 @@ use campfire_stats::{
     PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule, StatShare, Stats,
     UnitStats,
 };
+use campfire_units::{
+    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
+    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units,
+};
 use campfire_values::{
-    DamageKind, DeclaredName, EngineEnum, FilterData, Names, Number, ParamRef, Rank, Ranked,
-    Relation, Scalar, Stat,
+    ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, ModifierId, Names, Number,
+    ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team, TrackId,
+    TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 
@@ -700,7 +703,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let resolved = {
         let view = game.non_send::<View>();
         let relations = &data.relations;
-        let unit_type = |name: &str| view.names().unit_types().named((TypeScope::Mode, name));
+        let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
         let layers = &mode_names.layers;
         ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap()
     };
@@ -713,8 +716,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
     let bindings = CombatBindings::new(&data.combat, stat).unwrap();
     let tags = {
-        let view = game.non_send::<View>();
-        let mut unit_types = view.types_mut();
+        let mut unit_types = game.resource_mut::<UnitTypeBook>();
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
         unit_types.tag_layers(&mode_names.layers, bodies);
         unit_types.tag_book(&data.tags)
@@ -739,9 +741,12 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     ground.load_into(game);
     navigation.load_into(game);
     vision.load_into(game);
-    game.non_send::<View>()
-        .names_mut()
-        .set_mode_names(mode_names.damage_kinds, mode_names.resources);
+    {
+        let view = game.non_send::<View>();
+        let mut names = view.names_mut();
+        names.set_table(mode_names.damage_kinds);
+        names.set_table(mode_names.resources);
+    }
     let mut kinds: Vec<Walker> = walkers.values().copied().collect();
     kinds.sort_unstable();
     kinds.dedup();
@@ -779,7 +784,7 @@ fn start_match_setup(
         .collect();
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
     let layers = files.data.navigation.layers.iter();
-    Units::declare_tags(&game, layers.map(DeclaredName::as_str));
+    Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
         let data = UnitTypeCore::tagged(&[tag]);

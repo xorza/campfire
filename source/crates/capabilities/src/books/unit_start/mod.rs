@@ -1,8 +1,8 @@
 use campfire_combat::{CombatData, OnDeath};
-use campfire_core::{MoveStep, UnitType};
 use campfire_sim::TickRate;
 use campfire_stats::{Life, Meter, PoolId, Pools, StatBook};
-use campfire_values::{EngineStat, Stat};
+use campfire_units::MoveStep;
+use campfire_values::{EngineStat, Stat, UnitType};
 
 use crate::books::error::UnitStartError;
 

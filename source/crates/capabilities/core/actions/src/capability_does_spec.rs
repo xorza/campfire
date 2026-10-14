@@ -1,7 +1,6 @@
-use campfire_core::{TrackId, UnitType};
 use campfire_sim::Capability;
 use campfire_stats::PoolId;
-use campfire_values::DamageKind;
+use campfire_values::{DamageKind, TrackId, UnitType};
 
 use crate::amount::Amount;
 use crate::effect_data::EffectTo;
@@ -62,10 +61,9 @@ impl CapabilityDoesSpec {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_core::{TrackId, UnitType};
     use campfire_math::Num;
     use campfire_stats::PoolId;
-    use campfire_values::DamageKind;
+    use campfire_values::{DamageKind, TrackId, UnitType};
 
     use crate::amount::Amount;
     use crate::capability_does_spec::CapabilityDoesSpec;

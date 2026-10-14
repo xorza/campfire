@@ -2,12 +2,12 @@ use std::ops::Range;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_core::{
-    Checked, Filter, KeptRows, Relations, RowFill, ScriptList, ScriptValue, Team, TeamSet, Unit,
-    ViewColumn, ViewColumns,
-};
 use campfire_math::Num;
+use campfire_script::{
+    Checked, Filter, KeptRows, RowFill, ScriptList, ScriptValue, Unit, ViewColumn, ViewColumns,
+};
 use campfire_sim::Position;
+use campfire_values::{Relations, Team, TeamSet};
 
 use crate::seen_by::SeenBy;
 

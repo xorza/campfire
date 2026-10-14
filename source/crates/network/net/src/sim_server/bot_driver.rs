@@ -2,10 +2,10 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::Order;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::HeldPlayerUnits;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
+use campfire_units::HeldPlayerUnits;
 
 use crate::bot_script::BotScript;
 use crate::events::avatar_missing::AvatarMissing;

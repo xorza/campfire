@@ -1,9 +1,10 @@
 use bevy_ecs::world::World;
-use campfire_core::{TagProperties, Team, TypeScope, UnitTypeCore, Units};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
+use campfire_units::{UnitTypeCore, Units};
+use campfire_values::{TagProperties, Team, TypeScope};
 use campfire_vision::internals::SIGHTS;
 use campfire_vision::{Sight, Vision};
 

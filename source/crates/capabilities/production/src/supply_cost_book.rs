@@ -2,8 +2,10 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, KindSpec};
-use campfire_core::{ActionId, Book, ByType, UnitType, View};
+use campfire_declare::{Book, ByType};
+use campfire_script::View;
 use campfire_sim::Capability;
+use campfire_values::{ActionId, UnitType};
 
 use crate::supply_data::SupplyData;
 use crate::train_queue::TrainQueue;

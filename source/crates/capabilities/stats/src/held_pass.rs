@@ -1,12 +1,10 @@
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
-use campfire_core::{
-    Dead, MapBook, OnMatch, Owner, PlayerRows, Predicting, Relations, TagEffect, TagSet, Team,
-    UnitTags, UnitsNear,
-};
 use campfire_geometry::Shape;
+use campfire_players::{OnMatch, PlayerRows};
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
-use campfire_values::{Rank, Relation};
+use campfire_units::{Dead, MapBook, Owner, Predicting, TagEffect, UnitsNear};
+use campfire_values::{Rank, Relation, Relations, TagSet, Team, UnitTags};
 
 use crate::applier::Applier;
 use crate::carried_mut::CarriedMut;

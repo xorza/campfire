@@ -1,9 +1,9 @@
 use std::ops::Range;
 
-use campfire_core::{Relations, Team, TeamSet};
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
 use campfire_sim::Position;
+use campfire_values::{Relations, Team, TeamSet};
 
 use crate::sight_cache::{SightCache, Sighting};
 use crate::sight_maps::SightMaps;

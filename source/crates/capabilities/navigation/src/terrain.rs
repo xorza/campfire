@@ -1,5 +1,5 @@
-use campfire_core::Layer;
 use campfire_geometry::Grid;
+use campfire_units::Layer;
 
 use crate::wall::Wall;
 
@@ -41,11 +41,11 @@ impl Terrain {
 
 #[cfg(test)]
 mod tests {
-    use campfire_core::Layer;
     use campfire_geometry::internals::KernelScene;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
     use campfire_sim::Position;
+    use campfire_units::Layer;
 
     use crate::terrain::Terrain;
     use crate::wall::Wall;

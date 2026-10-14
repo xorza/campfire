@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Book, ScriptBook, ScriptNames, ScriptRole, View};
-use campfire_script::ScriptId;
+use campfire_declare::Book;
+use campfire_script::{ScriptId, ScriptRole, View};
 use campfire_sim::Capability;
-use campfire_values::Names;
+use campfire_units::ScriptBook;
+use campfire_values::{ActionId, Names};
 
 use crate::action::Action;
 use crate::action_data::ActionData;
@@ -85,7 +86,7 @@ impl Book for ActionBook {
     /// Names the actions to scripts; the actions column takes the book from the match at each
     /// read.
     fn share(&self, view: &View) {
-        view.names_mut().actions = ScriptNames::new(Arc::clone(self.names()));
+        view.names_mut().set_table(Arc::clone(self.names()));
     }
 }
 
@@ -93,7 +94,7 @@ impl Book for ActionBook {
 pub(crate) mod internals {
     use std::sync::Arc;
 
-    use campfire_core::ActionId;
+    use campfire_values::ActionId;
 
     use crate::action::Action;
     use crate::action_book::ActionBook;

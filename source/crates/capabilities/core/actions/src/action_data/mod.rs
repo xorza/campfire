@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 
-use campfire_core::{DataSection, DataTable, Hook, ResourceAmount};
 use campfire_math::Num;
+use campfire_players::ResourceAmount;
+use campfire_script::{DataSection, DataTable, Hook};
 use campfire_stats::PoolCost;
 use campfire_values::{
     DeclaredName, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, Share, Stat,

@@ -2,9 +2,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::{ArrivedShort, UnitEntity};
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::{ArrivedShort, UnitEntity};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

@@ -1,6 +1,6 @@
 use std::num::NonZeroU8;
 
-use campfire_core::ResourceAmount;
+use campfire_players::ResourceAmount;
 use campfire_stats::PoolCost;
 
 use crate::action_range::ActionRange;

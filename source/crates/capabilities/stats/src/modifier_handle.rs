@@ -2,11 +2,12 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 use std::sync::Arc;
 
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ModifierId, ScriptValue, StateValue, View,
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, StateValue, View,
     plain_script_arg,
 };
 use campfire_sim::StableId;
+use campfire_values::ModifierId;
 
 use crate::modifier_state_field::ModifierStateField;
 use crate::stats_effect::StatsEffect;

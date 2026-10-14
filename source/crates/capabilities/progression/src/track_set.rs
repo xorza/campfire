@@ -1,5 +1,6 @@
-use campfire_core::{PerType, TrackId};
+use campfire_declare::PerType;
 use campfire_sim::Capability;
+use campfire_values::TrackId;
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

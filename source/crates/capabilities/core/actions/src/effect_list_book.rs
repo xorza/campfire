@@ -2,11 +2,13 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_core::{ActionId, Book, CallError, Frame, Hook, SpawnAt, View};
+use campfire_declare::Book;
 use campfire_math::Num;
+use campfire_script::{CallError, Frame, Hook, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::StatsEffect;
-use campfire_values::Number;
+use campfire_units::SpawnAt;
+use campfire_values::{ActionId, Number};
 
 use crate::action_data::ActionData;
 use crate::action_data::error::EffectRule;

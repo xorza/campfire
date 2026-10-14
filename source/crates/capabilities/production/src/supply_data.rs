@@ -1,4 +1,4 @@
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
 /// A unit type's `supply` section: what a unit of the type uses of its player's supply, and what

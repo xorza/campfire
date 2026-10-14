@@ -1,11 +1,12 @@
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_capabilities::Match;
-use campfire_core::*;
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
+use campfire_units::*;
+use campfire_values::Team;
 
 /// What a reader finds within 2 m of the origin, each unit by its id and its body's bound, and
 /// the run of the build it read.

@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Team, TeamSet};
+use campfire_values::{Team, TeamSet};
 use campfire_visibility::{OutView, SpectatorFog, Visibility};
 use campfire_vision::SeenBy;
 use lightyear::prelude::{RoomAllocator, RoomId, Rooms};

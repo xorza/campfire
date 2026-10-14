@@ -1,5 +1,5 @@
-use campfire_core::Layer;
 use campfire_geometry::CellLevels;
+use campfire_units::Layer;
 
 use crate::body_index::BodyIndex;
 use crate::collider::Collider;
@@ -231,10 +231,10 @@ impl Broadphase {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
-    use campfire_core::Layer;
     use campfire_geometry::internals::KernelScene;
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
+    use campfire_units::Layer;
 
     use crate::body_index::{BodyIndex, IndexedBody};
     use crate::collider::Collider;

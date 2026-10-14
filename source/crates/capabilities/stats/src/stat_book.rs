@@ -3,10 +3,11 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, NameKind, UnitType, UnknownName, View};
+use campfire_declare::Book;
 use campfire_math::Num;
+use campfire_script::{NameKind, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{EngineStat, Names, Stat};
+use campfire_values::{EngineStat, Names, Stat, UnitType};
 
 use crate::stat_id::StatId;
 use crate::stat_rule::StatRule;
@@ -208,9 +209,8 @@ impl Book for StatBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_core::UnitType;
     use campfire_math::Num;
-    use campfire_values::Stat;
+    use campfire_values::{Stat, UnitType};
 
     use crate::stat_book::StatBook;
     use crate::stats_data::{StatValue, StatsData};

@@ -3,7 +3,9 @@ use std::ops::Range;
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_core::{Dead, KeptRows, Owner, RowFill, Unit, UnitType, View, ViewColumn};
+use campfire_script::{KeptRows, RowFill, Unit, View, ViewColumn};
+use campfire_units::{Dead, Owner};
+use campfire_values::UnitType;
 
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;

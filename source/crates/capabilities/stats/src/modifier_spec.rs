@@ -3,10 +3,11 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_common::Ticks;
-use campfire_core::{Filter, ModifierId, StateValue, UnitTypes, UnknownName};
 use campfire_math::Num;
+use campfire_script::{Filter, StateValue, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{DeclaredName, FilterData, Number, Stat};
+use campfire_units::UnitTypeBook;
+use campfire_values::{DeclaredName, FilterData, ModifierId, Number, Stat};
 
 use crate::error::{ModifierProblem, SpecError};
 use crate::modifier_data::{ModifierData, Reapply};
@@ -81,7 +82,7 @@ pub enum ParamPlace {
 #[derive(Debug)]
 pub struct SpecNames<'a, S, M> {
     pub stat: S,
-    pub types: &'a UnitTypes,
+    pub types: &'a UnitTypeBook,
     pub rate: TickRate,
     pub modifier: M,
 }
@@ -111,7 +112,7 @@ impl ModifierSpec {
                 value: number(&change.value)?,
             })
         });
-        let filter = |filter: &FilterData| Filter::resolve(filter, names.types);
+        let filter = |filter: &FilterData| Filter::resolve(filter, names.types.tags());
         let aura = data.aura.as_ref().map(|aura| {
             Ok::<_, SpecError>(AuraSpec {
                 radius: number(&aura.radius)?,

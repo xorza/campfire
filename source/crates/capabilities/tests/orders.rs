@@ -12,12 +12,6 @@ use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath};
 use campfire_common::{PlayerSlot, Tick, Ticks};
-use campfire_core::internals::FailureKind;
-use campfire_core::{
-    ApiError, BodyForm, CallError, Dead, DeliveryEntity, Destination, Filter, Hook, Layer,
-    MoveStep, OutOfPlay, Owner, PathId, Players, PlayersWorld, ScriptBudgets, ScriptFailures,
-    ScriptLimits, Team, TeamSet, UnitType, UnitTypeCore, UnitTypes, Units,
-};
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
@@ -26,11 +20,20 @@ use campfire_navigation::{
     Navigation, OnPath, PathEnd, PathWalker, Paths, Route, RoutePlanner, Walker,
 };
 use campfire_orders::*;
-use campfire_script::ScriptError;
+use campfire_players::{OutOfPlay, Players, PlayersWorld};
+use campfire_script::internals::FailureKind;
+use campfire_script::{
+    ApiError, CallError, Filter, Hook, ScriptBudgets, ScriptError, ScriptFailures, ScriptLimits,
+    TagNames,
+};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
 use campfire_stats::{Life, Stats};
+use campfire_units::{
+    BodyForm, Dead, DeliveryEntity, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units,
+};
 use campfire_values::{PackagePath, Rank, Scalar};
+use campfire_values::{PathId, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
 use campfire_vision::{SeenBy, Vision};
 
@@ -854,7 +857,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     // attacks; the second's aims only at allies, and its call fails.
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
-            Filter::parse(aim, &UnitTypes::new(Release::engine_tags())).unwrap(),
+            Filter::parse(aim, &TagNames::new(&Release::engine_tags())).unwrap(),
             ActionRange::Meters(Num::int(20)),
             Ticks::new(2),
         );

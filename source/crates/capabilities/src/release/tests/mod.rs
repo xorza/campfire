@@ -11,15 +11,16 @@ use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_common::SegmentSeed;
-use campfire_core::{
-    ByType, EntityParts, Module, Player, PlayerResources, ScriptBudgets, ScriptLimits, Team,
-    UnitTypeCore, View,
-};
+use campfire_declare::{ByType, EntityParts, Module};
 use campfire_orders::Ai;
+use campfire_players::PlayerResources;
+use campfire_script::{ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimUpdate, StateRegistry};
 use campfire_store::InputFile;
 use campfire_store::internals::SourceFiles;
+use campfire_units::{Player, UnitTypeCore};
+use campfire_values::Team;
 
 use super::*;
 use crate::release::r#match::Match;
@@ -202,26 +203,29 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 /// Each capability crate's folder under this crate's and its layer, lowest first: a crate
 /// depends only on crates of lower layers, and a capability needs only capabilities of lower
 /// layers, as design 02's structural rules ask. This crate sits above them all.
-const LAYERS: [(&str, u8); 19] = [
+const LAYERS: [(&str, u8); 22] = [
     ("core/state-types", 0),
-    ("core/values", 0),
-    ("core/geometry", 1),
+    ("core/values", 1),
     ("core/visibility", 1),
-    ("core/core", 2),
-    ("stats", 3),
-    ("core/actions", 4),
-    ("combat", 5),
-    ("core/deliveries", 5),
-    ("items", 5),
-    ("progression", 5),
-    ("abilities", 6),
-    ("areas", 6),
-    ("navigation", 6),
-    ("projectiles", 6),
-    ("vision", 6),
-    ("production", 7),
-    ("mode", 8),
-    ("orders", 8),
+    ("core/geometry", 2),
+    ("core/script", 3),
+    ("core/declare", 4),
+    ("core/units", 5),
+    ("core/players", 6),
+    ("stats", 7),
+    ("core/actions", 8),
+    ("combat", 9),
+    ("core/deliveries", 9),
+    ("items", 9),
+    ("progression", 9),
+    ("abilities", 10),
+    ("areas", 10),
+    ("navigation", 10),
+    ("projectiles", 10),
+    ("vision", 10),
+    ("production", 11),
+    ("mode", 12),
+    ("orders", 12),
 ];
 
 /// The layer of the capability crate `name`, by the last part of its folder.
@@ -337,13 +341,13 @@ fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
 }
 
 /// Visits each source file of every capability crate and of this one with its production code,
-/// by its path as `<module>/<path>`: a crate of one module under its module's name, and
-/// `campfire-core` and this crate, which hold several, under their modules' own.
+/// by its path as `<crate>/<path>`, under the crate's folder name; this crate's under their
+/// modules' own.
 fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     for folder in LAYERS.iter().map(|&(folder, _)| folder).chain([""]) {
         let module = match folder.rsplit('/').next().unwrap() {
-            "core" | "" => None,
+            "" => None,
             name => Some(name.replace('-', "_")),
         };
         production(
@@ -420,7 +424,7 @@ fn no_module_names_another_modules_sets() {
 /// types take them, or in the load, which resolves the packages' names once; but the one marked,
 /// which runs as a modifier applies. The test fails when a lookup appears and when one listed
 /// here is gone.
-const LOOKUPS: [(&str, &str); 39] = [
+const LOOKUPS: [(&str, &str); 34] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -433,13 +437,13 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("mode/mode_names.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
-    ("units/unit_types.rs", "named"),
+    ("units/units/unit_type_book.rs", "named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
     // The load, and a filter a script names.
-    ("units/filter.rs", "named"),
+    ("script/scripts/view/filter.rs", "named"),
     ("values/filter_data.rs", "named"),
     // Script calls, each argument by its type, and the mode inputs, whose names enter with the
     // players' inputs.
@@ -447,22 +451,17 @@ const LOOKUPS: [(&str, &str); 39] = [
     ("mode/choice_id.rs", "named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
-    ("scripts/api_builder.rs", "named"),
-    ("scripts/script_arg.rs", "named"),
-    ("scripts/script_names.rs", "named"),
+    ("script/scripts/api_builder.rs", "named"),
+    ("script/scripts/id_args.rs", "named"),
+    ("script/scripts/script_arg.rs", "named"),
+    ("script/scripts/script_names.rs", "named"),
+    ("script/scripts/view/tag_names.rs", "named"),
+    ("script/scripts/view/view_names.rs", "named"),
     ("stats/param_table.rs", "named"),
     ("stats/pool_id.rs", "named"),
     ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
-    ("units/action_id.rs", "named"),
-    ("units/modifier_id.rs", "named"),
-    ("units/path_id.rs", "named"),
-    ("units/resource_id.rs", "named"),
-    ("units/tag.rs", "named"),
-    ("units/team.rs", "named"),
-    ("units/track_id.rs", "named"),
-    ("units/unit_state_book.rs", "named"),
-    ("units/unit_type.rs", "named"),
+    ("units/units/unit_state_book.rs", "named"),
     ("values/name_table.rs", "named"),
     // As a modifier applies: a param of the ability that applies it, by name, as the place
     // differs by ability.

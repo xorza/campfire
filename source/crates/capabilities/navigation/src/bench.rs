@@ -3,11 +3,11 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::entity::Entity;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::Layer;
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{IdAllocator, Position};
+use campfire_units::Layer;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 

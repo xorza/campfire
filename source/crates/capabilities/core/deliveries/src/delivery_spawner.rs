@@ -3,11 +3,10 @@ use std::fmt;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy_ecs::world::EntityWorldMut;
-use campfire_core::{
-    EntityParts, NewUnitStates, Owner, Team, UnitCore, UnitEntity, UnitFilter, UnitStateBook,
-    UnitType,
-};
+use campfire_declare::EntityParts;
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
+use campfire_units::{NewUnitStates, Owner, UnitCore, UnitEntity, UnitFilter, UnitStateBook};
+use campfire_values::{Team, UnitType};
 
 /// Spawns the units that actions deliver, projectiles and areas, each for its source.
 #[derive(SystemParam)]

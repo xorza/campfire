@@ -1,6 +1,6 @@
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_core::PlayersWorld;
+use campfire_players::PlayersWorld;
 
 use crate::player_modifiers::PlayerModifiers;
 use crate::pool_book::PoolBook;

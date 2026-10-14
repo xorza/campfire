@@ -1,4 +1,4 @@
-use campfire_core::UnitType;
+use campfire_values::UnitType;
 
 use crate::action_kind::ActionKind;
 use crate::gather_spec::GatherSpec;

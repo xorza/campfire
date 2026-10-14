@@ -1,12 +1,11 @@
 //! A package's human text, found in a language: the player's from the package or a locale
 //! package, else the package's own.
 
+use campfire_package::internals::Edit;
 use campfire_package::{
     Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, PackageFiles,
     PackageName, PackageRef, Texts,
 };
-
-use campfire_package::internals::Edit;
 
 use crate::moba::{edited, edited_at, load};
 

@@ -1,4 +1,4 @@
-use campfire_core::{ArgCtx, Checked, NameKind, ScriptText, TextArg};
+use campfire_script::{ArgCtx, Checked, NameKind, ScriptText, TextArg};
 
 /// A tag of the map's markers, as a script names it to find the markers with it: no marker
 /// needs to hold it.

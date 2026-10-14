@@ -1,4 +1,4 @@
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
 /// The mode's `[players]`: who may take a slot once the match started, beside the players it

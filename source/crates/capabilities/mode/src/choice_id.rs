@@ -1,4 +1,4 @@
-use campfire_core::{ApiError, ArgCtx, Checked, NameKind, ScriptText, TextArg};
+use campfire_script::{ApiError, ArgCtx, Checked, NameKind, ScriptText, TextArg};
 use campfire_values::NameId;
 
 /// A choice of the mode, by its place among the mode's choices, in the order of their names.

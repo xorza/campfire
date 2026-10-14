@@ -9,11 +9,10 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use campfire_core::{
-    BodyUnit, ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_stats::ParamBook;
+use campfire_units::BodyUnit;
 
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
@@ -248,13 +247,14 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_common::Ticks;
-    use campfire_core::{
-        ActionId, Book, Filter, HookSet, ModifierId, NameKind, ResourceAmount, Tag, TrackId,
-        TypeScope, UnitType, UnknownName, View,
-    };
+    use campfire_declare::Book;
     use campfire_math::Num;
+    use campfire_players::ResourceAmount;
+    use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
-    use campfire_values::{DamageKind, DeclaredName};
+    use campfire_values::{
+        ActionId, DamageKind, DeclaredName, ModifierId, Tag, TrackId, TypeScope, UnitType,
+    };
 
     use crate::Actions;
     use crate::action::{Action, Aim};
@@ -525,7 +525,6 @@ pub mod internals {
         fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
             self.view
                 .names()
-                .damage_kinds
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
         }
@@ -546,7 +545,6 @@ pub mod internals {
         fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
             self.view
                 .names()
-                .tracks
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::Track, name))
         }
@@ -554,7 +552,6 @@ pub mod internals {
         fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
             self.view
                 .names()
-                .types()
                 .tags()
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::Tag, name))
@@ -564,7 +561,6 @@ pub mod internals {
             let scope = TypeScope::of_package(self.package);
             self.view
                 .names()
-                .unit_types()
                 .named((scope, name.as_str()))
                 .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
         }

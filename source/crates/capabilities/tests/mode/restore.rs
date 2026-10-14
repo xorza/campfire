@@ -2,11 +2,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::{SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
-use campfire_core::{PlayerResources, SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
 use campfire_orders::NextThink;
+use campfire_players::PlayerResources;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
+use campfire_units::{SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
 
 use super::*;
 
@@ -20,8 +21,16 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let strike = game.resource::<ActionBook>().names().named((0, "strike"));
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
     game.entity_mut(grunt).insert(TimedSlots::new(strike));
-    // Teams a, b and neutral are 0 to 2, players 0 to 2.
-    assert!(Team::new(2).check(&game, grunt) && !Team::new(3).check(&game, grunt));
+    // Teams a, b and neutral are 0 to 2, players 0 to 2: the grunt, which no player owns, may be
+    // of team 2, not of team 3.
+    let id = *game.get::<StableId>(grunt).unwrap();
+    let invalid = |ty| Err(SnapshotError::Invalid { ty, id: Some(id) });
+    assert_eq!(game.get::<Owner>(grunt), None);
+    assert_eq!(checked_with(&mut game, grunt, Team::new(2)), Ok(()));
+    assert_eq!(
+        checked_with(&mut game, grunt, Team::new(3)),
+        invalid("units.team")
+    );
     // Team a holds players 0 and 1, team b player 2. The grunt is of team a: player 0 or 1 owns
     // it, and neither player 2, of team b, nor 3, whom the session lacks.
     assert_eq!(game.get::<Team>(grunt), Some(&Team::new(0)));
@@ -29,7 +38,22 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(owner(0).check(&game, grunt) && owner(1).check(&game, grunt));
     assert!(!owner(2).check(&game, grunt) && !owner(3).check(&game, grunt));
     let own_type = *game.get::<UnitType>(grunt).unwrap();
-    assert!(own_type.check(&game, grunt) && !UnitType::new(u16::MAX).check(&game, grunt));
+    assert_eq!(checked_with(&mut game, grunt, own_type), Ok(()));
+    // A type the match did not load: the grunt's state classes, which the type lacks, refuse it
+    // first. Without them, the type's own check refuses it, and the grunt's own type, whose
+    // classes it lacks.
+    let unloaded = UnitType::new(u16::MAX);
+    let class = invalid("units.state_all");
+    assert_eq!(checked_with(&mut game, grunt, unloaded), class);
+    let mut unit = game.entity_mut(grunt);
+    let classes = unit
+        .take::<(UnitState<SyncOwner>, UnitState<SyncAll>)>()
+        .unwrap();
+    let refused = invalid("units.unit_type");
+    assert_eq!(checked_with(&mut game, grunt, unloaded), refused);
+    assert_eq!(checked_with(&mut game, grunt, own_type), refused);
+    game.entity_mut(grunt).insert(classes);
+    assert_eq!(game.resource::<StateRegistry>().check(&game), Ok(()));
     // The map has one path, 0.
     let on_path = |path| OnPath::new(PathId::new(path));
     assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
@@ -119,7 +143,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
 /// keeps to its entity and to the mode's shape.
 #[test]
 fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
-    let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let grunt = Mode::entity_by_id(&game, 2);
     // The match's entity and each player's stand at their named ids, of a player the session
     // has; a unit stands at an allocated id.
@@ -135,19 +159,42 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     let on = |hosted: fn(&World, Entity) -> bool| {
         [match_entity, first, grunt].map(|entity| hosted(&game, entity))
     };
-    assert_eq!(on(hosts::<Relations>), [true, false, false]);
     assert_eq!(on(hosts::<MatchEnd>), [true, false, false]);
     assert_eq!(on(hosts::<ModeState<SyncNone>>), [true, false, false]);
     assert_eq!(on(hosts::<ModeState<SyncAll>>), [true, false, false]);
     assert_eq!(on(hosts::<PlayerResources>), [false, true, false]);
     assert_eq!(on(hosts::<Life>), [false, false, true]);
-    assert_eq!(on(hosts::<Team>), [false, true, true]);
+    // A team sits on a unit or a player's entity, and the relations on the match's, as `units`
+    // declares their hosts.
+    let wrong_host = |ty, entity| {
+        let id = *game.get::<StableId>(entity).unwrap();
+        Err(SnapshotError::WrongHost { ty, id })
+    };
+    let team_on_match = wrong_host("units.team", match_entity);
+    let relations_on_player = wrong_host("units.relations", first);
+    assert_eq!(
+        checked_with(&mut game, match_entity, Team::new(0)),
+        team_on_match
+    );
+    let relations = Relations::default();
+    assert_eq!(
+        checked_with(&mut game, first, relations),
+        relations_on_player
+    );
     // The relations and the match's end, on the match's entity, of the mode's teams.
+    let match_id = *game.get::<StableId>(match_entity).unwrap();
     let mut relations = Relations::default();
     relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
-    assert!(relations.check(&game, match_entity));
+    assert_eq!(
+        checked_with(&mut game, match_entity, relations.clone()),
+        Ok(())
+    );
     relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
-    assert!(!relations.check(&game, match_entity));
+    let unknown = Err(SnapshotError::Invalid {
+        ty: "units.relations",
+        id: Some(match_id),
+    });
+    assert_eq!(checked_with(&mut game, match_entity, relations), unknown);
     let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
     assert!(ended(1).check(&game, match_entity) && !ended(3).check(&game, match_entity));
     // The mode's state, on the match's entity, each class its fields of their types in the order
@@ -427,6 +474,24 @@ fn on_unit_died(ctx, unit, killer, assisters) {}
         registry.changed_types(world, &delta)
     });
     assert_eq!(changed, ["mode.timers", "sim.tick"]);
+}
+
+/// What a restore's checks say of `game` with `value` on `entity`, which then holds again what it
+/// held.
+fn checked_with<C: Component + Clone>(
+    game: &mut Match,
+    entity: Entity,
+    value: C,
+) -> Result<(), SnapshotError> {
+    let held = game.get::<C>(entity).cloned();
+    game.entity_mut(entity).insert(value);
+    let checked = game.resource::<StateRegistry>().check(game);
+    let mut holder = game.entity_mut(entity);
+    match held {
+        Some(held) => holder.insert(held),
+        None => holder.remove::<C>(),
+    };
+    checked
 }
 
 /// Whether `entity` is of the kind `C` sits on.

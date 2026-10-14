@@ -1,7 +1,7 @@
-use campfire_core::{PathId, Team, UnitType};
 use campfire_math::Num;
 use campfire_navigation::PathEnd;
 use campfire_sim::Position;
+use campfire_values::{PathId, Team, UnitType};
 
 /// A unit of the map, names resolved: on its path, if it names one, and turned by its angle in
 /// degrees if it has a box body.

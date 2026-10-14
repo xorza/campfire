@@ -7,14 +7,14 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
-use campfire_core::{
-    Body, BodyForm, Destination, Filter, Owner, Players, PlayersWorld, ResourceId, Team, TypeScope,
-    UnitCore, UnitType, UnitTypeCore, UnitTypes, View,
-};
+use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
+use campfire_players::{Players, PlayersWorld};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
+use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
-use campfire_values::{Rank, RelationSet};
+use campfire_units::{Body, BodyForm, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore};
+use campfire_values::{Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
 
 use crate::release::Release;
@@ -54,7 +54,7 @@ fn two_fields() -> Match {
     let gold = ResourceId::nth(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
-    let mut types = UnitTypes::new(Release::engine_tags());
+    let mut types = UnitTypeBook::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
         types
             .load(TypeScope::Mode, 0, name, &UnitTypeCore::default())
@@ -62,7 +62,7 @@ fn two_fields() -> Match {
     });
     world.insert_resource(types.tag_book(&BTreeMap::new()));
     world.insert_resource(types.state_book());
-    world.non_send::<View>().names_mut().set_types(types);
+    types.load_into(&mut world);
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
     book.drop_offs.set(drop_off_type, ResourceSet::from([gold]));

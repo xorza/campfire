@@ -3,9 +3,10 @@ use std::ops::Range;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_core::{Body, Cache};
+use campfire_declare::Cache;
 use campfire_geometry::Grid;
 use campfire_math::Num;
+use campfire_units::Body;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::regions::Regions;

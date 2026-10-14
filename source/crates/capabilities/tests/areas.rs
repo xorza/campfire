@@ -4,23 +4,24 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{
-    DeliveryEntity, EngineTag, Filter, TagSet, Team, TypeScope, UnitTypeCore, UnitTypes, Units,
-};
 use campfire_deliveries::{Deliveries, Delivering};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_projectiles::Projectiles;
+use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::{ModifierData, Stats};
-use campfire_values::{DeclaredName, Number, ParamRef, Rank, Relation, RelationSet};
+use campfire_units::{DeliveryEntity, UnitTypeBook, UnitTypeCore, Units};
+use campfire_values::{
+    DeclaredName, EngineTag, Number, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
+};
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
-    let types = UnitTypes::new(Release::engine_tags());
+    let types = UnitTypeBook::new(Release::engine_tags());
     let [projectile, area] = [Projectiles::TAG, Areas::TAG].map(EngineTag::tag);
-    let parse = |text| Filter::parse(text, &types).unwrap();
+    let parse = |text| Filter::parse(text, types.tags()).unwrap();
     // A relation alone is the filter of its name.
     assert_eq!(
         Filter::of_release_relations(RelationSet::Enemies),

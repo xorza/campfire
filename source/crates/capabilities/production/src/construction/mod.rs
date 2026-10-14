@@ -3,15 +3,14 @@ use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
-use campfire_core::{
-    Block, Body, Dead, MapBook, Owner, PlayerResources, PlayersWorld, ResourceAmount, SpawnAt,
-    Spawner, StatusTags, Team, UnitTags,
-};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_navigation::Navigation;
+use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, StatsWorld, UnitPools};
+use campfire_units::{Body, Dead, MapBook, Owner, SpawnAt, Spawner, StatusTags};
+use campfire_values::{Block, Team, UnitTags};
 use campfire_vision::TeamSight;
 
 use crate::Production;

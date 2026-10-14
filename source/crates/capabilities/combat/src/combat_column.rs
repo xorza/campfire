@@ -3,11 +3,13 @@ use std::ops::Range;
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
-use campfire_core::{
-    ApiError, Checked, ColumnRows, Dead, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, Unit,
-    UnitTags, ViewColumn,
+use campfire_script::{
+    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, Unit,
+    ViewColumn,
 };
 use campfire_stats::Life;
+use campfire_units::Dead;
+use campfire_values::UnitTags;
 
 use crate::on_death::OnDeath;
 use crate::recent_attack::RecentAttack;

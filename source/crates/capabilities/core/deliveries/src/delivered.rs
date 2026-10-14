@@ -1,4 +1,4 @@
-use campfire_core::Hook;
+use campfire_script::Hook;
 use campfire_sim::StableId;
 use campfire_values::Hit;
 

@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
 /// The mode's `[saves]`: who may ask for a save, beside the mode, and how often the mode saves on

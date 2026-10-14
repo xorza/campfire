@@ -5,19 +5,19 @@ use campfire_codec::{Binary, Toml};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, Deaths, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_core::{
-    BodyForm, ByType, DashTo, Dead, Effect, Frame, ScriptBudgets, ScriptLimits, Team, TypeScope,
-    UnitType, UnitTypeCore, Units,
-};
+use campfire_declare::ByType;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::NavigationEffect;
 use campfire_projectiles::*;
+use campfire_script::{Effect, Frame, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
+use campfire_units::{BodyForm, DashTo, Dead, UnitTypeCore, Units};
 use campfire_values::FilterData;
+use campfire_values::{Team, TypeScope, UnitType};
 use campfire_vision::{SeenBy, Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line

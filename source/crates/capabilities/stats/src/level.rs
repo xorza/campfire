@@ -2,9 +2,10 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::{DeferredWorld, World};
-use campfire_core::{UnitEntity, UnitType};
 use campfire_sim::{Restoring, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
+use campfire_values::UnitType;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

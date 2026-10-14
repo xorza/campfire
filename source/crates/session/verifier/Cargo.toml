@@ -22,15 +22,16 @@ tracing.workspace = true
 
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
-campfire-core = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 campfire-orders = { workspace = true, features = ["internals"] }
 campfire-package = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
+campfire-script = { workspace = true, features = ["internals"] }
 campfire-stats = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
 
 [lints]

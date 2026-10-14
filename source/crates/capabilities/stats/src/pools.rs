@@ -1,10 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{PerType, UnitEntity};
+use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::{Capability, SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 use crate::meter::Meter;

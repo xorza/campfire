@@ -6,13 +6,14 @@ use std::collections::BTreeSet;
 
 use bevy_app::App;
 use bevy_ecs::query::{Allow, With};
-use campfire_core::{SpawnPoint, Team, TeamSet, UnitsWorld};
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
     CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_stats::Life;
+use campfire_units::{SpawnPoint, UnitsWorld};
+use campfire_values::{Team, TeamSet};
 use lightyear::prelude::Replicate;
 
 /// Steps a spectator may take to link, answer the offer and watch.

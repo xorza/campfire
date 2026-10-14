@@ -1,10 +1,10 @@
 use std::rc::Rc;
 
 use campfire_actions::ActionSlots;
-use campfire_core::{
-    ApiError, BodyForm, ByType, Checked, Ctx, Relations, ScriptBook, Team, Teams, UnitType,
-};
-use campfire_values::Names;
+use campfire_declare::ByType;
+use campfire_script::{ApiError, Checked, Ctx, Teams};
+use campfire_units::{BodyForm, ScriptBook};
+use campfire_values::{Names, Relations, Team, UnitType};
 
 use crate::choice_specs::ChoiceSpecs;
 use crate::game_map::GameMap;

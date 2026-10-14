@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
-use campfire_core::{DataSection, DataTable};
 use campfire_math::Num;
+use campfire_script::{DataSection, DataTable};
 use campfire_values::{DeclaredName, Scalar};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};

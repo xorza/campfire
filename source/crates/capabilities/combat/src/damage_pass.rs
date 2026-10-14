@@ -3,15 +3,15 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListsOf};
 use campfire_common::Tick;
-use campfire_core::{
-    Block, CallStart, Ctx, Hook, ScriptBatch, ScriptsWorldCrate, TagEffect, UnitTags,
-};
 use campfire_math::Num;
+use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorldCrate};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, Life, ModifierBook, ModifierClocks, PoolId, StatId, StatsWorld, UnitPools,
     UnitStats,
 };
+use campfire_units::TagEffect;
+use campfire_values::{Block, UnitTags};
 
 use crate::combat_book::CombatBook;
 use crate::combat_event::{CombatEvent, CombatEvents};

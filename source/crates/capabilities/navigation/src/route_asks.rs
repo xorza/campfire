@@ -4,9 +4,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::Query;
 use campfire_common::Tick;
-use campfire_core::{Body, Dead, Layer};
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
+use campfire_units::{Body, Dead, Layer};
 
 use crate::body_index::BodyIndex;
 use crate::group_box::GroupBox;

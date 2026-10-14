@@ -3,12 +3,10 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_core::{
-    DashDelivery, Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace,
-};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, Position, StableId};
-use campfire_values::Hit;
+use campfire_values::{DashDelivery, Hit};
 
 use crate::deliveries_api::DeliveriesApi;
 use crate::delivery_hooks::DeliveryHooks;
@@ -130,8 +128,8 @@ pub mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::system::RunSystemOnce;
     use bevy_ecs::world::World;
-    use campfire_core::UnitType;
     use campfire_sim::{Position, StableId};
+    use campfire_values::UnitType;
 
     use crate::Deliveries;
     use crate::delivery_spawner::DeliverySpawner;

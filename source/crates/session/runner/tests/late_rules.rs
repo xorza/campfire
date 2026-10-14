@@ -7,12 +7,13 @@
 
 use campfire_combat::{Combat, Respawn};
 use campfire_common::Tick;
-use campfire_core::{Dead, Team};
 use campfire_math::Num;
 use campfire_mode::{MatchResult, ModeWorld};
 use campfire_runner::internals::{MatchUnits, Moba3v3};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::{Life, Stats};
+use campfire_units::Dead;
+use campfire_values::Team;
 
 use crate::moba::{gold, run_to};
 

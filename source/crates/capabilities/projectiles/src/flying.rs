@@ -3,11 +3,13 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ShotHits, Targets};
-use campfire_core::{BodyUnit, ByType, Team, UnitType, UnitsNear};
+use campfire_declare::ByType;
 use campfire_deliveries::{Deliveries, Teleported};
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};
 use campfire_stats::Life;
+use campfire_units::{BodyUnit, UnitsNear};
+use campfire_values::{Team, UnitType};
 
 use crate::flight_state::FlightState;
 use crate::flights::{Aloft, Flights};

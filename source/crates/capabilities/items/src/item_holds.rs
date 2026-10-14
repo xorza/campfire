@@ -1,10 +1,9 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_core::ModifierId;
 use campfire_sim::StableId;
 use campfire_stats::{Grant, Grants, Hold, ModifierBook, ModifierParams, Modifiers};
-use campfire_values::Rank;
+use campfire_values::{ModifierId, Rank};
 
 use crate::inventory::Inventory;
 use crate::item_book::ItemBook;

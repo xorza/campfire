@@ -10,14 +10,16 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
-use campfire_core::{
-    ApiBuilder, BodyUnit, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations,
-    DeliveryEntity, EngineTag, EntityKind, KindSpawn, KindVisitor, ModuleSet, Phase, Player,
-    Report, RowReads, Scratch, SetPlace, TagProperties, UnitEntity, View, ViewColumn,
+use campfire_declare::{
+    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
+    ModuleSet, Phase, Report, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
+use campfire_script::{ApiBuilder, CallPart, RowReads, View, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
+use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
+use campfire_values::{EngineTag, TagProperties};
 use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
@@ -187,7 +189,11 @@ impl DeclarationAudit {
         }
         for (host, kinds, ty) in &self.parts {
             let of_host = self.state_of(ty.id).is_some_and(|state| {
-                let held = state.kinds.as_deref().unwrap_or_default();
+                let declared = || {
+                    let (_, kinds) = self.hosts.iter().find(|(hosted, _)| hosted.id == ty.id)?;
+                    kinds.as_deref()
+                };
+                let held = state.kinds.as_deref().or_else(declared).unwrap_or_default();
                 kinds.iter().all(|kind| held.contains(kind))
             });
             if !of_host {
@@ -384,12 +390,12 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
     // player, the mode's three of the match, the 26 of a unit, vision's `SeenBy` and items'
-    // `UseGroup` among them, and the 41 books, 12 of the core's.
+    // `UseGroup` among them, and the 42 books, 13 of the core's.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 31);
-    assert_eq!(audit.books.len(), 41);
+    assert_eq!(audit.books.len(), 42);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
-    assert_eq!(core.count(), 12);
+    assert_eq!(core.count(), 13);
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();
     assert_eq!(

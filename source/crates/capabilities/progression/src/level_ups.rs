@@ -1,8 +1,9 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_core::{PendingCalls, TrackId};
+use campfire_script::PendingCalls;
 use campfire_sim::{SimResource, StableId};
 use campfire_stats::Level;
+use campfire_values::TrackId;
 use serde::{Deserialize, Serialize};
 
 use crate::track_book::TrackBook;

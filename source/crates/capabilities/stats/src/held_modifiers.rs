@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, ModifierId, Scratch};
+use campfire_declare::Scratch;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, ModifierId, Rank};
 
 /// The modifiers capabilities other than stats hold on units this tick, which stats hold in
 /// `Phase::HoldModifiers` as they hold auras': each producer adds to it before that phase, whose

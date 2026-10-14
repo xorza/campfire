@@ -7,25 +7,28 @@ license.workspace = true
 [features]
 internals = [
     "campfire-common/internals",
-    "campfire-core/internals",
+    "campfire-declare/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
+    "campfire-players/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
+    "campfire-units/internals",
     "campfire-values/internals",
-    "dep:campfire-script",
     "dep:criterion",
 ]
 
 [dependencies]
 campfire-common.workspace = true
-campfire-core.workspace = true
+campfire-declare.workspace = true
 campfire-geometry.workspace = true
 campfire-math.workspace = true
-campfire-script = { workspace = true, optional = true }
+campfire-players.workspace = true
+campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
+campfire-units.workspace = true
 campfire-values.workspace = true
 
 bevy_ecs.workspace = true

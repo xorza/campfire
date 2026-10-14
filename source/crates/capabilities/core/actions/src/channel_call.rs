@@ -1,5 +1,4 @@
-use campfire_core::ActionId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, Rank};
 use serde::{Deserialize, Serialize};
 
 use crate::action_call::ActionCall;

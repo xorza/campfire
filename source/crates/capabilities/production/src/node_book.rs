@@ -1,6 +1,8 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, ByType, ResourceId, UnitType, View};
+use campfire_declare::{Book, ByType};
+use campfire_script::View;
 use campfire_sim::Capability;
+use campfire_values::{ResourceId, UnitType};
 
 use crate::resource_set::ResourceSet;
 

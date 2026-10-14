@@ -2,9 +2,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use campfire_actions::ActionSlots;
-use campfire_core::{Dead, Owner, SpawnPoint, Team};
 use campfire_sim::{Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
+use campfire_units::{Dead, Owner, SpawnPoint};
+use campfire_values::Team;
 
 use crate::deaths::{Deaths, Fallen};
 use crate::kept::Kept;

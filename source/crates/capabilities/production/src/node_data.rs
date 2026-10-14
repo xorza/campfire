@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use campfire_values::DeclaredName;
 use serde::Deserialize;
 

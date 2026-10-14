@@ -6,8 +6,8 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_combat::{Deaths, Kept};
 use campfire_common::PlayerSlot;
-use campfire_core::{Hook, PendingCalls, Pool, ScriptList, ScriptText, ScriptValue};
 use campfire_progression::{LevelUp, LevelUps};
+use campfire_script::{Hook, PendingCalls, Pool, ScriptList, ScriptText, ScriptValue};
 use campfire_sim::{EntityIndex, SimTick, SlotEvent, SlotEventKind, TickInputs};
 
 use crate::calls::Calls;
@@ -266,7 +266,6 @@ impl ModeHooks {
                         let level = i64::from(level.get());
                         let name = view
                             .names()
-                            .tracks
                             .name(track)
                             .expect("a track of the match is named");
                         let args = (call.ctx.clone(), handle, name, level);

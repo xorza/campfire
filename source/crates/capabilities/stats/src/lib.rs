@@ -14,12 +14,10 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_core::{
-    ActionId, BodyUnit, ByType, Dead, Declarations, InstallCx, ModifierId, Module, ModuleSet,
-    Phase, Player, SetPlace, Tag,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_values::Rank;
+use campfire_units::{BodyUnit, Dead, Player};
+use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 mod application;
 mod applier;
@@ -381,12 +379,15 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::{Mut, World};
-    use campfire_core::{ActionId, Book, ModifierId, ScriptBook, TagSet, UnitType, View};
+    use campfire_declare::Book;
     use campfire_math::Num;
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_values::{DeclaredName, Param, Rank, Stat};
+    use campfire_units::{ScriptBook, UnitTypeBook};
+    use campfire_values::{
+        ActionId, DeclaredName, ModifierId, Param, Rank, Stat, TagSet, UnitType,
+    };
 
     use crate::Stats;
     use crate::applier::Applier;
@@ -490,12 +491,13 @@ pub mod internals {
         ) {
             let name = DeclaredName::new(name).expect("a modifier's name is a name");
             world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+                let mut types = world
+                    .remove_resource::<UnitTypeBook>()
+                    .expect("the unit types");
                 // A match that runs no scripts holds no script book, and its modifiers none.
                 let none = ScriptBook::default();
                 let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
-                let view = world.non_send::<View>();
                 let places = Stats::stat_places(world, data.stats.keys());
-                let mut types = view.types_mut();
                 let load = ModifierLoad {
                     scripts,
                     types: &mut types,
@@ -509,7 +511,9 @@ pub mod internals {
                 };
                 book.load(load, package, &[modifier])
                     .expect("a test's modifier loads");
+                world.insert_resource(types);
             });
+            UnitTypeBook::share_in(world);
             let book = world.resource::<ModifierBook>();
             let id = book
                 .names()

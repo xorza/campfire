@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::Cache;
+use campfire_declare::Cache;
 use campfire_geometry::Grid;
 use campfire_sim::Position;
 

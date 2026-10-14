@@ -2,8 +2,10 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::{Owner, Report, Team};
+use campfire_declare::Report;
 use campfire_sim::StableId;
+use campfire_units::Owner;
+use campfire_values::Team;
 
 /// The units that died in the tick `tick`, in the order they died, each with its team, its owner,
 /// its killer and the units that assisted: what the mode receives in `on_unit_died`, and what the

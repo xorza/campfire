@@ -1,7 +1,7 @@
 use campfire_actions::{ActionBook, ActionSlots, EffectListBook, UseGroup};
 use campfire_areas::AreaSpec;
 use campfire_combat::OnDeath;
-use campfire_core::{BodyForm, ByType, MoveStep, UnitTypes};
+use campfire_declare::ByType;
 use campfire_items::{Inventory, ItemBook};
 use campfire_mode::ModeUnits;
 use campfire_navigation::Walker;
@@ -13,6 +13,7 @@ use campfire_production::{
 use campfire_progression::{TrackBook, TrackSet};
 use campfire_projectiles::ProjectileSpec;
 use campfire_stats::{Life, ModifierBook, ParamTables, Pools};
+use campfire_units::{BodyForm, MoveStep, UnitTypeBook};
 use campfire_vision::Sight;
 
 /// What the builder loads package by package: the unit types and tags, the tracks, the
@@ -20,7 +21,7 @@ use campfire_vision::Sight;
 /// specs, what each unit type spawns with, and what the mode's book takes from them.
 #[derive(Debug, Default)]
 pub(crate) struct BookParts {
-    pub(super) types: UnitTypes,
+    pub(super) types: UnitTypeBook,
     pub(super) tracks: TrackBook,
     pub(super) modifiers: ModifierBook,
     pub(super) actions: ActionBook,

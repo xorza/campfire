@@ -1,10 +1,9 @@
 use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
-use campfire_core::{
-    ApiBuilder, ApiError, Checked, Ctx, DataTable, MemberSpec, NewUnit, RoleSet, Unit,
-};
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
+use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit};
 use campfire_sim::{Capability, Position};
+use campfire_units::NewUnit;
 
 use crate::projectile_data::ProjectileData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};

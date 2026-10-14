@@ -2,12 +2,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_common::Ticks;
-use campfire_core::{ByType, Team, UnitType, UnitsNear};
+use campfire_declare::ByType;
 use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, Reached};
 use campfire_geometry::Shape;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
-use campfire_values::Hit;
+use campfire_units::UnitsNear;
+use campfire_values::{Hit, Team, UnitType};
 
 use crate::area::Area;
 use crate::area_launches::{AreaLaunch, AreaLaunches};

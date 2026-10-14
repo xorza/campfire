@@ -1,4 +1,4 @@
-use campfire_core::{InstallCx, Module, ModuleVisitor};
+use campfire_declare::{InstallCx, Module, ModuleVisitor};
 use campfire_sim::StateRegistry;
 
 use crate::release::declaring::Declaring;

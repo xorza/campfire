@@ -4,15 +4,13 @@ use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{
     ActionBook, ActionCheck, ActionSlots, ActionTarget, KindSpec, Purse, SlotAim, SlotTimes,
 };
-use campfire_core::{
-    ArrivedShort, Body, Dead, Destination, MapBook, Owner, PlayerResources, PlayerRows, Team,
-    UnitTags, UnitType,
-};
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
+use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
-use campfire_values::Relation;
+use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
+use campfire_values::{Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildBook, BuildSpec, Style};

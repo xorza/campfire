@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{CallError, Callbacks, Frame, View};
+use campfire_declare::Callbacks;
+use campfire_script::{CallError, Frame, View};
 use campfire_sim::{Capability, StableId};
 
 use crate::capability_does_spec::CapabilityDoesSpec;

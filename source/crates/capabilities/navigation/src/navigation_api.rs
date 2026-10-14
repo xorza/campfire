@@ -1,8 +1,7 @@
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DashTo, DataTable, MemberSpec, Unit,
-};
 use campfire_math::Num;
+use campfire_script::{ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, Unit};
 use campfire_sim::Position;
+use campfire_units::DashTo;
 
 use crate::mode_navigation_data::ModeNavigationData;
 use crate::navigation_column::NavigationColumn;

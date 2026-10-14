@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
-use campfire_core::{PathId, SpawnAt, Spawner, Team, UnitType};
 use campfire_math::Num;
 use campfire_navigation::{NavigationBook, OnPath, PathEnd, PathWalker};
 use campfire_sim::StableId;
+use campfire_units::{SpawnAt, Spawner};
+use campfire_values::{PathId, Team, UnitType};
 
 /// Units of `team` a call spawns in order at the end `from` of `path`, walking it from there as
 /// one group.

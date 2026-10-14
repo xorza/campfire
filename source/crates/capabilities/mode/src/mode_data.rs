@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 
 use campfire_actions::SlotKinds;
 use campfire_combat::ModeCombatData;
-use campfire_core::{
-    DataSection, DataTable, ScriptList, ScriptText, ScriptValue, SyncedStateDecl, TagData,
-};
 use campfire_items::ShopData;
 use campfire_navigation::ModeNavigationData;
 use campfire_production::ModeSupplyData;
 use campfire_progression::TrackData;
+use campfire_script::{
+    DataSection, DataTable, ScriptList, ScriptText, ScriptValue, SyncedStateDecl,
+};
 use campfire_stats::{PoolData, StatRule};
+use campfire_units::TagData;
 use campfire_values::{DeclaredName, Scalar, Stat};
 use campfire_visibility::ModeVisibility;
 use serde::Deserialize;

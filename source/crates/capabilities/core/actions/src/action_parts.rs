@@ -1,7 +1,7 @@
-use campfire_core::{ModifierId, NameKind, UnknownName};
 use campfire_math::Num;
+use campfire_script::{NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::Scalar;
+use campfire_values::{ModifierId, Scalar};
 
 use crate::action::{Aim, Passive};
 use crate::action_data::ActionData;

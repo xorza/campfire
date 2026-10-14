@@ -1,5 +1,5 @@
-use campfire_core::*;
 use campfire_production::Production;
+use campfire_units::*;
 
 #[test]
 fn a_turn_changes_its_own_tag_alone() {

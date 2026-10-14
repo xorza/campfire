@@ -1,8 +1,9 @@
 use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, ResMut, SystemId};
-use campfire_core::{Body, Cache, Dead, MoveStep};
+use campfire_declare::Cache;
 use campfire_sim::{Position, StableId, Unpredicted};
+use campfire_units::{Body, Dead, MoveStep};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::pathing_grid::PathingGrid;

@@ -1,11 +1,10 @@
 use bevy_ecs::entity::Entity;
 use campfire_actions::{ShotHit, ShotHits, Targets};
-use campfire_core::{BodyGrid, Team};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
-use campfire_geometry::Shape;
+use campfire_geometry::{BodyGrid, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
-use campfire_values::Hit;
+use campfire_values::{Hit, Team};
 
 use crate::flight_state::FlightState;
 use crate::projectile::{Flight, Payload, Projectile};

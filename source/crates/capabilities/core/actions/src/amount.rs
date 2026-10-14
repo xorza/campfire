@@ -1,5 +1,5 @@
-use campfire_core::{Frame, UnknownName};
 use campfire_math::Num;
+use campfire_script::{Frame, UnknownName};
 use campfire_stats::StatsCall;
 use campfire_values::Number;
 

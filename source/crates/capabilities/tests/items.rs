@@ -10,19 +10,19 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order};
 use campfire_combat::OnDeath;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::{
-    ActionId, Block, Book, Dead, ModifierId, OutOfPlay, Owner, Players, PlayersWorld,
-    PlayersWorldCrate, ResourceAmount, ResourceId, ScriptBudgets, ScriptLimits, Team, UnitTypeCore,
-    Units,
-};
+use campfire_declare::Book;
 use campfire_geometry::Bounds;
 use campfire_items::*;
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
+use campfire_players::{OutOfPlay, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_script::{ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
+use campfire_units::{Dead, Owner, UnitTypeCore, Units};
+use campfire_values::{ActionId, Block, ModifierId, ResourceId, Team};
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;

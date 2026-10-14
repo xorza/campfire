@@ -15,7 +15,7 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time, Virtual};
 use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::CapabilitySet;
+use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
 use campfire_package::ModePackages;

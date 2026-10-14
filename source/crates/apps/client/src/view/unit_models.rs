@@ -16,8 +16,8 @@ use bevy::image::{
 };
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::world_serialization::WorldInstanceReady;
-use campfire_core::TypeOriginBook;
 use campfire_package::{MaterialFile, ModePackages};
+use campfire_units::TypeOriginBook;
 
 use crate::view::client_data::ClientData;
 use crate::view::file_material::{FileBlend, FileMaterial};

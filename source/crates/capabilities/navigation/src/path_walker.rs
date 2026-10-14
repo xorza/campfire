@@ -1,9 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{UnitEntity, enum_script_arg};
+use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
 use serde::{Deserialize, Serialize};
 

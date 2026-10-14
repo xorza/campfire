@@ -1,4 +1,5 @@
-use campfire_core::{ApiBuilder, ApiOwner, HitHandle, MemberSpec, ScriptValue, View};
+use campfire_script::{ApiBuilder, ApiOwner, MemberSpec, ScriptValue, View};
+use campfire_units::HitHandle;
 
 use crate::damage::{Damage, DamageCause};
 
@@ -33,7 +34,7 @@ impl DamageHandle {
             .bind(
                 field("kind", "one of the mode's `[combat] damage_kinds`"),
                 |d: &mut DamageHandle| {
-                    let name = d.view.names().damage_kinds.name(d.damage.kind);
+                    let name = d.view.names().name(d.damage.kind);
                     name.expect("a damage's kind is one of the mode's")
                 },
             )

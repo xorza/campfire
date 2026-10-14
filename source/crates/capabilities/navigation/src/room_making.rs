@@ -5,9 +5,10 @@ use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{In, Local, SystemId};
 use bevy_ecs::world::World;
-use campfire_core::{Body, Cache, Dead, MoveStep};
+use campfire_declare::Cache;
 use campfire_geometry::Shape;
 use campfire_sim::{Keyed, Position, SimTick, StableId};
+use campfire_units::{Body, Dead, MoveStep};
 
 use crate::body_index::BodyIndex;
 use crate::navigation_effect::NavigationEffect;

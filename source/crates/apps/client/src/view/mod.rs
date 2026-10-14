@@ -25,11 +25,12 @@ use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
 use campfire_actions::ActionSlots;
 use campfire_areas::{Area, AreaReach};
-use campfire_core::{Body, BodyUnit, Dead, Facing, MoveStep, Owner, Team, UnitType};
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, Unpredicted};
+use campfire_units::{Body, BodyUnit, Dead, Facing, MoveStep, Owner};
+use campfire_values::{Team, UnitType};
 use lightyear::prelude::Predicted;
 
 use crate::view::client_data::ClientData;

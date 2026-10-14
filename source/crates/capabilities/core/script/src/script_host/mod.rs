@@ -141,8 +141,8 @@ impl ScriptHost {
         host
     }
 
-    /// For a capability to register its script API.
-    pub const fn engine_mut(&mut self) -> &mut Engine {
+    /// For the script API's binding and the `ctx` it tags the engine with.
+    pub(crate) const fn engine_mut(&mut self) -> &mut Engine {
         &mut self.engine
     }
 
@@ -206,6 +206,39 @@ impl ScriptHost {
         debug_assert!(self.scope.is_empty(), "a call rewinds its scope");
         budget.spend(self.counted.get());
         result.map_err(ScriptError::from_eval)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::any::TypeId;
+
+    use crate::script_host::ScriptHost;
+
+    /// A function the engine binds: its name, and its parameters' types.
+    #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    pub struct BoundFunction {
+        pub name: String,
+        pub params: Vec<TypeId>,
+    }
+
+    impl ScriptHost {
+        /// Each function the engine binds, Rhai's own among them, sorted, each once.
+        pub fn bound_functions(&self) -> Vec<BoundFunction> {
+            let mut functions = self.engine.collect_fn_metadata(
+                None,
+                |info| {
+                    Some(BoundFunction {
+                        name: info.metadata.name.to_string(),
+                        params: info.metadata.param_types.to_vec(),
+                    })
+                },
+                true,
+            );
+            functions.sort_unstable();
+            functions.dedup();
+            functions
+        }
     }
 }
 

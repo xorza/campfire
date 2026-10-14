@@ -1,8 +1,8 @@
 use bevy_ecs::entity::Entity;
-use campfire_core::Layer;
 use campfire_geometry::{BodyBox, Shape};
 use campfire_math::{Direction, Num, Vec3};
 use campfire_sim::{Position, StableId};
+use campfire_units::Layer;
 
 use crate::collider::contact::Contact;
 

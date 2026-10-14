@@ -1,4 +1,4 @@
-use campfire_core::{PlayerResources, ResourceAmount};
+use campfire_players::{PlayerResources, ResourceAmount};
 use campfire_stats::{PoolCost, PoolMetersMut};
 
 /// What a unit pays an action's cost with, as its `Purse` reads it: its pools, and the resources

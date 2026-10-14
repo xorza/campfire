@@ -2,9 +2,10 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
-use campfire_core::{Dead, MoveStep, StatusTags, TagEffect, UnitTags, UnitType};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
+use campfire_units::{Dead, MoveStep, StatusTags, TagEffect};
+use campfire_values::{UnitTags, UnitType};
 
 use crate::level::Level;
 use crate::life::Life;

@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::Release;
-use campfire_core::{ApiVersion, CapabilitySet, ScriptLimits};
+use campfire_declare::CapabilitySet;
 use campfire_mode::TeamManifest;
+use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_values::Speed;
 use serde::de::Error;

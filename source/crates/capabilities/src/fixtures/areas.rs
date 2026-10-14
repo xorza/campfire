@@ -1,11 +1,12 @@
 use bevy_ecs::world::World;
 use campfire_areas::{Area, AreaSpec, Areas, Inside};
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, ByType, Filter, UnitType};
+use campfire_declare::ByType;
 use campfire_deliveries::Delivering;
 use campfire_math::Num;
+use campfire_script::Filter;
 use campfire_sim::IdAllocator;
-use campfire_values::{Rank, RelationSet};
+use campfire_values::{ActionId, Rank, RelationSet, UnitType};
 
 use crate::fixtures::units::FilterFixtures;
 

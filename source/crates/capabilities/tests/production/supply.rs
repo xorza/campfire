@@ -1,5 +1,5 @@
-use campfire_core::ModifierId;
 use campfire_stats::{PlayerModifiers, StatsWorldCrate};
+use campfire_values::ModifierId;
 
 use super::*;
 

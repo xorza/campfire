@@ -1,8 +1,10 @@
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res};
 use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
-use campfire_core::{Dead, Owner, PlayerResources, PlayerRowsMut, Team, TickCommands};
+use campfire_players::{PlayerResources, PlayerRowsMut, TickCommands};
 use campfire_sim::{EntityIndex, Position};
+use campfire_units::{Dead, Owner};
+use campfire_values::Team;
 
 use crate::inventory::{CarrierSlots, Inventory};
 use crate::item_book::ItemBook;

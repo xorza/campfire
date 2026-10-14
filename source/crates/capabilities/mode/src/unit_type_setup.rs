@@ -1,4 +1,4 @@
-use campfire_core::{ModifierId, UnitType};
+use campfire_values::{ModifierId, UnitType};
 
 /// A unit type the mode spawns, loaded: a type of the mode's `units.toml`, or an avatar's. The
 /// books hold its parts.

@@ -1,9 +1,8 @@
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_core::{ActionId, ModifierId, UnitType};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
-use campfire_values::Rank;
+use campfire_values::{ActionId, ModifierId, Rank, UnitType};
 
 use crate::level::Level;
 use crate::modifier_spec::ParamPlace;

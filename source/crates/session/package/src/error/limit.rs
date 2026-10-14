@@ -1,5 +1,5 @@
-use campfire_core::{ResourceId, TrackId};
 use campfire_stats::PoolId;
+use campfire_values::{ResourceId, TrackId};
 use thiserror::Error;
 
 /// What a mode declares more of than a match holds.

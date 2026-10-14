@@ -1,7 +1,9 @@
 use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_core::{OnMatch, Relations, Team, UnitFilter};
+use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
+use campfire_units::UnitFilter;
+use campfire_values::{Relations, Team};
 
 use crate::team_sight::TeamSight;
 use crate::vision_book::VisionBook;

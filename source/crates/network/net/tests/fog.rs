@@ -4,7 +4,6 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_common::Tick;
-use campfire_core::{Owner, Relations, SpawnPoint, Team, Units, UnitsWorld};
 use campfire_math::Num;
 use campfire_navigation::{Progress, Route};
 use campfire_net::internals::{InProcessMatch, LinkModel, MatchSetup};
@@ -13,7 +12,8 @@ use campfire_net::{
 };
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_values::Relation;
+use campfire_units::{Owner, SpawnPoint, Units, UnitsWorld};
+use campfire_values::{Relation, Relations, Team};
 use campfire_vision::SeenBy;
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 

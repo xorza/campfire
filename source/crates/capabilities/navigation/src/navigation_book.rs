@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, View};
+use campfire_declare::Book;
+use campfire_script::View;
 use campfire_sim::Capability;
 
 use crate::paths::Paths;
@@ -18,6 +19,6 @@ impl Book for NavigationBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {
-        view.names_mut().set_paths(self.paths.shared_names());
+        view.names_mut().set_table(self.paths.shared_names());
     }
 }

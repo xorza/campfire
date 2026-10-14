@@ -1,6 +1,6 @@
 use campfire_common::Tick;
-use campfire_core::Hook;
 use campfire_log::LogEvent;
+use campfire_script::Hook;
 use campfire_sim::StableId;
 use serde::Deserialize;
 use tracing::warn;

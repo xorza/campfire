@@ -1,8 +1,10 @@
 use std::num::NonZeroI64;
 
-use campfire_core::{Filter, PerType, UnitTypes, UnknownName};
+use campfire_declare::PerType;
 use campfire_math::Num;
+use campfire_script::{Filter, UnknownName};
 use campfire_sim::{Capability, TickRate};
+use campfire_units::UnitTypeBook;
 
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 
@@ -25,12 +27,12 @@ impl ProjectileSpec {
     /// `types`; an error for a filter of a tag `types` lacks.
     pub fn of(
         data: &ProjectileData,
-        types: &UnitTypes,
+        types: &UnitTypeBook,
         rate: TickRate,
     ) -> Result<ProjectileSpec, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => None,
-            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types)?),
+            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types.tags())?),
         };
         Ok(ProjectileSpec {
             speed: data

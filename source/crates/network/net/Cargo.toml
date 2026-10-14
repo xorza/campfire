@@ -9,7 +9,7 @@ autotests = false
 internals = [
     "campfire-actions/internals",
     "campfire-combat/internals",
-    "campfire-core/internals",
+    "campfire-declare/internals",
     "campfire-items/internals",
     "campfire-log/internals",
     "campfire-math/internals",
@@ -17,11 +17,13 @@ internals = [
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-package/internals",
+    "campfire-players/internals",
     "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-protocol/internals",
     "campfire-state-types/internals",
     "campfire-stats/internals",
+    "campfire-units/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
@@ -35,7 +37,7 @@ campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
-campfire-core.workspace = true
+campfire-declare.workspace = true
 campfire-items.workspace = true
 campfire-log.workspace = true
 campfire-math = { workspace = true, optional = true }
@@ -43,6 +45,7 @@ campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
+campfire-players.workspace = true
 campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-protocol.workspace = true
@@ -52,6 +55,7 @@ campfire-sim.workspace = true
 campfire-state-types.workspace = true
 campfire-stats.workspace = true
 campfire-store.workspace = true
+campfire-units.workspace = true
 campfire-values.workspace = true
 campfire-visibility.workspace = true
 campfire-vision.workspace = true
@@ -69,14 +73,15 @@ secp256k1.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-
 # The integration tests read the test types `internals` gives, so a plain test run builds them.
+
 [dev-dependencies]
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-projectiles = { workspace = true, features = ["internals"] }
 campfire-protocol = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
+campfire-script = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [[test]]

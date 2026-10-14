@@ -1,8 +1,10 @@
 use bevy_ecs::world::World;
 use campfire_actions::CapabilityDoesSpec;
-use campfire_core::{CallError, Effect, Frame, MapBook, UnitType, View};
 use campfire_deliveries::Delivering;
+use campfire_script::{CallError, Effect, Frame, View};
 use campfire_sim::{Position, StableId};
+use campfire_units::MapBook;
+use campfire_values::UnitType;
 
 use crate::Areas;
 

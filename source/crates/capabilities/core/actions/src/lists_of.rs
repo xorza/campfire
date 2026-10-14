@@ -1,4 +1,4 @@
-use campfire_core::ActionId;
+use campfire_values::ActionId;
 
 use crate::launch_id::LaunchId;
 

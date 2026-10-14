@@ -21,11 +21,11 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_actions::{ActionSlots, SlotCharges, SlotTimes};
-use campfire_core::{Dead, Team};
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_stats::{Level, Life, Pools};
-use campfire_values::Rank;
+use campfire_units::Dead;
+use campfire_values::{Rank, Team};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
 use crate::hud::ring::Ring;
@@ -617,9 +617,9 @@ mod tests {
 
     use bevy::asset::{AssetApp, AssetPlugin};
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
-    use campfire_core::BodyUnit;
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
+    use campfire_units::BodyUnit;
 
     use super::*;
     use crate::view::View;

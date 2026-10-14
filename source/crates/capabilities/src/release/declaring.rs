@@ -1,4 +1,4 @@
-use campfire_core::{CapabilitySet, Declarations, Module, ModuleVisitor};
+use campfire_declare::{CapabilitySet, Declarations, Module, ModuleVisitor};
 
 /// The walk that visits, with `D`, the declarations of each module a match of its set runs.
 #[derive(Debug)]

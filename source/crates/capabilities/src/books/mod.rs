@@ -4,12 +4,12 @@
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use campfire_core::{
-    BodyForm, ByType, CapabilitySet, MapBook, ResourceId, UnitType, UnitTypes, View,
-};
+use campfire_declare::{ByType, CapabilitySet};
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, Walker};
-use campfire_values::{DamageKind, DeclaredName, Names};
+use campfire_script::View;
+use campfire_units::{BodyForm, MapBook, UnitTypeBook};
+use campfire_values::{DamageKind, DeclaredName, Names, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;
@@ -31,12 +31,11 @@ pub(crate) mod unit_start;
 pub(crate) mod unit_type_data;
 
 /// The books of a match, built once from its packages at its tick rate, each until the install
-/// puts it where its owner declares it; the unit types and tags, which the script view holds;
-/// the names of the mode's damage kinds and players' resources; and what the mode's install takes.
+/// puts it where its owner declares it; the names of the mode's damage kinds and players'
+/// resources, which the script view holds; and what the mode's install takes.
 #[derive(Debug)]
 pub struct Books {
     built: BuiltBooks,
-    types: UnitTypes,
     damage_kinds: Arc<Names<DamageKind>>,
     resources: Arc<Names<ResourceId>>,
     inputs: ModeInputs,
@@ -67,8 +66,12 @@ impl Books {
             let walks = walkers.get(unit_type).is_some();
             bodies.get(unit_type).copied().filter(|_| !walks)
         };
+        let types = self
+            .built
+            .get::<UnitTypeBook>()
+            .expect("the unit types are built");
         let name_of = |unit_type: UnitType| {
-            let name = self.types.types().name(unit_type);
+            let name = types.types().name(unit_type);
             DeclaredName::new(name.expect("a type of the books"))
                 .expect("a type's name is declared")
         };
@@ -80,14 +83,12 @@ impl Books {
     }
 
     /// Puts the books in `world`, a match of the capabilities `set` that runs scripts when
-    /// `scripts` says, whose capabilities are installed and whose scripts are compiled: the unit
-    /// types and the mode's names in the script view, then each book its owner declares, when
-    /// the match holds it. A book declared and not built, or built and not declared, is a logic
+    /// `scripts` says, whose capabilities are installed and whose scripts are compiled: the mode's
+    /// names in the script view, then each book its owner declares, when the match holds it. A book declared and not built, or built and not declared, is a logic
     /// error.
     pub fn install(self, world: &mut World, set: CapabilitySet, scripts: bool) -> ModeInputs {
         let Books {
             mut built,
-            types,
             damage_kinds,
             resources,
             inputs,
@@ -95,8 +96,8 @@ impl Books {
         {
             let view = world.non_send::<View>();
             let mut names = view.names_mut();
-            names.set_types(types);
-            names.set_mode_names(damage_kinds, resources);
+            names.set_table(damage_kinds);
+            names.set_table(resources);
         }
         Books::fill(&mut built, world, set, scripts);
         inputs

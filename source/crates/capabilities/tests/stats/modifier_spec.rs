@@ -4,9 +4,11 @@ use std::sync::Arc;
 
 use campfire_capabilities::{Match, Release};
 use campfire_common::Ticks;
-use campfire_core::{Filter, ModifierId, NameKind, UnitTypes, UnknownName};
 use campfire_math::Num;
+use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
+use campfire_units::UnitTypeBook;
+use campfire_values::ModifierId;
 use campfire_values::{DeclaredName, FilterData, Number, Param, ParamRef, Ranked, Scalar, Stat};
 
 fn name(text: &str) -> DeclaredName {
@@ -19,7 +21,7 @@ fn param(text: &str) -> Number {
 
 #[test]
 fn a_spec_resolves_every_name_of_its_modifier_at_load() {
-    let mut types = UnitTypes::new(Release::engine_tags());
+    let mut types = UnitTypeBook::new(Release::engine_tags());
     types.declare("rooted").unwrap();
     let one = Param::Ranked(Ranked::One(Scalar::Int(1)));
     let mut data = ModifierData {
@@ -72,7 +74,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
             Ok(ModifierId::new(7))
         },
     };
-    let filter = |text| Filter::parse(text, &types).unwrap();
+    let filter = |text| Filter::parse(text, types.tags()).unwrap();
     // `bind_ms` and `slow` are its own, the first and second of its params by name;
     // `stun_ms` is the applier's. 1500 ms at 30 Hz is 1500 × 30 / 1000 = 45 ticks. The
     // changes follow the stats' order, an engine stat's first.
@@ -120,7 +122,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
 #[test]
 fn a_spec_fails_on_a_name_the_match_does_not_have() {
     // The match has the stat armor, the tag rooted and the modifier chill.
-    let mut types = UnitTypes::new(Release::engine_tags());
+    let mut types = UnitTypeBook::new(Release::engine_tags());
     types.declare("rooted").unwrap();
     let armor = Stat::named("armor").unwrap();
     let names = SpecNames {

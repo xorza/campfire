@@ -12,10 +12,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CastSpends, SlotTimes, UseGroup};
-use campfire_core::{
-    BodyUnit, ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::BodyUnit;
 
 mod inventory;
 mod inventory_data;

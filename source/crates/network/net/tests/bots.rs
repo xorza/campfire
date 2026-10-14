@@ -5,15 +5,16 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_common::{PlayerSlot, StateHash};
-use campfire_core::{Destination, Owner, StateValue};
 use campfire_mode::{Leaver, ModeWorld, PlayersData};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{PlayerLink, SessionTimes, TickHashes};
 use campfire_progression::Experience;
 use campfire_protocol::{AfterLeave, Controller, ServerInput, SessionLog};
 use campfire_runner::{Session, SessionWorld};
+use campfire_script::StateValue;
 use campfire_sim::SimWorld;
 use campfire_store::internals::Scratch;
+use campfire_units::{Destination, Owner};
 
 /// Where the server's hero of `slot` walks to.
 fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {

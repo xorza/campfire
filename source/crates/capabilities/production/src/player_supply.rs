@@ -3,9 +3,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
-use campfire_core::Player;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_units::Player;
 use serde::{Deserialize, Serialize};
 
 use crate::supply::{CountedUnit, Supply};

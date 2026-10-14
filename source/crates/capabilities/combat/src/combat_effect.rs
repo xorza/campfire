@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionSlots, CapabilityDoesSpec};
-use campfire_core::{CallError, Effect, Frame, View};
 use campfire_math::Num;
+use campfire_script::{CallError, Effect, Frame, View};
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::{PoolId, UnitStats};
 use campfire_values::DamageKind;

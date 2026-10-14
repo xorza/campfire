@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Scratch, UnitType};
+use campfire_declare::Scratch;
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
-use campfire_values::{DamageKind, Rank};
+use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
 /// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches
 /// in `Phase::Fire`. Not state: it empties within the tick.

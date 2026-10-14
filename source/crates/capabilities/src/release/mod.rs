@@ -6,22 +6,25 @@ use campfire_abilities::Abilities;
 use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
-use campfire_core::{
-    ApiBuilder, CapabilityError, CapabilitySet, Declarations, EngineTag, InstallCx, KindVisitor,
-    ModuleVisitor, Phase, Players, Predicting, ScriptApi, Units,
+use campfire_declare::{
+    Book, CapabilityError, CapabilitySet, Declarations, InstallCx, KindVisitor, ModuleVisitor,
+    Phase,
 };
 use campfire_deliveries::Deliveries;
 use campfire_items::Items;
 use campfire_mode::{MatchEnd, Mode, ModeLoad, ModeSetup};
 use campfire_navigation::Navigation;
 use campfire_orders::Orders;
+use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::ScriptHost;
+use campfire_script::{ApiBuilder, ScriptApi, ScriptHost};
 use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
+use campfire_units::{Predicting, UnitTypeBook, Units};
+use campfire_values::EngineTag;
 use campfire_vision::Vision;
 
 use crate::release::api_binder::ApiBinder;
@@ -202,7 +205,7 @@ impl Release {
         world.insert_resource(set);
         world.insert_resource(spec.out);
         let scripts = spec.budgets.is_some();
-        Units::open(world, spec.budgets, Release::engine_tags());
+        Units::open(world, spec.budgets);
         if scripts {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
         }
@@ -213,6 +216,7 @@ impl Release {
         let called = Release::called(set);
         let mut cx = InstallCx::new(world, schedule, set, scripts, spec.predicting, called);
         Release::modules(&mut Installing::new(&mut cx, registry));
+        UnitTypeBook::new(Release::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
             sim.leave_unbuilt();
@@ -249,13 +253,14 @@ pub(crate) mod internals {
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
-    use campfire_core::{CapabilitySet, EntityKinds, Units, UnitsWorld};
+    use campfire_declare::CapabilitySet;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         Capability, EntityIndex, SimResource, SimWorld, SnapshotError, StableId, StateCopy,
         StateRegistry,
     };
     use campfire_state_types::{Replication, StateTypes};
+    use campfire_units::{EntityKinds, Units, UnitsWorld};
 
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;

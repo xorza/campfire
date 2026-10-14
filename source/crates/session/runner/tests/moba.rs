@@ -3,14 +3,15 @@
 
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_core::{PlayersWorld, ResourceId, ScriptFailures, TrackId};
 use campfire_math::Num;
+use campfire_players::PlayersWorld;
 use campfire_progression::Experience;
 use campfire_runner::SessionWorld;
 use campfire_runner::internals::{FixedMatch, Moba3v3, ScriptedMode};
+use campfire_script::ScriptFailures;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimTick, StableId};
-use campfire_values::{DeclaredName, Names};
+use campfire_values::{DeclaredName, Names, ResourceId, TrackId};
 
 /// Runs `fixed` until tick `end` starts, checking that no script call fails.
 pub(crate) fn run_to(fixed: &mut FixedMatch, end: u64) {

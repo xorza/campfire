@@ -2,12 +2,13 @@ use std::ops::Range;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_core::{
-    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, TrackId, View, ViewColumn,
-};
 use campfire_math::Num;
+use campfire_script::{
+    ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, View, ViewColumn,
+};
 use campfire_sim::StableId;
 use campfire_stats::Level;
+use campfire_values::TrackId;
 
 use crate::experience::Experience;
 use crate::points::Points;

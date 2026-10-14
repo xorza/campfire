@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, DeliveryData};
 use campfire_capabilities::UnitTypeData;
-use campfire_core::Applies;
+use campfire_script::Applies;
 use campfire_values::{DeclaredName, PackagePath};
 
 use crate::error::way::Way;

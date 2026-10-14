@@ -1,8 +1,8 @@
 use std::rc::Rc;
 
-use campfire_core::{ScriptMap, ScriptText, Team};
+use campfire_script::{ScriptMap, ScriptText};
 use campfire_sim::Position;
-use campfire_values::DeclaredName;
+use campfire_values::{DeclaredName, Team};
 
 /// A marker of the map, as `ctx.map.markers(tag)` lists it: a handle on its names resolved.
 #[derive(Debug, Clone)]

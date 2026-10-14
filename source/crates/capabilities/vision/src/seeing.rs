@@ -2,9 +2,11 @@ use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_core::{Body, Dead, OnMatch, Relations, Team, UnitTags};
 use campfire_geometry::Shape;
+use campfire_players::OnMatch;
 use campfire_sim::{Position, SimTick};
+use campfire_units::{Body, Dead};
+use campfire_values::{Relations, Team, UnitTags};
 
 use crate::fog::Fog;
 use crate::reveals::Reveals;

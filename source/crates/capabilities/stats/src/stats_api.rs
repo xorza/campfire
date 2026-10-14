@@ -1,9 +1,9 @@
 use campfire_common::Ticks;
-use campfire_core::{
+use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, Applies, Checked, Ctx, DataTable, Hook, MemberSpec,
-    ModifierId, Status, TagProperty, Unit,
+    Status, Unit,
 };
-use campfire_values::Rank;
+use campfire_values::{ModifierId, Rank, TagProperty};
 
 use crate::meter::Meter;
 use crate::modifier_data::{AuraData, ModifierData};

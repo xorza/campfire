@@ -3,15 +3,15 @@ use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
 };
-use campfire_core::{
-    ActionId, Book, ByType, Filter, ModifierId, NameKind, ScriptBook, TypeScope, UnitType,
-    UnknownName, View,
-};
+use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
-use campfire_script::ScriptId;
+use campfire_script::{Filter, NameKind, ScriptId, UnknownName, View};
 use campfire_sim::TickRate;
 use campfire_stats::{ModifierBook, StatId, Stats};
-use campfire_values::{DamageKind, DeclaredName, FilterData, Param, Stat};
+use campfire_units::ScriptBook;
+use campfire_values::{
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Param, Stat, TypeScope, UnitType,
+};
 
 use crate::fixtures::units::ViewFixtures;
 
@@ -44,7 +44,6 @@ impl ActionNames for MatchNames<'_> {
     fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
         self.view
             .names()
-            .damage_kinds
             .named(name.as_str())
             .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
     }
@@ -80,7 +79,6 @@ impl ActionNames for MatchNames<'_> {
         let scope = TypeScope::of_package(package);
         self.view
             .names()
-            .unit_types()
             .named((scope, name.as_str()))
             .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
     }

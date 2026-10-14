@@ -1,14 +1,16 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, Checked, Ctx, DataTable, Hook, MemberSpec,
-    NameKind, NewUnit, PathId, ResourceId, RoleSet, ScriptList, ScriptText, ScriptValue, SpawnAt,
-    StateType, StateValue, Status, Tag, Team, TextArg, Unit, UnitType,
-};
 use campfire_math::Num;
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
+use campfire_players::PlayersCall;
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, Checked, Ctx, DataTable, Hook, MemberSpec,
+    NameKind, RoleSet, ScriptList, ScriptText, ScriptValue, StateType, StateValue, Status, TextArg,
+    Unit,
+};
 use campfire_sim::{Capability, Position, StableId};
-use campfire_values::{Rank, Relation};
+use campfire_units::{NewUnit, SpawnAt, Units};
+use campfire_values::{PathId, Rank, Relation, ResourceId, Tag, Team, UnitType};
 
 use crate::choice_data::ChoiceData;
 use crate::choice_id::ChoiceId;
@@ -99,7 +101,7 @@ impl ModeApi {
             |ctx: &mut Ctx| -> Checked<ScriptList> {
                 let teams = &ModeSpec::of_or_fail(ctx)?.teams;
                 let names = ctx.view().names();
-                let name = |&team| names.team_names().name(team).expect("a team of the match");
+                let name = |&team| names.name(team).expect("a team of the match");
                 Ok(teams
                     .playing()
                     .iter()
@@ -127,7 +129,7 @@ impl ModeApi {
                     .teams
                     .of(slot)
                     .expect("a player of the session has a team");
-                let name = ctx.view().names().team_names().name(team);
+                let name = ctx.view().names().name(team);
                 Ok(ScriptValue::of(name.expect("a team of the match")))
             },
         )
@@ -155,7 +157,7 @@ impl ModeApi {
                     .teams
                     .sole_enemy(team)
                     .ok_or_else(|| ApiError::NoEnemyTeam.fail())?;
-                let name = ctx.view().names().team_names().name(enemy);
+                let name = ctx.view().names().name(enemy);
                 Ok(ScriptValue::of(name.expect("a team of the match")))
             },
         );
@@ -164,18 +166,20 @@ impl ModeApi {
             &[&[], &["team"]],
             "the avatars, living or dead, of every team or of `team`, by stable id",
         );
-        api.call(avatars, |ctx: &mut Ctx| Ok(ctx.view().avatars(None)))
-            .call(avatars, |ctx: &mut Ctx, team: Team| {
-                Ok(ctx.view().avatars(Some(team)))
-            })
-            .call(
-                MemberSpec::call(
-                    "units_tagged",
-                    &[&["tag"]],
-                    "the units of a tag, living or dead, by stable id",
-                ),
-                |ctx: &mut Ctx, tag: Tag| Ok(ctx.view().units_tagged(tag)),
-            );
+        api.call(avatars, |ctx: &mut Ctx| {
+            Ok(Units::avatars(ctx.view(), None))
+        })
+        .call(avatars, |ctx: &mut Ctx, team: Team| {
+            Ok(Units::avatars(ctx.view(), Some(team)))
+        })
+        .call(
+            MemberSpec::call(
+                "units_tagged",
+                &[&["tag"]],
+                "the units of a tag, living or dead, by stable id",
+            ),
+            |ctx: &mut Ctx, tag: Tag| Ok(ctx.view().units_tagged(tag)),
+        );
         api.ty::<StateAccess>("ModeState")
             .index(|_, state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
             .index_set(
@@ -397,7 +401,7 @@ impl ModeApi {
                 |ctx: &Ctx, marker: &mut Marker| {
                     let names = ctx.view().names();
                     marker.info().team.map_or(ScriptValue::UNIT, |team| {
-                        let name = names.team_names().name(team);
+                        let name = names.name(team);
                         ScriptValue::of(name.expect("a marker's team is the mode's"))
                     })
                 },
@@ -717,8 +721,9 @@ impl ModeApi {
         let book = ModeSpec::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let mut frame = ctx.write()?;
-        let resources = frame
-            .resources_mut(slot)
+        let players = frame.part_mut::<PlayersCall>();
+        let resources = players
+            .and_then(|players| players.resources_mut(slot))
             .ok_or_else(|| ApiError::NoMode.fail())?;
         resources
             .add(resource, amount)

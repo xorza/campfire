@@ -1,9 +1,10 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::{ActionBook, ActionRange, ActionSlots, Targets};
-use campfire_core::{ArrivedShort, Body, Dead, Destination, Team};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_sim::Position;
+use campfire_units::{ArrivedShort, Body, Dead, Destination};
+use campfire_values::Team;
 
 /// The destinations units walk to on their own: along their paths, and after their attack targets.
 #[derive(Debug)]

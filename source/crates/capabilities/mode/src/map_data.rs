@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 
-use campfire_core::Layer;
 use campfire_geometry::{Bounds, Grid, Metric, Polygon};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{PathEnd, Wall};
 use campfire_sim::Position;
+use campfire_units::Layer;
 use campfire_values::{DeclaredName, Names, Scalar};
 use serde::Deserialize;
 

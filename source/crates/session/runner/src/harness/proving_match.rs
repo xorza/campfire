@@ -1,12 +1,12 @@
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
-use campfire_core::Team;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
 use campfire_package::internals::TestMode;
 use campfire_production::TrainQueue;
 use campfire_protocol::SlotPlan;
 use campfire_sim::{Position, StableId};
+use campfire_values::Team;
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;

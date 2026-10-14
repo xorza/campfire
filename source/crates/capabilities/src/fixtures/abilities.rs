@@ -5,13 +5,13 @@ use campfire_abilities::internals::{MANA, RAGE};
 use campfire_actions::{ActionData, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
-use campfire_core::{ActionId, MoveStep, Owner, Team, TypeScope, UnitType, UnitTypeCore, Units};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
 use campfire_stats::{Life, Pools};
-use campfire_values::Rank;
+use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
+use campfire_values::{ActionId, Rank, Team, TypeScope, UnitType};
 
 use crate::fixtures::actions::ActionsFixtures;
 

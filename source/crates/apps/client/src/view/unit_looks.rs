@@ -3,7 +3,8 @@ use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
-use campfire_core::{TypeOriginBook, UnitType};
+use campfire_units::TypeOriginBook;
+use campfire_values::UnitType;
 
 use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;
@@ -72,8 +73,8 @@ impl UnitLooks {
 mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
-    use campfire_core::TypeOrigin;
     use campfire_package::{ClientModel, ClientUnit, ClientUnits};
+    use campfire_units::TypeOrigin;
     use campfire_values::PackagePath;
 
     use super::*;

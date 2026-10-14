@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_common::Ticks;
-use campfire_core::{DataSection, DataTable, StateDecl};
 use campfire_math::Num;
+use campfire_script::{DataSection, DataTable, StateDecl};
 use campfire_sim::TickRate;
 use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat};
 use serde::Deserialize;

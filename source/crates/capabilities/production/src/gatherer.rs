@@ -2,9 +2,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::{PerType, PlayersWorldCrate, ResourceId, UnitEntity};
+use campfire_declare::PerType;
+use campfire_players::PlayersWorldCrate;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
+use campfire_values::ResourceId;
 use serde::{Deserialize, Serialize};
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has

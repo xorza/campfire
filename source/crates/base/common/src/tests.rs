@@ -766,10 +766,6 @@ fn a_required_dependency_is_named_by_production_code() {
     );
 }
 
-/// The crates whose top modules still import each other: the four modules of `campfire-core`
-/// share one crate until they split into a crate each (design 02, The capabilities' crates).
-const CYCLE_EXCEPTIONS: [&str; 1] = ["campfire-core"];
-
 /// The cycles of `imports`, a crate's top modules each with the top modules it imports: each
 /// group of two or more modules that reach each other through their imports, sorted.
 fn module_cycles(imports: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String>> {
@@ -886,31 +882,16 @@ fn top_imports(src: &str, sources: &[SourceFile]) -> BTreeMap<String, BTreeSet<S
 
 #[test]
 fn no_crates_modules_import_each_other_in_a_cycle() {
-    let crates = crates();
     let sources = sources();
-    for name in CYCLE_EXCEPTIONS {
-        assert!(
-            crates.iter().any(|krate| krate.name == name),
-            "{name} is no crate"
-        );
-    }
     let mut found = Vec::new();
-    for krate in &crates {
+    for krate in &crates() {
         let src = format!("{}/src", krate.path);
         let cycles = module_cycles(&top_imports(&src, &sources));
-        let excepted = CYCLE_EXCEPTIONS.contains(&krate.name.as_str());
-        assert!(
-            !excepted || !cycles.is_empty(),
-            "{} is no exception now",
-            krate.name
+        found.extend(
+            cycles
+                .into_iter()
+                .map(|cycle| format!("{}: {}", krate.name, cycle.join(", "))),
         );
-        if !excepted {
-            found.extend(
-                cycles
-                    .into_iter()
-                    .map(|cycle| format!("{}: {}", krate.name, cycle.join(", "))),
-            );
-        }
     }
     assert_eq!(found, Vec::<String>::new());
     // Three modules that import in a ring make one cycle; a module that only imports into it stays

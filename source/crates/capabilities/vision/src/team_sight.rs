@@ -1,7 +1,7 @@
 use std::fmt::Debug;
 
 use bevy_ecs::query::{QueryItem, ReadOnlyQueryData};
-use campfire_core::Team;
+use campfire_values::Team;
 
 use crate::seen_by::SeenBy;
 

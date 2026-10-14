@@ -1,5 +1,6 @@
 use campfire_common::SegmentSeed;
-use campfire_core::{CapabilitySet, ScriptBudgets};
+use campfire_declare::CapabilitySet;
+use campfire_script::ScriptBudgets;
 use campfire_sim::TickRate;
 use campfire_visibility::OutView;
 

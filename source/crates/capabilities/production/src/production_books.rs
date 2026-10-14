@@ -1,6 +1,6 @@
 use bevy_ecs::system::{Res, SystemParam};
 use campfire_actions::ActionBook;
-use campfire_core::ByType;
+use campfire_declare::ByType;
 
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;

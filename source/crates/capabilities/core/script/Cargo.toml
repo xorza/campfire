@@ -5,17 +5,32 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-internals = ["dep:criterion"]
+internals = [
+    "campfire-common/internals",
+    "campfire-geometry/internals",
+    "campfire-math/internals",
+    "campfire-sim/internals",
+    "campfire-values/internals",
+    "dep:criterion",
+]
 
 [dependencies]
+campfire-common.workspace = true
+campfire-geometry.workspace = true
 campfire-math.workspace = true
+campfire-sim.workspace = true
+campfire-values.workspace = true
 
+bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
+derive_more.workspace = true
 rhai.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+campfire-codec.workspace = true
 campfire-script = { workspace = true, features = ["internals"] }
 
 [lints]

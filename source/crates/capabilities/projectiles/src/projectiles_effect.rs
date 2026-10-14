@@ -1,8 +1,10 @@
 use bevy_ecs::world::World;
-use campfire_core::{Effect, Frame, MapBook, UnitType};
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
+use campfire_script::{Effect, Frame};
 use campfire_sim::{Position, StableId};
+use campfire_units::MapBook;
+use campfire_values::UnitType;
 
 use crate::Projectiles;
 use crate::projectile::Flight;

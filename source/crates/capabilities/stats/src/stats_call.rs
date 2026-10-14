@@ -1,8 +1,6 @@
 use bevy_ecs::world::World;
-use campfire_core::{
-    ActionId, CallError, CallPart, CallStart, Frame, ModifierId, ScriptRole, ScriptValue,
-};
-use campfire_values::Scalar;
+use campfire_script::{CallError, CallPart, CallStart, Frame, ScriptRole, ScriptValue};
+use campfire_values::{ActionId, ModifierId, Scalar};
 
 use crate::Stats;
 use crate::modifier_handle::ModifierHandle;

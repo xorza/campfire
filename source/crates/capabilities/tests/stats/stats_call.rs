@@ -2,15 +2,17 @@ use std::ptr;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
-use campfire_capabilities::{Match, Release};
+use campfire_capabilities::Match;
 use campfire_common::Tick;
-use campfire_core::{CallPart, CallStart, ModifierId, ScriptRole, StateValue, View};
+use campfire_script::{CallPart, CallStart, ScriptRole, StateValue, View};
 use campfire_sim::IdAllocator;
 use campfire_stats::*;
+use campfire_values::ModifierId;
 
 #[test]
 fn a_handle_no_script_holds_serves_the_next_call_again() {
-    let view = View::new(Match::TEST_RATE, Release::engine_tags());
+    // No world holds units for the view to read.
+    let view = View::new(Match::TEST_RATE, |_| {});
     let carrier = IdAllocator::default().allocate();
     let of = |stacks| HandleOf {
         carrier,

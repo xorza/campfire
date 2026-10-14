@@ -1,7 +1,7 @@
-use campfire_core::Layer;
 use campfire_geometry::Shape;
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
+use campfire_units::Layer;
 
 use super::*;
 

@@ -1,4 +1,4 @@
-use campfire_core::{ModifierId, Tag, UnitType};
+use campfire_values::{ModifierId, Tag, UnitType};
 
 use crate::amount::Amount;
 use crate::capability_does_spec::CapabilityDoesSpec;

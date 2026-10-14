@@ -2,11 +2,11 @@ use std::ops::Range;
 
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
-use campfire_core::{
-    Body, KeptRows, Layer, MoveStep, PathId, RowFill, ScriptValue, Unit, View, ViewColumn,
-};
 use campfire_geometry::Shape;
+use campfire_script::{KeptRows, RowFill, ScriptValue, Unit, View, ViewColumn};
 use campfire_sim::{Position, StableId};
+use campfire_units::{Body, Layer, MoveStep};
+use campfire_values::PathId;
 
 use crate::body_index::IndexedBody;
 use crate::navigation_book::NavigationBook;
@@ -109,9 +109,7 @@ impl NavigationColumn {
         let view = unit.view();
         let path =
             view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
-        let name = path
-            .flatten()
-            .and_then(|path| view.names().paths.name(path));
+        let name = path.flatten().and_then(|path| view.names().name(path));
         name.map_or(ScriptValue::UNIT, ScriptValue::of)
     }
 

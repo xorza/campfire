@@ -14,18 +14,18 @@ use campfire_actions::{SlotTimes, UseGroup};
 use campfire_capabilities::Release;
 use campfire_combat::{OnDeath, Respawn};
 use campfire_common::PlayerSlot;
-use campfire_core::{
-    CapabilitySet, Owner, Player, PlayerResources, SpawnPoint, SyncAll, SyncOwner, SyncTeam, Team,
-    UnitState,
-};
+use campfire_declare::CapabilitySet;
 use campfire_items::Inventory;
 use campfire_mode::ModeState;
 use campfire_navigation::{OnPath, PathWalker, Progress, Route};
+use campfire_players::PlayerResources;
 use campfire_production::{Builder, Gatherer, PlayerSupply, Site, TrainQueue};
 use campfire_progression::{Experience, Points};
 use campfire_sim::SimResource;
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
 use campfire_stats::{Life, ModifierClocks, Modifiers, PlayerModifiers, Pools};
+use campfire_units::{Owner, Player, SpawnPoint, SyncAll, SyncOwner, SyncTeam, UnitState};
+use campfire_values::Team;
 
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::scope_union::ScopeUnion;
@@ -333,9 +333,9 @@ mod tests {
 
     use bevy_ecs::world::World;
     use campfire_codec::Toml;
-    use campfire_core::TeamSet;
     use campfire_sim::{Capability, OnAny, SimComponent};
     use campfire_state_types::SentOnChange;
+    use campfire_values::TeamSet;
     use campfire_visibility::{ModeVisibility, Visibility};
     use serde::{Deserialize, Serialize};
 

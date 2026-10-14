@@ -7,8 +7,9 @@ use bevy::math::primitives::InfinitePlane3d;
 use bevy::math::{Vec2, Vec3};
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::window::{PrimaryWindow, Window};
-use campfire_core::{Dead, Team};
 use campfire_sim::{StableId, Unpredicted};
+use campfire_units::Dead;
+use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
 use crate::view::client_data::ClientData;

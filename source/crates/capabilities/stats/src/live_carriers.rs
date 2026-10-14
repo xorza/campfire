@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use campfire_core::Cache;
+use campfire_declare::Cache;
 use campfire_sim::StableId;
 
 /// The live stat changes of the match, each by its source and the unit that carries it, sorted by

@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::world::World;
-use campfire_core::CapabilitySet;
+use campfire_declare::CapabilitySet;
 use campfire_sim::StateRegistry;
 
 use crate::release::Release;
@@ -76,8 +76,10 @@ pub(crate) mod internals {
     use campfire_codec::Binary;
     use campfire_combat::Combat;
     use campfire_common::SegmentSeed;
-    use campfire_core::{Book, Players, ScriptBudgets};
+    use campfire_declare::Book;
     use campfire_log::internals::LogCheck;
+    use campfire_players::Players;
+    use campfire_script::ScriptBudgets;
     use campfire_sim::{Capability, TickRate};
     use campfire_stats::PoolId;
     use campfire_values::DeclaredName;

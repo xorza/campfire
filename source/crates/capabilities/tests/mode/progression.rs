@@ -191,7 +191,7 @@ fn on_input(ctx, player, name, value) {
     let script = format!("{killer}{DEATHS_3V3}");
     let mut game = picking_match(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    Units::declare_tags(&game, ["core"]);
+    Units::declare_tags(&mut game, ["core"]);
     Mode::tick_inputs(
         &mut game,
         &[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))],

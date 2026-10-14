@@ -1,6 +1,7 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_core::{ByType, UnitType};
+use campfire_declare::ByType;
 use campfire_math::Num;
+use campfire_values::UnitType;
 
 use crate::area_spec::AreaSpec;
 

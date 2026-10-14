@@ -1,10 +1,10 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Commands, Local, Query, Res};
-use campfire_core::{
-    Dead, MapBook, Owner, PlayerResources, PlayerRowsMut, ResourceAmount, Team, TickCommands,
-};
+use campfire_players::{PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands};
 use campfire_sim::{EntityIndex, SimTick};
+use campfire_units::{Dead, MapBook, Owner};
+use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
 use crate::build_book::BuildBook;

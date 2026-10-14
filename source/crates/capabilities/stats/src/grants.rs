@@ -3,9 +3,9 @@ use std::ops::Range;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, ModifierId, Scratch};
+use campfire_declare::Scratch;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::lifetime::Hold;
 use crate::modifiers::Modifiers;

@@ -1,5 +1,5 @@
 use campfire_common::PlayerSlot;
-use campfire_core::UnitType;
+use campfire_values::UnitType;
 
 use crate::mode_supply_data::ModeSupplyData;
 use crate::supply_cost_book::{SupplyCostBook, UnitSupply};

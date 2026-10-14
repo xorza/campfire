@@ -6,15 +6,14 @@ use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
 };
-use campfire_core::{
-    Body, ByType, Dead, Destination, MapBook, Owner, PlayerResources, PlayerRows, PlayerRowsMut,
-    SpawnAt, Spawner, Team, UnitType,
-};
+use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Navigation, Walker};
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
-use campfire_values::Relation;
+use campfire_units::{Body, Dead, Destination, MapBook, Owner, SpawnAt, Spawner};
+use campfire_values::{Relation, Team, UnitType};
 
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::held::Held;

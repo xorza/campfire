@@ -7,7 +7,6 @@ use campfire_actions::ActionSlots;
 use campfire_capabilities::{Action, Order};
 use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
-use campfire_core::{Hook, ScriptFailures, Team, TrackId};
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
@@ -15,9 +14,10 @@ use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_progression::{Experience, Points};
 use campfire_runner::internals::{CopyCheck, FixedMatch, FixedSession, Golden, MatchUnits};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
+use campfire_script::{Hook, ScriptFailures};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
-use campfire_values::Rank;
+use campfire_values::{Rank, Team, TrackId};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.

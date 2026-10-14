@@ -4,7 +4,7 @@ use std::time::Duration;
 use bevy_app::{App, Plugin};
 use bevy_ecs::component::{Component, Immutable, Mutable};
 use campfire_capabilities::Release;
-use campfire_core::CapabilitySet;
+use campfire_declare::CapabilitySet;
 use campfire_protocol::SignedReceipt;
 use campfire_sim::{SimResource, StableId};
 use campfire_state_types::{Declared, Replication, Sending, SendingWays, StateTypes};
@@ -173,13 +173,13 @@ mod tests {
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use campfire_core::{Dead, Destination};
     use campfire_items::Inventory;
     use campfire_navigation::Route;
     use campfire_progression::Points;
     use campfire_projectiles::Projectile;
     use campfire_sim::{Capability, Position};
     use campfire_stats::Level;
+    use campfire_units::{Dead, Destination};
     use lightyear::prelude::ComponentRegistry;
     use lightyear::prelude::server::ServerPlugins;
 

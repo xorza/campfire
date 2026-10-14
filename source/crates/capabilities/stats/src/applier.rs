@@ -1,6 +1,5 @@
-use campfire_core::ActionId;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, Rank};
 
 use crate::lifetime::Hold;
 

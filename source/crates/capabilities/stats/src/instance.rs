@@ -1,8 +1,7 @@
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, ModifierId};
 use campfire_math::Num;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, ModifierId, Rank};
 use serde::{Deserialize, Serialize};
 
 use crate::lifetime::Lifetime;

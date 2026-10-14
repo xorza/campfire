@@ -1,4 +1,4 @@
-use campfire_core::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable};
 use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};

@@ -9,16 +9,16 @@ use campfire_actions::{
     InProgress, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
 };
 use campfire_common::Tick;
-use campfire_core::{
-    ActionId, ArrivedShort, Body, CallError, CallStart, Ctx, DashDelivery, Dead, Destination,
-    ForcedMove, Hook, Owner, PlayerResources, PlayerRows, PlayersWorldCrate, Pool, ScriptBatch,
-    ScriptValue, ScriptsWorldCrate, Team, Unit, UnitTags,
-};
 use campfire_deliveries::{Deliverers, Delivering};
-use campfire_script::ScriptId;
+use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorldCrate};
+use campfire_script::{
+    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorldCrate,
+    Unit,
+};
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
-use campfire_values::Rank;
+use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, Owner};
+use campfire_values::{ActionId, DashDelivery, Rank, Team, UnitTags};
 
 use crate::Abilities;
 
@@ -451,7 +451,10 @@ impl Casts {
         let resource_cost = checked.action.resource_cost(checked.rank);
         if !resource_cost.is_empty() {
             let owner = owner.expect("a unit that pays player resources has an owner");
-            let resources = frame.resources_mut(owner.slot());
+            let players = frame
+                .part_mut::<PlayersCall>()
+                .expect("every call holds the players'");
+            let resources = players.resources_mut(owner.slot());
             let resources = resources.expect("a match that takes player resources keeps them");
             resources.pay(resource_cost);
         }

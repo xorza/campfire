@@ -1,4 +1,4 @@
-use campfire_core::{DataSection, DataTable, NameKind, UnknownName};
+use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
 use campfire_stats::PoolId;
 use campfire_values::{DamageKind, DeclaredName, Names, Stat};
 use serde::Deserialize;

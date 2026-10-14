@@ -16,7 +16,6 @@ use campfire_areas::Area;
 use campfire_capabilities::{Match, Order};
 use campfire_combat::Combat;
 use campfire_common::PlayerSlot;
-use campfire_core::{ActionId, Body, ForcedMove, ModifierId, MoveStep, Owner, Team};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
@@ -26,8 +25,10 @@ use campfire_projectiles::Projectile;
 use campfire_runner::internals::Arena;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Life, PoolMeters, Pools, Stats};
+use campfire_units::{Body, ForcedMove, MoveStep, Owner};
 use campfire_values::{
-    DeclaredName, Number, PackagePath, Param, Rank, Ranked, Scalar, Scaling, Stat,
+    ActionId, DeclaredName, ModifierId, Number, PackagePath, Param, Rank, Ranked, Scalar, Scaling,
+    Stat, Team,
 };
 use campfire_vision::SeenBy;
 

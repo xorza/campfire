@@ -10,13 +10,12 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::EffectQueues;
-use campfire_core::{
-    BodyUnit, ByType, Ctx, Dead, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace,
-    SpawnPoint,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_math::RngStream;
+use campfire_script::Ctx;
 use campfire_sim::Capability;
 use campfire_stats::Life;
+use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
 mod attacks;
 mod combat_api;
@@ -211,12 +210,13 @@ pub mod internals {
         ActionBook, ActionRange, ActionSlots, Actions, InProgress, SlotKind, SlotTimes,
     };
     use campfire_common::{Tick, Ticks};
-    use campfire_core::{Filter, UnitType, UnitTypeCore, Units, View};
     use campfire_math::{Num, Rounding};
+    use campfire_script::{Filter, View};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
     use campfire_stats::{Life, PoolBook, PoolId, StatBook, StatRule, Stats};
-    use campfire_values::{DamageKind, Rank, RelationSet, Stat};
+    use campfire_units::{UnitTypeCore, Units};
+    use campfire_values::{DamageKind, Rank, RelationSet, Stat, UnitType};
 
     use crate::Combat;
     use crate::combat_bindings::CombatBindings;
@@ -239,7 +239,6 @@ pub mod internals {
             let kind = world
                 .non_send::<View>()
                 .names()
-                .damage_kinds
                 .named(kind)
                 .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
             world.resource_mut::<PassQueue>().push_damage(Damage {

@@ -1,7 +1,6 @@
-use campfire_core::{ResourceId, Team};
 use campfire_geometry::Bounds;
 use campfire_sim::Position;
-use campfire_values::Share;
+use campfire_values::{ResourceId, Share, Team};
 
 use crate::item_id::ItemId;
 

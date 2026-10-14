@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_core::PendingCalls;
+use campfire_script::PendingCalls;
 use campfire_sim::{SimResource, SlotEvent};
 use serde::{Deserialize, Serialize};
 

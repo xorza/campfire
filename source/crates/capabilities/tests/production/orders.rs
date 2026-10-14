@@ -1,6 +1,7 @@
-use campfire_core::{Layer, MapBook, TeamSet};
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
+use campfire_units::{Layer, MapBook};
+use campfire_values::TeamSet;
 use campfire_vision::{SeenBy, Vision};
 
 use super::*;

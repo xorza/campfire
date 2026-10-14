@@ -1,9 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::UnitEntity;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 use crate::rally_target::RallyTarget;

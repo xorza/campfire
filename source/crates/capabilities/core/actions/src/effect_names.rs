@@ -1,6 +1,6 @@
-use campfire_core::{ModifierId, Tag, TrackId, UnitType, UnknownName};
+use campfire_script::UnknownName;
 use campfire_stats::PoolId;
-use campfire_values::{DamageKind, DeclaredName};
+use campfire_values::{DamageKind, DeclaredName, ModifierId, Tag, TrackId, UnitType};
 
 /// The match's ids of the names an action's effect lists give: what an action's lists resolve
 /// them by, in a match's world or in the load's builder; an error for a name the match does not

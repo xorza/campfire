@@ -10,21 +10,23 @@ use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, RecentAttackers};
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::internals::FailureKind;
-use campfire_core::*;
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::OnPath;
-use campfire_script::NumError;
+use campfire_script::internals::FailureKind;
+use campfire_script::{
+    ApiError, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList, ScriptValue, Unit, View,
+};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
 use campfire_stats::{Level, Life, StatRule, Stats};
-use campfire_values::{Scalar, Stat};
+use campfire_units::*;
+use campfire_values::{Block, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType};
 
 /// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
 /// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
@@ -531,31 +533,31 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let second = load(TypeScope::Mode, "tower");
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
     let theirs = load(TypeScope::Package(1), "grunt");
-    let view = game.non_send::<View>();
     // A scope names a type once.
     assert_eq!(
-        view.types_mut()
+        game.resource_mut::<UnitTypeBook>()
             .load(TypeScope::Package(1), 1, "grunt", &data),
         Err(TypesError::Repeated("grunt".to_owned()))
     );
+    let view = game.non_send::<View>();
     assert_eq!(
         (
-            view.names().unit_types().named((TypeScope::Mode, "grunt")),
-            view.names().unit_types().named((TypeScope::Mode, "tower"))
+            view.names().named((TypeScope::Mode, "grunt")),
+            view.names().named((TypeScope::Mode, "tower"))
         ),
         (Some(first), Some(second))
     );
     assert_eq!(
-        view.names().unit_types().named((TypeScope::Mode, "wolf")),
+        view.names().named::<UnitType>((TypeScope::Mode, "wolf")),
         None
     );
     let names = view.names();
-    let types = names.unit_types();
+    let types = names.table::<UnitType>().unwrap();
     assert_eq!(types.named((TypeScope::Package(1), "grunt")), Some(theirs));
     assert_eq!(types.named((TypeScope::Package(2), "grunt")), None);
     assert_ne!(theirs, first);
     // Each type's origin: its package and its name there.
-    let origins = view.names().types().origins();
+    let origins = game.resource::<UnitTypeBook>().origins();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
         (origin.package, &*origin.name)

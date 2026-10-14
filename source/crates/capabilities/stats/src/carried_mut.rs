@@ -2,9 +2,10 @@ use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::{ModifierId, StateValue};
 use campfire_math::Num;
+use campfire_script::StateValue;
 use campfire_sim::StableId;
+use campfire_values::ModifierId;
 
 use crate::application::Application;
 use crate::lifetime::Hold;

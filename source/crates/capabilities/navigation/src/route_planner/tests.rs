@@ -2,10 +2,10 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 use campfire_common::{SegmentSeed, Tick};
-use campfire_core::Layer;
 use campfire_geometry::{Bounds, Shape};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_sim::IdAllocator;
+use campfire_units::Layer;
 
 use super::*;
 use crate::pathing_grid::PathingGrid;

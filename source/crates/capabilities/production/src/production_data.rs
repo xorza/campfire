@@ -1,6 +1,7 @@
 use std::num::NonZeroU8;
 
-use campfire_core::{DataSection, DataTable, PerType};
+use campfire_declare::PerType;
+use campfire_script::{DataSection, DataTable};
 use campfire_sim::Capability;
 use serde::Deserialize;
 

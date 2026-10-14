@@ -1,5 +1,5 @@
 use campfire_actions::TimedSlots;
-use campfire_core::PlayersWorldCrate;
+use campfire_players::PlayersWorldCrate;
 use campfire_production::{Gatherer, Load, ModeSupplyData, SupplyBook, SupplyCostBook, SupplyData};
 use campfire_sim::internals::SimWorldInternals;
 
@@ -123,12 +123,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     let view = game.non_send::<View>().clone();
-    let named = |name: &str| {
-        view.names()
-            .unit_types()
-            .named((TypeScope::Mode, name))
-            .unwrap()
-    };
+    let named = |name: &str| view.names().named((TypeScope::Mode, name)).unwrap();
     let (hero, grunt) = (named("hero-x"), named("grunt"));
     let mut types = ByType::default();
     types.set(

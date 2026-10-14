@@ -22,23 +22,22 @@ use campfire_combat::{
     Combat, CombatBook, Damage, DamageCause, OnDeath, PassQueue, RecentAttackers,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick, Ticks};
-use campfire_core::internals::{FailedCall, FailureKind};
-use campfire_core::{
-    ActionId, ApiError, Block, Body, Book, Dead, Destination, ForcedMove, Hook, MoveStep, NameKind,
-    Owner, Players, PlayersWorld, PlayersWorldCrate, Pool, ResourceId, ScriptBudgets, ScriptLimits,
-    StateDecl, StateDefault, StateType, StateValue, SyncNone, SyncTo, SyncedStateDecl, TagData,
-    Team, TrackId, TypeScope, UnitState, UnitTags, UnitType, UnitTypeCore, Units,
-};
+use campfire_declare::Book;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::{AiData, Orders, OrdersAction};
+use campfire_players::{Players, PlayersWorld, PlayersWorldCrate};
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, Thresholds, TrackData, TrackSet,
 };
 use campfire_projectiles::{Projectile, ProjectileData, Projectiles};
-use campfire_script::NumError;
+use campfire_script::internals::{FailedCall, FailureKind};
+use campfire_script::{
+    ApiError, Hook, NameKind, NumError, Pool, ScriptBudgets, ScriptLimits, StateDecl, StateDefault,
+    StateType, StateValue, SyncTo, SyncedStateDecl,
+};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, Position, SimRng, SimSet, SimTick, SimWorld, StableId, StateCopy,
@@ -48,9 +47,14 @@ use campfire_stats::{
     Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats, StatsData,
     UnitStats,
 };
+use campfire_units::{
+    Body, Dead, Destination, ForcedMove, MoveStep, Owner, SyncNone, TagData, UnitState,
+    UnitTypeCore, Units,
+};
 use campfire_values::{
-    ActionStart, DamageKind, DeclaredName, FilterData, Number, PackagePath, Param, ParamRef, Rank,
-    Ranked, Scalar, Scaling, Stat, TimeTooLarge,
+    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, Number, PackagePath, Param,
+    ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat, Team, TimeTooLarge, TrackId,
+    TypeScope, UnitTags, UnitType,
 };
 
 /// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep

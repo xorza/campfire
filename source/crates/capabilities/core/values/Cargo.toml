@@ -9,13 +9,16 @@ internals = [
     "campfire-common/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
+    "campfire-state-types/internals",
 ]
 
 [dependencies]
 campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-sim.workspace = true
+campfire-state-types.workspace = true
 
+bevy_ecs.workspace = true
 derive_more.workspace = true
 serde.workspace = true
 thiserror.workspace = true

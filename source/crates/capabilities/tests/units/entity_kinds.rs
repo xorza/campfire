@@ -2,8 +2,8 @@ use std::any::TypeId;
 
 use bevy_ecs::component::ComponentInfo;
 use campfire_capabilities::Match;
-use campfire_core::*;
 use campfire_sim::HostRule;
+use campfire_units::*;
 
 #[test]
 fn the_unit_group_hosts_exactly_the_kinds_that_require_it() {

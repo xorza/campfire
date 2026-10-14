@@ -1,5 +1,5 @@
 use campfire_actions::ActionsColumn;
-use campfire_core::{
+use campfire_script::{
     ApiBuilder, ApiError, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet, Status,
     Unit,
 };

@@ -1,6 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_core::{Effect, Frame, Lifespan, SpawnAt, Spawner};
+use campfire_script::{Effect, Frame};
+use campfire_units::{Lifespan, SpawnAt, Spawner};
 
 /// A unit a listed `spawn` makes, `at` its place, of the acting unit's team and player, with a
 /// timed life of `life` when it has one.

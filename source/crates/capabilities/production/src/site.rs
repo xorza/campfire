@@ -2,11 +2,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionKind};
-use campfire_core::{ActionId, PlayersWorldCrate, ResourceAmount, UnitEntity};
 use campfire_math::{Num, Rounding};
+use campfire_players::{PlayersWorldCrate, ResourceAmount};
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_values::Rank;
+use campfire_units::UnitEntity;
+use campfire_values::{ActionId, Rank};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

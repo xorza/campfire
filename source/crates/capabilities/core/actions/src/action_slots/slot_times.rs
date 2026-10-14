@@ -5,12 +5,13 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, LivingUnit, Team, UnitEntity};
 use campfire_math::Num;
+use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_stats::PoolMetersMut;
-use campfire_values::Relation;
+use campfire_units::UnitEntity;
+use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

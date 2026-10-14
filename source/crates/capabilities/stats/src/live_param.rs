@@ -1,4 +1,4 @@
-use campfire_core::{ActionId, ModifierId};
+use campfire_values::{ActionId, ModifierId};
 use serde::{Deserialize, Serialize};
 
 /// The scaling param a live stat change reads, computed again from its source at each refresh:

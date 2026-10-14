@@ -11,13 +11,15 @@ use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_combat::{CombatHooks, DamageWeigher, HealWeigher};
 use campfire_common::PlayerSlot;
-use campfire_core::{
-    BodyForm, ByType, CallError, Ctx, Declarations, Hook, InstallCx, MatchEntity, Module,
-    ModuleSet, OutOfPlay, Phase, Player, Players, PlayersWorld, Pool, Relations, ScriptBook,
-    ScriptText, SetPlace, SpawnAt, Spawner, SyncAll, SyncNone, View,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
+use campfire_players::{OutOfPlay, Players, PlayersWorld};
+use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
 use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
+use campfire_units::{
+    BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone,
+};
+use campfire_values::Relations;
 
 mod calls;
 mod choice_data;
@@ -334,13 +336,12 @@ pub mod internals {
     use campfire_actions::Actions;
     use campfire_combat::{Damage, DamageCause, PassQueue};
     use campfire_common::PlayerSlot;
-    use campfire_core::internals::FailureKind;
-    use campfire_core::{
-        CallError, CallStart, Ctx, Owner, ScriptFailures, ScriptRole, ScriptValue, SpawnAt,
-        Spawner, StateValue, TagSet, Team, UnitType, Units, View,
-    };
     use campfire_math::Num;
     use campfire_navigation::{PathEnd, PathWalker};
+    use campfire_script::internals::FailureKind;
+    use campfire_script::{
+        CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue, View,
+    };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         EntityIndex, IdAllocator, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId,
@@ -349,7 +350,8 @@ pub mod internals {
     use campfire_stats::{
         Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
     };
-    use campfire_values::{Rank, Stat};
+    use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
+    use campfire_values::{Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::mode_input::{InputValue, ModeInput};
@@ -437,7 +439,7 @@ pub mod internals {
         /// Loads the spawner of every unit type the match loaded so far, which applies no
         /// passive, as a mode's load gives its own: a fixture that loads types loads it again.
         pub fn load_test_units(world: &mut World) {
-            let count = world.non_send::<View>().types_count();
+            let count = world.resource::<UnitTypeBook>().count();
             let types = (0..count).map(|index| UnitTypeSetup {
                 unit_type: UnitType::new(u16::try_from(index).expect("unit types fit u16")),
                 passive: None,
@@ -585,7 +587,6 @@ pub mod internals {
             let kind = world
                 .non_send::<View>()
                 .names()
-                .damage_kinds
                 .named(kind)
                 .expect("the mode names the damage kind");
             world.resource_mut::<PassQueue>().push_damage(Damage {

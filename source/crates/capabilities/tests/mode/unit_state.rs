@@ -1,4 +1,4 @@
-use campfire_core::{SyncOwner, UnitState};
+use campfire_units::{SyncOwner, UnitState};
 
 use super::*;
 
@@ -42,7 +42,6 @@ fn on_mode_input(ctx, player, name, value) {
         let grunt_type = game
             .non_send::<View>()
             .names()
-            .unit_types()
             .named((TypeScope::Mode, "grunt"))
             .unwrap();
         let grunts = game

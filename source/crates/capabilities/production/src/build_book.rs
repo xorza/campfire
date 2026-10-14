@@ -1,10 +1,12 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, BodyForm, Book, Filter, View};
+use campfire_declare::Book;
 use campfire_math::Num;
+use campfire_script::{Filter, View};
 use campfire_sim::Capability;
-use campfire_values::Share;
+use campfire_units::BodyForm;
+use campfire_values::{ActionId, Share};
 
 /// What each build places and how its site grows, by action, its rates and its placement's
 /// rules one run after another: package data, not state.

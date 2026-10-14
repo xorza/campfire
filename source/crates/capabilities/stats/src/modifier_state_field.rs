@@ -1,4 +1,4 @@
-use campfire_core::StateType;
+use campfire_script::StateType;
 
 /// A field of a modifier's script state, as its spec declares it: its name and type, in the order
 /// of the names.

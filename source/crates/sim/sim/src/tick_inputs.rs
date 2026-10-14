@@ -1,7 +1,6 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-
 use campfire_common::PlayerSlot;
 
 use crate::capability::Capability;

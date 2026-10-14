@@ -3,13 +3,13 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{
-    CallStart, Ctx, Hook, ModifierId, Owner, Pool, ScriptBatch, ScriptValue, TagEffect,
-};
+use campfire_script::{CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptValue};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_stats::{
     HandleOf, Instance, ModifierBook, ModifierClocks, Modifiers, StatsCall, StatsColumn,
 };
+use campfire_units::{Owner, TagEffect};
+use campfire_values::ModifierId;
 
 use crate::combat_event::CombatEvent;
 use crate::damage::Damage;

@@ -1,14 +1,14 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_core::{
-    Block, Body, Dead, LivingUnit, MapBook, OnMatch, Relations, TagSet, Team, UnitTags,
-};
 use campfire_geometry::{Metric, Shape};
 use campfire_math::Num;
+use campfire_players::OnMatch;
+use campfire_script::LivingUnit;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_stats::Life;
-use campfire_values::Relation;
+use campfire_units::{Body, Dead, MapBook};
+use campfire_values::{Block, Relation, Relations, TagSet, Team, UnitTags};
 
 /// The units an attack may target: living units with a life whose tags let them be
 /// targets, those a client holds and does not predict among them, where the server last had

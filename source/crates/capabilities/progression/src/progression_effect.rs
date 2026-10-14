@@ -1,10 +1,11 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::world::World;
 use campfire_actions::CapabilityDoesSpec;
-use campfire_core::{ApiError, CallError, Effect, Frame, TrackId, View};
 use campfire_math::Num;
+use campfire_script::{ApiError, CallError, Effect, Frame, View};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
+use campfire_values::TrackId;
 
 use crate::experience::Experience;
 use crate::level_ups::{LevelUp, LevelUps};

@@ -1,7 +1,8 @@
 use campfire_common::Ticks;
-use campfire_core::{Hook, PerType, ScriptBook, ScriptRole};
-use campfire_script::ScriptId;
+use campfire_declare::PerType;
+use campfire_script::{Hook, ScriptId, ScriptRole};
 use campfire_sim::{Capability, TickRate};
+use campfire_units::ScriptBook;
 
 use crate::ai_data::AiData;
 use crate::error::AiError;

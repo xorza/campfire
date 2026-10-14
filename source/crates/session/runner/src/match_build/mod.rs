@@ -1,10 +1,11 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::{MatchSpec, Release};
 use campfire_common::SegmentSeed;
-use campfire_core::{ScriptBudgets, Units};
 use campfire_mode::{ModeInputs, ModeSetup};
 use campfire_package::ModePackages;
+use campfire_script::ScriptBudgets;
 use campfire_sim::TickRate;
+use campfire_units::Units;
 
 /// A match of a mode, built from its read packages.
 #[derive(Debug)]
@@ -64,10 +65,10 @@ pub(crate) mod bench;
 pub(crate) mod internals {
     use campfire_capabilities::{Match, MatchSpec};
     use campfire_common::SegmentSeed;
-    use campfire_core::Players;
     use campfire_log::internals::LogCheck;
     use campfire_mode::{Mode, ModeInputs};
     use campfire_package::ModePackages;
+    use campfire_players::Players;
     use campfire_sim::TickRate;
     use campfire_vision::Vision;
 

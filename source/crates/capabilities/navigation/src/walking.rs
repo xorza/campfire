@@ -2,10 +2,10 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use campfire_core::{
-    ArrivedShort, Block, Body, Dead, Destination, ForcedMove, MapBook, MoveStep, Placed, UnitTags,
-};
+use campfire_geometry::Placed;
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
+use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, MapBook, MoveStep};
+use campfire_values::{Block, UnitTags};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;

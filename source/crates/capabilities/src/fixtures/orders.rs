@@ -1,9 +1,10 @@
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_core::{Owner, Team, UnitType};
 use campfire_mode::Mode;
 use campfire_orders::Orders;
 use campfire_sim::{Position, StableId};
+use campfire_units::Owner;
+use campfire_values::{Team, UnitType};
 
 /// The test fixtures of `Orders` that need a crate above its own.
 pub trait OrdersFixtures {

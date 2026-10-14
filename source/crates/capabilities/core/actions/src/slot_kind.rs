@@ -1,4 +1,4 @@
-use campfire_core::{NameKind, name_script_arg};
+use campfire_script::{NameKind, name_script_arg};
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 

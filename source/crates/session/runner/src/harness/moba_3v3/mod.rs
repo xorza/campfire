@@ -4,7 +4,6 @@ use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Action, Order};
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::{Dead, Team};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_items::{Inventory, ItemId, ItemsAction};
 use campfire_math::Num;
@@ -16,7 +15,8 @@ use campfire_progression::ProgressionAction;
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
-use campfire_values::{DeclaredName, Names};
+use campfire_units::Dead;
+use campfire_values::{DeclaredName, Names, Team};
 
 use crate::harness::fixed_match::FixedMatch;
 use crate::harness::fixed_session::FixedSession;

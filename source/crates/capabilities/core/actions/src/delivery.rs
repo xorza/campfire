@@ -1,4 +1,4 @@
-use campfire_core::UnitType;
+use campfire_values::UnitType;
 
 use crate::fan::Fan;
 

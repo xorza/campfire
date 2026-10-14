@@ -4,10 +4,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::{ModifierId, UnitEntity};
 use campfire_math::Num;
 use campfire_sim::{SimComponent, StableId, TickRate};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
+use campfire_values::ModifierId;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

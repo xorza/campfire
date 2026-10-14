@@ -6,10 +6,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::EffectQueues;
-use campfire_core::{
-    BodyUnit, ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::BodyUnit;
 
 mod error;
 mod experience;
@@ -115,7 +114,7 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::World;
-    use campfire_core::Book;
+    use campfire_declare::Book;
     use campfire_values::DeclaredName;
 
     use crate::Progression;

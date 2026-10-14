@@ -1,8 +1,8 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_core::{Body, Dead, Destination};
 use campfire_sim::{Position, SimTick};
+use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
 use crate::party::{Party, PartyKey};

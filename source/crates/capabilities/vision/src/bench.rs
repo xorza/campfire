@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
-use campfire_core::{Relations, Team};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
+use campfire_values::{Relations, Team};
 use criterion::{Criterion, Throughput};
 
 use crate::brush_map::BrushMap;

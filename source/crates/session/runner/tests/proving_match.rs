@@ -8,9 +8,7 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::ActionSlots;
 use campfire_areas::Area;
 use campfire_capabilities::Release;
-use campfire_core::{
-    Body, CapabilitySet, Dead, Lifespan, MoveStep, Owner, ScriptFailures, StateValue, Team, TeamSet,
-};
+use campfire_declare::CapabilitySet;
 use campfire_math::Num;
 use campfire_mode::ModeWorld;
 use campfire_production::TrainQueue;
@@ -20,9 +18,12 @@ use campfire_runner::internals::{
     CopyCheck, FixedMatch, Golden, MatchBuild, MatchUnits, ProvingMatch,
 };
 use campfire_runner::{Session, SessionWorld};
+use campfire_script::{ScriptFailures, StateValue};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_stats::{Level, Modifiers};
+use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner};
+use campfire_values::{Team, TeamSet};
 use campfire_vision::SeenBy;
 
 /// What the match showed over its ticks.

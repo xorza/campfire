@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_core::UnitType;
 use campfire_math::Num;
 use campfire_sim::{SimWorld, StableId};
+use campfire_values::UnitType;
 
 use crate::level::Level;
 use crate::stat_book::StatBook;

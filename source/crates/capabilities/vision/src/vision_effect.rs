@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_core::{Effect, Frame, Team};
 use campfire_math::Num;
+use campfire_script::{Effect, Frame};
 use campfire_sim::Position;
+use campfire_values::Team;
 
 use crate::reveals::{Reveal, Reveals};
 use crate::vision_book::VisionBook;

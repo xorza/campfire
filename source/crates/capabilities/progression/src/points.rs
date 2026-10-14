@@ -1,9 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{TrackId, UnitEntity};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
+use campfire_values::TrackId;
 use serde::{Deserialize, Serialize};
 
 use crate::experience::Experience;

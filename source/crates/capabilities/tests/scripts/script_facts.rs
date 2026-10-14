@@ -1,8 +1,7 @@
 use std::num::NonZeroU64;
 
 use campfire_capabilities::Release;
-use campfire_core::*;
-use campfire_script::ScriptHost;
+use campfire_script::*;
 use campfire_values::EngineEnum;
 
 #[test]

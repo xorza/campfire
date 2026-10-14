@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe};
 
 use campfire_capabilities::Release;
-use campfire_core::*;
-use campfire_values::DeclaredName;
+use campfire_units::*;
+use campfire_values::{Block, DeclaredName, Tag, TagSet, TypeScope};
 
 #[test]
 fn a_units_tags_take_their_properties_from_the_modes_data() {
-    let mut types = UnitTypes::new(Release::engine_tags());
+    let mut types = UnitTypeBook::new(Release::engine_tags());
     let names = ["stunned", "slowed", "slow_immune", "true_sight"];
     let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name).unwrap());
     // The engine's tags hold the first places, and to declare one finds it.
@@ -77,7 +77,7 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
 
     // The book took the types' tags: a later load, a later tag or a second book fails, as it
     // would be lost.
-    let mut fails = |late: &mut dyn FnMut(&mut UnitTypes)| {
+    let mut fails = |late: &mut dyn FnMut(&mut UnitTypeBook)| {
         panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
     };
     assert!(fails(&mut |types| {

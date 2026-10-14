@@ -1,7 +1,7 @@
-use campfire_core::ScriptBook;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_sim::TickRate;
 use campfire_stats::StatId;
+use campfire_units::ScriptBook;
 use campfire_values::{DeclaredName, PackagePath, Speed};
 
 use crate::books::package_content::PackageContent;

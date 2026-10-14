@@ -1,4 +1,5 @@
-use campfire_core::{ApiBuilder, ApiVersion, HitHandle, Hook, Status};
+use campfire_script::{ApiBuilder, ApiVersion, Hook, Status};
+use campfire_units::HitHandle;
 
 /// The script API of the deliveries that projectiles and areas make, where they run: the hit
 /// their hooks record, and their `on_hit` and `on_end` hooks.

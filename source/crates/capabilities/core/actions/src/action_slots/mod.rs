@@ -2,11 +2,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, PerType, TagSet, UnitEntity};
+use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_values::{ActionStart, Rank, Relation};
+use campfire_units::UnitEntity;
+use campfire_values::{ActionId, ActionStart, Rank, Relation, TagSet};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

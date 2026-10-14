@@ -1,9 +1,9 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
-use campfire_core::Layer;
 use campfire_geometry::internals::{COUNT, Density, KernelScene};
 use campfire_sim::Position;
+use campfire_units::Layer;
 use criterion::{Criterion, Throughput};
 
 use crate::broadphase::internals::{scene, static_bodies, statics};

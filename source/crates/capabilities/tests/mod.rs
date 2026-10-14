@@ -1,5 +1,5 @@
 //! The tests that build a whole match, which `release` composes here: one module for each
-//! capability crate, and one for each module of `campfire-core`.
+//! capability crate, and one for each of the core's crates.
 
 mod abilities;
 mod areas;

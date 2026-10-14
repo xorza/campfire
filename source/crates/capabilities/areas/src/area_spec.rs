@@ -1,8 +1,10 @@
 use campfire_common::Ticks;
-use campfire_core::{Filter, ModifierId, PerType, UnitTypes, UnknownName};
+use campfire_declare::PerType;
 use campfire_math::Num;
+use campfire_script::{Filter, UnknownName};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{DeclaredName, TimeTooLarge};
+use campfire_units::UnitTypeBook;
+use campfire_values::{DeclaredName, ModifierId, TimeTooLarge};
 
 use crate::area_data::AreaData;
 use crate::error::AreaError;
@@ -33,7 +35,7 @@ impl AreaSpec {
     /// that does not count in ticks, or a name the match does not have.
     pub fn of(
         data: &AreaData,
-        types: &UnitTypes,
+        types: &UnitTypeBook,
         rate: TickRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
     ) -> Result<AreaSpec, AreaError> {
@@ -43,7 +45,7 @@ impl AreaSpec {
             radius: data.radius,
             delay: ticks(data.delay_ms)?,
             duration: ticks(data.duration_ms)?,
-            affects: Filter::resolve_or_enemies(data.affects.as_ref(), types)?,
+            affects: Filter::resolve_or_enemies(data.affects.as_ref(), types.tags())?,
             inside: Inside {
                 caster: inside(&data.inside.caster)?,
                 allies: inside(&data.inside.allies)?,

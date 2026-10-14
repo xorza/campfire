@@ -1,6 +1,6 @@
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::Team;
 use campfire_protocol::InputHash;
+use campfire_values::Team;
 use serde::{Deserialize, Serialize};
 
 /// Tells a client that it plays the match, as it starts or again after its link failed: which

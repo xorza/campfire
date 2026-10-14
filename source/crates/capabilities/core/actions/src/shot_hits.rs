@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Scratch};
+use campfire_declare::Scratch;
 use campfire_math::Num;
 use campfire_sim::StableId;
-use campfire_values::{DamageKind, Hit, Rank};
+use campfire_values::{ActionId, DamageKind, Hit, Rank};
 
 /// The hits of the tick's attack projectiles, in the order they struck, which the capability that
 /// deals an attack's damage takes as the projectiles end their flight. Not state: it empties

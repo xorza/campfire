@@ -1,8 +1,10 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Book, ModifierId, UnitType, View};
+use campfire_declare::Book;
+use campfire_script::View;
 use campfire_sim::Capability;
+use campfire_values::{ActionId, ModifierId, UnitType};
 
 /// What each train and build with a `requires` needs its player to hold, by action: unit types of
 /// which it owns a living, complete unit, and player modifiers, one run of each after another.

@@ -11,14 +11,13 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionRange, ActionTarget, Aim, Delivery, DeliveryShape};
-use campfire_core::{
-    ByType, Declarations, EngineTag, InstallCx, MapBook, Module, ModuleSet, Phase, SetPlace,
-    TagProperties, UnitType,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, StableId};
+use campfire_units::MapBook;
+use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod flight_state;
 mod flights;
@@ -235,10 +234,11 @@ impl Projectiles {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_core::{ActionId, ByType, UnitType, View};
+    use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, Position, StableId, TickRate};
-    use campfire_values::{DamageKind, Rank};
+    use campfire_units::UnitTypeBook;
+    use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
     use crate::Projectiles;
     use crate::launches::{Launch, LaunchPayload, Launches};
@@ -251,13 +251,10 @@ pub mod internals {
         /// the match's rate: its `hits` filter names tags of the match's.
         pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
             let rate = *world.resource::<TickRate>();
-            let view = world.non_send::<View>().clone();
-            let spec = {
-                let mut types = view.types_mut();
-                types.give_tag(unit_type, Projectiles::TAG.tag());
-                ProjectileSpec::of(data, &types, rate)
-                    .expect("a test's projectile hits tags its match has")
-            };
+            let mut types = world.resource_mut::<UnitTypeBook>();
+            types.give_tag(unit_type, Projectiles::TAG.tag());
+            let spec = ProjectileSpec::of(data, world.resource::<UnitTypeBook>(), rate)
+                .expect("a test's projectile hits tags its match has");
             world
                 .resource_mut::<ByType<ProjectileSpec>>()
                 .set(unit_type, spec);

@@ -7,18 +7,21 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
-use campfire_core::{
-    Block, Body, BodyUnit, Book, Dead, DeliveryEntity, ModifierId, MoveStep, ScriptBudgets,
-    ScriptLimits, Tag, TagBook, TagData, TagProperties, TagSet, Team, TypeScope, UnitTags,
-    UnitType, UnitTypeCore, Units,
-};
+use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
+use campfire_script::{ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, IdAllocator, Position, SimComponent, SimUpdate, SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::*;
+use campfire_units::{
+    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, UnitTypeCore, Units,
+};
+use campfire_values::{
+    Block, ModifierId, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags, UnitType,
+};
 use campfire_values::{
     DeclaredName, EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
     Stat,
@@ -572,7 +575,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
     // `warded`, whose modifier `ward` grants it, makes immune to the engine's tag 0, `avatar`.
     let warded = DeclaredName::new("warded").unwrap();
-    Units::declare_tags(&game, [warded.as_str()]);
+    Units::declare_tags(&mut game, [warded.as_str()]);
     let immune = TagData {
         immune: vec![DeclaredName::new("avatar").unwrap()],
         ..TagData::default()

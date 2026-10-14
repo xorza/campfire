@@ -3,12 +3,10 @@ use std::sync::Arc;
 
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_core::{
-    ActionId, ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn,
-};
 use campfire_math::Num;
+use campfire_script::{ColumnRows, Filter, KeptRows, RowFill, RunMove, UnitRow, View, ViewColumn};
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, Rank};
 
 use crate::action::Action;
 use crate::action_book::ActionBook;

@@ -2,11 +2,13 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::ActionBook;
-use campfire_core::{ActionId, ByType, DeliveryEntity, UnitType, View};
+use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
+use campfire_script::View;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
-use campfire_values::{ActionStart, DamageKind, Rank};
+use campfire_units::DeliveryEntity;
+use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

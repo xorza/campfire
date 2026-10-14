@@ -6,17 +6,18 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_common::{PlayerSlot, Tick, Ticks};
-use campfire_core::{
-    ActionId, BodyForm, ByType, Dead, Destination, MoveStep, Owner, PerType, Players, PlayersWorld,
-    PlayersWorldCrate, ResourceAmount, ResourceId, SpawnAt, SpawnPoint, Spawner, Team, TypeScope,
-    UnitType, UnitTypeCore, Units,
-};
+use campfire_declare::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
+use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};
+use campfire_units::{
+    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, UnitTypeCore, Units,
+};
 use campfire_values::Rank;
+use campfire_values::{ActionId, ResourceId, Team, TypeScope, UnitType};
 use serde::Serialize;
 
 /// The point `(x, z)` in halves of a meter.

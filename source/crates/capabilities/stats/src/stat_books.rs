@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Res, SystemParam};
-use campfire_core::TagBook;
+use campfire_units::TagBook;
 
 use crate::modifier_book::ModifierBook;
 use crate::pool_book::PoolBook;

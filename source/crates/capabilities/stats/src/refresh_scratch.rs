@@ -1,8 +1,7 @@
 use bevy_ecs::entity::Entity;
-use campfire_core::{TagSet, UnitType};
 use campfire_math::Num;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{Rank, TagSet, UnitType};
 
 use crate::live_param::LiveParam;
 use crate::modifier_book::ModifierBook;

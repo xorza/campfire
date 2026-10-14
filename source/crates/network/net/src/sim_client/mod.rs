@@ -13,7 +13,6 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{MatchSpec, Order, Release};
 use campfire_common::{SegmentSeed, Tick};
-use campfire_core::{Dead, PlayerUnits, TeamSet, UnitsWorld};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
@@ -21,6 +20,8 @@ use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
+use campfire_units::{Dead, PlayerUnits, UnitsWorld};
+use campfire_values::TeamSet;
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };

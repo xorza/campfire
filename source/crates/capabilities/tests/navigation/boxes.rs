@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_core::{DashTo, ForcedMove};
+use campfire_units::{DashTo, ForcedMove};
 
 use super::*;
 

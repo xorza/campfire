@@ -5,10 +5,9 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_core::{
-    ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Predicting, SetPlace, UnitEntity,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::{Predicting, UnitEntity};
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -108,13 +107,15 @@ impl Module for Vision {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_core::internals::FailureKind;
-    use campfire_core::{Book, CallError, Ctx, Team, TeamSet, UnitsWorldCrate};
+    use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
-    use campfire_script::{Budget, ScriptHost};
+    use campfire_script::internals::FailureKind;
+    use campfire_script::{Budget, CallError, Ctx, ScriptHost};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
+    use campfire_units::UnitsWorldCrate;
+    use campfire_values::{Team, TeamSet};
 
     use crate::Vision;
     use crate::brush_map::BrushMap;

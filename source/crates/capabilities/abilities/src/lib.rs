@@ -11,11 +11,11 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::{ActionTarget, CastSpends, SlotKind, UseGroup};
 use campfire_common::Ticks;
-use campfire_core::{
-    Block, Declarations, InstallCx, Module, ModuleSet, Phase, ScriptValue, SetPlace, UnitTags, View,
-};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
+use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
+use campfire_values::{Block, UnitTags};
 
 mod abilities_api;
 mod abilities_effect;
@@ -142,9 +142,9 @@ pub mod internals {
     use campfire_actions::{
         ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
     };
-    use campfire_core::internals::FailedCall;
-    use campfire_core::{Hook, ScriptFailures};
     use campfire_math::Num;
+    use campfire_script::internals::FailedCall;
+    use campfire_script::{Hook, ScriptFailures};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
     use campfire_stats::{ModifierClocks, Modifiers, PoolId, Pools, StatRule, Stats};

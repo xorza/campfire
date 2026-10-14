@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::Scratch;
+use campfire_declare::Scratch;
 use campfire_sim::Position;
 
 use crate::body_index::{BodyIndex, IndexedBody};

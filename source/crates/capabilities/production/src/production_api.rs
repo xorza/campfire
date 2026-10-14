@@ -1,5 +1,5 @@
 use campfire_actions::{ActionDataField, RequiresData};
-use campfire_core::{ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, Unit};
+use campfire_script::{ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, Unit};
 use campfire_sim::Capability;
 
 use crate::drop_off_data::DropOffData;

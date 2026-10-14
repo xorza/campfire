@@ -1,4 +1,4 @@
-use campfire_core::{ApiBuilder, ApiOwner, MemberSpec, View};
+use campfire_script::{ApiBuilder, ApiOwner, MemberSpec, View};
 
 use crate::heal::{Heal, HealCause};
 

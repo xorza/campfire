@@ -1,7 +1,7 @@
-use campfire_core::Layer;
 use campfire_geometry::{Bounds, Polygon, Shape};
 use campfire_math::Vec3;
 use campfire_sim::{IdAllocator, Position};
+use campfire_units::Layer;
 
 use super::*;
 use crate::wall::Wall;

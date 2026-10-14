@@ -1,5 +1,5 @@
-use campfire_core::{ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, Unit};
 use campfire_math::Num;
+use campfire_script::{ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, Unit};
 use campfire_sim::Capability;
 
 use crate::action_data_field::ActionDataField;

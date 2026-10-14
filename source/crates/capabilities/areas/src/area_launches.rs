@@ -1,7 +1,8 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Scratch, UnitType};
+use campfire_declare::Scratch;
 use campfire_deliveries::Delivering;
 use campfire_sim::{Position, StableId};
+use campfire_values::UnitType;
 
 /// The areas that land this tick: those actions deliver, and those scripts place. Not state: it
 /// empties within the tick.

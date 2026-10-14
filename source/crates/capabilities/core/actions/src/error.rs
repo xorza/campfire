@@ -1,4 +1,4 @@
-use campfire_core::{Hook, UnknownName};
+use campfire_script::{Hook, UnknownName};
 use campfire_values::{DeclaredName, TimeTooLarge};
 use thiserror::Error;
 

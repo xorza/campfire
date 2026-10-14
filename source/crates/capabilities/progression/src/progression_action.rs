@@ -1,4 +1,4 @@
-use campfire_core::CapabilityAction;
+use campfire_players::CapabilityAction;
 use campfire_sim::Capability;
 use serde::{Deserialize, Serialize};
 

@@ -8,27 +8,26 @@ use campfire_actions::{
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
-use campfire_core::{
-    ActionId, Filter, ModifierId, NameKind, ResourceAmount, ResourceId, Tag, TrackId, TypeScope,
-    TypesError, UnitType, UnitTypes, Units, UnknownName,
-};
 use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopBook, ShopData, ShopPlace};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
 use campfire_navigation::Walker;
 use campfire_orders::Ai;
+use campfire_players::ResourceAmount;
 use campfire_production::{
     Builder, Gatherer, NewBuild, Node, PlacementCheck, Production, ResourceSet, Style, SupplyBook,
     SupplyCostBook,
 };
 use campfire_progression::{TrackBook, TrackSet};
 use campfire_projectiles::{ProjectileSpec, Projectiles};
-use campfire_script::ScriptId;
+use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
 use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
     PoolId, SpecError, StatBook, StatId,
 };
+use campfire_units::{TypesError, UnitTypeBook, Units};
 use campfire_values::{
-    DamageKind, DeclaredName, FilterData, Names, PackagePath, Share, Stat, TimeTooLarge,
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Names, PackagePath, ResourceId,
+    Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
 };
 
 use crate::books::Books;
@@ -137,7 +136,7 @@ impl<'a> BookBuilder<'a> {
             start += package.scripts.len();
         }
         let mut books = BookParts {
-            types: UnitTypes::new(Release::engine_tags()),
+            types: UnitTypeBook::new(Release::engine_tags()),
             supply: data.supply,
             ..BookParts::default()
         };
@@ -307,6 +306,7 @@ impl<'a> BookBuilder<'a> {
         built.add(SupplyBook(parts.supply));
         built.add(parts.items);
         built.add(ShopBook(shop));
+        built.add(parts.types);
         let ModeNames {
             damage_kinds,
             resources,
@@ -314,7 +314,6 @@ impl<'a> BookBuilder<'a> {
         } = self.names;
         Ok(Books {
             built,
-            types: parts.types,
             damage_kinds,
             resources,
             inputs: ModeInputs {
@@ -330,7 +329,7 @@ impl<'a> BookBuilder<'a> {
 
     /// The mode's map, resolved, its placed units' types among `types`; an error for what it
     /// names that the mode does not have.
-    fn resolve_map(&self, types: &UnitTypes) -> Result<ResolvedMap, BookError> {
+    fn resolve_map(&self, types: &UnitTypeBook) -> Result<ResolvedMap, BookError> {
         let input = self.input;
         let data = input.data;
         let mode_units = &input.packages[0].content.units;
@@ -440,7 +439,7 @@ impl<'a> BookBuilder<'a> {
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
     /// section, refreshed in the input's order: each package's types that stand, in its scope,
     /// and each avatar, in the mode's; an error for a stat the mode does not declare.
-    fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> Result<StatBook, BookError> {
+    fn stat_book(input: &BookInput<'_>, types: &UnitTypeBook) -> Result<StatBook, BookError> {
         let mut book = StatBook::new(&input.data.stats, input.max_move_speed.get());
         for (index, package) in (0..).zip(&input.packages) {
             let units = package.content.units.iter();
@@ -471,7 +470,7 @@ impl<'a> BookBuilder<'a> {
     /// avatar package's avatar. The mode's types that stand are in the mode's scope, with the
     /// avatars; every other type is in its package's own.
     fn declare_types(
-        types: &mut UnitTypes,
+        types: &mut UnitTypeBook,
         index: u16,
         package: &BookPackage<'_>,
     ) -> Result<(), TypesError> {
@@ -614,7 +613,7 @@ impl<'a> BookBuilder<'a> {
         let types = &books.types;
         let check = |rule: &PlacementRule| {
             Ok(PlacementCheck {
-                filter: Filter::resolve(&rule.filter, types)?,
+                filter: Filter::resolve(&rule.filter, types.tags())?,
                 distance: rule.distance,
             })
         };
@@ -1055,7 +1054,7 @@ struct BuildNames<'b> {
     input: &'b BookInput<'b>,
     names: &'b ModeNames,
     stats: &'b StatBook,
-    types: &'b UnitTypes,
+    types: &'b UnitTypeBook,
     modifiers: &'b ModifierBook,
     tracks: &'b TrackBook,
     params: &'b ParamTable,
@@ -1082,7 +1081,7 @@ impl ActionNames for BuildNames<'_> {
     }
 
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
-        Filter::resolve(filter, self.types)
+        Filter::resolve(filter, self.types.tags())
     }
 
     fn modifier(&self, package: u16, name: &DeclaredName) -> Result<ModifierId, UnknownName> {

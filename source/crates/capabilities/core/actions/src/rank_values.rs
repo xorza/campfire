@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use campfire_common::Ticks;
-use campfire_core::ResourceAmount;
+use campfire_players::ResourceAmount;
 use campfire_sim::TickRate;
 use campfire_stats::PoolCost;
 use campfire_values::{DeclaredName, Rank, TimeTooLarge};

@@ -5,7 +5,6 @@ use std::time::Duration;
 
 use bevy_ecs::query::With;
 use campfire_common::PlayerSlot;
-use campfire_core::{Destination, Owner};
 use campfire_math::Num;
 use campfire_mode::{Leaver, PlayersData};
 use campfire_net::internals::{End, InProcessMatch, LinkModel, MatchSetup};
@@ -19,6 +18,7 @@ use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
 use campfire_store::internals::Scratch;
+use campfire_units::{Destination, Owner};
 use lightyear::prelude::Unlinked;
 
 /// Steps a client and the server may take to link, offer, join and play again.

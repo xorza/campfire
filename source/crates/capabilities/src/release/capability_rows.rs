@@ -1,4 +1,4 @@
-use campfire_core::{Module, ModuleVisitor};
+use campfire_declare::{Module, ModuleVisitor};
 use campfire_sim::Capability;
 
 /// Each capability of the release's list, in the order they install, with what it builds on.

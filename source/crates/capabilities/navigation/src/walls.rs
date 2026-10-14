@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use campfire_core::Layer;
 use campfire_geometry::{BodyBox, Bounds};
 use campfire_sim::Position;
+use campfire_units::Layer;
 
 use crate::wall::Wall;
 

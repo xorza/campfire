@@ -4,13 +4,15 @@ use std::fmt::{self, Debug};
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
-use campfire_core::{
-    ApiBuilder, Book, Cache, CallPart, Callbacks, CapabilitySet, ColumnFill, Ctx, Declarations,
-    EngineTag, EntityKind, EntityKinds, EntityParts, KindSpawn, KindVisitor, ModuleSet, Report,
-    RowReads, Scratch, SpawnParts, View, ViewColumn,
+use campfire_declare::{
+    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
+    KindSpawn, KindVisitor, ModuleSet, Report, Scratch, SpawnParts,
 };
+use campfire_script::{ApiBuilder, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
 use campfire_state_types::{Replication, StateTypes};
+use campfire_units::{EntityKinds, ViewReader};
+use campfire_values::EngineTag;
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
 /// checks into the state registry, its system sets into the schedule, and the rest into the
@@ -141,9 +143,7 @@ impl Declarations for Installer<'_> {
     }
 
     fn column<C: ViewColumn + Default, D: RowReads>(&mut self, fill: ColumnFill<D, C>) {
-        let view = self.world.non_send::<View>().clone();
-        view.add_column(C::default());
-        view.add_source::<D, C>(self.world, fill);
+        ViewReader::add_source::<D, C>(self.world, fill);
     }
 
     fn call_part<P: CallPart + Default>(&mut self) {

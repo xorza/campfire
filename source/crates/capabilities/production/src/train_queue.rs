@@ -5,10 +5,12 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionKind};
 use campfire_common::{Tick, Ticks};
-use campfire_core::{ActionId, ByType, PlayersWorldCrate, ResourceAmount, UnitEntity, UnitType};
+use campfire_declare::ByType;
+use campfire_players::{PlayersWorldCrate, ResourceAmount};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_values::Rank;
+use campfire_units::UnitEntity;
+use campfire_values::{ActionId, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

@@ -4,11 +4,11 @@ use bevy_ecs::query::{Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionBook, ActionSlots, KindSpec};
-use campfire_core::{
-    ArrivedShort, Body, Dead, Destination, Owner, PlayersWorldCrate, StatusTags, Team, UnitTags,
-};
 use campfire_navigation::Navigation;
+use campfire_players::PlayersWorldCrate;
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
+use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
+use campfire_values::{Team, UnitTags};
 
 use crate::Production;
 use crate::gather_loop::checked_gather::CheckedGather;

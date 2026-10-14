@@ -1,6 +1,7 @@
-use campfire_core::{BodyGrid, Layer, Placed};
+use campfire_geometry::{BodyGrid, Placed};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
+use campfire_units::Layer;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::pathing_grid::PathingGrid;

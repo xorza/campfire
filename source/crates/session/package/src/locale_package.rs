@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_core::ApiVersion;
+use campfire_script::ApiVersion;
 use campfire_values::PackagePath;
 
 use crate::error::load_problem::LoadProblem;

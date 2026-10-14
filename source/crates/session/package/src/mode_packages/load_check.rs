@@ -7,20 +7,21 @@ use campfire_actions::{
     MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields, Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
-use campfire_core::{
-    ApiOwner, ApiVersion, CtxMisuse, DataTable, EngineTag, EnumRecord, EnumString, Hook,
-    MemberKind, NameKind, ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName,
-    ScriptRole, Status, SyncTo, TypesError, UnitTypeCore, UnknownName,
-};
 use campfire_geometry::Metric;
 use campfire_items::ItemData;
 use campfire_math::Num;
 use campfire_mode::{ModeList, ModeNamesError, Offers};
 use campfire_progression::TrackError;
 use campfire_projectiles::ProjectileHits;
+use campfire_script::{
+    ApiOwner, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
+    ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, SyncTo,
+    UnknownName,
+};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierData, ModifierProblem, StatId};
-use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat};
+use campfire_units::{TypesError, UnitTypeCore};
+use campfire_values::{DeclaredName, EngineTag, FilterData, Number, PackagePath, Param, Stat};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;

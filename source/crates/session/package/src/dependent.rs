@@ -1,6 +1,5 @@
 use campfire_capabilities::PackageContent;
-use campfire_core::ScriptApi;
-use campfire_script::ScriptHost;
+use campfire_script::{ScriptApi, ScriptHost};
 
 use crate::avatar_unit::AvatarUnit;
 use crate::error::LoadError;

@@ -1,8 +1,7 @@
-use campfire_core::ActionId;
 use campfire_geometry::Shape;
 use campfire_math::Num;
 use campfire_sim::Position;
-use campfire_values::Rank;
+use campfire_values::{ActionId, Rank};
 
 use crate::action::{Action, Aim};
 use crate::action_call::{ActionCall, ResolvedCast};

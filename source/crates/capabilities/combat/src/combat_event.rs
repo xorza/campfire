@@ -1,5 +1,6 @@
-use campfire_core::{ModifierId, ScriptFn};
+use campfire_script::ScriptFn;
 use campfire_sim::StableId;
+use campfire_values::ModifierId;
 
 use crate::damage::Damage;
 

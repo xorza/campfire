@@ -14,7 +14,6 @@ use campfire_actions::{ActionSlot, ActionSlots, SlotKind};
 use campfire_capabilities::Match;
 use campfire_combat::{Deaths, Respawn};
 use campfire_common::Tick;
-use campfire_core::{Dead, Owner, ScriptFailures, StateValue, Team, UnitType};
 use campfire_math::Num;
 use campfire_mode::{ModeParam, ModeWorld};
 use campfire_navigation::PathWalker;
@@ -24,11 +23,12 @@ use campfire_runner::internals::{
     CopyCheck, FixedMatch, Golden, HashTrail, MatchUnits, Moba3v3, ScriptedMode,
 };
 use campfire_runner::{Session, SessionWorld};
-use campfire_script::ScriptHost;
+use campfire_script::{ScriptFailures, ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Life, Stats};
-use campfire_values::{Rank, Scalar};
+use campfire_units::{Dead, Owner};
+use campfire_values::{Rank, Scalar, Team, UnitType};
 
 use crate::match_3v3::showcase::Showcase;
 use crate::moba::{gold, level_xp};

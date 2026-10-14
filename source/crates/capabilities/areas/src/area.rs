@@ -3,11 +3,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, EffectListBook};
 use campfire_common::Tick;
-use campfire_core::{ByType, DeliveryEntity, UnitType};
+use campfire_declare::ByType;
 use campfire_deliveries::Delivering;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_stats::Stats;
+use campfire_units::DeliveryEntity;
+use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 
 use crate::area_spec::AreaSpec;

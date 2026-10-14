@@ -5,16 +5,17 @@ use std::panic::{self, AssertUnwindSafe};
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
-use campfire_core::{
-    ApiBuilder, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations, EngineTag, EntityKind,
-    KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
+use campfire_declare::{
+    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
+    ModuleSet, Report, Scratch,
 };
 use campfire_math::Num;
 use campfire_orders::Ai;
+use campfire_script::{ApiBuilder, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
-use campfire_values::Stat;
+use campfire_values::{EngineTag, Stat};
 
 use super::*;
 use crate::release::r#match::Match;

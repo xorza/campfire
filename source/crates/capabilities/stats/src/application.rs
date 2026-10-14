@@ -1,10 +1,10 @@
 use std::num::NonZeroU32;
 
 use campfire_common::Ticks;
-use campfire_core::{ActionId, ModifierId, StateValue};
 use campfire_math::Num;
+use campfire_script::StateValue;
 use campfire_sim::StableId;
-use campfire_values::Rank;
+use campfire_values::{ActionId, ModifierId, Rank};
 
 use crate::instance::{StackEnd, StatShare};
 use crate::interval::Interval;
@@ -40,9 +40,8 @@ pub struct NewInstance {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_core::ModifierId;
     use campfire_sim::StableId;
-    use campfire_values::Rank;
+    use campfire_values::{ModifierId, Rank};
 
     use crate::application::{Application, NewInstance};
     use crate::lifetime::{Ends, Lifetime};

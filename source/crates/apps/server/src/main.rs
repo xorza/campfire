@@ -32,7 +32,7 @@ use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_common::{ExitStatus, TlsKey};
-use campfire_core::CapabilitySet;
+use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,

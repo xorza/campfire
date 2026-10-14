@@ -1,9 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{PerType, UnitEntity};
+use campfire_declare::PerType;
 use campfire_sim::{Capability, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 /// What becomes of a unit when it dies, as its unit type says: in data, `stay` or `despawn`.

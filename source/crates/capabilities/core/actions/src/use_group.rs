@@ -1,9 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{Block, PerType, UnitEntity};
+use campfire_declare::PerType;
 use campfire_sim::{Capability, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_units::UnitEntity;
+use campfire_values::Block;
 use serde::{Deserialize, Serialize};
 
 use crate::slot_kind::SlotKind;

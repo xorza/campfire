@@ -11,12 +11,10 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, Delivery, EffectQueues};
-use campfire_core::{
-    ByType, Declarations, EngineTag, InstallCx, Module, ModuleSet, Phase, SetPlace, TagProperties,
-    UnitType,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
 use campfire_sim::{Capability, Position, StableId};
+use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod area;
 mod area_data;
@@ -162,10 +160,12 @@ impl Areas {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_core::{ByType, NameKind, UnitType, UnknownName, View};
+    use campfire_declare::ByType;
+    use campfire_script::{NameKind, UnknownName};
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
-    use campfire_values::DeclaredName;
+    use campfire_units::UnitTypeBook;
+    use campfire_values::{DeclaredName, UnitType};
 
     use crate::Areas;
     use crate::area_data::AreaData;
@@ -177,17 +177,15 @@ pub mod internals {
         /// and its `inside` modifiers of the package.
         pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
             let rate = *world.resource::<TickRate>();
-            let view = world.non_send::<View>().clone();
+            let mut types = world.resource_mut::<UnitTypeBook>();
+            types.give_tag(unit_type, Areas::TAG.tag());
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())
                     .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
             };
-            let spec = {
-                let mut types = view.types_mut();
-                types.give_tag(unit_type, Areas::TAG.tag());
-                AreaSpec::of(data, &types, rate, modifier)
-                    .expect("a test's area holds in ticks and names what its match has")
-            };
+            let types = world.resource::<UnitTypeBook>();
+            let spec = AreaSpec::of(data, types, rate, modifier)
+                .expect("a test's area holds in ticks and names what its match has");
             world
                 .resource_mut::<ByType<AreaSpec>>()
                 .set(unit_type, spec);

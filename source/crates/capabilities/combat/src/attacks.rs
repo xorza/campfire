@@ -7,12 +7,12 @@ use campfire_actions::{
     Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
-use campfire_core::{
-    Block, Body, Dead, ForcedMove, Owner, PlayerResources, PlayerRows, PlayerRowsMut,
-    PlayersWorldCrate, Predicting, ScriptsWorldCrate, Team, UnitTags,
-};
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorldCrate};
+use campfire_script::ScriptsWorldCrate;
 use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
+use campfire_units::{Body, Dead, ForcedMove, Owner, Predicting};
+use campfire_values::{Block, Team, UnitTags};
 
 use crate::ROLL_STREAM;
 use crate::combat_event::CombatEvent;

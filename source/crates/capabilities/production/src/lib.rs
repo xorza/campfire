@@ -9,11 +9,10 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_core::{
-    Block, BodyUnit, ByType, Declarations, EngineTag, InstallCx, Module, ModuleSet, Phase, Player,
-    SetPlace, TagProperties,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::{BodyUnit, Player};
+use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 mod build_book;
@@ -250,11 +249,12 @@ impl Production {
 pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionBook, ActionSlots, ActionTarget};
-    use campfire_core::{Book, ByType, UnitType};
+    use campfire_declare::{Book, ByType};
     use campfire_math::Num;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, StableId};
     use campfire_stats::Life;
+    use campfire_values::UnitType;
 
     use crate::Production;
     use crate::build_target::BuildTarget;

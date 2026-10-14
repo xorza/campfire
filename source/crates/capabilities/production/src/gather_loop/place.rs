@@ -1,5 +1,5 @@
-use campfire_core::{ArrivedShort, Body, Destination};
 use campfire_sim::Position;
+use campfire_units::{ArrivedShort, Body, Destination};
 
 use crate::gather_loop::step::Step;
 

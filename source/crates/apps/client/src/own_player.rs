@@ -1,7 +1,8 @@
 use bevy::ecs::system::{Res, SystemParam};
 use campfire_common::PlayerSlot;
-use campfire_core::{Commanded, PlayerUnits, Team, TeamSet};
 use campfire_net::{JoinState, WatchRequest};
+use campfire_units::{Commanded, PlayerUnits};
+use campfire_values::{Team, TeamSet};
 
 /// The client's own player as a system reads it: its seat and team, once the client plays, the
 /// avatar it commands, and, for a spectator, the teams it chose to watch.

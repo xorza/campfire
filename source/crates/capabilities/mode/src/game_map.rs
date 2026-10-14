@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use campfire_core::{ScriptList, ScriptText, ScriptValue, plain_script_arg};
+use campfire_script::{ScriptList, ScriptText, ScriptValue, plain_script_arg};
 
 use crate::marker::{Marker, MarkerInfo};
 use crate::marker_spec::MarkerSpec;

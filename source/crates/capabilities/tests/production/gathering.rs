@@ -2,12 +2,13 @@ use std::num::NonZeroU32;
 
 use campfire_actions::GatherSpec;
 use campfire_capabilities::Order;
-use campfire_core::{Block, Filter, Layer, MapBook};
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
+use campfire_script::Filter;
 use campfire_sim::EntityIndex;
-use campfire_values::RelationSet;
+use campfire_units::{Layer, MapBook};
+use campfire_values::{Block, RelationSet};
 
 use super::*;
 

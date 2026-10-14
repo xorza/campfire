@@ -1,10 +1,9 @@
 use bevy_ecs::entity::Entity;
 use campfire_common::Ticks;
-use campfire_core::UnitType;
 use campfire_math::Num;
 use campfire_sim::Position;
 use campfire_stats::PoolCost;
-use campfire_values::Rank;
+use campfire_values::{Rank, UnitType};
 
 /// What a builder does with its build order this tick.
 #[derive(Debug, Clone, Copy)]

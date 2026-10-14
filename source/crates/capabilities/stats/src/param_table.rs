@@ -164,8 +164,7 @@ impl ParamTable {
 mod tests {
     use std::convert::Infallible;
 
-    use campfire_core::UnitType;
-    use campfire_values::Scaling;
+    use campfire_values::{Scaling, UnitType};
 
     use super::*;
     use crate::stat_book::StatBook;

@@ -1,6 +1,6 @@
 use campfire_actions::ActionTarget;
-use campfire_core::CapabilityAction;
 use campfire_math::Num;
+use campfire_players::CapabilityAction;
 use campfire_production::BuildTarget;
 use campfire_sim::{Capability, StableId};
 use serde::{Deserialize, Serialize};

@@ -406,6 +406,12 @@ impl StateRegistry {
         {
             return Err(SnapshotError::AllocatorBehind);
         }
+        self.check(world)
+    }
+
+    /// Checks the state of `world` as a restore checks it: each type's own rules, then the rules
+    /// of it that other modules know, with its host among them.
+    pub fn check(&self, world: &World) -> Result<(), SnapshotError> {
         for entry in &self.entries {
             (entry.check)(world)?;
         }

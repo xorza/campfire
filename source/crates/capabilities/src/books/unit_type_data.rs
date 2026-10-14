@@ -2,12 +2,13 @@ use std::collections::BTreeMap;
 
 use campfire_areas::AreaData;
 use campfire_combat::CombatData;
-use campfire_core::{CollisionData, DataSection, DataTable, SyncedStateDecl, UnitTypeCore};
 use campfire_items::InventoryData;
 use campfire_orders::AiData;
 use campfire_production::{DropOffData, NodeData, ProductionData, SupplyData};
 use campfire_projectiles::ProjectileData;
+use campfire_script::{DataSection, DataTable, SyncedStateDecl};
 use campfire_stats::StatsData;
+use campfire_units::{CollisionData, UnitTypeCore};
 use campfire_values::{DeclaredName, EngineStat, Scalar, Stat};
 use campfire_vision::VisionData;
 use serde::Deserialize;

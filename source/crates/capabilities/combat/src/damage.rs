@@ -1,7 +1,7 @@
-use campfire_core::{ActionId, CallError, ScriptFn};
 use campfire_math::Num;
+use campfire_script::{CallError, ScriptFn};
 use campfire_sim::StableId;
-use campfire_values::{DamageKind, Hit, Rank};
+use campfire_values::{ActionId, DamageKind, Hit, Rank};
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
 /// target, its amount before `calc_damage`, its kind, what dealt it, the ability whose cast,

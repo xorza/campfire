@@ -2,9 +2,11 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{ActionId, Book, ModifierId, ResourceAmount, ResourceId, View};
+use campfire_declare::Book;
+use campfire_players::ResourceAmount;
+use campfire_script::View;
 use campfire_sim::Capability;
-use campfire_values::Names;
+use campfire_values::{ActionId, ModifierId, Names, ResourceId};
 
 use crate::item_id::ItemId;
 

@@ -1,9 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::UnitEntity;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 /// Keeps a dead unit whose death a later stage has yet to answer, as the mode's `on_unit_died`

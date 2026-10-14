@@ -1,6 +1,6 @@
 use campfire_actions::{Purse, RankValues, Weapon};
-use campfire_core::{ActionId, Block, ResourceAmount, UnitTags, UnitType};
-use campfire_values::Rank;
+use campfire_players::ResourceAmount;
+use campfire_values::{ActionId, Block, Rank, UnitTags, UnitType};
 
 /// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
 /// player resources at the slot's rank.

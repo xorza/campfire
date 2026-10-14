@@ -12,8 +12,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::{ByType, Declarations, InstallCx, MapBook, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::MapBook;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 mod ai;
@@ -150,11 +151,12 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::{ActionSlots, InProgress, SlotTimes};
     use campfire_common::{PlayerSlot, Tick};
-    use campfire_core::{ByType, ScriptBook, ScriptFailures, UnitType, UnitTypeCore, Units};
-    use campfire_script::ScriptId;
+    use campfire_declare::ByType;
+    use campfire_script::{ScriptFailures, ScriptId};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
-    use campfire_values::{PackagePath, Scalar};
+    use campfire_units::{ScriptBook, UnitTypeCore, Units};
+    use campfire_values::{PackagePath, Scalar, UnitType};
 
     use crate::Orders;
     use crate::ai::Ai;

@@ -1,12 +1,12 @@
 use campfire_actions::{ActionDataField, ActionsColumn};
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Block, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, Status, TagProperty, Unit,
-};
 use campfire_math::Num;
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
+    Status, Unit,
+};
 use campfire_sim::Capability;
 use campfire_stats::PoolId;
-use campfire_values::DamageKind;
+use campfire_values::{Block, DamageKind, TagProperty};
 
 use crate::combat_column::CombatColumn;
 use crate::combat_data::CombatData;

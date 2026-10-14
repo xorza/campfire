@@ -2,9 +2,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_core::UnitEntity;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
+use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 /// When a dead unit comes back: at the start of tick `at`, at its spawn point, with full health.

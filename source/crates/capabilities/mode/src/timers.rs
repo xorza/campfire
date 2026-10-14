@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_core::StateValue;
+use campfire_script::StateValue;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 

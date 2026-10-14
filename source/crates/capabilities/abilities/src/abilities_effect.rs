@@ -1,9 +1,10 @@
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotTimes};
 use campfire_common::Ticks;
-use campfire_core::{ActionId, Effect, Frame};
 use campfire_math::Num;
+use campfire_script::{Effect, Frame};
 use campfire_sim::{SimWorld, StableId};
+use campfire_values::ActionId;
 
 /// A change to units' cooldowns that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq)]

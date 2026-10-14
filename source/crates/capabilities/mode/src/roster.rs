@@ -1,5 +1,4 @@
-use campfire_core::ActionId;
-use campfire_values::Names;
+use campfire_values::{ActionId, Names};
 
 use crate::choice_data::Offers;
 use crate::loadout_setup::LoadoutSetup;

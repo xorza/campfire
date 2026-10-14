@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, View};
+use campfire_declare::Book;
+use campfire_script::View;
 use campfire_sim::Capability;
 
 use crate::shop::Shop;

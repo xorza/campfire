@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, Delivery, DeliveryShape};
-use campfire_core::Callbacks;
+use campfire_declare::Callbacks;
 use campfire_sim::{Capability, Position};
 
 use crate::delivering::Delivering;

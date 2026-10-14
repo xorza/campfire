@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-
 use campfire_common::Ticks;
 
 /// Ticks a second, fixed for the whole match by the session's terms. Data gives times in

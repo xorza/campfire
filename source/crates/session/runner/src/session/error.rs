@@ -1,9 +1,9 @@
 use campfire_common::StateHash;
-use campfire_core::CallError;
 use campfire_package::StoreError;
 use campfire_protocol::{
     CheckpointError, LogLoadError, Outcome, SeedError, ServerInputError, SlotChange,
 };
+use campfire_script::CallError;
 use campfire_sim::SnapshotError;
 use thiserror::Error;
 

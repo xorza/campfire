@@ -1,4 +1,4 @@
-use campfire_core::{Relations, Team, TeamSet};
+use campfire_values::{Relations, Team, TeamSet};
 
 /// The match's vision groups: the teams that share vision, each group seeing as one. Derived
 /// from the relations, never state: built again whenever they change.

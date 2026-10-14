@@ -1,6 +1,7 @@
-use crate::error::TomlError;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
+
+use crate::error::TomlError;
 
 /// TOML, the format of a package's data files and the configuration a person writes.
 #[derive(Debug)]

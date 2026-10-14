@@ -1,9 +1,10 @@
 use campfire_actions::{ActionError, ActionProblem};
-use campfire_core::{TypesError, UnknownName};
 use campfire_mode::{ModeError, ModeNamesError};
 use campfire_orders::AiError;
 use campfire_progression::TrackError;
+use campfire_script::UnknownName;
 use campfire_stats::ModifierProblem;
+use campfire_units::TypesError;
 use campfire_values::{DeclaredName, PackagePath, Stat};
 use thiserror::Error;
 

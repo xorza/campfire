@@ -2,10 +2,6 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_common::Tick;
-use campfire_core::{
-    ArrivedShort, Block, Body, BodyForm, Dead, Destination, Layer, MapBook, PathId, Team, UnitType,
-    Units,
-};
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
@@ -15,6 +11,8 @@ use campfire_mode::{
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
+use campfire_units::{ArrivedShort, Body, BodyForm, Dead, Destination, Layer, MapBook, Units};
+use campfire_values::{Block, PathId, Team, UnitType};
 use campfire_values::{DeclaredName, Names, Scalar};
 
 const ONE: i64 = 1 << 24;

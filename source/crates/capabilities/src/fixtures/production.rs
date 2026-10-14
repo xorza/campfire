@@ -1,7 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_actions::ActionTarget;
 use campfire_common::PlayerSlot;
-use campfire_core::{BodyForm, Owner, Team, TeamSet, UnitType};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
@@ -9,6 +8,8 @@ use campfire_orders::OrdersAction;
 use campfire_production::{BuildTarget, Production};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
+use campfire_units::{BodyForm, Owner};
+use campfire_values::{Team, TeamSet, UnitType};
 use campfire_vision::SeenBy;
 
 use crate::fixtures::navigation::NavigationFixtures;

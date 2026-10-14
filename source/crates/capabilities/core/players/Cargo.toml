@@ -1,0 +1,37 @@
+[package]
+name = "campfire-players"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-common/internals",
+    "campfire-declare/internals",
+    "campfire-script/internals",
+    "campfire-sim/internals",
+    "campfire-state-types/internals",
+    "campfire-units/internals",
+    "campfire-values/internals",
+    "campfire-visibility/internals",
+]
+
+[dependencies]
+campfire-codec.workspace = true
+campfire-common.workspace = true
+campfire-declare.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+campfire-state-types.workspace = true
+campfire-units.workspace = true
+campfire-values.workspace = true
+campfire-visibility.workspace = true
+
+bevy_ecs.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+campfire-players = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

@@ -4,14 +4,15 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
 use bevy_ecs::world::World;
 use campfire_actions::CostTarget;
 use campfire_common::Tick;
-use campfire_core::internals::TEST_PACKAGE;
-use campfire_core::{
-    Block, Filter, StatusTags, TagBook, TagProperties, UnitType, UnitTypes, Units, View,
-};
+use campfire_script::{Filter, ScriptNames, TagNames, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
 use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, PoolId, StatId, Stats};
-use campfire_values::{Names, RelationSet, Stat};
+use campfire_units::internals::TEST_PACKAGE;
+use campfire_units::{StatusTags, TagBook, Units};
+use campfire_values::{
+    Block, DamageKind, Names, RelationSet, ResourceId, Stat, TagProperties, UnitType,
+};
 
 use crate::release::Release;
 
@@ -132,9 +133,11 @@ impl UnitsFixtures for Units {
         let view = world.non_send::<View>();
         let resources = Arc::new(resources.iter().copied().collect());
         let kinds = Arc::new(damage_kinds.iter().copied().collect());
-        view.names_mut().set_mode_names(kinds, resources);
         let pools: Names<PoolId> = pools.iter().copied().collect();
-        view.names_mut().set_table(Arc::new(pools));
+        let mut names = view.names_mut();
+        names.set_table::<DamageKind>(kinds);
+        names.set_table::<ResourceId>(resources);
+        names.set_table(Arc::new(pools));
     }
 }
 
@@ -156,10 +159,13 @@ impl ViewFixtures for View {
     }
 
     fn cost_target(&self, name: &str) -> Option<CostTarget> {
-        let empty = Names::default();
+        let (no_pools, no_resources) = (Names::default(), Names::default());
         let names = self.names();
-        let pools = names.table::<PoolId>().unwrap_or(&empty);
-        CostTarget::named(pools, &names.resources, name)
+        let pools = names
+            .table::<PoolId>()
+            .map_or(&no_pools, ScriptNames::names);
+        let resources = names.table().map_or(&no_resources, ScriptNames::names);
+        CostTarget::named(pools, resources, name)
     }
 }
 
@@ -171,6 +177,6 @@ pub trait FilterFixtures {
 
 impl FilterFixtures for Filter {
     fn of_release_relations(relations: RelationSet) -> Filter {
-        Filter::of_relations(relations, &UnitTypes::new(Release::engine_tags()))
+        Filter::of_relations(relations, &TagNames::new(&Release::engine_tags()))
     }
 }

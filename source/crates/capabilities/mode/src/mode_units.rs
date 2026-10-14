@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
-use campfire_core::{ByType, ModifierId, Spawner, UnitType};
+use campfire_declare::ByType;
 use campfire_sim::StableId;
 use campfire_stats::{Grant, Hold, Stats};
-use campfire_values::{Names, Rank};
+use campfire_units::Spawner;
+use campfire_values::{ModifierId, Names, Rank, UnitType};
 
 use crate::loadout_setup::LoadoutSetup;
 use crate::offer::Offer;

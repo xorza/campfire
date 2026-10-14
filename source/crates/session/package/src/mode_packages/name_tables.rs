@@ -1,8 +1,12 @@
 use campfire_actions::{CostTarget, SlotKind};
 use campfire_capabilities::Release;
-use campfire_core::{Layer, NameKind, PathId, ResourceId, Tag, Team, TrackId, TypeScope, UnitType};
+use campfire_script::NameKind;
 use campfire_stats::PoolId;
-use campfire_values::{DamageKind, DeclaredName, NameId, Names};
+use campfire_units::Layer;
+use campfire_values::{
+    DamageKind, DeclaredName, NameId, Names, PathId, ResourceId, Tag, Team, TrackId, TypeScope,
+    UnitType,
+};
 
 use crate::mode_packages::ModePackages;
 

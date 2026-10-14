@@ -1,7 +1,7 @@
 use campfire_codec::Binary;
-use campfire_core::{CapabilityAction, OrderUnits};
 use campfire_items::ItemsAction;
 use campfire_orders::OrdersAction;
+use campfire_players::{CapabilityAction, OrderUnits};
 use campfire_production::ProductionAction;
 use campfire_progression::ProgressionAction;
 use campfire_sim::{Capability, Command, StableId};

@@ -5,11 +5,10 @@ use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{ActionBook, ActionSlots, Aim, KindSpec};
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_core::{
-    Block, Body, Dead, MapBook, OnMatch, Owner, PlayerResources, PlayerRows, Relations,
-    ResourceAmount, ResourceId, Team, UnitTags, UnitType,
-};
+use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
+use campfire_units::{Body, Dead, MapBook, Owner};
+use campfire_values::{Block, Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::Worker;
 use crate::gather_loop::checked_gather::CheckedGather;

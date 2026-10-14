@@ -10,7 +10,6 @@ use campfire_actions::{
 use campfire_capabilities::{Release, UnitStartError};
 use campfire_codec::Toml;
 use campfire_common::MapName;
-use campfire_core::{CtxMisuse, Hook, NameKind, ParamProblem, Status, SyncTo};
 use campfire_geometry::Metric;
 use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
@@ -22,6 +21,7 @@ use campfire_package::{
     PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_script::internals::Undefined;
+use campfire_script::{CtxMisuse, Hook, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
 use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};

@@ -1,9 +1,10 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{TeamSet, UnitEntity};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
+use campfire_units::UnitEntity;
+use campfire_values::TeamSet;
 use serde::{Deserialize, Serialize};
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
@@ -45,7 +46,7 @@ impl Replication for SeenBy {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_core::TeamSet;
+    use campfire_values::TeamSet;
 
     use crate::seen_by::SeenBy;
 

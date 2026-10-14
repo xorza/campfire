@@ -1,10 +1,9 @@
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_core::{
-    CallError, CallPart, CallStart, Frame, ScriptRole, ScriptValue, StateValue, SyncAll, SyncNone,
-};
 use campfire_navigation::IndexedBody;
+use campfire_script::{CallError, CallPart, CallStart, Frame, ScriptRole, ScriptValue, StateValue};
+use campfire_units::{SyncAll, SyncNone};
 
 use crate::choices::Choices;
 use crate::mode_spec::ModeSpec;

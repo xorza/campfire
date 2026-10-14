@@ -1,8 +1,9 @@
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::ActionSlots;
-use campfire_core::{Owner, TickCommands};
+use campfire_players::TickCommands;
 use campfire_sim::EntityIndex;
 use campfire_stats::Level;
+use campfire_units::Owner;
 
 use crate::learning::Learning;
 use crate::points::Points;

@@ -1,4 +1,4 @@
-use campfire_core::{ScriptList, ScriptValue};
+use campfire_script::{ScriptList, ScriptValue};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;

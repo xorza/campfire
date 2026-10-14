@@ -1,7 +1,7 @@
 use bevy_ecs::query::Added;
 use bevy_ecs::system::{Query, Res};
-use campfire_core::Dead;
 use campfire_sim::SimTick;
+use campfire_units::Dead;
 
 use crate::carried_mut::CarriedMut;
 use crate::modifiers::Modifiers;

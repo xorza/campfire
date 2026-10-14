@@ -3,10 +3,13 @@ use bevy_ecs::query::{Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget, Targets};
-use campfire_core::{Dead, Destination, MapBook, Owner, Scratch, Team, TickCommands};
+use campfire_declare::Scratch;
 use campfire_navigation::{GroupBox, Party, PartyKey};
+use campfire_players::TickCommands;
 use campfire_production::BuildTarget;
 use campfire_sim::{EntityIndex, Position, SimTick};
+use campfire_units::{Dead, Destination, MapBook, Owner};
+use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
 use crate::orders_action::OrdersAction;

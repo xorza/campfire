@@ -36,9 +36,10 @@ campfire-abilities = { path = "crates/capabilities/abilities" }
 campfire-actions = { path = "crates/capabilities/core/actions" }
 campfire-areas = { path = "crates/capabilities/areas" }
 campfire-combat = { path = "crates/capabilities/combat" }
-campfire-core = { path = "crates/capabilities/core/core" }
+campfire-declare = { path = "crates/capabilities/core/declare" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }
 campfire-geometry = { path = "crates/capabilities/core/geometry" }
+campfire-players = { path = "crates/capabilities/core/players" }
 campfire-items = { path = "crates/capabilities/items" }
 campfire-mode = { path = "crates/capabilities/mode" }
 campfire-navigation = { path = "crates/capabilities/navigation" }
@@ -49,6 +50,7 @@ campfire-projectiles = { path = "crates/capabilities/projectiles" }
 campfire-state-types = { path = "crates/capabilities/core/state-types" }
 campfire-stats = { path = "crates/capabilities/stats" }
 campfire-values = { path = "crates/capabilities/core/values" }
+campfire-units = { path = "crates/capabilities/core/units" }
 campfire-visibility = { path = "crates/capabilities/core/visibility" }
 campfire-vision = { path = "crates/capabilities/vision" }
 campfire-codec = { path = "crates/base/codec" }

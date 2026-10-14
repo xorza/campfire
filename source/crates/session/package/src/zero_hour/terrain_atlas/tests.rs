@@ -1,6 +1,5 @@
-use crate::zero_hour::terrain::{TerrainCell, TextureClass};
-
 use super::*;
+use crate::zero_hour::terrain::{TerrainCell, TextureClass};
 
 /// A class of `width` tiles a side and `tiles` tiles from `first_tile`.
 fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {

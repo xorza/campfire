@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_core::{Book, ScriptNames, TrackId, View};
+use campfire_declare::Book;
 use campfire_math::Num;
+use campfire_script::View;
 use campfire_sim::Capability;
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, Names};
+use campfire_values::{DeclaredName, Names, TrackId};
 
 use crate::error::TrackError;
 use crate::track_data::TrackData;
@@ -102,6 +103,6 @@ impl Book for TrackBook {
     /// Names the tracks to scripts; the progression column takes the book from the match at each
     /// read.
     fn share(&self, view: &View) {
-        view.names_mut().tracks = ScriptNames::new(Arc::clone(self.names()));
+        view.names_mut().set_table(Arc::clone(self.names()));
     }
 }

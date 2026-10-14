@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query};
-use campfire_core::TeamSet;
+use campfire_values::TeamSet;
 use campfire_visibility::{SpectatorFog, Visibility};
 use lightyear::prelude::{Connected, MessageReceiver};
 use tracing::info;

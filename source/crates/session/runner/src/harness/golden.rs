@@ -5,14 +5,16 @@ use std::path::PathBuf;
 use campfire_capabilities::Match;
 use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, StateHash, Tick};
-use campfire_core::{Dead, Owner, PlayersWorld, ResourceId, ScriptFailures, Team};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
+use campfire_players::PlayersWorld;
+use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 use campfire_stats::{PoolId, PoolMeters};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_values::{DeclaredName, Names};
+use campfire_units::{Dead, Owner};
+use campfire_values::{DeclaredName, Names, ResourceId, Team};
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout

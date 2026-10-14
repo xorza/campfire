@@ -1,11 +1,12 @@
 use campfire_codec::Toml;
-use campfire_core::{Filter, Layer, MapBook, StatusTags, TeamSet};
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker, Wall};
 use campfire_orders::OrdersAction;
+use campfire_script::Filter;
 use campfire_sim::EntityIndex;
 use campfire_stats::Life;
-use campfire_values::{RelationSet, Share};
+use campfire_units::{Layer, MapBook, StatusTags};
+use campfire_values::{RelationSet, Share, TeamSet};
 use campfire_vision::{SeenBy, Vision};
 use serde::Deserialize;
 

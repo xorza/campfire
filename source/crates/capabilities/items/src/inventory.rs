@@ -4,9 +4,11 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
-use campfire_core::{PerType, ResourceId, UnitEntity};
+use campfire_declare::PerType;
 use campfire_sim::{Capability, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
+use campfire_units::UnitEntity;
+use campfire_values::ResourceId;
 use serde::{Deserialize, Serialize};
 
 use crate::item_book::ItemBook;

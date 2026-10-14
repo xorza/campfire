@@ -1,6 +1,5 @@
-use campfire_core::ResourceId;
 use campfire_stats::PoolId;
-use campfire_values::Names;
+use campfire_values::{Names, ResourceId};
 
 /// What a name of a cost takes from: a pool of the unit, or a resource of its player; the mode's
 /// pools and player resources never share a name.

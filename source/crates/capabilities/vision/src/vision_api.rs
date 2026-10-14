@@ -1,9 +1,10 @@
-use campfire_core::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Filter, MemberSpec,
-    RoleSet, Status, TagProperty, Unit,
-};
 use campfire_math::Num;
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Filter, MemberSpec,
+    RoleSet, Status, Unit,
+};
 use campfire_sim::Position;
+use campfire_values::TagProperty;
 
 use crate::vision_column::VisionColumn;
 use crate::vision_data::VisionData;

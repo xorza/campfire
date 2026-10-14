@@ -2,12 +2,14 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
-use campfire_core::{
-    ApiBuilder, Book, Cache, CallPart, Callbacks, ColumnFill, Declarations, EngineTag, EntityKind,
-    KindSpawn, KindVisitor, ModuleSet, Report, RowReads, Scratch, ViewColumn,
+use campfire_declare::{
+    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
+    ModuleSet, Report, Scratch,
 };
+use campfire_script::{ApiBuilder, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
+use campfire_values::EngineTag;
 
 /// The consumer that binds each module's script API, of the module's capability: it reads the
 /// modules and their APIs, and ignores every other declaration.

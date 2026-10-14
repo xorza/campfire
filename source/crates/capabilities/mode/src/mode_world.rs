@@ -1,6 +1,8 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_core::{StateValue, SyncAll, SyncNone, Team, UnitsWorld};
+use campfire_script::StateValue;
+use campfire_units::{SyncAll, SyncNone, UnitsWorld};
+use campfire_values::Team;
 
 use crate::match_end::MatchEnd;
 use crate::match_mode::MatchMode;

@@ -1,7 +1,5 @@
-use campfire_core::{
-    HookSet, ScriptBook, ScriptRole, ScriptValue, StatePlace, StateType, StateValue, SyncTo,
-};
-use campfire_script::ScriptId;
+use campfire_script::{HookSet, ScriptId, ScriptRole, ScriptValue, StateType, StateValue, SyncTo};
+use campfire_units::{ScriptBook, StatePlace};
 use campfire_values::NameTable;
 
 use crate::mode_data::{InputType, ModeData};

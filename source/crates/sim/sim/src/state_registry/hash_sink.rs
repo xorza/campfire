@@ -1,6 +1,5 @@
 use arrayvec::ArrayVec;
 use blake3::Hasher;
-
 use campfire_codec::Sink;
 
 /// A BLAKE3 hasher fed through a buffer. Postcard writes a value at a time, and from small pieces

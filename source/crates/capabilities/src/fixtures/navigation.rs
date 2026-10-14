@@ -1,12 +1,11 @@
 use bevy_ecs::world::World;
-use campfire_core::{
-    BodyForm, Destination, MoveStep, Team, TypeScope, UnitType, UnitTypeCore, Units,
-};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
+use campfire_units::{BodyForm, Destination, MoveStep, UnitTypeCore, Units};
+use campfire_values::{Team, TypeScope, UnitType};
 
 /// The test fixtures of `Navigation` that need a crate above its own.
 pub trait NavigationFixtures {

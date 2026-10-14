@@ -3,14 +3,16 @@ use std::fmt::Debug;
 
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
-use campfire_core::{
-    ApiBuilder, Book, Cache, CallPart, Callbacks, CapabilitySet, ColumnFill, Declarations,
-    EngineTag, EntityKind, EntityKinds, EntityParts, KindSpawn, KindVisitor, ModuleSet, Predicting,
-    Report, RowReads, Scratch, ScriptBudgets, SpawnParts, ViewColumn,
+use campfire_declare::{
+    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
+    KindSpawn, KindVisitor, ModuleSet, Report, Scratch, SpawnParts,
 };
 use campfire_mode::ModeWorld;
+use campfire_script::{ApiBuilder, CallPart, RowReads, ScriptBudgets, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
 use campfire_state_types::{Replication, StateTypes};
+use campfire_units::{EntityKinds, Predicting};
+use campfire_values::EngineTag;
 use campfire_visibility::OutView;
 
 use crate::release::Release;

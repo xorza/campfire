@@ -6,8 +6,10 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::PlayerSlot;
-use campfire_core::{OutOfPlay, Player, PlayersWorld, Team, TeamSet};
+use campfire_players::{OutOfPlay, PlayersWorld};
 use campfire_state_types::Recipients;
+use campfire_units::Player;
+use campfire_values::{Team, TeamSet};
 use campfire_visibility::{OutView, Visibility};
 use lightyear::prelude::Rooms;
 

@@ -1,4 +1,4 @@
-use campfire_core::UnknownName;
+use campfire_script::UnknownName;
 use campfire_values::TimeTooLarge;
 use thiserror::Error;
 

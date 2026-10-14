@@ -12,7 +12,7 @@ internals = [
     "campfire-areas/internals",
     "campfire-combat/internals",
     "campfire-common/internals",
-    "campfire-core/internals",
+    "campfire-declare/internals",
     "campfire-deliveries/internals",
     "campfire-geometry/internals",
     "campfire-items/internals",
@@ -21,6 +21,7 @@ internals = [
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
+    "campfire-players/internals",
     "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-projectiles/internals",
@@ -28,6 +29,7 @@ internals = [
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-stats/internals",
+    "campfire-units/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
@@ -44,7 +46,7 @@ campfire-areas.workspace = true
 campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
-campfire-core.workspace = true
+campfire-declare.workspace = true
 campfire-deliveries.workspace = true
 campfire-geometry = { workspace = true, optional = true }
 campfire-items.workspace = true
@@ -53,6 +55,7 @@ campfire-math = { workspace = true, optional = true }
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
+campfire-players.workspace = true
 campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
@@ -60,6 +63,7 @@ campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
 campfire-stats.workspace = true
+campfire-units.workspace = true
 campfire-values.workspace = true
 campfire-visibility.workspace = true
 campfire-vision.workspace = true
@@ -73,8 +77,6 @@ thiserror.workspace = true
 [dev-dependencies]
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
-
-rhai.workspace = true
 
 [lints]
 workspace = true

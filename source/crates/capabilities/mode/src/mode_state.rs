@@ -3,9 +3,10 @@ use std::marker::PhantomData;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_core::{MatchEntity, StateSync, StateValue, SyncAll, SyncNone};
+use campfire_script::StateValue;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication, Sending, SentOnChange};
+use campfire_units::{MatchEntity, StateSync, SyncAll, SyncNone};
 use serde::{Deserialize, Serialize};
 
 use crate::match_mode::MatchMode;
