@@ -12,6 +12,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_capabilities::{MatchSpec, Order, Release};
+use campfire_combat::Fallen;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
@@ -21,8 +22,8 @@ use campfire_protocol::{PlayerInput, SignedReceipt};
 use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
-use campfire_units::{Dead, PlayerUnits, UnitsWorld};
-use campfire_values::TeamSet;
+use campfire_units::{Dead, Owner, PlayerUnits, UnitsWorld};
+use campfire_values::{Team, TeamSet};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
@@ -32,7 +33,7 @@ use lightyear::prelude::{
     UnlinkReason, Unlinked, is_in_rollback,
 };
 use secp256k1::{Keypair, Secp256k1, VerifyOnly};
-use tracing::{debug, info};
+use tracing::info;
 
 use crate::bot_script::BotScript;
 use crate::close_code::CloseCode;
@@ -41,11 +42,13 @@ use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
 use crate::events::link_lost::{LinkLossCause, LinkLost};
+use crate::events::match_ended::MatchEnded;
 use crate::events::match_started::MatchStarted;
 use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
 use crate::events::receipt_refused::ReceiptRefused;
 use crate::events::session_refused::SessionRefused;
+use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
@@ -55,9 +58,10 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
 use crate::order_script::ScriptedInput;
+use crate::os::Os;
 use crate::save_command::SaveCommand;
 use crate::sim_client::client_dir::ClientDir;
-use crate::sim_client::join_state::{JoinState, LinkLoss, Retry, Started};
+use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
@@ -98,10 +102,8 @@ pub struct SimClient {
     pub local: bool,
     /// The packages of the mode it plays, which must run at the server's rate: `check`.
     pub packages: Arc<ModePackages>,
-    /// Unix seconds: when the delegation is made, and so when it expires.
-    pub clock: fn() -> u64,
-    /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
-    pub entropy: fn(&mut [u8; 32]),
+    /// Its clock, at which the delegation is made, and so expires, and its random bytes.
+    pub os: Os,
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
     pub data: Option<Arc<ClientDir>>,
@@ -214,15 +216,15 @@ impl Plugin for SimClient {
         );
         packages.books(rate).install_prediction(world);
         mark_unpredicted(world);
-        world.insert_resource(Signer::new(self.session_key, self.entropy));
-        world.insert_resource(JoinState::new(
-            self.main_key,
-            self.server,
-            self.role,
-            self.local,
-            SessionRules::of(packages),
-            self.clock,
-        ));
+        world.insert_resource(Signer::new(self.session_key, self.os.entropy));
+        world.insert_resource(JoinState::new(Joining {
+            main_key: self.main_key,
+            server: self.server,
+            role: self.role,
+            local: self.local,
+            rules: SessionRules::of(packages),
+            clock: self.os.clock.clone(),
+        }));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {
             world.insert_resource(ReceiptWriter::start(Arc::clone(data)));
@@ -563,14 +565,22 @@ fn receive_input_acks(
 /// Logs the end of the match, which reaches the client on the match's entity: its sim then
 /// predicts nothing more.
 fn report_end(ended: Query<'_, '_, &MatchEnd, (Added<MatchEnd>, Allow<Unpredicted>)>) {
-    for end in &ended {
-        info!(tick = end.tick().get(), result = ?end.result(), "the match ended");
+    for &end in &ended {
+        MatchEnded::of(end).log();
     }
 }
 
-/// The units whose death the server's state just brought, and whether each is the client's own.
-type Died<'w, 's> =
-    Query<'w, 's, (&'static StableId, Has<Predicted>), (Added<Dead>, Allow<Unpredicted>)>;
+/// The units whose death the server's state just brought, with their team and owner.
+type Died<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static StableId,
+        Option<&'static Team>,
+        Option<&'static Owner>,
+    ),
+    (Added<Dead>, Allow<Unpredicted>),
+>;
 
 /// Logs each death the server's state brings, at the client's own tick, which runs ahead of the
 /// server's, once its timeline synced.
@@ -580,14 +590,8 @@ fn report_deaths(
     died: Died<'_, '_>,
 ) {
     let tick = state.sim_tick(timeline.as_ref());
-    for (id, own) in &died {
-        let unit = id.get();
-        let tick = tick.map(Tick::get);
-        if own {
-            info!(unit, tick, "learned that the player's own unit died");
-        } else {
-            debug!(unit, tick, "learned that a unit died");
-        }
+    for (&id, team, owner) in &died {
+        UnitDied::learned(tick, Fallen::of(id, team, owner)).log();
     }
 }
 

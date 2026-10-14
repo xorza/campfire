@@ -12,8 +12,8 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol, Pace,
-    PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
+    Clock, Entropy, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol,
+    Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
 };
 use campfire_package::internals::TestMode;
 use campfire_protocol::internals::TestKey;
@@ -35,8 +35,10 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         data: scratch.path("data"),
         bots: Vec::new(),
         pace,
-        clock: || TestKey::NOW,
-        entropy: |bytes| bytes.fill(7),
+        os: Os {
+            clock: Clock::manual(TestKey::NOW),
+            entropy: Entropy::Fixed(7),
+        },
     })
     .unwrap();
 
@@ -50,8 +52,10 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         role: JoinRole::Play,
         local: true,
         packages,
-        clock: || TestKey::NOW,
-        entropy: |bytes| bytes.fill(4),
+        os: Os {
+            clock: Clock::manual(TestKey::NOW),
+            entropy: Entropy::Fixed(4),
+        },
         data: None,
     };
     // The lane runs at 30 Hz alone: a server pinned at 20 Hz fails the check, as a listing at a
@@ -64,6 +68,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let at_20 = SimClient {
         server: elsewhere,
         packages: Arc::clone(&setup.packages),
+        os: setup.os.clone(),
         data: None,
         ..setup
     };

@@ -17,7 +17,7 @@ use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
+use campfire_mode::{MatchEnd, ModeWorld};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_quic::{CloseLink, QuicPlugin};
@@ -30,13 +30,14 @@ use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
     RoomAllocator, RoomPlugin,
 };
-use tracing::{info, trace, trace_span};
+use tracing::{trace, trace_span};
 
 use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
+use crate::events::match_ended::MatchEnded;
 use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
@@ -58,6 +59,7 @@ use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
+use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
@@ -84,6 +86,7 @@ pub(crate) mod lobby;
 pub(crate) mod local_session;
 pub(crate) mod match_visibility;
 pub(crate) mod offering;
+pub(crate) mod pending_restore;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
 pub(crate) mod scope_union;
@@ -95,6 +98,7 @@ pub(crate) mod server_setup;
 pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
+pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
 pub(crate) mod slot_bot_file;
 pub(crate) mod spectators;
@@ -102,17 +106,16 @@ pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
 pub(crate) mod viewer;
 
-/// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
-/// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
-/// its team sees. It hashes the state after a tick only while the world holds `TickHashes`. It
-/// adds Lightyear's server at the tick's length `tick`, the protocol, and the replication to each
-/// new link; its app adds its frame loop or clock, its session, and its transport: QUIC's, or
-/// in-process channels.
+/// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join, or restores
+/// a `PendingRestore`; then records the packets players send, runs one sim tick in each fixed
+/// tick, and sends each client the units its team sees. It hashes the state after a tick only
+/// while the world holds `TickHashes`. It adds Lightyear's server at the tick's length `tick`, the
+/// protocol, and the replication to each new link; `SimServerPlugins` adds it.
 #[derive(Debug)]
-pub struct SimServer {
-    pub tick: Duration,
+pub(crate) struct SimServer {
+    pub(crate) tick: Duration,
     /// The mode's declared capabilities, whose components alone replicate.
-    pub capabilities: CapabilitySet,
+    pub(crate) capabilities: CapabilitySet,
 }
 
 impl Plugin for SimServer {
@@ -137,6 +140,10 @@ impl Plugin for SimServer {
             },
         );
         app.init_resource::<Faults>();
+        app.add_systems(
+            Update,
+            PendingRestore::run.run_if(resource_exists::<PendingRestore>),
+        );
         app.add_systems(
             Update,
             (
@@ -288,7 +295,7 @@ impl SimServer {
             Checkpoints::start(
                 world,
                 snapshots,
-                ServerSigner::new(server.key, server.entropy),
+                ServerSigner::new(server.key, server.os.entropy),
             );
         }
         world.insert_resource(Seats::new(slots, clients));
@@ -331,7 +338,7 @@ impl SimServer {
                 .resource_mut::<Session>()
                 .keep_journal(Box::new(journal));
         }
-        world.insert_resource(ServerSigner::new(server.key, server.entropy));
+        world.insert_resource(ServerSigner::new(server.key, server.os.entropy));
         world.insert_resource(Door::new(Offering::new(terms, server)));
     }
 
@@ -376,7 +383,7 @@ impl SimServer {
     /// period runs from then, and runs the match on from the next fixed tick, so the ticks the
     /// stop lost take no time in the sim. The journal goes on from its last record, and
     /// `JournalWatch` watches it. No client is linked: the players come back through the door.
-    pub fn restore_match(
+    pub(crate) fn restore_match(
         world: &mut World,
         restored: RestoredSession,
         packages: &ModePackages,
@@ -414,7 +421,7 @@ impl SimServer {
         }
         world.insert_resource(JournalWatch(journal.watch()));
         world.session_mut().resume_journal(Box::new(journal));
-        let signer = ServerSigner::new(server.key, server.entropy);
+        let signer = ServerSigner::new(server.key, server.os.entropy);
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
             let ran = world.session().log().next_tick() > resumed;
@@ -617,13 +624,7 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
 /// Logs the end of the match the tick just run ended, which reaches the clients on the match's
 /// entity.
 fn report_end(ended: Query<'_, '_, &MatchEnd, Added<MatchEnd>>) {
-    for end in &ended {
-        let tick = end.tick().get();
-        match end.result() {
-            MatchResult::Won(team) => {
-                info!(tick, team = team.index(), "the match ended: a team won");
-            }
-            MatchResult::Draw => info!(tick, "the match ended in a draw"),
-        }
+    for &end in &ended {
+        MatchEnded::of(end).log();
     }
 }

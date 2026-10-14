@@ -5,7 +5,7 @@
 use campfire_common::{StateHash, Tick};
 use campfire_harness::HashTrail;
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
-use campfire_net::{RestoreError, ServerDir, SessionDir, TickHashes};
+use campfire_net::{Entropy, RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{EngineRelease, Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Replay, Session};
@@ -93,7 +93,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
     let session = dir.restore().unwrap().unwrap();
     let key = TestKey::server();
     let file = session
-        .abort(&stopped, local.packages(), key, |aux| aux.fill(6))
+        .abort(&stopped, local.packages(), key, Entropy::Fixed(6))
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());
     let log = SessionLog::decode(&scratch.read(&file)).unwrap();

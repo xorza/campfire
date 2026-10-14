@@ -126,8 +126,7 @@ impl Connection {
             data,
             bots: slots,
             pace: Arc::clone(pace),
-            clock: Os::unix_now,
-            entropy: Os::fill,
+            os: Os::SYSTEM,
         })
         .map_err(|error| {
             error!(error = %ErrorReport::of(&error), "the local server does not start");

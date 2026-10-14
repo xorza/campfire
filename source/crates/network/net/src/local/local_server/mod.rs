@@ -4,20 +4,16 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::world::World;
-use bevy_state::app::StatesPlugin;
-use bevy_time::TimePlugin;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_protocol::{SeedChain, SessionPrivate};
+use campfire_protocol::SeedChain;
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::InputRules;
 use campfire_sim::TickRate;
@@ -32,17 +28,19 @@ use tracing::error;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
 use crate::net_protocol::NetProtocol;
+use crate::os::{Entropy, Os};
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_server::SimServer;
 use crate::sim_server::key_file::KeyFile;
 use crate::sim_server::lobby::{Lobby, LobbySetup};
 use crate::sim_server::local_session::LocalSession;
+use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::{RestoredSession, SessionDir};
+use crate::sim_server::session_dir::SessionDir;
+use crate::sim_server::sim_server_plugins::SimServerPlugins;
 use crate::sim_server::sim_server_world::SimServerWorld;
 
 pub(crate) mod error;
@@ -90,20 +88,11 @@ struct Runs {
     bots: ServerBots,
     server: ServerSetup,
     pace: Arc<Pace>,
-    tick: Duration,
+    tick_hz: NonZeroU32,
     stop: Arc<AtomicBool>,
     /// Set by an app that ends for a load.
     restart: Arc<AtomicBool>,
     relinks: Relinks,
-}
-
-/// A session to restore in an app's first frame, after a load.
-#[derive(Resource, Debug)]
-struct PendingRestore {
-    session: RestoredSession,
-    packages: Arc<ModePackages>,
-    bots: ServerBots,
-    server: ServerSetup,
 }
 
 /// Set once the app ends for a load, as its thread then starts a new one.
@@ -119,10 +108,7 @@ pub struct LocalServerSetup {
     /// The bots it plays, none in slot 0.
     pub bots: Vec<SlotBot>,
     pub pace: Arc<Pace>,
-    /// Unix seconds, against which a delegation's expiry is checked.
-    pub clock: fn() -> u64,
-    /// Fills a key, a seed or BIP-340's auxiliary randomness with random bytes.
-    pub entropy: fn(&mut [u8; 32]),
+    pub os: Os,
 }
 
 /// Whether the client asked the local server to stop.
@@ -143,21 +129,19 @@ impl LocalServer {
             data,
             bots,
             pace,
-            clock,
-            entropy,
+            os,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
-        let key = KeyFile::read_or_create(&dir.layout().key_file(), entropy)
+        let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
-        LocalServer::end_earlier(&dir, &packages, key, entropy)?;
+        LocalServer::end_earlier(&dir, &packages, key, os.entropy)?;
+        let mut root = [0; 32];
+        os.entropy.fill(&mut root);
         let server = ServerSetup {
             key,
             times: SessionTimes::DEFAULT,
-            clock,
-            entropy,
+            os,
         };
-        let mut root = [0; 32];
-        entropy(&mut root);
         let seed_chain = SeedChain::new(root, SEGMENTS);
         let slots = u32::try_from(packages.manifest().slots()).expect("slots fit u32");
         let open = (1..slots)
@@ -178,15 +162,12 @@ impl LocalServer {
             bots: bots.clone(),
             open,
             host: HostVisibility::default(),
-            server,
+            server: server.clone(),
         })
         .map_err(LocalServerError::Lobby)?;
-        let private = SessionPrivate {
-            seed_chain,
-            terms: lobby.terms().clone(),
-        };
-        let session = SessionDir::create(&dir, &private).map_err(LocalServerError::NewSession)?;
-        lobby.keep_files(session.start().map_err(LocalServerError::NewJournal)?);
+        lobby
+            .keep_files(&dir)
+            .map_err(LocalServerError::KeepFiles)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let stop = Arc::new(AtomicBool::new(false));
         let relinks = Relinks::default();
@@ -196,7 +177,7 @@ impl LocalServer {
             bots,
             server,
             pace,
-            tick: TickRate::new(tick_hz).length(),
+            tick_hz,
             stop: Arc::clone(&stop),
             restart: Arc::new(AtomicBool::new(false)),
             relinks: relinks.clone(),
@@ -243,7 +224,7 @@ impl LocalServer {
         data: &ServerDir,
         packages: &ModePackages,
         key: Keypair,
-        entropy: fn(&mut [u8; 32]),
+        entropy: Entropy,
     ) -> Result<(), LocalServerError> {
         if let Some(session) = SessionDir::waiting(data).map_err(LocalServerError::Waiting)? {
             session
@@ -251,22 +232,6 @@ impl LocalServer {
                 .map_err(LocalServerError::Abort)?;
         }
         Ok(())
-    }
-
-    /// Restores the session that waits, after a load; an error, logged, ends the app.
-    fn restore(world: &mut World) {
-        let PendingRestore {
-            session,
-            packages,
-            bots,
-            server,
-        } = world
-            .remove_resource::<PendingRestore>()
-            .expect("a restore runs while one waits");
-        if let Err(error) = SimServer::restore_match(world, session, &packages, &server, bots) {
-            error!(error = %ErrorReport::of(&error), "the local session does not restore after its load");
-            world.write_message(AppExit::error());
-        }
     }
 
     /// Ends once the session went back to a save, for its thread to start a new app; else exits
@@ -332,8 +297,8 @@ impl Runs {
         app.insert_resource(PendingRestore {
             session: session.expect("the session that loaded, whose match started"),
             packages: Arc::clone(&self.packages),
+            server: self.server.clone(),
             bots: self.bots.clone(),
-            server: self.server,
         });
         self.relinks.give(client_io);
         Ok(app)
@@ -344,33 +309,21 @@ impl Runs {
     fn app(&self, link: CrossbeamIo, dir: ServerDir) -> App {
         let mut app = App::new();
         app.add_plugins((
-            TaskPoolPlugin::default(),
-            TimePlugin,
-            StatesPlugin,
-            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
-        ));
-        app.add_plugins((
-            SimServer {
-                tick: self.tick,
+            SimServerPlugins {
+                tick_hz: self.tick_hz,
                 capabilities: self.packages.manifest().capabilities,
             },
+            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
             LocalPace {
                 pace: Arc::clone(&self.pace),
-                tick: self.tick,
+                tick: TickRate::new(self.tick_hz).length(),
             },
         ));
         app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
-        app.add_systems(
-            Update,
-            (
-                LocalServer::restore.run_if(resource_exists::<PendingRestore>),
-                LocalServer::watch,
-            )
-                .chain(),
-        );
+        app.add_systems(Update, LocalServer::watch.after(PendingRestore::run));
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server = app.world_mut().spawn((RawServer, Linked)).id();
         let address = SocketAddr::from(([127, 0, 0, 1], 1));

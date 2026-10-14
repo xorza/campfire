@@ -17,6 +17,7 @@ use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::offer::Offer;
+use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
 use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
@@ -87,15 +88,15 @@ pub enum Loss {
 /// the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
-    main_key: Keypair,
-    server: ServerPin,
-    role: JoinRole,
+    pub(crate) main_key: Keypair,
+    pub(crate) server: ServerPin,
+    pub(crate) role: JoinRole,
     /// Whether the server runs on a thread of the client's process: only such a server loads a
     /// save, so only its match start that says so is taken as one.
-    local: bool,
-    rules: SessionRules,
-    /// Unix seconds: when a delegation is made, and so when it expires.
-    clock: fn() -> u64,
+    pub(crate) local: bool,
+    pub(crate) rules: SessionRules,
+    /// When a delegation is made, and so when it expires.
+    pub(crate) clock: Clock,
 }
 
 /// What the player's join fixed: the session its signatures name, and the terms' limits on what
@@ -204,23 +205,9 @@ pub(crate) enum Retry {
 }
 
 impl JoinState {
-    pub(crate) const fn new(
-        main_key: Keypair,
-        server: ServerPin,
-        role: JoinRole,
-        local: bool,
-        rules: SessionRules,
-        clock: fn() -> u64,
-    ) -> JoinState {
+    pub(crate) const fn new(player: Joining) -> JoinState {
         JoinState {
-            player: Joining {
-                main_key,
-                server,
-                role,
-                local,
-                rules,
-                clock,
-            },
+            player,
             step: Step::Waiting,
         }
     }
@@ -318,7 +305,7 @@ impl JoinState {
         binding: &ChannelBinding,
         signer: &mut Signer,
     ) -> Option<Result<Join, TermsMismatch>> {
-        let now = (self.player.clock)();
+        let now = self.player.clock.unix_now();
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
                 if let Err(mismatch) = self.player.fits(&offer.terms) {

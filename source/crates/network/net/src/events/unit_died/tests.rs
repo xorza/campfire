@@ -1,4 +1,3 @@
-use campfire_combat::Fallen;
 use campfire_log::internals::round_trip;
 use campfire_sim::IdAllocator;
 
@@ -9,15 +8,16 @@ fn the_event_reads_back_what_it_logs() {
     let mut ids = IdAllocator::default();
     let [killer, unit] = [ids.allocate(), ids.allocate()];
     let avatar = UnitDied {
-        tick: Tick::new(7),
+        tick: Some(Tick::new(7)),
         unit,
         team: Some(Team::new(1)),
         owner: Some(PlayerSlot::new(0)),
         killer: Some(killer),
     };
     round_trip(&avatar);
-    // A unit with no team, owner or killer leaves those fields out.
+    // A unit with no tick, team, owner or killer leaves those fields out.
     round_trip(&UnitDied {
+        tick: None,
         team: None,
         owner: None,
         killer: None,
@@ -42,11 +42,22 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
     assert_eq!(
         UnitDied::of(Tick::new(7), &death),
         UnitDied {
-            tick: Tick::new(7),
+            tick: Some(Tick::new(7)),
             unit: id,
             team: Some(Team::new(1)),
             owner: Some(PlayerSlot::new(0)),
             killer: Some(killer),
         }
     );
+    // A client learns the same death at its own tick, or at none, with no killer.
+    for tick in [Some(Tick::new(9)), None] {
+        assert_eq!(
+            UnitDied::learned(tick, fallen),
+            UnitDied {
+                tick,
+                killer: None,
+                ..UnitDied::of(Tick::new(7), &death)
+            }
+        );
+    }
 }

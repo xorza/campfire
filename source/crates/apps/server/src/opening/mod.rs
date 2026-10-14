@@ -2,21 +2,16 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
-use bevy_app::AppExit;
-use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
 use campfire_common::MapName;
-use campfire_log::{ErrorReport, LogEvent};
 use campfire_net::{
-    Lobby, LobbySetup, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionDir,
-    SessionRestored, SimServer,
+    Entropy, Lobby, LobbySetup, PendingRestore, RestoredSession, ServerBots, ServerDir,
+    ServerSetup, SessionDir,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::{SeedChain, SessionPrivate, SessionTerms};
-use campfire_runner::{InputRules, Session};
+use campfire_protocol::{SeedChain, SessionTerms};
+use campfire_runner::InputRules;
 use campfire_visibility::HostVisibility;
 use secp256k1::Keypair;
-use tracing::error;
 
 use crate::opening::error::OpeningError;
 
@@ -28,16 +23,7 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub(crate) enum Opening {
     New(Box<Lobby>),
-    Restored(Box<Restore>),
-}
-
-/// A session to restore in the first frame, as a match starts in a fixed tick.
-#[derive(Resource, Debug)]
-pub(crate) struct Restore {
-    session: RestoredSession,
-    packages: ModePackages,
-    server: ServerSetup,
-    bots: ServerBots,
+    Restored(Box<PendingRestore>),
 }
 
 /// What `Opening::of` needs.
@@ -61,9 +47,9 @@ impl Opening {
         setup: OpeningSetup<'_>,
     ) -> Result<Opening, OpeningError> {
         if let Some(session) = found {
-            return Ok(Opening::Restored(Box::new(Restore {
+            return Ok(Opening::Restored(Box::new(PendingRestore {
                 session,
-                packages: setup.packages,
+                packages: Arc::new(setup.packages),
                 server: setup.server,
                 bots: setup.bots,
             })));
@@ -115,7 +101,7 @@ impl Opening {
         packages: &ModePackages,
         window: Duration,
         key: Keypair,
-        entropy: fn(&mut [u8; 32]),
+        entropy: Entropy,
     ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(session) = waiting else {
             return Ok(None);
@@ -136,7 +122,7 @@ impl Opening {
     /// and journal made.
     fn open(setup: OpeningSetup<'_>) -> Result<Lobby, OpeningError> {
         let mut seed = [0; 32];
-        (setup.server.entropy)(&mut seed);
+        setup.server.os.entropy.fill(&mut seed);
         let seed_chain = SeedChain::new(seed, setup.segments);
         let slots = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
         let tick_hz = setup.packages.manifest().tick_hz.default();
@@ -152,40 +138,10 @@ impl Opening {
             server: setup.server,
         })
         .map_err(OpeningError::Lobby)?;
-        let private = SessionPrivate {
-            seed_chain,
-            terms: lobby.terms().clone(),
-        };
-        let dir = SessionDir::create(setup.data, &private).map_err(OpeningError::NewSession)?;
-        let files = dir.start().map_err(OpeningError::NewJournal)?;
-        lobby.keep_files(files);
+        lobby
+            .keep_files(setup.data)
+            .map_err(OpeningError::KeepFiles)?;
         Ok(lobby)
-    }
-}
-
-impl Restore {
-    /// Restores the session in `world`'s server, its log's bytes from the first frame on; see
-    /// `SimServer::restore_match`. An error, logged, ends the app.
-    pub(crate) fn run(world: &mut World) {
-        let Restore {
-            session,
-            packages,
-            server,
-            bots,
-        } = world
-            .remove_resource::<Restore>()
-            .expect("a restore runs while one waits");
-        let id = session.log.session_id();
-        match SimServer::restore_match(world, session, &packages, &server, bots) {
-            Ok(()) => {
-                let tick = world.resource::<Session>().log().next_tick();
-                SessionRestored { session: id, tick }.log();
-            }
-            Err(error) => {
-                error!(error = %ErrorReport::of(&error), "the session's match does not restore");
-                world.write_message(AppExit::error());
-            }
-        }
     }
 }
 

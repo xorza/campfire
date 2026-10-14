@@ -128,7 +128,7 @@ fn main() -> ExitCode {
     let tick = TickRate::new(pin.tick_hz).length();
     let sim_client = SimClient {
         main_key,
-        session_key: RandomKey::generate(Os::fill),
+        session_key: RandomKey::generate(|bytes| Os::SYSTEM.entropy.fill(bytes)),
         server: pin,
         role: if args.spectate {
             JoinRole::Watch
@@ -137,8 +137,7 @@ fn main() -> ExitCode {
         },
         local: matches!(connection, Connection::Local(_)),
         packages: Arc::clone(&packages),
-        clock: Os::unix_now,
-        entropy: Os::fill,
+        os: Os::SYSTEM,
         data,
     };
     if let Err(error) = sim_client.check() {
@@ -236,10 +235,10 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
 /// code when the file does not read.
 fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
     let Some(path) = &args.key else {
-        return Ok(RandomKey::generate(Os::fill));
+        return Ok(RandomKey::generate(|bytes| Os::SYSTEM.entropy.fill(bytes)));
     };
     let file = SecretFile::at(path.clone());
-    KeyFile::read_or_create(&file, Os::fill).map_err(|error| {
+    KeyFile::read_or_create(&file, Os::SYSTEM.entropy).map_err(|error| {
         error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })

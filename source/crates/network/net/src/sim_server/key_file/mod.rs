@@ -2,6 +2,7 @@ use campfire_protocol::{Nsec, RandomKey};
 use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
 use secp256k1::Keypair;
 
+use crate::os::Entropy;
 use crate::sim_server::key_file::error::KeyFileError;
 
 pub(crate) mod error;
@@ -20,16 +21,13 @@ impl KeyFile {
 
     /// The key in `file`, or, when there is no file, a new key from `entropy`'s random bytes,
     /// created there first; when another process created it meanwhile, its key.
-    pub fn read_or_create(
-        file: &SecretFile,
-        entropy: fn(&mut [u8; 32]),
-    ) -> Result<Keypair, KeyFileError> {
+    pub fn read_or_create(file: &SecretFile, entropy: Entropy) -> Result<Keypair, KeyFileError> {
         match KeyFile::read(file) {
             Err(KeyFileError::Read(PathError {
                 error: ReadError::Missing,
                 ..
             })) => {
-                let key = RandomKey::generate(entropy);
+                let key = RandomKey::generate(|bytes| entropy.fill(bytes));
                 match file.create(Nsec::encode(&key).as_bytes()) {
                     Ok(()) => Ok(key),
                     Err(PathError {

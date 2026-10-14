@@ -2795,8 +2795,6 @@ version = "0.1.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
- "bevy_state",
- "bevy_time",
  "campfire-common",
  "campfire-declare",
  "campfire-log",
@@ -2805,7 +2803,6 @@ dependencies = [
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
- "campfire-sim",
  "campfire-store",
  "campfire-visibility",
  "clap",

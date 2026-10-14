@@ -1,9 +1,3 @@
-#![expect(
-    clippy::disallowed_types,
-    reason = "a clock is a `fn` with no state of its own, so the time a test sets is its thread's"
-)]
-
-use std::cell::Cell;
 use std::fmt::Write as _;
 use std::mem;
 use std::num::NonZeroU32;
@@ -19,13 +13,19 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order};
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
-use campfire_declare::CapabilitySet;
 use campfire_log::internals::LogCheck;
 use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
+use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
+use campfire_net::{
+    BotScript, ClientDir, Clock, Entropy, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
+    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, PlayerLink, ServerBots,
+    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, SlotBot, TickHashes,
+};
 use campfire_package::ModePackages;
 use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{SeedChain, ServerInput, SessionPrivate};
+use campfire_protocol::{SeedChain, ServerInput};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
@@ -42,27 +42,6 @@ use lightyear::transport::plugin::TransportSystems;
 
 use crate::in_process_match::delay_line::DelayLine;
 use crate::in_process_match::link_model::LinkModel;
-use campfire_net::BotScript;
-use campfire_net::ClientDir;
-use campfire_net::JoinRole;
-use campfire_net::JoinState;
-use campfire_net::LocalPace;
-use campfire_net::MatchClock;
-use campfire_net::OrderScript;
-use campfire_net::Pace;
-use campfire_net::PlayerLink;
-use campfire_net::ServerDir;
-use campfire_net::ServerPin;
-use campfire_net::ServerSetup;
-use campfire_net::SessionDir;
-use campfire_net::SessionTimes;
-use campfire_net::SimServer;
-use campfire_net::SimServerWorld;
-use campfire_net::TickHashes;
-use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
-use campfire_net::{Lobby, LobbySetup};
-use campfire_net::{PendingOrders, SimClient};
-use campfire_net::{ServerBots, SlotBot};
 
 pub(crate) mod delay_line;
 pub(crate) mod link_model;
@@ -73,15 +52,6 @@ const CONNECT_FRAMES: usize = 300;
 const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
 /// In-process channels have no TLS session; both ends of a link take this binding.
 const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
-thread_local! {
-    /// The Unix time every end's clock reads, `TestKey::NOW` until a test sets it: a match runs
-    /// on the test's thread, and a clock is a `fn` with no state of its own.
-    static UNIX_NOW: Cell<u64> = const { Cell::new(TestKey::NOW) };
-}
-
-fn unix_now() -> u64 {
-    UNIX_NOW.with(Cell::get)
-}
 
 /// What an `InProcessMatch` runs: how many players join, and how.
 #[derive(Debug, Clone, Copy)]
@@ -239,6 +209,8 @@ pub struct InProcessMatch {
     data: Option<PathBuf>,
     /// The pause and the speed every end follows.
     pace: Arc<Pace>,
+    /// The Unix time every end's clock reads, `TestKey::NOW` until a test sets it.
+    clock: Clock,
     /// What the last step cost each end, kept from step to step.
     step_cost: StepCost,
     /// The server's links that `lay_out_links` moves, in client order.
@@ -283,12 +255,8 @@ impl InProcessMatch {
             "the server runs a frame a tick at least"
         );
         let packages = Arc::new(packages);
-        let tick_hz = packages.manifest().tick_hz.default();
-        let tick = TickRate::new(tick_hz).length();
-
         let pace = Arc::new(Pace::default());
-        let capabilities = packages.manifest().capabilities;
-        let mut server = InProcessMatch::server_app(&setup, capabilities, tick, &pace);
+        let mut server = InProcessMatch::server_app(&setup, &packages, &pace);
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
@@ -306,6 +274,7 @@ impl InProcessMatch {
             packages,
             data: None,
             pace,
+            clock: Clock::manual(TestKey::NOW),
             step_cost: StepCost::default(),
             link_rows: Vec::with_capacity(setup.players),
             log,
@@ -338,13 +307,15 @@ impl InProcessMatch {
         panic!("the clients did not connect and sync in {CONNECT_FRAMES} frames");
     }
 
-    /// The server's app, its frames `setup.server_frames` a tick of `tick`, before any link.
-    fn server_app(setup: &MatchSetup, set: CapabilitySet, tick: Duration, pace: &Arc<Pace>) -> App {
+    /// The server's app of `packages` at their default rate, its frames `setup.server_frames` a
+    /// tick, before any link.
+    fn server_app(setup: &MatchSetup, packages: &ModePackages, pace: &Arc<Pace>) -> App {
+        let tick_hz = packages.manifest().tick_hz.default();
+        let tick = TickRate::new(tick_hz).length();
         let mut server = App::new();
-        server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-        server.add_plugins(SimServer {
-            tick,
-            capabilities: set,
+        server.add_plugins(SimServerPlugins {
+            tick_hz,
+            capabilities: packages.manifest().capabilities,
         });
         server.world_mut().host_locally();
         server.add_plugins(LocalPace {
@@ -378,9 +349,7 @@ impl InProcessMatch {
     }
 
     fn add(&mut self, joiner: Joiner) -> usize {
-        let tick_hz = self.packages.manifest().tick_hz.default();
-        let ClientApp { mut app, entity } =
-            ClientApp::new(&self.setup, joiner, &self.packages, tick_hz, &self.pace);
+        let ClientApp { mut app, entity } = ClientApp::new(self, joiner);
         app.finish();
         app.cleanup();
         run_in_order(&mut app);
@@ -445,7 +414,7 @@ impl InProcessMatch {
 
     /// Sets the Unix time every end's clock reads, in seconds.
     pub fn set_clock(&mut self, seconds: u64) {
-        UNIX_NOW.with(|now| now.set(seconds));
+        self.clock.set(seconds);
     }
 
     /// Every input the server logged, in the order logged.
@@ -483,8 +452,10 @@ impl InProcessMatch {
         ServerSetup {
             key: TestKey::server(),
             times: self.setup.times,
-            clock: unix_now,
-            entropy: |bytes| bytes.fill(5),
+            os: Os {
+                clock: self.clock.clone(),
+                entropy: Entropy::Fixed(5),
+            },
         }
     }
 
@@ -534,8 +505,8 @@ impl InProcessMatch {
     }
 
     /// Ends the server, then starts a new one on its data directory, which restores the session
-    /// its journal holds; see `SimServer::restore_match`. Each client gets a new link to it, which
-    /// it connects through once its wait passed.
+    /// its journal holds in its first frame; see `PendingRestore`. Each client gets a new link to
+    /// it, which it connects through once its wait passed.
     pub fn restart_server(&mut self) {
         self.stop_server();
         let path = self.data.as_ref().expect("a server with a data directory");
@@ -547,23 +518,23 @@ impl InProcessMatch {
             .restore()
             .unwrap()
             .expect("a session whose match started");
-        let tick = TickRate::new(self.packages.manifest().tick_hz.default()).length();
-        let capabilities = self.packages.manifest().capabilities;
-        let mut server = InProcessMatch::server_app(&self.setup, capabilities, tick, &self.pace);
+        let mut server = InProcessMatch::server_app(&self.setup, &self.packages, &self.pace);
         self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
         run_in_order(&mut server);
-        server.update();
-        SimServer::restore_match(
-            server.world_mut(),
-            session,
-            &self.packages,
-            &self.server_setup(),
-            self.server_bots(),
-        )
-        .unwrap();
         server.world_mut().insert_resource(data);
+        server.world_mut().insert_resource(PendingRestore {
+            session,
+            packages: Arc::clone(&self.packages),
+            server: self.server_setup(),
+            bots: self.server_bots(),
+        });
+        server.update();
+        assert!(
+            server.world().contains_resource::<MatchClock>(),
+            "the session restores in the server's first frame"
+        );
         self.server = server;
         for client in 0..self.clients.len() {
             self.mend_link(client);
@@ -604,13 +575,7 @@ impl InProcessMatch {
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = self.server.world().get_resource::<ServerDir>() {
-            let private = SessionPrivate {
-                seed_chain: self.setup.seed_chain,
-                terms: lobby.terms().clone(),
-            };
-            let dir = SessionDir::create(data, &private).unwrap();
-            let files = dir.start().unwrap();
-            lobby.keep_files(files);
+            lobby.keep_files(data).unwrap();
         }
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
@@ -905,14 +870,11 @@ enum Joiner {
 }
 
 impl ClientApp {
-    /// The app of `player`, following `pace`.
-    fn new(
-        setup: &MatchSetup,
-        joiner: Joiner,
-        packages: &Arc<ModePackages>,
-        tick_hz: NonZeroU32,
-        pace: &Arc<Pace>,
-    ) -> ClientApp {
+    /// The app of `joiner` in `local`, at its packages' default rate, following its pace and
+    /// reading its clock.
+    fn new(local: &InProcessMatch, joiner: Joiner) -> ClientApp {
+        let setup = &local.setup;
+        let tick_hz = local.packages.manifest().tick_hz.default();
         let (keys, role, rollback) = match joiner {
             Joiner::Player(player) => (
                 TestKey::player(u32::try_from(player).unwrap()),
@@ -935,9 +897,11 @@ impl ClientApp {
             },
             role,
             local: true,
-            packages: Arc::clone(packages),
-            clock: unix_now,
-            entropy: |bytes| bytes.fill(4),
+            packages: Arc::clone(&local.packages),
+            os: Os {
+                clock: local.clock.clone(),
+                entropy: Entropy::Fixed(4),
+            },
             data: None,
         };
         let tick = TickRate::new(tick_hz).length();
@@ -945,7 +909,7 @@ impl ClientApp {
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(sim_client);
         client.add_plugins(LocalPace {
-            pace: Arc::clone(pace),
+            pace: Arc::clone(&local.pace),
             tick,
         });
         client.insert_resource(TimeUpdateStrategy::ManualDuration(tick));

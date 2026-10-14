@@ -1,9 +1,3 @@
-#![expect(
-    clippy::disallowed_types,
-    reason = "a clock is a `fn` with no state of its own, so the time a test sets is its thread's"
-)]
-
-use std::cell::Cell;
 use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, TlsKey};
@@ -15,15 +9,8 @@ use secp256k1::XOnlyPublicKey;
 
 use super::*;
 use crate::match_start::ChainHead;
+use crate::os::Entropy;
 
-thread_local! {
-    /// The client's clock in this test, in Unix seconds.
-    static CLOCK: Cell<u64> = const { Cell::new(TestKey::NOW) };
-}
-
-fn clock() -> u64 {
-    CLOCK.with(Cell::get)
-}
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
 
 type Change = fn(&mut SessionTerms);
@@ -49,19 +36,19 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         tls_key: TlsKey::new([3; 32]),
         tick_hz,
     };
-    JoinState::new(
-        TestKey::of(1),
+    JoinState::new(Joining {
+        main_key: TestKey::of(1),
         server,
-        JoinRole::Play,
-        false,
-        lane_rules(),
-        clock,
-    )
+        role: JoinRole::Play,
+        local: false,
+        rules: lane_rules(),
+        clock: Clock::manual(TestKey::NOW),
+    })
 }
 
 /// Session key 2, whose randomness is all 6s.
 fn signer() -> Signer {
-    Signer::new(TestKey::of(2), |bytes| bytes.fill(6))
+    Signer::new(TestKey::of(2), Entropy::Fixed(6))
 }
 
 /// Terms the client can play, with `change` applied.
@@ -303,7 +290,7 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     // A day after the join, its delegation expires within the margin: the client answers with a
     // new delegation, by its main key, of a new session key.
     let (mut state, mut signer, _, delegation) = played(&[b"a"]);
-    CLOCK.with(|clock| clock.set(TestKey::NOW + 86_400 - 60));
+    state.player.clock.set(TestKey::NOW + 86_400 - 60);
     assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Rejoining);
     let join = state
         .answer(&offer(|_| {}), &BINDING, &mut signer)
@@ -317,7 +304,6 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
         renewed.terms().expiration,
         TestKey::NOW + 86_400 - 60 + 86_400
     );
-    CLOCK.with(|clock| clock.set(TestKey::NOW));
 
     // An offer of another session ends it.
     let (mut state, mut signer, _, _) = played(&[]);
@@ -535,12 +521,12 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     let failed = Duration::from_secs(10);
     assert_eq!(state.lose(failed, [0; 32]), LinkLoss::Rejoining);
     assert_eq!(state.receipt(), Some(&signed(third)));
-    CLOCK.with(|clock| clock.set(TestKey::NOW + 86_400 - 60));
+    state.player.clock.set(TestKey::NOW + 86_400 - 60);
     let join = state
         .answer(&offer(|_| {}), &BINDING, &mut signer)
         .unwrap()
         .unwrap();
-    CLOCK.with(|clock| clock.set(TestKey::NOW));
+    state.player.clock.set(TestKey::NOW);
     let renewed = Delegation::parse(&join.delegation).unwrap();
     assert_ne!(delegation.id(), renewed.id());
     let resumed = MatchStart {

@@ -1,8 +1,8 @@
-use campfire_store::{AppendOpenError, DataDirError, DurableError, PathError};
+use campfire_store::{DataDirError, PathError};
 use thiserror::Error;
 
 use crate::sim_server::key_file::error::KeyFileError;
-use crate::sim_server::lobby::error::LobbyError;
+use crate::sim_server::lobby::error::{KeepFilesError, LobbyError};
 use crate::sim_server::session_dir::error::{AbortError, WaitingError};
 
 /// Why a local server does not start.
@@ -22,8 +22,6 @@ pub enum LocalServerError {
     /// The session's slots do not open: a bot names slot 0, the client's, or none the mode has.
     #[error(transparent)]
     Lobby(LobbyError),
-    #[error("could not make the session's directory")]
-    NewSession(#[source] PathError<DurableError>),
-    #[error("the journal")]
-    NewJournal(#[source] PathError<AppendOpenError>),
+    #[error(transparent)]
+    KeepFiles(KeepFilesError),
 }

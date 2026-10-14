@@ -187,6 +187,7 @@ mod tests {
     use campfire_store::internals::Scratch;
 
     use super::*;
+    use crate::os::Entropy;
 
     #[test]
     fn deltas_sent_while_one_is_on_the_thread_follow_it_in_order() {
@@ -200,7 +201,7 @@ mod tests {
         let mut base = StateDelta::default();
         registry.track(&mut world, &mut base);
         let scratch = Scratch::new();
-        let signer = ServerSigner::new(TestKey::server(), |bytes| bytes.fill(1));
+        let signer = ServerSigner::new(TestKey::server(), Entropy::Fixed(1));
         let session_id = SessionId::new([2; 32]);
         let snapshots = SnapshotDir(scratch.path("snapshots"));
         let mut thread =

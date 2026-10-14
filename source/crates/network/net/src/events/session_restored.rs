@@ -4,8 +4,8 @@ use campfire_protocol::SessionId;
 use serde::Deserialize;
 use tracing::info;
 
-/// The server started again and restored the session a stop ended: it replayed the log, and runs
-/// the match on from sim tick `tick`.
+/// The server restored a session, the one a stop ended as it started again, or the one a load
+/// went back to: it replayed the log, and runs the match on from sim tick `tick`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct SessionRestored {
     #[serde(deserialize_with = "LogLine::text")]

@@ -18,6 +18,7 @@ use crate::dismissed::Dismissed;
 use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
+use crate::os::{Clock, Entropy};
 use crate::session_times::SessionTimes;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::player_link::PlayerLink;
@@ -39,8 +40,8 @@ const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 pub(crate) struct Offering {
     pub(crate) terms: SessionTerms,
     pub(crate) times: SessionTimes,
-    clock: fn() -> u64,
-    entropy: fn(&mut [u8; 32]),
+    clock: Clock,
+    entropy: Entropy,
     secp: Secp256k1<VerifyOnly>,
 }
 
@@ -201,8 +202,8 @@ impl Offering {
         Offering {
             terms,
             times: server.times,
-            clock: server.clock,
-            entropy: server.entropy,
+            clock: server.os.clock.clone(),
+            entropy: server.os.entropy,
             secp: Secp256k1::verification_only(),
         }
     }
@@ -228,7 +229,7 @@ impl Offering {
                 }
                 None => {
                     let mut challenge = [0; 32];
-                    (self.entropy)(&mut challenge);
+                    self.entropy.fill(&mut challenge);
                     let challenge = ConnectChallenge::new(challenge);
                     let LinkBinding(binding) =
                         *binding.expect("a connected link holds its session's binding");
@@ -262,7 +263,7 @@ impl Offering {
                 &offered.binding,
                 &delegation,
                 &join.answer,
-                (self.clock)(),
+                self.clock.unix_now(),
             )
             .map_err(JoinError::Connect)?;
         Ok(delegation)

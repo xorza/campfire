@@ -15,6 +15,7 @@ use campfire_store::{
 use secp256k1::Keypair;
 
 use crate::events::session_aborted::SessionAborted;
+use crate::os::Entropy;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_signer::ServerSigner;
@@ -219,7 +220,7 @@ impl RestoredSession {
         data: &ServerDir,
         packages: &ModePackages,
         server_key: Keypair,
-        entropy: fn(&mut [u8; 32]),
+        entropy: Entropy,
     ) -> Result<PathBuf, AbortError> {
         let ticks = self.log.next_tick();
         let seeds = self.private.seed_chain.seeds();

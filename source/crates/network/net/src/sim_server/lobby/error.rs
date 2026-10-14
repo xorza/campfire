@@ -1,5 +1,6 @@
 use campfire_common::PlayerSlot;
 use campfire_runner::TermsError;
+use campfire_store::{AppendOpenError, DurableError, PathError};
 use campfire_visibility::VisibilityError;
 use thiserror::Error;
 
@@ -20,4 +21,14 @@ pub enum LobbyError {
     /// The host's visibility settings are not ones the mode leaves it.
     #[error("the host's visibility")]
     Visibility(#[source] VisibilityError),
+}
+
+/// Why a lobby's session keeps no files.
+#[derive(Debug, Error)]
+pub enum KeepFilesError {
+    /// The session's directory or private record was not made.
+    #[error("could not make the session's directory")]
+    Dir(#[source] PathError<DurableError>),
+    #[error("the journal")]
+    Journal(#[source] PathError<AppendOpenError>),
 }

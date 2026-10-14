@@ -11,7 +11,8 @@ use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Delegation, SeedChain, SessionHeader, SessionLog, SessionTerms, SlotPlan, SlotStart,
+    Delegation, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms, SlotPlan,
+    SlotStart,
 };
 use campfire_runner::{InputRules, SessionRules};
 use campfire_visibility::{HostVisibility, Visibility};
@@ -20,13 +21,14 @@ use tracing::info;
 
 use crate::events::join_refused::JoinRefused;
 use crate::sim_server::error::JoinError;
-use crate::sim_server::lobby::error::LobbyError;
+use crate::sim_server::lobby::error::{KeepFilesError, LobbyError};
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLinks, Joined, OfferLinks, Offering,
 };
 use crate::sim_server::server_bots::ServerBots;
+use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::SessionFiles;
+use crate::sim_server::session_dir::{SessionDir, SessionFiles};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 use crate::sim_server::viewer::Viewer;
@@ -139,11 +141,18 @@ impl Lobby {
         })
     }
 
-    /// Keeps `files`, a new journal and where snapshots go, for the session: the journal follows
-    /// the log from the match's start.
-    pub fn keep_files(&mut self, files: SessionFiles) {
+    /// Makes the session's directory under `data`, with its private record, a new journal and
+    /// where snapshots go, and keeps its files: the journal follows the log from the match's
+    /// start.
+    pub fn keep_files(&mut self, data: &ServerDir) -> Result<(), KeepFilesError> {
         assert!(self.files.is_none(), "a session keeps one journal");
-        self.files = Some(files);
+        let private = SessionPrivate {
+            seed_chain: self.seed_chain,
+            terms: self.terms().clone(),
+        };
+        let dir = SessionDir::create(data, &private).map_err(KeepFilesError::Dir)?;
+        self.files = Some(dir.start().map_err(KeepFilesError::Journal)?);
+        Ok(())
     }
 
     pub const fn terms(&self) -> &SessionTerms {

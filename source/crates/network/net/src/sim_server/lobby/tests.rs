@@ -16,6 +16,7 @@ use secp256k1::{All, Secp256k1};
 use super::*;
 use crate::join::{Join, JoinRole};
 use crate::order_script::OrderScript;
+use crate::os::{Clock, Entropy, Os};
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SlotBot;
@@ -41,8 +42,10 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         server: ServerSetup {
             key: TestKey::server(),
             times: SessionTimes::DEFAULT,
-            clock: || TestKey::NOW,
-            entropy: |bytes| bytes.fill(5),
+            os: Os {
+                clock: Clock::manual(TestKey::NOW),
+                entropy: Entropy::Fixed(5),
+            },
         },
     }
 }

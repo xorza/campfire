@@ -19,28 +19,24 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::process::ExitCode;
-use std::time::Duration;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
-use bevy_state::app::StatesPlugin;
-use bevy_time::TimePlugin;
 use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeyFile, Listening, NetProtocol, Os, ProcessExit, RestoredSession, ServerBots,
-    ServerDir, ServerSetup, SessionTimes, SimServer, SimServerWorld,
+    JournalFailed, KeepFilesError, KeyFile, Listening, NetProtocol, Os, PendingRestore,
+    ProcessExit, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
+    SimServerPlugins, SimServerWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
 use campfire_quic::{LinkTimes, PortMap, QuicEndpoint};
-use campfire_sim::TickRate;
 use campfire_store::StopSignals;
 use campfire_visibility::HostVisibility;
 use lightyear::prelude::Linked;
@@ -51,7 +47,7 @@ use zeroize::Zeroizing;
 
 use crate::args::Args;
 use crate::opening::error::OpeningError;
-use crate::opening::{Opening, OpeningSetup, Restore};
+use crate::opening::{Opening, OpeningSetup};
 
 mod args;
 mod opening;
@@ -108,7 +104,7 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
-    let key = match KeyFile::read_or_create(&data.layout().key_file(), Os::fill) {
+    let key = match KeyFile::read_or_create(&data.layout().key_file(), Os::SYSTEM.entropy) {
         Ok(key) => key,
         Err(error) => {
             error!(key = %data.layout().key_file(), error = %ErrorReport::of(&error), "the server's key does not open");
@@ -158,8 +154,7 @@ fn main() -> ExitCode {
         };
     let local = endpoint.local_address();
     let listening = announce(&opening, &mode, local, tls_key, &server.key);
-    let tick = TickRate::new(opening.terms().tick_hz).length();
-    let mut app = server_app(opening, data, tick, listening, capabilities, stop);
+    let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
     let server = app.world_mut().spawn((RawServer, endpoint)).id();
     app.world_mut().trigger(Start { entity: server });
@@ -201,25 +196,24 @@ impl Started {
             &packages,
             times.restore_window,
             key,
-            Os::fill,
+            Os::SYSTEM.entropy,
         )
         .map_err(no_session)?;
         let server = ServerSetup {
             key,
             times,
-            clock: Os::unix_now,
-            entropy: Os::fill,
+            os: Os::SYSTEM,
         };
         let setup = OpeningSetup {
             data,
             packages,
-            server,
+            server: server.clone(),
             bots,
             host,
             segments: SEGMENTS,
         };
         let opening = Opening::of(found, setup).map_err(|error| match error {
-            OpeningError::NewSession(_) | OpeningError::NewJournal(_) => {
+            OpeningError::KeepFiles(KeepFilesError::Dir(_) | KeepFilesError::Journal(_)) => {
                 JournalFailed {
                     error: ErrorReport::of(&error).to_string(),
                 }
@@ -232,29 +226,25 @@ impl Started {
     }
 }
 
-/// The server's app: its plugins at `tick` a tick, the session of `opening`, a `listening`
-/// event logged once its transport listens, and the end once every player left, or at a signal
-/// `stop` caught, with its code, the session left in its journal for the next start to restore
-/// (design 10, Stop).
+/// The server's app: its plugins at the rate of the session of `opening`, that session, a
+/// `listening` event logged once its transport listens, and the end once every player left, or at
+/// a signal `stop` caught, with its code, the session left in its journal for the next start to
+/// restore (design 10, Stop).
 fn server_app(
     opening: Opening,
     data: ServerDir,
-    tick: Duration,
     listening: Listening,
     set: CapabilitySet,
     stop: StopSignals,
 ) -> App {
     let mut app = App::new();
     app.add_plugins((
-        TaskPoolPlugin::default(),
-        TimePlugin,
-        StatesPlugin,
+        SimServerPlugins {
+            tick_hz: opening.terms().tick_hz,
+            capabilities: set,
+        },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    app.add_plugins(SimServer {
-        tick,
-        capabilities: set,
-    });
     match opening {
         Opening::New(lobby) => app.insert_resource(*lobby),
         Opening::Restored(restore) => app.insert_resource(*restore),
@@ -269,16 +259,13 @@ fn server_app(
     );
     app.add_systems(
         Update,
-        (
-            Restore::run.run_if(resource_exists::<Restore>),
-            exit_when_due,
-            move |world: &mut World| {
-                if stop.received() {
-                    world.write_message(AppExit::from_code(StopSignals::EXIT_CODE));
-                }
-            },
-        )
-            .chain(),
+        (exit_when_due, move |world: &mut World| {
+            if stop.received() {
+                world.write_message(AppExit::from_code(StopSignals::EXIT_CODE));
+            }
+        })
+            .chain()
+            .after(PendingRestore::run),
     );
     app
 }
