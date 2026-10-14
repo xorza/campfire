@@ -1,36 +1,66 @@
+use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
-use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
-use campfire_store::Worker;
-use tracing::info;
+use campfire_log::ErrorReport;
+use campfire_store::{SharedPort, Worker};
+use polling::{Event, Events, Poller};
+use tracing::{error, info, warn};
 
 use crate::port_mapper::{MapTimes, PortMapper, Routes};
+
+/// The poller's key of the announcements' socket.
+const ANNOUNCEMENTS: usize = 0;
+/// The most bytes of an announcement the thread reads: a datagram of a network's MTU.
+const DATAGRAM: usize = 1500;
 
 /// A server's port, which its router forwards from outside, on a thread of its own (design 15,
 /// D12): it maps the port by PCP or NAT-PMP at the default gateway, else by UPnP, renews the
 /// mapping, maps it anew when a renewal fails, and tries again while no router maps it, in 30
-/// minutes or when a PCP refusal's lifetime ends, logging each change. Dropped, it ends the thread after its turn, which deletes the
-/// mapping, and joins it.
+/// minutes, when a PCP refusal's lifetime ends, or at once when a router at an address not heard
+/// before announces itself, logging each change. Dropped, it ends the thread after its turn, which
+/// deletes the mapping, and joins it.
 #[derive(Debug)]
 pub struct PortMap {
-    /// Dropped first, which wakes the thread to its end.
-    _stop: mpsc::Sender<()>,
+    stop: Arc<Stop>,
     _worker: Worker,
+}
+
+/// The thread's stop: a flag the drop raises, and the poller it waits on, which the drop wakes.
+#[derive(Debug)]
+struct Stop {
+    stopped: AtomicBool,
+    poller: Poller,
+}
+
+/// What the thread waits on between its turns: the stop, and routers' announcements on their
+/// socket, when it opened.
+#[derive(Debug)]
+struct Listening {
+    stop: Arc<Stop>,
+    announcements: Option<SharedPort>,
+    events: Events,
+    datagram: Box<[u8; DATAGRAM]>,
 }
 
 impl PortMap {
     /// The map of the server socket at `local`, at this host's gateway or router; none, logged,
-    /// for a socket no router forwards to.
+    /// for a socket no router forwards to, or when its thread cannot wait.
     pub fn start(local: SocketAddr) -> Option<PortMap> {
         if !PortMap::forwardable(local) {
             info!(%local, "the server listens where no router forwards; its port is not mapped");
             return None;
         }
-        Some(PortMap::of(PortMapper::new(
-            local.port(),
-            Routes::System,
-            MapTimes::CAMPFIRE,
-        )))
+        let mapper = PortMapper::new(local.port(), Routes::System, MapTimes::CAMPFIRE);
+        match PortMap::of(mapper) {
+            Ok(map) => Some(map),
+            Err(error) => {
+                warn!(error = %ErrorReport::of(&error), "the port map's thread cannot wait; the server's port is not mapped");
+                None
+            }
+        }
     }
 
     /// Whether a router forwards to a socket at `local`: one bound to IPv4, all of the host's
@@ -40,15 +70,117 @@ impl PortMap {
         matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())
     }
 
-    fn of(mut mapper: PortMapper) -> PortMap {
-        let (stop, stopped) = mpsc::channel::<()>();
-        let worker = Worker::start("campfire-port-map", move || {
-            while stopped.recv_timeout(mapper.turn()) == Err(RecvTimeoutError::Timeout) {}
-            mapper.end();
+    fn of(mapper: PortMapper) -> io::Result<PortMap> {
+        let stop = Arc::new(Stop {
+            stopped: AtomicBool::new(false),
+            poller: Poller::new()?,
         });
-        PortMap {
-            _stop: stop,
+        let listening = Listening::open(Arc::clone(&stop), mapper.routes())?;
+        let worker = Worker::start("campfire-port-map", move || listening.run(mapper));
+        Ok(PortMap {
+            stop,
             _worker: worker,
+        })
+    }
+}
+
+impl Drop for PortMap {
+    fn drop(&mut self) {
+        self.stop.stopped.store(true, Ordering::SeqCst);
+        if let Err(error) = self.stop.poller.notify() {
+            warn!(error = %ErrorReport::of(&error), "the port map's thread was not woken; it ends after its wait");
+        }
+    }
+}
+
+impl Listening {
+    /// The wait of `stop`, and the announcements' socket of `routes`, non-blocking and watched;
+    /// a socket that does not open is logged, and the map hears no announcement.
+    fn open(stop: Arc<Stop>, routes: Routes) -> io::Result<Listening> {
+        let announcements = match routes.announcements() {
+            Ok(port) => {
+                port.socket().set_nonblocking(true)?;
+                // SAFETY: `Listening::drop` deletes the socket from this poller before it drops.
+                unsafe {
+                    stop.poller
+                        .add(port.socket(), Event::readable(ANNOUNCEMENTS))?;
+                }
+                Some(port)
+            }
+            Err(error) => {
+                info!(error = %ErrorReport::of(&error), "the server hears no router's announcement; it finds a router by its searches alone");
+                None
+            }
+        };
+        Ok(Listening {
+            stop,
+            announcements,
+            events: Events::new(),
+            datagram: Box::new([0; DATAGRAM]),
+        })
+    }
+
+    /// The thread: a turn of `mapper`, then a wait until its next, which a stop ends, and an
+    /// announcement that starts a turn cuts short; at the stop, the mapping deleted.
+    fn run(mut self, mut mapper: PortMapper) {
+        while self.turn(&mut mapper) {}
+        mapper.end();
+    }
+
+    /// A turn of `mapper` and the wait after it: whether another turn comes, which none does once
+    /// stopped, or once the wait fails.
+    fn turn(&mut self, mapper: &mut PortMapper) -> bool {
+        let next = Instant::now() + mapper.turn();
+        loop {
+            if self.stop.stopped.load(Ordering::SeqCst) {
+                return false;
+            }
+            let timeout = next.saturating_duration_since(Instant::now());
+            if timeout.is_zero() {
+                return true;
+            }
+            if let Some(port) = &self.announcements
+                && let Err(error) = self
+                    .stop
+                    .poller
+                    .modify(port.socket(), Event::readable(ANNOUNCEMENTS))
+            {
+                warn!(error = %ErrorReport::of(&error), "the port map's thread cannot watch for announcements");
+            }
+            self.events.clear();
+            if let Err(error) = self.stop.poller.wait(&mut self.events, Some(timeout)) {
+                error!(error = %ErrorReport::of(&error), "the port map's thread cannot wait; it deletes its mapping and ends");
+                return false;
+            }
+            if self.hear(mapper) {
+                return true;
+            }
+        }
+    }
+
+    /// Reads each announcement that waits: whether one starts a turn at once.
+    fn hear(&mut self, mapper: &mut PortMapper) -> bool {
+        let Some(port) = &self.announcements else {
+            return false;
+        };
+        let mut starts = false;
+        loop {
+            match port.socket().recv_from(self.datagram.as_mut_slice()) {
+                Ok((read, from)) => starts |= mapper.hear(&self.datagram[..read], from),
+                Err(error) if error.kind() == ErrorKind::WouldBlock => return starts,
+                Err(error) => {
+                    warn!(error = %ErrorReport::of(&error), "the announcements' socket failed");
+                    return starts;
+                }
+            }
+        }
+    }
+}
+
+impl Drop for Listening {
+    fn drop(&mut self) {
+        if let Some(port) = &self.announcements {
+            self.stop.poller.delete(port.socket()).ok();
         }
     }
 }
@@ -57,11 +189,12 @@ impl PortMap {
 mod tests {
     use std::net::{Ipv4Addr, Ipv6Addr, SocketAddrV4, UdpSocket};
     use std::thread;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
 
     use super::*;
     use crate::gateway::Tries;
     use crate::gateway::fake_gateway::FakeGateway;
+    use crate::upnp_gateway::fake_router::{Answer, FakeRouter};
 
     #[test]
     fn a_dropped_map_wakes_its_thread_which_deletes_the_mapping() {
@@ -72,6 +205,7 @@ mod tests {
         let routes = Routes::At {
             pcp: gateway.address,
             ssdp: silent.local_addr().unwrap(),
+            announce: SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0),
         };
         let times = MapTimes {
             tries: Tries {
@@ -81,7 +215,7 @@ mod tests {
             delete: Duration::from_millis(100),
             ..MapTimes::CAMPFIRE
         };
-        let map = PortMap::of(PortMapper::new(4433, routes, times));
+        let map = PortMap::of(PortMapper::new(4433, routes, times)).unwrap();
         let start = Instant::now();
         while gateway.requests().is_empty() {
             assert!(
@@ -119,5 +253,54 @@ mod tests {
                 "{ip}"
             );
         }
+    }
+
+    #[test]
+    fn an_announcement_cuts_the_wait_after_a_turn_that_mapped_nothing() {
+        // No PCP server, and a search no router answers: the turn maps nothing, and waits its
+        // retry of 30 minutes, which a router's announcement cuts short.
+        let router = FakeRouter::start(|_| Answer::Done);
+        let closed = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let SocketAddr::V4(pcp) = closed.local_addr().unwrap() else {
+            unreachable!("a socket bound to IPv4 has an IPv4 address");
+        };
+        drop(closed);
+        let silent = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let listener = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        let SocketAddr::V4(announce) = listener.local_addr().unwrap() else {
+            unreachable!("a socket bound to IPv4 has an IPv4 address");
+        };
+        drop(listener);
+        let routes = Routes::At {
+            pcp,
+            ssdp: silent.local_addr().unwrap(),
+            announce,
+        };
+        let times = MapTimes {
+            tries: Tries {
+                first: Duration::from_millis(20),
+                count: 2,
+            },
+            search: Duration::from_millis(50),
+            delete: Duration::from_millis(100),
+            ..MapTimes::CAMPFIRE
+        };
+        let map = PortMap::of(PortMapper::new(4433, routes, times)).unwrap();
+        let sender = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        sender.send_to(&router.announcement(), announce).unwrap();
+        let start = Instant::now();
+        while !router
+            .calls()
+            .iter()
+            .any(|call| call.action == "AddPortMapping")
+        {
+            assert!(
+                start.elapsed() < Duration::from_millis(800),
+                "the announcement started no turn"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+        drop(map);
+        assert_eq!(router.calls().last().unwrap().action, "DeletePortMapping");
     }
 }

@@ -1,12 +1,15 @@
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::io;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::time::Duration;
 
 use campfire_log::ErrorReport;
+use campfire_store::SharedPort;
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{debug, info, warn};
 
 use crate::error::MapError;
 use crate::gateway::{Gateway, Mapping, Tries};
+use crate::ssdp_announcement::SsdpAnnouncement;
 use crate::upnp_gateway::{SSDP, UpnpGateway};
 
 /// The port PCP and NAT-PMP gateways answer on (RFC 6887 §19.1, RFC 6886 §3).
@@ -30,14 +33,19 @@ pub(crate) struct MapTimes {
     pub(crate) delete: Duration,
 }
 
-/// Where the map finds its gateway and its router.
+/// Where the map finds its gateway and its router, and hears routers' announcements.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Routes {
-    /// The default gateway the OS names at each turn, and SSDP's group.
+    /// The default gateway the OS names at each turn, and SSDP's group, on port 1900, which the
+    /// map shares with the host's other listeners.
     System,
-    /// A gateway and a router at fixed addresses, a test's fakes.
+    /// A gateway, a router and a listener of announcements at fixed addresses, a test's fakes.
     #[cfg(test)]
-    At { pcp: SocketAddrV4, ssdp: SocketAddr },
+    At {
+        pcp: SocketAddrV4,
+        ssdp: SocketAddr,
+        announce: SocketAddrV4,
+    },
 }
 
 /// The port map's logic, which its thread runs a turn at a time: a mapping of `internal_port`
@@ -49,6 +57,9 @@ pub(crate) struct PortMapper {
     routes: Routes,
     times: MapTimes,
     held: Option<Held>,
+    /// The last router that announced itself, which a turn maps through when no search finds a
+    /// router.
+    heard: Option<SsdpAnnouncement>,
     /// Whether the host was told that no router maps the port, since the last mapping.
     told: bool,
 }
@@ -113,6 +124,24 @@ impl Routes {
             Routes::At { ssdp, .. } => ssdp,
         }
     }
+
+    /// The socket that hears routers' announcements: on SSDP's port, joined to its group, beside
+    /// the host's other listeners.
+    pub(crate) fn announcements(self) -> io::Result<SharedPort> {
+        match self {
+            Routes::System => {
+                let IpAddr::V4(group) = SSDP.ip() else {
+                    unreachable!("SSDP's group is IPv4");
+                };
+                let port = SharedPort::bind(SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SSDP.port()))?;
+                port.socket()
+                    .join_multicast_v4(&group, &Ipv4Addr::UNSPECIFIED)?;
+                Ok(port)
+            }
+            #[cfg(test)]
+            Routes::At { announce, .. } => SharedPort::bind(announce),
+        }
+    }
 }
 
 impl PortMapper {
@@ -122,8 +151,13 @@ impl PortMapper {
             routes,
             times,
             held: None,
+            heard: None,
             told: false,
         }
+    }
+
+    pub(crate) const fn routes(&self) -> Routes {
+        self.routes
     }
 
     /// One turn: the mapping it holds renewed, or the port mapped anew when it holds none or the
@@ -172,6 +206,23 @@ impl PortMapper {
         }
     }
 
+    /// Takes `datagram`, which came from `from` to the announcements' socket: whether it starts a
+    /// turn at once, an announcement of a router at an address not heard before while no router
+    /// maps the port, so a host that varies its location starts one turn at most. Each
+    /// announcement replaces the one before, for the next turn.
+    pub(crate) fn hear(&mut self, datagram: &[u8], from: SocketAddr) -> bool {
+        let Some(announcement) = SsdpAnnouncement::parse(datagram, from) else {
+            return false;
+        };
+        let ip = |heard: &SsdpAnnouncement| *heard.location().addr().ip();
+        let new = self
+            .heard
+            .as_ref()
+            .is_none_or(|heard| ip(heard) != ip(&announcement));
+        self.heard = Some(announcement);
+        new && self.held.is_none()
+    }
+
     /// Deletes the mapping it holds, if any, at the server's end.
     pub(crate) fn end(&mut self) {
         let Some(held) = self.held.take() else {
@@ -213,8 +264,16 @@ impl PortMapper {
         })
     }
 
+    /// Maps the port through the router a search finds, else through the last that announced
+    /// itself, whose answer a host firewall may have dropped (design 15, D12).
     fn map_by_upnp(&self) -> Result<Held, MapError> {
-        let router = UpnpGateway::search(self.routes.ssdp(), self.times.search)?;
+        let router = match UpnpGateway::search(self.routes.ssdp(), self.times.search) {
+            Ok(router) => router,
+            Err(searched) => match &self.heard {
+                Some(heard) => UpnpGateway::announced(heard, self.times.search)?,
+                None => return Err(searched),
+            },
+        };
         let mapping = router.map(self.internal_port, None, self.times.lifetime)?;
         Ok(Held {
             by: Mapper::Upnp(router),

@@ -11,6 +11,7 @@ use lightyear::link::{
 };
 use lightyear::prelude::PeerAddr;
 
+use crate::address_limit::AddressLimit;
 use crate::app_code::AppCode;
 use crate::close_link::CloseLink;
 use crate::link_end::LinkEnd;
@@ -32,11 +33,11 @@ pub struct QuicPlugin;
 impl QuicPlugin {
     fn start(
         start: On<'_, '_, LinkStart>,
-        endpoints: Query<'_, '_, (&QuicEndpoint, Option<&Link>), Unstarted>,
+        endpoints: Query<'_, '_, (&QuicEndpoint, Option<&Link>, Option<&AddressLimit>), Unstarted>,
         mut commands: Commands<'_, '_>,
     ) {
-        if let Ok((endpoint, link)) = endpoints.get(start.entity) {
-            endpoint.start(start.entity, link, &mut commands);
+        if let Ok((endpoint, link, limit)) = endpoints.get(start.entity) {
+            endpoint.start(start.entity, link, limit, &mut commands);
         }
     }
 

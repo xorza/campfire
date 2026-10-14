@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -8,6 +9,7 @@ use quinn_proto::{Endpoint, EndpointConfig, ServerConfig};
 use quinn_udp::BATCH_SIZE;
 use zeroize::Zeroizing;
 
+use crate::address_limit::AddressLimit;
 use crate::endpoint_state::{EndpointState, News};
 use crate::link_times::LinkTimes;
 use crate::outbox::Outbox;
@@ -44,8 +46,8 @@ pub struct ThreadFixture {
 
 /// One end: its state, the read its next pass takes, and what its last pass sent.
 #[derive(Debug)]
-struct FixtureEnd {
-    state: EndpointState,
+pub(super) struct FixtureEnd {
+    pub(super) state: EndpointState,
     batch: RecvBatch,
     filled: usize,
     outbox: Outbox,
@@ -53,6 +55,9 @@ struct FixtureEnd {
 }
 
 impl ThreadFixture {
+    /// The server's limit for each address: room for the one client.
+    const LIMIT: AddressLimit = AddressLimit::new(NonZeroU32::MIN, Duration::from_secs(60));
+
     /// The two ends, their handshake complete.
     pub fn connected() -> ThreadFixture {
         let secret = Zeroizing::new([7; 32]);
@@ -64,14 +69,14 @@ impl ThreadFixture {
             [1; 32],
             SERVER,
         );
-        server.state.start_accepting();
+        let now = Instant::now();
+        server.state.start_accepting(ThreadFixture::LIMIT, now);
         let mut client = FixtureEnd::new(
             QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN),
             None,
             [2; 32],
             CLIENT,
         );
-        let now = Instant::now();
         let config = QuicEndpoint::client_config(
             PinnedKeyVerifier::new(&server_key.public()).client_config(),
             LinkTimes::CAMPFIRE,
@@ -159,7 +164,7 @@ impl ThreadFixture {
 
 impl FixtureEnd {
     /// An end on `address`, a server's with `server`, its random numbers from `seed`.
-    fn new(
+    pub(super) fn new(
         config: EndpointConfig,
         server: Option<Arc<ServerConfig>>,
         seed: [u8; 32],
@@ -177,7 +182,7 @@ impl FixtureEnd {
         }
     }
 
-    fn pass(&mut self, now: Instant) {
+    pub(super) fn pass(&mut self, now: Instant) {
         self.state
             .pass(now, self.batch.datagrams(self.filled), &mut self.outbox);
         self.filled = 0;
@@ -188,10 +193,19 @@ impl FixtureEnd {
     /// Windows, so `to` passes over a full read at `now` before the next, as its thread does.
     /// How many slots it delivered.
     fn deliver_to(&mut self, to: &mut FixtureEnd, now: Instant) -> usize {
+        self.deliver_among(&mut [to], now)
+    }
+
+    /// What the last pass sent, each transmit to the end of `ends` at its destination, as
+    /// `deliver_to` delivers it: how many slots it delivered.
+    pub(super) fn deliver_among(&mut self, ends: &mut [&mut FixtureEnd], now: Instant) -> usize {
         let from = self.address;
         let mut delivered = 0;
         self.outbox.drain(|destination, bytes, stride| {
-            assert_eq!(destination, to.address, "the fixture has two ends");
+            let to = ends
+                .iter_mut()
+                .find(|end| end.address == destination)
+                .expect("each transmit goes to an end of the fixture");
             if to.filled == BATCH_SIZE {
                 to.pass(now);
             }

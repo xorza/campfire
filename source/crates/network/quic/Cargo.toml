@@ -16,6 +16,7 @@ campfire-common.workspace = true
 campfire-log.workspace = true
 campfire-store.workspace = true
 
+attohttpc.workspace = true
 bevy_app.workspace = true
 bevy_ecs.workspace = true
 bytes.workspace = true
@@ -30,6 +31,7 @@ rustls.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+xmltree.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]

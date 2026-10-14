@@ -36,7 +36,7 @@ use campfire_net::{
     SimServerPlugins, SimServerWorld,
 };
 use campfire_package::{ModePackages, PackageDir};
-use campfire_quic::{LinkTimes, PortMap, QuicEndpoint};
+use campfire_quic::{AddressLimit, LinkTimes, PortMap, QuicEndpoint};
 use campfire_store::StopSignals;
 use campfire_visibility::HostVisibility;
 use lightyear::prelude::Linked;
@@ -153,10 +153,11 @@ fn main() -> ExitCode {
             Err(code) => return code,
         };
     let local = endpoint.local_address();
+    let limit = AddressLimit::new(opening.seats(), server.times.grace);
     let listening = announce(&opening, &mode, local, tls_key, &server.key);
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
-    let server = app.world_mut().spawn((RawServer, endpoint)).id();
+    let server = app.world_mut().spawn((RawServer, endpoint, limit)).id();
     app.world_mut().trigger(Start { entity: server });
     let exit = app.run();
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP

@@ -2829,6 +2829,7 @@ dependencies = [
 name = "campfire-quic"
 version = "0.1.0"
 dependencies = [
+ "attohttpc",
  "bevy_app",
  "bevy_ecs",
  "bevy_state",
@@ -2850,6 +2851,7 @@ dependencies = [
  "serde",
  "thiserror 2.0.21",
  "tracing",
+ "xmltree",
  "zeroize",
 ]
 
@@ -2985,6 +2987,7 @@ dependencies = [
  "campfire-store",
  "libc",
  "signal-hook",
+ "socket2 0.6.5",
  "tempfile",
  "thiserror 2.0.21",
  "windows",

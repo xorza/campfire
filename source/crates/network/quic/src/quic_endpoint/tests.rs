@@ -1,5 +1,6 @@
 use std::io::ErrorKind;
-use std::net::UdpSocket;
+use std::net::{IpAddr, UdpSocket};
+use std::num::NonZeroU32;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
@@ -24,10 +25,12 @@ use lightyear_serde::registry::SerializeFns;
 use lightyear_serde::writer::Writer;
 use quinn_proto::{Connection, DatagramEvent, Dir, Event};
 
+use super::thread_fixture::FixtureEnd;
 use super::*;
 use crate::QuicPlugin;
 use crate::close_link::CloseLink;
 use crate::link_binding::LinkBinding;
+use crate::peer::PeerKey;
 
 /// The longest a test waits for the network on loopback, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
@@ -36,6 +39,9 @@ const SHORT: LinkTimes = LinkTimes {
     keep_alive: Duration::from_millis(50),
     idle_timeout: Duration::from_millis(200),
 };
+
+/// A limit for each address that no test on loopback meets, as a loopback address has none.
+const ROOMY: AddressLimit = AddressLimit::new(NonZeroU32::MIN, Duration::from_secs(60));
 
 /// `len` bytes counting modulo 251, a prime, so no shift by a power of two, as a fragment put in
 /// the wrong place, leaves them the same.
@@ -90,7 +96,7 @@ impl Loopback {
         let key = quic.tls_key();
         let mut server = App::new();
         server.add_plugins(QuicPlugin);
-        let endpoint = server.world_mut().spawn(quic).id();
+        let endpoint = server.world_mut().spawn((quic, ROOMY)).id();
         Loopback {
             server,
             endpoint,
@@ -859,7 +865,7 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     server.add_systems(Update, Blob::receive);
     server.finish();
     server.cleanup();
-    let endpoint = server.world_mut().spawn((RawServer, quic)).id();
+    let endpoint = server.world_mut().spawn((RawServer, quic, ROOMY)).id();
     server.world_mut().trigger(Start { entity: endpoint });
 
     let mut client = App::new();
@@ -923,4 +929,108 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
         thread::sleep(Duration::from_millis(1));
     };
     assert_eq!(received, Blob(message));
+}
+
+/// A server of a limit for each address and its clients, each a `quinn-proto` endpoint of its
+/// own, in memory on a clock of their own, as the thread fixture's ends are.
+#[derive(Debug)]
+struct Limited {
+    server: FixtureEnd,
+    clients: Vec<FixtureEnd>,
+    now: Instant,
+}
+
+impl Limited {
+    const SERVER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 4433);
+
+    fn new(limit: AddressLimit) -> Limited {
+        let config = QuicEndpoint::server_config(server_key().server_config(), LinkTimes::CAMPFIRE);
+        let mut server = FixtureEnd::new(
+            QuicEndpoint::endpoint_config(ResetKey::derive(&server_secret()), CID_LEN),
+            Some(Arc::new(config)),
+            [1; 32],
+            Limited::SERVER,
+        );
+        let now = Instant::now();
+        server.state.start_accepting(limit, now);
+        Limited {
+            server,
+            clients: Vec::new(),
+            now,
+        }
+    }
+
+    /// A client at `address` that connects: its connection when the server took it, none when
+    /// it refused it.
+    fn join(&mut self, address: SocketAddr) -> Option<PeerKey> {
+        let seed = u8::try_from(self.clients.len() + 2).unwrap();
+        let mut client = FixtureEnd::new(
+            QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN),
+            None,
+            [seed; 32],
+            address,
+        );
+        let config = QuicEndpoint::client_config(
+            PinnedKeyVerifier::new(&server_key().public()).client_config(),
+            LinkTimes::CAMPFIRE,
+        );
+        let key = client
+            .state
+            .connect(self.now, config, Limited::SERVER, Entity::PLACEHOLDER)
+            .unwrap();
+        self.clients.push(client);
+        for _ in 0..32 {
+            self.exchange();
+            let client = self.clients.last_mut().unwrap();
+            if let Some(news) = client.state.next_news() {
+                return match news {
+                    News::Connected { .. } => Some(key),
+                    News::Lost { end, .. } => {
+                        assert_eq!(end, LinkEnd::Refused);
+                        None
+                    }
+                };
+            }
+        }
+        panic!("the server did not answer");
+    }
+
+    /// Each client's sends, then the server's answers, and a step of 16 ms.
+    fn exchange(&mut self) {
+        for client in &mut self.clients {
+            client.pass(self.now);
+            client.deliver_among(&mut [&mut self.server], self.now);
+        }
+        self.server.pass(self.now);
+        let mut clients: Vec<&mut FixtureEnd> = self.clients.iter_mut().collect();
+        self.server.deliver_among(&mut clients, self.now);
+        self.now += Duration::from_millis(16);
+    }
+}
+
+#[test]
+fn a_server_refuses_an_address_past_its_seats_of_live_connections_or_of_handshakes() {
+    // Two seats over 60 s: each handshake of an address comes back 30 s after its bucket was
+    // full again (design 15, D13).
+    let seats = NonZeroU32::new(2).unwrap();
+    let mut limited = Limited::new(AddressLimit::new(seats, Duration::from_secs(60)));
+    let home = |port| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), port);
+    let away = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 3)), 50_000);
+    // Two clients of one address link; a third, with two live connections of its address, is
+    // refused; one of another address links.
+    let first = limited.join(home(50_000)).unwrap();
+    assert!(limited.join(home(50_001)).is_some());
+    assert_eq!(limited.join(home(50_002)), None);
+    assert!(limited.join(away).is_some());
+    // The first client closes, so its address holds one live connection; its two handshakes
+    // spent, a new client is refused until one comes back, 30 s after them.
+    limited.clients[0]
+        .state
+        .close(first, limited.now, AppCode::ENDED);
+    for _ in 0..8 {
+        limited.exchange();
+    }
+    assert_eq!(limited.join(home(50_003)), None);
+    limited.now += Duration::from_secs(30);
+    assert!(limited.join(home(50_004)).is_some());
 }

@@ -35,6 +35,14 @@ pub(crate) enum MapError {
     NatPmpRefused(NatPmpRefusal),
     #[error("no UPnP router answered")]
     UpnpSearch(#[source] igd_next::SearchError),
+    #[error("the announced UPnP router's document did not come")]
+    UpnpFetch(#[source] attohttpc::Error),
+    #[error("the announced UPnP router's document did not read in full, within the map's bound")]
+    UpnpRead(#[source] io::Error),
+    #[error("the announced UPnP router's description names no WAN connection at its address")]
+    UpnpDescription,
+    #[error("the announced UPnP router's service schema does not read")]
+    UpnpSchema,
     #[error("the UPnP router did not map the port")]
     UpnpAdd(#[source] igd_next::AddPortError),
     #[error("the UPnP router mapped no other port")]

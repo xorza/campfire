@@ -103,6 +103,7 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_picking",
     "ui_picking",
 ] }
+attohttpc = { version = "=0.30.1", default-features = false }
 bevy_app = "=0.19.1"
 bevy_replicon = { version = "=0.44.2", default-features = false, features = ["server"] }
 bevy_ecs = { version = "=0.19.1", features = ["debug"] }
@@ -143,6 +144,7 @@ serde = { version = "=1.0.229", features = ["derive", "rc"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 signal-hook = { version = "=0.4.4", default-features = false }
+socket2 = { version = "=0.6.5", features = ["all"] }
 tempfile = "=3.27.0"
 thiserror = "=2.0.21"
 toml = "=1.1.6"
@@ -165,6 +167,7 @@ windows = { version = "=0.62.2", features = [
     "Win32_System_SystemServices",
     "Win32_System_Threading",
 ] }
+xmltree = "=0.10.3"
 zeroize = "=1.9.0"
 
 [profile.dev]

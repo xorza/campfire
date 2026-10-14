@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 use std::{io, process, ptr, thread};
 
+use socket2::Socket;
 use windows::Win32::Foundation::{GENERIC_WRITE, HANDLE, HLOCAL, WIN32_ERROR};
 use windows::Win32::Security::Authorization::{
     ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW, GetSecurityInfo,
@@ -39,7 +40,7 @@ use crate::platform::stop_signals::StopSignals;
 /// The Windows side of the platform layer: a security descriptor given as a file or directory is
 /// made keeps it its owner's only, `MoveFileExW` writes a rename through, and `FlushFileBuffers`
 /// on a directory's handle keeps its names. A stop's event reaches a console's handler, which
-/// Windows runs on a thread of its own.
+/// Windows runs on a thread of its own. A shared port takes `SO_REUSEADDR`.
 #[derive(Debug)]
 pub(crate) struct Os;
 
@@ -72,6 +73,10 @@ const SHARE: FILE_SHARE_MODE =
 const LONG: usize = 248;
 
 impl Os {
+    pub(crate) fn share_port(socket: &Socket) -> io::Result<()> {
+        socket.set_reuse_address(true)
+    }
+
     pub(crate) fn create_owner_only(path: &Path) -> io::Result<File> {
         Os::create_file(path, CREATE_NEW)
     }

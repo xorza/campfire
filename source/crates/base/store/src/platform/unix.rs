@@ -8,6 +8,7 @@ use std::{io, ptr};
 
 use libc::{SIGHUP, SIGINT, SIGTERM, c_int};
 use signal_hook::flag;
+use socket2::Socket;
 
 use crate::platform::stop_signals::StopSignals;
 
@@ -15,7 +16,8 @@ use crate::platform::stop_signals::StopSignals;
 /// owner's only, and `fsync` of a directory keeps its names. A file is its owner's only when its
 /// owner is the process's effective user, or root, who may open any file, and its mode lets
 /// neither its group nor others in. A stop's signal is caught by `signal-hook`, whose handler
-/// does only what a signal's handler may.
+/// does only what a signal's handler may. A shared port takes `SO_REUSEADDR` and `SO_REUSEPORT`,
+/// as BSD and macOS bind a port twice only with the second.
 #[derive(Debug)]
 pub(crate) struct Os;
 
@@ -29,6 +31,11 @@ const STOP: [c_int; 3] = [SIGINT, SIGTERM, SIGHUP];
 const ROOT: u32 = 0;
 
 impl Os {
+    pub(crate) fn share_port(socket: &Socket) -> io::Result<()> {
+        socket.set_reuse_address(true)?;
+        socket.set_reuse_port(true)
+    }
+
     pub(crate) fn create_owner_only(path: &Path) -> io::Result<File> {
         OpenOptions::new()
             .write(true)

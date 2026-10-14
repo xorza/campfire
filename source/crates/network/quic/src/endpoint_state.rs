@@ -8,6 +8,8 @@ use quinn_proto::{
     Incoming,
 };
 
+use crate::address_limit::AddressLimit;
+use crate::admission::{AddressKey, Admission};
 use crate::app_code::AppCode;
 use crate::link_end::LinkEnd;
 use crate::outbox::Outbox;
@@ -26,9 +28,10 @@ pub(crate) struct EndpointState {
     peers: Vec<Option<Peer>>,
     news: VecDeque<News>,
     next_id: u64,
-    /// Whether a server's endpoint takes new connections: from its `LinkStart` until its
-    /// `Unlink`, so a server that has not started or that ended refuses them.
-    accepting: bool,
+    /// What a server's endpoint admits of each address while it takes new connections: from its
+    /// `LinkStart` until its `Unlink`, so a server that has not started or that ended refuses
+    /// them all.
+    admission: Option<Admission>,
     closing: bool,
     max_segments: usize,
     /// Where `quinn-proto` writes one transmit, before the outbox keeps it.
@@ -66,7 +69,7 @@ impl EndpointState {
             peers: Vec::new(),
             news: VecDeque::new(),
             next_id: 0,
-            accepting: false,
+            admission: None,
             closing: false,
             max_segments,
             scratch: Vec::new(),
@@ -79,14 +82,15 @@ impl EndpointState {
         self.closing
     }
 
-    pub(crate) const fn start_accepting(&mut self) {
-        self.accepting = true;
+    /// Takes new connections from `now`, within `limit` for each address.
+    pub(crate) fn start_accepting(&mut self, limit: AddressLimit, now: Instant) {
+        self.admission = Some(Admission::new(limit, now));
     }
 
     /// Takes no new connection, and closes with `AppCode::ENDED` each one no link carries yet, as
     /// a server that ended links none of them.
     pub(crate) fn stop_accepting(&mut self, now: Instant) {
-        self.accepting = false;
+        self.admission = None;
         for peer in self.peers.iter_mut().flatten() {
             if peer.entity().is_none() {
                 peer.close(now, AppCode::ENDED);
@@ -140,28 +144,49 @@ impl EndpointState {
     }
 
     /// Answers a new connection: a Retry for an address that has not proved itself, so a spoofed
-    /// one costs no state, and the connection for one whose Retry token holds (D8).
+    /// one costs no state (D8); a refusal for one past its address's limit, before its handshake,
+    /// so it costs no signature (D13); and the connection for any other.
     fn admit(&mut self, now: Instant, incoming: Incoming, outbox: &mut Outbox) {
-        self.scratch.clear();
-        if !self.accepting {
-            let transmit = self.endpoint.refuse(incoming, &mut self.scratch);
-            outbox.push(&transmit, &self.scratch);
+        let EndpointState {
+            endpoint,
+            peers,
+            admission,
+            scratch,
+            ..
+        } = self;
+        scratch.clear();
+        let Some(admission) = admission else {
+            let transmit = endpoint.refuse(incoming, scratch);
+            outbox.push(&transmit, scratch);
             return;
-        }
+        };
         if !incoming.remote_address_validated() {
-            match self.endpoint.retry(incoming, &mut self.scratch) {
+            match endpoint.retry(incoming, scratch) {
                 Ok(transmit) => {
-                    outbox.push(&transmit, &self.scratch);
+                    outbox.push(&transmit, scratch);
                     #[cfg(test)]
                     {
                         self.retries += 1;
                     }
                 }
-                Err(error) => self.endpoint.ignore(error.into_incoming()),
+                Err(error) => endpoint.ignore(error.into_incoming()),
             }
             return;
         }
-        match self.endpoint.accept(incoming, now, &mut self.scratch, None) {
+        let live = |key| {
+            let live = peers.iter().flatten().map(|peer| &peer.connection);
+            live.filter(|connection| {
+                !connection.is_closed()
+                    && AddressKey::of(connection.remote_address().ip()) == Some(key)
+            })
+            .count()
+        };
+        if !admission.admit(incoming.remote_address().ip(), now, live) {
+            let transmit = endpoint.refuse(incoming, scratch);
+            outbox.push(&transmit, scratch);
+            return;
+        }
+        match endpoint.accept(incoming, now, scratch, None) {
             Ok((handle, connection)) => {
                 self.insert(handle, connection, None);
             }
@@ -324,7 +349,7 @@ impl EndpointState {
     /// closes, then ends.
     pub(crate) fn close_all(&mut self, now: Instant) {
         self.closing = true;
-        self.accepting = false;
+        self.admission = None;
         for peer in self.peers.iter_mut().flatten() {
             peer.close(now, AppCode::STOPPED);
         }

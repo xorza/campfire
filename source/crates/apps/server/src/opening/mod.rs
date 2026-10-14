@@ -9,7 +9,7 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_protocol::{SeedChain, SessionTerms};
-use campfire_runner::InputRules;
+use campfire_runner::{InputRules, SessionRules};
 use campfire_visibility::HostVisibility;
 use secp256k1::Keypair;
 
@@ -63,6 +63,18 @@ impl Opening {
             Opening::New(lobby) => lobby.terms(),
             Opening::Restored(restore) => &restore.session.log.header().terms,
         }
+    }
+
+    /// The seats of the session it starts: its slots and the most spectators it admits, which no
+    /// address of honest players passes in live connections (design 15, D13).
+    pub(crate) fn seats(&self) -> NonZeroU32 {
+        let terms = self.terms();
+        let visibility = SessionRules::visibility_of(terms).expect("the server's own terms read");
+        let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
+        let seats = slots
+            .checked_add(visibility.max_spectators())
+            .expect("a session's seats fit u32");
+        NonZeroU32::new(seats).expect("a session has a slot")
     }
 
     /// The session a stop ended, under the data directory `data`: none when the directory holds

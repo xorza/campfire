@@ -30,6 +30,7 @@ pub(crate) enum Answer {
 /// call. Its service offers `AddPortMapping`, `DeletePortMapping` and `GetExternalIPAddress`.
 pub(crate) struct FakeRouter {
     ssdp: SocketAddr,
+    http_port: u16,
     calls: Arc<Mutex<Vec<Call>>>,
     stop: Arc<AtomicBool>,
     _workers: [Worker; 2],
@@ -130,6 +131,7 @@ impl FakeRouter {
         };
         FakeRouter {
             ssdp: ssdp_address,
+            http_port,
             calls,
             stop,
             _workers: [searcher, server],
@@ -253,6 +255,18 @@ impl FakeRouter {
             ),
             action("GetExternalIPAddress", &[]),
         )
+    }
+
+    /// Its `NOTIFY` announcement that it is alive, at its description's location.
+    pub(crate) fn announcement(&self) -> Vec<u8> {
+        format!(
+            "NOTIFY * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nCACHE-CONTROL: max-age=1800\r\n\
+             LOCATION: http://127.0.0.1:{}/desc.xml\r\nNT: \
+             urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\nNTS: ssdp:alive\r\nUSN: \
+             uuid:fake::urn:schemas-upnp-org:device:InternetGatewayDevice:1\r\n\r\n",
+            self.http_port
+        )
+        .into_bytes()
     }
 
     pub(crate) fn calls(&self) -> Vec<Call> {

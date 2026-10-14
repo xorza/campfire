@@ -49,6 +49,7 @@ pub use crate::latest_writer::LatestWriter;
 pub use crate::output_file::OutputFile;
 pub use crate::path_error::PathError;
 pub use crate::platform::owner_only::Exposure;
+pub use crate::platform::shared_port::SharedPort;
 pub use crate::platform::stop_signals::StopSignals;
 pub use crate::secret_file::SecretFile;
 pub use crate::stream_writer::StreamWriter;

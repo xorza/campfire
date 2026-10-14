@@ -27,6 +27,7 @@ use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{trace, warn};
 use zeroize::Zeroizing;
 
+use crate::address_limit::AddressLimit;
 use crate::app_code::AppCode;
 use crate::endpoint_state::{EndpointState, News};
 use crate::error::BindError;
@@ -54,10 +55,11 @@ const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
-/// connections and spawns a `LinkOf` for each once its handshake completes; a client connects
-/// to its server, and its entity carries the connection. Taken from a started entity, by any path,
-/// it ends that entity's link; dropped, it closes every connection with `AppCode::STOPPED`, waits
-/// until its thread wrote the closes, and joins it.
+/// connections within the `AddressLimit` its entity must hold (D13), and spawns a `LinkOf` for
+/// each once its handshake completes; a client connects to its server, and its entity carries
+/// the connection. Taken from a started entity, by any path, it ends that entity's link;
+/// dropped, it closes every connection with `AppCode::STOPPED`, waits until its thread wrote the
+/// closes, and joins it.
 #[derive(Component, Debug)]
 #[component(on_discard = QuicEndpoint::on_discard)]
 pub struct QuicEndpoint {
@@ -210,15 +212,18 @@ impl QuicEndpoint {
     }
 
     /// Opens the endpoint on its entity `entity`, whose `link` a client's connection fills: a
-    /// server is linked at once; a client connects, and is linked once its handshake completes.
+    /// server takes connections within its `limit` for each address, and is linked at once; a
+    /// client connects, and is linked once its handshake completes.
     pub(crate) fn start(
         &self,
         entity: Entity,
         link: Option<&Link>,
+        limit: Option<&AddressLimit>,
         commands: &mut Commands<'_, '_>,
     ) {
         let Side::Client { server, config, .. } = &self.side else {
-            self.shared.lock().start_accepting();
+            let limit = limit.expect("a server's endpoint starts with its limit for each address");
+            self.shared.lock().start_accepting(*limit, Instant::now());
             commands
                 .entity(entity)
                 .insert((LocalAddr(self.local), Linked));

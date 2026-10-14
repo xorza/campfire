@@ -48,6 +48,7 @@ fn a_pcp_mapping_is_renewed_within_its_lifetime_and_deleted_at_the_end() {
     let routes = Routes::At {
         pcp: gateway.address,
         ssdp: SocketAddr::V4(closed()),
+        announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
     assert_renews_in_time(mapper.turn());
@@ -100,6 +101,7 @@ fn a_renewal_the_gateway_refuses_maps_the_port_anew_in_the_same_turn() {
     let routes = Routes::At {
         pcp: gateway.address,
         ssdp: SocketAddr::V4(closed()),
+        announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
     mapper.turn();
@@ -117,6 +119,7 @@ fn a_gateway_with_no_pcp_server_gives_way_to_a_upnp_router() {
     let routes = Routes::At {
         pcp: closed(),
         ssdp: fake.ssdp(),
+        announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
     assert_renews_in_time(mapper.turn());
@@ -141,18 +144,42 @@ fn a_gateway_with_no_pcp_server_gives_way_to_a_upnp_router() {
 }
 
 #[test]
-fn a_port_no_router_maps_waits_its_retry_and_ends_with_nothing_to_delete() {
+fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps_it_at_once() {
     // A socket that reads the search and never answers.
     let silent = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
     let routes = Routes::At {
         pcp: closed(),
         ssdp: silent.local_addr().unwrap(),
+        announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
     assert_eq!(mapper.turn(), TIMES.retry);
     assert!(mapper.told);
     assert_eq!(mapping(&mapper), None);
+    // A router announces itself, as a host firewall drops its answer to the search: it starts a
+    // turn at once, which maps the port through it; its next announcement starts none.
+    let router = FakeRouter::start(|_| Answer::Done);
+    let from = SocketAddr::from((Ipv4Addr::LOCALHOST, 41_952));
+    assert!(!mapper.hear(b"M-SEARCH * HTTP/1.1\r\n\r\n", from));
+    assert!(mapper.hear(&router.announcement(), from));
+    assert_renews_in_time(mapper.turn());
+    let by_router = SocketAddrV4::new(FakeRouter::EXTERNAL_IP, 4433);
+    assert_eq!(
+        mapping(&mapper).map(|mapping| mapping.external),
+        Some(by_router)
+    );
+    assert!(!mapper.hear(&router.announcement(), from));
     mapper.end();
+    let calls = router.calls();
+    let actions: Vec<&str> = calls.iter().map(|call| call.action.as_str()).collect();
+    assert_eq!(
+        actions,
+        [
+            "AddPortMapping",
+            "GetExternalIPAddress",
+            "DeletePortMapping"
+        ]
+    );
 }
 
 #[test]
@@ -173,6 +200,7 @@ fn a_pcp_refusal_is_asked_again_once_its_lifetime_ends() {
         let routes = Routes::At {
             pcp: gateway.address,
             ssdp: silent.local_addr().unwrap(),
+            announce: closed(),
         };
         // No router answers the search, so it waits its whole time, here a short one.
         let times = MapTimes {

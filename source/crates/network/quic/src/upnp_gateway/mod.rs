@@ -1,3 +1,4 @@
+use std::io::{self, Read};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use std::time::Duration;
 
@@ -5,14 +6,20 @@ use igd_next::{
     AddAnyPortError, AddPortError, GatewayIpVersion, PortMappingProtocol, SearchOptions,
 };
 
+use crate::control_schema::ControlSchema;
 use crate::error::MapError;
 use crate::gateway::{MappedBy, Mapping};
+use crate::router_description::RouterDescription;
+use crate::router_url::RouterUrl;
+use crate::ssdp_announcement::SsdpAnnouncement;
 
 /// The SSDP address a UPnP router answers a search on.
 pub(crate) const SSDP: SocketAddr =
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(239, 255, 255, 250)), 1900);
 /// What a mapping is for, in the router's list of them.
 const DESCRIPTION: &str = "campfire";
+/// The most bytes of a router's document the map reads, as `igd-next` bounds a search's.
+pub(crate) const MAX_DOCUMENT: usize = 1 << 20;
 
 /// A UPnP-IGD router, through `igd-next`'s blocking API, and the address of this host on its side
 /// (design 15, D12).
@@ -34,12 +41,72 @@ impl UpnpGateway {
         options.single_search_timeout = Some(timeout);
         options.gateway_ip_version = GatewayIpVersion::V4;
         let router = igd_next::search_gateway(options).map_err(MapError::UpnpSearch)?;
+        UpnpGateway::of(router)
+    }
+
+    /// The router of `announcement`, built as `igd-next` builds one from a search's answer: its
+    /// description and its service schema read at its location, each within `timeout`, every URL
+    /// at its address (design 15, D12).
+    pub(crate) fn announced(
+        announcement: &SsdpAnnouncement,
+        timeout: Duration,
+    ) -> Result<UpnpGateway, MapError> {
+        let location = announcement.location();
+        let description = UpnpGateway::fetch(location, timeout)?;
+        let description =
+            RouterDescription::parse(&description, location).ok_or(MapError::UpnpDescription)?;
+        let schema = UpnpGateway::fetch(description.schema(), timeout)?;
+        let schema = ControlSchema::parse(&schema).ok_or(MapError::UpnpSchema)?;
+        // `igd-next` takes a path of the router's own address, else a whole URL.
+        let reference = |url: &RouterUrl| {
+            if url.addr() == location.addr() {
+                url.path().to_owned()
+            } else {
+                url.whole()
+            }
+        };
+        UpnpGateway::of(igd_next::Gateway {
+            addr: SocketAddr::V4(location.addr()),
+            root_url: location.path().to_owned(),
+            control_url: reference(description.control()),
+            control_schema_url: reference(description.schema()),
+            control_schema: schema.into_actions().collect(),
+            service_type: description.service_type().to_owned(),
+        })
+    }
+
+    /// `router`, with this host's address on its side.
+    fn of(router: igd_next::Gateway) -> Result<UpnpGateway, MapError> {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(MapError::Io)?;
         socket.connect(router.addr).map_err(MapError::Io)?;
         let IpAddr::V4(local) = socket.local_addr().map_err(MapError::Io)?.ip() else {
             unreachable!("a router on IPv4 is reached from an IPv4 address");
         };
         Ok(UpnpGateway { router, local })
+    }
+
+    /// The document at `url`, within `timeout` and `MAX_DOCUMENT` bytes, as `igd-next` reads one:
+    /// no redirect followed.
+    fn fetch(url: &RouterUrl, timeout: Duration) -> Result<Vec<u8>, MapError> {
+        let response = attohttpc::get(url.whole())
+            .follow_redirects(false)
+            .connect_timeout(timeout)
+            .timeout(timeout)
+            .send()
+            .map_err(MapError::UpnpFetch)?;
+        let (_, _, reader) = response.split();
+        let mut body = Vec::new();
+        let most = u64::try_from(MAX_DOCUMENT).expect("a document's bound fits u64");
+        reader
+            .take(most + 1)
+            .read_to_end(&mut body)
+            .map_err(MapError::UpnpRead)?;
+        if body.len() > MAX_DOCUMENT {
+            return Err(MapError::UpnpRead(io::Error::from(
+                io::ErrorKind::FileTooLarge,
+            )));
+        }
+        Ok(body)
     }
 
     /// Maps `internal_port` for `lifetime`: anew at the same port outside, or at any other one

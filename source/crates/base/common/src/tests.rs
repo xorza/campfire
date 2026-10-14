@@ -263,6 +263,7 @@ const PROXIES: [Proxy; 3] = [
         dependencies: &[
             "libc",
             "signal-hook",
+            "socket2",
             "tempfile",
             "thiserror",
             "windows",

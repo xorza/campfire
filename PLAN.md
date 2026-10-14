@@ -1,18 +1,6 @@
 # Plan
 
-The open steps, in the order they are done, and the foundations. The rules are in [AGENTS.md](AGENTS.md#workflow).
-
-## 1. The network
-
-`quic`, `net`.
-
-### N1. Limits for each address
-
-(`quic`, `net`; **Quic**.) No limit holds live connections or new handshakes for each address, where design 15's D13 bounds both by the session's seats for each IPv4 address or IPv6 /64, and `net` gives the endpoint no seat count ([QUIC transport](docs/design/15-quic-transport.md), D13). It comes after the issue log's **Quic** item on benches, whose bench of a flood also sets how many new connections a pass takes (D14).
-
-### N2. UPnP behind a host firewall
-
-(`quic`; **Quic**.) `igd-next` discovers a router by search alone, and the router's `NOTIFY` announcements, which a host firewall that tracks connections lets in, go unread ([QUIC transport](docs/design/15-quic-transport.md), D12).
+The open steps, in the order they are done, and the foundations. No step is open. The rules are in [AGENTS.md](AGENTS.md#workflow).
 
 ## Foundations
 
