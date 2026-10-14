@@ -1,3 +1,6 @@
+# The name players see.
+name = "mode-name"
+
 script = "scripts/mode.rhai"
 resources = ["gold"]
 
@@ -63,6 +66,7 @@ name = "build"
 name = "watch"
 
 [choices.hero]
+name = "choice-hero"
 offers = "avatars"
 unique = true
 
@@ -107,3 +111,13 @@ targeting = "none"
 unit_type = "guard"
 windup_ms = 1500
 cost = { gold = 100 }
+
+# The name players see of each team.
+[teams.north]
+name = "team-north"
+
+[teams.south]
+name = "team-south"
+
+[teams.camps]
+name = "team-camps"

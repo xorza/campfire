@@ -12,7 +12,7 @@ use campfire_capabilities::{Release, UnitTypeData};
 use campfire_combat::{CombatData, LeechData, ModeCombatData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ChoiceData, ModeData, PlayersData, RelationData, SavesData};
+use campfire_mode::{ChoiceData, ModeData, PlayersData, RelationData, SavesData, TeamData};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData, SupplyData};
@@ -176,7 +176,7 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             "layers",
             Some(Capability::Navigation),
         ),
-        (DataTable::Mode, "shop", Some(Capability::Items)),
+        (DataTable::UnitType, "shop", Some(Capability::Items)),
     ];
     for (table, field, owner) in owners {
         assert_eq!(api.data_owner(table, field), owner, "{table:?}.{field}");
@@ -384,6 +384,7 @@ fn the_data_fields_are_the_schemas() {
         table::<ChoiceData>(),
         table::<LeechData>(),
         table::<RelationData>(),
+        table::<TeamData>(),
         table::<PlayersData>(),
         table::<SavesData>(),
         table::<ActionData>(),

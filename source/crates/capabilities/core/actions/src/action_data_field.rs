@@ -12,6 +12,7 @@ campfire_common::enum_all! {
     /// The load check and the script API reference both read it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ActionDataField {
+        Name,
         Kind,
         Script,
         Targeting,
@@ -80,6 +81,13 @@ struct FieldRule {
 
 /// The table of action fields, a row each, in the order of the fields.
 const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
+    FieldRule {
+        field: ActionDataField::Name,
+        name: "name",
+        capability: None,
+        uses: [Takes, Takes, Takes, Takes, Takes],
+        given: |data| data.name.is_some(),
+    },
     FieldRule {
         field: ActionDataField::Kind,
         name: "kind",

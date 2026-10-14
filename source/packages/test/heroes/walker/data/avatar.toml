@@ -20,6 +20,7 @@ attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
 
 [actions.first]
+name = "action-first"
 script = "scripts/strike.rhai"
 targeting = "none"
 cooldown_ms = 3000
@@ -30,15 +31,19 @@ radius = "2.0"
 damage = 100
 
 [actions.second]
+name = "action-second"
 targeting = "none"
 
 [actions.third]
+name = "action-third"
 targeting = "none"
 
 [actions.fourth]
+name = "action-fourth"
 targeting = "none"
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "1.25"

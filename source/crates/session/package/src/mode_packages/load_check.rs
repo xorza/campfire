@@ -21,7 +21,9 @@ use campfire_script::{
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierData, ModifierProblem, StatId};
 use campfire_units::{TypesError, UnitTypeCore};
-use campfire_values::{DeclaredName, EngineTag, FilterData, Number, PackagePath, Param, Stat};
+use campfire_values::{
+    DeclaredName, EngineTag, FilterData, MessageId, Number, PackagePath, Param, Stat,
+};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
@@ -245,9 +247,6 @@ impl<'a> LoadCheck<'a> {
             ),
             BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
             BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
-            BookError::ShopMarker(marker) => {
-                (0, LoadProblem::Item(ItemProblem::ShopMarker(marker)))
-            }
             BookError::AreaTime { package, unit_type } => (
                 package,
                 LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
@@ -264,7 +263,6 @@ impl<'a> LoadCheck<'a> {
                     BookPlace::Pool(pool) => Place::Pool(pool),
                     BookPlace::Item(item) => Place::Item(item),
                     BookPlace::Combat => Place::Combat,
-                    BookPlace::Shop => Place::Shop,
                 };
                 let UnknownName { of, name } = name;
                 (package, LoadProblem::Unknown { at, name, of })
@@ -364,6 +362,7 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::ModeStateSync(name.clone()));
         }
         self.sections_owned()?;
+        self.names()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
         self.slot_kinds()?;
@@ -407,6 +406,39 @@ impl<'a> LoadCheck<'a> {
         let ways = packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, &content.actions, ranks)?;
         self.scripts(&names)
+    }
+
+    /// The names players see of the mode, each team of its manifest, each choice and each item
+    /// type: each is a message its own language's file gives, and every team has one.
+    fn names(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let (data, mode) = (&packages.data, &packages.mode);
+        message(mode, &data.name, &Place::Mode)?;
+        for team in &packages.manifest.teams {
+            let Some(named) = data.teams.get(&team.name) else {
+                return Err(LoadProblem::UnnamedTeam(team.name.clone()));
+            };
+            message(mode, &named.name, &Place::Team(team.name.clone()))?;
+        }
+        let manifest = &packages.manifest.teams;
+        if let Some(name) = data
+            .teams
+            .keys()
+            .find(|name| !manifest.iter().any(|team| team.name == **name))
+        {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Team,
+                at: Place::Mode,
+                name: name.to_string(),
+            });
+        }
+        for (id, choice) in &data.choices {
+            message(mode, &choice.name, &Place::Choice(id.clone()))?;
+        }
+        for (id, item) in &packages.content.items {
+            message(mode, &item.name, &Place::Item(id.clone()))?;
+        }
+        Ok(())
     }
 
     /// No entry id is held by two loadout packages, as players choose loadout entries by id.
@@ -454,16 +486,11 @@ impl<'a> LoadCheck<'a> {
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
-                if !package.text.gives(avatar.name.as_str()) {
-                    return Err(LoadProblem::Unknown {
-                        of: NameKind::Message,
-                        at,
-                        name: avatar.name.to_string(),
-                    });
-                }
+                message(package, &avatar.name, &at)?;
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
+                named(actions)?;
                 self.unit_type(&avatar.unit, &at, actions, modifiers)?;
                 let held = avatar.unit.passive.as_ref().map(|passive| (at, passive));
                 passives_held_once(held.into_iter().chain(action_passives(actions)))?;
@@ -475,6 +502,7 @@ impl<'a> LoadCheck<'a> {
                 Some(ranks)
             }
             DependentKind::Loadout => {
+                named(actions)?;
                 passives_held_once(action_passives(actions))?;
                 // A loadout's action loads with the loadout's ranks, so a summon of it places
                 // its actions only in kinds of those ranks.
@@ -538,6 +566,9 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         for (id, action) in actions {
             let at = Place::Action(id.clone());
+            if let Some(name) = &action.name {
+                message(names.package, name, &at)?;
+            }
             self.kind(id, action, units)?;
             requires(id, action, units)?;
             self.cost_names(id, action)?;
@@ -1278,11 +1309,6 @@ impl<'a> LoadCheck<'a> {
                 Place::Supply,
             ),
             (
-                data.shop.is_some(),
-                owner(DataTable::Mode, "shop"),
-                Place::Shop,
-            ),
-            (
                 map.navigation.is_some(),
                 Some(Capability::Navigation),
                 Place::MapNavigation,
@@ -1431,6 +1457,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         self.inventory(unit_type, at)?;
+        self.shop(unit_type, at)?;
         Ok(())
     }
 
@@ -1459,10 +1486,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's item types and its shop: an item costs in the mode's player resources, at least
-    /// what its components cost in each, is built from items of the mode and never from itself,
-    /// and holds no modifier that is another's passive; no unit type or choice fills an
-    /// inventory's slot kind; and the shop holds. Either needs `items`.
+    /// The mode's item types: an item costs in the mode's player resources, at least what its
+    /// components cost in each, is built from items of the mode and never from itself, and holds
+    /// no modifier that is another's passive; and no unit type or choice fills an inventory's slot
+    /// kind. Item types need `items`.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let content = &packages.content;
@@ -1521,42 +1548,34 @@ impl<'a> LoadCheck<'a> {
                 )));
             }
         }
-        self.shop()
+        Ok(())
     }
 
-    /// The mode's shop: it sells the mode's items, each costing only in the one player resource
-    /// it takes, at a tag of the map's markers.
-    fn shop(&self) -> Result<(), LoadProblem> {
-        let packages = self.packages;
-        let (data, items) = (&packages.data, &packages.content.items);
-        let Some(shop) = &data.shop else {
+    /// The shop of a unit type at `at`, if it is one: each item it sells costs only in the one
+    /// player resource it takes. A name the mode does not have is the book build's problem.
+    fn shop(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
+        let Some(shop) = &unit_type.shop else {
             return Ok(());
         };
-        let at = Place::Shop;
-        // The items' resources, below, read each item it sells and its resource.
-        if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
-            return Err(unknown(&at, name, NameKind::Item));
-        }
         if self
             .names
             .resources()
             .named(shop.resource.as_str())
             .is_none()
         {
-            return Err(unknown(&at, &shop.resource, NameKind::Resource));
+            return Ok(());
         }
-        let markers = &packages.map.markers;
-        if !markers.iter().any(|marker| marker.tags.contains(&shop.at)) {
-            return Err(unknown(&at, &shop.at, NameKind::MarkerTag));
-        }
+        let items = &self.packages.content.items;
         let other = |item: &&DeclaredName| {
-            items[*item]
-                .cost
-                .keys()
-                .any(|resource| *resource != shop.resource)
+            items
+                .get(*item)
+                .is_some_and(|item| item.cost.keys().any(|resource| *resource != shop.resource))
         };
         if let Some(item) = shop.items.iter().find(other) {
-            return Err(LoadProblem::Item(ItemProblem::ShopResource(item.clone())));
+            return Err(LoadProblem::Item(ItemProblem::ShopResource {
+                at: at.clone(),
+                item: item.clone(),
+            }));
         }
         Ok(())
     }
@@ -1880,6 +1899,26 @@ fn action_passives(
     actions.iter().filter_map(|(id, action)| {
         Some((Place::Action(id.clone()), action.passive_modifier.as_ref()?))
     })
+}
+
+/// Whether `package`'s own language's file gives the message `id`, which data at `at` names.
+fn message(package: &Package, id: &MessageId, at: &Place) -> Result<(), LoadProblem> {
+    if package.text.gives(id.as_str()) {
+        return Ok(());
+    }
+    Err(LoadProblem::Unknown {
+        of: NameKind::Message,
+        at: at.clone(),
+        name: id.to_string(),
+    })
+}
+
+/// Whether each of `actions`, a player's, has a name.
+fn named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem> {
+    match actions.iter().find(|(_, action)| action.name.is_none()) {
+        Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
+        None => Ok(()),
+    }
 }
 
 /// Each modifier the passive of one of `owners` at most, the unit types and actions of one

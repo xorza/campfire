@@ -9,7 +9,7 @@ use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
-use campfire_players::{Players, PlayersWorld};
+use campfire_players::{PlayerResources, Players};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
@@ -142,8 +142,7 @@ fn two_fields() -> Match {
     for _ in 0..30 {
         world.run_schedule(SimUpdate);
     }
-    let gold_in = world
-        .player_resources(PlayerSlot::new(0))
+    let gold_in = PlayerResources::of_player(&world, PlayerSlot::new(0))
         .unwrap()
         .amount(gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");

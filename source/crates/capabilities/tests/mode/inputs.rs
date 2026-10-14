@@ -125,7 +125,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
     // not declare fails, as a sum past what an integer holds does.
     let amount = |slot, name| {
-        let resources = game.player_resources(PlayerSlot::new(slot));
+        let resources = PlayerResources::of_player(&game, PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(

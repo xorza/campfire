@@ -81,6 +81,12 @@ pub enum LoadProblem {
     /// An avatar's action is in none of its slots, so it has no rank count.
     #[error("action \"{0}\" is in no slot")]
     Unslotted(DeclaredName),
+    /// An avatar's or a loadout's action, which a player casts, has no `name`.
+    #[error("action \"{0}\", a player's, has no name")]
+    UnnamedAction(DeclaredName),
+    /// A team of the manifest has no `[teams.<team>]` that names it.
+    #[error("team \"{0}\" has no name")]
+    UnnamedTeam(DeclaredName),
     /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
     #[error("an avatar takes no `orders`: bots play it")]
     AvatarOrders,

@@ -32,6 +32,9 @@ pub enum Place {
     /// The mode's choice of that name.
     #[display("choice {_0}")]
     Choice(DeclaredName),
+    /// The mode's team of that name.
+    #[display("team {_0}")]
+    Team(DeclaredName),
     /// The mode's `[tracks]`.
     #[display("the mode's [tracks]")]
     Tracks,
@@ -50,9 +53,6 @@ pub enum Place {
     /// The mode's item type of that id.
     #[display("item {_0}")]
     Item(DeclaredName),
-    /// The mode's `[shop]`.
-    #[display("the mode's [shop]")]
-    Shop,
     /// The mode's `[stats]`.
     #[display("the mode's [stats]")]
     Stats,

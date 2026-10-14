@@ -71,9 +71,6 @@ pub enum BookError {
     /// Data names a script at `path` that the package does not hold.
     #[error("no script {path}")]
     Script { package: u16, path: PackagePath },
-    /// The shop's marker of that name has no region or no team it serves.
-    #[error("shop marker {0}: no region or no team")]
-    ShopMarker(DeclaredName),
     /// Data at `at` names what the mode or its packages do not have.
     #[error("{at}")]
     Unknown {

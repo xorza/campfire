@@ -1,51 +1,68 @@
-use campfire_geometry::Bounds;
-use campfire_sim::Position;
-use campfire_values::{ResourceId, Share, Team};
+use campfire_declare::PerType;
+use campfire_math::Num;
+use campfire_script::Filter;
+use campfire_sim::Capability;
+use campfire_values::{Relation, ResourceId, Share, TagSet};
 
 use crate::item_id::ItemId;
 
-/// The mode's shop as a match reads it: the item types it sells, the player resource it takes,
-/// the places it stands, each a region of the map that serves one team, and the share of an
-/// item's cost a sale gives back.
+/// A shop type's shop as a match reads it, package data and not state: the item types it sells,
+/// the player resource it takes, how far from its body's edge it serves, the units it serves,
+/// and the share of an item's cost a sale gives back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Shop {
     sells: Vec<ItemId>,
-    pub(crate) resource: ResourceId,
-    places: Vec<ShopPlace>,
+    resource: ResourceId,
+    reach: Num,
+    buyers: Filter,
     sell_share: Share,
 }
 
-/// A region of the map where the shop serves `team`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ShopPlace {
-    pub team: Team,
-    pub region: Bounds,
+/// What a shop's test of a buyer reads of it.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Buyer {
+    /// How the shop's team regards the buyer's.
+    pub(crate) relation: Relation,
+    /// Its tags as it stands now, `dead` among them while it is dead.
+    pub(crate) tags: TagSet,
+    pub(crate) dead: bool,
 }
 
 impl Shop {
     pub const fn new(
         sells: Vec<ItemId>,
         resource: ResourceId,
-        places: Vec<ShopPlace>,
+        reach: Num,
+        buyers: Filter,
         sell_share: Share,
     ) -> Shop {
         Shop {
             sells,
             resource,
-            places,
+            reach,
+            buyers,
             sell_share,
         }
+    }
+
+    /// The item types it sells, in its data's order.
+    pub fn items(&self) -> &[ItemId] {
+        &self.sells
+    }
+
+    /// The player resource it takes and gives back.
+    pub const fn resource(&self) -> ResourceId {
+        self.resource
     }
 
     pub(crate) fn sells(&self, item: ItemId) -> bool {
         self.sells.contains(&item)
     }
 
-    /// Whether a unit of `team` at `pos` stands in one of the shop's places for its team.
-    pub(crate) fn serves(&self, team: Team, pos: Position) -> bool {
-        self.places
-            .iter()
-            .any(|place| place.team == team && place.region.contains(pos))
+    /// Whether it serves `buyer`: a unit its buyers select, dead from anywhere, as a dead unit
+    /// stands nowhere, else one that `reaches` says its reach meets from the shop's edge.
+    pub(crate) fn serves(&self, buyer: Buyer, reaches: impl FnOnce(Num) -> bool) -> bool {
+        self.buyers.selects(buyer.relation, buyer.tags) && (buyer.dead || reaches(self.reach))
     }
 
     /// What a sale of `count` items of `cost` each gives back: the sell share of their cost,
@@ -56,4 +73,9 @@ impl Shop {
             .expect("a stack's cost fits");
         self.sell_share.of(whole)
     }
+}
+
+impl PerType for Shop {
+    const OWNER: Option<Capability> = Some(Capability::Items);
+    const SCRIPTS_ONLY: bool = false;
 }

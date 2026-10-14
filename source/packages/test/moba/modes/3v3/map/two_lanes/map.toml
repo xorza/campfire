@@ -139,18 +139,16 @@ team = "south"
 path = "east"
 pos = [42, 16]
 
-# Each base's shop: a region of its team's round its spawn.
-[[markers]]
-name = "north_shop"
-tags = ["shop"]
+# Each base's fountain, its shop, behind its spawn.
+[[units]]
+unit_type = "fountain"
 team = "north"
-region = { min = [-8, -68], max = [8, -56] }
+pos = [0, -62]
 
-[[markers]]
-name = "south_shop"
-tags = ["shop"]
+[[units]]
+unit_type = "fountain"
 team = "south"
-region = { min = [-8, 56], max = [8, 68] }
+pos = [0, 62]
 
 [[markers]]
 name = "camp1"

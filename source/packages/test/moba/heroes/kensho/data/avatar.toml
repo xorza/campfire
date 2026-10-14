@@ -33,6 +33,7 @@ stacks_expire_ms = 4000
 every = 7
 
 [actions.flicker_strike]
+name = "action-flicker-strike"
 script = "scripts/flicker_strike.rhai"
 targeting = "enemies"
 range = "6.0"
@@ -57,6 +58,7 @@ struck = { type = "entity_list" }
 left = { type = "int", default = 0 }
 
 [actions.still_mind]
+name = "action-still-mind"
 script = "scripts/still_mind.rhai"
 targeting = "none"
 cooldown_ms = 35000
@@ -72,6 +74,7 @@ guard = [30, 45, 60, 75, 90]
 stats = { armor = { param = "guard" }, magic_resist = { param = "guard" } }
 
 [actions.honed_edge]
+name = "action-honed-edge"
 script = "scripts/honed_edge.rhai"
 targeting = "none"
 cooldown_ms = [25000, 23000, 21000, 19000, 17000]
@@ -90,6 +93,7 @@ duration_ms = 5000
 stats = { attack_damage = { param = "active_ad" } }
 
 [actions.unbound]
+name = "action-unbound"
 script = "scripts/unbound.rhai"
 targeting = "none"
 cooldown_ms = 75000
@@ -108,6 +112,7 @@ tags = ["slow_immune"]
 stats = { attack_speed = { pct = { param = "attack_speed" } }, move_speed = { pct = { param = "move_speed" } } }
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "1.25"

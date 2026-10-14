@@ -34,6 +34,7 @@ on_hit_share = { base = "0.06", ability_power = "0.00167" }
 spell_vamp = { base = "0.06", bonus = { attack_damage = "0.00167" } }
 
 [actions.dusk_mark]
+name = "action-dusk-mark"
 script = "scripts/dusk_mark.rhai"
 targeting = "enemies"
 range = "6.0"
@@ -51,6 +52,7 @@ script = "scripts/dusk_mark.rhai"
 duration_ms = 6000
 
 [actions.smoke_ring]
+name = "action-smoke-ring"
 targeting = "none"
 cooldown_ms = 20000
 cost = { energy = [80, 75, 70, 65, 60] }
@@ -69,6 +71,7 @@ stats = { move_speed = { cut = { param = "slow" } } }
 tags = ["slowed"]
 
 [actions.whirling_blades]
+name = "action-whirling-blades"
 script = "scripts/whirling_blades.rhai"
 targeting = "none"
 cooldown_ms = [7000, 6000, 5000, 4000, 3000]
@@ -79,6 +82,7 @@ radius = "3.25"
 damage = { base = [30, 55, 80, 105, 130], ability_power = "0.3", attack_damage = "0.6" }
 
 [actions.night_step]
+name = "action-night-step"
 script = "scripts/night_step.rhai"
 targeting = "enemies"
 range = "8.0"
@@ -93,6 +97,7 @@ damage = { base = [100, 175, 250], ability_power = "0.5" }
 script = "scripts/night_step.rhai"
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "1.25"

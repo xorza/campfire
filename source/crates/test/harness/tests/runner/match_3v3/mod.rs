@@ -323,14 +323,14 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
         scripts.sum::<usize>()
     );
 
-    // The map's 14 structures from the start; at the pick's end, the 6 heroes at their teams'
-    // spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.
+    // The map's 14 structures and 2 fountains from the start; at the pick's end, the 6 heroes at
+    // their teams' spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.
     let hero = |slot: u32| {
         let team = u8::from(slot >= 3);
         let z = if team == 0 { -60 } else { 60 };
         (Team::new(team), Position::from((0, 0, z)), Some(slot))
     };
-    let heroes: Vec<_> = run.at_pick_end[14..20]
+    let heroes: Vec<_> = run.at_pick_end[16..22]
         .iter()
         .map(|unit| (unit.team, unit.pos, unit.controller))
         .collect();
@@ -340,8 +340,8 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     // two abilities for every hero; its weapon, learned from the spawn; and last the six slots of
     // its inventory, empty, of one rank.
     let [basic, ultimate, spell, weapon, item] = [0, 1, 2, 3, 4].map(SlotKind::new);
-    let spells = &run.at_pick_end[14].slots[4..6];
-    for unit in &run.at_pick_end[14..20] {
+    let spells = &run.at_pick_end[16].slots[4..6];
+    for unit in &run.at_pick_end[16..22] {
         let slots: Vec<_> = unit
             .slots
             .iter()
@@ -368,7 +368,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     }
     assert_ne!(spells[0].action, spells[1].action);
     // Each camp on its marker, in the map's order.
-    let camps: Vec<_> = run.at_pick_end[20..]
+    let camps: Vec<_> = run.at_pick_end[22..]
         .iter()
         .map(|unit| (unit.team, unit.pos))
         .collect();
@@ -382,7 +382,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     assert_eq!(expected.len(), 5);
     assert_eq!(camps, expected);
     // The first wave: on each lane, west then east, each team's six creeps at its end: 24.
-    let wave = &run.at_first_wave[25..];
+    let wave = &run.at_first_wave[27..];
     let seen: Vec<_> = wave.iter().map(|unit| (unit.team, unit.pos)).collect();
     let ends = [(0, -6, -50), (1, -6, 50), (0, 6, -50), (1, 6, 50)];
     let expected: Vec<_> = ends
@@ -489,8 +489,8 @@ fn assert_camp(run: &Run<'_>) {
 /// caster's.
 fn assert_gold(run: &Run<'_>, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
-    // 15 for a caster: Cinder fells a caster and a melee creep of the south's west group, 35, and
-    // Veil a caster of the north's east group, 15.
+    // 15 for a caster: Cinder fells a caster of the south's west group, 15, and Veil a caster of
+    // the north's east group, 15.
     let [cinder, veil] = [0, 5].map(|slot| hero_of(run, slot));
     let bounty = |killer| -> i64 {
         let felled = run
@@ -507,14 +507,14 @@ fn assert_gold(run: &Run<'_>, melee: UnitType) {
             })
             .sum()
     };
-    assert_eq!([bounty(cinder), bounty(veil)], [35, 15]);
+    assert_eq!([bounty(cinder), bounty(veil)], [15, 15]);
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
-    // 160. Cinder's player takes first blood, 300 + 100, and the creeps' 35; Gale's the assist's
+    // 160. Cinder's player takes first blood, 300 + 100, and the creep's 15; Gale's the assist's
     // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
     assert_eq!(
         run.seen.gold,
-        [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]
+        [160 + 415, 160 + 150, 160, 160 + 30, 160, 160 + 15]
     );
 }
 

@@ -21,7 +21,4 @@ pub enum BookPlace {
     /// The mode's `[combat]`.
     #[display("the mode's [combat]")]
     Combat,
-    /// The mode's `[shop]`.
-    #[display("the mode's [shop]")]
-    Shop,
 }

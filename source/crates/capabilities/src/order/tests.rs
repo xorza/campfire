@@ -149,7 +149,10 @@ fn each_action_is_a_command_of_its_owner() {
             Action::from(ProductionAction::CancelBuild),
             Capability::Production,
         ),
-        (Action::from(ItemsAction::Buy { item }), Capability::Items),
+        (
+            Action::from(ItemsAction::Buy { item, shop: id(1) }),
+            Capability::Items,
+        ),
     ];
     for (action, capability) in owned {
         assert_eq!(action.capability(), capability, "{action:?}");

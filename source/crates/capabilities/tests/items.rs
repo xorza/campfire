@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 
+use bevy_ecs::system::{Query, RunSystemOnce};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionData, ActionSlots, ActionTarget, Actions, DoesData, EffectData, EffectTo, HealFields,
@@ -10,19 +11,19 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order};
 use campfire_combat::OnDeath;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_declare::Book;
-use campfire_geometry::Bounds;
 use campfire_items::*;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
-use campfire_players::{OutOfPlay, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
-use campfire_script::{ScriptBudgets, ScriptLimits};
+use campfire_players::{
+    OutOfPlay, PlayerResources, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount,
+};
+use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::{Dead, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Block, ModifierId, ResourceId, Team};
+use campfire_values::{ActionId, Block, ModifierId, ResourceId, Team, UnitType};
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
@@ -39,6 +40,7 @@ const CHARM: u32 = 2;
 #[derive(Debug, Clone, Copy)]
 struct Carrier {
     id: StableId,
+    shop: StableId,
     drink: ActionId,
     flash: ActionId,
     might: ModifierId,
@@ -94,7 +96,7 @@ impl Carrier {
             id
         };
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));
-        stock(game, [drink, flash], might);
+        let shop_type = stock(game, [drink, flash], might);
         // Its type: 500 life that stays when it dies, and an inventory of 3, whose slots it has.
         let kind = SlotKind::new(0);
         let carrier = Units::load_next_type(game, &UnitTypeCore::default());
@@ -105,10 +107,12 @@ impl Carrier {
         Units::give_type(game, carrier, Inventory::new(three));
         Units::give_type(game, carrier, UseGroup::new(kind));
         let owner = Owner::new(PlayerSlot::new(0));
+        let shop = spawn_shop(game, shop_type);
         let id = Mode::spawn(game, carrier, Position::ORIGIN, Team::new(0), owner);
         game.part_mut::<Life>(id).take(Num::int(200));
         Carrier {
             id,
+            shop,
             drink,
             flash,
             might,
@@ -164,8 +168,8 @@ fn carrier_match() -> Match {
     )
 }
 
-/// Gives `game` the item book, the shop at the origin, and player 0's 1000 of `gold`.
-fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
+/// Gives `game` the item book and player 0's 1000 of `gold`; the shop's type.
+fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> UnitType {
     let resource = ResourceId::nth(0);
     let item =
         |cost: i64, stack: u32, uses: Option<u32>, action, modifiers: Vec<ModifierId>| ItemSpec {
@@ -188,24 +192,39 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) {
             item(300, 1, None, None, vec![might]),
         ],
     ));
-    let share =
-        Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer("0.5")).unwrap();
-    let places = vec![ShopPlace {
-        team: Team::new(0),
-        region: Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap(),
-    }];
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
-    ShopBook(Some(Shop::new(sells, resource, places, share))).load_into(game);
     Players::spawn(game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 1000)
         .unwrap();
+    shop_type(game, sells, "allies", share("0.5"))
 }
 
-const fn buy(item: u32) -> ItemsAction {
+/// The share `text` gives, as data reads it.
+fn share(text: &str) -> Share {
+    Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer(text)).unwrap()
+}
+
+/// A new shop type that sells `sells` for resource 0 to the units `buyers` selects within 5 m,
+/// and gives `share` back on a sale.
+fn shop_type(game: &mut Match, sells: Vec<ItemId>, buyers: &str, share: Share) -> UnitType {
+    let buyers = Filter::of_match(game, buyers);
+    let shop = Shop::new(sells, ResourceId::nth(0), Num::int(5), buyers, share);
+    let shop_type = Units::load_next_type(game, &UnitTypeCore::default());
+    Units::give_type(game, shop_type, shop);
+    shop_type
+}
+
+/// A shop unit of `shop_type`, of team 0 and no player, at the origin.
+fn spawn_shop(game: &mut Match, shop_type: UnitType) -> StableId {
+    Mode::spawn(game, shop_type, Position::ORIGIN, Team::new(0), ())
+}
+
+const fn buy(item: u32, shop: StableId) -> ItemsAction {
     ItemsAction::Buy {
         item: ItemId::nth(item),
+        shop,
     }
 }
 
@@ -222,7 +241,8 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     let carrier = Carrier::place(&mut game);
     let drink = Some(carrier.drink);
     // Two potions stack in slot 0, which holds their action; the others hold none.
-    carrier.order(&mut game, &[buy(POTION), buy(POTION)]);
+    let shop = carrier.shop;
+    carrier.order(&mut game, &[buy(POTION, shop), buy(POTION, shop)]);
     assert_eq!(carrier.items(&game), [Some((0, 2)), None, None]);
     assert_eq!(carrier.actions(&game), [drink, None, None]);
     // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
@@ -269,7 +289,7 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     );
     assert_eq!(carrier.actions(&game), [None, None, None]);
     // A silence blocks casts alone: a new potion is drunk through it.
-    carrier.order(&mut game, &[buy(POTION)]);
+    carrier.order(&mut game, &[buy(POTION, shop)]);
     Units::set_blocks(&mut game, carrier.id, &[Block::Cast]);
     carrier.order(&mut game, &[cast(0)]);
     assert_eq!(
@@ -282,11 +302,12 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
 fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modifier_once() {
     let mut game = carrier_match();
     let carrier = Carrier::place(&mut game);
+    let shop = carrier.shop;
     // One tick buys the flash and casts it: items' orders apply before those of `orders`, after
     // it in the module list, so the cast finds the flash in slot 0.
     carrier.order(
         &mut game,
-        &[Action::from(buy(FLASH)), Action::from(cast(0))],
+        &[Action::from(buy(FLASH, shop)), Action::from(cast(0))],
     );
     let ready = game.part::<SlotTimes>(carrier.id).slot(0).unwrap().ready_at;
     assert!(ready > game.now());
@@ -303,16 +324,16 @@ fn an_active_keeps_its_cooldown_across_a_swap_and_a_carried_item_holds_its_modif
     // A charm holds Might from the carrier, as a passive; a second charm holds it no more often;
     // selling one keeps it, selling both lets it go.
     assert_eq!(carrier.mights(&game), 0);
-    carrier.order(&mut game, &[buy(CHARM)]);
+    carrier.order(&mut game, &[buy(CHARM, shop)]);
     assert_eq!(carrier.mights(&game), 1);
-    carrier.order(&mut game, &[buy(CHARM)]);
+    carrier.order(&mut game, &[buy(CHARM, shop)]);
     assert_eq!(
         (carrier.items(&game), carrier.mights(&game)),
         (vec![Some((2, 1)), Some((2, 1)), Some((1, 1))], 1)
     );
-    carrier.order(&mut game, &[ItemsAction::Sell { slot: 0 }]);
+    carrier.order(&mut game, &[ItemsAction::Sell { slot: 0, shop }]);
     assert_eq!(carrier.mights(&game), 1);
-    carrier.order(&mut game, &[ItemsAction::Sell { slot: 1 }]);
+    carrier.order(&mut game, &[ItemsAction::Sell { slot: 1, shop }]);
     assert_eq!(carrier.mights(&game), 0);
 }
 
@@ -324,9 +345,38 @@ fn carried(game: &World, id: StableId) -> Vec<Option<(usize, u32)>> {
     inventory.slots().iter().map(carried).collect()
 }
 
+/// What the shop reader reads of an item at a shop for a unit: whether the shop serves it, and,
+/// for an item the shop sells, the unit's purchase there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ShopRead {
+    served: bool,
+    purchase: Option<Purchase>,
+}
+
+impl ShopRead {
+    fn of(game: &mut Match, shop: StableId, unit: StableId, item: ItemId) -> ShopRead {
+        let entity = game.unit_entity(unit);
+        let read = move |shopping: Shopping<'_, '_>, inventories: Query<'_, '_, &Inventory>| {
+            let inventory = inventories.get(entity).unwrap();
+            let sold = shopping.shop(shop).unwrap();
+            ShopRead {
+                served: shopping.serving(shop, unit).is_some(),
+                purchase: shopping.purchase(sold, inventory, item, &mut Vec::new()),
+            }
+        };
+        game.run_system_once(read).unwrap()
+    }
+
+    /// The items the shop unit `shop` sells.
+    fn items(game: &mut Match, shop: StableId) -> Vec<ItemId> {
+        let read = move |shopping: Shopping<'_, '_>| shopping.shop(shop).unwrap().items().to_vec();
+        game.run_system_once(read).unwrap()
+    }
+}
+
 /// Player 0's gold.
 fn gold(game: &World) -> i64 {
-    let resources = game.player_resources(PlayerSlot::new(0));
+    let resources = PlayerResources::of_player(game, PlayerSlot::new(0));
     resources.unwrap().amount(ResourceId::nth(0))
 }
 
@@ -339,10 +389,20 @@ fn trades(id: StableId, actions: &[ItemsAction]) -> Vec<u8> {
     Order::payload(&orders)
 }
 
-/// A blade of 300 gold, an edge of 1000 built from two blades, a potion of 50, three to a slot,
-/// and a charm of 125 the shop does not sell; and team 0's shop from (−5, −5) to (5, 5), which
-/// gives 70% back on a sale.
-fn shop_match() -> Match {
+/// A match of a blade of 300 gold, an edge of 1000 built from two blades, a potion of 50, three
+/// to a slot, and a charm of 125 the shop does not sell; and team 0's shop at the origin, which
+/// serves its allies within 5 m, the dead from anywhere, and gives 70% back on a sale.
+#[derive(Debug)]
+struct ShopMatch {
+    game: Match,
+    shop: StableId,
+    /// A shopper's type: an inventory of three.
+    shopper: UnitType,
+    /// A shop type that sells the potion to its living allies alone.
+    living: UnitType,
+}
+
+fn shop_match() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
     let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
     let gold = ResourceId::nth(0);
@@ -367,82 +427,127 @@ fn shop_match() -> Match {
             item(125, &[], 1),
         ],
     );
-    let share =
-        Share::deserialize(IntoDeserializer::<value::Error>::into_deserializer("0.7")).unwrap();
-    let region = Bounds::new([Num::int(-5); 2], [Num::int(5); 2]).unwrap();
-    let places = vec![ShopPlace {
-        team: Team::new(0),
-        region,
-    }];
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     game.insert_resource(book);
-    ShopBook(Some(Shop::new(sells, gold, places, share))).load_into(&mut game);
     Players::spawn(&mut game, 2, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(gold, 2000)
         .unwrap();
-    game
+    let three = NonZeroU8::new(3).unwrap();
+    let shopper = Units::load_next_type(&mut game, &UnitTypeCore::default());
+    Units::give_type(&mut game, shopper, Inventory::new(three));
+    Units::give_type(&mut game, shopper, UseGroup::new(SlotKind::new(0)));
+    let shop = shop_type(&mut game, sells, "allies", share("0.7"));
+    let potion = vec![ItemId::nth(2)];
+    let living = shop_type(&mut game, potion, "allies:!dead", share("0.7"));
+    let shop = spawn_shop(&mut game, shop);
+    ShopMatch {
+        game,
+        shop,
+        shopper,
+        living,
+    }
 }
 
 #[test]
 fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // A match with no `orders`: the trades are items' own orders.
-    let mut game = shop_match();
-    let three = NonZeroU8::new(3).unwrap();
-    let shopper = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    Units::give_type(&mut game, shopper, Inventory::new(three));
-    Units::give_type(&mut game, shopper, UseGroup::new(SlotKind::new(0)));
+    let ShopMatch {
+        mut game,
+        shop,
+        shopper,
+        living,
+    } = shop_match();
     let owner = Owner::new(PlayerSlot::new(0));
     let hero = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(0), owner);
     let step = |game: &mut Match, actions: &[ItemsAction]| {
         game.step_with(&[(PlayerSlot::new(0), &trades(hero, actions))]);
     };
     let held = |game: &Match| (gold(game), carried(game, hero));
+    // The reader: the shop sells its three in its order; the edge costs its 1000 with no blade
+    // held, a potion 50, and the charm, which it does not sell, nothing.
+    let read = |game: &mut Match, item: u32| ShopRead::of(game, shop, hero, ItemId::nth(item));
+    let sold: Vec<usize> = ShopRead::items(&mut game, shop)
+        .iter()
+        .map(|item| item.index())
+        .collect();
+    assert_eq!(sold, [0, 1, 2]);
+    let buys = |price, room| Some(Purchase { price, room });
+    assert_eq!(
+        read(&mut game, 1),
+        ShopRead {
+            served: true,
+            purchase: buys(1000, true)
+        }
+    );
+    assert_eq!(read(&mut game, 2).purchase, buys(50, true));
+    assert_eq!(read(&mut game, 3).purchase, None);
     // Two blades, 300 each, from 2000: 1400.
-    step(&mut game, &[buy(0), buy(0)]);
+    step(&mut game, &[buy(0, shop), buy(0, shop)]);
     assert_eq!(held(&game), (1400, vec![Some((0, 1)), Some((0, 1)), None]));
+    // The edge less the two blades it is built from, as the reader reads it: 1000 − 300 − 300 =
+    // 400.
+    assert_eq!(read(&mut game, 1).purchase, buys(400, true));
     // The edge gives both blades up: 1000 − 300 − 300 = 400, and takes the first slot they left.
-    step(&mut game, &[buy(1)]);
+    step(&mut game, &[buy(1, shop)]);
     assert_eq!(held(&game), (1000, vec![Some((1, 1)), None, None]));
     // Three potions stack in the first empty slot, 50 each; a fourth needs the last slot.
-    step(&mut game, &[buy(2), buy(2), buy(2), buy(2)]);
+    step(
+        &mut game,
+        &[buy(2, shop), buy(2, shop), buy(2, shop), buy(2, shop)],
+    );
     let full = vec![Some((1, 1)), Some((2, 3)), Some((2, 1))];
     assert_eq!(held(&game), (800, full.clone()));
-    // No room for a blade, and the charm is not sold: both dropped.
-    step(&mut game, &[buy(0), buy(3)]);
+    // No room for a blade, and the charm is not sold: both dropped; the reader reads no room.
+    assert_eq!(read(&mut game, 0).purchase, buys(300, false));
+    step(&mut game, &[buy(0, shop), buy(3, shop)]);
     assert_eq!(held(&game), (800, full));
     // Three potions sell for 70% of 150, 105; a swap moves the edge; it sells for 700.
     step(
         &mut game,
         &[
-            ItemsAction::Sell { slot: 1 },
+            ItemsAction::Sell { slot: 1, shop },
             ItemsAction::Swap { from: 0, to: 2 },
         ],
     );
     assert_eq!(held(&game), (905, vec![Some((2, 1)), None, Some((1, 1))]));
     step(
         &mut game,
-        &[ItemsAction::Sell { slot: 2 }, ItemsAction::Sell { slot: 1 }],
+        &[
+            ItemsAction::Sell { slot: 2, shop },
+            ItemsAction::Sell { slot: 1, shop },
+        ],
     );
     assert_eq!(held(&game), (1605, vec![Some((2, 1)), None, None]));
 
     // Out of its shop, it neither buys nor sells, but swaps; the other player's orders and those
     // past its gold are dropped; dead, it buys and sells anywhere.
     *game.part_mut::<Position>(hero) = Position::from((10, 0, 0));
+    assert!(!read(&mut game, 2).served);
     step(
         &mut game,
         &[
-            buy(2),
-            ItemsAction::Sell { slot: 0 },
+            buy(2, shop),
+            ItemsAction::Sell { slot: 0, shop },
             ItemsAction::Swap { from: 0, to: 1 },
         ],
     );
     assert_eq!(held(&game), (1605, vec![None, Some((2, 1)), None]));
-    game.step_with(&[(PlayerSlot::new(1), &trades(hero, &[buy(2)]))]);
+    game.step_with(&[(PlayerSlot::new(1), &trades(hero, &[buy(2, shop)]))]);
     assert_eq!(gold(&game), 1605);
     game.insert_parts(hero, Dead);
-    step(&mut game, &[buy(0), buy(0), buy(0), buy(0), buy(0), buy(0)]);
+    step(
+        &mut game,
+        &[
+            buy(0, shop),
+            buy(0, shop),
+            buy(0, shop),
+            buy(0, shop),
+            buy(0, shop),
+            buy(0, shop),
+        ],
+    );
     // 1605 buys a blade into slot 0 and a potion's stack in slot 1 has no room for a blade, so
     // the next blade takes slot 2; then 1005 left, and slots are full: the rest are dropped.
     assert_eq!(
@@ -453,7 +558,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     let resource = ResourceId::nth(0);
     let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(resource, -1000).unwrap();
-    step(&mut game, &[buy(1)]);
+    step(&mut game, &[buy(1, shop)]);
     assert_eq!(
         held(&game),
         (5, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
@@ -462,16 +567,17 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         .unwrap()
         .add(resource, 395)
         .unwrap();
-    step(&mut game, &[buy(1)]);
+    step(&mut game, &[buy(1, shop)]);
     assert_eq!(held(&game), (0, vec![Some((1, 1)), Some((2, 1)), None]));
 
     // A unit of another team in the shop's region is out of a shop of its own.
     let other = Mode::spawn(&mut game, shopper, (0, 0, 0), Team::new(1), owner);
+    assert!(!ShopRead::of(&mut game, shop, other, ItemId::nth(0)).served);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
         .add(resource, 300)
         .unwrap();
-    game.step_with(&[(PlayerSlot::new(0), &trades(other, &[buy(0)]))]);
+    game.step_with(&[(PlayerSlot::new(0), &trades(other, &[buy(0, shop)]))]);
     assert_eq!(
         (gold(&game), carried(&game, other)),
         (300, vec![None, None, None])
@@ -482,9 +588,25 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
     game.insert_resource(OutView::Spectators);
-    step(&mut game, &[buy(2)]);
+    step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 300);
     game.insert_resource(OutView::Team);
-    step(&mut game, &[buy(2)]);
+    step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 250);
+
+    // A shop that leaves the dead out, as Warcraft III's does, serves the hero only once it lives
+    // again, and within its reach: from 5 m, the reach, a potion of 50; from a bit past it, none.
+    // An order that names a unit that is no shop, the hero itself, is dropped.
+    let living = spawn_shop(&mut game, living);
+    step(&mut game, &[buy(2, living)]);
+    assert_eq!(gold(&game), 250);
+    let entity = game.unit_entity(hero);
+    game.entity_mut(entity).remove::<Dead>();
+    *game.part_mut::<Position>(hero) = Position::from((5, 0, 0));
+    step(&mut game, &[buy(2, living), buy(2, hero)]);
+    assert_eq!(gold(&game), 200);
+    let past = Vec3::new(Num::int(5) + Num::from_bits(1), Num::ZERO, Num::ZERO);
+    *game.part_mut::<Position>(hero) = Position::new(past).unwrap();
+    step(&mut game, &[buy(2, living)]);
+    assert_eq!(gold(&game), 200);
 }

@@ -1,6 +1,7 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Allow, Changed, Or, With, Without};
+use bevy_ecs::lifecycle::RemovedComponents;
+use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
@@ -28,8 +29,8 @@ use crate::unit_stats::UnitStats;
 pub struct Refresh;
 
 impl Refresh {
-    /// Derives the stats and tags of every unit whose level, modifiers or type changed, as a
-    /// client may receive its type after its level, that is new, or
+    /// Derives the stats and tags of every unit whose level, modifiers or type changed, that died
+    /// or came back, as a client may receive its type after its level, that is new, or
     /// that carries a live change of a unit it refreshes, a chain of them whole, and sets what holds their effect: how far it walks a tick and
     /// its pools' maxima, a pool keeping the rule of stats.md. A modifier its tags' immunities
     /// suppress gives no tags and no stats. Each stat is computed for every refreshing unit in the
@@ -65,6 +66,7 @@ impl Refresh {
                             Changed<StatusTags>,
                             Changed<UnitType>,
                             Added<UnitStats>,
+                            Added<Dead>,
                         )>,
                         Allow<Unpredicted>,
                     ),
@@ -79,6 +81,7 @@ impl Refresh {
                         Option<&Modifiers>,
                         Option<&mut UnitTags>,
                         Option<&StatusTags>,
+                        Has<Dead>,
                     ),
                     (With<UnitStats>, Allow<Unpredicted>),
                 >,
@@ -88,6 +91,7 @@ impl Refresh {
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
+        mut revived: RemovedComponents<'_, '_, Dead>,
         mut scratch: Local<'_, RefreshScratch>,
         mut visits: Local<'_, Vec<Entity>>,
     ) {
@@ -101,6 +105,7 @@ impl Refresh {
         scratch.clear();
         visits.clear();
         visits.extend(units.p0().iter());
+        visits.extend(revived.read());
         let ids = units.p1();
         let id_of = |entity| ids.get(entity).ok().map(|(&id, ..)| id);
         carriers.join_sources(&mut visits, id_of);
@@ -112,13 +117,17 @@ impl Refresh {
         let granting = tag_book.granting();
         let mut refreshing = units.p1();
         for &entity in &*visits {
-            let Ok((&id, &unit_type, level, modifiers, tags, status)) = refreshing.get_mut(entity)
+            let Ok((&id, &unit_type, level, modifiers, tags, status, dead)) =
+                refreshing.get_mut(entity)
             else {
                 continue;
             };
             let stacked = modifiers.into_iter().flat_map(Modifiers::stacked);
             let granted = modifier_book.granted(stacked, status.copied());
-            let derived = tag_book.unit_tags(unit_type, granted);
+            let mut derived = tag_book.unit_tags(unit_type, granted);
+            if dead {
+                derived.tags = derived.tags.with(Dead::TAG.tag());
+            }
             if let Some(mut tags) = tags {
                 tags.set_if_neq(derived);
             }

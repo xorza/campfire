@@ -7,7 +7,7 @@ use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_players::PlayersWorld;
+use campfire_players::PlayerResources;
 use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 use campfire_stats::{PoolId, PoolMeters};
@@ -119,7 +119,7 @@ impl Golden {
             }
         }
         for slot in (0..self.players).map(PlayerSlot::new) {
-            let Some(amounts) = game.player_resources(slot) else {
+            let Some(amounts) = PlayerResources::of_player(game, slot) else {
                 continue;
             };
             for &resource in &self.resources {

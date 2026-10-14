@@ -101,10 +101,11 @@ const FARM: u64 = 3200;
 const FARM_EVERY: usize = 40;
 const LEARN: u64 = 3220;
 const LEARN_EVERY: usize = 200;
-/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`: after the learn of tick 12,020,
-/// the first after the last hero reaches level 6, in tick 11,858, as the showcase needs each
-/// hero's ultimate, which the 3v3's farm check asserts.
-const RECALL: u64 = 12_200;
+/// The tick the heroes walk home in, to shop in `Moba3v3::SHOP`: after the learn of tick 13,020,
+/// the first after the last hero reaches level 6, in tick 12,888, as the showcase needs each
+/// hero's ultimate, which the 3v3's farm check asserts. Husk walks the west lane home from its
+/// post and reaches its fountain's reach within the 800 ticks before the shop.
+const RECALL: u64 = 13_200;
 
 /// The orders of the 3v3's scripted players after the pick, to the farm. Players 0 to 2 hold
 /// Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the
@@ -184,8 +185,8 @@ impl Moba3v3 {
     pub const PLAYERS: u32 = 6;
     /// The tick the heroes shop in; the tick the showcase's first cast is sent in, each later
     /// one `CAST_EVERY` ticks after the one before; and how many casts it sends.
-    pub const SHOP: u64 = 12_700;
-    pub const SHOWCASE: u64 = 13_000;
+    pub const SHOP: u64 = 14_000;
+    pub const SHOWCASE: u64 = 14_300;
     pub const CAST_EVERY: u64 = 40;
     pub const CASTS: u64 = 37;
 
@@ -406,8 +407,14 @@ impl Plan for Moba3v3 {
                 },
                 |target| OrdersAction::Attack { target },
             )),
-            Moba3v3::Buy { item } => Action::Items(ItemsAction::Buy { item }),
-            Moba3v3::Sell { slot } => Action::Items(ItemsAction::Sell { slot }),
+            Moba3v3::Buy { item } => Action::Items(ItemsAction::Buy {
+                item,
+                shop: units.shop_of(hero),
+            }),
+            Moba3v3::Sell { slot } => Action::Items(ItemsAction::Sell {
+                slot,
+                shop: units.shop_of(hero),
+            }),
             Moba3v3::Swap { from, to } => Action::Items(ItemsAction::Swap { from, to }),
         };
         Order::one(hero, action)

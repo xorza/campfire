@@ -1,3 +1,6 @@
+# The name players see.
+name = "mode-name"
+
 script = "scripts/mode.rhai"
 # What its players earn and spend.
 resources = ["gold"]
@@ -133,10 +136,12 @@ leaver = "bot"
 
 # Each player chooses a hero no other player has, and two spells.
 [choices.hero]
+name = "choice-hero"
 offers = "avatars"
 unique = true
 
 [choices.spells]
+name = "choice-spells"
 offers = "loadout"
 count = 2
 slot = "spell"
@@ -148,68 +153,56 @@ name = "weapon"
 [[slots]]
 name = "item"
 
-# Each team's base sells items, and buys them back at 70% of their cost, as League of Legends'
-# shop does; a dead hero shops from anywhere.
-[shop]
-items = [
-    "health_potion",
-    "mana_potion",
-    "sight_ward",
-    "vision_ward",
-    "elixir_of_sight",
-    "long_sword",
-    "ruby_crystal",
-    "cloth_armor",
-    "warblade",
-    "stoneplate",
-    "quicksilver",
-]
-resource = "gold"
-at = "shop"
-sell_share = "0.7"
-
 # Consumables: potions that restore 120 health or 75 mana over 15 s, five to a slot; a sight
 # ward, hidden, that watches for 90 s, and a vision ward, seen, with true sight and no end, two
 # to a slot; and an elixir of true sight until death.
 [items.health_potion]
+name = "item-health-potion"
 cost = { gold = 50 }
 stack = 5
 uses = 1
 action = "drink_health_potion"
 
 [items.mana_potion]
+name = "item-mana-potion"
 cost = { gold = 50 }
 stack = 5
 uses = 1
 action = "drink_mana_potion"
 
 [items.sight_ward]
+name = "item-sight-ward"
 cost = { gold = 75 }
 stack = 2
 uses = 1
 action = "place_sight_ward"
 
 [items.vision_ward]
+name = "item-vision-ward"
 cost = { gold = 75 }
 stack = 2
 uses = 1
 action = "place_vision_ward"
 
 [items.elixir_of_sight]
+name = "item-elixir-of-sight"
 cost = { gold = 250 }
 uses = 1
 action = "drink_elixir_of_sight"
 
 # Components, each a stat its carrier holds.
 [items.long_sword]
+name = "item-long-sword"
 cost = { gold = 350 }
 modifiers = ["long_sword"]
 
 [items.ruby_crystal]
+name = "item-ruby-crystal"
 cost = { gold = 400 }
 modifiers = ["ruby_crystal"]
 
 [items.cloth_armor]
+name = "item-cloth-armor"
 cost = { gold = 300 }
 modifiers = ["cloth_armor"]
 
@@ -217,17 +210,20 @@ modifiers = ["cloth_armor"]
 # health whose active hardens its carrier; and a quicksilver of armor whose active cleanses
 # slows and roots.
 [items.warblade]
+name = "item-warblade"
 cost = { gold = 1100 }
 components = ["long_sword", "ruby_crystal"]
 modifiers = ["warblade"]
 
 [items.stoneplate]
+name = "item-stoneplate"
 cost = { gold = 1000 }
 components = ["cloth_armor", "ruby_crystal"]
 modifiers = ["stoneplate"]
 action = "harden"
 
 [items.quicksilver]
+name = "item-quicksilver"
 cost = { gold = 900 }
 components = ["cloth_armor"]
 modifiers = ["quicksilver"]
@@ -352,3 +348,13 @@ rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
 delivery = { projectile = "warden_bolt" }
+
+# The name players see of each team.
+[teams.north]
+name = "team-north"
+
+[teams.south]
+name = "team-south"
+
+[teams.camps]
+name = "team-camps"

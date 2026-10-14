@@ -38,6 +38,13 @@ pub struct ItemStack {
     pub uses: Option<NonZeroU32>,
 }
 
+/// What buying an item costs a carrier, and whether it has room for it: `Inventory::purchase`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Purchase {
+    pub price: i64,
+    pub room: bool,
+}
+
 impl Inventory {
     /// `slots` empty slots.
     pub fn new(slots: NonZeroU8) -> Inventory {
@@ -57,17 +64,17 @@ impl Inventory {
         self.slots.as_slice()
     }
 
-    /// The price in `resource` of buying `item` of `book`: its cost less the costs of the
-    /// components the inventory holds, each item it carries counted for one of them at most, by
-    /// slot order, which `given_up` counts slot by slot; `None` with no room for the item once
-    /// they left: no slot of its type with room in its stack, and no empty one.
+    /// A purchase of `item` of `book` in `resource` by a carrier of it: its price, the item's cost
+    /// less the costs of the components the inventory holds, each item it carries counted for one
+    /// of them at most, by slot order, which `given_up` counts slot by slot; and whether the item
+    /// has room once they left: a slot of its type with room in its stack, or an empty one.
     pub(crate) fn purchase(
         &self,
         book: &ItemBook,
         item: ItemId,
         resource: ResourceId,
         given_up: &mut Vec<u32>,
-    ) -> Option<i64> {
+    ) -> Purchase {
         let spec = book
             .get(item)
             .expect("an item the shop sells is in the book");
@@ -90,8 +97,10 @@ impl Inventory {
                 price -= component.cost_in(resource);
             }
         }
-        self.place(item, spec.stack, given_up)?;
-        Some(price)
+        Purchase {
+            price,
+            room: self.place(item, spec.stack, given_up).is_some(),
+        }
     }
 
     /// Gives up the items `given_up` counts from each slot, then puts one `item` of `book` in: on

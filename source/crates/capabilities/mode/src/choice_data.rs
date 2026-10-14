@@ -1,15 +1,17 @@
 use std::num::NonZeroU8;
 
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
+use campfire_values::{DeclaredName, MessageId};
 use serde::Deserialize;
 
-/// A choice of the mode's `[choices]`: what it offers, how many values a player chooses, whether
+/// A choice of the mode's `[choices]`: the message of the name players see, what it offers, how
+/// many values a player chooses, whether
 /// no two players may choose one value, and for loadout entries, the slot kind they fill, whose
 /// ranks they have.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChoiceData {
+    pub name: MessageId,
     pub offers: Offers,
     #[serde(default)]
     pub unique: bool,

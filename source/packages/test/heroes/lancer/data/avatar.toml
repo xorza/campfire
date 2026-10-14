@@ -22,6 +22,7 @@ move_speed = { base = "5.0" }
 
 # Three shards 15° apart around the aim; each ends at its first hit, and hits a unit once a cast.
 [actions.fan]
+name = "action-fan"
 script = "scripts/fan.rhai"
 targeting = "direction"
 range = "9.0"
@@ -36,6 +37,7 @@ slow = "0.3"
 slow_ms = 1500
 
 [actions.quake]
+name = "action-quake"
 script = "scripts/quake.rhai"
 targeting = "point"
 range = "8.0"
@@ -48,6 +50,7 @@ damage = 80
 
 # A field at the lancer's feet for 3 s: the lancer inside is guarded, enemies inside are slowed.
 [actions.snare]
+name = "action-snare"
 targeting = "none"
 cooldown_ms = 8000
 cost = { mana = 30 }
@@ -58,6 +61,7 @@ slow = "0.5"
 guard = 10
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "4.0"

@@ -2,7 +2,7 @@ use campfire_actions::{ActionBook, ActionSlots, EffectListBook, UseGroup};
 use campfire_areas::AreaSpec;
 use campfire_combat::OnDeath;
 use campfire_declare::ByType;
-use campfire_items::{Inventory, ItemBook};
+use campfire_items::{Inventory, ItemBook, Shop};
 use campfire_mode::ModeUnits;
 use campfire_navigation::Walker;
 use campfire_orders::Ai;
@@ -47,6 +47,7 @@ pub(crate) struct BookParts {
     pub(super) gatherers: ByType<Gatherer>,
     pub(super) inventories: ByType<Inventory>,
     pub(super) use_groups: ByType<UseGroup>,
+    pub(super) shops: ByType<Shop>,
     /// The slots each type with actions or an inventory spawns with.
     pub(super) slots: ByType<ActionSlots>,
     pub(super) producers: ByType<ProductionData>,

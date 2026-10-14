@@ -175,7 +175,7 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     let reworded = PackageTree::of(TestMode::Lane)
         .edit(
             "heroes/walker/locale/en.ftl",
-            Edit::Create("hero-name = Wanderer\n"),
+            Edit::Replace("hero-name = Walker", "hero-name = Wanderer"),
         )
         .edit(
             "heroes/walker/locale/de.ftl",

@@ -67,6 +67,7 @@ mod roster;
 mod save_asked;
 mod saves_data;
 mod spawn_group;
+mod team_data;
 mod team_manifest;
 mod timers;
 mod unanswered_deaths;
@@ -109,6 +110,7 @@ pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
 pub use crate::save_asked::SaveAsked;
 pub use crate::saves_data::{SaveBy, SavesData};
+pub use crate::team_data::TeamData;
 pub use crate::team_manifest::TeamManifest;
 pub use crate::timers::{Timer, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
@@ -154,7 +156,6 @@ impl Module for Mode {
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[
         Capability::Combat,
-        Capability::Items,
         Capability::Navigation,
         Capability::Production,
         Capability::Progression,

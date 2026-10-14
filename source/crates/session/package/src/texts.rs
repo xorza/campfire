@@ -11,8 +11,8 @@ use crate::error::locale_problem::LocaleProblem;
 use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
-use crate::message_id::MessageId;
 use crate::mode_packages::ModePackages;
+use campfire_values::MessageId;
 
 type Bundle = FluentBundle<Arc<FluentResource>>;
 

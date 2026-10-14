@@ -10,6 +10,7 @@ campfire_common::enum_all! {
         Choice,
         Leech,
         Relation,
+        Team,
         Players,
         Saves,
         Action,
@@ -50,6 +51,7 @@ impl DataTable {
             DataTable::Choice => "A choice, `[choices.<name>]`",
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
+            DataTable::Team => "A team, `[teams.<team>]`",
             DataTable::Players => "The mode's `[players]`",
             DataTable::Saves => "The mode's `[saves]`",
             DataTable::Action => "An action, `[actions.<id>]`",
@@ -74,7 +76,7 @@ impl DataTable {
             DataTable::Tag => "A tag's properties, `[tags.<name>]`",
             DataTable::Item => "An item type, `[items.<id>]`",
             DataTable::Inventory => "A unit type's `inventory`",
-            DataTable::Shop => "The mode's `[shop]`",
+            DataTable::Shop => "A unit type's `shop`",
         }
     }
 }

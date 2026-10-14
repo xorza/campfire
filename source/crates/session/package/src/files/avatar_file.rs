@@ -3,7 +3,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::content_table::ContentTable;
-use crate::message_id::MessageId;
+use campfire_values::MessageId;
 
 /// An avatar package's `data/avatar.toml`: the name players see, its one unit type, whose
 /// fields sit at the top of the table, and its content.

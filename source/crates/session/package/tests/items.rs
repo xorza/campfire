@@ -1,10 +1,11 @@
-//! The 3v3's item types, its shop and its heroes' inventories: each reads as its data holds it,
-//! and each flaw of them fails the load with its own problem.
+//! The 3v3's item types, its fountains' shop and its heroes' inventories: each reads as its data
+//! holds it, and each flaw of them fails the load with its own problem.
 
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_capabilities::UnitTypeData;
 use campfire_codec::Toml;
+use campfire_math::Num;
 use campfire_package::internals::Edit;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
@@ -18,7 +19,7 @@ use crate::moba::{edited, load};
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
-const MAP: &str = "modes/3v3/map/two_lanes/map.toml";
+const UNITS: &str = "modes/3v3/data/units.toml";
 
 /// The 3v3 with `more` edits.
 fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
@@ -53,9 +54,13 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
         [name("long_sword"), name("ruby_crystal")]
     );
     assert_eq!(warblade.cost[&name("gold")], 1100);
-    let shop = packages.data().shop.as_ref().unwrap();
+    // The fountain sells the 11 for gold, to its allies within 8 m.
+    let fountain = &packages.content().units[&name("fountain")];
+    let shop = fountain.shop.as_ref().unwrap();
     assert_eq!(shop.items.len(), 11);
-    assert_eq!((shop.resource.as_str(), shop.at.as_str()), ("gold", "shop"));
+    assert_eq!(shop.resource.as_str(), "gold");
+    assert_eq!(shop.reach, Num::int(8));
+    assert_eq!(shop.buyers.to_string(), "allies");
     // 70% of a warblade's 1100 is 770.
     assert_eq!(shop.sell_share.of(1100), 770);
     // A unit type's inventory, as every hero's reads.
@@ -91,7 +96,33 @@ fn item(id: &str) -> Place {
     Place::Item(name(id))
 }
 
-const FLAWS: [Flaw; 20] = [
+/// The 3v3's fountain, its shop type.
+fn fountain() -> Place {
+    Place::UnitType(name("fountain"))
+}
+
+const FLAWS: [Flaw; 22] = [
+    // An item has a name, a message of the mode's own language.
+    Flaw {
+        edits: &[(MODE_DATA, Edit::Remove("items.health_potion.name"))],
+        package: MODE,
+        refused: |problem| unread(problem, "data/mode.toml", "missing field `name`"),
+    },
+    Flaw {
+        edits: &[(
+            "modes/3v3/locale/en.ftl",
+            Edit::Replace("item-health-potion = Health Potion\n", ""),
+        )],
+        package: MODE,
+        refused: |problem| {
+            unknown(
+                problem,
+                &item("health_potion"),
+                NameKind::Message,
+                "item-health-potion",
+            )
+        },
+    },
     // An item costs in the mode's player resources.
     Flaw {
         edits: &[(
@@ -194,25 +225,31 @@ const FLAWS: [Flaw; 20] = [
         package: "hero-husk",
         refused: |problem| unread(problem, "data/avatar.toml", "nonzero"),
     },
-    // The shop sells the mode's items, each only for its resource, at a tag of the map's markers,
-    // each with a region and a team, giving back a share of 0 to 1.
+    // A shop sells the mode's items, each only for its resource, to the units a filter of the
+    // match's tags selects, within a reach that is not negative, giving back a share of 0 to 1.
     Flaw {
         edits: &[(
-            MODE_DATA,
-            Edit::Set("shop.items", r#"["health_potion", "sword"]"#),
+            UNITS,
+            Edit::Set("units.fountain.shop.items", r#"["health_potion", "sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &Place::Shop, NameKind::Item, "sword"),
+        refused: |problem| unknown(problem, &fountain(), NameKind::Item, "sword"),
     },
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("shop.resource", r#""silver""#))],
+        edits: &[(
+            UNITS,
+            Edit::Set("units.fountain.shop.resource", r#""silver""#),
+        )],
         package: MODE,
-        refused: |problem| unknown(problem, &Place::Shop, NameKind::Resource, "silver"),
+        refused: |problem| unknown(problem, &fountain(), NameKind::Resource, "silver"),
     },
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("shop.at", r#""base""#))],
+        edits: &[(
+            UNITS,
+            Edit::Set("units.fountain.shop.buyers", r#""allies:shopper""#),
+        )],
         package: MODE,
-        refused: |problem| unknown(problem, &Place::Shop, NameKind::MarkerTag, "base"),
+        refused: |problem| unknown(problem, &fountain(), NameKind::Filter, "allies:shopper"),
     },
     Flaw {
         edits: &[
@@ -223,20 +260,29 @@ const FLAWS: [Flaw; 20] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource(item)) if item == "health_potion"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource { at, item }) if *at == fountain() && item == "health_potion"),
     },
     Flaw {
-        edits: &[(MAP, Edit::Remove("markers.2.region"))],
-        package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopMarker(marker)) if marker == "north_shop"),
-    },
-    Flaw {
-        edits: &[(MODE_DATA, Edit::Set("shop.sell_share", r#""1.5""#))],
+        edits: &[(UNITS, Edit::Set("units.fountain.shop.reach", r#""-1.0""#))],
         package: MODE,
         refused: |problem| {
             unread(
                 problem,
-                "data/mode.toml",
+                "data/units.toml",
+                "a shop's reach is a number that is not negative",
+            )
+        },
+    },
+    Flaw {
+        edits: &[(
+            UNITS,
+            Edit::Set("units.fountain.shop.sell_share", r#""1.5""#),
+        )],
+        package: MODE,
+        refused: |problem| {
+            unread(
+                problem,
+                "data/units.toml",
                 "a share is 0, 1, or a decimal from 0 to 1",
             )
         },
@@ -268,7 +314,13 @@ fn every_flaw_of_the_items_fails_the_load_with_its_own_problem() {
         assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
     }
     // An avatar holds no item types.
-    let carried = [(HUSK, Edit::Set("items.charm", "{ cost = { gold = 10 } }"))];
+    let carried = [(
+        HUSK,
+        Edit::Set(
+            "items.charm",
+            r#"{ name = "item-charm", cost = { gold = 10 } }"#,
+        ),
+    )];
     let error = with_items(&carried).unwrap_err();
     assert!(
         matches!(*error.problem, LoadProblem::Item(ItemProblem::OutsideMode)),

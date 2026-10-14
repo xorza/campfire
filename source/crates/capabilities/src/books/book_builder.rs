@@ -8,7 +8,7 @@ use campfire_actions::{
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
-use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopBook, ShopData, ShopPlace};
+use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
 use campfire_navigation::Walker;
 use campfire_orders::Ai;
@@ -26,8 +26,8 @@ use campfire_stats::{
 };
 use campfire_units::{TypesError, UnitTypeBook, Units};
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Names, PackagePath, ResourceId,
-    Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Names, PackagePath, Share, Stat,
+    Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
 };
 
 use crate::books::Books;
@@ -230,18 +230,6 @@ impl<'a> BookBuilder<'a> {
         let data = input.data;
         let resolved = self.resolve_map(&self.books.types)?;
         let mut parts = self.books;
-        let shop = data
-            .shop
-            .as_ref()
-            .map(|shop| {
-                BookBuilder::shop(
-                    shop,
-                    parts.items.names(),
-                    &self.names.resources,
-                    &resolved.map,
-                )
-            })
-            .transpose()?;
         let stats = &self.stats;
         let bindings = CombatBindings::new(&data.combat, |stat| {
             BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
@@ -305,7 +293,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.nodes);
         built.add(SupplyBook(parts.supply));
         built.add(parts.items);
-        built.add(ShopBook(shop));
+        built.add(parts.shops);
         built.add(parts.types);
         let ModeNames {
             damage_kinds,
@@ -399,41 +387,6 @@ impl<'a> BookBuilder<'a> {
             specs.push(spec().map_err(|name| BookError::unknown(index, at, name))?);
         }
         Ok(ItemBook::new(ids, specs))
-    }
-
-    /// The mode's shop of `data`, selling `items` by id, for one of `resources`, at the regions of
-    /// `map`'s markers with its tag, each for the marker's team; an error for a name the mode
-    /// does not have, or for a marker with no region or no team.
-    fn shop(
-        data: &ShopData,
-        items: &Names<ItemId>,
-        resources: &Names<ResourceId>,
-        map: &ModeMap,
-    ) -> Result<Shop, BookError> {
-        let unknown = |name| BookError::unknown(0, BookPlace::Shop, name);
-        let sells = data.items.iter().map(|name| {
-            items
-                .named(name.as_str())
-                .ok_or_else(|| UnknownName::new(NameKind::Item, name))
-        });
-        let sells = sells.collect::<Result<_, UnknownName>>().map_err(unknown)?;
-        let found = resources.named(data.resource.as_str());
-        let resource = found
-            .ok_or_else(|| UnknownName::new(NameKind::Resource, &data.resource))
-            .map_err(unknown)?;
-        let mut places = Vec::new();
-        for marker in map
-            .markers
-            .iter()
-            .filter(|marker| marker.tags.contains(&data.at))
-        {
-            let (Some(team), Some(region)) = (marker.team, marker.region) else {
-                let name = DeclaredName::new(&marker.name).expect("a marker's name was declared");
-                return Err(BookError::ShopMarker(name));
-            };
-            places.push(ShopPlace { team, region });
-        }
-        Ok(Shop::new(sells, resource, places, data.sell_share))
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
@@ -856,8 +809,8 @@ impl<'a> BookBuilder<'a> {
     /// The parts `at` spawns with, each in its book: its start of its stats, with `combat`, its
     /// combat section as the type spawns with it, its sight, the body of its `collision` section,
     /// its tracks, whether it builds, what it holds as a node, whether it gathers, its inventory,
-    /// and its slots of the package's `actions`; an error for a name the mode does not declare,
-    /// or for stats that make no unit.
+    /// its shop, and its slots of the package's `actions`; an error for a name the mode does not
+    /// declare, or for stats that make no unit.
     fn parts(
         &mut self,
         at: TypeAt<'_>,
@@ -886,6 +839,8 @@ impl<'a> BookBuilder<'a> {
             Ok((Inventory::new(inventory.slots), UseGroup::new(kind)))
         });
         let inventory = inventory.transpose().map_err(unknown)?;
+        let shop = file.shop.as_ref().map(|shop| self.shop(shop));
+        let shop = shop.transpose().map_err(unknown)?;
         let slots = self
             .slots(file, actions, inventory.as_ref())
             .map_err(unknown)?;
@@ -915,8 +870,32 @@ impl<'a> BookBuilder<'a> {
         let (inventory, group) = inventory.unzip();
         books.inventories.set_some(unit_type, inventory);
         books.use_groups.set_some(unit_type, group);
+        books.shops.set_some(unit_type, shop);
         books.slots.set_some(unit_type, slots);
         Ok(())
+    }
+
+    /// The shop of a unit type's `shop` section, of the mode's items and resources; an error for
+    /// a name the mode does not have.
+    fn shop(&self, data: &ShopData) -> Result<Shop, UnknownName> {
+        let items = self.books.items.names();
+        let sells = data.items.iter().map(|name| {
+            items
+                .named(name.as_str())
+                .ok_or_else(|| UnknownName::new(NameKind::Item, name))
+        });
+        let sells = sells.collect::<Result<_, UnknownName>>()?;
+        let resource = self.names.resources.named(data.resource.as_str());
+        let resource =
+            resource.ok_or_else(|| UnknownName::new(NameKind::Resource, &data.resource))?;
+        let buyers = Filter::resolve(&data.buyers, self.books.types.tags())?;
+        Ok(Shop::new(
+            sells,
+            resource,
+            data.reach,
+            buyers,
+            data.sell_share,
+        ))
     }
 
     /// The kind of walker of `at`, of its file and its body, when it walks; an error for a box

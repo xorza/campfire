@@ -1,0 +1,17 @@
+mode-name = Three on Three
+team-north = North
+team-south = South
+team-camps = Camps
+choice-hero = Hero
+choice-spells = Spells
+item-health-potion = Health Potion
+item-mana-potion = Mana Potion
+item-sight-ward = Sight Ward
+item-vision-ward = Vision Ward
+item-elixir-of-sight = Elixir Of Sight
+item-long-sword = Long Sword
+item-ruby-crystal = Ruby Crystal
+item-cloth-armor = Cloth Armor
+item-warblade = Warblade
+item-stoneplate = Stoneplate
+item-quicksilver = Quicksilver

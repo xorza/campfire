@@ -32,6 +32,7 @@ aura = { radius = "8.0", affects = "allies", modifier = "fair_wind_speed" }
 stats = { move_speed = { pct = "0.03" } }
 
 [actions.cyclone]
+name = "action-cyclone"
 script = "scripts/cyclone.rhai"
 targeting = "direction"
 range = "17.0"
@@ -48,6 +49,7 @@ knock_up_min_ms = 500
 knock_up_max_ms = 1250
 
 [actions.gust]
+name = "action-gust"
 script = "scripts/gust.rhai"
 targeting = "enemies"
 range = "6.0"
@@ -66,6 +68,7 @@ bonus_speed = ["0.04", "0.06", "0.08", "0.10", "0.12"]
 stats = { move_speed = { pct = { param = "bonus_speed" } } }
 
 [actions.wind_shield]
+name = "action-wind-shield"
 script = "scripts/wind_shield.rhai"
 targeting = "allies"
 range = "8.0"
@@ -82,6 +85,7 @@ shield = { param = "shield" }
 stats = { attack_damage = { param = "power" } }
 
 [actions.tempest]
+name = "action-tempest"
 script = "scripts/tempest.rhai"
 targeting = "none"
 cooldown_ms = [150000, 135000, 120000]
@@ -104,6 +108,7 @@ tags = ["slowed"]
 tags = ["airborne"]
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "4.75"

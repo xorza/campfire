@@ -186,7 +186,7 @@ impl Production {
     /// The engine tag of a site, a building under construction: it blocks its attacks, casts and
     /// uses, so no action of its starts.
     pub const CONSTRUCTING: EngineTag = EngineTag::new(
-        3,
+        4,
         "constructing",
         TagProperties::NONE
             .with_block(Block::Attack)
@@ -194,12 +194,12 @@ impl Production {
             .with_block(Block::Use),
     );
     /// The engine tag of node types, which workers gather from.
-    pub const NODE: EngineTag = EngineTag::new(4, "node", TagProperties::NONE);
+    pub const NODE: EngineTag = EngineTag::new(5, "node", TagProperties::NONE);
     /// The engine tag of drop-off types, which workers take their loads to.
-    pub const DROP_OFF: EngineTag = EngineTag::new(5, "drop_off", TagProperties::NONE);
+    pub const DROP_OFF: EngineTag = EngineTag::new(6, "drop_off", TagProperties::NONE);
     /// The engine tag of a worker in its gather loop, which another such worker passes through.
     pub const GATHERING: EngineTag =
-        EngineTag::new(6, "gathering", TagProperties::NONE.with_passes());
+        EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
 
     /// `install`, each placement testing the units `S` sees.
     fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {

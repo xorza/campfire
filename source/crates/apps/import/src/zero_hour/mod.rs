@@ -25,7 +25,7 @@ use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_parts::ModelParts;
 use crate::zero_hour::object_ini::ObjectIni;
-use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, RULES_FILES};
+use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
 use crate::zero_hour::terrain_ini::TerrainIni;
 use crate::zero_hour::unit_types::UnitTypes;
 
@@ -123,6 +123,7 @@ impl<'a> ZeroHour<'a> {
         };
         write("manifest.toml", MODE_MANIFEST.as_bytes())?;
         write("data/mode.toml", MODE_DATA.as_bytes())?;
+        write("locale/en.ftl", MODE_TEXT.as_bytes())?;
         let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
         let text = Toml::write(&game_data.game_data());
@@ -382,7 +383,14 @@ mod tests {
         assert_eq!(scratch.names("one"), ["game", "zero-hour"]);
         assert_eq!(
             scratch.names("one/game"),
-            ["client", "data", "manifest.toml", "map", "package.index"]
+            [
+                "client",
+                "data",
+                "locale",
+                "manifest.toml",
+                "map",
+                "package.index"
+            ]
         );
         assert_eq!(
             scratch.read("one/zero-hour/package.index"),

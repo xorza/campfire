@@ -244,7 +244,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `navigation` | navigation | since 1.0 |
 | `supply` | production | since 1.0 |
 | `items` | items | since 1.0 |
-| `shop` | items | since 1.0 |
+| `name` | core | since 1.0 |
 | `script` | core | since 1.0 |
 | `slots` | core | since 1.0 |
 | `choices` | core | since 1.0 |
@@ -255,6 +255,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `actions` | core | since 1.0 |
 | `pools` | core | since 1.0 |
 | `resources` | core | since 1.0 |
+| `teams` | core | since 1.0 |
 | `relations` | core | since 1.0 |
 | `tags` | core | since 1.0 |
 | `players` | core | since 1.0 |
@@ -284,6 +285,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `node` | production | since 1.0 |
 | `drop_off` | production | since 1.0 |
 | `inventory` | items | since 1.0 |
+| `shop` | items | since 1.0 |
 | `orders` | orders | since 1.0 |
 
 ### The mode's `[combat]`
@@ -314,6 +316,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 | Field | Capability | Status |
 | --- | --- | --- |
+| `name` | core | since 1.0 |
 | `offers` | core | since 1.0 |
 | `unique` | core | since 1.0 |
 | `count` | core | since 1.0 |
@@ -334,6 +337,12 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `relation` | core | since 1.0 |
 | `vision` | core | since 1.0 |
 
+### A team, `[teams.<team>]`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `name` | core | since 1.0 |
+
 ### The mode's `[players]`
 
 | Field | Capability | Status |
@@ -353,6 +362,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 | Field | Capability | Status |
 | --- | --- | --- |
+| `name` | core | since 1.0 |
 | `kind` | core | since 1.0 |
 | `targeting` | core | since 1.0 |
 | `range` | core | since 1.0 |
@@ -555,6 +565,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 | Field | Capability | Status |
 | --- | --- | --- |
+| `name` | items | since 1.0 |
 | `cost` | items | since 1.0 |
 | `components` | items | since 1.0 |
 | `stack` | items | since 1.0 |
@@ -569,11 +580,12 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `slots` | items | since 1.0 |
 | `kind` | items | since 1.0 |
 
-### The mode's `[shop]`
+### A unit type's `shop`
 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `items` | items | since 1.0 |
 | `resource` | items | since 1.0 |
-| `at` | items | since 1.0 |
+| `reach` | items | since 1.0 |
+| `buyers` | items | since 1.0 |
 | `sell_share` | items | since 1.0 |

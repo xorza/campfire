@@ -3,9 +3,10 @@
 
 use campfire_package::internals::Edit;
 use campfire_package::{
-    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, MessageId, PackageFiles,
-    PackageName, PackageRef, Texts,
+    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageFiles, PackageName,
+    PackageRef, Texts,
 };
+use campfire_values::MessageId;
 
 use crate::moba::{edited, edited_at, load};
 

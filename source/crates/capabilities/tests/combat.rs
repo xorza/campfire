@@ -18,7 +18,7 @@ use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{PlayerResources, Players, PlayersWorldCrate, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -34,7 +34,7 @@ use campfire_units::{
 };
 use campfire_values::{
     ActionId, Block, DeclaredName, FilterData, ModifierId, Names, Rank, Relation, RelationSet,
-    ResourceId, Stat, Team, TypeScope, UnitType,
+    ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -367,8 +367,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .unwrap()
             .to_int()
             .expect("a whole amount");
-        let gold = game
-            .player_resources(PlayerSlot::new(0))
+        let gold = PlayerResources::of_player(game, PlayerSlot::new(0))
             .unwrap()
             .amount(gold);
         (mana, gold, Stats::health(game, dummy))
@@ -745,6 +744,12 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     Combat::attack(&mut game, attacker, hero);
     game.run_until(3);
     assert!(game.try_part::<Dead>(hero).is_some());
+    // Dead, it carries the engine's `dead` tag, which its derived tags take from its mark.
+    let tagged_dead = |game: &Match| {
+        let tags = game.try_part::<UnitTags>(hero).unwrap();
+        tags.tags.contains(Dead::TAG.tag())
+    };
+    assert!(tagged_dead(&game));
     let at_tick = Tick::new(10);
     game.insert_parts(hero, Respawn { at: at_tick });
     game.run_until(10);
@@ -756,6 +761,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     assert_eq!(attackers(&game), Some(1));
     game.run_until(11);
     assert!(game.try_part::<Dead>(hero).is_none() && game.try_part::<Respawn>(hero).is_none());
+    assert!(!tagged_dead(&game));
     assert_eq!(
         game.try_part::<Position>(hero).copied(),
         Some(Position::from((-3, 0, 2)))

@@ -3,7 +3,6 @@ use bevy_ecs::world::Mut;
 use campfire_actions::{SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
 use campfire_orders::NextThink;
-use campfire_players::PlayerResources;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};

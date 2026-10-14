@@ -60,6 +60,7 @@ const MAP: &str = "modes/3v3/map/two_lanes/map.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
 const HUSK_MANIFEST: &str = "heroes/husk/manifest.toml";
 const HUSK_TEXT: &str = "heroes/husk/locale/en.ftl";
+const MODE_TEXT: &str = "modes/3v3/locale/en.ftl";
 const GALE: &str = "heroes/gale/data/avatar.toml";
 const CINDER: &str = "heroes/cinder/data/avatar.toml";
 const VEIL: &str = "heroes/veil/data/avatar.toml";
@@ -309,8 +310,8 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
-    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 7, so 224
-    // layers, each a tag, fill the 256 a match holds, and 225 are past it.
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 8, so 223
+    // layers, each a tag, fill the 256 a match holds, and 224 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = load(&edited([])).unwrap();
     assert_eq!(tags(&packages), 25);
@@ -323,10 +324,10 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
             .position(|tag| tag.as_str() == name)
     };
     assert!(at("slowed").unwrap() < at("ward").unwrap());
-    let [(path, layers)] = <[_; 1]>::try_from(layers(224)).unwrap();
+    let [(path, layers)] = <[_; 1]>::try_from(layers(223)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 249);
+    assert_eq!(tags(&packages), 248);
     // The mode's `[tags]` may give an engine tag properties, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
@@ -364,10 +365,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 25 tags and the engine's 7 leave 224 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 8 leave 223 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 224,
+            allowed: 223,
             limit: Limit::Tags,
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
@@ -399,7 +400,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 276] = [
+static FLAWS: [Flaw; 283] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -2040,6 +2041,53 @@ static FLAWS: [Flaw; 276] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, name, .. } if name == "hero-name"),
     ),
+    // The names players see: the mode's, each team's, each choice's and each of an avatar's or a
+    // loadout's actions, each a message of its package's own language.
+    flaw(
+        MODE_TEXT,
+        Edit::Replace("mode-name = Three on Three\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Mode, name } if name == "mode-name"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("[teams.camps]\nname = \"team-camps\"\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnnamedTeam(team) if team == "camps"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[teams.north]",
+            "[teams.river]\nname = \"team-north\"\n\n[teams.north]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Team, at: Place::Mode, name } if name == "river"),
+    ),
+    flaw(
+        MODE_TEXT,
+        Edit::Replace("choice-hero = Hero\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Choice(choice), name } if choice == "hero" && name == "choice-hero"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Remove("actions.dread.name"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnnamedAction(action) if action == "dread"),
+    ),
+    flaw(
+        "spells/data/loadout.toml",
+        Edit::Remove("actions.blink.name"),
+        "player-spells",
+        |problem| matches!(problem, LoadProblem::UnnamedAction(action) if action == "blink"),
+    ),
+    flaw(
+        HUSK_TEXT,
+        Edit::Replace("action-dread = Dread\n", ""),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Action(action), name } if action == "dread" && name == "action-dread"),
+    ),
     flaw(
         HUSK_TEXT,
         Edit::Replace("hero-name = Husk", "hero-name Husk"),
@@ -2303,17 +2351,17 @@ static FLAWS: [Flaw; 276] = [
     ),
     Flaw {
         file: MAP,
-        edit: Edit::Remove("markers.4.pos"),
+        edit: Edit::Remove("markers.2.pos"),
         also: &[(
             MAP,
-            Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -70] }"),
+            Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
         )],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     },
     flaw(
         MAP,
-        Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -10] }"),
+        Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -10] }"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     ),
@@ -2331,7 +2379,7 @@ static FLAWS: [Flaw; 276] = [
     ),
     flaw(
         MAP,
-        Edit::Set("markers.5.name", r#""camp1""#),
+        Edit::Set("markers.3.name", r#""camp1""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
     ),
@@ -2416,7 +2464,7 @@ static FLAWS: [Flaw; 276] = [
         MODE_DATA,
         Edit::Replace(
             "slot = \"spell\"",
-            "slot = \"spell\"\n\n[choices.more]\noffers = \"loadout\"\nslot = \"basic\"",
+            "slot = \"spell\"\n\n[choices.more]\nname = \"choice-spells\"\noffers = \"loadout\"\nslot = \"basic\"",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::LoadoutRanks)),

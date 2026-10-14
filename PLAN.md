@@ -4,25 +4,13 @@ The one plan of the project: every open step, in the order it is done, in batche
 
 Every batch moves the engine toward the [Direction](AGENTS.md#direction), and each step names the part it builds. Line numbers point to the code as each step was written; a step refreshes its references as it starts. A step that states no check holds this one: no golden moves, and `./drive.py check` passes.
 
-## 1. The shop
-
-`capabilities`: `items`; `package`; `packages/test/moba`. Slice 2 starts here. A shop becomes a unit, then the shop's reader, an item's price and the items' names are built on it once, and the 3v3's golden moves once.
-
-**Slice 2, wide bodies, uses, the shop and gravity,** batches 1 to 5. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
-
-**The capability model's redesign,** M1 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M1 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the [Direction](AGENTS.md#direction) gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
-
-### M1. Shops as units
-
-(`capabilities`: `items`; `package`; `packages/test/moba`.) A unit type's `shop = { items, resource, reach, buyers }` makes a unit a shop, a part `items` declares: `reach` a radius by the reach rule, `buyers` a filter, which may select the dead, so League of Legends' rule is data. The mode's `[shop]` and its markers go; the 3v3's fountain is a unit with a `shop` section. Warcraft III's shops are units, as a courier or a market is. Check: the 3v3's golden moves by the new unit's id alone.
-
-### S1. Names and readers
-
-(`capabilities`, `package`, `packages/test/moba`; D8; **Package**.) `name`, a message id, on item types, actions, a loadout's spells, the mode, its teams and its choices, as only an avatar names its own today, and the MOBA's names; a public reader of the shop, an item's price for a unit, whether a unit stands where it can buy, and an action's targeting. A player's resources reach it on its player entity, `PlayerResources::of_player`. Check: a price less held components as computed by hand; an item type with no `name`, or one a locale lacks, fails its load.
-
-## 2. The client's shop
+## 1. The client's shop
 
 `client`. I2 gives the view tests' units their types, and the issue log's **Client** item on the camera's keys is decided, before S2 changes the client's input.
+
+**Slice 2, wide bodies, uses, the shop and gravity,** batches 1 to 4. The user plays a 3v3 match of the MOBA test content: their hero holds a use on the jungle's shrine, buys items from the shop panel, and casts their actives with 1 to 6, a ward at the ground point; a test map holds a 1,117 m box that walkers go around. The design is [Wide bodies, uses, the shop and gravity](docs/design/13-bodies-uses-shop-gravity.md); each step folds its rules into the design 04 file of its capability.
+
+**The capability model's redesign,** M2 to M10, a proposal for review: each step's decisions move into `docs/design/04-capabilities/` as it lands, and each generates the script API reference again. The core model is sound and generic: the action pipeline, the effect lists, stats and their formula, tags, relations and filters, the reach rule, deliveries as units and scripted systems serve every genre, and stay. The faults are at the edges, where a capability was built for its first genre: the refactorings before them took its couplings, and M2 to M10 open its closed sets. Each new section of a unit type an M step or U1 adds is built as the [Direction](AGENTS.md#direction) gives it: a `DataSection`, its owner's record in `DataTable::UnitType`, its book, its part, `d.part`, and an `Effect` with its callback, `d.callback`, for each new effect.
 
 ### I2. The client view tests' units
 
@@ -32,7 +20,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`client`; D9, D10, D11.) Bevy's UI features; the shop panel, the inventory bar, keys 1 to 6, and every cast key aimed as its action takes. Check: the key's target for an action of each targeting; the panel's dimmed items for an avatar alive out of a shop, too poor and with no room; the user buys a ward, places it at a point with its key, sells an item and swaps two slots.
 
-## 3. Use
+## 2. Use
 
 `capabilities`: `actions`, `abilities`, `items`, `interaction`, the release tests; `package`; `client`. U1 adds the `use` kind, beside `actions`' `UseGroup`. M2 reads the code as the release tests do.
 
@@ -44,7 +32,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`capabilities`: the release tests.) A test reads every capability crate's production code, as the role test does, and fails on an identifier that holds a word of a deny list as a whole word: `hero`, `creep`, `lane`, `tower`, `jungle`, `mineral`, `gold`, `mana`, `barracks`, and the words the list grows by; test modules may hold them. Today the production code holds none.
 
-## 4. The shrine
+## 3. The shrine
 
 `packages/test/moba`, `client`.
 
@@ -52,7 +40,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`packages/test/moba`, `client`; D6.) The shrine, its action, `shrine_blessing` and `shrine_spent` in design 07 and the 3v3 package; a right click on a unit the avatar may use orders the use; the channel bar. Check: the scripted match has a hero use the shrine and the team's heroes take the blessing, and a second hero's use cut by a hit; the user holds a use on the shrine in the client.
 
-## 5. Gravity
+## 4. Gravity
 
 `capabilities`: `projectiles`; `package`; `packages/test/moba`; `client`. Slice 2's last step: the user then plays slice 2.
 
@@ -60,7 +48,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`capabilities`, `package`, `packages/test/moba`; D12.) The falling flight; `gravity` past planned, refused with `homing` or not positive; a grenade of the MOBA's items, which arcs to its point. Check: the points of a flight on each metric at its launch, its peak and its end as computed by hand, the planar one back at its launch height at its end; a spatial one hits a unit its chord meets and not one its straight line would; the client draws the grenade's arc.
 
-## 6. Queues and capacities
+## 5. Queues and capacities
 
 `capabilities`: `production`, `actions`; `package`; `docs/design/11`. Train, research and supply in one form, before the Zero Hour skirmish, so its rules package and golden are made once, on the general model.
 
@@ -72,9 +60,9 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 (`capabilities`: `production`; `package`.) One `[supply]` counter serves StarCraft alone. The mode declares `[capacities.<name>] max`; a unit type gives `capacity = { <name> = { uses, provides } }`. Each is derived as supply is now, a pass over the owned units and the queues when a tick's first check needs it, so it keeps no sum and never drifts (design 11, D5). A queued action or a build lists the capacities it checks. Supply becomes one capacity; power, population and housing are more. Scripts read `ctx.capacity_used(player, name)` and `ctx.capacity_max(player, name)`.
 
-## 7. Work and haul
+## 6. Work and haul
 
-`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 6, whose queued actions a production chain uses.
+`capabilities`: `production`, `interaction`; `package`; `docs/design/13`. Construction and gather in their general form, after batch 5, whose queued actions a production chain uses.
 
 ### M5. One work mechanism
 
@@ -86,7 +74,7 @@ Every batch moves the engine toward the [Direction](AGENTS.md#direction), and ea
 
 The snapshot tests sweep the new state types of M3 to M6 as they sweep the skirmish's (design 11, D14).
 
-## 8. The genre proofs
+## 7. The genre proofs
 
 Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, and M10, the Hive mode, after them.
 
@@ -106,16 +94,15 @@ Each of M7, M8 and M9 goes in the batch of the genre proof that first needs it, 
 
 (`packages/test/modes/hive`.) A test package with a scripted match and a golden: two players as hive minds with no avatar place structures (M8), drones haul ore to smelters and bars to a forge (M6), the forge crafts turrets and researches armor (M3), each structure draws power that pylons provide (M4), a beacon is captured faster by more drones (M5), a drone with a bar spends fuel (M9), enemy waves walk paths and turrets shoot them through their AI, and the drones need no `combat`. A later change that breaks a part of the generic model breaks it.
 
-What each step of M1 and M3 to M9 may move of the goldens; a step that moves a column it must not is a bug in the step:
+What each step of M3 to M9 may move of the goldens; a step that moves a column it must not is a bug in the step:
 
 | Step | State column | Behaviour column |
 | --- | --- | --- |
 | M3 to M6 | Moves where production's state types change | Does not move for the proving match; the skirmish's is new |
-| M1 | Moves: a shop becomes a unit | Moves for the 3v3 by the new unit's id, if at all |
 | M7, M9 | Does not move: the defaults keep today's rule | Does not move |
 | M8 | Does not move in a mode with no `[player] slots` | Does not move |
 
-## 9. The network
+## 8. The network
 
 `quic`, `net`.
 
@@ -129,7 +116,7 @@ What each step of M1 and M3 to M9 may move of the goldens; a step that moves a c
 
 Then the network's Research items of the issue log as they show; then P1 to P4, P3 only as D14 of design 15 lets it.
 
-## 10. Planned
+## 9. Planned
 
 ### P1. LAN listing
 

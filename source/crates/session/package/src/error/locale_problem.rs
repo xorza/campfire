@@ -1,7 +1,7 @@
 use fluent_syntax::parser::ParserError;
 use thiserror::Error;
 
-use crate::message_id::MessageId;
+use campfire_values::MessageId;
 
 /// What is wrong with a file of human text.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

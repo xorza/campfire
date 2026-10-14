@@ -31,6 +31,18 @@ script_limits = { per_call = 1000, player = 1000, think = 1000, mode = 1000 }
 zero-hour = { path = "../zero-hour" }
 "#;
 
-/// The imported package's mode data: the rules package's mode script.
-pub(crate) const MODE_DATA: &str = r#"script = { package = "zero-hour", path = "scripts/mode.rhai" }
+/// The imported package's mode data: its name and its teams' names, and the rules package's mode
+/// script.
+pub(crate) const MODE_DATA: &str = r#"name = "mode-name"
+script = { package = "zero-hour", path = "scripts/mode.rhai" }
+
+[teams.player]
+name = "team-player"
+
+[teams.neutral]
+name = "team-neutral"
 "#;
+
+/// The imported package's text in its own language, of the names its mode data gives.
+pub(crate) const MODE_TEXT: &str =
+    "mode-name = Zero Hour\nteam-player = Player\nteam-neutral = Neutral\n";

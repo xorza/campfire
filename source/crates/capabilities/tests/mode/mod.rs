@@ -27,7 +27,7 @@ use campfire_mode::{
     UnansweredSlotEvents, *,
 };
 use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker};
-use campfire_players::{OutOfPlay, PlayersWorld};
+use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
 use campfire_script::internals::FailureKind;
@@ -50,9 +50,9 @@ use campfire_units::{
     Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units,
 };
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, ModifierId, Names, Number,
-    ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team, TrackId,
-    TypeScope, UnitTags, UnitType,
+    ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
+    Number, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team,
+    TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 
@@ -476,6 +476,7 @@ fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
     ]
     .map(|(name, offers, unique, count, slot)| {
         let choice = ChoiceData {
+            name: MessageId::new(name).unwrap(),
             offers,
             unique,
             count: NonZeroU8::new(count).unwrap(),
@@ -534,6 +535,8 @@ fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
         data: ModeData {
+            name: MessageId::new("mode").unwrap(),
+            teams: BTreeMap::new(),
             combat: ModeCombatData {
                 damage_kinds: DAMAGE_KINDS
                     .map(|kind| DeclaredName::new(kind).unwrap())
@@ -586,7 +589,6 @@ fn mode_files() -> ModeFiles {
             }],
             tags: BTreeMap::new(),
             tracks: tracks(),
-            shop: None,
             players: PlayersData::default(),
             saves: SavesData::default(),
             supply: None,

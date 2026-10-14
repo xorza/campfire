@@ -25,6 +25,7 @@ use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
 use crate::spawn_group::{GroupUnit, SpawnGroup};
+use crate::team_data::TeamData;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -70,6 +71,7 @@ impl ModeApi {
             .shared_data(
                 DataTable::Mode,
                 &[
+                    "name",
                     "script",
                     "slots",
                     "choices",
@@ -80,6 +82,7 @@ impl ModeApi {
                     "actions",
                     "pools",
                     "resources",
+                    "teams",
                     "relations",
                     "tags",
                     "players",
@@ -88,6 +91,7 @@ impl ModeApi {
                 ],
                 &["state_version"],
             )
+            .data::<TeamData>(&["name"], &[])
             .data::<RelationData>(&["teams", "relation", "vision"], &[])
             .data::<PlayersData>(&["late_join", "bot_takeover", "leaver"], &[])
             .data::<SavesData>(&["by", "autosave_ms"], &[]);
@@ -191,7 +195,7 @@ impl ModeApi {
 
     /// The players' choices, which only the mode's calls make and read.
     fn register_choices(api: &mut ApiBuilder<'_>) {
-        api.data::<ChoiceData>(&["offers", "unique", "count", "slot"], &[])
+        api.data::<ChoiceData>(&["name", "offers", "unique", "count", "slot"], &[])
             .data::<SlotKindData>(&["name", "ranks", "levels"], &[]);
         let choose = MemberSpec::mode_call(
             "choose",

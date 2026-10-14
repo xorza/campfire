@@ -28,7 +28,7 @@ use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::{AiData, Orders, OrdersAction};
-use campfire_players::{Players, PlayersWorld, PlayersWorldCrate};
+use campfire_players::{PlayerResources, Players, PlayersWorldCrate};
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, Thresholds, TrackData, TrackSet,
 };
@@ -723,7 +723,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
         .add(gold, 40)
         .unwrap();
     let held = |game: &Match, unit| {
-        let amounts = game.player_resources(player).unwrap();
+        let amounts = PlayerResources::of_player(game, player).unwrap();
         (Abilities::pool(game, unit), amounts.amount(gold))
     };
     // A unit no player owns pays no player resource, so it may not cast.

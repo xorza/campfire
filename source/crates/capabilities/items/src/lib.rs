@@ -3,10 +3,6 @@
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
-#![expect(
-    clippy::type_complexity,
-    reason = "a Bevy query names its data and its filters in one type"
-)]
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
@@ -25,11 +21,11 @@ mod item_id;
 mod items_action;
 mod items_api;
 mod shop;
-mod shop_book;
 mod shop_data;
+mod shopping;
 mod trade_orders;
 
-pub use crate::inventory::{CarrierSlots, Inventory, ItemStack};
+pub use crate::inventory::{CarrierSlots, Inventory, ItemStack, Purchase};
 pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};
 pub use crate::item_data::ItemData;
@@ -37,13 +33,13 @@ pub use crate::item_holds::ItemHolds;
 pub use crate::item_id::ItemId;
 pub use crate::items_action::ItemsAction;
 pub use crate::items_api::ItemsApi;
-pub use crate::shop::{Shop, ShopPlace};
-pub use crate::shop_book::ShopBook;
+pub use crate::shop::Shop;
 pub use crate::shop_data::ShopData;
+pub use crate::shopping::Shopping;
 pub use crate::trade_orders::TradeOrders;
 
-/// The `items` capability: item types a mode package declares, the inventories its unit types
-/// carry them in, and its shop.
+/// The `items` capability: item types a mode package declares, the inventories unit types carry
+/// them in, and the unit types that are shops.
 #[derive(Debug)]
 pub struct Items;
 
@@ -88,7 +84,7 @@ impl Module for Items {
         d.require::<Inventory, UseGroup>();
         d.require::<UseGroup, Inventory>();
         d.book::<ItemBook>();
-        d.book::<ShopBook>();
+        d.book::<ByType<Shop>>();
         d.api(ItemsApi::register);
         d.book::<ByType<Inventory>>();
         d.book::<ByType<UseGroup>>();

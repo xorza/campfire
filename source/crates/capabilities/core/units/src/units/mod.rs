@@ -149,7 +149,7 @@ impl Module for Units {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
-        d.engine_tags(&[Units::AVATAR]);
+        d.engine_tags(&[Units::AVATAR, Dead::TAG]);
         Units::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();

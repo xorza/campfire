@@ -118,5 +118,11 @@ pub(crate) mod internals {
             let names = view.names();
             Filter::of_relations(relations, names.tags())
         }
+
+        /// The filter `text` names, of the tags of the match `world` holds.
+        pub fn of_match(world: &World, text: &str) -> Filter {
+            let view = world.non_send::<View>();
+            Filter::parse(text, view.names().tags()).expect("a filter of the match's tags")
+        }
     }
 }

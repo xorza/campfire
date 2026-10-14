@@ -31,6 +31,7 @@ interval_ms = 3000
 stats = { crit_chance = "0.03" }
 
 [actions.chill_arrows]
+name = "action-chill-arrows"
 targeting = "none"
 toggle = { cost_per_attack = { mana = 8 } }
 hold = "chill_arrows"
@@ -43,6 +44,7 @@ slow_ms = 2000
 script = "scripts/chill_arrows.rhai"
 
 [actions.fan_of_frost]
+name = "action-fan-of-frost"
 targeting = "direction"
 range = "12.0"
 cooldown_ms = [16000, 13000, 10000, 7000, 4000]
@@ -60,6 +62,7 @@ slow = ["0.15", "0.20", "0.25", "0.30", "0.35"]
 slow_ms = 2000
 
 [actions.snow_owl]
+name = "action-snow-owl"
 script = "scripts/snow_owl.rhai"
 targeting = "point"
 range = ["25", "32.5", "40", "47.5", "55"]
@@ -76,6 +79,7 @@ linger_ms = 5000
 script = "scripts/snow_owl.rhai"
 
 [actions.glacier_arrow]
+name = "action-glacier-arrow"
 script = "scripts/glacier_arrow.rhai"
 targeting = "direction"
 range = "global"
@@ -104,6 +108,7 @@ tags = ["slowed"]
 tags = ["stunned"]
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "6.0"

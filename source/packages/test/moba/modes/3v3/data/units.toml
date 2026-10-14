@@ -108,3 +108,25 @@ projectile = { speed = "12", homing = true }
 
 [units.warden_bolt]
 projectile = { speed = "10", homing = true }
+
+# Each base's fountain sells items to its team, and buys them back at 70% of their cost, as
+# League of Legends' shop does: to a living ally within 8 m of it, and to a dead one from
+# anywhere.
+[units.fountain.shop]
+items = [
+    "health_potion",
+    "mana_potion",
+    "sight_ward",
+    "vision_ward",
+    "elixir_of_sight",
+    "long_sword",
+    "ruby_crystal",
+    "cloth_armor",
+    "warblade",
+    "stoneplate",
+    "quicksilver",
+]
+resource = "gold"
+reach = "8.0"
+buyers = "allies"
+sell_share = "0.7"

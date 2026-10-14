@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 
 use campfire_actions::SlotKinds;
 use campfire_combat::ModeCombatData;
-use campfire_items::ShopData;
 use campfire_navigation::ModeNavigationData;
 use campfire_production::ModeSupplyData;
 use campfire_progression::TrackData;
@@ -11,7 +10,7 @@ use campfire_script::{
 };
 use campfire_stats::{PoolData, StatRule};
 use campfire_units::TagData;
-use campfire_values::{DeclaredName, Scalar, Stat};
+use campfire_values::{DeclaredName, MessageId, Scalar, Stat};
 use campfire_visibility::ModeVisibility;
 use serde::Deserialize;
 
@@ -19,13 +18,16 @@ use crate::choice_data::ChoiceData;
 use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
+use crate::team_data::TeamData;
 
 /// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
-/// actions, modifiers and item types, which its package's content holds: its player inputs, its
-/// state, its params and its shop.
+/// actions, modifiers and item types, which its package's content holds: its name, its teams'
+/// names, its player inputs, its state and its params.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
+    /// The message of the name players see.
+    pub name: MessageId,
     #[serde(default)]
     pub combat: ModeCombatData,
     #[serde(default)]
@@ -54,6 +56,9 @@ pub struct ModeData {
     /// Its players' resources, such as gold, which share no name with a pool.
     #[serde(default)]
     pub resources: Vec<DeclaredName>,
+    /// Each of its manifest's teams, by name.
+    #[serde(default)]
+    pub teams: BTreeMap<DeclaredName, TeamData>,
     /// How pairs of its teams regard each other; a pair not named is hostile.
     #[serde(default)]
     pub relations: Vec<RelationData>,
@@ -63,8 +68,6 @@ pub struct ModeData {
     /// The tracks its units gain experience on, by name.
     #[serde(default)]
     pub tracks: BTreeMap<DeclaredName, TrackData>,
-    /// Where its units buy and sell items.
-    pub shop: Option<ShopData>,
     /// Who may take a slot once the match started.
     #[serde(default)]
     pub players: PlayersData,

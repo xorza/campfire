@@ -473,6 +473,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         engine,
         [
             "avatar",
+            "dead",
             "projectile",
             "area",
             "constructing",

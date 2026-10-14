@@ -22,6 +22,7 @@ attack_speed = { base = "1.0" }
 move_speed = { base = "5.0" }
 
 [actions.orb]
+name = "action-orb"
 script = "scripts/orb.rhai"
 targeting = "enemies"
 range = "6.0"
@@ -33,6 +34,7 @@ delivery = { projectile = "orb" }
 damage = 70
 
 [actions.nova]
+name = "action-nova"
 script = "scripts/nova.rhai"
 targeting = "none"
 cooldown_ms = 5000
@@ -45,12 +47,14 @@ damage = 50
 
 # A wisp of the sage's own package, which watches a point up to 8 m off for 3 s.
 [actions.wisp]
+name = "action-wisp"
 targeting = "point"
 range = "8.0"
 cooldown_ms = 10000
 on_resolve = [{ spawn = { unit_type = "wisp", duration_ms = 3000 } }]
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "1.25"

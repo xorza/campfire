@@ -7,8 +7,8 @@ use fluent_syntax::ast::Entry;
 
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
-use crate::message_id::MessageId;
 use crate::package_files::PackageFiles;
+use campfire_values::MessageId;
 
 /// One Fluent file of human text, parsed, with the messages it defines.
 #[derive(Debug)]

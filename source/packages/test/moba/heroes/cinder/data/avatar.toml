@@ -33,6 +33,7 @@ interval_ms = 1000
 burn_share = "0.02"
 
 [actions.fire_lance]
+name = "action-fire-lance"
 script = "scripts/fire_lance.rhai"
 targeting = "direction"
 range = "10.5"
@@ -46,6 +47,7 @@ damage = { base = [80, 120, 160, 200, 240], ability_power = "0.65" }
 stun_ms = 2000
 
 [actions.eruption]
+name = "action-eruption"
 script = "scripts/eruption.rhai"
 targeting = "point"
 range = "9.0"
@@ -59,6 +61,7 @@ damage = { base = [75, 120, 165, 210, 255], ability_power = "0.6" }
 ablaze_bonus = "1.25"
 
 [actions.wildfire]
+name = "action-wildfire"
 script = "scripts/wildfire.rhai"
 targeting = "enemies"
 range = "6.25"
@@ -71,6 +74,7 @@ spread_radius = "3.0"
 spread_damage = { base = [70, 105, 140, 175, 210], ability_power = "0.55" }
 
 [actions.chain_fire]
+name = "action-chain-fire"
 script = "scripts/chain_fire.rhai"
 targeting = "enemies"
 range = "7.5"
@@ -87,6 +91,7 @@ damage = { base = [150, 250, 350], ability_power = "0.5" }
 tags = ["stunned"]
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "5.5"

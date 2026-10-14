@@ -33,6 +33,7 @@ duration_ms = 3000
 stats = { magic_resist = -15 }
 
 [actions.grasping_wraps]
+name = "action-grasping-wraps"
 script = "scripts/grasping_wraps.rhai"
 targeting = "direction"
 range = "11.0"
@@ -47,6 +48,7 @@ damage = { base = [80, 140, 200, 260, 320], ability_power = "0.7" }
 stun_ms = 1000
 
 [actions.dread]
+name = "action-dread"
 targeting = "none"
 toggle = { cost_per_second = { mana = 8 } }
 hold = "dread"
@@ -60,6 +62,7 @@ script = "scripts/dread.rhai"
 interval_ms = 1000
 
 [actions.lash_out]
+name = "action-lash-out"
 script = "scripts/lash_out.rhai"
 targeting = "none"
 cooldown_ms = [10000, 9000, 8000, 7000, 6000]
@@ -77,6 +80,7 @@ script = "scripts/lash_out.rhai"
 stats = { physical_block = { param = "block" } }
 
 [actions.tomb_bind]
+name = "action-tomb-bind"
 script = "scripts/tomb_bind.rhai"
 targeting = "none"
 cooldown_ms = [150000, 130000, 110000]
@@ -96,6 +100,7 @@ tags = ["rooted", "disarmed"]
 tags = ["stunned"]
 
 [actions.attack]
+name = "action-attack"
 kind = "attack"
 targeting = "enemies"
 range = "1.25"

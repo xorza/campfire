@@ -1,6 +1,6 @@
 use campfire_capabilities::UnitTypeData;
 
-use crate::message_id::MessageId;
+use campfire_values::MessageId;
 
 /// An avatar's unit type, and the message of the name players see for it.
 #[derive(Debug)]

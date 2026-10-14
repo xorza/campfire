@@ -9,7 +9,7 @@ internals = [
     "campfire-actions/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
-    "campfire-geometry/internals",
+    "campfire-math/internals",
     "campfire-players/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
@@ -23,7 +23,7 @@ internals = [
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-geometry.workspace = true
+campfire-math.workspace = true
 campfire-players.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true

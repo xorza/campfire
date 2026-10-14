@@ -1,8 +1,10 @@
 use bevy_ecs::world::{EntityRef, World};
+use campfire_declare::ByType;
+use campfire_items::Shop;
 use campfire_progression::Experience;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_units::{Owner, SpawnPoint};
-use campfire_values::Team;
+use campfire_values::{Team, UnitType};
 
 /// The units of a running match, as a scripted player or a test names them by role.
 #[derive(Debug, Clone, Copy)]
@@ -59,6 +61,22 @@ impl<'a> MatchUnits<'a> {
             .filter(|(_, unit)| unit.get::<Position>() == Some(&at))
             .map(|(id, _)| id)
             .collect()
+    }
+
+    /// The first shop unit of `unit`'s team, by stable id.
+    pub fn shop_of(self, unit: StableId) -> StableId {
+        let entity = self.world.entity_of(unit).expect("a unit of the match");
+        let team = self.world.get::<Team>(entity).expect("a unit of a team");
+        let shops = self.world.resource::<ByType<Shop>>();
+        self.all()
+            .find(|(_, other)| {
+                other.get::<Team>() == Some(team)
+                    && other
+                        .get::<UnitType>()
+                        .is_some_and(|&unit_type| shops.get(unit_type).is_some())
+            })
+            .map(|(id, _)| id)
+            .expect("a team with a shop")
     }
 
     /// Whether player `slot` owns `unit`.

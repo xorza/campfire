@@ -13,7 +13,7 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
     // The engine's tags hold the first places, and to declare one finds it.
     assert_eq!(
         [stunned, slowed, slow_immune, sight].map(Tag::index),
-        [7, 8, 9, 10]
+        [8, 9, 10, 11]
     );
     let release = Release::engine_tags();
     let engine: Vec<Tag> = release
@@ -24,9 +24,9 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
     assert_eq!(engine, numbers);
     assert_eq!(
         engine.iter().map(|tag| tag.index()).collect::<Vec<_>>(),
-        [0, 1, 2, 3, 4, 5, 6]
+        [0, 1, 2, 3, 4, 5, 6, 7]
     );
-    assert_eq!(types.declare("tower").unwrap().index(), 11);
+    assert_eq!(types.declare("tower").unwrap().index(), 12);
     let tower = UnitTypeCore {
         tags: vec![DeclaredName::new("true_sight").unwrap()],
         params: BTreeMap::new(),

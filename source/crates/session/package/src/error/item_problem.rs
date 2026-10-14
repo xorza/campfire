@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::error::place::Place;
 
-/// What is wrong with the mode's item types, its shop or an inventory.
+/// What is wrong with the mode's item types, a shop or an inventory.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum ItemProblem {
     /// A package other than the mode holds item types, which no shop or inventory names.
@@ -22,12 +22,9 @@ pub enum ItemProblem {
     /// The item costs less, in some resource, than the components it is built from.
     #[error("item {0} costs less than its components")]
     CheaperThanComponents(DeclaredName),
-    /// The shop sells the item, which costs in a resource the shop does not take.
-    #[error("the shop sells item {0}, which costs in another resource")]
-    ShopResource(DeclaredName),
-    /// The marker has the shop's tag, and no region or no team to serve.
-    #[error("marker {0} has the shop's tag, and no region or no team")]
-    ShopMarker(DeclaredName),
+    /// The shop type at `at` sells the item, which costs in a resource the shop does not take.
+    #[error("{at}: sells item {item}, which costs in another resource")]
+    ShopResource { at: Place, item: DeclaredName },
     /// A unit type or a choice at `at` puts actions in `kind`, whose slots an inventory fills.
     #[error("{at}: puts actions in {kind}, whose slots an inventory fills")]
     InventoryKindSlotted { at: Place, kind: DeclaredName },

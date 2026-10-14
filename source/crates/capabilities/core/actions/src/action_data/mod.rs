@@ -7,7 +7,8 @@ use campfire_players::ResourceAmount;
 use campfire_script::{DataSection, DataTable, Hook};
 use campfire_stats::PoolCost;
 use campfire_values::{
-    DeclaredName, FilterData, Number, PackagePath, Param, Rank, Ranked, Scalar, Share, Stat,
+    DeclaredName, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, Scalar, Share,
+    Stat,
 };
 use serde::Deserialize;
 
@@ -32,6 +33,8 @@ pub(crate) mod error;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionData {
+    /// The message of the name players see, which an avatar's or a loadout's action needs.
+    pub name: Option<MessageId>,
     #[serde(default)]
     pub kind: ActionKind,
     /// The script, if the action needs one.
@@ -460,6 +463,7 @@ pub(crate) mod internals {
         /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.
         pub fn cast(targeting: Targeting) -> ActionData {
             ActionData {
+                name: None,
                 kind: ActionKind::default(),
                 script: None,
                 targeting,

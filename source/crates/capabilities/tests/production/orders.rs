@@ -41,7 +41,9 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         queue,
     );
     let held = |game: &mut Match| {
-        let amount = game.player_resources(player).unwrap().amount(gold);
+        let amount = PlayerResources::of_player(game, player)
+            .unwrap()
+            .amount(gold);
         (
             amount,
             game.part::<TrainQueue>(producer).entries().len(),
