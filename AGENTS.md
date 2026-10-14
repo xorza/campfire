@@ -22,6 +22,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `13-bodies-uses-shop-gravity.md` — bodies up to 2,048 m and the spatial indexes' levels, the `use` action kind, the client's shop and item keys, projectiles that fall
         - `14-replication-audiences.md` — who receives each part of the state: the kind on each state type, the audiences a mode and its host set, spectators and players out of play, the player, team and match entities
         - `15-quic-transport.md` — the link over QUIC alone, on `quinn-proto` under Lightyear
+        - `16-terrain.md` — the terrain: one generic format of quads over the height grid, drawn by the one rendering pipeline, which an importer converts its game's terrain to
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import, `quic.md` for the transport, `spectating.md` for what spectators and players out of play see, `math-performance.md` for the measures of the math and geometry benches
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
 - `source/` — engine and game code, and `drive.py`, the driver of every check ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
