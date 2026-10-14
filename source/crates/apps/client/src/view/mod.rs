@@ -274,7 +274,7 @@ impl View {
                 .map_or(&[][..], |looks| looks.models(unit_type));
             if !models.is_empty() {
                 let degrees = facing.map_or(0.0, |facing| facing.degrees().float());
-                let turn = Transform::from_rotation(Quat::from_rotation_y(degrees.to_radians()));
+                let turn = Quat::from_rotation_y(degrees.to_radians());
                 let root = commands
                     .spawn((
                         DrawingOf(unit),
@@ -288,7 +288,7 @@ impl View {
                     commands.spawn((
                         WorldAssetRoot(model.scene.clone()),
                         model.parts.clone(),
-                        turn,
+                        Transform::from_rotation(turn).with_scale(Vec3::splat(model.scale)),
                         ChildOf(root),
                     ));
                 }

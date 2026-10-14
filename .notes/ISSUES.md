@@ -23,5 +23,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Ready
 
-- **Client.** **Plan: Z5.** The client draws every file material metallic 0, roughness 1 and of Bevy's default reflectance, 0.5 (`view/file_material.rs`), and of no depth bias, where a material file gives its own metallic, roughness, specular, unlit and depth bias fields, and design 12's client section draws it by them: a file material of a shader whose lighting is off is lit, every one reflects, and a layer fights the primitive under it for the depth.
 - **Zero Hour.** The import draws each object by its default state's model on every map, where the game draws its night model on a night map and its snow model on a snowy map, the condition state that best matches `NIGHT` and `SNOW` (`Drawable::setTimeOfDay`, `W3DTerrainVisual::addProp`): 15 of the 150 shipped maps are night maps and 17 snowy ones.

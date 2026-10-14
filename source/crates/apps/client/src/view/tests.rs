@@ -228,7 +228,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let tank = ClientUnit {
         models: vec![ClientModel {
             model: PackagePath::parse("client/models/tank.glb").unwrap(),
-            scale: ModelScale::ONE,
+            scale: ModelScale::new(1.25).unwrap(),
             hide: vec!["tank.flash".to_owned()],
         }],
     };
@@ -268,7 +268,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     app.update();
     let world = app.world();
     // Its root stands at the ground's 4 m and its own 2 m, with its shape and no figure; its one
-    // child is its model, turned a quarter about y, with the node its look hides.
+    // child is its model, turned a quarter about y, at its scale of 1.25, with the node its look
+    // hides.
     let (root, _, translation) = root(world, unit);
     assert_eq!(translation, Vec3::new(3.0, 6.0, 0.0));
     assert!(world.get::<Shape>(root).is_some() && world.get::<Look>(root).is_none());
@@ -283,8 +284,10 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             hide: vec!["tank.flash".to_owned()],
         })
     );
-    let turn = model.get::<Transform>().unwrap().rotation;
-    assert!(turn.abs_diff_eq(Quat::from_rotation_y(90.0_f32.to_radians()), 1e-6));
+    let transform = model.get::<Transform>().unwrap();
+    let turn = Quat::from_rotation_y(90.0_f32.to_radians());
+    assert!(transform.rotation.abs_diff_eq(turn, 1e-6));
+    assert_eq!(transform.scale, Vec3::splat(1.25));
 }
 
 #[test]

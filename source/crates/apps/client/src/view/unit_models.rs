@@ -4,7 +4,9 @@ use std::sync::Arc;
 use bevy::app::{App, Plugin, Startup};
 use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
 use bevy::camera::visibility::Visibility;
+use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
+use bevy::ecs::hierarchy::ChildOf;
 use bevy::ecs::hierarchy::Children;
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
@@ -14,24 +16,35 @@ use bevy::gltf::GltfMaterialName;
 use bevy::image::{
     Image, ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor,
 };
+use bevy::math::{Quat, Vec3};
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
+use bevy::transform::components::Transform;
+use bevy::world_serialization::WorldAssetRoot;
 use bevy::world_serialization::WorldInstanceReady;
-use campfire_package::{MaterialFile, ModePackages};
+use campfire_package::{ClientObject, MaterialFile, ModePackages};
 use campfire_units::TypeOriginBook;
+
+use tracing::error;
 
 use crate::view::client_data::ClientData;
 use crate::view::file_material::{FileBlend, FileMaterial};
+use crate::view::float_num::FloatNum;
+use crate::view::ground_heights::GroundHeights;
 use crate::view::package_source::PackageSource;
-use crate::view::unit_looks::{ModelParts, UnitLooks};
+use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
 
-/// Draws units with their packages' models: reads the mode's client data as it starts, loads each
-/// unit type's models, and dresses each model once its scene spawns: the nodes its default look
-/// hides hidden, and each primitive whose glTF material has a material file in that file's
-/// material.
+/// Draws units and the map's client objects with their packages' models: reads the mode's client
+/// data as it starts, loads each unit type's models, places each client object still, and dresses
+/// each model once its scene spawns: the nodes its default look hides hidden, and each primitive
+/// whose glTF material has a material file in that file's material.
 #[derive(Debug)]
 pub(crate) struct UnitModels {
     pub(crate) packages: Arc<ModePackages>,
 }
+
+/// The root of a client object's drawing, which stands still where the map places it, of no unit.
+#[derive(Component, Debug)]
+pub(crate) struct StillObject;
 
 /// The material of each material file once a primitive takes it, by its package's place and name.
 #[derive(Resource, Debug, Default)]
@@ -45,7 +58,7 @@ impl Plugin for UnitModels {
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
         app.insert_resource(ClientData::read(&self.packages));
         app.init_resource::<FileMaterials>();
-        app.add_systems(Startup, UnitModels::load_looks);
+        app.add_systems(Startup, (UnitModels::load_looks, UnitModels::place_objects));
         app.add_observer(UnitModels::dress);
     }
 }
@@ -59,6 +72,53 @@ impl UnitModels {
         mut commands: Commands<'_, '_>,
     ) {
         commands.insert_resource(UnitLooks::of(&origins, &data, &assets));
+    }
+
+    /// Places each of the map's client objects (design 12, D14): a root on the ground at its point,
+    /// at its height above the heightmap, turned by its angle as a placed unit is, and its look's
+    /// models over it, each at its scale; a look the mode's package lacks is logged, and its
+    /// object not drawn.
+    fn place_objects(
+        data: Res<'_, ClientData>,
+        assets: Res<'_, AssetServer>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let Some(looks) = data.units.first() else {
+            return;
+        };
+        let heights = data.heights.as_ref();
+        for object in &data.objects.objects {
+            let Some(look) = looks.objects.get(&object.look) else {
+                let look = object.look.as_str();
+                error!(look, "a client object's look is none of its package's");
+                continue;
+            };
+            let root = commands
+                .spawn((
+                    StillObject,
+                    UnitModels::placed(object, heights),
+                    Visibility::default(),
+                ))
+                .id();
+            for model in LookModel::all(0, look, &assets) {
+                commands.spawn((
+                    WorldAssetRoot(model.scene),
+                    model.parts,
+                    Transform::from_scale(Vec3::splat(model.scale)),
+                    ChildOf(root),
+                ));
+            }
+        }
+    }
+
+    /// Where `object` stands: its ground point, its height above the ground `heights` gives
+    /// there, 0 on a map with none, and turned by its angle about the vertical.
+    fn placed(object: &ClientObject, heights: Option<&GroundHeights>) -> Transform {
+        let [x, z] = object.pos.map(FloatNum::float);
+        let beneath = heights.map_or(0.0, |heights| heights.at(x, z));
+        let y = beneath + object.height.float();
+        let turn = Quat::from_rotation_y(object.angle.float().to_radians());
+        Transform::from_xyz(x, y, z).with_rotation(turn)
     }
 
     /// Dresses the model whose scene spawned, as its dressing says.
@@ -181,10 +241,195 @@ impl Dressing {
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
+    use bevy::app::TaskPoolPlugin;
+    use bevy::asset::io::memory::{Dir, MemoryAssetReader};
+    use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
+    use bevy::asset::{AssetApp, AssetPlugin, LoadState};
+    use bevy::ecs::query::With;
     use bevy::ecs::world::World;
-    use campfire_package::Blend;
+    use bevy::gltf::{Gltf, GltfMaterial, GltfPlugin};
+    use bevy::mesh::MeshPlugin;
+    use bevy::world_serialization::WorldAsset;
+    use bevy::world_serialization::WorldSerializationPlugin;
+    use campfire_math::Num;
+    use campfire_mode::HeightGrid;
+    use campfire_package::{
+        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
+    };
+    use campfire_values::{DeclaredName, PackagePath};
 
     use super::*;
+
+    /// Two materials as the import writes them, each rough, not metallic and of a specular factor
+    /// of 0, the second unlit.
+    const MATERIALS: &str = r#"{"asset":{"version":"2.0","generator":"campfire-import"},
+"extensionsUsed":["KHR_materials_specular","KHR_materials_unlit"],
+"scene":0,"scenes":[{"nodes":[]}],"nodes":[],
+"materials":[
+{"name":"m_0","pbrMetallicRoughness":{"baseColorFactor":[1.0,0.5,0.0,1.0],"metallicFactor":0.0,
+"roughnessFactor":1.0},"emissiveFactor":[0.0,0.0,0.0],"alphaMode":"OPAQUE","doubleSided":false,
+"extensions":{"KHR_materials_specular":{"specularFactor":0.0}}},
+{"name":"m_1","pbrMetallicRoughness":{"baseColorFactor":[1.0,1.0,1.0,1.0],"metallicFactor":0.0,
+"roughnessFactor":1.0},"emissiveFactor":[0.0,0.0,0.0],"alphaMode":"BLEND","doubleSided":true,
+"extensions":{"KHR_materials_specular":{"specularFactor":0.0},"KHR_materials_unlit":{}}}]}"#;
+
+    #[test]
+    fn the_imports_materials_load_in_bevy_rough_of_no_reflectance_and_unlit_where_they_say() {
+        let dir = Dir::default();
+        dir.insert_asset_text(Path::new("model.gltf"), MATERIALS);
+        let mut app = App::new();
+        let reader = MemoryAssetReader { root: dir };
+        app.register_asset_source(
+            AssetSourceId::Default,
+            AssetSourceBuilder::new(move || Box::new(reader.clone())),
+        );
+        app.add_plugins((
+            TaskPoolPlugin::default(),
+            AssetPlugin::default(),
+            WorldSerializationPlugin,
+            MeshPlugin,
+            GltfPlugin::default(),
+        ));
+        app.finish();
+        app.cleanup();
+        let server = app.world().resource::<AssetServer>().clone();
+        let model: Handle<Gltf> = server.load("model.gltf");
+        for _ in 0..10_000 {
+            app.update();
+            match server.load_state(&model) {
+                LoadState::Loaded => break,
+                LoadState::Failed(error) => panic!("{error}"),
+                _ => {}
+            }
+        }
+        let world = app.world();
+        let gltf = world.resource::<Assets<Gltf>>().get(&model).unwrap();
+        let materials = world.resource::<Assets<GltfMaterial>>();
+        // Each rough, not metallic, of a reflectance half its specular factor of 0, which is 0;
+        // the second unlit.
+        let read: Vec<(f32, f32, f32, bool)> = gltf
+            .materials
+            .iter()
+            .map(|handle| {
+                let material = materials.get(handle).unwrap();
+                let lighting = (material.metallic, material.perceptual_roughness);
+                (lighting.0, lighting.1, material.reflectance, material.unlit)
+            })
+            .collect();
+        assert_eq!(read, [(0.0, 1.0, 0.0, false), (0.0, 1.0, 0.0, true)]);
+    }
+
+    #[test]
+    fn each_client_object_stands_still_on_the_ground_turned_and_at_its_models_scales() {
+        let mut app = App::new();
+        app.add_plugins((TaskPoolPlugin::default(), AssetPlugin::default()));
+        app.init_asset::<WorldAsset>();
+        // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point.
+        let grid = HeightGrid::new(
+            [Num::int(-10), Num::int(-10)],
+            Num::int(10),
+            Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+            4,
+            vec![8; 16],
+        )
+        .unwrap();
+        let name = |text: &str| DeclaredName::new(text).unwrap();
+        let model = |path: &str, scale: f32, hide: &[&str]| ClientModel {
+            model: PackagePath::parse(path).unwrap(),
+            scale: ModelScale::new(scale).unwrap(),
+            hide: hide.iter().map(|&node| node.to_owned()).collect(),
+        };
+        // An oak of two models, one at 1.5 and one hiding its stump; a bush of one.
+        let looks = ClientUnits {
+            objects: [
+                (
+                    name("oak"),
+                    ClientUnit {
+                        models: vec![
+                            model("client/models/oak.glb", 1.5, &[]),
+                            model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
+                        ],
+                    },
+                ),
+                (
+                    name("bush"),
+                    ClientUnit {
+                        models: vec![model("client/models/bush.glb", 1.0, &[])],
+                    },
+                ),
+            ]
+            .into(),
+            ..ClientUnits::default()
+        };
+        // The oak at (3, −2), 1 m up, turned 90°; the bush at the origin; and a ghost, whose look
+        // the package lacks.
+        let object = |look: &str, x: i64, z: i64, height: i64, angle: i64| ClientObject {
+            look: name(look),
+            pos: [Num::int(x), Num::int(z)],
+            height: Num::int(height),
+            angle: Num::int(angle),
+        };
+        let data = ClientData {
+            units: vec![looks],
+            heights: GroundHeights::of(&grid),
+            objects: ClientObjects {
+                objects: vec![
+                    object("oak", 3, -2, 1, 90),
+                    object("bush", 0, 0, 0, 0),
+                    object("ghost", 1, 1, 0, 0),
+                ],
+            },
+            ..ClientData::default()
+        };
+        app.insert_resource(data);
+        app.add_systems(Startup, UnitModels::place_objects);
+        app.update();
+        let world = app.world_mut();
+        let mut roots = world.query_filtered::<(&Transform, &Children), With<StillObject>>();
+        let mut placed: Vec<(Transform, Vec<(Transform, ModelParts)>)> = roots
+            .iter(world)
+            .map(|(transform, children)| {
+                let models = children
+                    .iter()
+                    .map(|child| {
+                        let model = world.entity(*child);
+                        assert!(model.get::<WorldAssetRoot>().is_some());
+                        (
+                            *model.get::<Transform>().unwrap(),
+                            model.get::<ModelParts>().unwrap().clone(),
+                        )
+                    })
+                    .collect();
+                (*transform, models)
+            })
+            .collect();
+        placed.sort_by(|a, b| a.0.translation.x.total_cmp(&b.0.translation.x));
+        // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
+        // y; each model at its own scale, with the nodes its look hides; the ghost is none.
+        let parts = |hide: &[&str]| ModelParts {
+            package: 0,
+            hide: hide.iter().map(|&node| node.to_owned()).collect(),
+        };
+        let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
+        assert_eq!(placed.len(), 2);
+        assert_eq!(placed[0].0, Transform::from_xyz(0.0, 4.0, 0.0));
+        assert_eq!(placed[0].1, [(scaled(1.0), parts(&[]))]);
+        let oak = placed[1].0;
+        assert_eq!(oak.translation, Vec3::new(3.0, 5.0, -2.0));
+        assert!(
+            oak.rotation
+                .abs_diff_eq(Quat::from_rotation_y(90.0_f32.to_radians()), 1e-6)
+        );
+        assert_eq!(
+            placed[1].1,
+            [
+                (scaled(1.5), parts(&[])),
+                (scaled(1.0), parts(&["leaves.stump"]))
+            ]
+        );
+    }
 
     #[test]
     fn a_dressing_hides_the_named_nodes_and_gives_filed_materials_their_files() {

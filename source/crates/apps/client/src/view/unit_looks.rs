@@ -3,6 +3,7 @@ use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
+use campfire_package::ClientUnit;
 use campfire_units::TypeOriginBook;
 use campfire_values::UnitType;
 
@@ -16,11 +17,13 @@ pub(crate) struct UnitLooks {
     looks: Vec<Vec<LookModel>>,
 }
 
-/// A model a unit type is drawn with: its glTF's first scene, and its parts.
+/// A model a look is drawn with: its glTF's first scene, its parts, and the factor it is drawn
+/// at.
 #[derive(Debug, Clone)]
 pub(crate) struct LookModel {
     pub(crate) scene: Handle<WorldAsset>,
     pub(crate) parts: ModelParts,
+    pub(crate) scale: f32,
 }
 
 /// What a drawn model needs once its scene is spawned: its package's place, whose material files
@@ -38,28 +41,18 @@ impl UnitLooks {
         data: &ClientData,
         assets: &AssetServer,
     ) -> UnitLooks {
-        let looks =
-            origins
-                .iter()
-                .map(|(_, origin)| {
-                    let units = &data.units[usize::from(origin.package)];
-                    let Some(unit) = units.units.get(&*origin.name) else {
-                        return Vec::new();
-                    };
-                    unit.models
-                        .iter()
-                        .map(|model| LookModel {
-                            scene: assets.load(GltfAssetLabel::Scene(0).from_asset(
-                                PackageSource::asset_path(origin.package, &model.model),
-                            )),
-                            parts: ModelParts {
-                                package: origin.package,
-                                hide: model.hide.clone(),
-                            },
-                        })
-                        .collect()
-                })
-                .collect();
+        let looks = origins
+            .iter()
+            .map(|(_, origin)| {
+                let units = &data.units[usize::from(origin.package)];
+                units
+                    .units
+                    .get(&*origin.name)
+                    .map_or_else(Vec::new, |unit| {
+                        LookModel::all(origin.package, unit, assets)
+                    })
+            })
+            .collect();
         UnitLooks { looks }
     }
 
@@ -69,11 +62,31 @@ impl UnitLooks {
     }
 }
 
+impl LookModel {
+    /// The models of `look`, a look of the package at `package`, each loading.
+    pub(crate) fn all(package: u16, look: &ClientUnit, assets: &AssetServer) -> Vec<LookModel> {
+        look.models
+            .iter()
+            .map(|model| LookModel {
+                scene: assets.load(
+                    GltfAssetLabel::Scene(0)
+                        .from_asset(PackageSource::asset_path(package, &model.model)),
+                ),
+                parts: ModelParts {
+                    package,
+                    hide: model.hide.clone(),
+                },
+                scale: model.scale.get(),
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
-    use campfire_package::{ClientModel, ClientUnit, ClientUnits, ModelScale};
+    use campfire_package::{ClientModel, ClientUnits, ModelScale};
     use campfire_units::TypeOrigin;
     use campfire_values::PackagePath;
 

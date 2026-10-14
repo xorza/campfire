@@ -58,7 +58,9 @@ const SHADER: &str = "embedded://campfire_client/view/file_material.wgsl";
 
 impl FileBlend {
     /// The material of `file`, its texture `texture`: the standard material of the file's colors,
-    /// in the render phase its blend draws in, and the file's blend.
+    /// its metallic and roughness factors, its reflectance half its specular factor, as Bevy's
+    /// glTF loader reads `KHR_materials_specular`, lit or not as it says, and its depth bias, in
+    /// the render phase its blend draws in; and the file's blend.
     pub(crate) fn material(file: &MaterialFile, texture: Option<Handle<Image>>) -> FileMaterial {
         let [r, g, b, a] = file.base_color;
         let [er, eg, eb] = file.emissive;
@@ -76,8 +78,11 @@ impl FileBlend {
                 base_color: Color::LinearRgba(LinearRgba::new(r, g, b, a)),
                 base_color_texture: texture,
                 emissive: LinearRgba::new(er, eg, eb, 1.0),
-                metallic: 0.0,
-                perceptual_roughness: 1.0,
+                metallic: file.metallic,
+                perceptual_roughness: file.roughness,
+                reflectance: file.specular * 0.5,
+                unlit: file.unlit,
+                depth_bias: file.depth_bias as f32,
                 alpha_mode,
                 double_sided: file.double_sided,
                 cull_mode: (!file.double_sided).then_some(Face::Back),
@@ -152,6 +157,8 @@ impl MaterialExtension for FileBlend {
 
 #[cfg(test)]
 mod tests {
+    use bevy::pbr::Material;
+
     use super::*;
 
     #[test]
@@ -250,5 +257,41 @@ mod tests {
             ..file(Blend::Opaque, true)
         };
         assert_eq!(FileBlend::material(&both, None).base.cull_mode, None);
+        // The file's lighting: its metallic and roughness as they are; its reflectance half its
+        // specular, 0.6 / 2 = 0.3, and 0 for the import's 0; lit or not as it says.
+        let shiny = MaterialFile {
+            metallic: 0.25,
+            roughness: 0.5,
+            specular: 0.6,
+            unlit: true,
+            ..file(Blend::Opaque, true)
+        };
+        let lighting = |material: &FileMaterial| {
+            let base = &material.base;
+            (
+                base.metallic,
+                base.perceptual_roughness,
+                base.reflectance,
+                base.unlit,
+            )
+        };
+        assert_eq!(
+            lighting(&FileBlend::material(&shiny, None)),
+            (0.25, 0.5, 0.3, true)
+        );
+        let matte = FileBlend::material(&file(Blend::Opaque, true), None);
+        assert_eq!(lighting(&matte), (0.0, 1.0, 0.0, false));
+        // Two blended layers of one mesh, 1 and 2 over the pass under them: Bevy sorts a blended
+        // item by its distance plus its depth bias, so of one mesh, one distance `d`, the layer
+        // of `d + 2` draws after that of `d + 1`, and its pipeline's constant depth bias, 2 to 1,
+        // passes the depth test over it.
+        let layer = |depth_bias| {
+            let file = MaterialFile {
+                depth_bias,
+                ..file(Blend::Add, false)
+            };
+            Material::depth_bias(&FileBlend::material(&file, None))
+        };
+        assert_eq!((layer(0), layer(1), layer(2)), (0.0, 1.0, 2.0));
     }
 }

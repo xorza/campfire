@@ -1,5 +1,6 @@
-// A material file's material: the standard material's lit color, not drawn where its alpha is
-// below the file's cutoff, as an alpha test is; its blend and depth write are its pipeline's.
+// A material file's material: the standard material's color, lit unless the file says it is
+// unlit, as Bevy's own shader draws it, and not drawn where its alpha is below the file's
+// cutoff, as an alpha test is; its blend and depth write are its pipeline's.
 #import bevy_pbr::{
     pbr_fragment::pbr_input_from_standard_material,
     pbr_functions::alpha_discard,
@@ -14,6 +15,7 @@
 #import bevy_pbr::{
     forward_io::{VertexOutput, FragmentOutput},
     pbr_functions::{apply_pbr_lighting, main_pass_post_lighting_processing},
+    pbr_types::STANDARD_MATERIAL_FLAGS_UNLIT_BIT,
 }
 #endif
 
@@ -34,7 +36,11 @@ fn fragment(in: VertexOutput, @builtin(front_facing) is_front: bool) -> Fragment
     let out = deferred_output(in, pbr_input);
 #else
     var out: FragmentOutput;
-    out.color = apply_pbr_lighting(pbr_input);
+    if (pbr_input.material.flags & STANDARD_MATERIAL_FLAGS_UNLIT_BIT) == 0u {
+        out.color = apply_pbr_lighting(pbr_input);
+    } else {
+        out.color = pbr_input.material.base_color;
+    }
     out.color = main_pass_post_lighting_processing(pbr_input, out.color);
 #endif
     return out;
