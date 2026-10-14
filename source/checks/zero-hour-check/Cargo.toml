@@ -3,6 +3,7 @@ name = "campfire-zero-hour-check"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish = false
 
 [dependencies]
 campfire-codec.workspace = true
@@ -20,8 +21,6 @@ clap.workspace = true
 derive_more.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-
-[dev-dependencies]
 
 [lints]
 workspace = true

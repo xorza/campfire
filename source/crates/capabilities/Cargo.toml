@@ -33,9 +33,6 @@ internals = [
     "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
-    "dep:campfire-geometry",
-    "dep:campfire-log",
-    "dep:campfire-math",
     "dep:criterion",
 ]
 

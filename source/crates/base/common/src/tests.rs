@@ -599,6 +599,59 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
     problems
 }
 
+/// The crates whose `internals` the build of `name`'s tests turns on: each dependency of any kind
+/// that turns it on, and each crate whose `internals` one of those passes it on to. A weak entry,
+/// `x?/internals`, counts for none, as it holds only where another feature turns `x` on.
+fn internals_on(manifests: &[(String, String)], name: &str) -> Vec<String> {
+    let manifest = |crate_name: &str| {
+        manifests
+            .iter()
+            .find(|(other, _)| other == crate_name)
+            .map(|(_, manifest)| manifest.as_str())
+    };
+    let own = manifest(name).unwrap();
+    let mut on: Vec<String> = section(own, "dependencies")
+        .chain(section(own, "dev-dependencies"))
+        .filter(|line| line.contains(r#""internals""#))
+        .map(|line| dependency(line).to_owned())
+        .collect();
+    let mut at = 0;
+    while let Some(next) = on.get(at) {
+        let passed: Vec<String> = manifest(next)
+            .map(internals_entries)
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|entry| entry.strip_suffix("/internals"))
+            .filter(|other| !other.ends_with('?') && !on.iter().any(|on| on == other))
+            .map(str::to_owned)
+            .collect();
+        on.extend(passed);
+        at += 1;
+    }
+    on
+}
+
+/// The crates of `manifests` but `name` whose `internals` `text`, code of `name`, reads, and its
+/// tests' build leaves off: such code compiles only where another crate of the build turns it on.
+fn internals_read_off(manifests: &[(String, String)], name: &str, text: &str) -> Vec<String> {
+    let on = internals_on(manifests, name);
+    manifests
+        .iter()
+        .map(|(other, _)| other)
+        .filter(|other| *other != name && !on.contains(other))
+        .filter(|other| {
+            let path = format!("{}::internals", other.replace('-', "_"));
+            text.match_indices(&path).any(|(at, _)| {
+                !text[..at]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|before| before.is_alphanumeric() || before == '_')
+            })
+        })
+        .cloned()
+        .collect()
+}
+
 /// The lines of `text` that gate code on a test build or the `internals` feature, where the
 /// feature alone gates it.
 fn test_or_internals(text: &str) -> Vec<usize> {
@@ -612,7 +665,18 @@ fn test_or_internals(text: &str) -> Vec<usize> {
 
 #[test]
 fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it() {
-    assert_eq!(internals_problems(&manifests()), Vec::<String>::new());
+    let manifests = manifests();
+    assert_eq!(internals_problems(&manifests), Vec::<String>::new());
+    let crates = crates();
+    let read_off: Vec<String> = sources()
+        .iter()
+        .filter_map(|file| {
+            let at = holder(&crates, &file.path)?;
+            let off = internals_read_off(&manifests, &crates[at].name, &file.text);
+            (!off.is_empty()).then(|| format!("{}: {}", file.path, off.join(", ")))
+        })
+        .collect();
+    assert_eq!(read_off, Vec::<String>::new());
     let gated: Vec<String> = sources()
         .iter()
         .flat_map(|file| {
@@ -652,7 +716,7 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         (
             "d",
             concat!(
-                "[features]\ninternals = [\n    \"a/internals\",\n]\n\n",
+                "[features]\ninternals = [\n    \"a/internals\",\n    \"c?/internals\",\n]\n\n",
                 "[dependencies]\nb.workspace = true\n\n[dev-dependencies]\n",
                 "b = { workspace = true, features = [\"internals\"] }\nc.workspace = true\n",
                 "campfire-store = { workspace = true, features = [\"internals\"] }\n",
@@ -661,6 +725,20 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         ),
     ]
     .map(|(name, manifest)| (name.to_owned(), manifest.to_owned()));
+    // `a` turns no crate's on; `b` its own; `c` `b`'s; `d` its own, `a`'s through its own, `b`'s,
+    // and `campfire-store`'s, which is not among them, and not `c`'s, which `d` passes on weakly.
+    let reads = "x::internals::X; a::internals::A; b::internals::B; data::internals::D;";
+    let weak = "c::internals::C;";
+    let off = |name: &str| internals_read_off(&crates, name, reads);
+    assert_eq!(off("a"), ["b"]);
+    assert_eq!(off("b"), ["a"]);
+    assert_eq!(off("c"), ["a"]);
+    assert_eq!(off("d"), Vec::<String>::new());
+    assert_eq!(internals_read_off(&crates, "d", weak), ["c"]);
+    assert_eq!(
+        internals_on(&crates, "d"),
+        ["b", "campfire-store", "d", "a"]
+    );
     assert_eq!(
         internals_problems(&crates),
         [
@@ -807,19 +885,26 @@ fn unnamed_dependencies<'a>(manifest: &'a str, production: &str) -> Vec<&'a str>
         .collect()
 }
 
+/// The index in `crates` of the crate that holds the source file at `path`, under `source/`: the
+/// deepest whose folder holds it.
+fn holder(crates: &[Crate], path: &str) -> Option<usize> {
+    crates
+        .iter()
+        .enumerate()
+        .filter(|(_, krate)| path.starts_with(&format!("{}/", krate.path)))
+        .max_by_key(|(_, krate)| krate.path.len())
+        .map(|(at, _)| at)
+}
+
 /// The production code of each of `crates`, in their order: each source's that no crate nested
 /// in its folder holds; all of the top test crate's, as all of it is test code.
 fn production_by_crate(crates: &[Crate]) -> Vec<String> {
     let mut code = vec![String::new(); crates.len()];
     for file in sources() {
-        let holder = crates
-            .iter()
-            .enumerate()
-            .filter(|(_, krate)| file.path.starts_with(&format!("{}/", krate.path)))
-            .max_by_key(|(_, krate)| krate.path.len());
-        let Some((at, krate)) = holder else {
+        let Some(at) = holder(crates, &file.path) else {
             continue;
         };
+        let krate = &crates[at];
         let production = if krate.name == TOP_TEST_CRATE {
             Some(file.text.clone())
         } else {

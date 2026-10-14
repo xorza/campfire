@@ -19,8 +19,6 @@ internals = [
     "campfire-units/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
-    "dep:campfire-players",
-    "dep:campfire-vision",
 ]
 
 [dependencies]

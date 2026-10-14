@@ -201,7 +201,8 @@ class Workspace:
     # The members with an `internals` feature, which a bench crate needs on, but the top test
     # crate, all of whose code is test code.
     internals: frozenset[str]
-    # Each member that turns `internals` on through a normal, required dependency on a member.
+    # Each member whose build that ships turns `internals` on: one with a normal, required
+    # dependency on a member with it, and each member that depends so on one of those.
     unifies_internals: tuple[str, ...]
     target: Path
 
@@ -231,10 +232,25 @@ def workspace() -> Workspace:
     packages = metadata["packages"]
     names = {package["name"] for package in packages}
     dependents: dict[str, set[str]] = {name: set() for name in names}
+    # The members that depend on each member through a normal, required dependency, so that their
+    # build that ships builds it.
+    normal_dependents: dict[str, set[str]] = {name: set() for name in names}
+    unifying: set[str] = set()
     for package in packages:
         for dependency in package["dependencies"]:
-            if dependency["name"] in names:
-                dependents[dependency["name"]].add(package["name"])
+            if dependency["name"] not in names:
+                continue
+            dependents[dependency["name"]].add(package["name"])
+            if dependency["kind"] is None and not dependency["optional"]:
+                normal_dependents[dependency["name"]].add(package["name"])
+                if "internals" in dependency["features"]:
+                    unifying.add(package["name"])
+    queue = list(unifying)
+    while queue:
+        for dependent in normal_dependents[queue.pop()]:
+            if dependent not in unifying:
+                unifying.add(dependent)
+                queue.append(dependent)
     return Workspace(
         folders={package["name"]: Path(package["manifest_path"]).parent for package in packages},
         dependents={name: frozenset(found) for name, found in dependents.items()},
@@ -246,17 +262,7 @@ def workspace() -> Workspace:
         internals=frozenset(
             package["name"] for package in packages if "internals" in package["features"]
         ),
-        unifies_internals=tuple(
-            package["name"]
-            for package in packages
-            if any(
-                dependency["kind"] is None
-                and not dependency["optional"]
-                and dependency["name"] in names
-                and "internals" in dependency["features"]
-                for dependency in package["dependencies"]
-            )
-        ),
+        unifies_internals=tuple(sorted(unifying)),
         target=Path(metadata["target_directory"]),
     )
 
@@ -289,9 +295,9 @@ def lint_step() -> Step:
 
 
 def ship_step() -> Step:
-    # A member that turns `internals` on through a normal dependency, as the Zero Hour check does,
-    # unifies it into that crate and the crates below it: with such a member, no build that ships
-    # is linted. Its own code is linted by `lint`.
+    # A member that turns `internals` on through a normal dependency, as the harness does, or
+    # depends on one that does, as the Zero Hour check does, unifies it into the crates below it:
+    # with such a member, no build that ships is linted. Its own code is linted by `lint`.
     excluded = [arg for name in workspace().unifies_internals for arg in ("--exclude", name)]
     return Step("ship", Kind.CHECK, cargo(*SHIP, *excluded, *DENY))
 

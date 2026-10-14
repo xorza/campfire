@@ -10,7 +10,6 @@ internals = [
     "campfire-math/internals",
     "campfire-sim/internals",
     "campfire-values/internals",
-    "dep:campfire-common",
     "dep:criterion",
 ]
 
