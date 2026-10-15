@@ -4,12 +4,12 @@
 //! which integer steps correct exactly.
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
-mod aarch64;
+mod portable;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 #[cfg(not(target_arch = "x86_64"))]
-use crate::direction::unit_divisor::aarch64 as platform;
+use crate::direction::unit_divisor::portable as platform;
 #[cfg(target_arch = "x86_64")]
 use crate::direction::unit_divisor::x86_64 as platform;
 

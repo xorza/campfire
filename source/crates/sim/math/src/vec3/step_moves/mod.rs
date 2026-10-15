@@ -3,13 +3,13 @@
 //! ratio, and corrects it exactly.
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
-mod aarch64;
+mod portable;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 use crate::num::Num;
 #[cfg(not(target_arch = "x86_64"))]
-use crate::vec3::step_moves::aarch64 as platform;
+use crate::vec3::step_moves::portable as platform;
 #[cfg(target_arch = "x86_64")]
 use crate::vec3::step_moves::x86_64 as platform;
 

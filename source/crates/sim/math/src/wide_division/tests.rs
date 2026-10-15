@@ -44,7 +44,7 @@ fn each_way_divides_exactly_at_the_edges() {
             "{numerator} / {divisor}"
         );
         assert_eq!(
-            aarch64::divide(numerator, divisor),
+            portable::divide(numerator, divisor),
             expected,
             "{numerator} / {divisor}"
         );
@@ -60,6 +60,6 @@ proptest! {
         let numerator = u128::from(quotient) * divisor + u128::from(rest) % divisor;
         let expected = reference(numerator, divisor);
         prop_assert_eq!(WideDivision::of(numerator, divisor), expected);
-        prop_assert_eq!(aarch64::divide(numerator, divisor), expected);
+        prop_assert_eq!(portable::divide(numerator, divisor), expected);
     }
 }

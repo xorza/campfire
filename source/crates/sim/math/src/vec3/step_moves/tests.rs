@@ -16,7 +16,7 @@ fn check(step: i64, distance: i64, offsets: [i64; 3]) {
         "{step} / {distance} of {offsets:?}"
     );
     assert_eq!(
-        aarch64::moves(moves, offsets),
+        portable::moves(moves, offsets),
         expected,
         "{step} / {distance} of {offsets:?}"
     );
