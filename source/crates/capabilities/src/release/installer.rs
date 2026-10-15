@@ -31,12 +31,13 @@ pub(super) struct Installer<'a> {
 }
 
 impl<'a> Installer<'a> {
-    /// Installs into the match `cx` builds, its state types into `registry`.
+    /// Installs into the match `cx` builds, of `role`, its state types into `registry`.
     pub(super) const fn new(
         cx: &'a mut InstallCx<'_>,
         registry: &'a mut StateRegistry,
+        role: &'a Role,
     ) -> Installer<'a> {
-        let (set, role) = (cx.set(), cx.role());
+        let set = cx.set();
         Installer {
             world: &mut *cx.world,
             schedule: &mut *cx.schedule,

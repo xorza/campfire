@@ -221,7 +221,7 @@ impl Release {
             called: Release::called(set),
         };
         let mut cx = InstallCx::new(world, schedule, facts);
-        Release::modules(&mut Installing::new(&mut cx, registry));
+        Release::modules(&mut Installing::new(&mut cx, registry, &role));
         UnitTypeBook::new(Release::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
@@ -251,7 +251,7 @@ impl Release {
             called: Release::called(set),
         };
         let mut cx = InstallCx::new(world, schedule, facts);
-        Installing::new(&mut cx, registry).install::<Mode>();
+        Installing::new(&mut cx, registry, &role).install::<Mode>();
         Mode::load(world, setup, load);
         sim.build();
     }

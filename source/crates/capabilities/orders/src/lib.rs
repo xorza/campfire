@@ -9,10 +9,11 @@
 )]
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
+use bevy_ecs::system::ScheduleSystem;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::MapBook;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -100,36 +101,33 @@ impl Module for Orders {
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
-        match cx.role() {
-            Role::Server(_) => Orders::install_by::<ByVision>(cx),
-            Role::Client => Orders::install_by::<ByHolding>(cx),
-        }
+        cx.sighted(
+            Orders::check_orders::<ByVision>(),
+            Orders::check_orders::<ByHolding>(),
+        );
+        cx.systems(
+            (Destinations::follow_paths, Destinations::chase)
+                .chain()
+                .in_set(OrdersSet::Chase),
+        );
+        cx.scripted(
+            (Thinking::end_dead_resets, Thinking::think)
+                .chain()
+                .in_set(OrdersSet::Think),
+        );
     }
 }
 
 impl Orders {
-    /// `install`, each order's targets checked as `S` sees them.
-    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
-            (
-                OrderInputs::check_player_orders::<S>,
-                OrderInputs::apply_player_orders,
-            )
-                .chain()
-                .in_set(OrdersSet::Orders),
-            (Destinations::follow_paths, Destinations::chase)
-                .chain()
-                .in_set(OrdersSet::Chase),
-        ));
-        if scripts {
-            schedule.add_systems(
-                (Thinking::end_dead_resets, Thinking::think)
-                    .chain()
-                    .in_set(OrdersSet::Think),
-            );
-        }
+    /// The systems that check the tick's orders, each order's targets as `S` sees them, and
+    /// apply them.
+    fn check_orders<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+        (
+            OrderInputs::check_player_orders::<S>,
+            OrderInputs::apply_player_orders,
+        )
+            .chain()
+            .in_set(OrdersSet::Orders)
     }
 
     /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every

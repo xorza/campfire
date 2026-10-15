@@ -78,13 +78,8 @@ impl Module for Deliveries {
         if !cx.calls_for::<Deliverers>() {
             return;
         }
-        if cx.role().scripts() {
-            cx.schedule
-                .add_systems(DeliveryHooks::deliver.in_set(DeliverySet::Deliver));
-        } else {
-            cx.schedule
-                .add_systems(DeliveryHooks::end.in_set(DeliverySet::Deliver));
-        }
+        cx.scripted(DeliveryHooks::deliver.in_set(DeliverySet::Deliver));
+        cx.unscripted(DeliveryHooks::end.in_set(DeliverySet::Deliver));
     }
 }
 

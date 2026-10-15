@@ -78,25 +78,21 @@ impl Module for Abilities {
     /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
     /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
-    /// only cools down, as the server's does.
+    /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
+    /// each second, as the toggle's cost is the server's.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
-        if !scripts {
-            schedule.add_systems(
-                (Casts::predict_casts, Channels::predict_channels)
-                    .chain()
-                    .in_set(AbilitiesSet::Resolve),
-            );
-            return;
-        }
-        schedule.add_systems((
+        cx.systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
+        cx.unscripted(
+            (Casts::predict_casts, Channels::predict_channels)
+                .chain()
+                .in_set(AbilitiesSet::Resolve),
+        );
+        cx.scripted(
             (Casts::resolve_casts, Channels::run_channels)
                 .chain()
                 .in_set(AbilitiesSet::Resolve),
-            Toggles::run_toggles.in_set(AbilitiesSet::Toggles),
-        ));
+        );
+        cx.server(Toggles::run_toggles.in_set(AbilitiesSet::Toggles));
     }
 }
 

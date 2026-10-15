@@ -165,7 +165,7 @@ impl Module for Combat {
     /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
     /// pays no toggle, as its pools come from the server.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
+        let scripts = cx.scripts();
         let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
         world.insert_resource(Deaths::default());
         let events = scripts.then(|| {

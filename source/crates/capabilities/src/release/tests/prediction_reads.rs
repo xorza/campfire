@@ -142,12 +142,25 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     exclusive.dedup();
     assert_eq!(exclusive, EXCLUSIVE);
     // The server builds each system that computes its own state, and the client none: the pay of
-    // attack toggles, the forgetting of attackers, the despawns of the dead and of empty nodes,
-    // the supply's count, the sight, the areas' triggers and the projectiles' flight.
+    // ability and attack toggles, the forgetting of attackers, the despawns of the dead and of
+    // empty nodes, the trades, the supply's count, the sight, the areas' triggers and the
+    // projectiles' flight.
     let mut server = World::new();
     Release::build(&mut server, spec);
     let (client, server) = (system_names(&mut world), server_only(&server));
-    assert_eq!(server.len(), 8, "{server:?}");
+    let own = [
+        "campfire_abilities::toggles::Toggles::run_toggles",
+        "campfire_areas::area_life::AreaLife::trigger",
+        "campfire_combat::attacks::Attacks::pay_attack_toggles",
+        "campfire_combat::dying::Dying::despawn_dead",
+        "campfire_combat::dying::Dying::forget_attackers",
+        "campfire_items::trade_orders::TradeOrders::trade_items",
+        "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
+        "campfire_production::player_supply::PlayerSupply::refresh",
+        "campfire_projectiles::flying::Flying::fly",
+        "campfire_vision::seeing::Seeing::see",
+    ];
+    assert_eq!(server, own);
     for name in &server {
         let name = name.replace("campfire_capabilities::", "");
         assert!(!client.contains(&name), "{name}");

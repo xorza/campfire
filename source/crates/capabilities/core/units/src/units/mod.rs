@@ -239,13 +239,11 @@ impl Module for Units {
             .on_insert(TagBook::give_tags);
         world.init_resource::<UnitGrid>();
         world.init_resource::<UnitTracker<GridUnits>>();
-        if cx.role().scripts() {
-            cx.schedule.add_systems((
-                UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
-                UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
-                UnitTicks::drop_unspawned_states.in_set(UnitsSet::DropUnspawned),
-            ));
-        }
+        cx.scripted((
+            UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
+            UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
+            UnitTicks::drop_unspawned_states.in_set(UnitsSet::DropUnspawned),
+        ));
     }
 }
 

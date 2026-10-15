@@ -8,8 +8,9 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
+use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
+use bevy_ecs::system::ScheduleSystem;
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
@@ -175,10 +176,33 @@ impl Module for Production {
     /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
-        match cx.role() {
-            Role::Server(_) => Production::install_by::<ByVision>(cx),
-            Role::Client => Production::install_by::<ByHolding>(cx),
+        cx.sighted(
+            ProductionOrders::apply_production_orders::<ByVision>.in_set(ProductionSet::Commands),
+            ProductionOrders::apply_production_orders::<ByHolding>.in_set(ProductionSet::Commands),
+        );
+        cx.server(
+            PlayerSupply::refresh
+                .run_if(SupplyBook::counts)
+                .in_set(ProductionSet::Supply),
+        );
+        // A build places a box, which only navigation tests for room, and a worker walks.
+        if !cx.has(Capability::Navigation) {
+            cx.systems((
+                Trains::start_trains.in_set(ProductionSet::Start),
+                Trains::finish_trains.in_set(ProductionSet::Finish),
+            ));
+            return;
         }
+        cx.sighted(
+            Production::builds::<ByVision>(),
+            Production::builds::<ByHolding>(),
+        );
+        cx.systems(
+            (Construction::progress_sites, Trains::finish_trains)
+                .chain()
+                .in_set(ProductionSet::Finish),
+        );
+        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
     }
 }
 
@@ -201,25 +225,10 @@ impl Production {
     pub const GATHERING: EngineTag =
         EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
 
-    /// `install`, each placement testing the units `S` sees.
-    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        cx.schedule.add_systems(
-            ProductionOrders::apply_production_orders::<S>.in_set(ProductionSet::Commands),
-        );
-        cx.server(
-            PlayerSupply::refresh
-                .run_if(SupplyBook::counts)
-                .in_set(ProductionSet::Supply),
-        );
-        // A build places a box, which only navigation tests for room, and a worker walks.
-        if !cx.has(Capability::Navigation) {
-            cx.schedule.add_systems((
-                Trains::start_trains.in_set(ProductionSet::Start),
-                Trains::finish_trains.in_set(ProductionSet::Finish),
-            ));
-            return;
-        }
-        cx.schedule.add_systems((
+    /// The systems that check build and gather orders and start the trains, the builds and the
+    /// workers' loops, each placement testing the units `S` sees.
+    fn builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+        (
             (Construction::check_builds::<S>, GatherLoop::check_gathers)
                 .chain()
                 .in_set(ProductionSet::CheckBuilds),
@@ -232,11 +241,8 @@ impl Production {
             )
                 .chain()
                 .in_set(ProductionSet::Start),
-            (Construction::progress_sites, Trains::finish_trains)
-                .chain()
-                .in_set(ProductionSet::Finish),
-        ));
-        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
+        )
+            .into_configs()
     }
 }
 
