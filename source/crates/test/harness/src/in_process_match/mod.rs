@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::mem;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -13,7 +12,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order};
-use campfire_common::{AfterLeave, ChannelBinding, PlayerSlot, TlsKey};
+use campfire_codec::Toml;
+use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
@@ -167,21 +167,8 @@ impl MatchSetup {
     pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> MatchSetup {
         MatchSetup {
             players: 2,
-            links: LinkLayout::InOrder,
-            rollbacks: [RollbackMode::Check; MatchSetup::MAX_PLAYERS],
-            server_frames: 3,
             link,
-            seed_chain,
-            times: SessionTimes::DEFAULT,
-            rules: PlayersData::DEFAULT,
-            saves: SavesData {
-                by: SaveBy::Player,
-                autosave_ms: None,
-            },
-            bots: &[],
-            takeover: None,
-            visibility: &[],
-            max_spectators: 0,
+            ..MatchSetup::solo(RollbackMode::Check, 3, seed_chain)
         }
     }
 }
@@ -426,22 +413,11 @@ impl InProcessMatch {
 
     /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
     pub fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
-        let leaver = match rules.leaver {
-            AfterLeave::Reserve => "reserve",
-            AfterLeave::Bot => "bot",
-            AfterLeave::Open => "open",
-        };
-        let by = match saves.by {
-            SaveBy::Player => "player",
-            SaveBy::Mode => "mode",
-        };
-        let mut added = format!(
-            "[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
-            rules.late_join, rules.bot_takeover
+        let added = format!(
+            "\n[players]\n{}\n[saves]\n{}",
+            Toml::write(&rules),
+            Toml::write(&saves)
         );
-        if let Some(every) = saves.autosave_ms {
-            writeln!(added, "autosave_ms = {every}").expect("a String takes any text");
-        }
         PackageTree::of(TestMode::Lane)
             .edit("modes/lane/data/mode.toml", Edit::Append(&added))
             .packages()
@@ -657,14 +633,10 @@ impl InProcessMatch {
         }
     }
 
-    /// One frame of each client, then the server's frames: one tick each. A server whose session
-    /// went back to a save then starts again on its data, as a local server does.
+    /// One frame of each client, then the server's frames: one tick each, what each end's frames
+    /// cost kept in `step_cost`. A server whose session went back to a save then starts again on
+    /// its data, as a local server does.
     pub fn step(&mut self) {
-        self.timed_step();
-    }
-
-    /// `step`, which keeps what each end's frames cost in `step_cost`.
-    pub(crate) fn timed_step(&mut self) {
         self.step_cost.clear();
         for client in 0..self.clients.len() {
             let start = Instant::now();
@@ -1098,7 +1070,7 @@ pub(crate) mod bench {
                         self.order(client, OrdersAction::Move { x, z });
                     }
                 }
-                self.timed_step();
+                self.step();
                 spent.add(&self.step_cost);
                 *frame += 1;
             }
@@ -1123,7 +1095,7 @@ pub(crate) mod bench {
             local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
             let mut worst = StepCost::default();
             for _ in 0..MATCH_TICKS {
-                local.timed_step();
+                local.step();
                 worst.keep_worst(&local.step_cost);
             }
             drop(local);
