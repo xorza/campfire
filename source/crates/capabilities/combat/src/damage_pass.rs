@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionSlots, ActionTarget, EffectListBook, ListsOf};
+use campfire_actions::{ActionBook, ActionSlots, ActionTarget, EffectListBook, ListCall, ListsOf};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
@@ -203,10 +203,12 @@ impl DamagePass {
             ..CallStart::cast(weapon, rank, source, package, now)
         };
         batch.hook_call(start, Hook::OnHit, Some(source), |batch| {
-            let target = ActionTarget::Unit(damage.target);
-            let lists = ListsOf::Action(weapon);
-            let frame = &mut ctx.frame();
-            EffectListBook::queue(batch.world(), lists, Hook::OnHit, frame, ctx.view(), target)
+            let call = ListCall {
+                of: ListsOf::Action(weapon),
+                hook: Hook::OnHit,
+                reached: ActionTarget::Unit(damage.target),
+            };
+            EffectListBook::queue(batch.world(), call, ctx)
         });
     }
 

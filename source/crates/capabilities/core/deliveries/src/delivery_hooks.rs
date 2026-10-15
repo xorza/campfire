@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListsOf};
+use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListCall, ListsOf};
 use campfire_script::{CallStart, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
@@ -87,14 +87,9 @@ impl DeliveryHooks {
                 };
                 let pool = Pool::of(owner);
                 batch.hook_call(start, hook, Some(by.source), |batch| {
-                    EffectListBook::queue(
-                        batch.world(),
-                        of,
-                        hook,
-                        &mut ctx.frame(),
-                        ctx.view(),
-                        reach.unit().map_or(ActionTarget::None, ActionTarget::Unit),
-                    )?;
+                    let reached = reach.unit().map_or(ActionTarget::None, ActionTarget::Unit);
+                    let call = ListCall { of, hook, reached };
+                    EffectListBook::queue(batch.world(), call, &ctx)?;
                     let Some(script) = script else {
                         return Ok(());
                     };

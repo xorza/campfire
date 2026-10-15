@@ -6,7 +6,7 @@ use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionSlots, CastSpends, EffectListBook,
-    InProgress, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
+    InProgress, ListCall, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
 };
 use campfire_common::Tick;
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
@@ -479,14 +479,12 @@ impl Casts {
         ctx: &Ctx,
         prepared: &mut Prepared,
     ) -> Result<(), CallError> {
-        EffectListBook::queue(
-            batch.world(),
-            ListsOf::Action(prepared.action),
-            Hook::OnResolve,
-            &mut ctx.frame(),
-            ctx.view(),
-            prepared.resolved.call.aim.target,
-        )?;
+        let call = ListCall {
+            of: ListsOf::Action(prepared.action),
+            hook: Hook::OnResolve,
+            reached: prepared.resolved.call.aim.target,
+        };
+        EffectListBook::queue(batch.world(), call, ctx)?;
         let Some(script) = prepared.on_resolve else {
             return Ok(());
         };

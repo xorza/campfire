@@ -21,6 +21,17 @@ pub struct ActionBook {
     names: Arc<Names<ActionId>>,
 }
 
+/// An action of a package to load: its package, its name there, its data, its compiled script
+/// exactly when its data names one, and its parts resolved against the match.
+#[derive(Debug)]
+pub struct PackageAction<'d> {
+    pub package: PackageIndex,
+    pub name: &'d str,
+    pub data: &'d ActionData,
+    pub script: Option<ScriptId>,
+    pub parts: ActionParts,
+}
+
 impl ActionBook {
     /// Whether `other` is this book as one load made it, not a book of another load: the actions
     /// a row filled from it holds.
@@ -28,17 +39,15 @@ impl ActionBook {
         Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
     }
 
-    /// Loads `data` as the action `name` of `package`, with `parts` resolved against the match;
-    /// see `Actions::load`.
-    pub fn load(
-        &mut self,
-        scripts: &ScriptBook,
-        package: PackageIndex,
-        name: &str,
-        data: &ActionData,
-        script: Option<ScriptId>,
-        parts: ActionParts,
-    ) -> ActionId {
+    /// Loads `action`, its hooks those `scripts` defines; see `Actions::load`.
+    pub fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
+        let PackageAction {
+            package,
+            name,
+            data,
+            script,
+            parts,
+        } = action;
         let ActionParts {
             kind,
             passive,

@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::Mut;
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
+    PackageAction,
 };
 use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
@@ -126,7 +127,14 @@ impl ActionsFixtures for Actions {
             // A match that runs no scripts holds no script book, and its actions none.
             let none = ScriptBook::default();
             let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
-            actions.load(scripts, package, name, data, script, parts)
+            let action = PackageAction {
+                package,
+                name,
+                data,
+                script,
+                parts,
+            };
+            actions.load(scripts, action)
         });
         let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
         Stats::load_action_params(world, id, &data.params, |stat| places[stat]);

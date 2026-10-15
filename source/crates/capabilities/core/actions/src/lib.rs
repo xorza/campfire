@@ -76,7 +76,7 @@ mod use_group;
 mod weapon;
 
 pub use crate::action::{Action, Aim, Passive};
-pub use crate::action_book::ActionBook;
+pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::{ActionField, EffectRule};
 pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
@@ -104,7 +104,7 @@ pub use crate::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
     MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
-pub use crate::effect_list_book::{EffectListBook, EffectSpec};
+pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
 pub use crate::error::{ActionError, ActionProblem, SlotKindsError};

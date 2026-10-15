@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{CallError, Frame, Hook, View};
+use campfire_script::{CallError, Ctx, Frame, Hook, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::StatsEffect;
 use campfire_units::SpawnAt;
@@ -43,6 +43,14 @@ pub struct EffectListBook {
 pub struct EffectSpec {
     pub(crate) does: DoesSpec,
     pub(crate) to: EffectTo,
+}
+
+/// The list a call runs: the list of `of` that runs before its `hook`, and what it reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListCall {
+    pub of: ListsOf,
+    pub hook: Hook,
+    pub reached: ActionTarget,
 }
 
 impl EffectListBook {
@@ -233,20 +241,16 @@ impl EffectListBook {
         (launch.0 as usize) < self.launches.len()
     }
 
-    /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
-    /// its rank, which the match runs: each effect to the unit `reached`, what the list reached, or
-    /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
-    /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
-    /// pipeline; every other effect queues as its capability declared, which can fail the
-    /// call, as experience to a unit without the track fails `ctx.add_xp`.
-    pub fn queue(
-        world: &World,
-        of: ListsOf,
-        hook: Hook,
-        frame: &mut Frame,
-        view: &View,
-        reached: ActionTarget,
-    ) -> Result<(), CallError> {
+    /// Queues the list of `call` in the call `ctx` runs, of the list's action at its rank, which
+    /// the match runs: each effect to the unit the list reached, or to the acting unit; a spawn
+    /// where that unit stands, or at the point the list reached. A modifier, a purge and a spawn
+    /// queue here, as `stats` and the core are below the action pipeline; every other effect
+    /// queues as its capability declared, which can fail the call, as experience to a unit
+    /// without the track fails `ctx.add_xp`.
+    pub fn queue(world: &World, call: ListCall, ctx: &Ctx) -> Result<(), CallError> {
+        let ListCall { of, hook, reached } = call;
+        let mut held = ctx.frame();
+        let (frame, view) = (&mut *held, ctx.view());
         let list = world.resource::<EffectListBook>().of(of, hook);
         if list.is_empty() {
             return Ok(());

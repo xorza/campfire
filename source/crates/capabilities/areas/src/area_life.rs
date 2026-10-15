@@ -3,7 +3,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_common::Ticks;
 use campfire_declare::ByType;
-use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, Reached};
+use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, NewDelivery, Reached};
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
@@ -120,7 +120,13 @@ impl AreaLife {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             let triggers_at = now.after(spec.delay.max(Ticks::ONE));
             let ends_at = triggers_at.max(now.after(spec.duration));
-            spawner.spawn(by.source, at, unit_type, id, |_| {
+            let delivery = NewDelivery {
+                source: by.source,
+                unit_type,
+                pos: at,
+                id,
+            };
+            spawner.spawn(delivery, |_| {
                 (Area::new(by, aimed, ends_at), AreaTrigger::at(triggers_at))
             });
         }

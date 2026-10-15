@@ -25,7 +25,7 @@ mod teleported;
 pub use crate::delivered::{Delivered, Reached};
 pub use crate::deliverers::{Deliverers, DeliveryKind};
 pub use crate::delivering::{Delivering, Launcher};
-pub use crate::delivery_spawner::DeliverySpawner;
+pub use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
 pub use crate::teleported::Teleported;
 
 /// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
@@ -158,7 +158,7 @@ pub mod internals {
 
     use crate::Deliveries;
     use crate::delivered::Delivered;
-    use crate::delivery_spawner::DeliverySpawner;
+    use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
 
     impl Deliveries {
         /// The deliveries recorded this tick, to change as a test sets them.
@@ -179,7 +179,13 @@ pub mod internals {
             let mut parts = Some(parts);
             let spawn = move |mut spawner: DeliverySpawner<'_, '_>| {
                 let parts = parts.take().expect("one spawn");
-                spawner.spawn(source, pos, unit_type, None, |_| parts)
+                let delivery = NewDelivery {
+                    source,
+                    unit_type,
+                    pos,
+                    id: None,
+                };
+                spawner.spawn(delivery, |_| parts)
             };
             world
                 .run_system_once(spawn)

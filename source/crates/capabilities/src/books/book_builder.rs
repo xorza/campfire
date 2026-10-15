@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ConstructData,
-    CostTarget, EffectNames, PlacementData, PlacementRule, SlotKindBook, UseGroup,
+    CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, SlotKindBook, UseGroup,
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
@@ -543,10 +543,14 @@ impl<'a> BookBuilder<'a> {
         let at = || BookPlace::Action(id.clone());
         let parts = ActionParts::of(data, index, ranks, self.input.rate, &names)
             .map_err(|error| BookError::of_action(index, id, error))?;
-        let action =
-            self.books
-                .actions
-                .load(self.input.scripts, index, id.as_str(), data, script, parts);
+        let package_action = PackageAction {
+            package: index,
+            name: id.as_str(),
+            data,
+            script,
+            parts,
+        };
+        let action = self.books.actions.load(self.input.scripts, package_action);
         self.build_spec(index, id, action, data)?;
         self.requirements(index, action, data)
             .map_err(|name| BookError::unknown(index, at(), name))?;
