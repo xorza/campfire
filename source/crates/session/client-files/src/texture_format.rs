@@ -1,7 +1,7 @@
 /// A texture's format in a package, every one sRGB-encoded color: the block formats a DDS's DXT
 /// blocks are, or 8-bit RGBA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum TextureFormat {
+pub enum TextureFormat {
     /// DXT1: 4 × 4 texels in 8 bytes, with punch-through alpha.
     Bc1,
     /// DXT3: 4 × 4 texels in 16 bytes, explicit 4-bit alpha before the color.
@@ -54,7 +54,7 @@ impl TextureFormat {
 
     /// The bytes of a level of `width` by `height` texels: its blocks, a part block counted
     /// whole; `None` past what `usize` holds.
-    pub(crate) const fn level_bytes(self, width: u32, height: u32) -> Option<usize> {
+    pub const fn level_bytes(self, width: u32, height: u32) -> Option<usize> {
         let side = self.block_side();
         let columns = width.div_ceil(side) as usize;
         let rows = height.div_ceil(side) as usize;

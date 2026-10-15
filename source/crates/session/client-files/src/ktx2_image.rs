@@ -1,27 +1,27 @@
-use crate::texture::texture_format::TextureFormat;
+use crate::texture_format::TextureFormat;
 
 /// A 2D texture as a KTX2 file of no supercompression (the Khronos KTX 2.0 specification): its
 /// format, its base size, and its levels from the base down, each `format.level_bytes` of its
-/// size.
+/// size. `TextureLevels` reads what it writes of `TextureFormat::Rgba8`.
 #[derive(Debug)]
-pub(crate) struct Ktx2Image<'a> {
-    pub(crate) format: TextureFormat,
-    pub(crate) width: u32,
-    pub(crate) height: u32,
-    pub(crate) levels: &'a [&'a [u8]],
+pub struct Ktx2Image<'a> {
+    pub format: TextureFormat,
+    pub width: u32,
+    pub height: u32,
+    pub levels: &'a [&'a [u8]],
 }
 
 /// KTX2's identifier: `«KTX 20»\r\n\x1A\n`.
-const IDENTIFIER: [u8; 12] = [
+pub(crate) const IDENTIFIER: [u8; 12] = [
     0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
 ];
 
 /// The bytes before the level index: the identifier, nine header words, and the index of four
 /// words and two 64-bit words.
-const LEVEL_INDEX: usize = 80;
+pub(crate) const LEVEL_INDEX: usize = 80;
 
 /// A level index entry's bytes: its offset, its length and its length unpacked, each 64-bit.
-const LEVEL_ENTRY: usize = 24;
+pub(crate) const LEVEL_ENTRY: usize = 24;
 
 /// A basic descriptor block's bytes before its samples, and a sample's.
 const BLOCK_HEAD: u32 = 24;
@@ -36,7 +36,7 @@ impl Ktx2Image<'_> {
     /// The file's bytes: its header, its index, its level index, its data format descriptor and
     /// no key/value data, then its levels, the smallest first, each aligned to the lcm of its
     /// format's block bytes and 4.
-    pub(crate) fn encode(&self) -> Vec<u8> {
+    pub fn encode(&self) -> Vec<u8> {
         let count = self.levels.len();
         debug_assert!(count > 0, "a texture has a base level");
         let (mut width, mut height) = (self.width, self.height);

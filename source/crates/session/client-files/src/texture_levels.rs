@@ -1,6 +1,8 @@
 use bevy_math::UVec2;
 
 use crate::error::TextureLevelsError;
+use crate::ktx2_image::{IDENTIFIER, LEVEL_ENTRY, LEVEL_INDEX};
+use crate::texture_format::TextureFormat;
 
 /// A texture of the package, decoded, as a texture composed of package textures takes it, a
 /// terrain's among them (design 16, D2): `size` texels of sRGB red, green, blue and alpha, rows
@@ -12,16 +14,6 @@ pub struct TextureLevels {
     levels: u32,
     data: Vec<u8>,
 }
-
-/// KTX2's identifier: `«KTX 20»\r\n\x1A\n`.
-const IDENTIFIER: [u8; 12] = [
-    0xAB, 0x4B, 0x54, 0x58, 0x20, 0x32, 0x30, 0xBB, 0x0D, 0x0A, 0x1A, 0x0A,
-];
-/// Vulkan's `R8G8B8A8_SRGB`.
-const RGBA8_SRGB: u32 = 43;
-/// The bytes before the level index, and a level's entry there.
-const LEVEL_INDEX: usize = 80;
-const LEVEL_ENTRY: usize = 24;
 
 impl TextureLevels {
     /// A texture of `size` texels and its first `levels` levels, `data` their texels, one level
@@ -58,7 +50,7 @@ impl TextureLevels {
             usize::try_from(value).ok().ok_or(TextureLevelsError::Short)
         };
         let format = word(12)?;
-        if format != RGBA8_SRGB {
+        if format != TextureFormat::Rgba8.vk_format() {
             return Err(TextureLevelsError::Format(format));
         }
         let [width, height] = [word(20)?, word(24)?];
@@ -123,44 +115,27 @@ impl TextureLevels {
 pub(crate) mod internals {
     use bevy_math::UVec2;
 
-    use crate::texture_levels::{IDENTIFIER, LEVEL_ENTRY, LEVEL_INDEX, RGBA8_SRGB, TextureLevels};
+    use crate::ktx2_image::Ktx2Image;
+    use crate::texture_format::TextureFormat;
+    use crate::texture_levels::TextureLevels;
 
     impl TextureLevels {
         /// A KTX2 file of `size` RGBA8 sRGB texels and `levels` levels, each of `texel` of its
-        /// level's number, the levels stored the smallest first, as the import writes them.
+        /// level's number, as the import writes it.
         pub fn ktx2(size: UVec2, levels: u32, texel: fn(u32) -> [u8; 4]) -> Vec<u8> {
-            TextureLevels::ktx2_of(size, levels, RGBA8_SRGB, texel)
-        }
-
-        pub(crate) fn ktx2_of(
-            size: UVec2,
-            levels: u32,
-            format: u32,
-            texel: fn(u32) -> [u8; 4],
-        ) -> Vec<u8> {
-            let mut out = IDENTIFIER.to_vec();
-            for value in [
-                format, 1, size.x, size.y, 0, 0, 1, levels, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-            ] {
-                out.extend(value.to_le_bytes());
+            let level = |level: u32| {
+                let sides = (size >> level).max(UVec2::ONE);
+                texel(level).repeat(sides.element_product() as usize)
+            };
+            let bytes: Vec<Vec<u8>> = (0..levels).map(level).collect();
+            let levels: Vec<&[u8]> = bytes.iter().map(Vec::as_slice).collect();
+            Ktx2Image {
+                format: TextureFormat::Rgba8,
+                width: size.x,
+                height: size.y,
+                levels: &levels,
             }
-            let texels = |level: u32| (size >> level).max(UVec2::ONE).element_product() as usize;
-            let mut at = LEVEL_INDEX + LEVEL_ENTRY * levels as usize;
-            let mut places = vec![0; levels as usize];
-            for level in (0..levels).rev() {
-                places[level as usize] = at;
-                at += texels(level) * 4;
-            }
-            for level in 0..levels {
-                let len = (texels(level) * 4) as u64;
-                for value in [places[level as usize] as u64, len, len] {
-                    out.extend(value.to_le_bytes());
-                }
-            }
-            for level in (0..levels).rev() {
-                out.extend(texel(level).repeat(texels(level)));
-            }
-            out
+            .encode()
         }
     }
 }
@@ -168,6 +143,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ktx2_image::Ktx2Image;
 
     #[test]
     fn a_texture_takes_its_first_levels_the_largest_first() {
@@ -184,10 +160,15 @@ mod tests {
         assert_eq!(texture.level(1), [1; 32]);
         assert_eq!(texture.level(2), [2; 8]);
         // Another format, too few levels, a file cut short, or no KTX2 at all, give none.
-        let bc1 = TextureLevels::of_ktx2(
-            &TextureLevels::ktx2_of(UVec2::new(8, 4), 4, 134, numbered),
-            3,
-        );
+        let blocks = [16, 8, 8, 8].map(|len| vec![0; len]);
+        let blocks: Vec<&[u8]> = blocks.iter().map(Vec::as_slice).collect();
+        let bc1 = Ktx2Image {
+            format: TextureFormat::Bc1,
+            width: 8,
+            height: 4,
+            levels: &blocks,
+        };
+        let bc1 = TextureLevels::of_ktx2(&bc1.encode(), 3);
         assert_eq!(bc1, Err(TextureLevelsError::Format(134)));
         let two = TextureLevels::of_ktx2(&TextureLevels::ktx2(UVec2::new(8, 4), 2, numbered), 3);
         assert_eq!(two, Err(TextureLevelsError::Levels { held: 2, wanted: 3 }));

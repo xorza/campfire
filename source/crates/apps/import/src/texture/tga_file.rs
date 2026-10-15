@@ -1,9 +1,8 @@
 use bevy_math::UVec2;
+use campfire_client_files::{Ktx2Image, TextureFormat};
 
 use crate::texture::error::TextureError;
-use crate::texture::ktx2_image::Ktx2Image;
 use crate::texture::mip_chain::MipChain;
-use crate::texture::texture_format::TextureFormat;
 
 /// An uncompressed true-color TGA (Truevision's TGA 2.0), its texels as 8-bit red, green, blue
 /// and alpha, rows from the top. A texel of 32 bits keeps its alpha whatever the header's count

@@ -114,9 +114,8 @@ Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**
 
 Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client formats' crate of Batch 3, `capabilities/mode/src/map_data.rs`, `apps/client/src/{view/client_data,view/ground_heights,args,connection}*`. Goldens: none move. The imported packages stay byte-equal, or the batch says why not.
 
-- [ ] Guard: a round-trip test for each format the import writes.
+- [ ] Guard: a round-trip test of the units file the import writes; the map's and KTX2's are done. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
 - [ ] `import/src/zero_hour/unit_types.rs:20`: the units file type derives `Serialize`, and the import writes it. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
-- [ ] `import/src/texture/ktx2_image.rs:14`: one KTX2 writer beside the reader, which the `internals` fixture uses too.
 - [ ] `import/src/zero_hour/mod.rs:232`, `unit_types.rs:34`: one `ImportName` table over every object, with one clash error.
 - [ ] `import/src/zero_hour/{chunk_reader,w3d_fields}.rs`: one little-endian cursor. `w3d_file.rs:51` and `w3d_mesh.rs:185` return the iterator's error.
 - [ ] `import/src/zero_hour/map_object.rs:218`, `client/src/orders.rs:221`: one exact `Num::try_from(f32)` in `campfire-math`.
