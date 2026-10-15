@@ -6,7 +6,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::num::decimal::Decimal;
-use crate::num::error::{IntToNumError, ParseNumError};
+use crate::num::error::{FloatToNumError, IntToNumError, ParseNumError};
 use crate::root::RoundedRoot;
 use crate::rounding::Rounding;
 
@@ -448,6 +448,44 @@ impl TryFrom<u64> for Num {
         value
             .and_then(Num::from_int)
             .ok_or(IntToNumError::OutOfRange)
+    }
+}
+
+/// `value` exactly where a step of 2⁻²⁴ holds it, as it holds every value of at least 2⁻¹ that
+/// fits, and below rounded once to nearest, ties to even.
+impl TryFrom<f32> for Num {
+    type Error = FloatToNumError;
+
+    fn try_from(value: f32) -> Result<Num, FloatToNumError> {
+        if !value.is_finite() {
+            return Err(FloatToNumError::NotFinite);
+        }
+        let bits = value.to_bits();
+        let exponent = i32::try_from((bits >> 23) & 0xFF).expect("eight bits");
+        let fraction = i128::from(bits & 0x7F_FFFF);
+        let (mantissa, power) = if exponent == 0 {
+            (fraction, -149)
+        } else {
+            (fraction | 0x80_0000, exponent - 150)
+        };
+        // The value is `mantissa · 2^power`, so its bits are `mantissa · 2^(power + 24)`: a left
+        // shift below 64 that fits an `i64` or none, or a right shift of at most 125.
+        let scaled = power + Num::FRAC_BITS.cast_signed();
+        let magnitude = if scaled >= 0 {
+            if scaled >= 64 {
+                return Err(FloatToNumError::OutOfRange);
+            }
+            mantissa << scaled
+        } else {
+            Rounding::NearestEven.shift_right(mantissa, scaled.unsigned_abs())
+        };
+        let bits = if value.is_sign_negative() {
+            -magnitude
+        } else {
+            magnitude
+        };
+        let bits = i64::try_from(bits).map_err(|_| FloatToNumError::OutOfRange)?;
+        Ok(Num::from_bits(bits))
     }
 }
 

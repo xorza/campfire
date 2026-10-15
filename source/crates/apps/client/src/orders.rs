@@ -152,8 +152,8 @@ impl Orders {
                 Some(OrdersAction::Attack { target: unit.id })
             }
             _ => Some(OrdersAction::Move {
-                x: meters(point.x)?,
-                z: meters(point.z)?,
+                x: Num::try_from(point.x).ok()?,
+                z: Num::try_from(point.z).ok()?,
             }),
         }
     }
@@ -204,26 +204,14 @@ impl Takes {
     }
 }
 
-/// A point of the ground as a sim position, each axis to the millimeter; `None` past the bound.
+/// A point of the ground as a sim position, each axis exactly as `Num::try_from` takes it;
+/// `None` past the bound.
 fn position(point: Vec3) -> Option<Position> {
-    let axes = [point.x, point.y, point.z].map(meters);
+    let axes = [point.x, point.y, point.z].map(|axis| Num::try_from(axis).ok());
     let [Some(x), Some(y), Some(z)] = axes else {
         return None;
     };
     Position::new(SimVec3::new(x, y, z))
-}
-
-/// A clicked coordinate as a sim number, to the millimeter; `None` far off any map.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "the value is rounded and checked against the i64 range first"
-)]
-fn meters(value: f32) -> Option<Num> {
-    let millimeters = (f64::from(value) * 1000.0).round();
-    if !(-1e12..=1e12).contains(&millimeters) {
-        return None;
-    }
-    Num::from_int(millimeters as i64)?.checked_div_int(1000)
 }
 
 #[cfg(test)]
@@ -257,11 +245,14 @@ mod tests {
             assert_eq!(takes.target(Some(unit), Some(point)), both, "{takes:?}");
             assert_eq!(takes.target(None, None), ActionTarget::None, "{takes:?}");
         }
-        // A ground point to the millimeter, its height among its axes.
+        // A ground point, exactly, its height among its axes: 0.1 in `f32` is 13,421,773 · 2⁻²⁷,
+        // which rounds to the step 1,677,722 of 2⁻²⁴, not a millimeter's multiple.
         assert_eq!(
             position(Vec3::new(3.0, 0.0, -2.0)),
             Some(Position::from((3, 0, -2)))
         );
+        let tenth = position(Vec3::new(0.1, 0.0, 0.0)).unwrap();
+        assert_eq!(tenth.get().x.to_bits(), 1_677_722);
         assert_eq!(position(Vec3::new(1e15, 0.0, 0.0)), None);
     }
 
