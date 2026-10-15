@@ -181,18 +181,36 @@ impl Attacks {
         }
     }
 
-    /// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one
-    /// its pools cannot pay turns off, before the attack's events. Only the server pays them, as a
-    /// client's pools come from the server.
+    /// Pays, for each attack going off this tick that strikes, as its events and its strike test
+    /// it, its attacker's toggles that cost an attack; one its pools cannot pay turns off, before
+    /// the attack's events. Only the server pays them, as a client's pools come from the server.
     pub(super) fn pay_attack_toggles(
         (tick, book, life): (Res<'_, SimTick>, Res<'_, ActionBook>, Res<'_, PoolBook>),
-        mut attackers: Query<'_, '_, (&ActionSlots, &mut SlotTimes, UnitPools), Without<Dead>>,
+        resources: PlayerRows<'_, '_, PlayerResources>,
+        mut attackers: Query<
+            '_,
+            '_,
+            (
+                &ActionSlots,
+                &mut SlotTimes,
+                Option<&UnitTags>,
+                Has<ForcedMove>,
+                UnitPools,
+                Option<&Owner>,
+            ),
+            Without<Dead>,
+        >,
     ) {
         let now = tick.start();
         let life = life.life();
-        for (slots, mut times, pools) in &mut attackers {
-            if Self::going_off(slots, now).is_some() {
-                times.pay_attack_toggles(slots, &book, &mut pools.of(life));
+        for (slots, mut times, tags, forced, pools, owner) in &mut attackers {
+            if Self::going_off(slots, now).is_none() {
+                continue;
+            }
+            let mut pools = pools.of(life);
+            let purse = Purse::of(pools.read(), resources.of(owner));
+            if Self::wielded(&book, slots).strikes(tags, forced, purse) {
+                times.pay_attack_toggles(slots, &book, &mut pools);
             }
         }
     }
