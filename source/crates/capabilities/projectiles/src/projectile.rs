@@ -126,12 +126,13 @@ impl SimComponent for Projectile {
             .get::<UnitType>(entity)
             .is_some_and(|&unit_type| specs.get(unit_type).is_some());
         let book = world.resource::<ActionBook>();
-        let ranked = |action, rank| book.get(action).is_some_and(|action| action.has_rank(rank));
         let carries = match self.payload {
             Payload::Attack {
                 action, rank, kind, ..
-            } => ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind),
-            Payload::Action { action, rank, .. } => ranked(action, rank),
+            } => {
+                book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
+            }
+            Payload::Action { action, rank, .. } => book.ranked(action, rank),
         };
         flies && carries
     }

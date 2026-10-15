@@ -11,7 +11,9 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::{Predicting, UnitEntity};
+use campfire_units::UnitEntity;
+
+use crate::vision_column::RowReads;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -43,7 +45,7 @@ pub use crate::sight::Sight;
 pub use crate::team_sight::{ByHolding, ByVision, TeamSight};
 pub use crate::vision_api::VisionApi;
 pub use crate::vision_book::VisionBook;
-pub use crate::vision_column::{RowReads, VisionColumn};
+pub use crate::vision_column::VisionColumn;
 pub use crate::vision_data::VisionData;
 pub use crate::vision_grid::VisionGrid;
 
@@ -91,9 +93,7 @@ impl Module for Vision {
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
         // What each team sees is the server's (design 14, D12): a predicting client holds none.
-        d.part::<UnitEntity, SeenBy>(|at| {
-            (!at.world().contains_resource::<Predicting>()).then_some(SeenBy::UNTOLD)
-        });
+        d.server_part::<UnitEntity, SeenBy>();
     }
 
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
@@ -120,7 +120,7 @@ pub mod internals {
     use campfire_script::{Budget, CallError, Ctx, ScriptHost};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
-    use campfire_units::UnitsWorldCrate;
+    use campfire_units::UnitsWorld;
     use campfire_values::{Team, TeamSet};
 
     use crate::Vision;

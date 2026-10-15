@@ -8,8 +8,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::Level;
 use campfire_units::{UnitTypeCore, Units};
-use campfire_values::DeclaredName;
-use campfire_values::{Team, TrackId};
+use campfire_values::{DeclaredName, Team, TrackId};
 use serde::Serialize;
 
 const fn track(at: u8) -> TrackId {
@@ -44,30 +43,19 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
     assert_eq!(book.level_at(track(1), Num::int(50)).get(), 2);
 
     // Experience adds up to the largest number at most, and a level set past what it reaches
-    // stays: a level is state. The `level` track's level is the unit's, which the add raises;
-    // another track holds its own.
-    let level_track = book.level_track();
-    let mut experience = Experience::new(TrackSet::from([track(0), track(1)]), level_track);
-    assert_eq!(experience.get(track(0)).unwrap().level, None);
-    assert_eq!(
-        experience.get(track(1)).unwrap().level,
-        Some(Level::default())
-    );
-    let mut unit_level = Level::default();
-    let raised = experience.add(track(0), Num::int(150), &book, Some(&mut unit_level));
-    assert_eq!(
-        (raised.from.get(), raised.to.get(), unit_level.get()),
-        (1, 2, 2)
-    );
-    let raised = experience.add(track(0), Num::MAX, &book, Some(&mut unit_level));
-    assert_eq!(
-        (raised.from.get(), raised.to.get(), unit_level.get()),
-        (2, 3, 3)
-    );
+    // stays: a level is state. Each track holds its own level, the `level` track's too.
+    let mut experience = Experience::new(TrackSet::from([track(0), track(1)]));
+    let level_of = |experience: &Experience, at| experience.get(track(at)).unwrap().level.get();
+    assert_eq!([0, 1].map(|at| level_of(&experience, at)), [1, 1]);
+    let raised = experience.add(track(0), Num::int(150), &book);
+    assert_eq!((raised.from.get(), raised.to.get()), (1, 2));
+    let raised = experience.add(track(0), Num::MAX, &book);
+    assert_eq!((raised.from.get(), raised.to.get()), (2, 3));
     assert_eq!(experience.get(track(0)).unwrap().xp, Num::MAX);
-    let mut ahead = Experience::new(TrackSet::from([track(1)]), level_track);
-    ahead.tracks_mut()[0].level = Level::new(5);
-    let raised = ahead.add(track(1), Num::int(60), &book, None);
+    assert_eq!([0, 1].map(|at| level_of(&experience, at)), [3, 1]);
+    let mut ahead = Experience::new(TrackSet::from([track(1)]));
+    ahead.tracks_mut()[0].level = Level::new(5).unwrap();
+    let raised = ahead.add(track(1), Num::int(60), &book);
     assert_eq!((raised.from.get(), raised.to.get()), (5, 5));
     assert_eq!(ahead.get(track(0)), None);
 }
@@ -81,7 +69,7 @@ fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() 
     let held = |at, xp| TrackXp {
         track: track(at),
         xp,
-        level: Some(Level::default()),
+        level: Level::default(),
     };
     let decode = |tracks: Vec<TrackXp>| {
         let bytes = Binary::encode(&Fields { tracks });
@@ -153,11 +141,11 @@ fn experience_is_state_and_restores() {
     // `valor`, still at level 1.
     let book = book();
     let both = TrackSet::from([track(0), track(1)]);
-    let mut experience = Experience::new(both, book.level_track());
-    let mut level = Level::default();
+    let mut experience = Experience::new(both);
     let mut points = Points::at_spawn(both, book.level_track()).unwrap();
-    experience.add(track(0), Num::int(150), &book, Some(&mut level));
-    experience.add(track(1), Num::int(10), &book, None);
+    experience.add(track(0), Num::int(150), &book);
+    experience.add(track(1), Num::int(10), &book);
+    let level = experience.get(track(0)).unwrap().level;
     points.gain(1);
     let id = Mode::spawn(
         &mut game,
@@ -181,7 +169,7 @@ fn experience_is_state_and_restores() {
         on_valor,
         Position::ORIGIN,
         Team::new(0),
-        (Experience::new(valor, book.level_track()), points),
+        (Experience::new(valor), points),
     );
     assert!(!points.check(&game, game.unit_entity(held)));
     assert!(points.check(&game, game.unit_entity(id)));

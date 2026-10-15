@@ -1,10 +1,9 @@
 use std::fmt::Display;
 use std::str::FromStr;
 
-use campfire_codec::{Json, JsonError};
+use campfire_codec::{Json, JsonError, JsonValue};
 use serde::de::{DeserializeOwned, Error};
 use serde::{Deserialize, Deserializer};
-use serde_json::Value;
 
 use crate::log_event::LogEvent;
 
@@ -14,7 +13,7 @@ use crate::log_event::LogEvent;
 pub struct LogLine {
     pub level: LogLevel,
     pub target: String,
-    pub fields: Value,
+    pub fields: JsonValue,
 }
 
 /// An event's level, as `tracing` names them.
@@ -37,8 +36,7 @@ impl LogLine {
     /// The event of type `E`, when the line has its message; an error when its fields do not
     /// read as `E`.
     pub fn read<E: LogEvent>(&self) -> Option<Result<E, JsonError>> {
-        (self.fields.get("message")?.as_str()? == E::MESSAGE)
-            .then(|| E::deserialize(&self.fields).map_err(JsonError::from))
+        (self.fields.text("message")? == E::MESSAGE).then(|| self.fields.read())
     }
 
     /// Reads a field that an event logs with `%`, as its `Display` writes it, back through

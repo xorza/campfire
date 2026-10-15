@@ -2295,6 +2295,7 @@ dependencies = [
  "campfire-actions",
  "campfire-areas",
  "campfire-capabilities",
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
  "campfire-items",
@@ -2304,6 +2305,7 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-progression",
  "campfire-projectiles",
@@ -2322,10 +2324,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-client-files"
+version = "0.1.0"
+dependencies = [
+ "bevy_math",
+ "campfire-client-files",
+ "campfire-codec",
+ "campfire-math",
+ "campfire-sim",
+ "campfire-values",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "campfire-codec"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "campfire-codec",
  "postcard",
  "serde",
  "serde_json",
@@ -2406,7 +2423,6 @@ dependencies = [
  "campfire-geometry",
  "campfire-math",
  "campfire-sim",
- "campfire-values",
  "criterion 0.8.2",
  "serde",
  "thiserror 2.0.21",
@@ -2423,6 +2439,7 @@ dependencies = [
  "campfire-actions",
  "campfire-areas",
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
@@ -2435,6 +2452,7 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-production",
  "campfire-progression",
@@ -2455,6 +2473,7 @@ dependencies = [
  "criterion 0.8.2",
  "lightyear",
  "secp256k1",
+ "toml",
 ]
 
 [[package]]
@@ -2462,13 +2481,15 @@ name = "campfire-import"
 version = "0.1.0"
 dependencies = [
  "bevy_math",
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
+ "campfire-geometry",
  "campfire-import",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
- "campfire-package",
+ "campfire-package-disk",
  "campfire-sim",
  "campfire-store",
  "campfire-values",
@@ -2506,6 +2527,7 @@ dependencies = [
  "campfire-actions",
  "campfire-common",
  "campfire-declare",
+ "campfire-geometry",
  "campfire-items",
  "campfire-math",
  "campfire-players",
@@ -2516,6 +2538,7 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2533,7 +2556,6 @@ dependencies = [
  "clap",
  "derive_more",
  "serde",
- "serde_json",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -2548,7 +2570,6 @@ dependencies = [
  "campfire-store",
  "clap",
  "serde",
- "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2634,29 +2655,25 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
- "campfire-items",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
- "campfire-navigation",
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
- "campfire-production",
  "campfire-progression",
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
  "campfire-sim",
  "campfire-state-types",
- "campfire-stats",
  "campfire-store",
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
  "campfire-vision",
- "getrandom 0.3.4",
  "lightyear",
  "lightyear_serde",
  "secp256k1",
@@ -2695,7 +2712,6 @@ dependencies = [
 name = "campfire-package"
 version = "0.1.0"
 dependencies = [
- "bevy_math",
  "campfire-actions",
  "campfire-capabilities",
  "campfire-codec",
@@ -2713,7 +2729,6 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "campfire-stats",
- "campfire-store",
  "campfire-units",
  "campfire-values",
  "derive_more",
@@ -2724,6 +2739,22 @@ dependencies = [
  "thiserror 2.0.21",
  "toml",
  "unic-langid",
+]
+
+[[package]]
+name = "campfire-package-disk"
+version = "0.1.0"
+dependencies = [
+ "campfire-codec",
+ "campfire-common",
+ "campfire-package",
+ "campfire-package-disk",
+ "campfire-store",
+ "campfire-values",
+ "serde",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
@@ -2820,6 +2851,7 @@ dependencies = [
  "campfire-store",
  "criterion 0.8.2",
  "derive_more",
+ "getrandom 0.3.4",
  "nostr",
  "postcard",
  "secp256k1",
@@ -2870,6 +2902,7 @@ dependencies = [
  "campfire-log",
  "campfire-mode",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-protocol",
  "campfire-runner",
@@ -2889,6 +2922,7 @@ name = "campfire-schedule"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-schedule",
 ]
 
 [[package]]
@@ -2922,6 +2956,7 @@ dependencies = [
  "campfire-log",
  "campfire-net",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
@@ -3040,6 +3075,7 @@ dependencies = [
  "campfire-common",
  "campfire-log",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
@@ -3087,13 +3123,14 @@ dependencies = [
 name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
  "campfire-harness",
  "campfire-import",
  "campfire-log",
- "campfire-mode",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-runner",
  "campfire-store",
  "campfire-values",

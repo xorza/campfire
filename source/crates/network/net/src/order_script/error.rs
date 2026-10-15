@@ -12,9 +12,15 @@ pub enum OrderScriptError {
     /// The order at `tick` comes after an order at a later tick.
     #[error("the order at tick {tick} comes after a later one")]
     Unordered { tick: u64 },
-    /// The order at `tick` names no action, or more than one.
-    #[error("the order at tick {tick} names no action or more than one")]
-    Action { tick: u64 },
+    /// The order at `tick` names no action.
+    #[error("the order at tick {tick} names no action")]
+    NoAction { tick: u64 },
+    /// The order at `tick` names more than one action.
+    #[error("the order at tick {tick} names more than one action")]
+    ManyActions { tick: u64 },
+    /// The order at `tick` names a target, which only a cast takes, and no cast.
+    #[error("the order at tick {tick} names a target and no cast")]
+    StrayTarget { tick: u64 },
     /// The script ends at `end`, before its last order.
     #[error("the script ends at tick {end}, before its last order")]
     EndsEarly { end: u64 },

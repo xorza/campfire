@@ -5,8 +5,9 @@ use campfire_sim::{IdAllocator, Position};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::bench::COUNT;
-use crate::body_grid::{BodyGrid, Placed};
+use crate::body_grid::{BodyGrid, Indexed};
 use crate::kernel_scene::{Density, KernelScene};
+use crate::placed::Placed;
 
 /// `BodyGrid` over the crowded scene's `KernelScene::UNITS` bodies of 0.2 to 1.19 m, as a stage
 /// finds the units near a point: its build, `rebuild`, its throughput the bodies; and
@@ -15,14 +16,13 @@ use crate::kernel_scene::{Density, KernelScene};
 pub(crate) fn body_grid(c: &mut Criterion) {
     let span = Density::Crowded.span();
     let mut ids = IdAllocator::default();
-    let bodies: Vec<Placed<()>> = KernelScene::new(9)
+    let bodies: Vec<Indexed<()>> = KernelScene::new(9)
         .bodies(KernelScene::UNITS, span, 1, false)
         .iter()
-        .map(|body| Placed {
+        .map(|body| Indexed {
             id: ids.allocate(),
             key: (),
-            pos: Position::new(body.point).unwrap(),
-            shape: body.shape,
+            body: Placed::new(Position::new(body.point).unwrap(), body.shape),
         })
         .collect();
     let mut points = KernelScene::new(21);

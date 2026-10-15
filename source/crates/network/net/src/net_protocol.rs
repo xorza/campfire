@@ -170,55 +170,110 @@ impl SendingWays for Replicated<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+
     use bevy_app::TaskPoolPlugin;
     use bevy_state::app::StatesPlugin;
     use bevy_time::TimePlugin;
-    use campfire_items::Inventory;
-    use campfire_navigation::Route;
-    use campfire_progression::Points;
-    use campfire_sim::{Capability, Position};
-    use campfire_stats::Level;
-    use campfire_units::{Dead, Destination};
     use lightyear::prelude::ComponentRegistry;
     use lightyear::prelude::server::ServerPlugins;
 
     use super::*;
 
+    /// Whether `registry` registers each type the lists of a set send, by name.
+    #[derive(Debug)]
+    struct Registered<'a> {
+        registry: &'a ComponentRegistry,
+        types: BTreeMap<&'static str, bool>,
+    }
+
+    impl Registered<'_> {
+        fn of(registry: &ComponentRegistry, set: CapabilitySet) -> BTreeMap<&'static str, bool> {
+            let mut registered = Registered {
+                registry,
+                types: BTreeMap::new(),
+            };
+            Release::state_types(set, &mut registered);
+            registered.types
+        }
+
+        fn add<C: Replication>(&mut self) {
+            let held = self.registry.is_registered::<C>();
+            self.types.insert(C::NAME, held);
+        }
+    }
+
+    impl StateTypes for Registered<'_> {
+        fn component<C: Replication>(&mut self) {
+            <C::Sending as Sending<C>>::visit(self);
+        }
+
+        fn sim_component<C: Replication>(&mut self) {
+            self.component::<C>();
+        }
+
+        fn derived<C: Component>(&mut self) {}
+
+        fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+            self.add::<C>();
+        }
+
+        fn resource<R: SimResource + Default>(&mut self) {}
+    }
+
+    impl SendingWays for Registered<'_> {
+        fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+            self.add::<C>();
+        }
+
+        fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+            self.add::<C>();
+        }
+
+        fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
+            self.add::<C>();
+        }
+
+        fn predicted<
+            C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug,
+        >(
+            &mut self,
+            _: Declared,
+        ) {
+            self.add::<C>();
+        }
+
+        fn server<C: Replication>(&mut self, _: Declared) {}
+    }
+
+    /// A server's app with the protocol of the capabilities `set`.
+    fn app_of(set: CapabilitySet) -> App {
+        let mut app = App::new();
+        app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
+        app.add_plugins(ServerPlugins {
+            tick_duration: Duration::from_millis(50),
+        });
+        app.add_plugins(NetProtocol { capabilities: set });
+        app
+    }
+
     #[test]
     fn a_capability_the_mode_lacks_registers_no_component() {
-        // Of each list: the core's, a unit's place, its death and where it walks, stats',
-        // navigation's, progression's, items'.
-        let registered = |declared: &[Capability]| {
-            let mut app = App::new();
-            app.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
-            app.add_plugins(ServerPlugins {
-                tick_duration: Duration::from_millis(50),
-            });
-            app.add_plugins(NetProtocol {
-                capabilities: Release::capability_set(declared).unwrap(),
-            });
-            let registry = app.world().resource::<ComponentRegistry>();
-            [
-                registry.is_registered::<Position>(),
-                registry.is_registered::<Level>(),
-                registry.is_registered::<Dead>(),
-                registry.is_registered::<Destination>(),
-                registry.is_registered::<Route>(),
-                registry.is_registered::<Points>(),
-                registry.is_registered::<Inventory>(),
-            ]
-        };
-        assert_eq!(
-            registered(&[]),
-            [true, false, true, true, false, false, false]
-        );
-        let declared = [
-            Capability::Stats,
-            Capability::Combat,
-            Capability::Navigation,
-            Capability::Progression,
-            Capability::Items,
-        ];
-        assert_eq!(registered(&declared), [true; 7]);
+        // A mode of no capability registers each type the core's lists send, and none of
+        // another list's; one of every capability registers every type each list sends.
+        let core = Release::capability_set(&[]).unwrap();
+        let none = app_of(core);
+        let registry = none.world().resource::<ComponentRegistry>();
+        let own = Registered::of(registry, core);
+        assert!(!own.is_empty() && own.values().all(|&held| held));
+        let every = Registered::of(registry, Release::capabilities());
+        assert!(every.len() > own.len());
+        for (name, held) in every {
+            assert_eq!(held, own.contains_key(name), "{name}");
+        }
+        let all = app_of(Release::capabilities());
+        let registry = all.world().resource::<ComponentRegistry>();
+        let every = Registered::of(registry, Release::capabilities());
+        assert!(every.values().all(|&held| held));
     }
 }

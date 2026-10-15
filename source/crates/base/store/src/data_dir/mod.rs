@@ -2,12 +2,13 @@ use std::fs::{File, TryLockError};
 use std::path::{Path, PathBuf};
 
 use crate::data_dir::error::DataDirError;
+use crate::durable_dir::DurableDir;
 use crate::path_error::PathError;
 use crate::platform::owner_only::OwnerOnly;
 
 pub(crate) mod error;
 
-/// A data directory, held locked: made when missing, its owner's only, and locked by the
+/// A data directory, held locked: made durably when missing, its owner's only, and locked by the
 /// exclusive lock on its `lock` file until dropped, so a second holder is refused. One others may
 /// open is refused, as Tor refuses its `DataDirectory`: who may write it may remove a secret in
 /// it, which its owner then makes new, or replace its other files. A data
@@ -27,7 +28,7 @@ impl DataDir {
     }
 
     fn open_case(path: &Path) -> Result<DataDir, DataDirError> {
-        OwnerOnly::create_dir_all(path).map_err(DataDirError::Create)?;
+        DurableDir::create_all(path).map_err(DataDirError::Create)?;
         if let Some(exposure) = OwnerOnly::dir_exposure(path).map_err(DataDirError::Inspect)? {
             return Err(DataDirError::Exposed(exposure));
         }

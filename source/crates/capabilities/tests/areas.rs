@@ -12,9 +12,10 @@ use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::{ModifierData, Stats};
-use campfire_units::{DeliveryEntity, UnitTypeBook, UnitTypeCore, Units};
+use campfire_units::{UnitTypeBook, UnitTypeCore, Units};
 use campfire_values::{
-    DeclaredName, EngineTag, Number, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
+    DeclaredName, EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet,
+    Team, TypeScope,
 };
 
 #[test]
@@ -29,7 +30,7 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     );
     assert_eq!(Filter::of_release_relations(RelationSet::All), parse("all"));
     let units = [
-        TagSet::default(),
+        TagSet::NONE,
         TagSet::from([projectile]),
         TagSet::from([area]),
     ];
@@ -80,21 +81,21 @@ fn an_area_is_state_and_restores() {
             affects: None,
             inside: AreaInsideData::default(),
         };
-        Areas::load_type(game, field, 0, &area);
+        Areas::load_type(game, field, PackageIndex::MODE, &area);
         let action = Actions::add_train(game, field, Ticks::ZERO, None);
         let ward = DeclaredName::new("ward").unwrap();
         let rally = ModifierData {
             shield: Some(Number::Param(ParamRef { param: ward })),
             ..ModifierData::default()
         };
-        Stats::load_modifier(game, 0, "rally", &rally, None);
+        Stats::load_modifier(game, PackageIndex::MODE, "rally", &rally, None);
         let warding = Units::load_type(game, TypeScope::Mode, "warding", &data);
         let inside = AreaInsideData {
             allies: Some(DeclaredName::new("rally").unwrap()),
             ..AreaInsideData::default()
         };
         let area = AreaData { inside, ..area };
-        Areas::load_type(game, warding, 0, &area);
+        Areas::load_type(game, warding, PackageIndex::MODE, &area);
         let source = Units::load_type(game, TypeScope::Mode, "source", &data);
         (field, action, warding, source)
     };
@@ -138,7 +139,7 @@ fn an_area_is_state_and_restores() {
     assert!(!area.check(&game, entity));
     // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
     // would fail as an ally takes it.
-    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, DeliveryEntity);
+    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, ());
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));

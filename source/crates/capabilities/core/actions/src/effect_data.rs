@@ -228,6 +228,14 @@ impl DoesData {
     }
 }
 
+impl EffectData {
+    /// The keys of an effect's table the release runs: each effect's that runs, and `to`, where
+    /// it goes; the planned effects' are `PlannedEffect`'s.
+    pub const KEYS: [&'static str; 10] = [
+        "damage", "heal", "restore", "modifier", "xp", "purge", "launch", "move", "spawn", "to",
+    ];
+}
+
 impl PlannedEffect {
     /// The effect's key in data.
     pub const fn name(self) -> &'static str {
@@ -302,4 +310,29 @@ impl<'de> Deserialize<'de> for EffectData {
 
 impl DataSection for EffectData {
     const TABLE: DataTable = DataTable::Effect;
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use crate::effect_data::EffectData;
+
+    #[test]
+    fn each_key_the_release_runs_is_one_an_effect_reads() {
+        // An empty table under a key the effect reads lacks that effect's fields, or is no
+        // effect at all for `to`; under any other key, it is an unknown field.
+        let refusal = |key: &str| {
+            let text = format!("{key} = {{}}");
+            Toml::parse::<EffectData>(&text)
+                .unwrap_err()
+                .message()
+                .to_owned()
+        };
+        for key in EffectData::KEYS {
+            let message = refusal(key);
+            assert!(!message.contains("unknown field"), "{key}: {message}");
+        }
+        assert!(refusal("bogus").contains("unknown field"));
+    }
 }

@@ -1,14 +1,14 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, Delivery, DeliveryShape};
-use campfire_declare::Callbacks;
+use campfire_actions::{ActionTarget, DeliveryShape};
+use campfire_declare::{CallbackTable, Callbacks};
 use campfire_sim::{Capability, Position};
 
-use crate::delivering::Delivering;
+use crate::delivering::Launcher;
 
-/// How a delivery of a shape sets out: the delivery of `by`, which aimed at the target from the
-/// point, as `Delivery` gives it.
-pub(crate) type Deliver = fn(&mut World, Delivering, Position, Delivery, ActionTarget);
+/// How a delivery of a shape sets out: the launcher's delivery, which aimed at the target from the
+/// point.
+pub(crate) type Deliver = fn(&mut World, Launcher, Position, ActionTarget);
 
 campfire_common::enum_all! {
     /// A kind of delivery that sets out: a key of `Deliverers`.
@@ -23,7 +23,7 @@ campfire_common::enum_all! {
 /// How each kind of delivery sets out, which the capability of the kind declares, so a cast that
 /// delivers names no capability's units.
 #[derive(Resource, Debug, Default)]
-pub struct Deliverers([Option<Deliver>; DeliveryKind::ALL.len()]);
+pub struct Deliverers(CallbackTable<Deliver, { DeliveryKind::ALL.len() }>);
 
 impl Callbacks for Deliverers {
     type Key = DeliveryKind;
@@ -37,9 +37,7 @@ impl Callbacks for Deliverers {
     }
 
     fn register(&mut self, kind: DeliveryKind, deliver: Deliver) {
-        let slot = &mut self.0[kind as usize];
-        assert!(slot.is_none(), "{kind:?} registers how it sets out once");
-        *slot = Some(deliver);
+        self.0.register(kind as usize, deliver);
     }
 }
 
@@ -50,7 +48,8 @@ impl Deliverers {
             DeliveryShape::Projectile { .. } => DeliveryKind::Projectile,
             DeliveryShape::Area => DeliveryKind::Area,
         };
-        self.0[kind as usize]
+        self.0
+            .get(kind as usize)
             .expect("the load refuses a delivery of a capability the match does not have")
     }
 }

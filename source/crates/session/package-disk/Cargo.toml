@@ -1,0 +1,34 @@
+[package]
+name = "campfire-package-disk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-codec/internals",
+    "campfire-common/internals",
+    "campfire-package/internals",
+    "campfire-store/internals",
+    "campfire-values/internals",
+    "dep:campfire-codec",
+    "dep:toml",
+]
+
+[dependencies]
+campfire-codec = { workspace = true, optional = true }
+campfire-common.workspace = true
+campfire-package.workspace = true
+campfire-store.workspace = true
+campfire-values.workspace = true
+
+thiserror.workspace = true
+toml = { workspace = true, optional = true }
+
+[dev-dependencies]
+campfire-package-disk = { workspace = true, features = ["internals"] }
+serde.workspace = true
+sha2.workspace = true
+
+[lints]
+workspace = true

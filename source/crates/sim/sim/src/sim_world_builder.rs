@@ -111,15 +111,8 @@ impl<'w> SimWorldBuilder<'w> {
     }
 
     /// Builds the tick's schedule, so an error in its order shows here and not at the first
-    /// tick, and puts it and the state registry in the world.
+    /// tick, naming its systems, and puts it and the state registry in the world.
     pub fn build(self) {
-        self.finish()
-            .unwrap_or_else(|problem| panic!("the installs order the tick's systems: {problem}"));
-    }
-
-    /// Builds the tick's schedule, then puts it and the registry in the world; the build's
-    /// error, which names its systems, when the installs order the systems wrong.
-    fn finish(self) -> Result<(), String> {
         let SimWorldBuilder {
             world,
             mut schedule,
@@ -127,11 +120,12 @@ impl<'w> SimWorldBuilder<'w> {
             unbuilt,
         } = self;
         unbuilt.defuse();
-        let built = schedule.initialize(world).map(drop);
-        let built = built.map_err(|error| error.to_string(schedule.graph(), world));
+        if let Err(error) = schedule.initialize(world) {
+            let problem = error.to_string(schedule.graph(), world);
+            panic!("the installs order the tick's systems: {problem}");
+        }
         world.add_schedule(schedule);
         world.insert_resource(registry);
-        built
     }
 }
 

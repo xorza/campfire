@@ -18,8 +18,8 @@ use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
-use campfire_protocol::{PlayerInput, SignedReceipt};
-use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
+use campfire_protocol::{PlayerInput, SignedReceipt, Signer, Verifier};
+use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
 use campfire_units::{Dead, Owner, PlayerUnits, UnitsWorld};
@@ -28,11 +28,11 @@ use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
 use lightyear::prelude::{
-    Client, Connect, Link, LinkMtu, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
-    UnlinkReason, Unlinked, is_in_rollback,
+    Client, Connect, LocalTimeline, MessageReceiver, MessageSender, Predicted, PredictionManager,
+    Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline, UnlinkReason, Unlinked,
+    is_in_rollback,
 };
-use secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use secp256k1::Keypair;
 use tracing::info;
 
 use crate::bot_script::BotScript;
@@ -50,6 +50,7 @@ use crate::events::receipt_refused::ReceiptRefused;
 use crate::events::session_refused::SessionRefused;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
+use crate::hosting::Hosting;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::{Join, JoinRole};
@@ -62,10 +63,10 @@ use crate::os::Os;
 use crate::save_command::SaveCommand;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
+use crate::sim_client::player_signer::PlayerSigner;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 use crate::watch_teams::WatchTeams;
 
@@ -73,10 +74,10 @@ pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod client_layout;
 pub(crate) mod join_state;
+pub(crate) mod player_signer;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
-pub(crate) mod signer;
 pub(crate) mod sim_client_world;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
@@ -97,9 +98,8 @@ pub struct SimClient {
     pub server: ServerPin,
     /// Whether the player plays a slot or watches.
     pub role: JoinRole,
-    /// Whether the server runs on a thread of the client's process, the only one that loads a
-    /// save.
-    pub local: bool,
+    /// Where the server runs.
+    pub hosting: Hosting,
     /// The packages of the mode it plays, which must run at the server's rate: `check`.
     pub packages: Arc<ModePackages>,
     /// Its clock, at which the delegation is made, and so expires, and its random bytes.
@@ -107,16 +107,6 @@ pub struct SimClient {
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
     pub data: Option<Arc<ClientDir>>,
-}
-
-/// The context that checks receipts' signatures.
-#[derive(Debug)]
-struct Verifier(Secp256k1<VerifyOnly>);
-
-impl Default for Verifier {
-    fn default() -> Verifier {
-        Verifier(Secp256k1::verification_only())
-    }
 }
 
 /// The player's wish to leave the match: the client tells the server once, and then tries its
@@ -177,12 +167,7 @@ impl SimClient {
     /// links it (design 15, D5).
     pub fn spawn(world: &mut World) -> Entity {
         world
-            .spawn((
-                Client,
-                RawClient,
-                ReplicationReceiver,
-                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
-            ))
+            .spawn((Client, RawClient, ReplicationReceiver, QuicEndpoint::link()))
             .id()
     }
 }
@@ -216,12 +201,13 @@ impl Plugin for SimClient {
         );
         packages.books(rate).install_prediction(world);
         mark_unpredicted(world);
-        world.insert_resource(Signer::new(self.session_key, self.os.entropy));
+        world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
+        world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
             main_key: self.main_key,
             server: self.server,
             role: self.role,
-            local: self.local,
+            hosting: self.hosting,
             rules: SessionRules::of(packages),
             clock: self.os.clock.clone(),
         }));
@@ -289,7 +275,7 @@ type Answering = (
 fn answer_offer(
     mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
     mut sender: Single<'_, '_, Answering, With<Client>>,
-    mut signer: ResMut<'_, Signer>,
+    mut signer: ResMut<'_, PlayerSigner>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -299,11 +285,12 @@ fn answer_offer(
             let session = offer.terms.session_id();
             let LinkBinding(binding) =
                 binding.expect("a client that receives an offer holds its link's binding");
-            match state.answer(&offer, binding, &mut signer) {
+            match state.answer(&offer, binding, &mut signer.0) {
                 None => {}
                 Some(Ok(join)) => {
-                    let visibility = SessionRules::visibility_of(&offer.terms)
-                        .expect("terms the client answers carry a visibility that reads");
+                    let visibility = state
+                        .visibility()
+                        .expect("a client that answered holds its session's visibility");
                     commands.insert_resource(visibility.out());
                     sender.send::<JoinChannel>(join);
                     info!(%session, "joined the offered session");
@@ -371,7 +358,7 @@ fn lose_link(
     unlinked: On<'_, '_, Insert, Unlinked>,
     clients: Query<'_, '_, (&Unlinked, Option<&LinkEnd>), With<Client>>,
     time: Res<'_, Time<Real>>,
-    signer: Res<'_, Signer>,
+    os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
     mut pending: ResMut<'_, PendingOrders>,
@@ -383,7 +370,7 @@ fn lose_link(
         return;
     }
     let cause = LinkLossCause::of(end);
-    match state.lose(time.elapsed(), signer.random()) {
+    match state.lose(time.elapsed(), os.entropy.random()) {
         LinkLoss::Rejoining => {
             info!(?cause, "the link to the server failed; trying again");
             sent.clear();
@@ -404,11 +391,8 @@ fn receive_receipt(
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(error) = state.take_receipt(&receipt, &verifier.0) {
-                ReceiptRefused {
-                    reason: ErrorReport::of(&error).to_string(),
-                }
-                .log();
+            if let Err(refusal) = state.take_receipt(&receipt, &verifier) {
+                ReceiptRefused { refusal }.log();
                 continue;
             }
             if let Some(writer) = &writer {
@@ -514,7 +498,7 @@ fn send_leave(
 fn retry_link(
     client: Single<'_, '_, (Entity, Has<Unlinked>), With<Client>>,
     time: Res<'_, Time<Real>>,
-    signer: Res<'_, Signer>,
+    os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -522,7 +506,7 @@ fn retry_link(
     if !state.rejoining() || !unlinked {
         return;
     }
-    match state.retry(time.elapsed(), signer.random()) {
+    match state.retry(time.elapsed(), os.entropy.random()) {
         Retry::Wait => {}
         Retry::Connect => {
             info!("connecting to the server again");
@@ -613,7 +597,7 @@ fn send_orders(
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
     players: PlayerUnits<'_, '_>,
-    signer: Res<'_, Signer>,
+    signer: Res<'_, PlayerSigner>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
@@ -634,7 +618,7 @@ fn send_orders(
     let server = remote
         .last_received_tick()
         .and_then(|tick| playing.clock.sim_tick(tick));
-    let lead = playing.member.session.max_input_lead;
+    let lead = playing.member.session.inputs.max_lead;
     if server.is_some_and(|server| stamp.since(server).is_some_and(|ahead| ahead > lead)) {
         return;
     }
@@ -654,13 +638,13 @@ fn send_orders(
     }
     let session = playing.member.session;
     let first = sent.len();
-    let stamped = pending.0.len().min(session.max_inputs as usize);
+    let stamped = pending.0.len().min(session.inputs.max_per_tick as usize);
     for pending in pending.0.drain(..stamped) {
         let seq =
             playing.chain.next_seq() + u64::try_from(sent.len() - first).expect("a count fits");
         match pending {
             Pending::Order(order) => {
-                let kept = sent.push(seq, stamp, session.max_payload_len, |body, out| {
+                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
                     order.write_payload(body, out);
                 });
                 if !kept {
@@ -674,8 +658,8 @@ fn send_orders(
                 }
             }
             Pending::Input(input) => {
-                let kept = sent.push(seq, stamp, session.max_payload_len, |_, out| {
-                    input.write_payload(out);
+                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
+                    input.write_payload(body, out);
                 });
                 if !kept {
                     InputDropped { name: input.name }.log();
@@ -703,7 +687,7 @@ fn send_orders(
         stamp,
         payload,
     });
-    let signature = signer.sign(&playing.chain, session.id);
+    let signature = playing.chain.sign(&signer.0, session.id);
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
 }
 

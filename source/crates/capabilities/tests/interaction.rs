@@ -18,7 +18,9 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimWorld, StableId};
 use campfire_stats::Stats;
 use campfire_units::{Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Block, FilterData, Number, PackagePath, Ranked, Scalar, Team};
+use campfire_values::{
+    ActionId, Block, FilterData, Number, PackageIndex, PackagePath, Ranked, Scalar, Team,
+};
 use campfire_values::{TypeScope, UnitType};
 
 /// The kind of every user's one use slot.
@@ -75,7 +77,7 @@ impl Objects {
         let script = Units::compile_hooked(&mut game, USE_SCRIPT).unwrap();
         let mut load = |name: &str, channel: Option<bool>| {
             let data = use_data(channel);
-            Actions::load(&mut game, 0, name, &data, Some(script), 1).unwrap()
+            Actions::load(&mut game, PackageIndex::MODE, name, &data, Some(script), 1).unwrap()
         };
         let (pray, draw, offer) = (
             load("pray", Some(true)),

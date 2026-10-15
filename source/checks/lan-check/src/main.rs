@@ -14,10 +14,11 @@
 //! bot started again sending each order of its script, late or not; each
 //! verifier gives its host's final hash; and the third bot exited with failure and logged why.
 //!
-//! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
-//! go into a new directory below the run root, named for the run's start. `cargo run -p
-//! campfire-lan-check -- verify <run directory>` verifies the session log of a run, perhaps from
-//! another machine, with this machine's verifier, and compares the server's final hash; with
+//! Run it with `./drive.py lan`, which builds it and the processes it starts, and gives it the
+//! run root `target/drive/lan-check`; each run's logs and session log go into a new directory
+//! below the run root, named for the run's start. `campfire-lan-check verify <run directory>`
+//! verifies the session log of a run, perhaps from another machine, with this machine's
+//! verifier, which the cargo in `CARGO` builds, and compares the server's final hash; with
 //! `--verifier <verifier>`, it runs that verifier and needs no cargo.
 
 use std::env;
@@ -31,7 +32,7 @@ use campfire_net::{
     ClientLayout, LinkLost, Listening, OrderScript, ServerLayout, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
-use campfire_store::{DurableFile, InputFile};
+use campfire_store::{DurableFile, InputFile, RunDir};
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -42,7 +43,6 @@ use crate::mode::Mode;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
-use crate::run_dir::RunDir;
 use crate::session_kind::SessionKind;
 use crate::verdict::{BotEvents, LoggedInput, Verdict};
 
@@ -55,7 +55,6 @@ mod process;
 mod process_group;
 mod process_log;
 mod process_outcome;
-mod run_dir;
 mod session_kind;
 mod target_name;
 mod verdict;
@@ -183,12 +182,16 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     verdict.orders(&published_inputs(dir, &server_again)?, &caught_up, &bots);
     let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
     verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
-    verify(&binaries.verifier, dir, SessionKind::Lan, &mut verdict)?;
+    let verifier = RunVerifier {
+        executable: &binaries.verifier,
+        dir,
+    };
+    verifier.verify(SessionKind::Lan, &mut verdict)?;
 
     let local = lan.play_local()?;
     let log = ProcessLog::read(Process::Local, &Process::Local.log_path(dir))?;
     verdict.process(Process::Local, local, &log);
-    verify(&binaries.verifier, dir, SessionKind::Local, &mut verdict)?;
+    verifier.verify(SessionKind::Local, &mut verdict)?;
     Ok(verdict)
 }
 
@@ -236,8 +239,12 @@ fn verify_run(dir: &Path, verifier: Option<PathBuf>) -> Result<Verdict, CheckErr
         None => build()?.verifier,
     };
     let mut verdict = Verdict::default();
+    let verifier = RunVerifier {
+        executable: &verifier,
+        dir,
+    };
     for session in [SessionKind::Lan, SessionKind::Local] {
-        verify(&verifier, dir, session, &mut verdict)?;
+        verifier.verify(session, &mut verdict)?;
     }
     Ok(verdict)
 }
@@ -248,41 +255,47 @@ fn build() -> Result<Binaries, CheckError> {
     Binaries::build(&cargo)
 }
 
-/// Checks that the host of `session` wrote the session log into `dir`, and that the verifier
-/// `executable` ends without failure or warning, at the host's final hash.
-fn verify(
-    executable: &Path,
-    dir: &Path,
-    session: SessionKind,
-    verdict: &mut Verdict,
-) -> Result<(), CheckError> {
-    let host = session.host();
-    let written = ProcessLog::read(host, &host.log_path(dir))?.first::<SessionWritten>()?;
-    let replayer = session.verifier();
-    let verified = match &written {
-        Some(written) => {
-            // The log in the run's directory: `written.file` is a path on the machine that played
-            // the run, in that system's syntax, which another may not read.
-            let file = host_layout(dir, session).published_log(written.session);
-            let path = replayer.log_path(dir);
-            let status = Command::new(executable)
-                .arg(Path::new(PACKAGES_DIR).join(PACKAGES))
-                .arg(file)
-                .current_dir(dir)
-                .env("CAMPFIRE_LOG", &path)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map_err(|error| CheckError::Start {
-                    process: replayer,
-                    error,
-                })?;
-            let log = ProcessLog::read(replayer, &path)?;
-            verdict.process(replayer, ProcessOutcome::of(status), &log);
-            log.first::<Verified>()?
-        }
-        None => None,
-    };
-    verdict.hash(session, written.as_ref(), verified.as_ref());
-    Ok(())
+/// The verifier `executable`, which checks the logs of the run in `dir`.
+#[derive(Debug, Clone, Copy)]
+struct RunVerifier<'a> {
+    executable: &'a Path,
+    dir: &'a Path,
+}
+
+impl RunVerifier<'_> {
+    /// Checks that the host of `session` wrote the session log into the run's directory, and
+    /// that the verifier ends without failure or warning, at the host's final hash, into
+    /// `verdict`.
+    fn verify(self, session: SessionKind, verdict: &mut Verdict) -> Result<(), CheckError> {
+        let RunVerifier { executable, dir } = self;
+        let host = session.host();
+        let written = ProcessLog::read(host, &host.log_path(dir))?.first::<SessionWritten>()?;
+        let replayer = session.verifier();
+        let verified = match &written {
+            Some(written) => {
+                // The log in the run's directory: `written.file` is a path on the machine that
+                // played the run, in that system's syntax, which another may not read.
+                let file = host_layout(dir, session).published_log(written.session);
+                let path = replayer.log_path(dir);
+                let status = Command::new(executable)
+                    .arg(Path::new(PACKAGES_DIR).join(PACKAGES))
+                    .arg(file)
+                    .current_dir(dir)
+                    .env("CAMPFIRE_LOG", &path)
+                    .stdout(Stdio::null())
+                    .stderr(Stdio::null())
+                    .status()
+                    .map_err(|error| CheckError::Start {
+                        process: replayer,
+                        error,
+                    })?;
+                let log = ProcessLog::read(replayer, &path)?;
+                verdict.process(replayer, ProcessOutcome::of(status), &log);
+                log.first::<Verified>()?
+            }
+            None => None,
+        };
+        verdict.hash(session, written.as_ref(), verified.as_ref());
+        Ok(())
+    }
 }

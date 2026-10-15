@@ -8,25 +8,23 @@ license.workspace = true
 internals = [
     "campfire-actions/internals",
     "campfire-capabilities/internals",
+    "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
-    "campfire-items/internals",
     "campfire-log/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
-    "campfire-navigation/internals",
     "campfire-orders/internals",
+    "campfire-package-disk/internals",
     "campfire-package/internals",
     "campfire-players/internals",
-    "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-protocol/internals",
     "campfire-quic/internals",
     "campfire-runner/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
-    "campfire-stats/internals",
     "campfire-store/internals",
     "campfire-units/internals",
     "campfire-values/internals",
@@ -41,22 +39,20 @@ campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-items.workspace = true
 campfire-log.workspace = true
 campfire-math.workspace = true
 campfire-mode.workspace = true
-campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
+# Its tests read the workspace's test packages from disk.
+campfire-package-disk = { workspace = true, optional = true }
 campfire-players.workspace = true
-campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-protocol.workspace = true
 campfire-quic.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
-campfire-stats.workspace = true
 campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
@@ -68,13 +64,13 @@ bevy_ecs.workspace = true
 bevy_replicon.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
-getrandom.workspace = true
 lightyear.workspace = true
 lightyear_serde.workspace = true
 secp256k1.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+
 [dev-dependencies]
 campfire-net = { workspace = true, features = ["internals"] }
 

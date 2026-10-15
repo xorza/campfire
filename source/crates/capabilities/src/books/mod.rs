@@ -5,15 +5,15 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_declare::ByType;
-use campfire_mode::{ModeInputs, WalkCheck};
-use campfire_navigation::{MapProblem, Walker};
+use campfire_mode::ModeInputs;
+use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
-use campfire_units::{BodyForm, MapBook, UnitTypeBook};
-use campfire_values::{DamageKind, DeclaredName, Names, ResourceId, UnitType};
+use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
+use campfire_values::{DamageKind, DeclaredName, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;
-use crate::books::book_input::BookInput;
+use crate::books::book_input::{BookInput, BookPackage};
 use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
 use crate::release::Release;
@@ -50,8 +50,27 @@ impl Books {
         BookBuilder::new(input)?.build()
     }
 
+    /// The unit types of `packages`, the mode's then each dependency's, and the tags of the
+    /// match: the engine's, then `tag_names`, then those the types name, in the order their ids
+    /// follow; an error for a type its scope names already, or past the most types or tags a
+    /// match holds. The build's first step, and the tables a check of the packages resolves
+    /// their names by.
+    pub fn unit_types(
+        tag_names: &[DeclaredName],
+        packages: &[BookPackage<'_>],
+    ) -> Result<UnitTypeBook, TypesError> {
+        let mut types = UnitTypeBook::new(Release::engine_tags());
+        for name in tag_names {
+            types.declare(name.as_str())?;
+        }
+        for (index, package) in (0..).map(PackageIndex::new).zip(packages) {
+            BookBuilder::declare_types(&mut types, index, package)?;
+        }
+        Ok(types)
+    }
+
     /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as
-    /// `ModeMap::check_walkable` says, among its placed units of the types that do not walk.
+    /// `WalkCheck::run` says, among its placed units of the types that do not walk.
     pub fn check_walkable(&self) -> Result<(), MapProblem> {
         let standing = &self.inputs.units.unit_types;
         let walkers = self
@@ -63,7 +82,7 @@ impl Books {
             .get::<ByType<BodyForm>>()
             .expect("the bodies are built");
         let body_of = |unit_type| {
-            let stands = standing.iter().any(|setup| setup.unit_type == unit_type);
+            let stands = standing.contains(&unit_type);
             assert!(stands, "a placed unit's type stands");
             let walks = walkers.get(unit_type).is_some();
             bodies.get(unit_type).copied().filter(|_| !walks)
@@ -83,10 +102,12 @@ impl Books {
         let check = WalkCheck {
             ground,
             navigation,
+            cells: load.map.pathing,
             walkers: &load.walkers,
-            spawn_tags: &self.spawn_tags,
+            placed: &load.map.placed_bodies(body_of),
+            spawns: &load.map.spawn_points(&self.spawn_tags),
         };
-        load.map.check_walkable(check, body_of, name_of)
+        check.run(name_of)
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are

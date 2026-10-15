@@ -3,7 +3,7 @@
 //! and more from every structure and camp, so the heroes meet within a test's ticks.
 
 use campfire_package::ModePackages;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 
 /// The pick of each slot, the players' then the bots': a hero each, none twice, in tick 1, and
 /// the spells `haste` and `mend` in tick 2.

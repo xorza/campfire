@@ -9,12 +9,9 @@ use campfire_math::Num;
 use campfire_sim::{Position, StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::script_list::ScriptList;
+use crate::scripts::error::ApiError;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::living_unit::LivingUnit;
 use crate::scripts::view::target_index::{TargetIndex, TargetQuery};
@@ -150,8 +147,10 @@ impl View {
     /// Changes the column of type `C` by `write`, when one was added.
     /// The next read fills every row again, as the rows may derive from what `write` changes.
     pub fn column_mut<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
-        if let Some(column) = self.0.rows.borrow_mut().column_mut(true) {
+        let mut rows = self.0.rows.borrow_mut();
+        if let Some(column) = rows.column_mut() {
             write(column);
+            rows.refill_next();
         }
     }
 
@@ -165,7 +164,7 @@ impl View {
     /// Changes the rows of the column of type `C` by `write`, as a call's effect changes the
     /// units' parts too, which the next read finds changed.
     pub fn write_rows<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
-        if let Some(column) = self.0.rows.borrow_mut().column_mut(false) {
+        if let Some(column) = self.0.rows.borrow_mut().column_mut() {
             write(column);
         }
     }
@@ -249,8 +248,8 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<ScriptList> {
-        let radius = ApiError::radius(radius)?;
+    ) -> ScriptList {
+        debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
         let units = rows.units();
         let query = TargetQuery {
@@ -264,7 +263,7 @@ impl View {
         let found = targets.find(&rows, query, seen);
         let unit =
             |&index: &usize| ScriptValue::of(Unit::new(units[index].id, index, self.clone()));
-        Ok(found.iter().map(unit).collect())
+        found.iter().map(unit).collect()
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
@@ -277,8 +276,8 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<ScriptValue> {
-        let radius = ApiError::radius(radius)?;
+    ) -> ScriptValue {
+        debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
         let of = rows.units()[of.row_index()];
         let query = TargetQuery {
@@ -293,31 +292,16 @@ impl View {
         self.0
             .targets
             .borrow_mut()
-            .visit(&rows, query, seen, |body| {
-                let distance = metric.offset(of.pos, body.pos).length_squared_bits();
-                let candidate = (distance, body.id, body.key);
+            .visit(&rows, query, seen, |entry| {
+                let distance = metric.offset(of.pos, entry.body.pos).length_squared_bits();
+                let candidate = (distance, entry.id, entry.key);
                 if nearest.is_none_or(|best| candidate < best) {
                     nearest = Some(candidate);
                 }
             });
-        Ok(nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
+        nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
             ScriptValue::of(Unit::new(id, at, self.clone()))
-        }))
-    }
-
-    /// `ctx.find`.
-    pub fn register_queries(api: &mut ApiBuilder<'_>) {
-        let find = MemberSpec::call(
-            "find",
-            &[&["of", "pos", "radius", "filter"]],
-            "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
-        );
-        api.call(
-            find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
-                ctx.view().find(&of, pos, radius, &filter, |_, _| true)
-            },
-        );
+        })
     }
 }
 

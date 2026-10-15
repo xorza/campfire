@@ -9,12 +9,14 @@ use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
-use campfire_players::{PlayerResources, Players};
+use campfire_players::{Players, PlayersWorld};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
-use campfire_units::{Body, BodyForm, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore};
-use campfire_values::{Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
+use campfire_units::{
+    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
+};
+use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
 
 use crate::release::Release;
@@ -51,13 +53,18 @@ fn two_fields() -> Match {
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
     let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set));
 
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypeBook::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
         types
-            .load(TypeScope::Mode, 0, name, &UnitTypeCore::default())
+            .load(
+                TypeScope::Mode,
+                PackageIndex::MODE,
+                name,
+                &UnitTypeCore::default(),
+            )
             .unwrap()
     });
     world.insert_resource(types.tag_book(&BTreeMap::new()));
@@ -142,7 +149,8 @@ fn two_fields() -> Match {
     for _ in 0..30 {
         world.run_schedule(SimUpdate);
     }
-    let gold_in = PlayerResources::of_player(&world, PlayerSlot::new(0))
+    let gold_in = world
+        .player_resources(PlayerSlot::new(0))
         .unwrap()
         .amount(gold);
     assert_eq!(gold_in, 2 * NODES * 9 * 5, "the scene runs the loop");
@@ -172,7 +180,7 @@ fn spawn(world: &mut World, core: Core, pos: Position, parts: impl Bundle) -> St
         team,
         owner,
     };
-    core.spawn(world, parts);
+    core.spawn(world, BodyUnit, parts);
     id
 }
 

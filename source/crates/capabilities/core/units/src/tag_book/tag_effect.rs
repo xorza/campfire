@@ -1,0 +1,35 @@
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
+use campfire_values::{TagSet, UnitTags};
+
+use crate::tag_book::TagBook;
+
+/// Which modifiers take effect on one unit, by the tags each grants: one takes effect unless it
+/// grants a tag the unit is immune to, and none of `granting`, the tags that make immune.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TagEffect {
+    granting: TagSet,
+    immune: TagSet,
+}
+
+impl TagEffect {
+    /// The test on a unit immune to `immune`, where `granting` makes immune.
+    pub const fn new(granting: TagSet, immune: TagSet) -> TagEffect {
+        TagEffect { granting, immune }
+    }
+
+    /// Whether a modifier that grants `tags` takes effect on the unit.
+    pub const fn takes(self, tags: TagSet) -> bool {
+        !tags.meets(self.immune) || tags.meets(self.granting)
+    }
+
+    /// Which modifiers take effect on the unit of `entity`: every one in a match whose tag book
+    /// is empty, or on a unit with no tags.
+    pub fn of(world: &World, entity: Entity) -> TagEffect {
+        let granting = world.resource::<TagBook>().granting();
+        let immune = world
+            .get::<UnitTags>(entity)
+            .map_or_else(TagSet::default, |tags| tags.immune);
+        TagEffect::new(granting, immune)
+    }
+}

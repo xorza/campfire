@@ -23,6 +23,15 @@ pub enum LobbyError {
     Visibility(#[source] VisibilityError),
 }
 
+/// Why a server's new session does not open.
+#[derive(Debug, Error)]
+pub enum LobbyOpenError {
+    #[error(transparent)]
+    Lobby(#[from] LobbyError),
+    #[error(transparent)]
+    KeepFiles(#[from] KeepFilesError),
+}
+
 /// Why a lobby's session keeps no files.
 #[derive(Debug, Error)]
 pub enum KeepFilesError {

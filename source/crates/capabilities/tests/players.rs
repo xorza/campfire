@@ -26,10 +26,7 @@ fn a_match_with_no_mode_starts_with_its_entity_then_its_players_and_none_joins_o
             player.get::<PlayerModifiers>(),
             Some(&PlayerModifiers::default())
         );
-        assert_eq!(
-            PlayerResources::of_player(&game, slot),
-            Some(&PlayerResources::new(2))
-        );
+        assert_eq!(game.player_resources(slot), Some(&PlayerResources::new(2)));
     }
     assert_eq!(game.player_entity(PlayerSlot::new(2)), None);
 

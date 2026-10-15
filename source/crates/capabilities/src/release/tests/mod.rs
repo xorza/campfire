@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use std::path::Path;
 
 use Capability::{
-    Abilities, Combat, Items, Mode, Navigation, Orders, Production, Progression, Projectiles,
-    Stats, Vision,
+    Abilities, Combat, Hitboxes, Items, Mode, Navigation, Orders, Production, Progression,
+    Projectiles, Quests, Stats, Vision,
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
@@ -17,8 +17,8 @@ use campfire_players::PlayerResources;
 use campfire_script::{ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimUpdate, StateRegistry};
-use campfire_store::InputFile;
 use campfire_store::internals::SourceFiles;
+use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::{Player, UnitTypeCore};
 use campfire_values::Team;
 
@@ -44,6 +44,9 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             },
         ),
         (&[Combat, Vision, Combat], CapabilityError::Repeated(Combat)),
+        // A capability the design plans, of no module this release builds.
+        (&[Stats, Quests], CapabilityError::NotBuilt(Quests)),
+        (&[Hitboxes], CapabilityError::NotBuilt(Hitboxes)),
         (
             &[Projectiles],
             CapabilityError::Needs {
@@ -204,29 +207,29 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 /// depends only on crates of lower layers, and a capability needs only capabilities of lower
 /// layers, as design 02's structural rules ask. This crate sits above them all.
 const LAYERS: [(&str, u8); 23] = [
+    ("core/geometry", 0),
     ("core/state-types", 0),
     ("core/values", 1),
     ("core/visibility", 1),
-    ("core/geometry", 2),
-    ("core/script", 3),
-    ("core/declare", 4),
-    ("core/units", 5),
-    ("core/players", 6),
-    ("stats", 7),
-    ("core/actions", 8),
-    ("combat", 9),
-    ("core/deliveries", 9),
-    ("interaction", 9),
-    ("items", 9),
-    ("progression", 9),
-    ("abilities", 10),
-    ("areas", 10),
-    ("navigation", 10),
-    ("projectiles", 10),
-    ("vision", 10),
-    ("production", 11),
-    ("mode", 12),
-    ("orders", 12),
+    ("core/script", 2),
+    ("core/declare", 3),
+    ("core/units", 4),
+    ("core/players", 5),
+    ("stats", 6),
+    ("vision", 6),
+    ("core/actions", 7),
+    ("combat", 8),
+    ("core/deliveries", 8),
+    ("interaction", 8),
+    ("items", 8),
+    ("progression", 8),
+    ("abilities", 9),
+    ("areas", 9),
+    ("navigation", 9),
+    ("projectiles", 9),
+    ("production", 10),
+    ("mode", 11),
+    ("orders", 11),
 ];
 
 /// The layer of the capability crate `name`, by the last part of its folder.
@@ -259,28 +262,43 @@ fn layered_dependencies(folder: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_capability_crate_depends_only_on_lower_layers() {
-    let mut edges = Vec::new();
-    for (folder, own) in LAYERS {
-        for name in layered_dependencies(folder) {
-            let layer = layer(&name).expect("a layered dependency");
-            edges.push((folder, name, layer >= own));
+fn each_capability_crate_is_listed_one_layer_above_its_highest_dependency() {
+    // Every crate under this one, a folder with a manifest, has its layer, and each layer is
+    // one above its highest dependency's, 0 for none: so no crate depends on one of its own
+    // layer or above, and no layer is higher than its dependencies make it.
+    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let mut crates = Vec::new();
+    for parent in ["", "core/"] {
+        for entry in DirEntries::read(&root.join(parent)).unwrap() {
+            let folder = format!("{parent}{}", entry.name.to_str().unwrap());
+            let manifest = root.join(&folder).join("Cargo.toml");
+            if entry.kind == EntryKind::Dir
+                && InputFile::read_if_present(&manifest, MANIFEST_LEN)
+                    .unwrap()
+                    .is_some()
+            {
+                crates.push(folder);
+            }
         }
     }
-    assert!(
-        edges
-            .iter()
-            .any(|(from, to, _)| *from == "mode" && to == "stats")
-    );
-    let not_lower: Vec<_> = edges
-        .into_iter()
-        .filter_map(|(from, to, not_lower)| not_lower.then_some((from, to)))
+    crates.sort_unstable();
+    let mut listed: Vec<&str> = LAYERS.iter().map(|&(folder, _)| folder).collect();
+    listed.sort_unstable();
+    assert_eq!(crates, listed);
+    assert!(layered_dependencies("mode").contains(&"stats".to_owned()));
+    let misplaced: Vec<String> = LAYERS
+        .iter()
+        .filter_map(|&(folder, own)| {
+            let derived = layered_dependencies(folder)
+                .iter()
+                .map(|name| layer(name).expect("a layered dependency") + 1)
+                .max()
+                .unwrap_or(0);
+            (derived != own)
+                .then(|| format!("{folder}: {own}, where its dependencies give {derived}"))
+        })
         .collect();
-    assert_eq!(
-        not_lower,
-        [],
-        "dependencies on the same layer or a higher one"
-    );
+    assert_eq!(misplaced, Vec::<String>::new());
 }
 
 /// Each capability of the release's list, with what it needs and what it uses.
@@ -422,23 +440,25 @@ fn no_module_names_another_modules_sets() {
 /// Every lookup by name that the production code calls, by file: a method or function whose
 /// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
 /// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
-/// types take them, or in the load, which resolves the packages' names once; but the one marked,
-/// which runs as a modifier applies. The test fails when a lookup appears and when one listed
-/// here is gone.
-const LOOKUPS: [(&str, &str); 34] = [
+/// types take them, or in the load, which resolves the packages' names once. The test fails when a
+/// lookup appears and when one listed here is gone.
+const LOOKUPS: [(&str, &str); 37] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "named"),
     ("books/unit_start/mod.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
+    ("mode/game_map.rs", "named"),
     ("mode/map_data.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
     ("mode/mode_names.rs", "named"),
     ("stats/modifier_book.rs", "named"),
+    ("stats/modifier_spec.rs", "named"),
+    ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
-    ("units/units/unit_type_book.rs", "named"),
+    ("units/unit_type_book.rs", "named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
@@ -450,10 +470,11 @@ const LOOKUPS: [(&str, &str); 34] = [
     // players' inputs.
     ("actions/slot_kind.rs", "named"),
     ("mode/choice_id.rs", "named"),
+    ("mode/marker_tag.rs", "named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
-    ("script/scripts/api_builder.rs", "named"),
     ("script/scripts/id_args.rs", "named"),
+    ("script/scripts/script_api/api_builder.rs", "named"),
     ("script/scripts/script_arg.rs", "named"),
     ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
@@ -464,9 +485,6 @@ const LOOKUPS: [(&str, &str); 34] = [
     ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
     ("values/name_table.rs", "named"),
-    // As a modifier applies: a param of the ability that applies it, by name, as the place
-    // differs by ability.
-    ("stats/param_book.rs", "named"),
 ];
 
 /// Each role a module's type may hold, by the trait it implements or, for a script API, by the

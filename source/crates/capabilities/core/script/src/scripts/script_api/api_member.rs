@@ -1,7 +1,7 @@
 use std::fmt::Write;
 
-use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::script_api::status::Status;
+use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::status::Status;
 
 /// A name of the script API: its spec, as every binding of it gives it, whether a script may
 /// write it, as `m.stacks`, and whether it runs.

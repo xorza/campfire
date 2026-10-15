@@ -11,6 +11,7 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod after_leave;
 #[cfg(feature = "internals")]
 mod alloc_audit;
 mod bytes32;
@@ -25,7 +26,9 @@ mod segment_seed;
 mod state_hash;
 mod tick;
 mod tls_key;
+mod version;
 
+pub use crate::after_leave::AfterLeave;
 pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
 pub use crate::channel_binding::ChannelBinding;
@@ -39,6 +42,8 @@ pub use crate::segment_seed::SegmentSeed;
 pub use crate::state_hash::StateHash;
 pub use crate::tick::{Tick, Ticks};
 pub use crate::tls_key::TlsKey;
+pub use crate::version::Version;
+pub use crate::version::error::NotVersion;
 
 #[cfg(feature = "internals")]
 pub mod internals {

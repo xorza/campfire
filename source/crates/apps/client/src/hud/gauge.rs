@@ -25,32 +25,47 @@ pub(crate) enum GaugeKind {
     Life { shown: Option<Num> },
     /// Another pool of the unit, in row `row` of the stack.
     Pool { pool: PoolId, row: u8 },
-    /// The cooldown of ability slot `slot`, in row `row`; `cooling` is the cooldown in view, once
-    /// one starts.
+    /// The cooldown of the ability slot at `at`, in row `row`; `cooling` is the cooldown in view,
+    /// once one starts.
     Cooldown {
-        slot: u8,
+        at: SlotPlace,
         row: u8,
         cooling: Option<Cooling>,
     },
-    /// Rank `rank`, from 1, of the `ranks` of ability slot `slot`, a tick in row `row` under its
-    /// cooldown: full once learned.
+    /// Rank `rank`, from 1, of the `ranks` of the ability slot at `at`, a tick in row `row` under
+    /// its cooldown: full once learned.
     Rank {
-        slot: u8,
+        at: SlotPlace,
         rank: u8,
         ranks: u8,
         row: u8,
     },
-    /// The mark over ability slot `slot`, in row `row`, shown while the unit may learn its next
-    /// rank.
-    Learnable { slot: u8, row: u8 },
-    /// Charge `charge`, from 1, of the `max` of ability slot `slot`, a tick in row `row` under its
-    /// cooldown: full while the slot holds it, filling while it comes back.
+    /// The mark over the ability slot at `at`, in row `row`, shown while the unit may learn its
+    /// next rank.
+    Learnable { at: SlotPlace, row: u8 },
+    /// Charge `charge`, from 1, of the `max` of the ability slot at `at`, a tick in row `row`
+    /// under its cooldown: full while the slot holds it, filling while it comes back.
     Charge {
-        slot: u8,
+        at: SlotPlace,
         charge: u8,
         max: u8,
         row: u8,
     },
+}
+
+/// An ability slot's place in the own avatar's row of slots: its index, and how many the row
+/// holds, which it centres on the stand.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SlotPlace {
+    pub(crate) slot: u8,
+    pub(crate) of: u16,
+}
+
+impl SlotPlace {
+    /// Its pip's center across the stand: the row of `of` pips, a step apart, centred.
+    fn across(self) -> f32 {
+        (f32::from(self.slot) - (f32::from(self.of) - 1.0) / 2.0) * PIP_STEP
+    }
 }
 
 /// A cooldown as the client saw it start: the tick the ability is ready again, and the tick the
@@ -91,7 +106,6 @@ impl GaugeKind {
     /// camera: x across, z down the stack.
     pub(crate) fn layout(self) -> Layout {
         let down = |row: u8| f32::from(row) * ROW;
-        let pip = |slot: u8| (f32::from(slot) - 1.5) * PIP_STEP;
         match self {
             GaugeKind::Life { .. } => Layout {
                 width: WIDE,
@@ -103,26 +117,26 @@ impl GaugeKind {
                 thickness: THICKNESS,
                 center: Vec3::new(0.0, 0.0, down(row)),
             },
-            GaugeKind::Cooldown { slot, row, .. } => Layout {
+            GaugeKind::Cooldown { at, row, .. } => Layout {
                 width: PIP,
                 thickness: THICKNESS,
-                center: Vec3::new(pip(slot), 0.0, down(row)),
+                center: Vec3::new(at.across(), 0.0, down(row)),
             },
             GaugeKind::Rank {
-                slot,
+                at,
                 rank: index,
                 ranks: count,
                 row,
             }
             | GaugeKind::Charge {
-                slot,
+                at,
                 charge: index,
                 max: count,
                 row,
             } => {
                 let count = f32::from(count);
                 let width = (PIP - (count - 1.0) * TICK_GAP) / count;
-                let left = pip(slot) - PIP / 2.0 + width / 2.0;
+                let left = at.across() - PIP / 2.0 + width / 2.0;
                 Layout {
                     width,
                     thickness: TICK_THICKNESS,
@@ -133,10 +147,10 @@ impl GaugeKind {
                     ),
                 }
             }
-            GaugeKind::Learnable { slot, row } => Layout {
+            GaugeKind::Learnable { at, row } => Layout {
                 width: PIP,
                 thickness: MARK_THICKNESS,
-                center: Vec3::new(pip(slot), 0.0, down(row)),
+                center: Vec3::new(at.across(), 0.0, down(row)),
             },
         }
     }
@@ -229,24 +243,28 @@ mod tests {
         // Out of range, a share holds at the ends.
         assert_eq!(health.fill(1.5).scale.x, WIDE);
         assert_eq!(health.fill(-1.0).scale.x, 0.0);
-        // The pips of slots 0 and 3 sit 1.5 steps either side, two rows down.
-        let pip = |slot| {
+        // Of four slots, the pips of slots 0 and 3 sit 1.5 steps either side, two rows down; of
+        // three, slot 1 sits in the middle and slot 2 a step right; one slot sits in the middle.
+        let pip = |slot, of| {
             GaugeKind::Cooldown {
-                slot,
+                at: SlotPlace { slot, of },
                 row: 2,
                 cooling: None,
             }
             .layout()
             .center
         };
-        assert_eq!(pip(0), Vec3::new(-1.5 * PIP_STEP, 0.0, 2.0 * ROW));
-        assert_eq!(pip(3), Vec3::new(1.5 * PIP_STEP, 0.0, 2.0 * ROW));
+        let across = |steps: f32| Vec3::new(steps * PIP_STEP, 0.0, 2.0 * ROW);
+        assert_eq!(pip(0, 4), across(-1.5));
+        assert_eq!(pip(3, 4), across(1.5));
+        assert_eq!([pip(1, 3), pip(2, 3)], [across(0.0), across(1.0)]);
+        assert_eq!(pip(0, 1), across(0.0));
         // Slot 3's five rank ticks, a row under its pip, span its width: each (0.27 − 4 × 0.02) / 5
         // = 0.038 wide, the first's left edge on the pip's, the last's right edge on its right,
         // to an ulp of the f32 sums. Its learn mark is as wide as the pip, and thinner.
         let tick = |rank| {
             GaugeKind::Rank {
-                slot: 3,
+                at: SlotPlace { slot: 3, of: 4 },
                 rank,
                 ranks: 5,
                 row: 3,
@@ -265,7 +283,11 @@ mod tests {
             (first.center.z, first.thickness),
             (3.0 * ROW, TICK_THICKNESS)
         );
-        let mark = GaugeKind::Learnable { slot: 3, row: 1 }.layout();
+        let mark = GaugeKind::Learnable {
+            at: SlotPlace { slot: 3, of: 4 },
+            row: 1,
+        }
+        .layout();
         assert_eq!(
             (mark.width, mark.thickness, mark.center),
             (PIP, MARK_THICKNESS, Vec3::new(1.5 * PIP_STEP, 0.0, ROW))
@@ -324,7 +346,7 @@ mod tests {
         // A charge tick sits as a rank tick does: slot 1's 3 ticks span its pip.
         let tick = |charge| {
             GaugeKind::Charge {
-                slot: 1,
+                at: SlotPlace { slot: 1, of: 4 },
                 charge,
                 max: 3,
                 row: 4,
@@ -333,7 +355,7 @@ mod tests {
         };
         let rank = |rank| {
             GaugeKind::Rank {
-                slot: 1,
+                at: SlotPlace { slot: 1, of: 4 },
                 rank,
                 ranks: 3,
                 row: 4,

@@ -1,3 +1,5 @@
+use std::panic::{self, AssertUnwindSafe};
+use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::Duration;
@@ -40,7 +42,7 @@ fn gated(bound: usize) -> (StreamWriter, mpsc::Sender<()>, Arc<Mutex<Vec<u8>>>) 
 
 /// Waits until the worker took every piece put so far.
 fn taken(writer: &StreamWriter) {
-    while !writer.shared.lock().bytes.is_empty() {
+    while !writer.shared.pending.lock().bytes.is_empty() {
         thread::yield_now();
     }
 }
@@ -59,7 +61,7 @@ fn pieces_go_out_in_order_and_a_full_buffer_makes_a_caller_wait() {
     let waiting = thread::spawn(move || late.put(|out| out.extend_from_slice(b"ef")));
     // Given the time to run, the late caller has put nothing: the buffer is full.
     thread::sleep(Duration::from_millis(20));
-    assert_eq!(writer.shared.lock().bytes, b"cdgh");
+    assert_eq!(writer.shared.pending.lock().bytes, b"cdgh");
     // "ab" is written, the worker takes "cdgh", and the late caller puts "ef".
     go.send(()).unwrap();
     waiting.join().unwrap();
@@ -67,11 +69,11 @@ fn pieces_go_out_in_order_and_a_full_buffer_makes_a_caller_wait() {
     // dropped at once, so a caller that goes on putting cannot keep the worker running.
     let shared = Arc::clone(&writer.shared);
     let closing = thread::spawn(move || writer.close());
-    while !shared.lock().closing {
+    while !shared.pending.lock().closing {
         thread::yield_now();
     }
     sender.put(|out| out.extend_from_slice(b"zz"));
-    assert_eq!(shared.lock().bytes, b"ef");
+    assert_eq!(shared.pending.lock().bytes, b"ef");
     // The worker writes "cdgh" and "ef", what the buffer held, then ends, with no failure.
     go.send(()).unwrap();
     go.send(()).unwrap();
@@ -85,7 +87,7 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
     let sender = writer.sender();
     sender.put(|out| out.extend_from_slice(b"!x"));
     go.send(()).unwrap();
-    while !writer.shared.lock().failed {
+    while !writer.shared.pending.lock().failed {
         thread::yield_now();
     }
     // Pieces after the failure are dropped, even past the bound, with no wait.
@@ -93,9 +95,57 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
         sender.put(|out| out.extend_from_slice(b"yyyy"));
     }
     // Closed, the writer gives the failure that stopped it.
-    let failure = writer.close().unwrap();
+    let Some(StreamError::Write(failure)) = writer.close() else {
+        panic!("the write failed");
+    };
     assert_eq!(failure.to_string(), "refused");
     assert!(written.lock().unwrap().is_empty());
     // A sender that outlives its writer puts nothing, and does not wait.
     sender.put(|out| out.extend_from_slice(b"zzzzzz"));
+}
+
+/// A file that takes each write and refuses each flush.
+#[derive(Debug)]
+struct Unflushed;
+
+impl Write for Unflushed {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Err(io::Error::other("unflushed"))
+    }
+}
+
+#[test]
+fn a_failed_flush_is_taken_once_while_the_stream_runs() {
+    let writer = StreamWriter::start("stream", Unflushed, 4);
+    assert!(writer.take_failure().is_none());
+    writer.sender().put(|out| out.extend_from_slice(b"ab"));
+    let failure = loop {
+        if let Some(failure) = writer.take_failure() {
+            break failure;
+        }
+        thread::yield_now();
+    };
+    assert!(matches!(&failure, StreamError::Flush(error) if error.to_string() == "unflushed"));
+    // Taken, the failure is gone: the close gives none.
+    assert!(writer.take_failure().is_none());
+    assert!(writer.close().is_none());
+}
+
+#[test]
+fn a_writer_dropped_as_a_panic_unwinds_closes_over_a_piece_that_panicked() {
+    // The piece's panic poisons the lock; a drop that locked it as the worker does would panic
+    // again as the next panic unwinds, which aborts.
+    let (writer, _go, _written) = gated(4);
+    let sender = writer.sender();
+    let put = panic::catch_unwind(AssertUnwindSafe(|| sender.put(|_| panic!("torn"))));
+    assert!(put.is_err());
+    let unwound = panic::catch_unwind(AssertUnwindSafe(move || {
+        let _held = writer;
+        panic::panic_any(9_u32);
+    }));
+    assert_eq!(unwound.unwrap_err().downcast_ref::<u32>(), Some(&9));
 }

@@ -11,14 +11,14 @@ use campfire_values::ActionId;
 pub(crate) enum AbilitiesEffect {
     /// `cut` off the cooldown of the unit's action `action`, which it holds.
     ReduceCooldown {
-        id: StableId,
+        unit: StableId,
         action: ActionId,
         cut: Ticks,
     },
     /// `fraction`, from 0 to 1, of what is left of the cooldown of each of the unit's actions in
     /// `kind`.
     ReduceCooldowns {
-        id: StableId,
+        unit: StableId,
         kind: SlotKind,
         fraction: Num,
     },
@@ -29,17 +29,17 @@ pub(crate) enum AbilitiesEffect {
 impl Effect for AbilitiesEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let id = match self {
-            AbilitiesEffect::ReduceCooldown { id, .. }
-            | AbilitiesEffect::ReduceCooldowns { id, .. }
-            | AbilitiesEffect::AddCharge { unit: id, .. } => id,
+        let unit = match self {
+            AbilitiesEffect::ReduceCooldown { unit, .. }
+            | AbilitiesEffect::ReduceCooldowns { unit, .. }
+            | AbilitiesEffect::AddCharge { unit, .. } => unit,
         };
-        let Some(entity) = world.entity_of(id) else {
+        let Some(entity) = world.entity_of(unit) else {
             return;
         };
         let book = world.resource::<ActionBook>().clone();
-        let mut id = world.entity_mut(entity);
-        let (slots, mut times) = id
+        let mut held = world.entity_mut(entity);
+        let (slots, mut times) = held
             .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
             .expect("a unit the view held with the ability has slots");
         match self {

@@ -32,10 +32,7 @@ impl ActionsApi {
         )
         .action_fields(ActionDataField::of(None))
         .data::<EffectData>(
-            &[
-                "damage", "heal", "restore", "modifier", "xp", "purge", "launch", "move", "spawn",
-                "to",
-            ],
+            &EffectData::KEYS,
             &PlannedEffect::ALL.map(PlannedEffect::name),
         );
     }

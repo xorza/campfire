@@ -1,5 +1,6 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
@@ -8,13 +9,13 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Scratch, SpawnParts,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
 use campfire_state_types::{Replication, StateTypes};
-use campfire_units::{EntityKinds, Predicting};
+use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
 use campfire_visibility::OutView;
 
@@ -65,13 +66,12 @@ impl DeclaredResources {
     }
 
     /// What the release puts in a match itself: its capabilities, what a client's view of it
-    /// leaves out, its script budgets and the mark of a client's.
-    const fn release_own() -> [TypeId; 4] {
+    /// leaves out, and its script budgets.
+    const fn release_own() -> [TypeId; 3] {
         [
             TypeId::of::<CapabilitySet>(),
             TypeId::of::<OutView>(),
             TypeId::of::<ScriptBudgets>(),
-            TypeId::of::<Predicting>(),
         ]
     }
 }
@@ -94,6 +94,8 @@ impl KindVisitor for DeclaredResources {
     fn kind<K: EntityKind>(&mut self) {
         self.ids.push(TypeId::of::<EntityKinds>());
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for DeclaredResources {
@@ -160,4 +162,10 @@ impl Declarations for DeclaredResources {
     }
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
+
+    fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
+
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {
+        self.ids.push(TypeId::of::<R>());
+    }
 }

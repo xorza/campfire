@@ -5,6 +5,7 @@ use campfire_common::Tick;
 use campfire_sim::{SimEdge, SimSet, SimUpdate};
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_death_reaches_the_mode_and_a_respawn_brings_the_unit_back_at_its_spawn() {
@@ -95,14 +96,14 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::RespawnAlive)]
+        [FailureKind::Api(ModeRefusal::RespawnAlive.refused())]
     );
     let tower = Mode::entity_by_id(&game, 0);
     game.entity_mut(tower).insert((Dead, OnDeath::Despawn));
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::RespawnDespawns)]
+        [FailureKind::Api(ModeRefusal::RespawnDespawns.refused())]
     );
     assert!(game.get_entity(tower).is_err());
 }
@@ -139,7 +140,10 @@ fn on_mode_input(ctx, player, name, value) {
     // A second end in the same call fails the call, which ends nothing; so does a team the mode
     // does not have. The timer fires at the end of ticks 0 and 1.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "a"))]);
-    assert_eq!(Mode::failures(&game), [FailureKind::Api(ApiError::Ended)]);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ModeRefusal::Ended.refused())]
+    );
     Mode::tick_inputs(&mut game, &[(0, input("hero", "z"))]);
     assert_eq!(
         Mode::failures(&game),

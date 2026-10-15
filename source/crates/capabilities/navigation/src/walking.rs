@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
-use campfire_geometry::Placed;
+use campfire_geometry::{Indexed, Placed};
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
@@ -80,11 +80,10 @@ impl Walking {
         let walking = bodies
             .iter()
             .filter(|(.., destination, tags)| Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| Placed {
+            .map(|(&id, &at, body, ..)| Indexed {
                 id,
                 key: body.layer(),
-                pos: at,
-                shape: body.shape(),
+                body: Placed::new(at, body.shape()),
             });
         let gatherers = bodies
             .iter()

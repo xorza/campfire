@@ -3,18 +3,19 @@
 //! With `--bot <orders file>`, it opens no window and renders nothing, and plays the file's
 //! `OrderScript` instead. With `--key <file>`, the player's main key is the file's, made when
 //! missing; without it, the player is a new key each run. With `--data <directory>`, the client
-//! writes the newest receipt of its session there; without it, it writes none. With `--local`, it plays the mode alone on a
-//! local server, a thread of its own process, whose data goes in `server` under the data
-//! directory, `--data` then needed; each `--server-bot <slot>=<orders file>` gives the server a bot
-//! there, and every other slot but the player's is open. P pauses a local match, the keys 1 to 4
-//! set its speed to 0.5, 1, 2 or 4 times, F5 saves it, and F9 loads its latest save.
+//! writes the newest receipt of its session there; without it, it writes none. With `--local`, it
+//! plays the mode alone on a local server, a thread of its own process, whose data goes in
+//! `server` under the data directory, `--data` then needed; each `--server-bot <slot>=<orders
+//! file>` gives the server a bot there, and every other slot but the player's is open. Space
+//! pauses a local match and plays it on, minus and equals, or the keypad's minus and plus, step
+//! its speed through 0.5, 1, 2 and 4 times, F5 saves it, and F9 loads its latest save.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
 //! `CAMPFIRE_LOG_FILTER` (Campfire's `debug` by default) with the directives of
 //! `CAMPFIRE_LOG_FILTER_EXTRA` added.
 
-#![allow(
+#![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
@@ -34,10 +35,11 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
+    Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
     WatchRequest,
 };
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package_disk::PackageDir;
 use campfire_protocol::RandomKey;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
@@ -46,7 +48,7 @@ use lightyear::prelude::Connect;
 use secp256k1::Keypair;
 use tracing::error;
 
-use crate::args::Args;
+use crate::args::{Args, CommandLine};
 use crate::bot::Bot;
 use crate::connection::Connection;
 use crate::hud::Hud;
@@ -58,6 +60,7 @@ use crate::orders::Orders;
 use crate::selecting::Selecting;
 use crate::shop_panel::ShopPanel;
 use crate::view::View;
+use crate::view::client_data::ClientFiles;
 use crate::view::package_source::PackageSource;
 use crate::view::player_camera::PlayerCamera;
 use crate::view::terrain_view::TerrainView;
@@ -95,8 +98,8 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Logging::command_line(env::args_os()) {
-        Ok(line) => Args::of(line),
+    let args = match Logging::command_line::<CommandLine>(env::args_os()) {
+        Ok(line) => Args::from(line),
         Err(status) => return ExitCode::from(status),
     };
     let packages = match load_mode(&args) {
@@ -114,22 +117,12 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(code) => return code,
     };
-    let data = match &args.data {
-        None => None,
-        Some(path) => match ClientDir::open(path) {
-            Ok(data) => Some(Arc::new(data)),
-            Err(error) => {
-                error!(error = %ErrorReport::of(&error), "the data directory does not open");
-                return ExitCode::from(ExitStatus::Failure);
-            }
-        },
-    };
     let watch = match watched_teams(&args, &packages) {
         Ok(watch) => watch,
         Err(code) => return code,
     };
     let pace = Arc::new(Pace::default());
-    let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {
+    let mut connection = match Connection::open(&args, &packages, &pace) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -144,10 +137,13 @@ fn main() -> ExitCode {
         } else {
             JoinRole::Play
         },
-        local: matches!(connection, Connection::Local(_)),
+        hosting: match connection {
+            Connection::Local { .. } => Hosting::Local,
+            Connection::Remote { .. } => Hosting::Remote,
+        },
         packages: Arc::clone(&packages),
         os: Os::SYSTEM,
-        data,
+        data: connection.data(),
     };
     if let Err(error) = sim_client.check() {
         error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
@@ -161,7 +157,7 @@ fn main() -> ExitCode {
     add_ends(
         &mut app,
         script,
-        sim_client.local.then_some(&pace),
+        (sim_client.hosting == Hosting::Local).then_some(&pace),
         &packages,
     );
     app.add_plugins((sim_client, LinkWatch));
@@ -217,11 +213,12 @@ fn add_ends(
                 ..WindowPlugin::default()
             })
             .disable::<LogPlugin>(),
-        View,
-        PlayerCamera,
-        UnitModels {
+        ClientFiles {
             packages: Arc::clone(packages),
         },
+        View,
+        PlayerCamera,
+        UnitModels,
         TerrainView {
             packages: Arc::clone(packages),
         },
@@ -245,8 +242,8 @@ fn add_ends(
 /// The packages of the mode the arguments name; the exit code when they do not load.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let mode = PackageDir::new(&args.mode);
-    let packages = ModePackages::choose_map(&mode, args.map.clone())
-        .and_then(|map| ModePackages::from_package_dir(&mode, &map))
+    let packages = mode.choose_map(args.map.clone())
+        .and_then(|map| mode.mode_packages(&map))
         .map_err(|error| {
         error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)

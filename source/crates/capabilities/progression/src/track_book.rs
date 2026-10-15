@@ -7,7 +7,7 @@ use campfire_math::Num;
 use campfire_script::View;
 use campfire_sim::Capability;
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, Names, TrackId};
+use campfire_values::{DeclaredName, NameId, Names, TrackId};
 
 use crate::error::TrackError;
 use crate::track_data::TrackData;

@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::SeedChain;
 use campfire_visibility::VisibilityDecodeError;
 
@@ -15,16 +15,23 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
     let commitment = SeedChain::new([7; 32], NonZeroU32::MIN).commitment();
     let inputs = InputRules {
-        max_input_delay: Ticks::new(3),
-        max_input_lead: Ticks::new(5),
+        max_delay: Ticks::new(3),
+        max_lead: Ticks::new(5),
         max_payload_len: 7,
-        max_inputs_per_tick: 2,
+        max_per_tick: 2,
     };
     let plan = [SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
     let terms = |hz| {
         let hz = NonZeroU32::new(hz).unwrap();
         let visibility = rules.visibility().settings();
-        rules.terms(key, commitment, hz, inputs, plan, visibility)
+        rules.terms(HostChoices {
+            server_key: key,
+            seed_commitment: commitment,
+            tick_hz: hz,
+            inputs,
+            slots: plan.to_vec(),
+            visibility,
+        })
     };
     for hz in [19, 61] {
         assert_eq!(
@@ -40,12 +47,9 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         SessionTerms {
             server_key: key,
             tick_hz: NonZeroU32::new(60).unwrap(),
-            max_input_delay: Ticks::new(3),
-            max_input_lead: Ticks::new(5),
-            max_payload_len: 7,
-            max_inputs_per_tick: 2,
+            inputs,
             seed_commitment: commitment,
-            release: EngineRelease::CURRENT,
+            release: Version::ENGINE,
             mode: packages.fingerprint(),
             map: TestMode::Moba3v3.map(),
             dependencies,
@@ -62,8 +66,8 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         (|terms| terms.slots.clear(), slots(0)),
         (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
         (
-            |terms| terms.release = EngineRelease::new(0, 0, 9),
-            TermsError::OtherRelease(EngineRelease::new(0, 0, 9)),
+            |terms| terms.release = Version::new(0, 0, 9),
+            TermsError::OtherRelease(Version::new(0, 0, 9)),
         ),
         (
             |terms| terms.mode = Fingerprint::new([0; 32]),
@@ -99,7 +103,6 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // after the 14 kinds' bytes, the fog to `teams`, what a player out of play sees to
     // `spectators`, and 3 spectators.
     fixed.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
-    assert_eq!(rules.check(&fixed), Ok(()));
-    let visibility = SessionRules::visibility_of(&fixed).unwrap();
+    let visibility = rules.check(&fixed).unwrap();
     assert_eq!(visibility.max_spectators(), 3);
 }

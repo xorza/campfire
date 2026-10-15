@@ -10,8 +10,7 @@ use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use crate::package_dir::{LOCALE, PackageDir};
-use crate::package_files::PackageFiles;
+use crate::package_files::{LOCALE, PackageFiles};
 
 /// A locale package: its name, and its translations of the packages it depends on, by each
 /// package's name, then by language.
@@ -26,7 +25,7 @@ impl LocalePackage {
     /// of a package it depends on, and reads.
     pub fn read(files: &PackageFiles) -> Result<LocalePackage, LoadError> {
         let fail = LoadError::new;
-        let manifest_path = PackagePath::parse(PackageDir::MANIFEST).expect("a package path");
+        let manifest_path = PackagePath::parse(PackageFiles::MANIFEST).expect("a package path");
         let unnamed = || PackageRef::Fingerprint(files.fingerprint());
         let manifest = files
             .read_data(&manifest_path)

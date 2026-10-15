@@ -1,13 +1,13 @@
+use std::io;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 
 use campfire_log::internals::LogCheck;
-use campfire_store::{DurableError, PathError};
+use campfire_store::{AppendError, DurableError, PathError};
 
 use super::*;
 use crate::events::checkpoint_failed::CheckpointFailed;
 use crate::events::receipt_unsaved::ReceiptUnsaved;
-use crate::faults::fault::FaultSource;
 
 /// A write of the file `name` that found no file name in its path.
 fn no_name(name: &str) -> PathError<DurableError> {
@@ -20,13 +20,14 @@ fn no_name(name: &str) -> PathError<DurableError> {
 #[test]
 fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
     let log = LogCheck::start();
+    let journal = Fault::Journal(AppendError::Sync(io::Error::other("full")));
+    let faults = [
+        journal,
+        Fault::Snapshot(no_name("s")),
+        Fault::Receipt(no_name("r")),
+    ];
     assert_eq!(
-        [
-            FaultSource::Journal,
-            FaultSource::Snapshot,
-            FaultSource::Receipt
-        ]
-        .map(FaultSource::policy),
+        faults.each_ref().map(Fault::policy),
         [
             FaultPolicy::EndServer,
             FaultPolicy::EndServer,
@@ -39,13 +40,11 @@ fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
     assert_eq!(Faults::apply(&mut world), None);
     // A receipt not written is logged, and play goes on.
     let receipt = Fault::Receipt(no_name("receipt"));
-    assert_eq!(receipt.source(), FaultSource::Receipt);
     world.resource_mut::<Faults>().report(receipt);
     assert_eq!(Faults::apply(&mut world), None);
     assert_eq!(log.take::<ReceiptUnsaved>().len(), 1);
     // A snapshot not written, with a receipt after it: both logged, and the server ends.
     let snapshot = Fault::Snapshot(no_name("snapshot"));
-    assert_eq!(snapshot.source(), FaultSource::Snapshot);
     world.resource_mut::<Faults>().report(snapshot);
     world
         .resource_mut::<Faults>()

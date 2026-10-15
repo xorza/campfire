@@ -6,7 +6,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
 };
-use campfire_declare::ByType;
+use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Navigation, Walker};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
@@ -24,6 +24,7 @@ use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
 use crate::supply::{CountedUnit, Supply};
+use crate::supply_cost_book::SupplyUnit;
 use crate::train_queue::{Queued, TrainQueue};
 
 /// The parts of a unit supply counts, dead or not.
@@ -58,12 +59,13 @@ impl Trains {
     /// under its player's cap, pays its whole cost, in pools and player resources, goes on
     /// cooldown, and joins the queue, where it holds its supply. The order ends either way, and the
     /// unit stays free. Supply and the units a requirement finds are counted once, as the first
-    /// train comes to them.
+    /// train comes to them. A predicting client's form `F` pays nothing, as the unit's pools and
+    /// its player's resources are the server's.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
     )]
-    pub(super) fn start_trains(
+    pub(super) fn start_trains<F: RoleForm>(
         tick: Res<'_, SimTick>,
         books: ProductionBooks<'_>,
         held_modifiers: PlayerRows<'_, '_, PlayerModifiers>,
@@ -107,11 +109,13 @@ impl Trains {
                 let units = counted
                     .iter()
                     .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
-                        unit_type,
                         owner: owner.slot(),
-                        dead,
-                        complete: !site,
-                        queue,
+                        unit: SupplyUnit {
+                            unit_type,
+                            dead,
+                            complete: !site,
+                            queue,
+                        },
                     });
                 supply.count(&costs, rules, units);
             }
@@ -169,9 +173,11 @@ impl Trains {
             }
             let values = checked.values;
             let paid = checked.action.resource_cost(checked.rank);
-            let mut paying = resources.of_mut(held_by);
-            let payer = Payer::of(pools, paying.as_deref_mut());
-            payer.pay(&values.cost, paid);
+            if !F::PREDICTS {
+                let mut paying = resources.of_mut(held_by);
+                let payer = Payer::of(pools, paying.as_deref_mut());
+                payer.pay(&values.cost, paid);
+            }
             let queued = Queued {
                 action: checked.id,
                 rank: checked.rank,

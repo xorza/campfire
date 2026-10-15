@@ -47,9 +47,6 @@ pub enum Place {
     /// The mode's players' resources, beside its pools.
     #[display("the mode's resources and pools")]
     Resources,
-    /// The mode's slot kinds.
-    #[display("the mode's slot kinds")]
-    SlotKinds,
     /// The mode's item type of that id.
     #[display("item {_0}")]
     Item(DeclaredName),

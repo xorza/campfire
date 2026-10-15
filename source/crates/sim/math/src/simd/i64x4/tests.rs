@@ -39,6 +39,10 @@ fn the_lane_ops_are_their_scalar_ops_at_the_edges() {
         I64x4([-1, 0, 1, i64::MIN]).cast_unsigned().to_array(),
         [u64::MAX, 0, 1, 1 << 63]
     );
+    let lanes = [0, 1, 1 << 63, u64::MAX];
+    let signed = I64x4::cast_signed(U64x4::from_array(lanes));
+    assert_eq!(signed.to_array(), [0, 1, i64::MIN, -1]);
+    assert_eq!(signed.cast_unsigned().to_array(), lanes);
 }
 
 #[test]

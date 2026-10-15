@@ -1,4 +1,4 @@
-use campfire_package::Blend;
+use campfire_client_files::Blend;
 
 use crate::zero_hour::error::W3dError;
 use crate::zero_hour::w3d_chunks::W3dChunks;
@@ -181,9 +181,7 @@ impl W3dMesh {
                         if material.id != VERTEX_MATERIAL {
                             continue;
                         }
-                        let info = W3dChunks::of(material.body)
-                            .find(|inner| matches!(inner, Ok(inner) if inner.id == VERTEX_MATERIAL_INFO))
-                            .ok_or(W3dError::Missing)??;
+                        let info = W3dChunks::of(material.body).first_of(VERTEX_MATERIAL_INFO)?;
                         materials.push(W3dMesh::vertex_material(info.body)?);
                     }
                 }

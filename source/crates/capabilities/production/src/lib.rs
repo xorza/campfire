@@ -8,18 +8,24 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
+use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
+use bevy_ecs::system::ScheduleSystem;
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
+
+use crate::production_column::RowReads;
 
 mod build_book;
 mod build_target;
 mod builder;
 mod construction;
 mod drop_off_data;
+mod error;
 mod gather_loop;
 mod gatherer;
 mod held;
@@ -54,9 +60,9 @@ pub use crate::builder::{BuildOrder, Builder};
 pub use crate::construction::Construction;
 pub use crate::construction::step::{Start, Step};
 pub use crate::drop_off_data::DropOffData;
+pub use crate::error::ProductionRefusal;
 pub use crate::gather_loop::GatherLoop;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
-pub use crate::held::Held;
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::NodeBook;
@@ -64,7 +70,7 @@ pub use crate::node_data::NodeData;
 pub use crate::player_supply::PlayerSupply;
 pub use crate::production_action::ProductionAction;
 pub use crate::production_api::ProductionApi;
-pub use crate::production_column::{ProductionColumn, RowReads};
+pub use crate::production_column::ProductionColumn;
 pub use crate::production_data::ProductionData;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
@@ -73,7 +79,7 @@ pub use crate::requirement_book::{Required, RequirementBook};
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site};
 pub use crate::supply_book::SupplyBook;
-pub use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
+pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 pub use crate::supply_data::SupplyData;
 pub use crate::train_queue::{Queued, TrainQueue};
 pub use crate::trains::Trains;
@@ -175,10 +181,34 @@ impl Module for Production {
     /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
-        match cx.role() {
-            Role::Server(_) => Production::install_by::<ByVision>(cx),
-            Role::Client => Production::install_by::<ByHolding>(cx),
+        cx.by_role(
+            ProductionOrders::apply_production_orders::<ByVision>.in_set(ProductionSet::Commands),
+            ProductionOrders::apply_production_orders::<ByHolding>.in_set(ProductionSet::Commands),
+        );
+        cx.server(
+            PlayerSupply::refresh
+                .run_if(SupplyBook::counts)
+                .in_set(ProductionSet::Supply),
+        );
+        // A build places a box, which only navigation tests for room, and a worker walks.
+        if !cx.has(Capability::Navigation) {
+            cx.by_role(
+                Trains::start_trains::<ServerForm>.in_set(ProductionSet::Start),
+                Trains::start_trains::<ClientForm>.in_set(ProductionSet::Start),
+            );
+            cx.systems(Trains::finish_trains.in_set(ProductionSet::Finish));
+            return;
         }
+        cx.by_role(
+            Production::builds::<ByVision>(),
+            Production::builds::<ByHolding>(),
+        );
+        cx.systems(
+            (Construction::progress_sites, Trains::finish_trains)
+                .chain()
+                .in_set(ProductionSet::Finish),
+        );
+        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
     }
 }
 
@@ -201,42 +231,24 @@ impl Production {
     pub const GATHERING: EngineTag =
         EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
 
-    /// `install`, each placement testing the units `S` sees.
-    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        cx.schedule.add_systems(
-            ProductionOrders::apply_production_orders::<S>.in_set(ProductionSet::Commands),
-        );
-        cx.server(
-            PlayerSupply::refresh
-                .run_if(SupplyBook::counts)
-                .in_set(ProductionSet::Supply),
-        );
-        // A build places a box, which only navigation tests for room, and a worker walks.
-        if !cx.has(Capability::Navigation) {
-            cx.schedule.add_systems((
-                Trains::start_trains.in_set(ProductionSet::Start),
-                Trains::finish_trains.in_set(ProductionSet::Finish),
-            ));
-            return;
-        }
-        cx.schedule.add_systems((
+    /// The systems that check build and gather orders and start the trains, the builds and the
+    /// workers' loops, each placement testing the units `S` sees.
+    fn builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+        (
             (Construction::check_builds::<S>, GatherLoop::check_gathers)
                 .chain()
                 .in_set(ProductionSet::CheckBuilds),
             (
-                Trains::start_trains,
+                Trains::start_trains::<S>,
                 Construction::forget_dead_builds,
                 Construction::start_builds::<S>,
-                GatherLoop::run,
+                GatherLoop::run::<S>,
                 GatherLoop::tag_gatherers,
             )
                 .chain()
                 .in_set(ProductionSet::Start),
-            (Construction::progress_sites, Trains::finish_trains)
-                .chain()
-                .in_set(ProductionSet::Finish),
-        ));
-        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
+        )
+            .into_configs()
     }
 }
 

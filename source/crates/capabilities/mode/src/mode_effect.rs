@@ -5,7 +5,7 @@ use campfire_common::{PlayerSlot, Ticks};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{Effect, Frame, StateValue};
 use campfire_sim::{SimTick, SimWorld, StableId};
-use campfire_units::{SpawnAt, Spawner, UnitsWorld, UnitsWorldCrate};
+use campfire_units::{SpawnAt, Spawner, UnitsWorld};
 use campfire_values::{ActionId, Rank, Relation, Team};
 
 use crate::match_end::{MatchEnd, MatchResult};

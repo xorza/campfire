@@ -6,7 +6,7 @@ use campfire_orders::NextThink;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
+use campfire_units::{MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
 
 use super::*;
 
@@ -17,7 +17,10 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let grunt = Mode::entity_by_id(&game, 2);
     // The grunt holds strike, as a unit holds the times of the slots it holds.
-    let strike = game.resource::<ActionBook>().names().named((0, "strike"));
+    let strike = game
+        .resource::<ActionBook>()
+        .names()
+        .named((PackageIndex::MODE, "strike"));
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
     game.entity_mut(grunt).insert(TimedSlots::new(strike));
     // Teams a, b and neutral are 0 to 2, players 0 to 2: the grunt, which no player owns, may be
@@ -56,13 +59,34 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // The map has one path, 0.
     let on_path = |path| OnPath::new(PathId::new(path));
     assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
+    // A unit respawns where it spawned: on the map's far corner, or a meter past it along x.
+    let [x, z] = game.resource::<MapBook>().bounds.max();
+    let point = |x: Num| SpawnPoint::new(Position::new(Vec3::new(x, Num::ZERO, z)).unwrap());
+    assert!(point(x).check(&game, grunt));
+    assert!(!point(x + Num::ONE).check(&game, grunt));
 
     // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
     let mut choices = game.resource::<Choices>().clone();
     assert!(choices.check(&game));
-    assert!(!Choices(vec![None; 3]).check(&game));
-    choices.0[0] = Some(Offer::new(99));
+    assert!(!Choices::of(vec![None; 3]).check(&game));
+    choices.offers_mut()[0] = Some(Offer::new(99));
     assert!(!choices.check(&game));
+    // Each row is `duo`'s two values, then `hero`'s, then `spells`'s, by their names. A choice is
+    // all chosen or none: half of `duo` is refused. Its two values differ. A unique `hero` is one
+    // player's: the same hero in two rows is refused, while a `duo` two players share restores.
+    let chose = |values: &[(usize, usize)]| {
+        let mut choices = Choices::of(vec![None; 12]);
+        for &(at, offer) in values {
+            choices.offers_mut()[at] = Some(Offer::new(offer));
+        }
+        choices.check(&game)
+    };
+    assert!(chose(&[(0, 0), (1, 1), (2, 0)]));
+    assert!(!chose(&[(0, 0)]));
+    assert!(!chose(&[(0, 1), (1, 1)]));
+    assert!(chose(&[(0, 0), (1, 1), (4, 0), (5, 1)]));
+    assert!(chose(&[(2, 0), (6, 1)]));
+    assert!(!chose(&[(2, 0), (6, 0)]));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
     let owner_state = game.get::<UnitState<SyncOwner>>(grunt).unwrap();
@@ -77,7 +101,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!UnitState::<SyncTeam>::new(int()).check(&game, grunt));
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = game.resource::<ActionBook>();
-    let strike = book.names().named((0, "strike")).unwrap();
+    let strike = book.names().named((PackageIndex::MODE, "strike")).unwrap();
     let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(&game, grunt) && slots(strike, 1).check(&game, grunt));
     assert!(!slots(strike, u8::MAX).check(&game, grunt));
@@ -112,15 +136,15 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::from([TrackId::new(track)]), None);
+    let on_tracks = |track| Experience::new(TrackSet::from([TrackId::new(track)]));
     assert!(on_tracks(1).check(&game, grunt) && !on_tracks(2).check(&game, grunt));
-    // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
-    // refused, one that holds none passes.
-    let level_track = |own: bool| {
-        let track = TrackId::new(0);
-        Experience::new(TrackSet::from([track]), (!own).then_some(track))
-    };
-    assert!(level_track(false).check(&game, grunt) && !level_track(true).check(&game, grunt));
+    // Track 0 is the `level` track, whose level is the unit's, 1 for the grunt: the level 1 there
+    // passes, a level 2 is refused.
+    assert_eq!(game.get::<Level>(grunt).unwrap().get(), 1);
+    let mut ahead = on_tracks(0);
+    assert!(ahead.check(&game, grunt));
+    ahead.tracks_mut()[0].level = Level::new(2).unwrap();
+    assert!(!ahead.check(&game, grunt));
     let id = *game.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         id,
@@ -292,7 +316,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             let strike = world
                 .resource::<ActionBook>()
                 .names()
-                .named((0, "strike"))
+                .named((PackageIndex::MODE, "strike"))
                 .unwrap();
             let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
             let unit = first::<UnitType>(world);
@@ -385,7 +409,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(&game, fighter));
     // Rally reads its action's `ward`, which an instance of it from no action lacks; its next
     // application would fail.
-    let rally = Stats::modifier(&game, 0, "rally").unwrap();
+    let rally = Stats::modifier(&game, PackageIndex::MODE, "rally").unwrap();
     assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(&game, fighter));
     assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(&game, fighter));
     let state = vec![StateValue::Bool(true)];
@@ -397,7 +421,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let timed = |ends: Tick, life: Ticks, stack_end: Tick| Application {
         instance: NewInstance {
             stats: vec![one],
-            lifetime: Lifetime::new(None, Ends::At(ends)),
+            lifetime: Lifetime::applied(Ends::At(ends)),
             stack_life: Some(life),
             stack_ends: vec![StackEnd {
                 until: stack_end,

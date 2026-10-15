@@ -10,7 +10,7 @@ pub struct TagSet(Bits256);
 
 impl FromIterator<Tag> for TagSet {
     fn from_iter<I: IntoIterator<Item = Tag>>(tags: I) -> TagSet {
-        tags.into_iter().fold(TagSet::default(), TagSet::with)
+        tags.into_iter().fold(TagSet::NONE, TagSet::with)
     }
 }
 
@@ -21,18 +21,20 @@ impl<const N: usize> From<[Tag; N]> for TagSet {
 }
 
 impl TagSet {
+    pub const NONE: TagSet = TagSet(Bits256::NONE);
+
     #[must_use]
     pub const fn with(self, tag: Tag) -> TagSet {
-        TagSet(self.0.with(tag.index()))
+        TagSet(self.0.with(tag.get() as usize))
     }
 
     #[must_use]
     pub const fn without(self, tag: Tag) -> TagSet {
-        TagSet(self.0.without(tag.index()))
+        TagSet(self.0.without(tag.get() as usize))
     }
 
     pub const fn contains(self, tag: Tag) -> bool {
-        self.0.contains(tag.index())
+        self.0.contains(tag.get() as usize)
     }
 
     #[must_use]
@@ -70,12 +72,12 @@ mod tests {
                 .collect::<TagSet>()
         };
         let set = tags(&[0, 63, 64, 200, 255]);
-        let held: Vec<_> = set.iter().map(Tag::index).collect();
+        let held: Vec<_> = set.iter().map(Tag::get).collect();
         assert_eq!(held, [0, 63, 64, 200, 255]);
         assert!(set.contains(Tag::new(200)) && !set.contains(Tag::new(199)));
         assert!(set.meets(tags(&[255])) && !set.meets(tags(&[1, 128])));
         assert!(set.covers(tags(&[63, 255])) && !set.covers(tags(&[63, 254])));
-        assert!(set.covers(TagSet::default()));
+        assert!(set.covers(TagSet::NONE));
         assert_eq!(tags(&[1]).union(tags(&[130])), tags(&[1, 130]));
         let cleared = set.without(Tag::new(64)).without(Tag::new(65));
         assert_eq!(cleared, tags(&[0, 63, 200, 255]));

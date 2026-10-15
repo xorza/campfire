@@ -1,9 +1,9 @@
 use super::*;
 use crate::harness::test_key::TestKey;
+use campfire_codec::BinaryError;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
-    let secp = Secp256k1::new();
     let server = TestKey::server();
     let key = server.x_only_public_key().0;
     let receipt = Receipt {
@@ -16,7 +16,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     };
     let signed = SignedReceipt {
         receipt,
-        signature: receipt.sign(&secp, &server, &[0; 32]),
+        signature: receipt.sign(&TestKey::signer(server)),
     };
     // A buffer that held other bytes is cleared first, so the file decodes.
     let mut bytes = vec![9; 3];
@@ -24,21 +24,25 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     assert_eq!(SignedReceipt::decode(&bytes), Ok(signed));
     assert_eq!(
         SignedReceipt::decode(&bytes[1..]),
-        Err(ReceiptFileError::NotReceipt)
+        Err(TaggedError::OtherTag)
     );
     let mut trailing = bytes.clone();
     trailing.push(0);
     assert_eq!(
         SignedReceipt::decode(&trailing),
-        Err(ReceiptFileError::Trailing)
+        Err(TaggedError::Value(BinaryError::NotCanonical))
     );
     assert!(matches!(
         SignedReceipt::decode(&bytes[..bytes.len() - 1]),
-        Err(ReceiptFileError::Malformed(_))
+        Err(TaggedError::Value(_))
     ));
-    assert!(receipt.signed_by(&secp, &key, &signed.signature));
+    assert!(receipt.signed_by(&Verifier::new(), &key, &signed.signature));
     let stranger = TestKey::of(42);
-    assert!(!receipt.signed_by(&secp, &stranger.x_only_public_key().0, &signed.signature));
+    assert!(!receipt.signed_by(
+        &Verifier::new(),
+        &stranger.x_only_public_key().0,
+        &signed.signature
+    ));
     let others = [
         Receipt {
             head: InputHash::new([4; 32]),
@@ -64,7 +68,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     ];
     for other in others {
         assert!(
-            !other.signed_by(&secp, &key, &signed.signature),
+            !other.signed_by(&Verifier::new(), &key, &signed.signature),
             "{other:?}"
         );
     }

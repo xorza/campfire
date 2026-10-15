@@ -62,8 +62,9 @@ QUIET_NEXTEST = (
     "--final-status-level", "slow", "--failure-output", "final", "--success-output", "never",
 )
 # The one test that compares each workspace package to its `package.index`, and writes the index
-# again from the package's files when the run blesses: the format stays with `package` alone.
-INDEX_PACKAGE = "campfire-package"
+# again from the package's files when the run blesses: it reads the packages' directories, which
+# `package-disk` alone does, by the format `package` holds.
+INDEX_PACKAGE = "campfire-package-disk"
 INDEX_TEST = (
     f"package(={INDEX_PACKAGE}) & "
     "test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)"

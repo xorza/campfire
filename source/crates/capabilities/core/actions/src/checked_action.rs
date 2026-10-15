@@ -1,4 +1,4 @@
-use campfire_geometry::Shape;
+use campfire_geometry::{Placed, Shape};
 use campfire_math::Num;
 use campfire_sim::Position;
 use campfire_values::{ActionId, Rank};
@@ -47,11 +47,16 @@ impl CheckedAction<'_> {
         else {
             return;
         };
-        if targets.reaches_point(from, shape, range, at) {
+        if targets.reaches_point(Placed::new(from, shape), range, at) {
             return;
         }
-        let reaches =
-            |step: Num| targets.reaches_point(from, shape, range, targets.toward(from, at, step));
+        let reaches = |step: Num| {
+            targets.reaches_point(
+                Placed::new(from, shape),
+                range,
+                targets.toward(from, at, step),
+            )
+        };
         let most = range
             .checked_add(shape.bound())
             .expect("a reach past every number reaches every point");
@@ -107,9 +112,9 @@ impl CheckedAction<'_> {
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets
                 .living(target)
-                .is_some_and(|unit| targets.reaches(from, shape, range, &unit)),
+                .is_some_and(|unit| targets.reaches(Placed::new(from, shape), range, &unit)),
             (Aim::Point { .. }, ActionTarget::Point(at)) => {
-                targets.reaches_point(from, shape, range, at)
+                targets.reaches_point(Placed::new(from, shape), range, at)
             }
             _ => true,
         }

@@ -7,12 +7,6 @@ use crate::names::NameId;
 #[serde(transparent)]
 pub struct PathId(u32);
 
-impl PathId {
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
 impl NameId for PathId {
     type Scope = ();
     const LIMIT: usize = 1 << u32::BITS;

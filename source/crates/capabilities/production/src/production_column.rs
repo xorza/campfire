@@ -10,11 +10,11 @@ use crate::mode_supply_data::ModeSupplyData;
 use crate::site::Site;
 use crate::supply::SupplySums;
 use crate::supply_book::SupplyBook;
-use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
+use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 use crate::train_queue::TrainQueue;
 
 /// The parts of a unit production adds to its row of the script view.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Option<&'static Owner>,
     Option<&'static UnitType>,
     Has<Dead>,
@@ -117,7 +117,14 @@ impl ProductionColumn {
         fill: &mut RowFill<'_, ProductionColumn>,
     ) {
         let counted = unit_type
-            .map(|&unit_type| fill.column.costs().unit(unit_type, dead, !site, queue))
+            .map(|&unit_type| {
+                fill.column.costs().unit(SupplyUnit {
+                    unit_type,
+                    dead,
+                    complete: !site,
+                    queue,
+                })
+            })
             .unwrap_or_default();
         let load = gatherer
             .and_then(|gatherer| gatherer.load())

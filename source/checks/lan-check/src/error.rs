@@ -4,7 +4,7 @@ use std::str::Utf8Error;
 use campfire_codec::JsonError;
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
-use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
+use campfire_store::{DurableError, PathError, ReadError};
 use thiserror::Error;
 
 use crate::process::Process;
@@ -13,11 +13,9 @@ use crate::target_name::TargetName;
 /// Why the check could not run to a verdict.
 #[derive(Debug, Error)]
 pub(crate) enum CheckError {
-    /// It runs only under `cargo run`, which names the cargo that builds the processes, unless
-    /// it verifies with a verifier it is given.
-    #[error(
-        "run the check with `cargo run -p campfire-lan-check`, or give `verify` a `--verifier`"
-    )]
+    /// It runs only with `CARGO`, the cargo that builds the processes, as `./drive.py lan` gives
+    /// it, unless it verifies with a verifier it is given.
+    #[error("run the check with `./drive.py lan`, or give `verify` a `--verifier`")]
     NotUnderCargo,
     #[error("cargo did not start")]
     CargoStart(#[source] io::Error),
@@ -34,9 +32,6 @@ pub(crate) enum CheckError {
     Read(#[source] PathError<ReadError>),
     #[error("a file of the run is not written")]
     Write(#[source] PathError<DurableError>),
-    /// The run's directory is not made, or another run's holds its name.
-    #[error("the run's directory is not made")]
-    RunDir(#[source] PathError<DurableCreateError>),
     /// The file a process writes its text log to is not made.
     #[error("a process's text log is not made")]
     TextLog(#[source] PathError<io::Error>),

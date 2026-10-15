@@ -40,19 +40,17 @@ struct WireRow<'a> {
 /// The bytes an index starts with, which name its format and its version.
 const INDEX_TAG: &[u8] = b"campfire/package-index/v1";
 
-impl FileRow {
-    /// The row of a file of `bytes`.
-    pub(crate) fn of(bytes: &[u8]) -> FileRow {
-        FileRow {
-            size: u64::try_from(bytes.len()).expect("a file length fits u64"),
-            sha256: Sha256::digest(bytes).into(),
-        }
-    }
-}
-
 impl FileIndex {
     /// The index's own path in its package.
     pub const PATH: &str = "package.index";
+
+    /// The most bytes an index holds, which its read takes at most: 64 MiB, the rows of about
+    /// 270 000 files whose paths are 200 bytes long.
+    pub const MAX_LEN: u64 = 1 << 26;
+
+    /// The most bytes a file of a package holds, which its read allocates: 2 GiB, past any
+    /// texture or model an importer writes.
+    pub const MAX_FILE_LEN: u64 = 1 << 31;
 
     /// The index of `rows`, which hold no two paths that differ only in case and not the
     /// index's own path, as a package's builder makes it.
@@ -71,9 +69,9 @@ impl FileIndex {
     }
 
     /// The index `bytes` hold, refused unless they are this version's tag and the one encoding of
-    /// rows in strict order of their paths' bytes, each a package path, none the index's own, and
-    /// no two that differ only in case.
-    pub(crate) fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
+    /// rows in strict order of their paths' bytes, each a package path, none the index's own, of
+    /// a file no larger than `MAX_FILE_LEN`, and no two that differ only in case.
+    pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
         let list = bytes
             .strip_prefix(INDEX_TAG)
             .ok_or(ContentError::IndexTag)?;
@@ -87,6 +85,9 @@ impl FileIndex {
                 return Err(ContentError::IndexOrder(path));
             }
             previous = Some(row.path);
+            if row.size > FileIndex::MAX_FILE_LEN {
+                return Err(ContentError::IndexFileLen(path));
+            }
             rows.insert(
                 path,
                 FileRow {

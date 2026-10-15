@@ -3,8 +3,8 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_common::Ticks;
 use campfire_declare::ByType;
-use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, Reached};
-use campfire_geometry::Shape;
+use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, NewDelivery, Reached};
+use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_units::UnitsNear;
@@ -79,19 +79,20 @@ impl AreaLife {
                     };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
-                        && targets.reaches(pos, Shape::POINT, spec.radius, &unit)
+                        && targets.reaches(Placed::point(pos), spec.radius, &unit)
                     {
                         reached.push(unit.id);
                     }
                 });
                 reached.sort_unstable();
-                let hits = reached.iter().map(|&unit| delivered(Reached::Hit(unit)));
-                deliveries.delivered.extend(hits);
+                for &unit in &reached {
+                    deliveries.deliver(delivered(Reached::Hit(unit)));
+                }
                 commands.entity(entity).remove::<AreaTrigger>();
             }
             if triggers_at.is_none_or(|at| at <= now) && area.ends_at() <= now {
-                deliveries.delivered.push(delivered(Reached::End));
-                deliveries.ended.push(entity);
+                deliveries.deliver(delivered(Reached::End));
+                deliveries.end(entity);
             }
         }
     }
@@ -119,7 +120,13 @@ impl AreaLife {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             let triggers_at = now.after(spec.delay.max(Ticks::ONE));
             let ends_at = triggers_at.max(now.after(spec.duration));
-            spawner.spawn(by.source, at, unit_type, id, |_| {
+            let delivery = NewDelivery {
+                source: by.source,
+                unit_type,
+                pos: at,
+                id,
+            };
+            spawner.spawn(delivery, |_| {
                 (Area::new(by, aimed, ends_at), AreaTrigger::at(triggers_at))
             });
         }

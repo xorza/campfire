@@ -3,13 +3,11 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_protocol::{
-    Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms,
+    Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms, Signer,
 };
-use secp256k1::{Keypair, Secp256k1};
 
 use crate::fixed_session::FixedSession;
-use campfire_runner::ServerInputRefused;
-use campfire_runner::SessionWorld;
+use campfire_runner::{ServerInputRefused, SessionWorld};
 
 /// A match of a `FixedSession`, and the input chain of each slot's player, so a test sends inputs
 /// as a player's client would, and server inputs as its server would.
@@ -18,7 +16,7 @@ pub struct FixedMatch {
     game: Match,
     chains: Vec<InputChain>,
     /// Each slot's session key, which signs its chain.
-    session_keys: Vec<Keypair>,
+    signers: Vec<Signer>,
     terms: SessionTerms,
     applied: Vec<Applied>,
     /// Last, so it drops after the match and sees what the match logs as it drops.
@@ -29,14 +27,14 @@ impl FixedMatch {
     pub(crate) const fn new(
         game: Match,
         chains: Vec<InputChain>,
-        session_keys: Vec<Keypair>,
+        signers: Vec<Signer>,
         terms: SessionTerms,
         log: LogCheck,
     ) -> FixedMatch {
         FixedMatch {
             game,
             chains,
-            session_keys,
+            signers,
             terms,
             applied: Vec::new(),
             log,
@@ -49,12 +47,7 @@ impl FixedMatch {
         let at = usize::try_from(slot).unwrap();
         let chain = &mut self.chains[at];
         let input = chain.extend(stamp, payload);
-        let signature = chain.sign(
-            &Secp256k1::new(),
-            &self.session_keys[at],
-            self.terms.session_id(),
-            &FixedSession::AUX,
-        );
+        let signature = chain.sign(&self.signers[at], self.terms.session_id());
         self.game
             .session_mut()
             .record([input], &signature, &mut self.applied)
@@ -72,9 +65,7 @@ impl FixedMatch {
 
     /// Logs `input` before the next tick, signed by the server at the place it takes.
     pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
-        let place = self.game.session().log().next_place();
-        let signature = FixedSession::server_signature(&input, self.terms.session_id(), place);
-        self.game.session_mut().record_server(input, &signature)
+        self.game.session_mut().serve(input)
     }
 
     /// Logs player `slot`'s join of their slot, with the delegation the session would start them
@@ -100,10 +91,9 @@ impl FixedMatch {
             .game
             .checkpoint(snapshot)
             .expect("a fixed session's chain holds the segment");
-        let signature = FixedSession::checkpoint_signature(&record, self.terms.session_id());
         self.game
             .session_mut()
-            .record_checkpoint(record.clone(), &signature)
+            .record_checkpoint(record.clone())
             .expect("the match's own checkpoint");
         record
     }
@@ -112,10 +102,9 @@ impl FixedMatch {
     /// not, and publishes its log; the result, signed and logged.
     pub fn end(&mut self) -> SessionResult {
         let result = self.game.session_result();
-        let signature = FixedSession::result_signature(&result, self.terms.session_id());
         self.game
             .session_mut()
-            .record_result(result, &signature)
+            .record_result(result)
             .expect("the match's own result");
         self.game.session_mut().reveal_seed();
         result

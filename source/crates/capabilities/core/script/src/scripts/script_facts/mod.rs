@@ -6,13 +6,13 @@ use rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
 
 use crate::script_host::ScriptHost;
 use crate::script_host::error::ScriptError;
+use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
+use crate::scripts::member_kind::MemberKind;
+use crate::scripts::member_spec::{EnumArgs, NameArgs};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::ScriptApi;
-use crate::scripts::script_api::api_owner::ApiOwner;
-use crate::scripts::script_api::member_kind::MemberKind;
-use crate::scripts::script_api::member_spec::{EnumArgs, NameArgs};
 
 /// The variable every script API call goes through, by design 08's convention.
 const CTX: &str = "ctx";

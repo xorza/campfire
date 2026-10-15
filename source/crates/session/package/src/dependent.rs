@@ -8,7 +8,6 @@ use crate::files::avatar_file::AvatarFile;
 use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
 use crate::package::Package;
-use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
 
 const AVATAR_DATA: &str = "data/avatar.toml";
@@ -42,7 +41,7 @@ impl Dependent {
     ) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError::of(name, problem);
         let manifest: Manifest = files
-            .read_data(&PackageDir::engine_path(PackageDir::MANIFEST))
+            .read_data(&PackageFiles::engine_path(PackageFiles::MANIFEST))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let header = manifest.header();
@@ -56,14 +55,14 @@ impl Dependent {
                     unit,
                     content,
                 } = files
-                    .read_data(&PackageDir::engine_path(AVATAR_DATA))
+                    .read_data(&PackageFiles::engine_path(AVATAR_DATA))
                     .map_err(LoadProblem::Content)
                     .map_err(fail)?;
                 let avatar = AvatarUnit { name, unit };
                 (content, DependentKind::Avatar(Box::new(avatar)))
             }
             Manifest::Loadout(_) => {
-                let content = files.read_data(&PackageDir::engine_path(LOADOUT_DATA));
+                let content = files.read_data(&PackageFiles::engine_path(LOADOUT_DATA));
                 let content = content.map_err(LoadProblem::Content).map_err(fail)?;
                 (content, DependentKind::Loadout)
             }

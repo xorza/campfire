@@ -6,7 +6,7 @@ use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
 use crate::applier::Applier;
-use crate::stats_world::StatsWorldCrate;
+use crate::stats_world::StatsWorld;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,7 +30,6 @@ pub enum StatsEffect {
     Purge { carrier: StableId, tag: Tag },
 }
 
-/// From the call's acting unit, by its action at its rank.
 impl StatsEffect {
     /// Applies the effect, which a call by `applier` queued. An added modifier's numbers resolve
     /// now, its params read from the param book, of its source as it is now; nothing is added to a
@@ -58,6 +57,7 @@ impl StatsEffect {
     }
 }
 
+/// From the call's acting unit, by its action at its rank.
 impl Effect for StatsEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let applier = Applier {

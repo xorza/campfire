@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 use std::{fmt, iter};
 
 use campfire_actions::ActionData;
@@ -12,15 +11,14 @@ use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::ScriptBook;
-use campfire_values::{DeclaredName, EngineTag, PackagePath};
+use campfire_values::{DeclaredName, EngineTag, PackageIndex, PackagePath};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
-use crate::error::{LoadError, PackageRef, StoreError};
+use crate::error::{LoadError, PackageRef};
 use crate::file_index::FileIndex;
-use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::mode_script::ModeScript;
@@ -29,10 +27,7 @@ use crate::files::units_file::UnitsFile;
 use crate::mode_packages::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
-use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
-use crate::package_index::PackageIndex;
-use crate::package_store::PackageStore;
 use crate::package_view::{PackageView, ViewKind};
 
 mod load_check;
@@ -66,21 +61,19 @@ pub struct ModePackages {
 }
 
 impl ModePackages {
-    /// The mode on disk in `dir` with its map `map`, and its dependencies at the paths its
-    /// manifest gives, as a workspace holds them.
-    pub fn from_dir(dir: &Path, map: &MapName) -> Result<ModePackages, LoadError> {
-        ModePackages::from_package_dir(&PackageDir::new(dir), map)
-    }
-
-    /// The map of the mode in `mode` that a session plays: `map` when it names one, else the
-    /// mode's only map; an error when it names none and the mode has no map, or several.
-    pub fn choose_map(mode: &PackageDir, map: Option<MapName>) -> Result<MapName, LoadError> {
+    /// The map of the mode whose index is `index`, the package `package`, that a session plays:
+    /// `map` when it names one, else the mode's only map; an error when it names none and the
+    /// mode has no map, or several.
+    pub fn choose_map(
+        index: &FileIndex,
+        package: &PackageRef,
+        map: Option<MapName>,
+    ) -> Result<MapName, LoadError> {
         if let Some(map) = map {
             return Ok(map);
         }
-        let fail = |problem| LoadError::new(PackageRef::Dir(mode.root().to_owned()), problem);
-        let index = mode.index().map_err(LoadProblem::Content).map_err(fail)?;
-        let mut maps = maps_of(&index).map_err(fail)?;
+        let fail = |problem| LoadError::new(package.clone(), problem);
+        let mut maps = maps_of(index).map_err(fail)?;
         match maps.pop() {
             Some(only) if maps.is_empty() => Ok(only),
             other => Err(fail(LoadProblem::MapNeeded(
@@ -89,69 +82,15 @@ impl ModePackages {
         }
     }
 
-    /// The mode in `mode` with its map `map`, and its dependencies at the paths its manifest
-    /// gives from it, each read once.
-    pub fn from_package_dir(mode: &PackageDir, map: &MapName) -> Result<ModePackages, LoadError> {
-        let read = |dir: &PackageDir, package: PackageRef| {
-            PackageFiles::read(dir)
-                .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
-        };
-        let at = PackageRef::Dir(mode.root().to_owned());
-        let files = read(mode, at.clone())?;
-        let manifest = read_mode_manifest(&files, &at)?;
-        let dependencies = manifest
-            .dependencies
-            .iter()
-            .map(|(name, dependency)| {
-                let dir = mode.join(Path::new(&dependency.path));
-                Ok((name.clone(), read(&dir, PackageRef::Name(name.clone()))?))
-            })
-            .collect::<Result<Vec<_>, LoadError>>()?;
-        let dependencies: Vec<_> = dependencies
-            .iter()
-            .map(|(name, files)| (name.clone(), files))
-            .collect();
-        ModePackages::assemble(&files, manifest, map, &dependencies)
-    }
-
-    /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
-    /// fingerprint of the same place in `dependencies`, from `store`, with its map `map`, as a
-    /// verifier holds them.
-    pub fn from_store(
-        store: &PackageStore,
-        mode: Fingerprint,
-        map: &MapName,
-        dependencies: &[Fingerprint],
-    ) -> Result<ModePackages, StoreError> {
-        let files = store.get(mode).ok_or(StoreError::UnknownMode)?;
-        let manifest =
-            read_mode_manifest(files, &PackageRef::Fingerprint(mode)).map_err(StoreError::Load)?;
-        if manifest.dependencies.len() != dependencies.len() {
-            return Err(StoreError::DependencyCount);
-        }
-        let dependencies = manifest
-            .dependencies
-            .keys()
-            .zip(dependencies)
-            .map(|(name, &fingerprint)| {
-                let files = store
-                    .get(fingerprint)
-                    .ok_or_else(|| StoreError::MissingDependency(name.clone()))?;
-                Ok((name.clone(), files))
-            })
-            .collect::<Result<Vec<_>, StoreError>>()?;
-        ModePackages::assemble(files, manifest, map, &dependencies).map_err(StoreError::Load)
-    }
-
     pub const fn fingerprint(&self) -> Fingerprint {
-        self.mode.fingerprint
+        self.mode.fingerprint()
     }
 
     /// The fingerprints of its dependencies, in the order of their names in its manifest.
     pub fn dependency_fingerprints(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
         self.dependencies
             .iter()
-            .map(|dependent| dependent.package.fingerprint)
+            .map(|dependent| dependent.package.fingerprint())
     }
 
     pub const fn manifest(&self) -> &ModeManifest {
@@ -167,15 +106,20 @@ impl ModePackages {
         &self.content
     }
 
-    /// Every one of its packages, the mode's first, then each it depends on, in the order of
-    /// their names in its manifest.
-    pub fn packages(&self) -> impl Iterator<Item = PackageView<'_>> {
-        let mode = PackageView {
+    /// The mode's own package.
+    pub const fn mode(&self) -> PackageView<'_> {
+        PackageView {
             index: PackageIndex::MODE,
             package: &self.mode,
             content: &self.content,
             kind: ViewKind::Mode,
-        };
+        }
+    }
+
+    /// Every one of its packages, the mode's first, then each it depends on, in the order of
+    /// their names in its manifest.
+    pub fn packages(&self) -> impl Iterator<Item = PackageView<'_>> {
+        let mode = self.mode();
         let dependents = self
             .dependencies
             .iter()
@@ -257,6 +201,22 @@ impl ModePackages {
         rate: TickRate,
         stat_order: &'a [StatId],
     ) -> BookInput<'a> {
+        BookInput {
+            data: &self.data,
+            map: &self.map,
+            teams: &self.manifest.teams,
+            max_move_speed: self.manifest.max_move_speed,
+            progression: self.manifest.capabilities.contains(Capability::Progression),
+            tag_names: &self.tag_names,
+            packages: self.book_packages(),
+            scripts: &self.scripts,
+            rate,
+            stat_order,
+        }
+    }
+
+    /// Its packages as its books are built from them, the mode's then each dependency's.
+    pub(crate) fn book_packages(&self) -> Vec<BookPackage<'_>> {
         let packages = self.packages().map(|view| BookPackage {
             name: view.package.header.name.as_str(),
             content: view.content,
@@ -273,24 +233,7 @@ impl ModePackages {
                 .map(|script| &script.path)
                 .collect(),
         });
-        BookInput {
-            data: &self.data,
-            map: &self.map,
-            teams: &self.manifest.teams,
-            max_move_speed: self.manifest.max_move_speed,
-            progression: self.manifest.capabilities.contains(Capability::Progression),
-            tag_names: &self.tag_names,
-            packages: packages.collect(),
-            scripts: &self.scripts,
-            rate,
-            stat_order,
-        }
-    }
-
-    /// The hooks each script of its packages defines, as the load read them, in the order a
-    /// match compiles them.
-    pub const fn script_book(&self) -> &ScriptBook {
-        &self.scripts
+        packages.collect()
     }
 
     /// The hooks each script of `packages` defines, in the order a match compiles them: the
@@ -302,14 +245,6 @@ impl ModePackages {
             book.push(functions.map(|function| (function.name.as_str(), function.params)));
         }
         book
-    }
-
-    /// The names of its avatars' unit types in the mode's scope: their packages' names.
-    pub(crate) fn avatar_names(&self) -> impl Iterator<Item = &str> {
-        self.dependencies
-            .iter()
-            .filter(|dependent| matches!(dependent.kind, DependentKind::Avatar(_)))
-            .map(|dependent| dependent.package.header.name.as_str())
     }
 
     /// The name of the map it loaded.
@@ -432,8 +367,10 @@ impl ModePackages {
         &self.dependencies
     }
 
-    /// Reads the mode's data and each dependency, and runs the load checks.
-    fn assemble(
+    /// The mode of `files`, whose manifest is `manifest`, on its map `map_name`, with each
+    /// package its manifest names in `dependencies`, in the order of their names: checked as a
+    /// match loads them, each file the load reads parsed once.
+    pub fn new(
         files: &PackageFiles,
         manifest: ModeManifest,
         map_name: &MapName,
@@ -451,11 +388,11 @@ impl ModePackages {
             data,
             mut content,
         } = files
-            .read_data(&PackageDir::engine_path(MODE_DATA))
+            .read_data(&PackageFiles::engine_path(MODE_DATA))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let units: UnitsFile = files
-            .read_data(&PackageDir::engine_path(UNITS_DATA))
+            .read_data(&PackageFiles::engine_path(UNITS_DATA))
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         content.units = units.units;
@@ -517,17 +454,4 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
         })
         .map(|name| MapName::new(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
         .collect()
-}
-
-/// The mode manifest of `files`, the package `package`.
-fn read_mode_manifest(
-    files: &PackageFiles,
-    package: &PackageRef,
-) -> Result<ModeManifest, LoadError> {
-    let fail = |problem| LoadError::new(package.clone(), problem);
-    let manifest = files.read_data(&PackageDir::engine_path(PackageDir::MANIFEST));
-    match manifest.map_err(LoadProblem::Content).map_err(fail)? {
-        Manifest::Mode(manifest) => Ok(manifest),
-        _ => Err(fail(LoadProblem::WrongKind)),
-    }
 }

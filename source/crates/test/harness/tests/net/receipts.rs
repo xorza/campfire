@@ -8,17 +8,16 @@ use std::time::Duration;
 
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    JoinState, JournalWatch, LeaveRequest, PlayerLink, ReceiptRefused, ReceiptUnsaved, ServerDir,
-    SessionDir,
+    JoinState, JournalWatch, LeaveRequest, ReceiptRefused, ReceiptUnsaved, ServerDir, SessionDir,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Controller, ServerInput, SignedReceipt};
+use campfire_protocol::{Controller, ServerInput, SignedReceipt, Verifier};
 use campfire_runner::Session;
 use campfire_store::internals::Scratch;
 use campfire_store::{EntryKind, InputFile};
-use secp256k1::Secp256k1;
 
 /// The most bytes a test reads of a receipt file: one receipt, a few hundred.
 const RECEIPT_LEN: usize = 4096;
@@ -48,10 +47,9 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     let world = local.server().world();
     let id = world.resource::<Session>().log().session_id();
     let server = TestKey::server().x_only_public_key().0;
-    let secp = Secp256k1::verification_only();
     let mut kept = Vec::new();
     for client in 0..2 {
-        let slot = world.get::<PlayerLink>(local.link(client)).unwrap().slot();
+        let slot = world.link_slot(local.link(client)).unwrap();
         let state = local.client(client).world().resource::<JoinState>();
         let receipt = *state.receipt().expect("a receipt of the synced inputs");
         assert_eq!(
@@ -61,7 +59,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         assert!(
             receipt
                 .receipt
-                .signed_by(&secp, &server, &receipt.signature)
+                .signed_by(&Verifier::new(), &server, &receipt.signature)
         );
         let file = scratch
             .path("data")
@@ -172,12 +170,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         },
     );
     settle(&mut local);
-    let slot = local
-        .server()
-        .world()
-        .get::<PlayerLink>(local.link(0))
-        .unwrap()
-        .slot();
+    let slot = local.server().world().link_slot(local.link(0)).unwrap();
     let session = local.server().world().resource::<Session>();
     let Some(Controller::Player { chain, .. }) = session.log().controller(slot) else {
         panic!("slot {} has no player", slot.get());

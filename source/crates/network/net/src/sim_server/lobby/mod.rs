@@ -4,27 +4,22 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
-use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
-use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Delegation, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms, SlotPlan,
-    SlotStart,
+    Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
+    SlotPlan, SlotStart,
 };
-use campfire_runner::{InputRules, SessionRules};
+use campfire_runner::{HostChoices, SessionRules};
 use campfire_visibility::{HostVisibility, Visibility};
-use lightyear::prelude::{Connected, LocalTimeline};
+use lightyear::prelude::Connected;
 use tracing::info;
 
-use crate::events::join_refused::JoinRefused;
-use crate::sim_server::error::JoinError;
-use crate::sim_server::lobby::error::{KeepFilesError, LobbyError};
-use crate::sim_server::offering::{
-    CheckedJoins, Dismissing, JoinLinks, Joined, OfferLinks, Offering,
-};
+use crate::events::join_refused::error::JoinError;
+use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
+use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
@@ -57,6 +52,20 @@ pub struct Lobby {
     files: Option<SessionFiles>,
 }
 
+/// What a server opens a new session of its own with, which `Lobby::open` makes the rest of.
+#[derive(Debug)]
+pub struct LobbyOpening {
+    pub packages: Arc<ModePackages>,
+    /// The bots the server plays: their slots are the bots'.
+    pub bots: ServerBots,
+    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
+    /// are the players'.
+    pub open: Vec<PlayerSlot>,
+    /// What the host sets of the session's visibility, within what the mode leaves it.
+    pub host: HostVisibility,
+    pub server: ServerSetup,
+}
+
 /// What a server opens a session with.
 #[derive(Debug)]
 pub struct LobbySetup {
@@ -64,7 +73,7 @@ pub struct LobbySetup {
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
-    pub rules: InputRules,
+    pub inputs: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
     /// The bots the server plays: their slots are the bots'.
@@ -77,7 +86,46 @@ pub struct LobbySetup {
     pub server: ServerSetup,
 }
 
+impl AsRef<Offering> for Lobby {
+    fn as_ref(&self) -> &Offering {
+        &self.offering
+    }
+}
+
 impl Lobby {
+    /// The segments of a server's seed chain: the most checkpoints a session may take, less one.
+    const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
+
+    /// A new session of a server, as `new` opens it, its files kept under `data`: every slot
+    /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
+    /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
+    pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Lobby, LobbyOpenError> {
+        let LobbyOpening {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+        } = opening;
+        let root = server.os.entropy.random();
+        let manifest = packages.manifest();
+        let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
+        let tick_hz = manifest.tick_hz.default();
+        let mut lobby = Lobby::new(LobbySetup {
+            packages,
+            seed_chain: SeedChain::new(root, Lobby::SEGMENTS),
+            tick_hz,
+            inputs: InputRules::LAN,
+            slots,
+            bots,
+            open,
+            host,
+            server,
+        })?;
+        lobby.keep_files(data)?;
+        Ok(lobby)
+    }
+
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
     /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
     /// names a slot the session does not have or one already named, when no slot is left to a
@@ -87,7 +135,7 @@ impl Lobby {
             packages,
             seed_chain,
             tick_hz,
-            rules,
+            inputs,
             slots,
             bots,
             open,
@@ -119,14 +167,14 @@ impl Lobby {
             .session(&host)
             .map_err(LobbyError::Visibility)?;
         let terms = session_rules
-            .terms(
-                server.key.x_only_public_key().0,
-                seed_chain.commitment(),
+            .terms(HostChoices {
+                server_key: server.key.x_only_public_key().0,
+                seed_commitment: seed_chain.commitment(),
                 tick_hz,
-                rules,
-                plan,
-                &visibility,
-            )
+                inputs,
+                slots: plan,
+                visibility: &visibility,
+            })
             .map_err(LobbyError::Terms)?;
         Ok(Lobby {
             offering: Offering::new(terms, &server),
@@ -159,22 +207,14 @@ impl Lobby {
         &self.offering.terms
     }
 
+    /// The setup of the server that opened it.
+    pub const fn server(&self) -> &ServerSetup {
+        &self.server
+    }
+
     /// How many players joined so far.
     const fn joined(&self) -> usize {
         self.joined.len()
-    }
-
-    /// Offers the terms to each connected link that has no offer; see `Offering::offer`.
-    pub(crate) fn offer(
-        lobby: Res<'_, Lobby>,
-        timeline: Res<'_, LocalTimeline>,
-        time: Res<'_, Time<Real>>,
-        mut links: OfferLinks<'_, '_>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        lobby
-            .offering
-            .offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
     }
 
     /// Takes each offered link's join: a player who answered their challenge joins in the next
@@ -188,15 +228,10 @@ impl Lobby {
         mut commands: Commands<'_, '_>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
-        let joins = links
-            .iter_mut()
-            .filter_map(|(link, offered, mut receiver)| {
-                let join = receiver.receive().next()?;
-                Some((link, *offered, join))
-            });
+        let joins = links.iter_mut().filter_map(Offering::received);
         lobby.offering.check_all(joins, &mut checked);
         for (link, error) in checked.refused.drain(..) {
-            Lobby::refuse(&mut commands, link, error);
+            Offering::refuse(&mut commands, link, error);
         }
         let mut watching = Spectators::count(viewers.iter());
         for link in checked.watching.drain(..) {
@@ -204,16 +239,16 @@ impl Lobby {
                 Ok(viewer) => {
                     commands.entity(link).insert((Joined, viewer));
                     watching += 1;
-                    info!(?link, "a spectator joined");
+                    info!(link = link.to_bits(), "a spectator joined");
                 }
-                Err(error) => Lobby::refuse(&mut commands, link, error),
+                Err(error) => Offering::refuse(&mut commands, link, error),
             }
         }
         for (link, delegation) in checked.answered.drain(..) {
             match lobby.seat(link, delegation) {
                 Ok(older) => {
                     info!(
-                        ?link,
+                        link = link.to_bits(),
                         joined = lobby.joined(),
                         of = lobby.players,
                         "a player joined"
@@ -224,18 +259,9 @@ impl Lobby {
                         Dismissing::refuse(&mut commands, older, JoinError::Superseded);
                     }
                 }
-                Err(error) => Lobby::refuse(&mut commands, link, error),
+                Err(error) => Offering::refuse(&mut commands, link, error),
             }
         }
-    }
-
-    fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
-        JoinRefused {
-            link: format!("{link:?}"),
-            error: ErrorReport::of(&error).to_string(),
-        }
-        .log();
-        Dismissing::refuse(commands, link, error);
     }
 
     /// Starts the match once every slot is taken, and closes the lobby: the door takes the
@@ -272,6 +298,7 @@ impl Lobby {
             files: lobby.files,
             server: &lobby.server,
             bots: lobby.bots,
+            offering: lobby.offering,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
@@ -288,7 +315,10 @@ impl Lobby {
         lobby.joined.retain(|&(link, _)| {
             let connected = live.contains(link);
             if !connected {
-                info!(?link, "a player left the lobby; their seat is free");
+                info!(
+                    link = link.to_bits(),
+                    "a player left the lobby; their seat is free"
+                );
                 if let Ok(mut gone) = commands.get_entity(link) {
                     gone.remove::<Joined>();
                 }

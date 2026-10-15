@@ -1,10 +1,13 @@
 use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
-use campfire_deliveries::Delivering;
+use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
-use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit};
+use campfire_script::{
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit,
+};
 use campfire_sim::{Capability, Position};
 use campfire_units::NewUnit;
 
+use crate::error::ProjectilesRefusal;
 use crate::projectile_data::ProjectileData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};
 
@@ -50,7 +53,7 @@ impl ProjectilesApi {
     /// unit: the new projectile, with the id the call takes for it; an error for a form its type
     /// does not fly in.
     fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<NewUnit> {
-        let launcher = Delivering::of(ctx, |shape| {
+        let launcher = Launcher::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;
         let homes = matches!(
@@ -58,12 +61,12 @@ impl ProjectilesApi {
             DeliveryShape::Projectile { homes: true, .. }
         );
         if homes != matches!(toward, Toward::Unit(_)) {
-            return Err(ApiError::OtherFlight.fail().into());
+            return Err(ProjectilesRefusal::OtherFlight.fail().into());
         }
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();
-        frame.effects.push(ProjectilesEffect {
+        frame.queue(ProjectilesEffect {
             id,
             by: launcher.by,
             unit_type,

@@ -7,11 +7,12 @@ use campfire_actions::{
     Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
-use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorldCrate};
-use campfire_script::ScriptsWorldCrate;
+use campfire_declare::RoleForm;
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
+use campfire_script::ScriptsWorld;
 use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, ForcedMove, Owner, Predicting};
+use campfire_units::{Body, Dead, ForcedMove, Owner};
 use campfire_values::{Block, Team, UnitTags};
 
 use crate::ROLL_STREAM;
@@ -180,18 +181,36 @@ impl Attacks {
         }
     }
 
-    /// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one
-    /// its pools cannot pay turns off, before the attack's events. Only the server pays them, as a
-    /// client's pools come from the server.
+    /// Pays, for each attack going off this tick that strikes, as its events and its strike test
+    /// it, its attacker's toggles that cost an attack; one its pools cannot pay turns off, before
+    /// the attack's events. Only the server pays them, as a client's pools come from the server.
     pub(super) fn pay_attack_toggles(
         (tick, book, life): (Res<'_, SimTick>, Res<'_, ActionBook>, Res<'_, PoolBook>),
-        mut attackers: Query<'_, '_, (&ActionSlots, &mut SlotTimes, UnitPools), Without<Dead>>,
+        resources: PlayerRows<'_, '_, PlayerResources>,
+        mut attackers: Query<
+            '_,
+            '_,
+            (
+                &ActionSlots,
+                &mut SlotTimes,
+                Option<&UnitTags>,
+                Has<ForcedMove>,
+                UnitPools,
+                Option<&Owner>,
+            ),
+            Without<Dead>,
+        >,
     ) {
         let now = tick.start();
         let life = life.life();
-        for (slots, mut times, pools) in &mut attackers {
-            if Self::going_off(slots, now).is_some() {
-                times.pay_attack_toggles(slots, &book, &mut pools.of(life));
+        for (slots, mut times, tags, forced, pools, owner) in &mut attackers {
+            if Self::going_off(slots, now).is_none() {
+                continue;
+            }
+            let mut pools = pools.of(life);
+            let purse = Purse::of(pools.read(), resources.of(owner));
+            if Self::wielded(&book, slots).strikes(tags, forced, purse) {
+                times.pay_attack_toggles(slots, &book, &mut pools);
             }
         }
     }
@@ -205,18 +224,17 @@ impl Attacks {
     /// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops
     /// instead, and spends nothing. A client that predicts the attack only makes the weapon ready
     /// again, as the damage, the launch and the cost come from the server.
-    pub fn strike(
+    pub fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
             Res<'_, PoolBook>,
         ),
-        (mut queue, mut fired, mut resources, predicting): (
+        (mut queue, mut fired, mut resources): (
             ResMut<'_, PassQueue>,
             ResMut<'_, Shots>,
             PlayerRowsMut<'_, '_, PlayerResources>,
-            Option<Res<'_, Predicting>>,
         ),
         mut attackers: Query<
             '_,
@@ -270,7 +288,7 @@ impl Attacks {
             let period = weapon.period(stats, clock.rate().hz().get(), values.windup);
             times.cool_down(wielded.slot, started.after(period));
             slots.stop();
-            if predicting.is_some() {
+            if F::PREDICTS {
                 continue;
             }
             let amount = weapon.damage(stats);

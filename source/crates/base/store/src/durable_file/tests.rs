@@ -45,50 +45,6 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
 }
 
 #[test]
-fn a_durable_directory_is_made_once_and_its_owners_only() {
-    let dir = TempDir::new().unwrap();
-    let path = dir.path().join("sessions");
-    DurableFile::create_dir(&path).unwrap();
-    DurableFile::write(&path.join("kept"), b"kept").unwrap();
-    // Made again, it stays as it is.
-    DurableFile::create_dir(&path).unwrap();
-    assert_eq!(fs::read(path.join("kept")).unwrap(), b"kept");
-    assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
-    // A file in its place is no directory.
-    assert!(matches!(
-        DurableFile::create_dir(&path.join("kept")),
-        Err(PathError {
-            error: DurableError::Create(_),
-            ..
-        })
-    ));
-    // Each missing directory above one is made, its owner's only; one already there stays. A new
-    // directory is made once.
-    let deep = dir.path().join("a").join("b");
-    DurableFile::create_dir_all(&deep).unwrap();
-    DurableFile::create_dir_all(&deep).unwrap();
-    assert_eq!(OwnerOnly::exposure_at(&dir.path().join("a")).unwrap(), None);
-    DurableFile::create_new_dir(&deep.join("run")).unwrap();
-    assert!(matches!(
-        DurableFile::create_new_dir(&deep.join("run")),
-        Err(PathError {
-            error: DurableCreateError::Exists,
-            ..
-        })
-    ));
-    // Removed, it goes with all it holds; a directory that is not there is not removed.
-    DurableFile::remove_dir(&path).unwrap();
-    assert!(!path.exists());
-    assert!(matches!(
-        DurableFile::remove_dir(&path),
-        Err(PathError {
-            error: DurableError::Remove(_),
-            ..
-        })
-    ));
-}
-
-#[test]
 fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("server.nsec");

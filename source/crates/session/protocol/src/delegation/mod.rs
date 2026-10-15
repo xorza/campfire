@@ -1,17 +1,19 @@
 use std::str::FromStr;
 
 use campfire_common::Bytes32;
-use nostr::event::{Event, Kind, Tag, UnsignedEvent};
-use nostr::key::{Keys, SecretKey};
+use nostr::event::{Event, Kind, Signature, Tag, UnsignedEvent};
+use nostr::key::PublicKey;
 use nostr::types::Timestamp;
-use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 
 use crate::delegation::delegation_id::DelegationId;
 use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::{DelegationError, EventError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
+use crate::main_key::MainKey;
 use crate::session_id::SessionId;
+use crate::signer::Signer;
 
 pub(crate) mod delegation_id;
 pub(crate) mod delegation_tag;
@@ -40,7 +42,7 @@ pub struct DelegationTerms {
 pub struct Delegation {
     json: String,
     id: DelegationId,
-    main_key: [u8; 32],
+    main_key: MainKey,
     terms: DelegationTerms,
 }
 
@@ -49,16 +51,8 @@ impl Delegation {
     /// other tag takes. The log keeps the JSON whole, so this bounds each record that holds one.
     pub const MAX_JSON: usize = 4096;
 
-    /// `terms` signed by `main_key` at `created_at`, in Unix seconds, with BIP-340's auxiliary
-    /// randomness `aux`.
-    pub fn sign<C: Signing>(
-        secp: &Secp256k1<C>,
-        main_key: &Keypair,
-        terms: &DelegationTerms,
-        created_at: u64,
-        aux: &[u8; 32],
-    ) -> Delegation {
-        let main_key = Keys::new(SecretKey::from(main_key.secret_key()));
+    /// `terms` signed by `main`, the player's main key, at `created_at`, in Unix seconds.
+    pub fn sign(main: &Signer, terms: &DelegationTerms, created_at: u64) -> Delegation {
         let tags = [
             custom(
                 DelegationTag::SessionKey,
@@ -79,14 +73,14 @@ impl Delegation {
             custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
         let unsigned = UnsignedEvent::new(
-            main_key.public_key(),
+            PublicKey::from(main.public_key()),
             Timestamp::from_secs(created_at),
             Kind::from_u16(KIND),
             tags,
             "",
         );
         let id = unsigned.compute_id();
-        let signature = main_key.sign_schnorr_with_aux_rand(secp, id.as_bytes(), aux);
+        let signature = Signature::from_byte_array(main.sign(id.as_bytes()).to_bytes());
         let event = unsigned
             .add_signature(signature)
             .expect("a fresh signature holds");
@@ -100,7 +94,7 @@ impl Delegation {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
-            .map_err(|error| DelegationError::NotEvent(EventError::new(error)))?;
+            .map_err(|error| DelegationError::NotEvent(EventError::from(error)))?;
         if !event.verify_id() {
             return Err(DelegationError::WrongId);
         }
@@ -126,7 +120,7 @@ impl Delegation {
         Ok(Delegation {
             json: json.to_owned(),
             id: DelegationId::new(event.id.to_bytes()),
-            main_key: event.pubkey.to_bytes(),
+            main_key: MainKey::new(event.pubkey.to_bytes()),
             terms: DelegationTerms {
                 session_key,
                 server_key,
@@ -153,7 +147,7 @@ impl Delegation {
     }
 
     /// The x-only public key of the player's Nostr identity.
-    pub const fn main_key(&self) -> &[u8; 32] {
+    pub const fn main_key(&self) -> &MainKey {
         &self.main_key
     }
 

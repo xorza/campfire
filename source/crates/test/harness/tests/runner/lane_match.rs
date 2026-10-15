@@ -7,11 +7,11 @@ use campfire_actions::ActionSlots;
 use campfire_capabilities::{Action, Order};
 use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
-use campfire_harness::{FixedMatch, FixedSession, MatchRecord, MatchUnits};
+use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::{Hook, ScriptFailures};
@@ -72,6 +72,7 @@ mod scripted_match {
         let mut east = Vec::new();
         let mut felled = Vec::new();
         let mut seen = Vec::new();
+        let mut watch = ArchetypeWatch::of(fixed.game());
         for tick in 0..TICKS {
             // Tick 1: the walker learns its first ability with its spawn point. As they meet, it
             // attacks the first east creep, and the second once the first falls. Once both fell, it
@@ -116,6 +117,7 @@ mod scripted_match {
             }
             fixed.game_mut().run_tick_alone();
             record.tick(fixed.game_mut());
+            watch.tick(fixed.game(), tick);
             if tick == 0 {
                 east = MatchUnits::of(fixed.game())
                     .all()
@@ -146,6 +148,7 @@ mod scripted_match {
             }
         }
         record.check("lane");
+        watch.assert_kept();
         // After tick 1: its first ability at rank 1, for its one point. Each creep it fells gives it
         // 60 experience: 120 after the second, past level 2's 100, which gives a point. Its ultimate
         // needs level 3, and its first ability's rank 2 level 2: the point goes to that.
@@ -186,7 +189,7 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
         let walker = packages
             .packages()
             .find(|view| view.package.header.name == "hero-walker");
-        walker.unwrap().package.fingerprint
+        walker.unwrap().package.fingerprint()
     };
     assert_ne!(walker(&plain), walker(&reworded));
     assert_eq!(hashes(plain), hashes(reworded));

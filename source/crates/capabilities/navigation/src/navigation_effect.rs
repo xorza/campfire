@@ -6,12 +6,13 @@ use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::Teleported;
 use campfire_math::{Num, Vec3};
-use campfire_script::{ApiError, CallError, Effect, Frame, View};
+use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, View};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
 use campfire_values::DashDelivery;
 
 use crate::body_index::BodyIndex;
+use crate::error::NavigationRefusal;
 use crate::navigation_column::NavigationColumn;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
@@ -59,7 +60,7 @@ impl NavigationEffect {
         let step = speed
             .checked_div_int(hz)
             .filter(|&step| step > Num::ZERO)
-            .ok_or(ApiError::NotASpeed)?;
+            .ok_or_else(|| NavigationRefusal::NotASpeed.refused())?;
         Ok(NavigationEffect::Dash {
             id,
             to,
@@ -79,7 +80,7 @@ impl NavigationEffect {
     ) -> Result<NavigationEffect, ApiError> {
         NavigationEffect::walker(view, id)?;
         if distance <= Num::ZERO || distance > Position::BOUND {
-            return Err(ApiError::NotADistance);
+            return Err(NavigationRefusal::NotADistance.refused());
         }
         let ticks = view.lasting(ms)?;
         Ok(NavigationEffect::KnockBack {
@@ -128,14 +129,14 @@ impl NavigationEffect {
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };
-        frame.effects.push(effect.map_err(CallError::Api)?);
+        frame.queue(effect.map_err(CallError::Api)?);
         Ok(())
     }
 
     /// Fails unless `id` walks: only a walker moves.
     fn walker(view: &View, id: StableId) -> Result<(), ApiError> {
         if !NavigationColumn::walks(view, id) {
-            return Err(ApiError::NoWalker);
+            return Err(NavigationRefusal::NoWalker.refused());
         }
         Ok(())
     }

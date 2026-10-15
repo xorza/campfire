@@ -4,12 +4,13 @@ use std::slice;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ModifierFields,
-    MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields, Targeting, XpFields,
+    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ListHook,
+    MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields,
+    Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
-use campfire_items::ItemData;
+use campfire_items::{ItemData, ItemError};
 use campfire_math::Num;
 use campfire_mode::{ModeList, ModeNamesError, Offers};
 use campfire_progression::TrackError;
@@ -21,9 +22,9 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierData, ModifierProblem, StatId};
-use campfire_units::{TypesError, UnitTypeCore};
+use campfire_units::TypesError;
 use campfire_values::{
-    DeclaredName, EngineTag, FilterData, MessageId, Number, PackagePath, Param, Stat,
+    DeclaredName, EngineTag, FilterData, MessageId, Number, PackageIndex, PackagePath, Param, Stat,
 };
 
 use crate::dependent::{Dependent, DependentKind};
@@ -43,7 +44,7 @@ use crate::error::use_problem::UseProblem;
 use crate::error::way::Way;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
-use crate::mode_packages::name_tables::NameTables;
+use crate::mode_packages::name_tables::{NameTables, TableKind};
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
@@ -128,31 +129,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<Vec<StatId>, LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
-        let names = packages.tag_names();
         let engine = Release::engine_tags();
-        if engine.len() + names.len() > UnitTypeCore::TAG_LIMIT {
-            return Err(fail(LoadProblem::TooMany(Limit::Tags)));
-        }
-        // A dependency's delivery types are in its own scope, so they share no name with
-        // another package's; an avatar is in the mode's, by its package's name.
-        let units = &packages.content.units;
-        let mut unit_types = units.len();
-        for dependent in &packages.dependencies {
-            unit_types += dependent.content.units.len();
-            if matches!(dependent.kind, DependentKind::Avatar(_)) {
-                let name = &dependent.package.header.name;
-                if units.contains_key(name.as_str()) {
-                    return Err(fail(LoadProblem::Repeated {
-                        at: Place::UnitTypes,
-                        name: name.to_string(),
-                    }));
-                }
-                unit_types += 1;
-            }
-        }
-        if unit_types > UnitTypeCore::TYPE_LIMIT {
-            return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
-        }
         let every = [&packages.mode].into_iter().chain(
             packages
                 .dependencies
@@ -165,9 +142,10 @@ impl<'a> LoadCheck<'a> {
                 return Err(LoadError::of(&package.header.name, problem));
             }
         }
+        let names = NameTables::of(packages);
         let check = LoadCheck {
             packages,
-            names: NameTables::of(packages),
+            names: names.map_err(|error| book_error(packages, error))?,
             engine,
             cap: manifest.max_move_speed.get(),
             api,
@@ -187,173 +165,11 @@ impl<'a> LoadCheck<'a> {
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let input = packages.book_input(check.rate, &stat_order);
-        let books = Books::build(&input).map_err(|error| check.book_error(error))?;
+        let books = Books::build(&input).map_err(|error| book_error(packages, error))?;
         books
             .check_walkable()
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
         Ok(stat_order)
-    }
-
-    /// The load error of what building the books refused, at the fastest rate the mode allows.
-    fn book_error(&self, error: BookError) -> LoadError {
-        let packages = self.packages;
-        let at = |package: u16, unit_type: TypePlace| match unit_type {
-            TypePlace::Avatar => {
-                let view = packages.packages().nth(usize::from(package));
-                let package = &view.expect("the books name a package").package;
-                Place::Avatar(package.header.name.clone())
-            }
-            TypePlace::Declared(name) => Place::UnitType(name),
-        };
-        let (package, problem) = match error {
-            BookError::Start {
-                package,
-                unit_type,
-                error,
-            } => (
-                package,
-                LoadProblem::UnitStart {
-                    at: at(package, unit_type),
-                    error,
-                },
-            ),
-            BookError::BoxWalks { package, unit_type } => (
-                package,
-                LoadProblem::BoxBody {
-                    at: at(package, unit_type),
-                    problem: BoxProblem::Walks,
-                },
-            ),
-            BookError::Ai {
-                package,
-                unit_type,
-                error,
-            } => (
-                package,
-                LoadProblem::Ai {
-                    at: at(package, unit_type),
-                    error,
-                },
-            ),
-            BookError::Action {
-                package,
-                action,
-                problem,
-            } => (package, LoadCheck::action_problem(action, problem)),
-            BookError::Modifier {
-                package,
-                modifier,
-                problem,
-            } => (package, LoadProblem::Modifier { modifier, problem }),
-            BookError::Mode(error) => (0, LoadProblem::Mode(error)),
-            BookError::Names(error) => (0, LoadCheck::names_problem(error)),
-            BookError::Types(error) => (0, LoadCheck::types_problem(error)),
-            BookError::Script { package, path } => (
-                package,
-                LoadProblem::Script {
-                    path,
-                    problem: ScriptProblem::Missing,
-                },
-            ),
-            BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
-            BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
-            BookError::AreaTime { package, unit_type } => (
-                package,
-                LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
-            ),
-            BookError::Unknown {
-                package,
-                at: place,
-                name,
-            } => {
-                let at = match place {
-                    BookPlace::UnitType(unit_type) => at(package, unit_type),
-                    BookPlace::Action(action) => Place::Action(action),
-                    BookPlace::Modifier(modifier) => Place::Modifier(modifier),
-                    BookPlace::Pool(pool) => Place::Pool(pool),
-                    BookPlace::Item(item) => Place::Item(item),
-                    BookPlace::Combat => Place::Combat,
-                };
-                let UnknownName { of, name } = name;
-                (package, LoadProblem::Unknown { at, name, of })
-            }
-        };
-        let view = packages.packages().nth(usize::from(package));
-        LoadError::of(
-            &view.expect("the books name a package").package.header.name,
-            problem,
-        )
-    }
-
-    /// The problem of `error`, the unit types or tags that the book build refused.
-    fn types_problem(error: TypesError) -> LoadProblem {
-        match error {
-            TypesError::TooManyTags => LoadProblem::TooMany(Limit::Tags),
-            TypesError::TooManyTypes => LoadProblem::TooMany(Limit::UnitTypes),
-            TypesError::Repeated(name) => LoadProblem::Repeated {
-                at: Place::UnitTypes,
-                name,
-            },
-        }
-    }
-
-    /// The problem of `error`, a list of the mode's names that the book build refused.
-    fn names_problem(error: ModeNamesError) -> LoadProblem {
-        match error {
-            ModeNamesError::TooMany(list) => LoadProblem::TooMany(match list {
-                ModeList::Pools => Limit::Pools,
-                ModeList::Resources => Limit::Resources,
-                ModeList::DamageKinds => Limit::DamageKinds,
-                // Each layer is a tag of the match.
-                ModeList::Layers => Limit::Tags,
-            }),
-            ModeNamesError::Repeated { list, name } => {
-                let at = match list {
-                    ModeList::Pools => Place::Pool(name.clone()),
-                    ModeList::Resources => Place::Resources,
-                    ModeList::DamageKinds => Place::Combat,
-                    ModeList::Layers => Place::Navigation,
-                };
-                let name = name.to_string();
-                LoadProblem::Repeated { at, name }
-            }
-        }
-    }
-
-    /// The problem of `problem`, a rule the data of `action` breaks, as the book build found it.
-    fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
-        match problem {
-            ActionProblem::Time(error) => LoadProblem::Action { action, error },
-            ActionProblem::RankCount(ranks) => LoadProblem::RankCount { action, ranks },
-            ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
-            ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
-            ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
-            ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
-            ActionProblem::Global(ActionKind::Gather) => {
-                LoadProblem::Gather(GatherProblem::Global(action))
-            }
-            ActionProblem::Global(ActionKind::Build) => {
-                LoadProblem::Build(BuildProblem::Global(action))
-            }
-            ActionProblem::Global(ActionKind::Use) => LoadProblem::Use(UseProblem::Global(action)),
-            ActionProblem::Global(kind) => {
-                unreachable!("only a use, a build and a gather need meters, not a {kind:?}")
-            }
-            ActionProblem::Section(unit_type) => {
-                LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type })
-            }
-            ActionProblem::NoBox => LoadProblem::Build(BuildProblem::NoBox(action)),
-            ActionProblem::StartLife => LoadProblem::Build(BuildProblem::StartLife(action)),
-            ActionProblem::Effect { list, rule } => LoadProblem::Effect {
-                action,
-                list,
-                problem: match rule {
-                    EffectRule::Overflow => EffectProblem::Overflow,
-                    EffectRule::Negative => EffectProblem::Negative,
-                    EffectRule::Duration => EffectProblem::Duration,
-                },
-            },
-        }
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
@@ -414,7 +230,7 @@ impl<'a> LoadCheck<'a> {
         let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
         self.actions(&content.actions, units, &mut names)?;
-        let view = packages.packages().next().expect("the mode, first");
+        let view = packages.mode();
         let ways = packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, &content.actions, ranks)?;
         self.scripts(&names)
@@ -837,7 +653,7 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             for named in &facts.names {
-                self.script_name(named, names, &at)?;
+                self.script_name(named, names, path)?;
             }
             if let Some(field) = facts
                 .state_fields
@@ -983,15 +799,16 @@ impl<'a> LoadCheck<'a> {
         undeclared.map(Some).ok_or(problem)
     }
 
-    /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
-    /// has: a modifier or an ability one of the script's package's, as `package` holds them; a unit
-    /// type one of the mode's scope.
+    /// A name the script at `path` gives an argument of a name kind is one of its kind that the
+    /// match has: a modifier, an ability or a message one of the script's package's, as `package`
+    /// holds them; a param one data gives the script; a unit type one of the mode's scope.
     fn script_name(
         &self,
         named: &ScriptName,
         package: &PackageNames<'_>,
-        at: &Place,
+        path: &PackagePath,
     ) -> Result<(), LoadProblem> {
+        let at = Place::Script(path.clone());
         let unknown = || LoadProblem::Unknown {
             of: named.kind,
             at: at.clone(),
@@ -1000,36 +817,38 @@ impl<'a> LoadCheck<'a> {
         let packages = self.packages;
         let data = &packages.data;
         let name = named.name.as_str();
+        let table = |kind| self.names.has(kind, name);
         let known = match named.kind {
-            NameKind::Modifier => return modifier_exists(package.modifiers, name, at),
+            NameKind::Modifier => return modifier_exists(package.modifiers, name, &at),
             NameKind::Ability => package.actions.contains_key(name),
-            NameKind::Filter => return self.filter_text(name, at),
+            NameKind::Message => package.package.text.gives(name),
+            NameKind::Param => package
+                .scripts
+                .get(path)
+                .is_some_and(|script| script.params.contains(name)),
+            NameKind::Filter => return self.filter_text(name, &at),
             NameKind::Stat => {
                 let stat = Stat::named(name).ok_or_else(unknown)?;
-                return self.stats_declared([&stat], at);
+                return self.stats_declared([&stat], &at);
             }
             NameKind::Choice => declares(data.choices.keys(), name),
+            NameKind::Item => packages.content.items.contains_key(name),
+            NameKind::Cost => self.names.cost_target(name).is_some(),
             NameKind::MarkerTag => packages
                 .map
                 .markers
                 .iter()
                 .any(|marker| declares(marker.tags.iter(), name)),
-            NameKind::Resource
-            | NameKind::Pool
-            | NameKind::DamageKind
-            | NameKind::Track
-            | NameKind::Tag
-            | NameKind::Team
-            | NameKind::Path
-            | NameKind::SlotKind
-            | NameKind::UnitType => self.names.has(named.kind, name),
-            NameKind::Param
-            | NameKind::Cost
-            | NameKind::Layer
-            | NameKind::Message
-            | NameKind::Item => {
-                unreachable!("no argument of the script API is a {}", named.kind)
-            }
+            NameKind::Resource => table(TableKind::Resource),
+            NameKind::Pool => table(TableKind::Pool),
+            NameKind::DamageKind => table(TableKind::DamageKind),
+            NameKind::Track => table(TableKind::Track),
+            NameKind::SlotKind => table(TableKind::SlotKind),
+            NameKind::Layer => table(TableKind::Layer),
+            NameKind::Tag => table(TableKind::Tag),
+            NameKind::Team => table(TableKind::Team),
+            NameKind::Path => table(TableKind::Path),
+            NameKind::UnitType => table(TableKind::UnitType),
         };
         if known { Ok(()) } else { Err(unknown()) }
     }
@@ -1062,22 +881,13 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A `build` of `production`, `id`: aimed at a point, of a unit type of its package, `units`,
-    /// `name`, that stands.
-    fn build(
-        &self,
-        id: &DeclaredName,
-        action: &ActionData,
-        name: &DeclaredName,
-        units: &BTreeMap<DeclaredName, UnitTypeData>,
-    ) -> Result<(), LoadProblem> {
+    /// A `build` of `production`, `id`: aimed at a point. That it builds a unit type of its
+    /// package that stands, the book build holds.
+    fn build(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
         if action.targeting != Targeting::Point {
             return Err(LoadProblem::Build(BuildProblem::Aims(id.to_owned())));
-        }
-        if units.get(name).is_none_or(UnitTypeData::delivers) {
-            return Err(unknown(&at, name, NameKind::UnitType));
         }
         Ok(())
     }
@@ -1148,7 +958,7 @@ impl<'a> LoadCheck<'a> {
                     }
                 }
             }
-            KindData::Build { unit_type } => self.build(id, action, unit_type, units)?,
+            KindData::Build { .. } => self.build(id, action)?,
             KindData::Gather { .. } => self.gather(id, action)?,
             KindData::Attack { .. } => {
                 self.require(Capability::Combat, &at)?;
@@ -1179,7 +989,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         for (list, effects) in action.effect_lists() {
             let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
-            if !effects.is_empty() && list != Hook::OnResolve && !delivers {
+            if !effects.is_empty() && list != ListHook::OnResolve && !delivers {
                 return Err(LoadProblem::Effect {
                     action: id.clone(),
                     list,
@@ -1187,8 +997,9 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             let reaches = match list {
-                Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
-                _ => list == Hook::OnHit,
+                ListHook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
+                ListHook::OnHit => true,
+                ListHook::OnEnd => false,
             };
             self.effect_list(id, action, scope, list, effects, reaches)?;
         }
@@ -1216,16 +1027,16 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The list `effects` of `action`, whose id is `id`, which runs before `list` and reaches a
-    /// unit when `reaches`: each effect one the release runs, of a capability the mode declares,
-    /// to a unit the list reaches; a launch of an area type of `units`, whose `on_hit` reaches a
-    /// unit and whose `on_end` does not. The other names they give, and the rules of their
-    /// numbers and durations, the book build holds.
+    /// unit when `reaches`: each effect of a capability the mode declares, to a unit the list
+    /// reaches; a launch of an area type of `units`, whose `on_hit` reaches a unit and whose
+    /// `on_end` does not. The other names they give, the rules of their numbers and durations,
+    /// and the effects the release does not run, the book build holds.
     fn effect_list(
         &self,
         id: &DeclaredName,
         action: &ActionData,
         scope: EffectScope<'_>,
-        list: Hook,
+        list: ListHook,
         effects: &[EffectData],
         reaches: bool,
     ) -> Result<(), LoadProblem> {
@@ -1236,7 +1047,7 @@ impl<'a> LoadCheck<'a> {
             problem,
         };
         // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
-        let aims_point = list == Hook::OnResolve
+        let aims_point = list == ListHook::OnResolve
             && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
             let placed = aims_point && matches!(effect.does, DoesData::Spawn(SpawnFields { .. }));
@@ -1249,9 +1060,7 @@ impl<'a> LoadCheck<'a> {
                 name: name.to_string(),
             };
             match &effect.does {
-                DoesData::Planned(planned) => {
-                    return Err(fail(EffectProblem::Planned(*planned)));
-                }
+                DoesData::Planned(_) => {}
                 DoesData::Damage(DamageFields { .. })
                 | DoesData::Heal(HealFields { .. })
                 | DoesData::Restore(RestoreFields { .. }) => {
@@ -1282,8 +1091,8 @@ impl<'a> LoadCheck<'a> {
                             unit_type: area.clone(),
                         }));
                     }
-                    self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
-                    self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
+                    self.effect_list(id, action, scope, ListHook::OnHit, on_hit, true)?;
+                    self.effect_list(id, action, scope, ListHook::OnEnd, on_end, false)?;
                 }
                 DoesData::Spawn(SpawnFields { unit_type, .. }) => {
                     scope.spawn(unit_type, &at, fail)?;
@@ -1519,10 +1328,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's item types: an item costs in the mode's player resources, at least what its
-    /// components cost in each, is built from items of the mode and never from itself, and holds
-    /// no modifier that is another's passive; and no unit type or choice fills an inventory's slot
-    /// kind. Item types need `items`.
+    /// The mode's item types: an item costs in the mode's player resources, is built from items
+    /// of the mode and never from itself, and holds no modifier that is another's passive; and no
+    /// unit type or choice fills an inventory's slot kind. Item types need `items`. Its costs
+    /// against its stack and its components the item book holds.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let content = &packages.content;
@@ -1564,22 +1373,6 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
                 looped.clone(),
             )));
-        }
-        for (id, item) in items {
-            let mut parts: BTreeMap<&DeclaredName, u64> = BTreeMap::new();
-            for component in &item.components {
-                for (resource, &amount) in &items[component].cost {
-                    *parts.entry(resource).or_default() += u64::from(amount);
-                }
-            }
-            let covers = |(resource, parts): (&&DeclaredName, &u64)| {
-                u64::from(item.cost.get(*resource).copied().unwrap_or(0)) >= *parts
-            };
-            if !parts.iter().all(covers) {
-                return Err(LoadProblem::Item(ItemProblem::CheaperThanComponents(
-                    id.clone(),
-                )));
-            }
         }
         Ok(())
     }
@@ -1815,21 +1608,11 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's slot kinds: no more than a slot's index holds, none named twice, and none that
-    /// gives its ranks levels in a mode with no `level` track to read them on.
+    /// The mode's slot kinds: none that gives its ranks levels in a mode with no `level` track to
+    /// read them on. Their count and names the decode holds.
     fn slot_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = data.slots.kinds();
-        if kinds.len() > ActionSlots::LIMIT {
-            return Err(LoadProblem::Choice(ChoiceProblem::TooManySlotKinds));
-        }
-        let mut seen = BTreeSet::new();
-        if let Some(kind) = kinds.iter().find(|kind| !seen.insert(&kind.name)) {
-            return Err(LoadProblem::Repeated {
-                at: Place::SlotKinds,
-                name: kind.name.to_string(),
-            });
-        }
         let level_track = data.tracks.values().any(|track| track.level);
         let leveled = kinds.iter().find(|kind| {
             kind.ranks
@@ -1906,7 +1689,7 @@ impl<'a> LoadCheck<'a> {
     fn cost_names(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         if let Some(name) = action
             .cost_names()
-            .find(|name| self.names.cost_target(name).is_none())
+            .find(|name| self.names.cost_target(name.as_str()).is_none())
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
@@ -1964,7 +1747,7 @@ impl<'a> LoadCheck<'a> {
         if filter
             .tags
             .iter()
-            .all(|tag| self.names.has(NameKind::Tag, tag.name.as_str()))
+            .all(|tag| self.names.has(TableKind::Tag, tag.name.as_str()))
         {
             return Ok(());
         }
@@ -1973,6 +1756,181 @@ impl<'a> LoadCheck<'a> {
             at: at.clone(),
             name: filter.to_string(),
         })
+    }
+}
+
+/// The load error of what building `packages`' books refused, at the fastest rate the mode
+/// allows.
+fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
+    let at = |package: PackageIndex, unit_type: TypePlace| match unit_type {
+        TypePlace::Avatar => {
+            let view = packages.packages().nth(usize::from(package));
+            let package = &view.expect("the books name a package").package;
+            Place::Avatar(package.header.name.clone())
+        }
+        TypePlace::Declared(name) => Place::UnitType(name),
+    };
+    let (package, problem) = match error {
+        BookError::Start {
+            package,
+            unit_type,
+            error,
+        } => (
+            package,
+            LoadProblem::UnitStart {
+                at: at(package, unit_type),
+                error,
+            },
+        ),
+        BookError::BoxWalks { package, unit_type } => (
+            package,
+            LoadProblem::BoxBody {
+                at: at(package, unit_type),
+                problem: BoxProblem::Walks,
+            },
+        ),
+        BookError::Ai {
+            package,
+            unit_type,
+            error,
+        } => (
+            package,
+            LoadProblem::Ai {
+                at: at(package, unit_type),
+                error,
+            },
+        ),
+        BookError::Action {
+            package,
+            action,
+            problem,
+        } => (package, action_problem(action, problem)),
+        BookError::Modifier {
+            package,
+            modifier,
+            problem,
+        } => (package, LoadProblem::Modifier { modifier, problem }),
+        BookError::Mode(error) => (PackageIndex::MODE, LoadProblem::Mode(error)),
+        BookError::Names(error) => (PackageIndex::MODE, names_problem(error)),
+        BookError::Types(error) => (PackageIndex::MODE, types_problem(error)),
+        BookError::Script { package, path } => (
+            package,
+            LoadProblem::Script {
+                path,
+                problem: ScriptProblem::Missing,
+            },
+        ),
+        BookError::Tracks(TrackError::TooMany) => {
+            (PackageIndex::MODE, LoadProblem::TooMany(Limit::Tracks))
+        }
+        BookError::Tracks(TrackError::LevelTracks) => {
+            (PackageIndex::MODE, LoadProblem::LevelTracks)
+        }
+        BookError::Item {
+            package,
+            item,
+            error,
+        } => (
+            package,
+            LoadProblem::Item(match error {
+                ItemError::StackCost(_) => ItemProblem::StackCost(item),
+                ItemError::CheaperThanComponents(_) => ItemProblem::CheaperThanComponents(item),
+            }),
+        ),
+        BookError::AreaTime { package, unit_type } => (
+            package,
+            LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
+        ),
+        BookError::Unknown {
+            package,
+            at: place,
+            name,
+        } => {
+            let at = match place {
+                BookPlace::UnitType(unit_type) => at(package, unit_type),
+                BookPlace::Action(action) => Place::Action(action),
+                BookPlace::Modifier(modifier) => Place::Modifier(modifier),
+                BookPlace::Pool(pool) => Place::Pool(pool),
+                BookPlace::Item(item) => Place::Item(item),
+                BookPlace::Combat => Place::Combat,
+            };
+            let UnknownName { of, name } = name;
+            (package, LoadProblem::Unknown { at, name, of })
+        }
+    };
+    let view = packages.packages().nth(usize::from(package));
+    LoadError::of(
+        &view.expect("the books name a package").package.header.name,
+        problem,
+    )
+}
+
+/// The problem of `error`, the unit types or tags that the book build refused.
+fn types_problem(error: TypesError) -> LoadProblem {
+    match error {
+        TypesError::TooManyTags => LoadProblem::TooMany(Limit::Tags),
+        TypesError::TooManyTypes => LoadProblem::TooMany(Limit::UnitTypes),
+        TypesError::Repeated(name) => LoadProblem::Repeated {
+            at: Place::UnitTypes,
+            name,
+        },
+    }
+}
+
+/// The problem of `error`, a list of the mode's names that the book build refused.
+fn names_problem(error: ModeNamesError) -> LoadProblem {
+    match error {
+        ModeNamesError::TooMany(list) => LoadProblem::TooMany(match list {
+            ModeList::Pools => Limit::Pools,
+            ModeList::Resources => Limit::Resources,
+            ModeList::DamageKinds => Limit::DamageKinds,
+            // Each layer is a tag of the match.
+            ModeList::Layers => Limit::Tags,
+        }),
+        ModeNamesError::Repeated { list, name } => {
+            let at = match list {
+                ModeList::Pools => Place::Pool(name.clone()),
+                ModeList::Resources => Place::Resources,
+                ModeList::DamageKinds => Place::Combat,
+                ModeList::Layers => Place::Navigation,
+            };
+            let name = name.to_string();
+            LoadProblem::Repeated { at, name }
+        }
+    }
+}
+
+/// The problem of `problem`, a rule the data of `action` breaks, as the book build found it.
+fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
+    match problem {
+        ActionProblem::Time(error) => LoadProblem::Action { action, error },
+        ActionProblem::RankCount(ranks) => LoadProblem::RankCount { action, ranks },
+        ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
+        ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
+        ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
+        ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
+        ActionProblem::Global(MeteredKind::Gather) => {
+            LoadProblem::Gather(GatherProblem::Global(action))
+        }
+        ActionProblem::Global(MeteredKind::Build) => {
+            LoadProblem::Build(BuildProblem::Global(action))
+        }
+        ActionProblem::Global(MeteredKind::Use) => LoadProblem::Use(UseProblem::Global(action)),
+        ActionProblem::Section(unit_type) => {
+            LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type })
+        }
+        ActionProblem::NoBox => LoadProblem::Build(BuildProblem::NoBox(action)),
+        ActionProblem::StartLife => LoadProblem::Build(BuildProblem::StartLife(action)),
+        ActionProblem::Effect { list, rule } => LoadProblem::Effect {
+            action,
+            list,
+            problem: match rule {
+                EffectRule::Planned(planned) => EffectProblem::Planned(planned),
+                EffectRule::Overflow => EffectProblem::Overflow,
+                EffectRule::Negative => EffectProblem::Negative,
+                EffectRule::Duration => EffectProblem::Duration,
+            },
+        },
     }
 }
 

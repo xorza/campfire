@@ -3,24 +3,29 @@ use std::time::Duration;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
+use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res};
+use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
-use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
+use campfire_log::LogEvent;
+use campfire_protocol::{ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
-use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
-use secp256k1::{Secp256k1, VerifyOnly};
+use lightyear::prelude::{
+    Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, Unlinked,
+};
 use tracing::debug;
 
 use crate::close_code::CloseCode;
 use crate::dismissed::Dismissed;
+use crate::events::join_refused::JoinRefused;
+use crate::events::join_refused::error::JoinError;
 use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
-use crate::os::{Clock, Entropy};
+use crate::os::Clock;
 use crate::session_times::SessionTimes;
-use crate::sim_server::error::JoinError;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
 
@@ -42,7 +47,7 @@ pub(crate) struct Offering {
     pub(crate) times: SessionTimes,
     clock: Clock,
     entropy: Entropy,
-    secp: Secp256k1<VerifyOnly>,
+    verifier: Verifier,
 }
 
 /// The challenge a link was offered, the channel binding of its TLS session, which its answer
@@ -176,7 +181,7 @@ impl Offered {
         let now = time.elapsed();
         for (link, offered) in &links {
             if now.saturating_sub(offered.first) >= ANSWER_WINDOW {
-                debug!(?link, "the link left the offer unanswered");
+                debug!(link = link.to_bits(), "the link left the offer unanswered");
                 commands.trigger(CloseLink {
                     entity: link,
                     code: CloseCode::Unanswered.app(),
@@ -204,7 +209,7 @@ impl Offering {
             times: server.times,
             clock: server.os.clock.clone(),
             entropy: server.os.entropy,
-            secp: Secp256k1::verification_only(),
+            verifier: Verifier::new(),
         }
     }
 
@@ -223,7 +228,7 @@ impl Offering {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
                 Some(mut offered) => {
-                    debug!(?link, "sent the offer again");
+                    debug!(link = link.to_bits(), "sent the offer again");
                     offered.sent = now;
                     offered.challenge
                 }
@@ -239,7 +244,7 @@ impl Offering {
                         sent: now,
                         first: real,
                     });
-                    debug!(?link, "offered the terms");
+                    debug!(link = link.to_bits(), "offered the terms");
                     challenge
                 }
             };
@@ -251,6 +256,36 @@ impl Offering {
         }
     }
 
+    /// Offers the terms to each connected link that has no offer, as `offer` does, from the
+    /// offering `H` holds: the lobby's before the start, the door's after it.
+    pub(crate) fn offer_links<H: Resource + AsRef<Offering>>(
+        holder: Res<'_, H>,
+        timeline: Res<'_, LocalTimeline>,
+        time: Res<'_, Time<Real>>,
+        mut links: OfferLinks<'_, '_>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        H::as_ref(&holder).offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
+    }
+
+    /// The join an offered link sent, with the link and its offer; none when it sent none.
+    pub(crate) fn received(
+        (link, offered, mut receiver): (Entity, &Offered, Mut<'_, MessageReceiver<Join>>),
+    ) -> Option<(Entity, Offered, Join)> {
+        let join = receiver.receive().next()?;
+        Some((link, *offered, join))
+    }
+
+    /// Refuses the join of `link` for `error`, logged; see `Dismissing::refuse`.
+    pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
+        JoinRefused {
+            link: link.to_bits(),
+            error,
+        }
+        .log();
+        Dismissing::refuse(commands, link, error);
+    }
+
     /// The delegation of `join`, when its session key answered the challenge `offered` over the
     /// link's channel binding, and it grants this session, not expired by the server's clock.
     pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
@@ -258,7 +293,7 @@ impl Offering {
         offered
             .challenge
             .check(
-                &self.secp,
+                &self.verifier,
                 &self.terms,
                 &offered.binding,
                 &delegation,

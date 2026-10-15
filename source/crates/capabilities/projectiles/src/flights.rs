@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use campfire_actions::{ShotHit, ShotHits, Targets};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
-use campfire_geometry::{BodyGrid, Shape};
+use campfire_geometry::{BodyGrid, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_values::{Hit, Team};
@@ -94,11 +94,9 @@ impl Flights<'_> {
         let offset = metric.offset(from, moved);
         let flown = flown + offset.length();
         if !metric.reaches(
-            moved,
-            Shape::Circle(spec.width / 2),
+            Placed::new(moved, Shape::Circle(spec.half_width)),
             Num::ZERO,
-            unit.pos,
-            unit.shape,
+            Placed::new(unit.pos, unit.shape),
         ) {
             *position = moved;
             state.fly_to(flown);
@@ -154,7 +152,7 @@ impl Flights<'_> {
         self.met.clear();
         if let Some(hits) = spec.hits {
             let (start, end) = (from.get(), to.get());
-            let half = spec.width / 2;
+            let half = spec.half_width.get();
             let low = [start.x.min(end.x), start.z.min(end.z)]
                 .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
             let high = [start.x.max(end.x), start.z.max(end.z)]
@@ -169,7 +167,8 @@ impl Flights<'_> {
                 if !selects || struck.contains(Struck { by, id: unit.id }) {
                     return;
                 }
-                if let Some(place) = metric.meets(from, to, unit.pos, unit.shape, half) {
+                if let Some(place) = metric.meets(from, to, Placed::new(unit.pos, unit.shape), half)
+                {
                     met.push((place, unit.id));
                 }
             });
@@ -228,7 +227,7 @@ impl Flights<'_> {
                 rank,
                 start,
                 ..
-            } => self.deliveries.delivered.push(Delivered {
+            } => self.deliveries.deliver(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,
@@ -252,7 +251,7 @@ impl Flights<'_> {
             ..
         } = projectile.payload()
         {
-            self.deliveries.delivered.push(Delivered {
+            self.deliveries.deliver(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,

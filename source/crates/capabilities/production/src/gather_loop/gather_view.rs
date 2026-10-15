@@ -5,6 +5,7 @@ use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{ActionBook, ActionSlots, Aim, KindSpec};
 use campfire_common::{PlayerSlot, Ticks};
+use campfire_geometry::Placed;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner};
@@ -126,11 +127,9 @@ impl GatherView<'_, '_> {
                 let place = self.node(id, gather, team)?.place;
                 let shape = Body::shape_of(place.body.as_ref());
                 let within = self.map.metric.reaches(
-                    near.pos,
-                    near_shape,
+                    Placed::new(near.pos, near_shape),
                     gather.spec.bounce,
-                    place.pos,
-                    shape,
+                    Placed::new(place.pos, shape),
                 );
                 within.then_some((place.distance_from(from), id, place.pos))
             })
@@ -213,9 +212,11 @@ impl GatherView<'_, '_> {
     ) -> bool {
         let shape = Body::shape_of(body);
         let to = Body::shape_of(at.body.as_ref());
-        self.map
-            .metric
-            .reaches(from, shape, gather.range, at.pos, to)
+        self.map.metric.reaches(
+            Placed::new(from, shape),
+            gather.range,
+            Placed::new(at.pos, to),
+        )
     }
 
     /// What the worker of `entity` does in its loop this tick.

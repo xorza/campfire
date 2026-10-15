@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::Mut;
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
+    PackageAction,
 };
 use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
@@ -10,7 +11,8 @@ use campfire_sim::TickRate;
 use campfire_stats::{ModifierBook, StatId, Stats};
 use campfire_units::ScriptBook;
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Param, Stat, TypeScope, UnitType,
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Param, Stat,
+    TypeScope, UnitType,
 };
 
 use crate::fixtures::units::ViewFixtures;
@@ -56,14 +58,18 @@ impl ActionNames for MatchNames<'_> {
         self.view.resolve_filter(filter)
     }
 
-    fn modifier(&self, package: u16, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
+    fn modifier(
+        &self,
+        package: PackageIndex,
+        name: &DeclaredName,
+    ) -> Result<ModifierId, UnknownName> {
         self.modifiers
             .names()
             .named((package, name.as_str()))
             .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
     }
 
-    fn homes(&self, package: u16, name: &DeclaredName) -> Option<bool> {
+    fn homes(&self, package: PackageIndex, name: &DeclaredName) -> Option<bool> {
         let unit_type = self
             .unit_type(package, name)
             .expect("a test loads it first");
@@ -75,7 +81,11 @@ impl ActionNames for MatchNames<'_> {
         )
     }
 
-    fn unit_type(&self, package: u16, name: &DeclaredName) -> Result<UnitType, UnknownName> {
+    fn unit_type(
+        &self,
+        package: PackageIndex,
+        name: &DeclaredName,
+    ) -> Result<UnitType, UnknownName> {
         let scope = TypeScope::of_package(package);
         self.view
             .names()
@@ -92,7 +102,7 @@ pub trait ActionsFixtures {
     /// rounded up.
     fn load(
         world: &mut World,
-        package: u16,
+        package: PackageIndex,
         name: &str,
         data: &ActionData,
         script: Option<ScriptId>,
@@ -103,7 +113,7 @@ pub trait ActionsFixtures {
 impl ActionsFixtures for Actions {
     fn load(
         world: &mut World,
-        package: u16,
+        package: PackageIndex,
         name: &str,
         data: &ActionData,
         script: Option<ScriptId>,
@@ -117,7 +127,14 @@ impl ActionsFixtures for Actions {
             // A match that runs no scripts holds no script book, and its actions none.
             let none = ScriptBook::default();
             let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
-            actions.load(scripts, package, name, data, script, parts)
+            let action = PackageAction {
+                package,
+                name,
+                data,
+                script,
+                parts,
+            };
+            actions.load(scripts, action)
         });
         let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
         Stats::load_action_params(world, id, &data.params, |stat| places[stat]);

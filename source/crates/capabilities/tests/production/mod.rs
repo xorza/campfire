@@ -9,15 +9,14 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declare::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{PlayerResources, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, UnitTypeCore, Units,
 };
-use campfire_values::Rank;
-use campfire_values::{ActionId, ResourceId, Team, TypeScope, UnitType};
+use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 use serde::Serialize;
 
 /// The point `(x, z)` in halves of a meter.
@@ -77,7 +76,7 @@ impl Shop {
         Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
         Mode::load_test_units(game);
-        let gold = ResourceId::nth(0);
+        let gold = ResourceId::new(0);
         Shop {
             grunt,
             barracks,
@@ -150,7 +149,7 @@ impl Shop {
 
     /// Player 0's gold.
     fn gold(self, game: &World) -> i64 {
-        PlayerResources::of_player(game, PlayerSlot::new(0))
+        game.player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(self.gold)
     }
@@ -264,7 +263,7 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
 fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
@@ -307,15 +306,44 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         shop.spawns(&mut game),
         [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
     );
-    let held = PlayerResources::of_player(&game, player)
-        .unwrap()
-        .amount(gold);
+    let held = game.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {
         let entity = game.unit_entity(id);
         assert_eq!(game.get::<ActionSlots>(entity).unwrap().in_progress(), None);
         assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
+
+    // A predicting client trains as the server does, but pays nothing: its player's resources
+    // are the server's, whose word comes back. Its player keeps all 5 gold.
+    let mut client = Match::predicting(&[Capability::Production]);
+    let shop = Shop::place(&mut client);
+    Players::spawn(&mut client, 1, 1);
+    client
+        .player_resources_mut(player)
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
+    let train = Actions::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
+    let owned = Production::allocate_id(&mut client);
+    let queue = TrainQueue::default();
+    shop.producer(
+        &mut client,
+        owned,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
+    Production::order_train(&mut client, owned);
+    client.step();
+    assert_eq!(
+        shop.spawns(&mut client),
+        [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
+    );
+    let held = client.player_resources(player).unwrap().amount(gold);
+    assert_eq!(held, 5);
 }
 
 #[test]
@@ -335,7 +363,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
         };
         Binary::decode::<TrainQueue>(&Binary::encode(&fields))
     };
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let five = ResourceAmount {
         resource: gold,
         amount: 5,

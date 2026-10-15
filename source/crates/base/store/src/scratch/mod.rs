@@ -5,6 +5,7 @@ use std::path::{Component, Path, PathBuf};
 use tempfile::TempDir;
 
 use crate::dir_entries::{DirEntries, EntryKind};
+use crate::durable_dir::DurableDir;
 use crate::durable_file::DurableFile;
 use crate::input_file::InputFile;
 use crate::platform::file_link::FileLink;
@@ -76,8 +77,7 @@ impl Scratch {
     pub fn write(&self, relative: impl AsRef<Path>, bytes: impl AsRef<[u8]>) {
         let path = self.path(relative);
         let parent = path.parent().expect("a scratch file has a parent");
-        OwnerOnly::create_dir_all(parent)
-            .unwrap_or_else(|error| panic!("{}: {error:?}", parent.display()));
+        DurableDir::create_all(parent).unwrap_or_else(|error| panic!("{error:?}"));
         DurableFile::write(&path, bytes.as_ref()).unwrap_or_else(|error| panic!("{error:?}"));
     }
 
@@ -131,11 +131,11 @@ impl Scratch {
         fs::rename(&from, &to).unwrap_or_else(|error| panic!("{}: {error:?}", from.display()));
     }
 
-    /// Makes the directory `relative` and each one above it that is missing, its owner's only.
+    /// Makes the directory `relative` and each one above it that is missing, durably and its
+    /// owner's only.
     pub fn create_dir(&self, relative: impl AsRef<Path>) {
         let path = self.path(relative);
-        OwnerOnly::create_dir_all(&path)
-            .unwrap_or_else(|error| panic!("{}: {error:?}", path.display()));
+        DurableDir::create_all(&path).unwrap_or_else(|error| panic!("{error:?}"));
     }
 
     /// Makes `link` a symbolic link to the file `target`, both relative to the root.

@@ -1,18 +1,23 @@
-use campfire_log::LogEvent;
+use campfire_log::{JsonText, LogEvent, LogLine};
 use serde::Deserialize;
 use tracing::warn;
 
-/// The server refused a player's save command, for `reason`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+use crate::events::save_refused::error::SaveRefusal;
+
+pub(crate) mod error;
+
+/// The server refused a player's save command, for `refusal`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct SaveRefused {
-    pub reason: String,
+    #[serde(deserialize_with = "LogLine::json")]
+    pub refusal: SaveRefusal,
 }
 
 impl LogEvent for SaveRefused {
     const MESSAGE: &'static str = "refused a player's save command";
 
     fn log(&self) {
-        warn!(reason = %self.reason, "{}", Self::MESSAGE);
+        warn!(refusal = %JsonText(&self.refusal), "{}", Self::MESSAGE);
     }
 }
 

@@ -135,7 +135,7 @@ impl MapObject {
     /// Where it stands on the engine's ground plane: the original's `x` east and `y` north become
     /// `x` and `−z`, which keeps the axes right-handed with `y` up. `None` past the world's bound.
     pub(crate) fn ground(&self) -> Option<[Num; 2]> {
-        let [x, y, _] = self.pos.map(MapObject::num);
+        let [x, y, _] = self.pos.map(|axis| Num::try_from(axis).ok());
         let ground = [x?, y?.checked_neg()?];
         let bound = Position::BOUND.to_bits();
         ground
@@ -152,7 +152,7 @@ impl MapObject {
     pub(crate) fn placement(&self) -> Option<Placement> {
         Some(Placement {
             ground: self.ground()?,
-            height: MapObject::num(self.pos[2])?,
+            height: Num::try_from(self.pos[2]).ok()?,
             degrees: MapObject::degrees(MapObject::normalized(self.angle)?)?,
         })
     }
@@ -207,42 +207,6 @@ impl MapObject {
         let rounded = (product >> shift) + u128::from(rest > half);
         let magnitude = i64::try_from(rounded).expect("degrees within ±180");
         Some(Num::from_bits(if radians < 0.0 {
-            -magnitude
-        } else {
-            magnitude
-        }))
-    }
-
-    /// `value` as a `Num`, exact for any value of at least 2⁻¹ and rounded once to nearest,
-    /// ties to even, below; `None` for one that is not finite or past what a `Num` holds.
-    fn num(value: f32) -> Option<Num> {
-        if !value.is_finite() {
-            return None;
-        }
-        let bits = value.to_bits();
-        let exponent = i32::try_from((bits >> 23) & 0xFF).expect("eight bits");
-        let fraction = u64::from(bits & 0x7F_FFFF);
-        let (mantissa, power) = if exponent == 0 {
-            (fraction, -149)
-        } else {
-            (fraction | 0x80_0000, exponent - 150)
-        };
-        let scaled = power + Num::FRAC_BITS.cast_signed();
-        let magnitude = if scaled >= 0 {
-            mantissa
-                .checked_shl(scaled.cast_unsigned())
-                .filter(|shifted| shifted >> scaled.cast_unsigned() == mantissa)?
-        } else if scaled < -63 {
-            0
-        } else {
-            let shift = scaled.unsigned_abs();
-            let half = 1 << (shift - 1);
-            let rest = mantissa & ((1 << shift) - 1);
-            let floor = mantissa >> shift;
-            floor + u64::from(rest > half || (rest == half && floor & 1 == 1))
-        };
-        let magnitude = i64::try_from(magnitude).ok()?;
-        Some(Num::from_bits(if value < 0.0 {
             -magnitude
         } else {
             magnitude
@@ -364,20 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn a_position_converts_exactly_or_rounds_once_below_a_half() {
-        let num = |value: f32| MapObject::num(value).map(Num::to_bits);
-        // 1234.5677 in `f32` is 1234.5677490234375, 20,712,609,792 steps of 2⁻²⁴.
-        assert_eq!(num(1234.5677), Some(20_712_609_792));
-        assert_eq!(num(-0.625), Some(-10_485_760));
-        // 2⁻²⁵ is half a step and rounds to the even 0; 3 · 2⁻²⁵ is a step and a half, and
-        // rounds to the even 2.
-        assert_eq!(num(2.0_f32.powi(-25)), Some(0));
-        assert_eq!(num(3.0 * 2.0_f32.powi(-25)), Some(2));
-        assert_eq!(num(5.0 * 2.0_f32.powi(-26)), Some(1));
-        assert_eq!(num(f32::MIN_POSITIVE), Some(0));
-        assert_eq!(num(f32::NAN), None);
-        assert_eq!(num(1e12), None);
-
+    fn a_position_converts_exactly_on_the_engine_s_axes() {
         // The original's north is the engine's −z, and its angle keeps its sign.
         let object = MapObject {
             pos: [30.0, 20.0, -4.5],

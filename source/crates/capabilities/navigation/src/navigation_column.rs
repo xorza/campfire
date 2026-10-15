@@ -13,7 +13,7 @@ use crate::walls::Walls;
 
 /// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
 /// its body, for its layer.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Option<&'static OnPath>,
     Has<MoveStep>,
     Option<&'static Body>,
@@ -56,7 +56,7 @@ impl ViewColumn for NavigationColumn {
 
 impl NavigationColumn {
     /// Adds the row of a unit on `path`, which walks when `walks`, on `layer`.
-    pub fn push(&mut self, path: Option<PathId>, walks: bool, layer: Layer) {
+    fn push(&mut self, path: Option<PathId>, walks: bool, layer: Layer) {
         self.rows
             .now_mut()
             .push(NavigationRow { path, walks, layer });

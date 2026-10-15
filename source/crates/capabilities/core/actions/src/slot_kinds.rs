@@ -2,48 +2,53 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, Names, Rank};
+use campfire_values::{DeclaredName, NameId, Names, NamesError, Rank};
 use serde::Deserialize;
 
+use crate::error::SlotKindsError;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_data::{SlotKindData, SlotRanks};
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order, and their names.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
-#[serde(from = "Vec<SlotKindData>")]
+#[serde(try_from = "Vec<SlotKindData>")]
 pub struct SlotKinds {
     kinds: Vec<SlotKindData>,
     names: Arc<Names<SlotKind>>,
 }
 
-/// The kinds of `kinds`, in order, each named by its id. A list that names a kind twice, or holds
-/// more kinds than an id counts, names none, so no id stands for another's place: the package
-/// load refuses both.
-impl FromIterator<SlotKindData> for SlotKinds {
-    fn from_iter<I: IntoIterator<Item = SlotKindData>>(kinds: I) -> SlotKinds {
-        let kinds: Vec<SlotKindData> = kinds.into_iter().collect();
-        let names = Names::all_of(kinds.iter().map(|kind| kind.name.as_str()));
-        SlotKinds {
-            kinds,
-            names: Arc::new(names.unwrap_or_default()),
-        }
-    }
-}
+/// The kinds of `kinds`, as `SlotKinds::new` takes them: the form `[[slots]]` reads into.
+impl TryFrom<Vec<SlotKindData>> for SlotKinds {
+    type Error = SlotKindsError;
 
-/// The kinds of `kinds`, as `FromIterator` takes them: the form `[[slots]]` reads into.
-impl From<Vec<SlotKindData>> for SlotKinds {
-    fn from(kinds: Vec<SlotKindData>) -> SlotKinds {
-        kinds.into_iter().collect()
-    }
-}
-
-impl<const N: usize> From<[SlotKindData; N]> for SlotKinds {
-    fn from(kinds: [SlotKindData; N]) -> SlotKinds {
-        kinds.into_iter().collect()
+    fn try_from(kinds: Vec<SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
+        SlotKinds::new(kinds)
     }
 }
 
 impl SlotKinds {
+    /// The kinds of `kinds`, in order, each named by its id; an error for a kind named twice, or
+    /// more kinds than an id counts.
+    pub fn new(kinds: impl IntoIterator<Item = SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
+        SlotKinds::of(kinds.into_iter().collect())
+    }
+
+    fn of(kinds: Vec<SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
+        let mut names = Names::default();
+        for kind in &kinds {
+            names
+                .try_add(kind.name.as_str())
+                .map_err(|error| match error {
+                    NamesError::Full => SlotKindsError::TooMany,
+                    NamesError::Repeated => SlotKindsError::Repeated(kind.name.clone()),
+                })?;
+        }
+        Ok(SlotKinds {
+            kinds,
+            names: Arc::new(names),
+        })
+    }
+
     /// Every kind, in order.
     pub fn kinds(&self) -> &[SlotKindData] {
         &self.kinds
@@ -118,6 +123,13 @@ mod tests {
 
     use super::*;
 
+    /// A mode's data, of its slot kinds alone.
+    #[derive(Debug, Deserialize)]
+    struct Mode {
+        #[expect(dead_code, reason = "the test reads only whether it decodes")]
+        slots: SlotKinds,
+    }
+
     #[test]
     fn a_kind_reads_its_ranks_and_the_levels_they_need() {
         let read = |text: &str| Toml::parse::<SlotKindData>(text);
@@ -157,16 +169,25 @@ mod tests {
         // The mode's kinds hold an action in one of them that finds a level for each of its
         // ranks: in `basic`, of three levels, three ranks and no more; in `spell`, of none, any.
         let basic = read("name = \"basic\"\nranks = 3\nlevels = [6, 11, 16]").unwrap();
-        let kinds = SlotKinds::from([basic, read("name = \"spell\"").unwrap()]);
+        let kinds = SlotKinds::new([basic, read("name = \"spell\"").unwrap()]).unwrap();
         let [basic, spell, past] = [0, 1, 2].map(SlotKind::new);
         assert!(kinds.holds(basic, 3) && !kinds.holds(basic, 4));
         assert!(kinds.holds(spell, 30) && !kinds.holds(past, 0));
         assert_eq!(kinds.names().named("spell"), Some(spell));
-        // A list that names a kind twice names none, so `spell`, after the repeat, takes no id
-        // that stands for the repeat's place.
+        // A list that names a kind twice, or more kinds than a `u8` id counts, is refused, so no
+        // id stands for another's place; 256 kinds are the most.
         let kind = |name: &str| read(&format!("name = \"{name}\"")).unwrap();
-        let twice = SlotKinds::from([kind("basic"), kind("basic"), kind("spell")]);
-        assert_eq!(twice.names().named("spell"), None);
-        assert_eq!(twice.kinds().len(), 3);
+        let twice = SlotKinds::new([kind("basic"), kind("spell"), kind("basic")]);
+        let basic = DeclaredName::new("basic").unwrap();
+        assert_eq!(twice, Err(SlotKindsError::Repeated(basic)));
+        let many = |count: usize| SlotKinds::new((0..count).map(|at| kind(&format!("k{at}"))));
+        assert_eq!(
+            many(256).unwrap().names().named("k255"),
+            Some(SlotKind::new(255))
+        );
+        assert_eq!(many(257), Err(SlotKindsError::TooMany));
+        let repeated = "[[slots]]\nname = \"basic\"\n[[slots]]\nname = \"basic\"";
+        let refused = Toml::parse::<Mode>(repeated).unwrap_err();
+        assert_eq!(refused.message(), "the slot kind `basic` twice");
     }
 }

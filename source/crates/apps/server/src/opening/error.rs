@@ -1,5 +1,6 @@
 use campfire_common::MapName;
-use campfire_net::{AbortError, KeepFilesError, LobbyError, WaitingError};
+use campfire_net::{AbortError, LobbyOpenError, WaitingError};
+use campfire_runner::TermsError;
 use thiserror::Error;
 
 /// Why a server did not start a session from its data directory.
@@ -12,9 +13,11 @@ pub(crate) enum OpeningError {
     OtherMap { asked: MapName, journal: MapName },
     #[error("could not end the session")]
     Abort(#[source] AbortError),
-    /// The new session's slots do not open: a bot names a slot the mode does not have.
+    /// The new session does not open, as a bot names a slot the mode does not have, or keeps no
+    /// files.
     #[error("the session does not open")]
-    Lobby(#[source] LobbyError),
-    #[error("could not make the session")]
-    KeepFiles(#[source] KeepFilesError),
+    Open(#[source] LobbyOpenError),
+    /// The session's terms are not of the mode's rules, as a journal of another release holds.
+    #[error("the session's terms are not the mode's")]
+    Terms(#[source] TermsError),
 }

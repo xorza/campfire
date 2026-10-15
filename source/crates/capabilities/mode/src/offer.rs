@@ -11,10 +11,6 @@ impl Offer {
     pub fn new(index: usize) -> Offer {
         Offer(u16::try_from(index).expect("a mode's offers fit u16"))
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for Offer {

@@ -10,6 +10,7 @@ internals = [
     "campfire-abilities/internals",
     "campfire-actions/internals",
     "campfire-areas/internals",
+    "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",

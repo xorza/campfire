@@ -1,11 +1,13 @@
-use crate::zero_hour::error::MapError;
+use std::ops::RangeInclusive;
 
-/// A map's bytes and how far a read has taken them: little-endian fields, as the game's
-/// `DataChunkInput` reads them, each refused when it runs past the end.
+use crate::zero_hour::byte_cursor::ByteCursor;
+use crate::zero_hour::error::{Chunk, MapError};
+
+/// A map's bytes and how far a read has taken them, as the game's `DataChunkInput` reads them:
+/// the cursor's fields, and a map's counts, strings and chunks.
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkReader<'a> {
-    bytes: &'a [u8],
-    at: usize,
+    cursor: ByteCursor<'a>,
 }
 
 /// A chunk's header and its body: its name's id in the file's table, and its version.
@@ -18,42 +20,52 @@ pub(crate) struct RawChunk<'a> {
 
 impl<'a> ChunkReader<'a> {
     pub(crate) const fn new(bytes: &'a [u8]) -> ChunkReader<'a> {
-        ChunkReader { bytes, at: 0 }
+        ChunkReader {
+            cursor: ByteCursor::new(bytes),
+        }
     }
 
     pub(crate) const fn is_empty(&self) -> bool {
-        self.at == self.bytes.len()
+        self.cursor.is_empty()
+    }
+
+    /// Refuses a body of the chunk of `kind` with bytes left past its fields.
+    pub(crate) const fn ended(&self, kind: Chunk) -> Result<(), MapError> {
+        if self.is_empty() {
+            Ok(())
+        } else {
+            Err(MapError::Leftover(kind))
+        }
     }
 
     pub(crate) fn take(&mut self, len: usize) -> Result<&'a [u8], MapError> {
-        let end = self.at.checked_add(len).ok_or(MapError::Short)?;
-        let bytes = self.bytes.get(self.at..end).ok_or(MapError::Short)?;
-        self.at = end;
-        Ok(bytes)
-    }
-
-    fn array<const N: usize>(&mut self) -> Result<[u8; N], MapError> {
-        Ok(self.take(N)?.try_into().expect("a slice of N bytes"))
+        Ok(self.cursor.take(len)?)
     }
 
     pub(crate) fn u8(&mut self) -> Result<u8, MapError> {
-        Ok(self.take(1)?[0])
+        Ok(self.cursor.u8()?)
     }
 
     pub(crate) fn u16(&mut self) -> Result<u16, MapError> {
-        Ok(u16::from_le_bytes(self.array()?))
+        Ok(self.cursor.u16()?)
     }
 
     pub(crate) fn i32(&mut self) -> Result<i32, MapError> {
-        Ok(i32::from_le_bytes(self.array()?))
+        Ok(self.cursor.i32()?)
     }
 
     pub(crate) fn u32(&mut self) -> Result<u32, MapError> {
-        Ok(u32::from_le_bytes(self.array()?))
+        Ok(self.cursor.u32()?)
     }
 
     pub(crate) fn f32(&mut self) -> Result<f32, MapError> {
-        Ok(f32::from_le_bytes(self.array()?))
+        Ok(self.cursor.f32()?)
+    }
+
+    /// An `i32` the game keeps unsigned, refused when negative.
+    pub(crate) fn non_negative(&mut self) -> Result<u32, MapError> {
+        let value = self.i32()?;
+        u32::try_from(value).ok().ok_or(MapError::Negative(value))
     }
 
     /// An `i32` count, refused when negative.
@@ -64,13 +76,8 @@ impl<'a> ChunkReader<'a> {
 
     /// `count` little-endian `i16`s.
     pub(crate) fn i16s(&mut self, count: usize) -> Result<Vec<i16>, MapError> {
-        let bytes = self.take(count.checked_mul(2).ok_or(MapError::Short)?)?;
-        Ok(bytes
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|pair| i16::from_le_bytes(*pair))
-            .collect())
+        let pairs = self.cursor.records::<2>(count)?;
+        Ok(pairs.iter().map(|pair| i16::from_le_bytes(*pair)).collect())
     }
 
     /// A string as the game writes one: a `u16` length and its bytes.
@@ -90,6 +97,24 @@ impl<'a> ChunkReader<'a> {
             version,
             body: ChunkReader::new(self.take(size)?),
         })
+    }
+}
+
+impl RawChunk<'_> {
+    /// Refuses a chunk of `kind` of a version not among `versions`.
+    pub(crate) fn check_version(
+        &self,
+        kind: Chunk,
+        versions: RangeInclusive<u16>,
+    ) -> Result<(), MapError> {
+        if versions.contains(&self.version) {
+            Ok(())
+        } else {
+            Err(MapError::Version {
+                chunk: kind,
+                version: self.version,
+            })
+        }
     }
 }
 

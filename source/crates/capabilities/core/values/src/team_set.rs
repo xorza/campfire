@@ -14,7 +14,7 @@ impl TeamSet {
 
     #[must_use]
     pub const fn with(self, team: Team) -> TeamSet {
-        TeamSet(self.0.with(team.index()))
+        TeamSet(self.0.with(team.get() as usize))
     }
 
     /// The teams in either set.
@@ -24,11 +24,11 @@ impl TeamSet {
     }
 
     pub const fn contains(self, team: Team) -> bool {
-        self.0.contains(team.index())
+        self.0.contains(team.get() as usize)
     }
 
     /// Its teams, in order.
-    pub fn teams(self) -> impl Iterator<Item = Team> {
+    pub fn iter(self) -> impl Iterator<Item = Team> {
         self.0
             .iter()
             .map(|index| Team::new(u8::try_from(index).expect("a team's bit fits its index")))
@@ -63,6 +63,7 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::names::NameId;
 
     #[test]
     fn a_union_holds_the_teams_of_either_set() {
@@ -75,8 +76,8 @@ mod tests {
         assert!(!TeamSet::of(Team::new(64)).contains(Team::new(0)));
         assert_eq!(TeamSet::NONE.union(TeamSet::NONE), TeamSet::NONE);
         assert_eq!(union.union(TeamSet::ALL), TeamSet::ALL);
-        assert_eq!(union.teams().collect::<Vec<_>>(), [a, c, d]);
-        assert_eq!(TeamSet::NONE.teams().count(), 0);
-        assert_eq!(TeamSet::ALL.teams().count(), Team::LIMIT);
+        assert_eq!(union.iter().collect::<Vec<_>>(), [a, c, d]);
+        assert_eq!(TeamSet::NONE.iter().count(), 0);
+        assert_eq!(TeamSet::ALL.iter().count(), Team::LIMIT);
     }
 }

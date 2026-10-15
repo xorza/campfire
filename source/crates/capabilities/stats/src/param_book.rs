@@ -6,8 +6,9 @@ use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{ParamProblem, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{ActionId, DeclaredName, ModifierId, Param, Rank, Stat};
+use campfire_values::{ActionId, DeclaredName, ModifierId, NameId, Names, Param, Rank, Stat};
 
+use crate::applier_param::ApplierParam;
 use crate::live_param::{LiveParam, ParamOwner};
 use crate::modifier_data::ModifierData;
 use crate::modifier_spec::ParamPlace;
@@ -21,11 +22,21 @@ use crate::stat_id::StatId;
 #[derive(Resource, Debug, Clone, Default)]
 pub struct ParamBook(Arc<ParamTables>);
 
-/// The two tables of a `ParamBook`.
+/// The two tables of a `ParamBook`, and where each action holds each param the modifiers read
+/// from the abilities that apply them.
 #[derive(Debug, Clone, Default)]
 pub struct ParamTables {
     pub actions: ParamTable,
     pub modifiers: ParamTable,
+    appliers: ApplierPlaces,
+}
+
+/// Where each action holds each param of `ApplierParam`, a row of `width` places an action, none
+/// for a param it does not declare.
+#[derive(Debug, Clone, Default)]
+struct ApplierPlaces {
+    width: usize,
+    at: Vec<Option<u16>>,
 }
 
 /// A table of params, and the run of one owner's params there.
@@ -41,8 +52,10 @@ impl ParamBook {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    /// The book of `tables`, which the load built.
-    pub fn new(tables: ParamTables) -> ParamBook {
+    /// The book of `tables`, which the load built, each name of `appliers` resolved in each
+    /// action's params.
+    pub fn new(mut tables: ParamTables, appliers: &Names<ApplierParam>) -> ParamBook {
+        tables.appliers = ApplierPlaces::of(&tables.actions, appliers);
         ParamBook(Arc::new(tables))
     }
 
@@ -64,15 +77,15 @@ impl ParamBook {
         modifier: ModifierId,
         action: Option<ActionId>,
         rank: Rank,
-        place: &ParamPlace,
+        place: ParamPlace,
         source: Option<&ParamSource<'_>>,
     ) -> ParamRead {
         const CHECKED: &str = "its way checked the param";
         let (owner, at) = match place {
-            ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(*at)),
-            ParamPlace::Applier(name) => {
+            ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(at)),
+            ParamPlace::Applier(param) => {
                 let action = action.expect(CHECKED);
-                let at = self.actions().named(action.index(), name.as_str());
+                let at = self.0.appliers.get(action, param);
                 (ParamOwner::Action(action), at.expect(CHECKED))
             }
         };
@@ -85,7 +98,7 @@ impl ParamBook {
         ParamRead { value, live }
     }
 
-    /// Whether `action` at `rank`, or no ability, gives the param `name` a modifier reads where
+    /// Whether `action` at `rank`, or no ability, gives the param `param` a modifier reads where
     /// it declares none: a value at `rank` that is a number, or with a `rate` a time in ticks at
     /// it, which no scaling table gives, as its source's stats are known only as the modifier
     /// applies.
@@ -93,13 +106,15 @@ impl ParamBook {
         &self,
         action: Option<ActionId>,
         rank: Rank,
-        name: &DeclaredName,
+        param: ApplierParam,
         rate: Option<TickRate>,
     ) -> Result<(), ParamProblem> {
         let action = action.ok_or(ParamProblem::Missing)?;
         let (table, run) = (self.actions(), action.index());
-        let at = table
-            .named(run, name.as_str())
+        let at = self
+            .0
+            .appliers
+            .get(action, param)
             .ok_or(ParamProblem::Missing)?;
         if !table.has_rank(run, at, rank) {
             return Err(ParamProblem::Short);
@@ -179,6 +194,35 @@ impl ParamTables {
     }
 }
 
+impl ApplierPlaces {
+    /// The places in `actions` of each name of `appliers`.
+    fn of(actions: &ParamTable, appliers: &Names<ApplierParam>) -> ApplierPlaces {
+        let runs = actions.runs();
+        let mut at = Vec::with_capacity(runs * appliers.len());
+        for run in 0..runs {
+            at.extend(appliers.texts().map(|name| {
+                let place = actions.named(run, name)?;
+                Some(u16::try_from(place).expect("params fit u16"))
+            }));
+        }
+        ApplierPlaces {
+            width: appliers.len(),
+            at,
+        }
+    }
+
+    /// The place of `param` among the params of `action`; none when it declares no param of
+    /// that name, or the book holds no such action.
+    fn get(&self, action: ActionId, param: ApplierParam) -> Option<usize> {
+        debug_assert!(
+            param.index() < self.width,
+            "the book resolves every applier param its modifiers name"
+        );
+        let place = self.at.get(action.index() * self.width + param.index())?;
+        place.map(usize::from)
+    }
+}
+
 impl Book for ParamBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
@@ -194,12 +238,20 @@ pub(crate) mod internals {
     use std::convert::Infallible;
     use std::sync::Arc;
 
-    use campfire_values::{DeclaredName, Param, Stat};
+    use campfire_values::{DeclaredName, Names, Param, Stat};
 
-    use crate::param_book::ParamBook;
+    use crate::applier_param::ApplierParam;
+    use crate::param_book::{ApplierPlaces, ParamBook};
     use crate::stat_id::StatId;
 
     impl ParamBook {
+        /// Resolves each name of `appliers` in each action's params again, after a test added
+        /// an action or a modifier.
+        pub(crate) fn resolve(&mut self, appliers: &Names<ApplierParam>) {
+            let tables = Arc::make_mut(&mut self.0);
+            tables.appliers = ApplierPlaces::of(&tables.actions, appliers);
+        }
+
         /// Adds the params of the next action, each stat at its id `stat` gives; its run.
         pub(crate) fn push_action(
             &mut self,

@@ -10,12 +10,15 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::EffectQueues;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_math::RngStream;
-use campfire_script::Ctx;
 use campfire_sim::Capability;
 use campfire_stats::Life;
 use campfire_units::{BodyUnit, Dead, SpawnPoint};
+
+use crate::combat_column::RowReads;
 
 mod attacks;
 mod combat_api;
@@ -31,6 +34,7 @@ mod damage_handle;
 mod damage_pass;
 mod deaths;
 mod dying;
+mod error;
 mod going_off;
 mod heal;
 mod heal_handle;
@@ -44,23 +48,25 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod weighers;
 mod wielded;
 
 pub use crate::attacks::Attacks;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_bindings::CombatBindings;
 pub use crate::combat_book::CombatBook;
-pub use crate::combat_column::{CombatColumn, RowReads};
+pub use crate::combat_column::CombatColumn;
 pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
 pub use crate::combat_event::{CombatEvent, CombatEvents};
 pub use crate::combat_hooks::CombatHooks;
-pub use crate::damage::{Damage, DamageCause, DamageWeigher};
+pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
 pub use crate::deaths::{DeathView, Deaths, Fallen};
 pub use crate::dying::Dying;
-pub use crate::heal::{Heal, HealCause, HealWeigher};
+pub use crate::error::CombatRefusal;
+pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData};
@@ -71,6 +77,7 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
@@ -139,8 +146,11 @@ impl Module for Combat {
         d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<Respawn>();
+        d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
         d.report::<Deaths>();
+        d.non_send::<CombatHooks>(CombatHooks::install);
+        d.calls::<Weighers>();
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
@@ -165,28 +175,22 @@ impl Module for Combat {
     /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
     /// pays no toggle, as its pools come from the server.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(Deaths::default());
-        let events = scripts.then(|| {
-            let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
-            CombatEvents::new(move |batch, event| hooks.hear(batch, event))
-        });
-        world.insert_non_send(CombatHooks {
-            events,
-            ..CombatHooks::default()
-        });
-        schedule.add_systems((
+        cx.systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
-            (Attacks::attack_events, Attacks::strike)
-                .chain()
-                .in_set(CombatSet::Strike),
             ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
             DamagePass::run.in_set(CombatSet::Damage),
             Dying::die.in_set(CombatSet::Die),
             Dying::respawn.in_set(CombatSet::Respawn),
         ));
+        cx.by_role(
+            (Attacks::attack_events, Attacks::strike::<ServerForm>)
+                .chain()
+                .in_set(CombatSet::Strike),
+            (Attacks::attack_events, Attacks::strike::<ClientForm>)
+                .chain()
+                .in_set(CombatSet::Strike),
+        );
         cx.server((
             Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
             Dying::forget_attackers

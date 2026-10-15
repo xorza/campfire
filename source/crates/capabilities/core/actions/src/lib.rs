@@ -8,7 +8,7 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_stats::ParamBook;
@@ -54,6 +54,7 @@ mod in_progress;
 mod kind_data;
 mod kind_spec;
 mod launch_id;
+mod list_hook;
 mod lists_of;
 mod payer;
 mod placement_data;
@@ -76,12 +77,12 @@ mod use_group;
 mod weapon;
 
 pub use crate::action::{Action, Aim, Passive};
-pub use crate::action_book::ActionBook;
+pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::{ActionField, EffectRule};
 pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 pub use crate::action_data_field::ActionDataField;
-pub use crate::action_kind::ActionKind;
+pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
@@ -104,16 +105,17 @@ pub use crate::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
     MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
 };
-pub use crate::effect_list_book::{EffectListBook, EffectSpec};
+pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem};
+pub use crate::error::{ActionError, ActionProblem, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
 pub use crate::kind_data::KindData;
 pub use crate::kind_spec::KindSpec;
 pub use crate::launch_id::LaunchId;
+pub use crate::list_hook::ListHook;
 pub use crate::lists_of::ListsOf;
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
@@ -223,21 +225,15 @@ impl Module for Actions {
     /// abilities'.
     fn install(cx: &mut InstallCx<'_>) {
         if cx.has(Capability::Combat) {
-            Actions::schedule(cx.schedule);
+            cx.systems((
+                (Holds::hold_charges, Holds::want_passives)
+                    .chain()
+                    .in_set(ActionsSet::HoldAtInputs),
+                Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
+                Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
+                Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
+            ));
         }
-    }
-}
-
-impl Actions {
-    fn schedule(schedule: &mut Schedule) {
-        schedule.add_systems((
-            (Holds::hold_charges, Holds::want_passives)
-                .chain()
-                .in_set(ActionsSet::HoldAtInputs),
-            Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
-            Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
-            Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
-        ));
     }
 }
 
@@ -253,7 +249,8 @@ pub mod internals {
     use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
-        ActionId, DamageKind, DeclaredName, ModifierId, Tag, TrackId, TypeScope, UnitType,
+        ActionId, DamageKind, DeclaredName, ModifierId, NameId, PackageIndex, Tag, TrackId,
+        TypeScope, UnitType,
     };
 
     use crate::Actions;
@@ -272,7 +269,7 @@ pub mod internals {
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
-        pub fn named(world: &World, package: u16, name: &str) -> Option<ActionId> {
+        pub fn named(world: &World, package: PackageIndex, name: &str) -> Option<ActionId> {
             world
                 .resource::<ActionBook>()
                 .names()
@@ -292,7 +289,7 @@ pub mod internals {
                 world,
                 "gather",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Gather(spec),
                     passive: None,
                     hold: None,
@@ -347,7 +344,7 @@ pub mod internals {
         world: &'w World,
         view: &'w View,
         action: ActionId,
-        package: u16,
+        package: PackageIndex,
     }
 
     impl TestWeapon {
@@ -384,7 +381,7 @@ pub mod internals {
                 world,
                 "weapon",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Attack(Weapon {
                         rate: weapon.rate,
                         damage: weapon.damage,
@@ -417,7 +414,7 @@ pub mod internals {
         pub fn load_effect_lists(
             world: &mut World,
             action: ActionId,
-            package: u16,
+            package: PackageIndex,
             data: &ActionData,
         ) {
             let view = world.non_send::<View>().clone();
@@ -441,7 +438,7 @@ pub mod internals {
                 world,
                 "train",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Train(unit_type),
                     passive: None,
                     hold: None,
@@ -478,7 +475,7 @@ pub mod internals {
                 world,
                 "build",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Build(unit_type),
                     passive: None,
                     hold: None,
@@ -503,7 +500,12 @@ pub mod internals {
     }
 
     impl<'w> MatchEffectNames<'w> {
-        pub const fn new(world: &'w World, view: &'w View, action: ActionId, package: u16) -> Self {
+        pub const fn new(
+            world: &'w World,
+            view: &'w View,
+            action: ActionId,
+            package: PackageIndex,
+        ) -> Self {
             MatchEffectNames {
                 world,
                 view,

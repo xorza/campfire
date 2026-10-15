@@ -109,8 +109,10 @@ impl InventoryBar {
         let avatar = own.avatar();
         let carrier = avatar.and_then(|avatar| carriers.get(avatar.entity).ok());
         let first = carrier.and_then(|(_, group, _, held)| Some(held?.first_of(group?.kind())));
-        let now = tick.map(|tick| tick.start());
-        let hz = rate.map(|rate| rate.hz().get());
+        let clock = tick.zip(rate).map(|(tick, rate)| BarClock {
+            now: tick.start(),
+            hz: rate.hz().get(),
+        });
         for (entity, &BarSlot(at)) in &slots {
             line.clear();
             write!(line, "{}", at + 1).expect("a String takes any text");
@@ -122,13 +124,12 @@ impl InventoryBar {
                 let ready = first
                     .and_then(|first| times?.slot(first + at))
                     .map(|time| time.ready_at);
-                write_slot(
-                    &mut line,
-                    names.of(carried.item),
+                let slot = ShownSlot {
+                    name: names.of(carried.item),
                     carried,
                     ready,
-                    now.zip(hz),
-                );
+                };
+                write_slot(&mut line, slot, clock);
             }
             ui_style::set_text(&mut texts, entity, &line);
         }
@@ -175,16 +176,30 @@ impl InventoryBar {
     }
 }
 
-/// Writes after a slot's key the item `carried`, named `name`: its stack past one, its uses left,
-/// and, at `clock`, the tick now and the ticks a second, the whole seconds until its action is
-/// ready at `ready`, rounded up.
-fn write_slot(
-    line: &mut String,
-    name: &str,
+/// A slot of the bar as it shows: the item it carries, its name, and the tick its action is ready
+/// at, if it has one.
+#[derive(Debug, Clone, Copy)]
+struct ShownSlot<'n> {
+    name: &'n str,
     carried: ItemStack,
     ready: Option<Tick>,
-    clock: Option<(Tick, u32)>,
-) {
+}
+
+/// The match's clock as the bar reads it: the tick now, and the ticks a second.
+#[derive(Debug, Clone, Copy)]
+struct BarClock {
+    now: Tick,
+    hz: u32,
+}
+
+/// Writes after a slot's key the item `slot` carries: its name, its stack past one, its uses
+/// left, and, by `clock`, the whole seconds until its action is ready, rounded up.
+fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: Option<BarClock>) {
+    let ShownSlot {
+        name,
+        carried,
+        ready,
+    } = slot;
     write!(line, " {name}").expect("a String takes any text");
     if carried.count.get() > 1 {
         write!(line, " x{}", carried.count).expect("a String takes any text");
@@ -192,7 +207,7 @@ fn write_slot(
     if let Some(uses) = carried.uses {
         write!(line, " ({uses})").expect("a String takes any text");
     }
-    if let (Some(ready), Some((now, hz))) = (ready, clock)
+    if let (Some(ready), Some(BarClock { now, hz })) = (ready, clock)
         && ready > now
     {
         let left = ready.get() - now.get();
@@ -223,7 +238,12 @@ mod tests {
     fn a_slot_shows_its_item_its_stack_or_uses_and_its_seconds_left() {
         let line = |carried, ready, clock| {
             let mut line = String::from("2");
-            write_slot(&mut line, "Health Potion", carried, ready, clock);
+            let slot = ShownSlot {
+                name: "Health Potion",
+                carried,
+                ready,
+            };
+            write_slot(&mut line, slot, clock);
             line
         };
         let potions = ItemStack {
@@ -232,7 +252,10 @@ mod tests {
             uses: Some(NonZeroU32::new(1).unwrap()),
         };
         // At 30 ticks a second, ready 31 ticks on: 2 s, rounded up; ready now: no cooldown.
-        let clock = Some((Tick::new(100), 30));
+        let clock = Some(BarClock {
+            now: Tick::new(100),
+            hz: 30,
+        });
         assert_eq!(
             line(potions, Some(Tick::new(131)), clock),
             "2 Health Potion x3 (1)\n2 s"

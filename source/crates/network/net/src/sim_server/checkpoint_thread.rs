@@ -1,18 +1,17 @@
 use std::collections::VecDeque;
 
 use bevy_ecs::world::World;
-use campfire_protocol::{Checkpoint, CheckpointBegun, SessionId, Signature};
+use campfire_protocol::{Checkpoint, CheckpointBegun};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::{DurableError, Exchange, PathError};
 
-use crate::sim_server::server_signer::ServerSigner;
-use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
+use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// The thread that takes a session's checkpoints off the main thread. It holds its own copy of
 /// the match's state, which starts as a full copy and which each delta the main thread sends
 /// brings up to the boundary it was made at; for a checkpoint, it then snapshots and hashes that
 /// copy, writes the snapshot durably into the session's `snapshots`, named by its fingerprint in
-/// hex, and signs the record, which it gives back for the main thread to log. It takes one delta
+/// hex, and gives the record back for the main thread's session to sign and log. It takes one delta
 /// at a time, and gives each back for the next; one made while another is on the thread waits in
 /// order, so the main thread never waits for the thread to send.
 #[derive(Debug)]
@@ -39,49 +38,35 @@ struct Job {
 pub(crate) enum Returned {
     /// The copy follows it; no checkpoint was begun there.
     Applied,
-    /// The checkpoint begun there: its record, signed, its snapshot written.
-    Taken(SignedCheckpoint),
+    /// The checkpoint begun there: its record, its snapshot written.
+    Taken(Checkpoint),
     /// The checkpoint begun there, whose snapshot was not written.
     Failed(PathError<DurableError>),
-}
-
-/// A checkpoint's record and the server key's signature over it, its snapshot written.
-#[derive(Debug)]
-pub(crate) struct SignedCheckpoint {
-    pub(crate) record: Checkpoint,
-    pub(crate) signature: Signature,
 }
 
 /// The checkpoint thread's copy of the match's state, and what it takes checkpoints with.
 #[derive(Debug)]
 struct CheckpointCopy {
     registry: StateRegistry,
-    session_id: SessionId,
     snapshots: SnapshotDir,
-    signer: ServerSigner,
     world: World,
     /// The snapshot of the last checkpoint, kept between checkpoints.
     snapshot: Vec<u8>,
 }
 
 impl CheckpointThread {
-    /// Starts the thread of the session of `session_id`, whose state types `registry` holds and
-    /// whose whole state `base` holds, writing snapshots into `snapshots` and signing with
-    /// `signer`. The base is the first delta sent.
+    /// Starts the thread of a session whose state types `registry` holds and whose whole state
+    /// `base` holds, writing snapshots into `snapshots`. The base is the first delta sent.
     pub(crate) fn start(
         registry: StateRegistry,
         base: StateDelta,
-        session_id: SessionId,
         snapshots: SnapshotDir,
-        signer: ServerSigner,
     ) -> CheckpointThread {
         let mut world = World::new();
         world.init_resource::<EntityIndex>();
         let mut copy = CheckpointCopy {
             registry,
-            session_id,
             snapshots,
-            signer,
             world,
             snapshot: Vec::new(),
         };
@@ -159,11 +144,8 @@ impl CheckpointCopy {
         }
     }
 
-    /// The record of `begun`, of the copy as it stands, signed once its snapshot is written.
-    fn take(
-        &mut self,
-        begun: CheckpointBegun,
-    ) -> Result<SignedCheckpoint, PathError<DurableError>> {
+    /// The record of `begun`, of the copy as it stands, once its snapshot is written.
+    fn take(&mut self, begun: CheckpointBegun) -> Result<Checkpoint, PathError<DurableError>> {
         let state_hash = self.registry.snapshot(&self.world, &mut self.snapshot);
         let fingerprint = self.snapshots.write(&self.snapshot)?;
         let record = Checkpoint {
@@ -173,8 +155,7 @@ impl CheckpointCopy {
             snapshot: fingerprint,
             carry: begun.carry,
         };
-        let signature = self.signer.sign_checkpoint(&record, self.session_id);
-        Ok(SignedCheckpoint { record, signature })
+        Ok(record)
     }
 }
 
@@ -182,12 +163,10 @@ impl CheckpointCopy {
 mod tests {
     use campfire_common::Tick;
     use campfire_protocol::LogCarry;
-    use campfire_protocol::internals::TestKey;
     use campfire_sim::{IdAllocator, Position};
     use campfire_store::internals::Scratch;
 
     use super::*;
-    use crate::os::Entropy;
 
     #[test]
     fn deltas_sent_while_one_is_on_the_thread_follow_it_in_order() {
@@ -201,11 +180,8 @@ mod tests {
         let mut base = StateDelta::default();
         registry.track(&mut world, &mut base);
         let scratch = Scratch::new();
-        let signer = ServerSigner::new(TestKey::server(), Entropy::Fixed(1));
-        let session_id = SessionId::new([2; 32]);
         let snapshots = SnapshotDir(scratch.path("snapshots"));
-        let mut thread =
-            CheckpointThread::start(registry.clone(), base, session_id, snapshots, signer);
+        let mut thread = CheckpointThread::start(registry.clone(), base, snapshots);
         for x in 1..=2 {
             let id = world.resource_mut::<IdAllocator>().allocate();
             world.spawn((id, Position::from((x, 0, 0))));
@@ -231,8 +207,8 @@ mod tests {
         else {
             panic!("three deltas applied, then the checkpoint: {answers:?}");
         };
-        assert_eq!(taken.record.state_hash, registry.hash(&world));
-        assert_eq!(taken.record.tick, Tick::new(3));
+        assert_eq!(taken.state_hash, registry.hash(&world));
+        assert_eq!(taken.tick, Tick::new(3));
         assert!(thread.queued.is_empty() && !thread.pending());
     }
 }

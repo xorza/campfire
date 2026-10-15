@@ -9,22 +9,23 @@ use std::path::Path;
 
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Match, Order};
-use campfire_common::{Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
+use campfire_common::{AfterLeave, Fingerprint, PlayerSlot, StateHash, Tick, Ticks, Version};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
+use campfire_package::ModePackages;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
-    AfterLeave, Applied, EngineRelease, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
-    ServerInput, ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange,
-    SlotChangeKind, SlotPlan, SnapshotFingerprint, Taken,
+    Applied, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError, ServerInput,
+    ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
+    SlotPlan, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
-    InputRules, Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionWorld,
+    Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionSource, SessionWorld,
     SlotRuleError, SnapshotCheckError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
@@ -87,15 +88,19 @@ fn store() -> PackageStore {
 
 /// The packages `log`'s terms name, from the store, as the verifier's binary finds them.
 fn from_store(log: &SessionLog) -> ModePackages {
-    Session::packages(&store(), &log.header().terms).unwrap()
+    Verification::packages(&store(), &log.header().terms).unwrap()
 }
 
 /// What refuses the replay of `log` on the packages its terms name in `store`, as the verifier's
 /// binary starts one; none when it starts.
-fn refusal(log: SessionLog, store: &PackageStore) -> Option<StartError> {
-    let packages = Session::packages(store, &log.header().terms);
+fn refusal(log: SessionLog, store: &PackageStore) -> Option<VerifyError> {
+    let packages = Verification::packages(store, &log.header().terms);
     packages
-        .and_then(|packages| Replay::of(log, &packages).map(drop))
+        .and_then(|packages| {
+            Replay::of(log, &packages)
+                .map(drop)
+                .map_err(VerifyError::Start)
+        })
         .err()
 }
 
@@ -103,10 +108,10 @@ fn refusal(log: SessionLog, store: &PackageStore) -> Option<StartError> {
 /// may come 3 ticks late or early.
 fn session() -> FixedSession {
     let rules = InputRules {
-        max_input_delay: Ticks::new(3),
-        max_input_lead: Ticks::new(3),
+        max_delay: Ticks::new(3),
+        max_lead: Ticks::new(3),
         max_payload_len: 64,
-        max_inputs_per_tick: 4,
+        max_per_tick: 4,
     };
     FixedSession::with_rules(packages(), NonZeroU32::new(30).unwrap(), 1, rules)
 }
@@ -171,12 +176,10 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     fixed.game_mut().session_mut().begin_checkpoint().unwrap();
     let mut record = fixed.game().checkpoint(snapshot).unwrap();
     record.state_hash = hash.unwrap_or(record.state_hash);
-    let id = fixed.game().session().log().session_id();
-    let signature = FixedSession::checkpoint_signature(&record, id);
     fixed
         .game_mut()
         .session_mut()
-        .record_checkpoint(record, &signature)
+        .record_checkpoint(record)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
@@ -184,10 +187,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
         || game.session_result(),
         |outcome| game.session_result_as(outcome),
     );
-    let signature = FixedSession::result_signature(&result, id);
-    game.session_mut()
-        .record_result(result, &signature)
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
@@ -273,11 +273,12 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // Seeds that reach segment 0 alone do not start the log of two.
     let first = ServerSeeds::new(0, FixedSession::seed(0));
     assert!(matches!(
-        Session::start_match(
-            SessionLog::decode(&encoded(log)).unwrap().rewound(),
-            first,
-            &packages()
-        ),
+        Session::start_match(SessionSource {
+            log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
+            seeds: first,
+            packages: &packages(),
+            signer: None,
+        }),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
@@ -483,17 +484,16 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     // does not start it.
     let mut log = session.log();
     let to_bot = leave(AfterLeave::Bot);
-    let signature = FixedSession::server_signature(&to_bot, log.session_id(), log.next_place());
-    log.record_server(to_bot, &signature).unwrap();
+    log.serve(to_bot, &FixedSession::server_signer()).unwrap();
     log.reveal_seed(FixedSession::seed(0));
     let refused = refusal(log, &store());
     assert!(
         matches!(
             refused,
-            Some(StartError::SlotRule {
+            Some(VerifyError::Start(StartError::SlotRule {
                 change: SlotChange { tick, .. },
                 error: SlotRuleError::Leaver { becomes: AfterLeave::Bot },
-            }) if tick == Tick::new(0)
+            })) if tick == Tick::new(0)
         ),
         "{refused:?}"
     );
@@ -683,14 +683,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let session = session();
     assert!(matches!(
         refusal(session.log(), &store),
-        Some(StartError::Seed(SeedError::NotRevealed))
+        Some(VerifyError::Start(StartError::Seed(SeedError::NotRevealed)))
     ));
     assert!(matches!(
-        Session::start_match(
-            session.log(),
-            ServerSeeds::new(0, ServerSeed::new([8; 32])),
-            &packages()
-        ),
+        Session::start_match(SessionSource {
+            log: session.log(),
+            seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
+            packages: &packages(),
+            signer: None,
+        }),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
 
@@ -703,10 +704,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         refusal(log, &store)
     };
     let refused = [
-        other(|terms| terms.release = EngineRelease::new(0, 0, 9)),
+        other(|terms| terms.release = Version::new(0, 0, 9)),
         // Another release first: its packages need not read in this one.
         other(|terms| {
-            terms.release = EngineRelease::new(0, 0, 9);
+            terms.release = Version::new(0, 0, 9);
             terms.mode = Fingerprint::new([0; 32]);
         }),
         other(|terms| terms.mode = Fingerprint::new([0; 32])),
@@ -718,13 +719,13 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         matches!(
             &refused,
             [
-                Some(StartError::Terms(TermsError::OtherRelease(release))),
-                Some(StartError::Terms(TermsError::OtherRelease(_))),
-                Some(StartError::Packages(StoreError::UnknownMode)),
-                Some(StartError::Packages(StoreError::MissingDependency(dependency))),
-                Some(StartError::Packages(StoreError::DependencyCount)),
-                Some(StartError::Terms(TermsError::TickRate(hz))),
-            ] if *release == EngineRelease::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
+                Some(VerifyError::Release(TermsError::OtherRelease(release))),
+                Some(VerifyError::Release(TermsError::OtherRelease(_))),
+                Some(VerifyError::Packages(StoreError::UnknownMode)),
+                Some(VerifyError::Packages(StoreError::MissingDependency(dependency))),
+                Some(VerifyError::Packages(StoreError::DependencyCount)),
+                Some(VerifyError::Start(StartError::Terms(TermsError::TickRate(hz)))),
+            ] if *release == Version::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"
     );
@@ -738,7 +739,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     assert!(
         matches!(
             refused,
-            Some(StartError::Terms(TermsError::Slots { slots: 3, most: 2 }))
+            Some(VerifyError::Start(StartError::Terms(TermsError::Slots {
+                slots: 3,
+                most: 2
+            })))
         ),
         "{refused:?}"
     );
@@ -755,8 +759,13 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         NonZeroU32::new(30).unwrap(),
         1,
     );
-    let refused =
-        Session::start_match(thrown.log(), FixedSession::seeds(), thrown.packages()).err();
+    let refused = Session::start_match(SessionSource {
+        log: thrown.log(),
+        seeds: FixedSession::seeds(),
+        packages: thrown.packages(),
+        signer: None,
+    })
+    .err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");
     };
@@ -786,7 +795,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     scratch.create_dir("empty");
     assert!(matches!(
         verify(&scratch.path("empty"), "match.log", None),
-        Err(VerifyError::Start(_))
+        Err(VerifyError::Packages(_))
     ));
     // A log that is not there, and bytes that are no log.
     assert!(matches!(

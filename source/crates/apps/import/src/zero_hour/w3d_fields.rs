@@ -1,38 +1,33 @@
+use crate::zero_hour::byte_cursor::ByteCursor;
 use crate::zero_hour::error::W3dError;
 
-/// Little-endian fields of a chunk's body, each refused when it runs past the end.
+/// The fields of a chunk's body: the cursor's, and a model's vectors, names and lists.
 #[derive(Debug, Clone)]
 pub(crate) struct W3dFields<'a> {
-    rest: &'a [u8],
+    cursor: ByteCursor<'a>,
 }
 
 impl<'a> W3dFields<'a> {
     pub(crate) const fn of(body: &'a [u8]) -> W3dFields<'a> {
-        W3dFields { rest: body }
+        W3dFields {
+            cursor: ByteCursor::new(body),
+        }
     }
 
     pub(crate) fn take(&mut self, len: usize) -> Result<&'a [u8], W3dError> {
-        let (taken, rest) = self.rest.split_at_checked(len).ok_or(W3dError::Short)?;
-        self.rest = rest;
-        Ok(taken)
+        Ok(self.cursor.take(len)?)
     }
 
     pub(crate) fn u16(&mut self) -> Result<u16, W3dError> {
-        Ok(u16::from_le_bytes(
-            self.take(2)?.try_into().expect("2 bytes"),
-        ))
+        Ok(self.cursor.u16()?)
     }
 
     pub(crate) fn u32(&mut self) -> Result<u32, W3dError> {
-        Ok(u32::from_le_bytes(
-            self.take(4)?.try_into().expect("4 bytes"),
-        ))
+        Ok(self.cursor.u32()?)
     }
 
     pub(crate) fn f32(&mut self) -> Result<f32, W3dError> {
-        Ok(f32::from_le_bytes(
-            self.take(4)?.try_into().expect("4 bytes"),
-        ))
+        Ok(self.cursor.f32()?)
     }
 
     pub(crate) fn vector(&mut self) -> Result<[f32; 3], W3dError> {
@@ -53,21 +48,13 @@ impl<'a> W3dFields<'a> {
 
     /// What is left as `u32`s, which must be whole.
     pub(crate) fn u32s(&mut self) -> Result<Vec<u32>, W3dError> {
-        Ok(self
-            .records::<4>()?
-            .into_iter()
-            .map(u32::from_le_bytes)
-            .collect())
+        let records = self.records::<4>()?;
+        Ok(records.into_iter().map(u32::from_le_bytes).collect())
     }
 
     /// What is left as whole records of `N` bytes.
     pub(crate) fn records<const N: usize>(&mut self) -> Result<Vec<[u8; N]>, W3dError> {
-        let (records, rest) = self.take(self.rest.len())?.as_chunks::<N>();
-        if rest.is_empty() {
-            Ok(records.to_vec())
-        } else {
-            Err(W3dError::Short)
-        }
+        Ok(self.cursor.rest_records::<N>()?.to_vec())
     }
 }
 

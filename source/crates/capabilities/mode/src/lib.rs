@@ -14,7 +14,7 @@ use bevy_ecs::schedule::common_conditions::not;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_combat::{CombatHooks, DamageWeigher, HealWeigher};
+use campfire_combat::{Weigh, Weighers};
 use campfire_common::PlayerSlot;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
@@ -33,7 +33,6 @@ mod choice_specs;
 mod choices;
 mod error;
 mod game_map;
-mod height_grid;
 mod loadout_setup;
 mod map_data;
 mod map_point;
@@ -72,14 +71,12 @@ mod team_manifest;
 mod timers;
 mod unanswered_deaths;
 mod unanswered_slot_events;
-mod unit_type_setup;
 
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
-pub use crate::error::{ModeError, ModeList, ModeNamesError};
+pub use crate::error::{ModeError, ModeList, ModeNamesError, ModeRefusal};
 pub use crate::game_map::GameMap;
-pub use crate::height_grid::HeightGrid;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{
     BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
@@ -96,7 +93,7 @@ pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
-pub use crate::mode_map::{ModeMap, ResolvedMap, WalkCheck};
+pub use crate::mode_map::{ModeMap, ResolvedMap};
 pub use crate::mode_names::ModeNames;
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec};
@@ -105,7 +102,7 @@ pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
 pub use crate::offer::Offer;
 pub use crate::placed_unit::{PlacedPath, PlacedUnit};
-pub use crate::players_data::{Leaver, PlayersData};
+pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
 pub use crate::save_asked::SaveAsked;
@@ -115,7 +112,6 @@ pub use crate::team_manifest::TeamManifest;
 pub use crate::timers::{Timer, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
-pub use crate::unit_type_setup::UnitTypeSetup;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
 /// its capabilities.
@@ -164,6 +160,13 @@ impl Module for Mode {
     ];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.callback::<Weighers>(
+            (),
+            Weigh {
+                damage: Calls::weigh_damage,
+                heal: Calls::weigh_heal,
+            },
+        );
         d.sets::<ModeSet>();
         d.component::<MatchEnd>();
         d.component::<ModeState<SyncNone>>();
@@ -199,7 +202,7 @@ impl Module for Mode {
     fn install(cx: &mut InstallCx<'_>) {
         let defines = ModeHooks::defines;
         let joins = defines(Hook::OnPlayerJoin).or_else(defines(Hook::OnPlayerLeave));
-        cx.schedule.add_systems((
+        cx.systems((
             ModeHooks::mode_inputs
                 .run_if(defines(Hook::OnModeInput))
                 .in_set(ModeSet::Inputs),
@@ -214,7 +217,7 @@ impl Module for Mode {
             OutOfPlay::refresh.in_set(ModeSet::OutOfPlay),
         ));
         if cx.has(Capability::Progression) {
-            cx.schedule.add_systems(
+            cx.systems(
                 (
                     ModeHooks::level_ups.run_if(defines(Hook::OnLevelUp)),
                     ModeHooks::clear_level_ups.run_if(not(defines(Hook::OnLevelUp))),
@@ -256,6 +259,7 @@ impl Mode {
             relations,
             map: GameMap::new(path_names.map(ScriptText::from), &markers),
         };
+        view.names_mut().set_table(Arc::clone(start.map.tags()));
         Mode::load_units(world, &setup.units);
         let book = ModeSpec::new(
             setup,
@@ -269,21 +273,11 @@ impl Mode {
         view.names_mut().set_table(Arc::clone(book.choices.names()));
         let players = book.teams.players() as usize;
         world.insert_resource(Choices::empty(&book.choices, players));
-        let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
         ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
         ctx.set_mode(Rc::<ModeSpec>::clone(&book));
         world.insert_non_send(MatchMode(Rc::clone(&book)));
-        // A mode that defines either hook declares combat, as the load checks.
-        if hooks.contains(Hook::CalcDamage) {
-            let weigher = DamageWeigher::new(Calls::weigh_damage);
-            world.non_send_mut::<CombatHooks>().weigher = Some(weigher);
-        }
-        if hooks.contains(Hook::CalcHeal) {
-            let healer = HealWeigher::new(Calls::weigh_heal);
-            world.non_send_mut::<CombatHooks>().healer = Some(healer);
-        }
     }
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
@@ -351,8 +345,6 @@ impl Mode {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    use std::slice;
-
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
@@ -374,14 +366,13 @@ pub mod internals {
         Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
     };
     use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
-    use campfire_values::{Rank, Stat, TagSet, Team, UnitType};
+    use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::mode_input::{InputValue, ModeInput};
     use crate::mode_spec::ModeSpec;
     use crate::mode_units::ModeUnits;
     use crate::mode_world::ModeWorld;
-    use crate::unit_type_setup::UnitTypeSetup;
 
     impl Mode {
         /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
@@ -463,10 +454,8 @@ pub mod internals {
         /// passive, as a mode's load gives its own: a fixture that loads types loads it again.
         pub fn load_test_units(world: &mut World) {
             let count = world.resource::<UnitTypeBook>().count();
-            let types = (0..count).map(|index| UnitTypeSetup {
-                unit_type: UnitType::new(u16::try_from(index).expect("unit types fit u16")),
-                passive: None,
-            });
+            let types = (0..count)
+                .map(|index| UnitType::new(u16::try_from(index).expect("unit types fit u16")));
             let units = ModeUnits {
                 unit_types: types.collect(),
                 ..ModeUnits::default()
@@ -506,8 +495,10 @@ pub mod internals {
 
         /// Runs a tick with `inputs`, each a player's slot and a mode input.
         pub fn tick_inputs(world: &mut World, inputs: &[(u32, ModeInput<'_>)]) {
+            let (mut body, mut payload) = (Vec::new(), Vec::new());
             for (slot, input) in inputs {
-                let payload = ModeInput::payload(slice::from_ref(input));
+                payload.clear();
+                input.write_payload(&mut body, &mut payload);
                 world.push_input(PlayerSlot::new(*slot), &payload);
             }
             world.step();
@@ -584,7 +575,7 @@ pub mod internals {
                     )
                 })
                 .collect();
-            let id = Stats::push_modifier_changes(world, &changes, TagSet::default());
+            let id = Stats::push_modifier_changes(world, &changes, TagSet::NONE);
             let shares = stats
                 .iter()
                 .map(|&(_, value)| StatShare { value, live: None });
@@ -642,15 +633,16 @@ pub mod internals {
                 ScriptRole::Mode => ctx.frame().begin_mode(world, false, now),
                 ScriptRole::Ai => ctx.frame().begin_think(world, actor, now),
                 ScriptRole::Action => {
-                    let strike = Actions::named(world, 0, "strike").unwrap();
-                    let start = CallStart::cast(strike, Rank::FIRST, actor, 0, now);
+                    let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
+                    let start =
+                        CallStart::cast(strike, Rank::FIRST, actor, PackageIndex::MODE, now);
                     ctx.frame().begin(world, start).unwrap();
                 }
                 ScriptRole::Modifier => {
-                    let blessing = Stats::modifier(world, 0, "blessing").unwrap();
+                    let blessing = Stats::modifier(world, PackageIndex::MODE, "blessing").unwrap();
                     let start = CallStart {
                         acting: Some(actor),
-                        ..CallStart::hook(blessing, 0, 1, now)
+                        ..CallStart::hook(blessing, PackageIndex::MODE, 1, now)
                     };
                     ctx.frame().begin(world, start).unwrap();
                 }

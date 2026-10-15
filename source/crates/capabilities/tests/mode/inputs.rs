@@ -1,9 +1,12 @@
 use super::*;
+use campfire_script::CapabilityRefusal;
+use campfire_values::NameId;
 
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let [strike, blink] = ["strike", "blink"].map(|name| Actions::named(&game, 0, name).unwrap());
+    let [strike, blink] =
+        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -43,8 +46,8 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(
         Mode::failures(&game),
         [
-            FailureKind::Api(ApiError::ChoiceTaken),
-            FailureKind::Api(ApiError::ChoiceCount),
+            FailureKind::Api(ModeRefusal::ChoiceTaken.refused()),
+            FailureKind::Api(ModeRefusal::ChoiceCount.refused()),
             FailureKind::Raised(None),
             FailureKind::Api(ApiError::WrongStateType)
         ]
@@ -52,7 +55,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
     // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
     let offer = |index| Some(Offer::new(index));
-    let chosen = &game.resource::<Choices>().0;
+    let chosen = game.resource::<Choices>().offers();
     let rows: Vec<_> = chosen.chunks(4).collect();
     assert_eq!(
         rows,
@@ -119,13 +122,15 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
             (1, input("rich", "gems")),
             (1, input("rich", "gems")),
             (1, input("gold", "silver")),
+            (1, input("markers", "spawns")),
             (0, input("probe", "")),
         ],
     );
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
-    // not declare fails, as a sum past what an integer holds does.
+    // not declare fails, as a sum past what an integer holds does, and a marker tag no marker
+    // holds.
     let amount = |slot, name| {
-        let resources = PlayerResources::of_player(&game, PlayerSlot::new(slot));
+        let resources = game.player_resources(PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(
@@ -136,8 +141,9 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     assert_eq!(
         Mode::failures(&game),
         [
-            FailureKind::Api(ApiError::ResourceOverflow),
-            FailureKind::Api(ApiError::Unknown(NameKind::Resource))
+            FailureKind::Api(ModeRefusal::ResourceOverflow.refused()),
+            FailureKind::Api(ApiError::Unknown(NameKind::Resource)),
+            FailureKind::Api(ApiError::Unknown(NameKind::MarkerTag)),
         ]
     );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
@@ -209,7 +215,8 @@ fn on_input(ctx, player, name, value) {
 }
 "#;
     let mut game = picking_match(script, ScriptLimits::ROOMY);
-    let [strike, blink] = ["strike", "blink"].map(|name| Actions::named(&game, 0, name).unwrap());
+    let [strike, blink] =
+        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
     let probe = |value| input("probe", value);
     let read = |game: &Match| ["kind", "seen", "team"].map(|name| Mode::field(game, name));
     let text = |text: &str| StateValue::Text(text.into());
@@ -251,9 +258,9 @@ fn on_input(ctx, player, name, value) {
         ],
     );
     let refused = [
-        ApiError::ChoiceCount,
-        ApiError::RepeatedChoiceValue,
-        ApiError::UnknownChoiceValue,
+        ModeRefusal::ChoiceCount.refused(),
+        ModeRefusal::RepeatedChoiceValue.refused(),
+        ModeRefusal::UnknownChoiceValue.refused(),
         ApiError::Unknown(NameKind::Choice),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
@@ -273,7 +280,7 @@ fn on_input(ctx, player, name, value) {
         ],
     );
     let refused = [
-        ApiError::SlotKindRanks,
+        ModeRefusal::SlotKindRanks.refused(),
         ApiError::Unknown(NameKind::SlotKind),
         ApiError::Unknown(NameKind::Ability),
     ];
@@ -301,7 +308,7 @@ fn on_input(ctx, player, name, value) {
     };
     let script = format!("{script}{PICKING}");
     let mut game = start_match_setup(&script, ScriptLimits::ROOMY, &mode_files(), carry).unwrap();
-    let blink = Actions::named(&game, 0, "blink").unwrap();
+    let blink = Actions::named(&game, PackageIndex::MODE, "blink").unwrap();
     let owned = |game: &mut Match| {
         let mut owned = game.query::<(&Owner, &ActionSlots)>();
         let slots = owned.iter(game).map(|(_, slots)| slots.clone());
@@ -310,7 +317,7 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("probe", "two"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::TooManySlots)]
+        [FailureKind::Api(ModeRefusal::TooManySlots.refused())]
     );
     assert!(owned(&mut game).is_empty());
     Mode::tick_inputs(&mut game, &[(0, input("probe", "one"))]);
@@ -352,6 +359,12 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     assert_eq!(avatar(&mut players, 0), Some(hero));
     assert_eq!(avatar(&mut players, 1), None);
     assert_eq!(avatar(&mut players, 2), None);
+    // The world's own read, for code that holds it shared, finds each the same.
+    let shared = (0..3).map(|slot| {
+        game.avatar_of(PlayerSlot::new(slot))
+            .map(|avatar| avatar.entity)
+    });
+    assert_eq!(shared.collect::<Vec<_>>(), [Some(hero), None, None]);
 
     // Out of play, as each tick ends: player 0 while both its heroes are dead, and no more as one
     // lives again; player 1, whose grunt is no avatar, never by a death, and while the script

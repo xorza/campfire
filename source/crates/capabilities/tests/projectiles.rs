@@ -16,8 +16,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
 use campfire_units::{BodyForm, DashTo, Dead, UnitTypeCore, Units};
-use campfire_values::FilterData;
-use campfire_values::{Team, TypeScope, UnitType};
+use campfire_values::{FilterData, Team, TypeScope, UnitType};
 use campfire_vision::{SeenBy, Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
@@ -522,7 +521,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
 }
 
 #[test]
-fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
+fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_negative_range() {
     let read = |text: &str| Toml::parse::<ProjectileData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
     let plain = ProjectileData::flying(Num::HALF);
@@ -535,6 +534,9 @@ fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range(
             ..plain.clone()
         }
     );
+    // A width of 4,096 m flies as a circle of 2,048 m, the widest body; a bit more does not read.
+    let widest = read("speed = 20\nwidth = 4096").unwrap();
+    assert_eq!(widest.width, Num::int(4096));
     // `hits` is `none` or a filter, `enemies` when it is absent.
     let hits = |text: &str| read(&format!("speed = 1\nhits = {text}")).map(|data| data.hits);
     assert_eq!(hits("\"none\"").unwrap(), ProjectileHits::Nothing);
@@ -563,6 +565,10 @@ fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range(
         (
             "speed = 20\nwidth = \"-0.001\"",
             "a projectile's width is not negative",
+        ),
+        (
+            "speed = 20\nwidth = \"4096.00000006\"",
+            "a projectile's width is at most 4,096 m",
         ),
         (
             "speed = 20\nrange = -1",

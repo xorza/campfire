@@ -8,13 +8,11 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use bevy_ecs::world::World;
-use campfire_common::Tick;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, Role, SetPlace};
+use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
+use bevy_ecs::system::ScheduleSystem;
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::MapBook;
+use campfire_units::BodyUnit;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 mod ai;
@@ -32,7 +30,7 @@ mod unit_order;
 pub use crate::ai::Ai;
 pub use crate::ai_data::AiData;
 pub use crate::destinations::Destinations;
-pub use crate::error::AiError;
+pub use crate::error::{AiError, OrdersRefusal};
 pub use crate::next_think::NextThink;
 pub use crate::order_inputs::{OrderInputs, PlayerOrders};
 pub use crate::orders_action::OrdersAction;
@@ -86,7 +84,9 @@ impl Module for Orders {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<OrdersSet>();
         d.component::<NextThink>();
+        d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<Resetting>();
+        d.state::<BodyUnit, Resetting>();
         d.scratch::<PlayerOrders>();
         d.book::<ByType<Ai>>();
         d.api(OrdersApi::register);
@@ -100,52 +100,33 @@ impl Module for Orders {
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
-        match cx.role() {
-            Role::Server(_) => Orders::install_by::<ByVision>(cx),
-            Role::Client => Orders::install_by::<ByHolding>(cx),
-        }
+        cx.by_role(
+            Orders::check_orders::<ByVision>(),
+            Orders::check_orders::<ByHolding>(),
+        );
+        cx.systems(
+            (Destinations::follow_paths, Destinations::chase)
+                .chain()
+                .in_set(OrdersSet::Chase),
+        );
+        cx.scripted(
+            (Thinking::end_dead_resets, Thinking::think)
+                .chain()
+                .in_set(OrdersSet::Think),
+        );
     }
 }
 
 impl Orders {
-    /// `install`, each order's targets checked as `S` sees them.
-    fn install_by<S: TeamSight>(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
-            (
-                OrderInputs::check_player_orders::<S>,
-                OrderInputs::apply_player_orders,
-            )
-                .chain()
-                .in_set(OrdersSet::Orders),
-            (Destinations::follow_paths, Destinations::chase)
-                .chain()
-                .in_set(OrdersSet::Chase),
-        ));
-        if scripts {
-            schedule.add_systems(
-                (Thinking::end_dead_resets, Thinking::think)
-                    .chain()
-                    .in_set(OrdersSet::Think),
-            );
-        }
-    }
-
-    /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
-    /// order applies; a unit that resets takes none.
-    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
-        let bounds = world.resource::<MapBook>().bounds;
-        let mut unit = world.entity_mut(entity);
-        if unit.contains::<Resetting>() {
-            return;
-        }
-        let parts = unit
-            .get_components_mut::<OrderedUnit>()
-            .expect("an ordered unit stands");
-        if order.apply(parts, &bounds, now) {
-            unit.insert(Resetting);
-        }
+    /// The systems that check the tick's orders, each order's targets as `S` sees them, and
+    /// apply them.
+    fn check_orders<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+        (
+            OrderInputs::check_player_orders::<S>,
+            OrderInputs::apply_player_orders,
+        )
+            .chain()
+            .in_set(OrdersSet::Orders)
     }
 }
 

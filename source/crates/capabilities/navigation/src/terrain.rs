@@ -1,12 +1,13 @@
 use campfire_geometry::Grid;
 use campfire_units::Layer;
+use campfire_values::NameId;
 
 use crate::wall::Wall;
 
 /// The cells of the pathing grid the map's walls block, layer by layer, one bit a cell: derived
 /// from the map once, as the walls never change.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Terrain {
+pub(crate) struct Terrain {
     /// Words of cells a layer.
     words: usize,
     /// Each layer's blocked cells, from the first layer to the last a wall stands on.
@@ -15,7 +16,7 @@ pub struct Terrain {
 
 impl Terrain {
     /// The cells of `grid` that `walls` block.
-    pub fn new(grid: &Grid, walls: &[Wall]) -> Terrain {
+    pub(crate) fn new(grid: &Grid, walls: &[Wall]) -> Terrain {
         let words = grid.cells().div_ceil(64);
         let layers = walls
             .iter()

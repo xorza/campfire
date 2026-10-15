@@ -1,7 +1,7 @@
 use campfire_sim::Capability;
 
-use crate::scripts::script_api::data_table::DataTable;
-use crate::scripts::script_api::status::Status;
+use crate::scripts::data_table::DataTable;
+use crate::scripts::status::Status;
 
 /// A field of a data file's table, by its name in the file: whether the release reads it, and
 /// the capability that reads it, none for the core's: a mode that holds the field declares it.

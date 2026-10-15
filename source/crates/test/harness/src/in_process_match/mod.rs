@@ -1,4 +1,3 @@
-use std::fmt::Write as _;
 use std::mem;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
@@ -6,36 +5,38 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order};
+use campfire_codec::Toml;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
-use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
+use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    BotScript, ClientDir, Clock, Entropy, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
-    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, PlayerLink, ServerBots,
-    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
-    SimServerWorld, SlotBot, TickHashes,
+    BotScript, ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
+    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir,
+    ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld,
+    SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{SeedChain, ServerInput};
-use campfire_quic::{LINK_MIN_MTU, LinkBinding};
-use campfire_runner::{InputRules, Session};
+use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput};
+use campfire_quic::{LinkBinding, QuicEndpoint};
+use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{Body, MoveStep, Owner};
-use campfire_values::Team;
+use campfire_units::{Body, MoveStep, Owner, UnitsWorld};
+use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
-    Connect, Connected, Link, LinkMtu, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
+    Connect, Connected, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
@@ -166,21 +167,8 @@ impl MatchSetup {
     pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> MatchSetup {
         MatchSetup {
             players: 2,
-            links: LinkLayout::InOrder,
-            rollbacks: [RollbackMode::Check; MatchSetup::MAX_PLAYERS],
-            server_frames: 3,
             link,
-            seed_chain,
-            times: SessionTimes::DEFAULT,
-            rules: PlayersData::DEFAULT,
-            saves: SavesData {
-                by: SaveBy::Player,
-                autosave_ms: None,
-            },
-            bots: &[],
-            takeover: None,
-            visibility: &[],
-            max_spectators: 0,
+            ..MatchSetup::solo(RollbackMode::Check, 3, seed_chain)
         }
     }
 }
@@ -380,7 +368,7 @@ impl InProcessMatch {
                 LinkOf {
                     server: self.server_entity,
                 },
-                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+                QuicEndpoint::link(),
                 PeerAddr(address),
                 BINDING,
                 Linked,
@@ -425,22 +413,11 @@ impl InProcessMatch {
 
     /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
     pub fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
-        let leaver = match rules.leaver {
-            Leaver::Reserve => "reserve",
-            Leaver::Bot => "bot",
-            Leaver::Open => "open",
-        };
-        let by = match saves.by {
-            SaveBy::Player => "player",
-            SaveBy::Mode => "mode",
-        };
-        let mut added = format!(
-            "[players]\nlate_join = {}\nbot_takeover = {}\nleaver = \"{leaver}\"\n\n[saves]\nby = \"{by}\"\n",
-            rules.late_join, rules.bot_takeover
+        let added = format!(
+            "\n[players]\n{}\n[saves]\n{}",
+            Toml::write(&rules),
+            Toml::write(&saves)
         );
-        if let Some(every) = saves.autosave_ms {
-            writeln!(added, "autosave_ms = {every}").expect("a String takes any text");
-        }
         PackageTree::of(TestMode::Lane)
             .edit("modes/lane/data/mode.toml", Edit::Append(&added))
             .packages()
@@ -558,7 +535,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
             seed_chain: self.setup.seed_chain,
-            rules: InputRules::LAN,
+            inputs: InputRules::LAN,
             slots: self.setup.players + self.setup.bots.len(),
             bots: self.server_bots(),
             open: Vec::new(),
@@ -609,15 +586,22 @@ impl InProcessMatch {
             .is_some_and(|avatar| world.entity_of(avatar).is_some())
     }
 
-    /// Loses every packet the server sends `client` while `lost`, as a link that drops one way
-    /// does, though the client's own packets arrive; with `false`, passes them again.
-    pub fn lose_server_packets(&mut self, client: usize, lost: bool) {
+    /// Loses every packet the server sends `client` from now on, as a link that drops one way
+    /// does, though the client's own packets arrive.
+    pub fn lose_server_packets(&mut self, client: usize) {
+        self.server_delay(client).lose_all();
+    }
+
+    /// Passes the packets the server sends `client` again.
+    pub fn pass_server_packets(&mut self, client: usize) {
+        self.server_delay(client).pass_all();
+    }
+
+    /// The delay line of the server's link to `client`.
+    fn server_delay(&mut self, client: usize) -> Mut<'_, DelayLine> {
         let world = self.server.world_mut();
-        let mut delay = world.get_mut::<DelayLine>(self.links[client]);
-        delay
-            .as_mut()
-            .expect("a link passes through a delay line")
-            .lose_all(lost);
+        let delay = world.get_mut::<DelayLine>(self.links[client]);
+        delay.expect("a link passes through a delay line")
     }
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.
@@ -649,14 +633,10 @@ impl InProcessMatch {
         }
     }
 
-    /// One frame of each client, then the server's frames: one tick each. A server whose session
-    /// went back to a save then starts again on its data, as a local server does.
+    /// One frame of each client, then the server's frames: one tick each, what each end's frames
+    /// cost kept in `step_cost`. A server whose session went back to a save then starts again on
+    /// its data, as a local server does.
     pub fn step(&mut self) {
-        self.timed_step();
-    }
-
-    /// `step`, which keeps what each end's frames cost in `step_cost`.
-    pub(crate) fn timed_step(&mut self) {
         self.step_cost.clear();
         for client in 0..self.clients.len() {
             let start = Instant::now();
@@ -725,17 +705,9 @@ impl InProcessMatch {
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
         let world = self.server.world();
         let slot = world
-            .get::<PlayerLink>(self.links[client])
-            .expect("the match started, with the client's slot")
-            .slot();
-        let mut avatars = world.resource::<EntityIndex>().iter();
-        avatars
-            .find(|&(_, unit)| {
-                world
-                    .get::<Owner>(unit)
-                    .is_some_and(|owner| owner.slot() == slot)
-            })
-            .map(|(id, _)| id)
+            .link_slot(self.links[client])
+            .expect("the match started, with the client's slot");
+        world.avatar_of(slot).map(|avatar| avatar.id)
     }
 
     /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives
@@ -896,7 +868,7 @@ impl ClientApp {
                 tick_hz,
             },
             role,
-            local: true,
+            hosting: Hosting::Local,
             packages: Arc::clone(&local.packages),
             os: Os {
                 clock: local.clock.clone(),
@@ -961,9 +933,9 @@ pub(crate) mod bench {
 
     use campfire_math::{Num, Vec3};
     use campfire_orders::OrdersAction;
-    use campfire_package::internals::TestMode;
+    use campfire_package_disk::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
-    use campfire_store::DurableFile;
+    use campfire_store::DurableDir;
     use lightyear::prelude::RollbackMode;
 
     use crate::in_process_match::link_model::LinkModel;
@@ -1098,7 +1070,7 @@ pub(crate) mod bench {
                         self.order(client, OrdersAction::Move { x, z });
                     }
                 }
-                self.timed_step();
+                self.step();
                 spent.add(&self.step_cost);
                 *frame += 1;
             }
@@ -1123,11 +1095,11 @@ pub(crate) mod bench {
             local.play_by_team(InProcessMatch::SCENARIO_SCRIPTS);
             let mut worst = StepCost::default();
             for _ in 0..MATCH_TICKS {
-                local.timed_step();
+                local.step();
                 worst.keep_worst(&local.step_cost);
             }
             drop(local);
-            DurableFile::remove_dir(&dir).expect("the bench's own data directory");
+            DurableDir::remove(&dir).expect("the bench's own data directory");
             worst
         }
     }

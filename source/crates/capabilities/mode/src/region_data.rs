@@ -1,10 +1,10 @@
 use campfire_geometry::{Bounds, Metric};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::map_point::MapPoint;
 
 /// A box of the map, from `min` to `max`, `min` below `max` on every axis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RegionData {
     pub min: MapPoint,

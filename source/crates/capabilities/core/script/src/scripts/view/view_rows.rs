@@ -102,12 +102,9 @@ impl ViewRows {
         self.columns.add(column);
     }
 
-    /// The column of type `C`, to change, when one was added; `refill` makes the next read fill
-    /// every row again, as the rows may derive from what changes.
-    pub(crate) fn column_mut<C: ViewColumn>(&mut self, refill: bool) -> Option<&mut C> {
-        let column = self.columns.get_mut()?;
-        self.refill |= refill;
-        Some(column)
+    /// The column of type `C`, to change, when one was added.
+    pub(crate) fn column_mut<C: ViewColumn>(&mut self) -> Option<&mut C> {
+        self.columns.get_mut()
     }
 
     /// Makes the next read fill every row.

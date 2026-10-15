@@ -1,5 +1,6 @@
 use campfire_codec::BinaryError;
 use campfire_common::{PlayerSlot, Tick};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::checkpoint::error::CheckpointDecodeError;
@@ -54,7 +55,7 @@ impl From<StampError> for InputError {
 
 /// Why the log refused a server input. The server signs only what it means to log, so each is a
 /// fault of the server, or of a log someone altered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ServerInputError {
     /// The slot is not in the session header.
     #[error("server input for a slot not in the session")]

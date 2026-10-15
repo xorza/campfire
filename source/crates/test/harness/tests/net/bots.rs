@@ -4,16 +4,16 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
-use campfire_common::{PlayerSlot, StateHash, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
     End, FixedMatch, FixedSession, HashTrail, InProcessMatch, LinkModel, MatchSetup,
 };
-use campfire_mode::{Leaver, ModeWorld, PlayersData, SaveBy, SavesData};
+use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{OrderScript, PlayerLink, SessionTimes, SlotBot, TickHashes};
+use campfire_net::{OrderScript, SessionTimes, SlotBot, TickHashes};
 use campfire_progression::Experience;
-use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput, SessionLog, SlotPlan};
-use campfire_runner::{InputRules, Replay, Session, SessionWorld};
+use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
+use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_script::StateValue;
 use campfire_store::internals::Scratch;
 use campfire_units::{Destination, Owner};
@@ -98,7 +98,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     setup.rules = PlayersData {
         late_join: false,
         bot_takeover: false,
-        leaver: Leaver::Bot,
+        leaver: AfterLeave::Bot,
     };
     setup.times = SessionTimes {
         grace: Duration::from_secs(1),
@@ -108,7 +108,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
-    let slot = world.get::<PlayerLink>(local.link(1)).unwrap().slot();
+    let slot = world.link_slot(local.link(1)).unwrap();
     local.cut_link(1);
     let left = |local: &InProcessMatch| {
         local.server_inputs().iter().any(|input| {
@@ -217,7 +217,7 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
     let rules = PlayersData {
         late_join: true,
         bot_takeover: true,
-        leaver: Leaver::Bot,
+        leaver: AfterLeave::Bot,
     };
     let saves = SavesData {
         by: SaveBy::Player,

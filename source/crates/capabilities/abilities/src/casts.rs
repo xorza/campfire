@@ -6,14 +6,14 @@ use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionSlots, CastSpends, EffectListBook,
-    InProgress, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
+    InProgress, ListCall, ListHook, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets,
+    UseGroup,
 };
 use campfire_common::Tick;
-use campfire_deliveries::{Deliverers, Delivering};
-use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorldCrate};
+use campfire_deliveries::{Deliverers, Delivering, Launcher};
+use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
-    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorldCrate,
-    Unit,
+    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
 };
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
@@ -368,7 +368,7 @@ impl Casts {
         let book = world.resource::<ActionBook>();
         if let Some(delivery) = book.get(by.action).and_then(|action| action.delivery) {
             let deliver = world.resource::<Deliverers>().of(delivery.shape);
-            deliver(world, by, from, delivery, aim.target);
+            deliver(world, Launcher { by, delivery }, from, aim.target);
         }
         ctx.apply(world);
         // The player's resources were paid in the call's frame, before its script ran, so a failed
@@ -480,14 +480,12 @@ impl Casts {
         ctx: &Ctx,
         prepared: &mut Prepared,
     ) -> Result<(), CallError> {
-        EffectListBook::queue(
-            batch.world(),
-            ListsOf::Action(prepared.action),
-            Hook::OnResolve,
-            &mut ctx.frame(),
-            ctx.view(),
-            prepared.resolved.call.aim.target,
-        )?;
+        let call = ListCall {
+            of: ListsOf::Action(prepared.action),
+            hook: ListHook::OnResolve,
+            reached: prepared.resolved.call.aim.target,
+        };
+        EffectListBook::queue(batch.world(), call, ctx)?;
         let Some(script) = prepared.on_resolve else {
             return Ok(());
         };

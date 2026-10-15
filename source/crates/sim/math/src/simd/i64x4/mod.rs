@@ -92,8 +92,19 @@ impl I64x4 {
     #[must_use]
     pub const fn div_euclid(self, divisor: i64) -> I64x4 {
         debug_assert!(0 < divisor && divisor < 1 << 51);
-        let divisor = F64x4::from_exact(I64x4::splat(divisor));
-        F64x4::from_exact(self).div(divisor).floor().to_exact()
+        let divisor = F64x4::from_exact([divisor; 4]);
+        I64x4(F64x4::from_exact(self.0).div(divisor).floor().to_exact())
+    }
+
+    /// Each lane of `lanes`, its bits read as signed.
+    pub const fn cast_signed(lanes: U64x4) -> I64x4 {
+        let [a, b, c, d] = lanes.to_array();
+        I64x4([
+            a.cast_signed(),
+            b.cast_signed(),
+            c.cast_signed(),
+            d.cast_signed(),
+        ])
     }
 
     pub const fn cast_unsigned(self) -> U64x4 {

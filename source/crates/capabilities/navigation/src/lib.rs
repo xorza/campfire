@@ -8,17 +8,21 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_geometry::{Grid, MAX_BOUND};
+use campfire_geometry::Grid;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
 use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
+
+use crate::navigation_column::RowReads;
+use crate::pathing_grid::PathingGrid;
+use crate::route_planner::Walkable;
+use crate::terrain::Terrain;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -51,6 +55,7 @@ mod static_changes;
 mod static_tracking;
 mod steering;
 mod terrain;
+mod walk_check;
 mod walker;
 mod walking;
 mod wall;
@@ -58,30 +63,28 @@ mod walls;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
-pub use crate::error::MapProblem;
+pub use crate::error::{MapProblem, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::group_box::GroupBox;
 pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
-pub use crate::navigation_column::{NavigationColumn, RowReads};
+pub use crate::navigation_column::NavigationColumn;
 pub use crate::navigation_effect::NavigationEffect;
 pub use crate::on_path::OnPath;
 pub use crate::party::{Party, PartyKey, PartyOrder};
 pub use crate::path_walker::{PathEnd, PathWalker};
-pub use crate::pathing_grid::{Clearance, PathingGrid};
 pub use crate::paths::Paths;
 pub use crate::progress::Progress;
-pub use crate::regions::{Reach, Regions};
 pub use crate::room_making::{RoomMaking, RoomMakingRun};
 pub use crate::route::Route;
-pub use crate::route_planner::{RoutePlanner, Walkable, Window};
+pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
 pub use crate::static_bodies::StaticBodies;
 pub use crate::static_changes::StaticChanges;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
-pub use crate::terrain::Terrain;
+pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
 pub use crate::walking::Walking;
 pub use crate::wall::Wall;
@@ -190,10 +193,7 @@ impl Module for Navigation {
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
     fn install(cx: &mut InstallCx<'_>) {
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(BodyIndex::new(MAX_BOUND));
-        world.init_resource::<UnitTracker<StaticBodies>>();
-        schedule.add_systems((
+        cx.systems((
             StaticTracking::track_static_bodies.in_set(NavigationSet::TrackStatics),
             (
                 Walking::forget_dead,
@@ -212,23 +212,13 @@ impl Module for Navigation {
         ));
         for set in NavigationSet::ALL {
             if let NavigationSet::Report(_) = set {
-                schedule.add_systems(Walking::report_short.in_set(set));
+                cx.systems(Walking::report_short.in_set(set));
             }
         }
     }
 }
 
 impl Navigation {
-    /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
-    pub fn walker(step: MoveStep) -> impl Bundle {
-        (
-            step,
-            Destination::default(),
-            Route::default(),
-            Progress::default(),
-        )
-    }
-
     /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
     /// does not change untouched.
     pub fn go_to(world: &mut World, entity: Entity, target: Option<Position>) {
@@ -289,20 +279,40 @@ impl Navigation {
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
+    use campfire_units::{Destination, MoveStep};
 
     use crate::Navigation;
     pub use crate::broadphase::internals::scene;
     use crate::navigation_book::NavigationBook;
+    use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
+    use crate::progress::Progress;
+    use crate::route::Route;
     use crate::walker::Walker;
     use crate::wall::Wall;
     use crate::walls::Walls;
 
     impl Navigation {
+        /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
+        pub fn walker(step: MoveStep) -> impl Bundle {
+            (
+                step,
+                Destination::default(),
+                Route::default(),
+                Progress::default(),
+            )
+        }
+
+        /// Whether the pathing grid of `world` holds the cell at `cell` open to `walker`.
+        pub fn cell_open(world: &World, walker: Walker, cell: usize) -> bool {
+            world.resource::<PathingGrid>().clearance(walker).open(cell)
+        }
+
         /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
         pub fn load_open_pathing(
             world: &mut World,

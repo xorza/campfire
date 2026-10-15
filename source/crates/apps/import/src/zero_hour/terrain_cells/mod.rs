@@ -1,5 +1,5 @@
 use bevy_math::{UVec2, Vec2};
-use campfire_package::{GroundQuad, Overlay, TerrainQuads};
+use campfire_client_files::{GroundQuad, Overlay, TerrainQuads};
 
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};
@@ -72,7 +72,7 @@ impl<'a> TerrainCells<'a> {
         atlas: &'a TerrainAtlas,
         game: GameData,
     ) -> TerrainCells<'a> {
-        let columns = terrain.columns as usize;
+        let columns = usize::try_from(terrain.columns).expect("a u32 fits usize");
         debug_assert_eq!(samples.len(), terrain.cells.len());
         TerrainCells {
             terrain,
@@ -231,7 +231,8 @@ impl<'a> TerrainCells<'a> {
     /// count.
     fn class_of(&self, base: usize) -> Option<usize> {
         self.terrain.classes.iter().position(|class| {
-            (class.first_tile as usize..(class.first_tile + class.tiles) as usize).contains(&base)
+            let first = usize::try_from(class.first_tile).expect("a u32 fits usize");
+            (first..first + usize::try_from(class.tiles).expect("a u32 fits usize")).contains(&base)
         })
     }
 

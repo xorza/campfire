@@ -6,9 +6,10 @@ use rhai::{Array, Dynamic, ImmutableString, Variant};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_list::ScriptList;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::script_value::script_list::ScriptList;
+use crate::scripts::view::filter::Filter;
 
 /// An argument of a call or a method of the script API: what Rhai passes, and what the member
 /// takes of it. A name resolves to its id, its kind of name recorded in the member's spec, and a
@@ -148,8 +149,9 @@ impl ScriptArg for Num {
         Ok(raw)
     }
 
+    /// A script's integer as a `Num`; one beyond a `Num` fails the call.
     fn take_int(raw: i64, _: &ArgCtx<'_>) -> Checked<Num> {
-        ApiError::num(raw)
+        Num::from_int(raw).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
     }
 }
 
@@ -184,3 +186,13 @@ engine_script_arg!(
     ScriptText: ImmutableString => ScriptText::of_engine,
     ScriptList: Array => ScriptList::of_engine,
 );
+
+/// A filter a script gives, its tags among the match's.
+impl TextArg for Filter {
+    const NAMES: NameKind = NameKind::Filter;
+
+    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Filter> {
+        let filter = Filter::parse(&text, ctx.get().view().names().tags());
+        Ok(filter.map_err(ApiError::fail)?)
+    }
+}

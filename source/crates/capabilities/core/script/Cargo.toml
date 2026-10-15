@@ -30,7 +30,7 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }
 
 [lints]

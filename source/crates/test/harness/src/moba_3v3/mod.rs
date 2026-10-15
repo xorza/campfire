@@ -1,7 +1,7 @@
 use std::iter;
 
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, UseGroup};
 use campfire_capabilities::{Action, Order};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
@@ -10,9 +10,9 @@ use campfire_math::Num;
 use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_progression::ProgressionAction;
-use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
+use campfire_protocol::{InputRules, ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
 use campfire_units::Dead;
@@ -23,7 +23,6 @@ use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
 use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
-use campfire_runner::InputRules;
 
 pub(crate) mod bench;
 
@@ -82,8 +81,6 @@ const THIRD: u8 = 2;
 const ULTIMATE: u8 = 3;
 const HASTE: u8 = 4;
 const MEND: u8 = 5;
-/// A hero's first action slot of its inventory, after its spells and its weapon.
-const INVENTORY: u8 = 7;
 
 /// The south camp's wolf, west of the middle, on its marker.
 const SOUTH_CAMP: (i16, i16) = (-18, 12);
@@ -318,7 +315,7 @@ impl Moba3v3 {
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Moba3v3> {
         let packages = TestMode::Moba3v3.packages();
-        let items = &packages.packages().next().expect("a mode").content.items;
+        let items = &packages.mode().content.items;
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Moba3v3::script(&item);
@@ -393,7 +390,7 @@ impl Plan for Moba3v3 {
                 target: aim.target(units),
             }),
             Moba3v3::Use { item, aim } => Action::Orders(OrdersAction::Slot {
-                slot: INVENTORY + carried_at(units, hero, item),
+                slot: carried_at(units, hero, item),
                 target: aim.target(units),
             }),
             Moba3v3::Learn { slot } => Action::Progression(ProgressionAction::Learn { slot }),
@@ -423,34 +420,38 @@ impl Plan for Moba3v3 {
 
 /// The slot of `hero`'s basic ability of fewest ranks, the first of them on a tie.
 fn fewest_ranks(units: MatchUnits<'_>, hero: StableId) -> u8 {
-    let (_, unit) = units.all().find(|&(id, _)| id == hero).expect("a hero");
-    let slots = unit.get::<ActionSlots>().expect("a hero has slots");
+    let slots = units
+        .unit(hero)
+        .get::<ActionSlots>()
+        .expect("a hero has slots");
     [FIRST, SECOND, THIRD]
         .into_iter()
         .min_by_key(|&slot| slots.slot(slot).expect("a basic ability").rank)
         .expect("three basic abilities")
 }
 
-/// The inventory slot of `hero` that holds `item` first.
+/// The action slot of `hero`'s inventory slot that holds `item` first: the inventory's slots
+/// begin at the first slot of its kind.
 fn carried_at(units: MatchUnits<'_>, hero: StableId, item: ItemId) -> u8 {
-    let (_, unit) = units.all().find(|&(id, _)| id == hero).expect("a hero");
+    let unit = units.unit(hero);
     let inventory = unit.get::<Inventory>().expect("a hero carries");
+    let group = unit
+        .get::<UseGroup>()
+        .expect("a carrier's inventory has its kind");
+    let slots = unit.get::<ActionSlots>().expect("a hero has slots");
     let at = inventory
         .slots()
         .iter()
         .position(|carried| carried.is_some_and(|carried| carried.item == item));
-    u8::try_from(at.expect("the hero carries the item")).expect("an inventory slot")
+    let at = u8::try_from(at.expect("the hero carries the item")).expect("an inventory slot");
+    slots.first_of(group.kind()) + at
 }
 
 /// The living creep of `hero`'s enemies, a unit that walks a lane, of least life within
 /// `FARM_REACH` of it, by stable id on a tie.
 fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
     let at = units.position(hero).get();
-    let team = units
-        .all()
-        .find(|&(id, _)| id == hero)
-        .and_then(|(_, unit)| unit.get::<Team>().copied())
-        .expect("a hero has a team");
+    let team = *units.unit(hero).get::<Team>().expect("a hero has a team");
     units
         .all()
         .filter(|(_, unit)| {

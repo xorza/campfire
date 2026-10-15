@@ -14,7 +14,7 @@ use campfire_sim::Position;
 /// their sides, and then numbers the reachable sets over the regions and their pairs, not the
 /// cells, as 0 A.D. does. Derived from the layer, not state.
 #[derive(Debug)]
-pub struct Regions {
+pub(crate) struct Regions {
     columns: usize,
     rows: usize,
     chunk_columns: usize,
@@ -77,7 +77,7 @@ enum Side {
 /// The reachable sets a cell belongs to: its own region's, or for a blocked cell, which a walker
 /// may leave or enter, those of the open cells beside it; the first `count`, ascending.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Reach {
+pub(crate) struct Reach {
     sets: [u32; 4],
     count: u8,
 }
@@ -96,7 +96,7 @@ impl Regions {
     const CHUNK: usize = 64;
 
     /// The regions of the layer whose blocked cells `blocked` marks, one bit a cell, on `grid`.
-    pub fn new(grid: &Grid, blocked: &[u64]) -> Regions {
+    pub(crate) fn new(grid: &Grid, blocked: &[u64]) -> Regions {
         let (columns, rows) = (grid.columns(), grid.rows());
         let chunk_columns = columns.div_ceil(Regions::CHUNK);
         let chunks = chunk_columns * rows.div_ceil(Regions::CHUNK);
@@ -118,7 +118,7 @@ impl Regions {
 
     /// Labels again the chunks `dirty` marks, from `blocked`, finds again the pairs along their
     /// sides, then numbers the reachable sets again.
-    pub fn rebuild(&mut self, blocked: &[u64], dirty: &[bool]) {
+    pub(crate) fn rebuild(&mut self, blocked: &[u64], dirty: &[bool]) {
         debug_assert_eq!(dirty.len(), self.chunks.len());
         self.build(blocked, |chunk| dirty[chunk]);
     }
@@ -144,7 +144,7 @@ impl Regions {
     }
 
     /// The reachable sets `cell` belongs to.
-    pub fn reach(&self, cell: usize) -> Reach {
+    pub(crate) fn reach(&self, cell: usize) -> Reach {
         let mut reach = Reach {
             sets: [0; 4],
             count: 0,
@@ -455,7 +455,7 @@ impl Reach {
 
     /// Whether the two share a reachable set: a walker can go from a cell of one to a cell of the
     /// other.
-    pub fn meets(self, other: Reach) -> bool {
+    pub(crate) fn meets(self, other: Reach) -> bool {
         self.sets[..usize::from(self.count)]
             .iter()
             .any(|&set| other.contains(set))

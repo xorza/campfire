@@ -4,24 +4,31 @@ use std::time::{Duration, SystemTime};
 
 use campfire_common::MapName;
 use campfire_net::{
-    Entropy, Lobby, LobbySetup, PendingRestore, RestoredSession, ServerBots, ServerDir,
+    Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
     ServerSetup, SessionDir,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::{SeedChain, SessionTerms};
-use campfire_runner::{InputRules, SessionRules};
+use campfire_protocol::SessionTerms;
+use campfire_runner::SessionRules;
 use campfire_visibility::HostVisibility;
-use secp256k1::Keypair;
 
 use crate::opening::error::OpeningError;
 
 pub(crate) mod error;
 
-/// What a server starts with: a new session, open to its players, or the session a stop ended,
-/// to restore. A session past the restore window, or one that ended, has its log published
+/// What a server starts with: its session, whose terms the mode's rules admit, and the seats
+/// of that session.
+#[derive(Debug)]
+pub(crate) struct Opening {
+    pub(crate) session: Opened,
+    seats: NonZeroU32,
+}
+
+/// The session a server starts: a new one, open to its players, or the one a stop ended, to
+/// restore. A session past the restore window, or one that ended, has its log published
 /// instead, and a new one opens.
 #[derive(Debug)]
-pub(crate) enum Opening {
+pub(crate) enum Opened {
     New(Box<Lobby>),
     Restored(Box<PendingRestore>),
 }
@@ -35,46 +42,54 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) bots: ServerBots,
     /// What the host sets of a new session's visibility; a restored session keeps its own.
     pub(crate) host: HostVisibility,
-    pub(crate) segments: NonZeroU32,
 }
 
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
-    /// made.
+    /// made, and for a restored session whose terms the mode's rules do not admit, as a journal
+    /// another release wrote holds.
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
     ) -> Result<Opening, OpeningError> {
-        if let Some(session) = found {
-            return Ok(Opening::Restored(Box::new(PendingRestore {
+        let rules = SessionRules::of(&setup.packages);
+        let session = match found {
+            Some(session) => Opened::Restored(Box::new(PendingRestore {
                 session,
                 packages: Arc::new(setup.packages),
                 server: setup.server,
                 bots: setup.bots,
-            })));
-        }
-        Opening::open(setup).map(|lobby| Opening::New(Box::new(lobby)))
+            })),
+            None => Opened::New(Box::new(Opening::open(setup)?)),
+        };
+        let terms = session.terms();
+        let visibility = rules.check(terms).map_err(OpeningError::Terms)?;
+        let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
+        let seats = slots
+            .checked_add(visibility.max_spectators())
+            .expect("a session's seats fit u32");
+        let seats = NonZeroU32::new(seats).expect("the rules admit a session of a slot at least");
+        Ok(Opening { session, seats })
     }
 
     /// The terms of the session it starts.
     pub(crate) fn terms(&self) -> &SessionTerms {
-        match self {
-            Opening::New(lobby) => lobby.terms(),
-            Opening::Restored(restore) => &restore.session.log.header().terms,
+        self.session.terms()
+    }
+
+    /// The setup of the server that starts it.
+    pub(crate) fn server(&self) -> &ServerSetup {
+        match &self.session {
+            Opened::New(lobby) => lobby.server(),
+            Opened::Restored(restore) => &restore.server,
         }
     }
 
     /// The seats of the session it starts: its slots and the most spectators it admits, which no
     /// address of honest players passes in live connections (design 15, D13).
-    pub(crate) fn seats(&self) -> NonZeroU32 {
-        let terms = self.terms();
-        let visibility = SessionRules::visibility_of(terms).expect("the server's own terms read");
-        let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
-        let seats = slots
-            .checked_add(visibility.max_spectators())
-            .expect("a session's seats fit u32");
-        NonZeroU32::new(seats).expect("a session has a slot")
+    pub(crate) const fn seats(&self) -> NonZeroU32 {
+        self.seats
     }
 
     /// The session a stop ended, under the data directory `data`: none when the directory holds
@@ -103,17 +118,13 @@ impl Opening {
         }
     }
 
-    /// The session `waiting` to restore, of the mode `packages` holds, within the restore
-    /// window `window`: when it is past the window or ended, its log is published under the data
-    /// directory `data` instead, the server key `key` signing its result with auxiliary
-    /// randomness from `entropy`, and none restores. An error for a session that does not end.
+    /// The session `waiting` to restore within the restore window `window`: when it is past the
+    /// window or ended, `publisher` publishes its log instead, and none restores. An error for a
+    /// session that does not end.
     pub(crate) fn find(
         waiting: Option<RestoredSession>,
-        data: &ServerDir,
-        packages: &ModePackages,
         window: Duration,
-        key: Keypair,
-        entropy: Entropy,
+        publisher: Publisher<'_>,
     ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(session) = waiting else {
             return Ok(None);
@@ -124,36 +135,30 @@ impl Opening {
         if session.log.result().is_none() && idle <= window {
             return Ok(Some(session));
         }
-        session
-            .abort(data, packages, key, entropy)
-            .map_err(OpeningError::Abort)?;
+        session.abort(publisher).map_err(OpeningError::Abort)?;
         Ok(None)
     }
 
-    /// A new session of `setup.packages`, its seed chain fresh, its directory, private record
-    /// and journal made.
+    /// A new session of `setup.packages`, its directory, private record and journal made.
     fn open(setup: OpeningSetup<'_>) -> Result<Lobby, OpeningError> {
-        let mut seed = [0; 32];
-        setup.server.os.entropy.fill(&mut seed);
-        let seed_chain = SeedChain::new(seed, setup.segments);
-        let slots = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
-        let tick_hz = setup.packages.manifest().tick_hz.default();
-        let mut lobby = Lobby::new(LobbySetup {
+        let opening = LobbyOpening {
             packages: Arc::new(setup.packages),
-            seed_chain,
-            tick_hz,
-            rules: InputRules::LAN,
-            slots,
             bots: setup.bots,
             open: Vec::new(),
             host: setup.host,
             server: setup.server,
-        })
-        .map_err(OpeningError::Lobby)?;
-        lobby
-            .keep_files(setup.data)
-            .map_err(OpeningError::KeepFiles)?;
-        Ok(lobby)
+        };
+        Lobby::open(opening, setup.data).map_err(OpeningError::Open)
+    }
+}
+
+impl Opened {
+    /// The session's terms.
+    fn terms(&self) -> &SessionTerms {
+        match self {
+            Opened::New(lobby) => lobby.terms(),
+            Opened::Restored(restore) => &restore.session.log.header().terms,
+        }
     }
 }
 

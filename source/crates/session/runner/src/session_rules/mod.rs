@@ -1,15 +1,27 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{Fingerprint, MapName, Version};
 use campfire_package::{ModePackages, TickRange};
-use campfire_protocol::{EngineRelease, SeedCommitment, SessionTerms, SlotPlan};
+use campfire_protocol::{InputRules, SeedCommitment, SessionTerms, SlotPlan};
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 
-use crate::input_rules::InputRules;
 use crate::session_rules::error::TermsError;
 
 pub(crate) mod error;
+
+/// What a session's host chooses of its terms beside what its mode's rules fix: the server's
+/// key, the commitment to its seed chain, its tick rate, its input rules, how it opens each slot,
+/// and its visibility.
+#[derive(Debug, Clone)]
+pub struct HostChoices<'a> {
+    pub server_key: XOnlyPublicKey,
+    pub seed_commitment: SeedCommitment,
+    pub tick_hz: NonZeroU32,
+    pub inputs: InputRules,
+    pub slots: Vec<SlotPlan>,
+    pub visibility: &'a Visibility,
+}
 
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
 /// and its dependencies by their fingerprints, the map it loaded, the tick rates the mode runs
@@ -44,33 +56,28 @@ impl SessionRules {
         &self.visibility
     }
 
-    /// The terms of a session by these rules on the server `server_key`, whose seed chain
-    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `rules`, its slots opened
-    /// as `slots` plans them, of `visibility`; an error when the mode does not run at `tick_hz`,
-    /// when `slots` plans none or more than the mode's teams have, and for a visibility the mode
-    /// does not admit.
-    pub fn terms(
-        &self,
-        server_key: XOnlyPublicKey,
-        seed_commitment: SeedCommitment,
-        tick_hz: NonZeroU32,
-        rules: InputRules,
-        slots: impl IntoIterator<Item = SlotPlan>,
-        visibility: &Visibility,
-    ) -> Result<SessionTerms, TermsError> {
+    /// The terms of a session by these rules and the host's `choices`; an error when the mode
+    /// does not run at their tick rate, when they plan no slot or more than the mode's teams
+    /// have, and for a visibility the mode does not admit.
+    pub fn terms(&self, choices: HostChoices<'_>) -> Result<SessionTerms, TermsError> {
+        let HostChoices {
+            server_key,
+            seed_commitment,
+            tick_hz,
+            inputs,
+            slots,
+            visibility,
+        } = choices;
         let terms = SessionTerms {
             server_key,
             tick_hz,
-            max_input_delay: rules.max_input_delay,
-            max_input_lead: rules.max_input_lead,
-            max_payload_len: rules.max_payload_len,
-            max_inputs_per_tick: rules.max_inputs_per_tick,
+            inputs,
             seed_commitment,
-            release: EngineRelease::CURRENT,
+            release: Version::ENGINE,
             mode: self.mode,
             map: self.map.clone(),
             dependencies: self.dependencies.to_vec(),
-            slots: slots.into_iter().collect(),
+            slots,
             visibility: visibility.encode(),
         };
         self.check(&terms)?;
@@ -79,8 +86,9 @@ impl SessionRules {
 
     /// Whether `terms` name a session by these rules: of this release, of the mode, its map and
     /// the dependencies, in their order, at a rate the mode runs at, of a slot at least and no
-    /// more than the mode's teams have, and of a visibility the mode admits.
-    pub fn check(&self, terms: &SessionTerms) -> Result<(), TermsError> {
+    /// more than the mode's teams have, and of a visibility the mode admits, which it gives. The
+    /// check is the one way to the terms' visibility, so no reader takes it from terms unchecked.
+    pub fn check(&self, terms: &SessionTerms) -> Result<Visibility, TermsError> {
         SessionRules::check_release(terms)?;
         if terms.mode != self.mode {
             return Err(TermsError::OtherMode);
@@ -99,16 +107,11 @@ impl SessionRules {
             });
         }
         self.runs_at(terms.tick_hz)?;
-        let visibility = SessionRules::visibility_of(terms)?;
+        let visibility = Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)?;
         if !self.visibility.admits(&visibility) {
             return Err(TermsError::OtherVisibility);
         }
-        Ok(())
-    }
-
-    /// The visibility `terms` carry; an error for bytes that do not read as one.
-    pub fn visibility_of(terms: &SessionTerms) -> Result<Visibility, TermsError> {
-        Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)
+        Ok(visibility)
     }
 
     /// An error when the mode does not run at `tick_hz`.
@@ -121,8 +124,8 @@ impl SessionRules {
 
     /// An error for `terms` of another engine release than this one, which a verifier checks
     /// before it reads the packages, as another release's packages need not read in this one.
-    pub(crate) const fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
-        if !terms.release.is_current() {
+    pub fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
+        if terms.release != Version::ENGINE {
             return Err(TermsError::OtherRelease(terms.release));
         }
         Ok(())

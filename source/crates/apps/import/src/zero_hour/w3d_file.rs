@@ -47,9 +47,7 @@ impl W3dFile {
                     file.boxes.push(fields.name(BOX_NAME)?);
                 }
                 EMITTER => {
-                    let header = W3dChunks::of(chunk.body)
-                        .find(|inner| matches!(inner, Ok(inner) if inner.id == EMITTER_HEADER))
-                        .ok_or(W3dError::Missing)??;
+                    let header = W3dChunks::of(chunk.body).first_of(EMITTER_HEADER)?;
                     let mut fields = W3dFields::of(header.body);
                     fields.take(EMITTER_HEAD)?;
                     file.emitters.push(fields.name(EMITTER_NAME)?);

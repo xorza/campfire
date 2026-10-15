@@ -6,16 +6,13 @@ use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, SeedContribution,
-    ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult,
-    SessionTerms, Signature, SlotPlan, SlotStart,
+    Delegation, DelegationTerms, InputChain, InputRules, SeedChain, SeedContribution, ServerSeed,
+    ServerSeeds, SessionHeader, SessionLog, SessionTerms, Signer, SlotPlan, SlotStart,
 };
-use secp256k1::{Secp256k1, XOnlyPublicKey};
+use campfire_runner::{HostChoices, Session, SessionRules, SessionSource};
+use secp256k1::XOnlyPublicKey;
 
 use crate::fixed_session::fixed_match::FixedMatch;
-use campfire_runner::InputRules;
-use campfire_runner::Session;
-use campfire_runner::SessionRules;
 
 pub(crate) mod fixed_match;
 
@@ -35,8 +32,6 @@ fn server_key() -> XOnlyPublicKey {
     TestKey::server().x_only_public_key().0
 }
 
-/// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
-const AUX: [u8; 32] = [0; 32];
 /// How long after `TestKey::NOW` every delegation expires.
 const LIFETIME: u64 = 86_400;
 
@@ -69,14 +64,14 @@ impl FixedSession {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
         let terms = session_rules
-            .terms(
-                server_key(),
-                SEED_CHAIN.commitment(),
+            .terms(HostChoices {
+                server_key: server_key(),
+                seed_commitment: SEED_CHAIN.commitment(),
                 tick_hz,
-                rules,
-                plan,
+                inputs: rules,
+                slots: plan.into_iter().collect(),
                 visibility,
-            )
+            })
             .unwrap();
         FixedSession { packages, terms }
     }
@@ -130,37 +125,23 @@ impl FixedSession {
         let chains = (0..self.slots())
             .map(|slot| FixedSession::chain(&self.terms, slot))
             .collect();
-        let session_keys = TestKey::players()[..usize::try_from(self.slots()).unwrap()]
+        let signers = TestKey::players()[..usize::try_from(self.slots()).unwrap()]
             .iter()
-            .map(|keys| keys.session)
+            .map(|keys| TestKey::signer(keys.session))
             .collect();
-        let game = Session::start_match(self.log(), FixedSession::seeds(), &self.packages).unwrap();
-        FixedMatch::new(game, chains, session_keys, self.terms.clone(), log)
+        let source = SessionSource {
+            log: self.log(),
+            seeds: FixedSession::seeds(),
+            packages: &self.packages,
+            signer: Some(FixedSession::server_signer()),
+        };
+        let game = Session::start_match(source).unwrap();
+        FixedMatch::new(game, chains, signers, self.terms.clone(), log)
     }
 
-    /// The server's signature of `input` at `place` in the session of `session_id`.
-    pub fn server_signature(
-        input: &ServerInput<'_>,
-        session_id: SessionId,
-        place: InputPlace,
-    ) -> Signature {
-        input.sign(
-            &Secp256k1::new(),
-            &TestKey::server(),
-            session_id,
-            place,
-            &AUX,
-        )
-    }
-
-    /// The server's signature of the checkpoint `record` in the session of `session_id`.
-    pub fn checkpoint_signature(record: &Checkpoint, session_id: SessionId) -> Signature {
-        record.sign(&Secp256k1::new(), &TestKey::server(), session_id, &AUX)
-    }
-
-    /// The server's signature of `result` in the session of `session_id`.
-    pub fn result_signature(result: &SessionResult, session_id: SessionId) -> Signature {
-        result.sign(&Secp256k1::new(), &TestKey::server(), session_id, &AUX)
+    /// The signer of the tests' server key, whose auxiliary randomness is fixed.
+    pub fn server_signer() -> Signer {
+        TestKey::signer(TestKey::server())
     }
 
     /// Player `slot`'s chain, as they start it in a session of `terms`, from its first input.
@@ -168,9 +149,6 @@ impl FixedSession {
         let root = FixedSession::delegation(terms, slot).chain_root();
         InputChain::new(PlayerSlot::new(slot), root)
     }
-
-    /// The signature of every player's input packets, with no auxiliary randomness.
-    pub(crate) const AUX: [u8; 32] = AUX;
 
     /// Player `slot`'s delegation in a session of `terms`.
     pub(crate) fn delegation(terms: &SessionTerms, slot: u32) -> Delegation {
@@ -182,12 +160,6 @@ impl FixedSession {
             seed_contribution: SeedContribution::new([u8::try_from(slot).unwrap(); 32]),
             expiration: TestKey::NOW + LIFETIME,
         };
-        Delegation::sign(
-            &Secp256k1::new(),
-            &keys.main,
-            &delegated,
-            TestKey::NOW,
-            &AUX,
-        )
+        Delegation::sign(&TestKey::signer(keys.main), &delegated, TestKey::NOW)
     }
 }

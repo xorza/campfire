@@ -12,10 +12,6 @@ impl SlotKind {
     pub const fn new(index: u8) -> SlotKind {
         SlotKind(index)
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for SlotKind {

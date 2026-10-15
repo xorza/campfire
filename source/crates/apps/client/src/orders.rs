@@ -104,8 +104,14 @@ impl Orders {
             .and_then(|point| pointer.unit_at(point, slice::from_ref(&avatar.id)))
             .map(|unit| unit.id);
         let point = ground.and_then(position);
-        let learn = keys.any_pressed(LEARN_KEYS);
-        let abilities = (0..).zip(&CAST_KEYS).map(|(slot, key)| (slot, key, learn));
+        let ability_use = if keys.any_pressed(LEARN_KEYS) {
+            KeyUse::Learn
+        } else {
+            KeyUse::Cast
+        };
+        let abilities = (0..)
+            .zip(&CAST_KEYS)
+            .map(|(slot, key)| (slot, key, ability_use));
         // An item key past the inventory's slots casts nothing.
         let inventory = group.map(|group| {
             let kind = group.kind();
@@ -115,9 +121,9 @@ impl Orders {
         let items = inventory.into_iter().flat_map(|(first, count)| {
             (first..)
                 .zip(&ITEM_KEYS[..count])
-                .map(|(slot, key)| (slot, key, false))
+                .map(|(slot, key)| (slot, key, KeyUse::Cast))
         });
-        for (slot, &key, learn) in abilities.chain(items) {
+        for (slot, &key, key_use) in abilities.chain(items) {
             if !keys.just_pressed(key) {
                 continue;
             }
@@ -128,7 +134,7 @@ impl Orders {
             let target = Takes::of(aim).target(under, point);
             orders.push(Order::one(
                 avatar.id,
-                Orders::slot_action(slot, learn, target),
+                Orders::slot_action(slot, key_use, target),
             ));
         }
     }
@@ -152,8 +158,8 @@ impl Orders {
                 Some(OrdersAction::Attack { target: unit.id })
             }
             _ => Some(OrdersAction::Move {
-                x: meters(point.x)?,
-                z: meters(point.z)?,
+                x: Num::try_from(point.x).ok()?,
+                z: Num::try_from(point.z).ok()?,
             }),
         }
     }
@@ -163,14 +169,20 @@ impl Orders {
         keys.any_just_pressed(CAST_KEYS) || keys.any_just_pressed(ITEM_KEYS)
     }
 
-    /// What a cast key orders of `slot`: with Ctrl held, a learn, and else a cast at `target`.
-    const fn slot_action(slot: u8, learn: bool, target: ActionTarget) -> Action {
-        if learn {
-            Action::Progression(ProgressionAction::Learn { slot })
-        } else {
-            Action::Orders(OrdersAction::Slot { slot, target })
+    /// What a key of `slot` orders as `key_use` says: a learn, or a cast at `target`.
+    const fn slot_action(slot: u8, key_use: KeyUse, target: ActionTarget) -> Action {
+        match key_use {
+            KeyUse::Learn => Action::Progression(ProgressionAction::Learn { slot }),
+            KeyUse::Cast => Action::Orders(OrdersAction::Slot { slot, target }),
         }
     }
+}
+
+/// What a slot's key does: with Ctrl held, an ability key learns its ability; else a key casts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyUse {
+    Learn,
+    Cast,
 }
 
 /// What a key's action takes as its target: a unit, a point, a direction's among them, or
@@ -204,26 +216,14 @@ impl Takes {
     }
 }
 
-/// A point of the ground as a sim position, each axis to the millimeter; `None` past the bound.
+/// A point of the ground as a sim position, each axis exactly as `Num::try_from` takes it;
+/// `None` past the bound.
 fn position(point: Vec3) -> Option<Position> {
-    let axes = [point.x, point.y, point.z].map(meters);
+    let axes = [point.x, point.y, point.z].map(|axis| Num::try_from(axis).ok());
     let [Some(x), Some(y), Some(z)] = axes else {
         return None;
     };
     Position::new(SimVec3::new(x, y, z))
-}
-
-/// A clicked coordinate as a sim number, to the millimeter; `None` far off any map.
-#[expect(
-    clippy::cast_possible_truncation,
-    reason = "the value is rounded and checked against the i64 range first"
-)]
-fn meters(value: f32) -> Option<Num> {
-    let millimeters = (f64::from(value) * 1000.0).round();
-    if !(-1e12..=1e12).contains(&millimeters) {
-        return None;
-    }
-    Num::from_int(millimeters as i64)?.checked_div_int(1000)
 }
 
 #[cfg(test)]
@@ -257,11 +257,14 @@ mod tests {
             assert_eq!(takes.target(Some(unit), Some(point)), both, "{takes:?}");
             assert_eq!(takes.target(None, None), ActionTarget::None, "{takes:?}");
         }
-        // A ground point to the millimeter, its height among its axes.
+        // A ground point, exactly, its height among its axes: 0.1 in `f32` is 13,421,773 · 2⁻²⁷,
+        // which rounds to the step 1,677,722 of 2⁻²⁴, not a millimeter's multiple.
         assert_eq!(
             position(Vec3::new(3.0, 0.0, -2.0)),
             Some(Position::from((3, 0, -2)))
         );
+        let tenth = position(Vec3::new(0.1, 0.0, 0.0)).unwrap();
+        assert_eq!(tenth.get().x.to_bits(), 1_677_722);
         assert_eq!(position(Vec3::new(1e15, 0.0, 0.0)), None);
     }
 
@@ -269,11 +272,11 @@ mod tests {
     fn a_cast_key_casts_at_its_target_and_with_ctrl_learns() {
         let target = ActionTarget::None;
         assert_eq!(
-            Orders::slot_action(2, false, target),
+            Orders::slot_action(2, KeyUse::Cast, target),
             Action::Orders(OrdersAction::Slot { slot: 2, target })
         );
         assert_eq!(
-            Orders::slot_action(2, true, target),
+            Orders::slot_action(2, KeyUse::Learn, target),
             Action::Progression(ProgressionAction::Learn { slot: 2 })
         );
     }

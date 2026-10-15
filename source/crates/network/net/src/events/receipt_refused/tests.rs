@@ -4,7 +4,13 @@ use super::*;
 
 #[test]
 fn the_event_reads_back_what_it_logs() {
-    round_trip(&ReceiptRefused {
-        reason: "it names a head that is not the player's at its seq".to_owned(),
-    });
+    for refusal in [
+        ReceiptRefusal::NotPlaying,
+        ReceiptRefusal::BadSignature,
+        ReceiptRefusal::Other,
+        ReceiptRefusal::OtherHead,
+        ReceiptRefusal::Older,
+    ] {
+        round_trip(&ReceiptRefused { refusal });
+    }
 }

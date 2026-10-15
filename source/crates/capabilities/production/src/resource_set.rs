@@ -1,4 +1,4 @@
-use campfire_values::{Bits256, ResourceId};
+use campfire_values::{Bits256, NameId, ResourceId};
 
 /// A set of the mode's player resources, one bit each.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -21,6 +21,6 @@ impl<const N: usize> From<[ResourceId; N]> for ResourceSet {
 
 impl ResourceSet {
     pub const fn contains(self, resource: ResourceId) -> bool {
-        self.0.contains(resource.index())
+        self.0.contains(resource.get() as usize)
     }
 }

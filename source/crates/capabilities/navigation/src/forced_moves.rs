@@ -91,7 +91,7 @@ impl ForcedMoves {
                     found.map(|(&place, body)| match Body::shape_of(body) {
                         Shape::Circle(radius) => Goal {
                             point: ground(place.get()),
-                            reach: walker.radius + radius,
+                            reach: walker.radius + radius.get(),
                         },
                         Shape::Box(body) => Goal {
                             point: ground(body.nearest_point(place, at).get()),

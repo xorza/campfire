@@ -11,7 +11,6 @@ use lightyear::link::{
 };
 use lightyear::prelude::PeerAddr;
 
-use crate::address_limit::AddressLimit;
 use crate::app_code::AppCode;
 use crate::close_link::CloseLink;
 use crate::link_end::LinkEnd;
@@ -33,11 +32,11 @@ pub struct QuicPlugin;
 impl QuicPlugin {
     fn start(
         start: On<'_, '_, LinkStart>,
-        endpoints: Query<'_, '_, (&QuicEndpoint, Option<&Link>, Option<&AddressLimit>), Unstarted>,
+        endpoints: Query<'_, '_, (&QuicEndpoint, Option<&Link>), Unstarted>,
         mut commands: Commands<'_, '_>,
     ) {
-        if let Ok((endpoint, link, limit)) = endpoints.get(start.entity) {
-            endpoint.start(start.entity, link, limit, &mut commands);
+        if let Ok((endpoint, link)) = endpoints.get(start.entity) {
+            endpoint.start(start.entity, link, &mut commands);
         }
     }
 
@@ -49,9 +48,12 @@ impl QuicPlugin {
         let CloseLink { entity, code } = *close;
         if let Ok(link) = links.get(entity) {
             link.close(code);
-            commands.entity(entity).remove::<QuicLink>();
         }
-        commands.entity(entity).insert(LinkEnd::Closed(code));
+        let Ok(mut closed) = commands.get_entity(entity) else {
+            return;
+        };
+        closed.try_remove::<QuicLink>();
+        closed.try_insert(LinkEnd::Closed(code));
         commands.trigger(Unlink {
             entity,
             reason: UnlinkReason::UserRequested(Some(format!("closed with code {}", code.get()))),

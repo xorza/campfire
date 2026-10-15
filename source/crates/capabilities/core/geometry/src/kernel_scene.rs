@@ -2,6 +2,7 @@ use campfire_common::{SegmentSeed, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 
 use crate::body_box::BodyBox;
+use crate::radius::Radius;
 use crate::shape::Shape;
 
 /// A made scene of units for a bench or a test, drawn from a seed, the same in every run: every
@@ -93,7 +94,7 @@ impl KernelScene {
                     let side = radius + radius;
                     Shape::Box(BodyBox::new([side, side], angle).unwrap())
                 } else {
-                    Shape::Circle(radius)
+                    Shape::Circle(Radius::new(radius).unwrap())
                 };
                 let walking = movable && self.below(2) == 0;
                 SceneBody {

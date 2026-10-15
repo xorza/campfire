@@ -2,17 +2,20 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{ChannelBinding, PlayerSlot, Tick, Ticks};
+use campfire_common::{ChannelBinding, PlayerSlot, Tick};
 use campfire_protocol::{
-    Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
-    SessionTerms, SignedReceipt,
+    Delegation, DelegationId, DelegationTerms, InputChain, InputRules, SeedContribution, SessionId,
+    SessionTerms, SignedReceipt, Signer, Verifier,
 };
 use campfire_runner::SessionRules;
 use campfire_values::Team;
+use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
-use secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use secp256k1::Keypair;
 
 use crate::dismissed::Dismissed;
+use crate::events::receipt_refused::error::ReceiptRefusal;
+use crate::hosting::Hosting;
 use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -20,9 +23,8 @@ use crate::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
-use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
+use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 
 pub(crate) mod error;
@@ -91,22 +93,22 @@ pub(crate) struct Joining {
     pub(crate) main_key: Keypair,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
-    /// Whether the server runs on a thread of the client's process: only such a server loads a
-    /// save, so only its match start that says so is taken as one.
-    pub(crate) local: bool,
+    /// Where the server runs: only a local server loads a save, so only its match start that
+    /// says so is taken as one.
+    pub(crate) hosting: Hosting,
     pub(crate) rules: SessionRules,
     /// When a delegation is made, and so when it expires.
     pub(crate) clock: Clock,
 }
 
-/// What the player's join fixed: the session its signatures name, and the terms' limits on what
-/// one stamp may carry.
+/// What the player's join fixed: the session its signatures name, and the terms' limits on its
+/// inputs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JoinedSession {
     pub(crate) id: SessionId,
-    pub(crate) max_inputs: u32,
-    pub(crate) max_payload_len: u32,
-    pub(crate) max_input_lead: Ticks,
+    /// The visibility of its terms, which the client's check of them gave.
+    pub(crate) visibility: Visibility,
+    pub(crate) inputs: InputRules,
 }
 
 /// What a player holds from their first answer on, through each link: the session, their
@@ -228,6 +230,20 @@ impl JoinState {
         }
     }
 
+    /// The visibility of the session the client answered, as its check of the terms gave it;
+    /// `None` before it answered, and once it left or stopped.
+    pub(crate) const fn visibility(&self) -> Option<&Visibility> {
+        let member = match &self.step {
+            Step::Answered(Answered { member, .. })
+            | Step::Playing(Playing { member, .. })
+            | Step::Watching(Watching { member, .. })
+            | Step::Leaving(Leaving { member, .. })
+            | Step::Rejoining(Rejoining { member, .. }) => member,
+            Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,
+        };
+        Some(&member.session.visibility)
+    }
+
     /// The slot the player plays; `None` while they play none.
     pub const fn slot(&self) -> Option<PlayerSlot> {
         match &self.step {
@@ -308,17 +324,19 @@ impl JoinState {
         let now = self.player.clock.unix_now();
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
-                if let Err(mismatch) = self.player.fits(&offer.terms) {
-                    self.step = Step::Refused(mismatch.clone());
-                    return Some(Err(mismatch));
-                }
+                let visibility = match self.player.fits(&offer.terms) {
+                    Ok(visibility) => visibility,
+                    Err(mismatch) => {
+                        self.step = Step::Refused(mismatch.clone());
+                        return Some(Err(mismatch));
+                    }
+                };
                 Answered {
                     member: Member {
                         session: JoinedSession {
                             id: offer.terms.session_id(),
-                            max_inputs: offer.terms.max_inputs_per_tick,
-                            max_payload_len: offer.terms.max_payload_len,
-                            max_input_lead: offer.terms.max_input_lead,
+                            visibility,
+                            inputs: offer.terms.inputs,
                         },
                         delegation: self.player.delegate(&offer.terms, signer, now),
                         renewed: None,
@@ -354,7 +372,7 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: signer.answer(offer.challenge, binding),
+            answer: offer.challenge.answer(signer, binding),
             role: self.player.role,
         };
         self.step = Step::Answered(answered);
@@ -376,7 +394,7 @@ impl JoinState {
         };
         let mut member = answered.member;
         // Any other server loads no save, so its word would let it rewrite the chain unseen.
-        let loaded = start.loaded && self.player.local;
+        let loaded = start.loaded && self.player.hosting == Hosting::Local;
         if loaded {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;
@@ -412,7 +430,7 @@ impl JoinState {
         self.step = Step::Playing(Playing {
             member,
             chain,
-            clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+            clock: MatchClock::new(NetTick(start.start_tick), start.first),
             team: start.team,
             history,
             last_stamp,
@@ -432,7 +450,7 @@ impl JoinState {
         };
         self.step = Step::Watching(Watching {
             member: answered.member,
-            clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+            clock: MatchClock::new(NetTick(start.start_tick), start.first),
         });
         true
     }
@@ -494,7 +512,7 @@ impl JoinState {
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
-        secp: &Secp256k1<VerifyOnly>,
+        verifier: &Verifier,
     ) -> Result<(), ReceiptRefusal> {
         let (member, slot, history) = match &mut self.step {
             Step::Playing(playing) => (
@@ -506,7 +524,7 @@ impl JoinState {
             _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
-        if !signed.signed_by(secp, &self.player.server.key, &receipt.signature) {
+        if !signed.signed_by(verifier, &self.player.server.key, &receipt.signature) {
             return Err(ReceiptRefusal::BadSignature);
         }
         if signed.session_id != member.session.id
@@ -601,16 +619,16 @@ impl Playing {
 
 impl Joining {
     /// Whether `terms` name the server and rate the player means to reach, and a session of the
-    /// client's mode.
-    fn fits(&self, terms: &SessionTerms) -> Result<(), TermsMismatch> {
+    /// client's mode: the visibility its rules admit of them.
+    fn fits(&self, terms: &SessionTerms) -> Result<Visibility, TermsMismatch> {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        self.rules.check(terms).map_err(TermsMismatch::Terms)?;
+        let visibility = self.rules.check(terms).map_err(TermsMismatch::Terms)?;
         if terms.tick_hz != self.server.tick_hz {
             return Err(TermsMismatch::OtherTickRate);
         }
-        Ok(())
+        Ok(visibility)
     }
 
     /// A delegation of `signer`'s session key in the session of `terms`, made at `now`, with a
@@ -620,10 +638,11 @@ impl Joining {
             session_key: signer.public_key(),
             server_key: terms.server_key,
             session_id: terms.session_id(),
-            seed_contribution: SeedContribution::new(signer.random()),
+            seed_contribution: SeedContribution::new(signer.entropy().random()),
             expiration: now + DELEGATION_LIFETIME,
         };
-        signer.delegate(&self.main_key, &granted, now)
+        let main = Signer::new(self.main_key, signer.entropy());
+        Delegation::sign(&main, &granted, now)
     }
 }
 

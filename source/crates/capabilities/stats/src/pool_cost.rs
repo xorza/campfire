@@ -1,4 +1,5 @@
 use campfire_math::Num;
+use campfire_values::NameId;
 
 use crate::pool_id::PoolId;
 
@@ -19,7 +20,7 @@ impl PoolCost {
     }
 
     pub const fn get(&self, pool: PoolId) -> Num {
-        self.0[pool.index()]
+        self.0[pool.get() as usize]
     }
 
     /// Each pool it costs something in, with the amount.

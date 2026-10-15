@@ -91,12 +91,12 @@ impl Loopback {
     /// The server's endpoint on `address`, bound and not started, its key and its reset key the
     /// same at each bind.
     fn bind_at(address: SocketAddr, times: LinkTimes) -> Loopback {
-        let quic = QuicEndpoint::server(address, &server_secret(), times).unwrap();
+        let quic = ServerSocket::bind(address, &server_secret(), times).unwrap();
         let address = quic.local_address();
         let key = quic.tls_key();
         let mut server = App::new();
         server.add_plugins(QuicPlugin);
-        let endpoint = server.world_mut().spawn((quic, ROOMY)).id();
+        let endpoint = server.world_mut().spawn(quic.serve(ROOMY)).id();
         Loopback {
             server,
             endpoint,
@@ -166,10 +166,7 @@ impl ClientApp {
     fn start(quic: QuicEndpoint) -> ClientApp {
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
-        let entity = app
-            .world_mut()
-            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
-            .id();
+        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
         ClientApp { app, entity }
     }
@@ -397,7 +394,7 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
 fn a_port_in_use_is_an_error_that_names_its_address() {
     let first = Loopback::bind(LinkTimes::CAMPFIRE);
     let taken = first.address;
-    let refused = QuicEndpoint::server(taken, &server_secret(), LinkTimes::CAMPFIRE).unwrap_err();
+    let refused = ServerSocket::bind(taken, &server_secret(), LinkTimes::CAMPFIRE).unwrap_err();
     assert_eq!(refused.address, taken);
     assert_eq!(refused.error.kind(), ErrorKind::AddrInUse);
 }
@@ -436,7 +433,9 @@ fn a_connection_a_server_ends_before_its_frame_is_never_linked() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     // The server's thread completes the handshake while its app runs no frame, then the server
-    // ends before the frame that would link it: the connection closes as its links would.
+    // ends before the frame that would link it: the connection closes as its links would, with
+    // `ENDED`. A server that has yet to read the client's last handshake packet sends its close
+    // in the handshake's packets too, which carry no code: the one the client reads first wins.
     let start = Instant::now();
     while !client.is::<Linked>() {
         assert!(start.elapsed() < PATIENCE, "the handshake did not complete");
@@ -450,9 +449,10 @@ fn a_connection_a_server_ends_before_its_frame_is_never_linked() {
     });
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
-    assert_eq!(
-        client.app.world().get::<LinkEnd>(client.entity),
-        Some(&LinkEnd::Ended)
+    let end = client.app.world().get::<LinkEnd>(client.entity);
+    assert!(
+        matches!(end, Some(LinkEnd::Ended | LinkEnd::ClosedInHandshake)),
+        "{end:?}"
     );
 }
 
@@ -528,6 +528,27 @@ fn a_loss_the_frame_has_not_taken_ends_no_later_connection() {
     client.app.world_mut().trigger(LinkStart { entity });
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
     assert!(!client.is::<LinkEnd>());
+}
+
+#[test]
+fn a_close_of_a_link_gone_before_or_after_its_observer_closes_nothing() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    let code = AppCode::new(17);
+    // Despawned first, the link has no entity the close's observer finds; despawned after the
+    // observer ran, none its commands find.
+    let world = loopback.server.world_mut();
+    let mut commands = world.commands();
+    commands.trigger(CloseLink { entity: link, code });
+    commands.entity(link).despawn();
+    world.flush();
+    assert!(world.get_entity(link).is_err());
+    let mut commands = world.commands();
+    commands.entity(link).despawn();
+    commands.trigger(CloseLink { entity: link, code });
+    world.flush();
+    loopback.server.update();
 }
 
 #[test]
@@ -846,7 +867,7 @@ impl Blob {
 #[test]
 fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let tick = Duration::from_millis(16);
-    let quic = QuicEndpoint::server(
+    let quic = ServerSocket::bind(
         SocketAddr::from(([127, 0, 0, 1], 0)),
         &server_secret(),
         LinkTimes::CAMPFIRE,
@@ -865,7 +886,10 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     server.add_systems(Update, Blob::receive);
     server.finish();
     server.cleanup();
-    let endpoint = server.world_mut().spawn((RawServer, quic, ROOMY)).id();
+    let endpoint = server
+        .world_mut()
+        .spawn((RawServer, quic.serve(ROOMY)))
+        .id();
     server.world_mut().trigger(Start { entity: endpoint });
 
     let mut client = App::new();
@@ -881,12 +905,7 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let quic = QuicEndpoint::client(address, &key, LinkTimes::CAMPFIRE).unwrap();
     let entity = client
         .world_mut()
-        .spawn((
-            Client,
-            RawClient,
-            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
-            quic,
-        ))
+        .spawn((Client, RawClient, QuicEndpoint::link(), quic))
         .id();
     client.world_mut().trigger(Connect { entity });
 

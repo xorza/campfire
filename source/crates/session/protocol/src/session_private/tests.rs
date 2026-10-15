@@ -1,10 +1,11 @@
+use campfire_codec::BinaryError;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks, Version};
 
 use super::*;
-use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
+use crate::input_rules::InputRules;
 use crate::slot_plan::SlotPlan;
 
 #[test]
@@ -16,12 +17,14 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
         terms: SessionTerms {
             server_key: key.x_only_public_key().0,
             tick_hz: NonZeroU32::new(30).unwrap(),
-            max_input_delay: Ticks::new(3),
-            max_input_lead: Ticks::new(3),
-            max_payload_len: 64,
-            max_inputs_per_tick: 4,
+            inputs: InputRules {
+                max_delay: Ticks::new(3),
+                max_lead: Ticks::new(3),
+                max_payload_len: 64,
+                max_per_tick: 4,
+            },
             seed_commitment: seed_chain.commitment(),
-            release: EngineRelease::new(0, 1, 0),
+            release: Version::new(0, 1, 0),
             mode: Fingerprint::new([1; 32]),
             map: MapName::new("lane").unwrap(),
             dependencies: vec![Fingerprint::new([2; 32])],
@@ -35,14 +38,14 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
     assert_eq!(SessionPrivate::decode(&bytes), Ok(private));
     assert_eq!(
         SessionPrivate::decode(&bytes[1..]),
-        Err(SessionPrivateError::NotPrivate)
+        Err(TaggedError::OtherTag)
     );
     assert!(matches!(
         SessionPrivate::decode(&bytes[..bytes.len() - 1]),
-        Err(SessionPrivateError::Malformed(_))
+        Err(TaggedError::Value(_))
     ));
     assert_eq!(
         SessionPrivate::decode(&[bytes.as_slice(), &[0]].concat()),
-        Err(SessionPrivateError::Trailing)
+        Err(TaggedError::Value(BinaryError::NotCanonical))
     );
 }

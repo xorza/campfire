@@ -28,7 +28,9 @@ impl ProductionOrders {
     /// build's `cancel_refund` of each player resource its build paid, each rounded down, and
     /// despawns the site, with no death. A refund that would carry an amount past an `i64` refuses
     /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
-    /// unit its player's vision group sees, or clears it; a rally to another unit is ignored.
+    /// unit its player's vision group sees, or clears it; a rally to another unit is ignored. In
+    /// a predicting client's form `S`, a cancel refunds nothing and despawns no site: both are the
+    /// server's, whose word comes back.
     pub(super) fn apply_production_orders<S: TeamSight>(
         (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
         (mut orders, builds): (TickCommands<'_, '_, ProductionAction>, Res<'_, BuildBook>),
@@ -50,8 +52,11 @@ impl ProductionOrders {
     ) {
         let now = tick.start();
         cancelled.clear();
+        // A predicting client refunds nothing, as a player's resources are the server's (design
+        // 14, D12): its cancel stands as the server's refund will.
         let mut refunds = |amounts: &[ResourceAmount], slot| {
-            amounts.is_empty()
+            S::PREDICTS
+                || amounts.is_empty()
                 || resources
                     .of_slot_mut(slot)
                     .expect("an order that paid resources runs in a match with them")
@@ -109,7 +114,8 @@ impl ProductionOrders {
                             resource: paid.resource,
                             amount: spec.refund.of(paid.amount),
                         }));
-                        if refunds(&refund, order.slot) {
+                        // A site's despawn is the server's, as a client despawns no unit.
+                        if refunds(&refund, order.slot) && !S::PREDICTS {
                             commands.entity(entity).despawn();
                             cancelled.push(entity);
                         }

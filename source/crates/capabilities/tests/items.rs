@@ -15,15 +15,15 @@ use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
-use campfire_players::{
-    OutOfPlay, PlayerResources, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount,
-};
+use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::{Dead, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Block, ModifierId, ResourceId, Team, UnitType};
+use campfire_values::{
+    ActionId, Block, ModifierId, NameId, PackageIndex, ResourceId, Team, UnitType,
+};
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
@@ -74,8 +74,8 @@ impl Carrier {
             stats: BTreeMap::from([(attack_damage, change)]),
             ..ModifierData::default()
         };
-        Stats::load_modifier(game, 0, "might", &might, None);
-        let might = Stats::modifier(game, 0, "might").unwrap();
+        Stats::load_modifier(game, PackageIndex::MODE, "might", &might, None);
+        let might = Stats::modifier(game, PackageIndex::MODE, "might").unwrap();
         let heal = EffectData {
             does: DoesData::Heal(HealFields {
                 amount: Number::Value(Scalar::Int(50)),
@@ -91,8 +91,8 @@ impl Carrier {
             ..ActionData::cast(Targeting::None)
         };
         let mut load = |name: &str, data: &ActionData| {
-            let id = Actions::load(game, 0, name, data, None, 1).unwrap();
-            Actions::load_effect_lists(game, id, 0, data);
+            let id = Actions::load(game, PackageIndex::MODE, name, data, None, 1).unwrap();
+            Actions::load_effect_lists(game, id, PackageIndex::MODE, data);
             id
         };
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));
@@ -170,7 +170,7 @@ fn carrier_match() -> Match {
 
 /// Gives `game` the item book and player 0's 1000 of `gold`; the shop's type.
 fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> UnitType {
-    let resource = ResourceId::nth(0);
+    let resource = ResourceId::new(0);
     let item =
         |cost: i64, stack: u32, uses: Option<u32>, action, modifiers: Vec<ModifierId>| ItemSpec {
             cost: vec![ResourceAmount {
@@ -184,14 +184,17 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> 
             action,
         };
     let names = ["drink", "flash", "might"].into_iter().collect();
-    game.insert_resource(ItemBook::new(
-        names,
-        [
-            item(50, 2, Some(1), Some(drink), Vec::new()),
-            item(100, 1, None, Some(flash), Vec::new()),
-            item(300, 1, None, None, vec![might]),
-        ],
-    ));
+    game.insert_resource(
+        ItemBook::new(
+            names,
+            [
+                item(50, 2, Some(1), Some(drink), Vec::new()),
+                item(100, 1, None, Some(flash), Vec::new()),
+                item(300, 1, None, None, vec![might]),
+            ],
+        )
+        .unwrap(),
+    );
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
     Players::spawn(game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
@@ -210,7 +213,7 @@ fn share(text: &str) -> Share {
 /// and gives `share` back on a sale.
 fn shop_type(game: &mut Match, sells: Vec<ItemId>, buyers: &str, share: Share) -> UnitType {
     let buyers = Filter::of_match(game, buyers);
-    let shop = Shop::new(sells, ResourceId::nth(0), Num::int(5), buyers, share);
+    let shop = Shop::new(sells, ResourceId::new(0), Num::int(5), buyers, share);
     let shop_type = Units::load_next_type(game, &UnitTypeCore::default());
     Units::give_type(game, shop_type, shop);
     shop_type
@@ -245,10 +248,16 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     carrier.order(&mut game, &[buy(POTION, shop), buy(POTION, shop)]);
     assert_eq!(carrier.items(&game), [Some((0, 2)), None, None]);
     assert_eq!(carrier.actions(&game), [drink, None, None]);
-    // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
-    // a slot, and a flash with no uses.
+    // A restored inventory holds a slot for each of the 3 action slots of the carrier's use
+    // group, and stacks its book allows: a potion of its one use, two at most to a slot, and a
+    // flash with no uses.
+    let sized = |slots: u8| {
+        let inventory = Inventory::new(NonZeroU8::new(slots).unwrap());
+        inventory.check(&game, game.unit_entity(carrier.id))
+    };
+    assert!(sized(3) && !sized(2) && !sized(4));
     let restored = |item: u32, count: u32, uses: Option<u32>| {
-        let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap());
+        let mut inventory = Inventory::new(NonZeroU8::new(3).unwrap());
         let stack = ItemStack {
             item: ItemId::nth(item),
             count: NonZeroU32::new(count).unwrap(),
@@ -382,8 +391,8 @@ impl ShopRead {
 
 /// Player 0's gold.
 fn gold(game: &World) -> i64 {
-    let resources = PlayerResources::of_player(game, PlayerSlot::new(0));
-    resources.unwrap().amount(ResourceId::nth(0))
+    let resources = game.player_resources(PlayerSlot::new(0));
+    resources.unwrap().amount(ResourceId::new(0))
 }
 
 /// Player 0's orders of `actions` to `id`.
@@ -411,7 +420,7 @@ struct ShopMatch {
 fn shop_match() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
     let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
             resource: gold,
@@ -432,7 +441,8 @@ fn shop_match() -> ShopMatch {
             item(50, &[], 3),
             item(125, &[], 1),
         ],
-    );
+    )
+    .unwrap();
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     game.insert_resource(book);
     Players::spawn(&mut game, 2, 1);
@@ -561,7 +571,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
     // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
-    let resource = ResourceId::nth(0);
+    let resource = ResourceId::new(0);
     let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(resource, -1000).unwrap();
     step(&mut game, &[buy(1, shop)]);

@@ -1,5 +1,6 @@
-use campfire_mode::{Leaver, PlayersData};
-use campfire_protocol::{AfterLeave, SlotChangeKind, Taken};
+use campfire_common::AfterLeave;
+use campfire_mode::PlayersData;
+use campfire_protocol::{SlotChangeKind, Taken};
 
 use crate::slot_rules::error::SlotRuleError;
 
@@ -18,11 +19,7 @@ impl SlotRules {
 
     /// What a leaver's slot becomes, as the mode's `leaver` says.
     pub(crate) const fn after_leave(self) -> AfterLeave {
-        match self.0.leaver {
-            Leaver::Reserve => AfterLeave::Reserve,
-            Leaver::Bot => AfterLeave::Bot,
-            Leaver::Open => AfterLeave::Open,
-        }
+        self.0.leaver
     }
 
     /// Whether the mode allows `change`: a player who takes back their own slot always; a new
@@ -43,9 +40,9 @@ impl SlotRules {
             }
             SlotChangeKind::Joined { .. } => Ok(()),
             SlotChangeKind::Left { becomes } => match (leaver, becomes) {
-                (Leaver::Reserve, AfterLeave::Reserve)
-                | (Leaver::Bot, AfterLeave::Bot)
-                | (Leaver::Open, AfterLeave::Open) => Ok(()),
+                (AfterLeave::Reserve, AfterLeave::Reserve)
+                | (AfterLeave::Bot, AfterLeave::Bot)
+                | (AfterLeave::Open, AfterLeave::Open) => Ok(()),
                 _ => Err(SlotRuleError::Leaver { becomes }),
             },
         }

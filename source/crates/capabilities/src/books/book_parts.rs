@@ -13,7 +13,7 @@ use campfire_production::{
 };
 use campfire_progression::{TrackBook, TrackSet};
 use campfire_projectiles::ProjectileSpec;
-use campfire_stats::{Life, ModifierBook, ParamTables, Pools};
+use campfire_stats::{Life, ModifierBook, ParamTables, Pools, TypePassive};
 use campfire_units::{BodyForm, MoveStep, TurnStep, UnitTypeBook};
 use campfire_vision::Sight;
 
@@ -37,6 +37,7 @@ pub(crate) struct BookParts {
     pub(super) lives: ByType<Life>,
     /// The pools but the life of each type with any.
     pub(super) pools: ByType<Pools>,
+    pub(super) passives: ByType<TypePassive>,
     pub(super) deaths: ByType<OnDeath>,
     pub(super) steps: ByType<MoveStep>,
     pub(super) turns: ByType<TurnStep>,

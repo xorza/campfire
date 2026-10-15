@@ -7,18 +7,23 @@ use campfire_state_types::{DataKind, NotSent, Replication};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
-/// The tick a unit that thinks is due in again. A unit whose call found the think pool spent
-/// keeps it, so it stays due, and goes first in the next tick, before the units due later.
+/// The tick a unit that thinks is due in again, a part of each unit of a type with AI from its
+/// spawn: none before its first think, which comes in the first tick that leaves the remainder of
+/// its stable id when divided by its type's period. A unit whose call found the think pool spent
+/// keeps its tick, so it stays due, and goes first in the next tick, before the units due later.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct NextThink(Tick);
+pub struct NextThink(Option<Tick>);
 
 impl NextThink {
+    /// Before the unit's first think.
+    pub const FIRST: NextThink = NextThink(None);
+
     pub const fn new(tick: Tick) -> NextThink {
-        NextThink(tick)
+        NextThink(Some(tick))
     }
 
-    pub const fn get(self) -> Tick {
+    pub const fn get(self) -> Option<Tick> {
         self.0
     }
 }

@@ -6,7 +6,7 @@ use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
     MapData, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData, PlacedUnitData,
-    ResolvedMap, TeamManifest, WalkCheck, WallData,
+    ResolvedMap, TeamManifest, WallData,
 };
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
@@ -14,8 +14,7 @@ use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units,
 };
-use campfire_values::{Block, PathId, Team, UnitType};
-use campfire_values::{DeclaredName, Names};
+use campfire_values::{Block, DeclaredName, NameId, Names, PathId, Team, UnitType};
 
 const ONE: i64 = 1 << 24;
 
@@ -287,9 +286,8 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     let place =
         |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
     let blocked = |game: &Match| {
-        let grid = game.resource::<PathingGrid>();
         (0..16)
-            .filter(|&cell| !grid.clearance(ground(half)).open(cell))
+            .filter(|&cell| !Navigation::cell_open(game, ground(half), cell))
             .collect::<Vec<_>>()
     };
     let tower = Navigation::body(&mut game, place(-6, -6), None, None, half);
@@ -880,10 +878,12 @@ fn check_walkable(
     let check = WalkCheck {
         ground: &ground,
         navigation: &navigation,
+        cells: map.pathing,
         walkers,
-        spawn_tags: &rules.spawn_tags,
+        placed: &map.placed_bodies(body),
+        spawns: &map.spawn_points(&rules.spawn_tags),
     };
-    map.check_walkable(check, body, named)
+    check.run(named)
 }
 
 /// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.

@@ -3,9 +3,6 @@
     reason = "each lane's float is exact by its domain, or an estimate that integer steps correct"
 )]
 
-use crate::simd::i64x4::I64x4;
-use crate::simd::u64x4::U64x4;
-
 /// Four `f64` lanes, for `math`'s own exact ops only. AVX2 converts no `i64` to `f64` in lanes,
 /// so each conversion adds an integer to the bits of a power of two whose last place is 1.
 #[derive(Debug, Clone, Copy)]
@@ -20,8 +17,8 @@ const SIGNED_52: f64 = 6_755_399_441_055_744.0;
 
 impl F64x4 {
     /// Each lane exactly; each below 2⁵¹ in magnitude.
-    pub(crate) const fn from_exact(lanes: I64x4) -> F64x4 {
-        let [a, b, c, d] = lanes.to_array();
+    pub(crate) const fn from_exact(lanes: [i64; 4]) -> F64x4 {
+        let [a, b, c, d] = lanes;
         F64x4([
             F64x4::exact(a),
             F64x4::exact(b),
@@ -32,8 +29,8 @@ impl F64x4 {
 
     /// Each lane rounded once to the nearest `f64`, for every `u64`: its two halves convert
     /// exactly, and only their sum rounds.
-    pub(crate) const fn from_u64(lanes: U64x4) -> F64x4 {
-        let [a, b, c, d] = lanes.to_array();
+    pub(crate) const fn from_u64(lanes: [u64; 4]) -> F64x4 {
+        let [a, b, c, d] = lanes;
         F64x4([
             F64x4::rounded(a),
             F64x4::rounded(b),
@@ -57,25 +54,25 @@ impl F64x4 {
     }
 
     /// Each lane, a whole number below 2⁵¹ in magnitude, as an `i64`.
-    pub(crate) const fn to_exact(self) -> I64x4 {
+    pub(crate) const fn to_exact(self) -> [i64; 4] {
         let [a, b, c, d] = self.0;
-        I64x4::from_array([
+        [
             F64x4::whole(a),
             F64x4::whole(b),
             F64x4::whole(c),
             F64x4::whole(d),
-        ])
+        ]
     }
 
     /// Each lane, from 0 to below 2⁵², rounded to the nearest integer, ties to even.
-    pub(crate) const fn round_to_u64(self) -> U64x4 {
+    pub(crate) const fn round_to_u64(self) -> [u64; 4] {
         let [a, b, c, d] = self.0;
-        U64x4::from_array([
+        [
             F64x4::nearest(a),
             F64x4::nearest(b),
             F64x4::nearest(c),
             F64x4::nearest(d),
-        ])
+        ]
     }
 
     const fn exact(lane: i64) -> f64 {
@@ -121,9 +118,9 @@ mod tests {
         let edge = (1_i64 << 51) - 1;
         let lanes = [[-edge, -1, 0, edge], [1, -2, 1 << 50, -(1 << 50)]];
         for lanes in lanes {
-            let float = F64x4::from_exact(I64x4::from_array(lanes));
+            let float = F64x4::from_exact(lanes);
             assert_eq!(float.0, lanes.map(|lane| lane as f64));
-            assert_eq!(float.to_exact().to_array(), lanes);
+            assert_eq!(float.to_exact(), lanes);
         }
     }
 
@@ -138,7 +135,7 @@ mod tests {
             u64::MAX,
             0x8000_0000_0000_0401,
         ];
-        let float = F64x4::from_u64(U64x4::from_array(lanes));
+        let float = F64x4::from_u64(lanes);
         assert_eq!(float.0, lanes.map(|lane| lane as f64));
         assert_eq!(float.0[1], 2_f64.powi(53));
         assert_eq!(float.0[2], 2_f64.powi(64));
@@ -148,9 +145,9 @@ mod tests {
     fn a_lane_rounds_to_the_nearest_integer_ties_to_even() {
         // 2⁵² − ½ is a tie between 2⁵² − 1 and 2⁵², to even 2⁵².
         let float = F64x4([0.0, 2.5, 3.5, TWO_52 - 0.5]);
-        assert_eq!(float.round_to_u64().to_array(), [0, 2, 4, 1 << 52]);
+        assert_eq!(float.round_to_u64(), [0, 2, 4, 1 << 52]);
         let float = F64x4([7.49, 7.51, 0.5, 4_294_967_295.6]);
-        assert_eq!(float.round_to_u64().to_array(), [7, 8, 0, 1 << 32]);
+        assert_eq!(float.round_to_u64(), [7, 8, 0, 1 << 32]);
     }
 
     #[test]

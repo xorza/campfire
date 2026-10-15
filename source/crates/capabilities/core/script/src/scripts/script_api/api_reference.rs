@@ -2,12 +2,12 @@ use std::fmt::{self, Write};
 
 use campfire_sim::Capability;
 
+use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::data_table::DataTable;
 use crate::scripts::hook::Hook;
+use crate::scripts::member_kind::MemberKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
-use crate::scripts::script_api::api_owner::ApiOwner;
-use crate::scripts::script_api::data_table::DataTable;
-use crate::scripts::script_api::member_kind::MemberKind;
 use crate::scripts::script_role::ScriptRole;
 
 /// The opening of the generated reference.

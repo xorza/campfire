@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::Release;
+use campfire_common::Version;
 use campfire_declare::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
@@ -9,12 +10,10 @@ use campfire_values::Speed;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::files::backends::Backends;
 use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
 use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
-use crate::files::version::Version;
 use crate::language::Language;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
@@ -26,7 +25,6 @@ pub struct ModeManifest {
     pub tick_hz: TickRange,
     /// The playing teams, in order; their slots in that order make the player slots.
     pub teams: Vec<TeamManifest>,
-    pub backends: Backends,
     /// The most any unit walks.
     pub max_move_speed: Speed,
     pub script_limits: ScriptLimits,
@@ -54,7 +52,6 @@ impl<'de> Deserialize<'de> for ModeManifest {
             capabilities: Vec<Capability>,
             tick_hz: TickRange,
             teams: Vec<TeamManifest>,
-            backends: Backends,
             max_move_speed: Speed,
             script_limits: ScriptLimits,
             #[serde(default)]
@@ -72,7 +69,6 @@ impl<'de> Deserialize<'de> for ModeManifest {
                 .map_err(D::Error::custom)?,
             tick_hz: fields.tick_hz,
             teams: fields.teams,
-            backends: fields.backends,
             max_move_speed: fields.max_move_speed,
             script_limits: fields.script_limits,
             dependencies: fields.dependencies,

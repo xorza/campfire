@@ -1,10 +1,7 @@
 use campfire_values::{FilterData, FilterSyntax, Relation, RelationSet, TagSet};
 
-use crate::scripts::arg_ctx::ArgCtx;
-use crate::scripts::error::{ApiError, Checked, UnknownName};
+use crate::scripts::error::{ApiError, UnknownName};
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_arg::TextArg;
-use crate::scripts::script_text::ScriptText;
 use crate::scripts::view::tag_names::TagNames;
 
 /// A filter as a match runs it: a set of relations, the tags a unit must have, and those it must
@@ -50,10 +47,10 @@ impl Filter {
 
     /// The filter of `relations` alone: every unit it selects, but those of a tag of `tags` that
     /// a filter selects only when it names it, as deliveries.
-    pub fn of_relations(relations: RelationSet, tags: &TagNames) -> Filter {
+    pub const fn of_relations(relations: RelationSet, tags: &TagNames) -> Filter {
         Filter {
             relations,
-            all: TagSet::default(),
+            all: TagSet::NONE,
             none: tags.named_only(),
         }
     }
@@ -67,8 +64,8 @@ impl Filter {
     ) -> Option<Filter> {
         let mut filter = Filter {
             relations,
-            all: TagSet::default(),
-            none: TagSet::default(),
+            all: TagSet::NONE,
+            none: TagSet::NONE,
         };
         for (name, negated) in terms {
             let tag = tags.named(name)?;
@@ -90,16 +87,6 @@ impl Filter {
     /// selects for regards it.
     pub const fn selects(self, relation: Relation, tags: TagSet) -> bool {
         self.relations.selects(relation) && tags.covers(self.all) && !tags.meets(self.none)
-    }
-}
-
-/// A filter a script gives, its tags among the match's.
-impl TextArg for Filter {
-    const NAMES: NameKind = NameKind::Filter;
-
-    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Filter> {
-        let filter = Filter::parse(&text, ctx.get().view().names().tags());
-        Ok(filter.map_err(ApiError::fail)?)
     }
 }
 

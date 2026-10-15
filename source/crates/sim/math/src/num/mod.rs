@@ -6,7 +6,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::num::decimal::Decimal;
-use crate::num::error::{IntToNumError, ParseNumError};
+use crate::num::error::{FloatToNumError, IntToNumError, ParseNumError};
 use crate::root::RoundedRoot;
 use crate::rounding::Rounding;
 
@@ -145,7 +145,7 @@ impl Num {
     #[must_use]
     pub const fn saturating_mul(self, rhs: Num) -> Num {
         let product = (self.0 as i128).wrapping_mul(rhs.0 as i128);
-        Num::saturating_from_bits(Num::rounded_products(product))
+        Num::saturating_from_bits(Rounding::NearestEven.shift_right(product, Num::FRAC_BITS))
     }
 
     pub const fn checked_mul(self, rhs: Num) -> Option<Num> {
@@ -160,18 +160,7 @@ impl Num {
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
     /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
-        narrow(Num::rounded_products(sum))
-    }
-
-    /// `sum / 2²⁴`, rounded to nearest, ties to even. Adding `2²³ − 1` and the floor's last bit
-    /// before the shift rounds a rest past half up, a rest of half up from an odd floor only, and
-    /// a smaller rest down. The addition wraps only for a sum within 2²⁴ of `i128::MAX`, whose
-    /// quotient, wrapped or not, fits no `i64`, so narrowed it is refused, and saturated it is
-    /// never taken, as a product of two `i64`s is at most 2¹²⁶.
-    const fn rounded_products(sum: i128) -> i128 {
-        const HALF_LESS_ONE: i128 = (1 << (Num::FRAC_BITS - 1)) - 1;
-        let odd = (sum >> Num::FRAC_BITS) & 1;
-        sum.wrapping_add(HALF_LESS_ONE + odd) >> Num::FRAC_BITS
+        narrow(Rounding::NearestEven.shift_right(sum, Num::FRAC_BITS))
     }
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
@@ -210,6 +199,14 @@ impl Num {
             return None;
         }
         narrow(rounding.divide(i128::from(self.0) * i128::from(by), i128::from(over)))
+    }
+
+    /// `count` whole units times `self`, from the exact product, rounded once by `rounding` to a
+    /// whole count, as a share of a span of ticks takes; `None` for a count below 0 or past
+    /// `u64`. The product of any `Num` and any `u64` fits an `i128`.
+    pub fn scale_count(self, count: u64, rounding: Rounding) -> Option<u64> {
+        let product = i128::from(self.0) * i128::from(count);
+        u64::try_from(rounding.shift_right(product, Self::FRAC_BITS)).ok()
     }
 
     /// Exact scaling by an integer.
@@ -451,6 +448,44 @@ impl TryFrom<u64> for Num {
         value
             .and_then(Num::from_int)
             .ok_or(IntToNumError::OutOfRange)
+    }
+}
+
+/// `value` exactly where a step of 2⁻²⁴ holds it, as it holds every value of at least 2⁻¹ that
+/// fits, and below rounded once to nearest, ties to even.
+impl TryFrom<f32> for Num {
+    type Error = FloatToNumError;
+
+    fn try_from(value: f32) -> Result<Num, FloatToNumError> {
+        if !value.is_finite() {
+            return Err(FloatToNumError::NotFinite);
+        }
+        let bits = value.to_bits();
+        let exponent = i32::try_from((bits >> 23) & 0xFF).expect("eight bits");
+        let fraction = i128::from(bits & 0x7F_FFFF);
+        let (mantissa, power) = if exponent == 0 {
+            (fraction, -149)
+        } else {
+            (fraction | 0x80_0000, exponent - 150)
+        };
+        // The value is `mantissa · 2^power`, so its bits are `mantissa · 2^(power + 24)`: a left
+        // shift below 64 that fits an `i64` or none, or a right shift of at most 125.
+        let scaled = power + Num::FRAC_BITS.cast_signed();
+        let magnitude = if scaled >= 0 {
+            if scaled >= 64 {
+                return Err(FloatToNumError::OutOfRange);
+            }
+            mantissa << scaled
+        } else {
+            Rounding::NearestEven.shift_right(mantissa, scaled.unsigned_abs())
+        };
+        let bits = if value.is_sign_negative() {
+            -magnitude
+        } else {
+            magnitude
+        };
+        let bits = i64::try_from(bits).map_err(|_| FloatToNumError::OutOfRange)?;
+        Ok(Num::from_bits(bits))
     }
 }
 

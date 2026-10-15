@@ -18,8 +18,10 @@ pub struct BindError {
 /// the client's socket failed.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum MapError {
-    #[error("the OS names no IPv4 gateway: {0}")]
+    #[error("the OS names no default gateway: {0}")]
     NoGateway(String),
+    #[error("the default gateway has no IPv4 address")]
+    NoIpv4Gateway,
     #[error("the gateway did not answer")]
     NoAnswer,
     #[error("no PCP or NAT-PMP server listens on the gateway's port")]

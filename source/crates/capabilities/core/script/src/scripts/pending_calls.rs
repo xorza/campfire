@@ -25,11 +25,6 @@ impl<T> PendingCalls<T> {
         self.calls.iter()
     }
 
-    /// Adds `calls` at the end.
-    pub fn extend(&mut self, calls: impl IntoIterator<Item = T>) {
-        self.calls.extend(calls);
-    }
-
     /// Moves the calls of `later` to the end, leaving it empty.
     pub fn append(&mut self, later: &mut PendingCalls<T>) {
         self.calls.append(&mut later.calls);
@@ -56,6 +51,13 @@ impl<T> FromIterator<T> for PendingCalls<T> {
         PendingCalls {
             calls: calls.into_iter().collect(),
         }
+    }
+}
+
+/// Adds the calls at the end.
+impl<T> Extend<T> for PendingCalls<T> {
+    fn extend<I: IntoIterator<Item = T>>(&mut self, calls: I) {
+        self.calls.extend(calls);
     }
 }
 

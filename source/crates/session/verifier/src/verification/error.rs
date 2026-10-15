@@ -1,6 +1,7 @@
 use campfire_package::ContentError;
+use campfire_package_disk::StoreError;
 use campfire_protocol::LogError;
-use campfire_runner::{ReplayError, SnapshotCheckError, StartError};
+use campfire_runner::{ReplayError, SnapshotCheckError, StartError, TermsError};
 use campfire_store::{PathError, ReadError};
 use thiserror::Error;
 
@@ -14,6 +15,12 @@ pub enum VerifyError {
     ReadLog(#[source] PathError<ReadError>),
     #[error("the log does not decode")]
     Decode(#[source] LogError),
+    /// The log's terms are of another engine release, whose packages need not read in this one.
+    #[error("the log is of another release")]
+    Release(#[source] TermsError),
+    /// The store does not give the packages the log's terms name.
+    #[error("the log's packages are not held")]
+    Packages(#[source] StoreError),
     /// The log's match does not start on the packages it names.
     #[error("the replay does not start")]
     Start(#[source] StartError),

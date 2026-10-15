@@ -10,6 +10,7 @@ internals = [
     "campfire-common/internals",
     "campfire-log/internals",
     "campfire-package/internals",
+    "campfire-package-disk/internals",
     "campfire-protocol/internals",
     "campfire-runner/internals",
     "campfire-sim/internals",
@@ -20,6 +21,7 @@ internals = [
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-package.workspace = true
+campfire-package-disk.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true

@@ -23,7 +23,7 @@ pub struct Launcher {
     pub delivery: Delivery,
 }
 
-impl Delivering {
+impl Launcher {
     /// The running action, from its acting unit, for an action's call that launches one more of
     /// its deliveries, and the type it delivers; an error for an action whose delivery's shape
     /// `shape` refuses.

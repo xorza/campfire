@@ -1,10 +1,10 @@
+use std::error::Error;
 use std::io;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use campfire_codec::{BinaryError, TomlError};
 use campfire_common::Fingerprint;
-use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
 use campfire_values::PackagePath;
 use derive_more::Display;
 use thiserror::Error;
@@ -54,18 +54,10 @@ pub enum ContentError {
         #[source]
         error: TomlError,
     },
-    /// A directory of packages, a package's directory, or one of its files does not read.
+    /// The source of the package's files does not read them, as a directory on disk fails; the
+    /// source's own error, which the core does not name.
     #[error("a package's files do not read")]
-    Read(#[source] PathError<ReadError>),
-    /// An entry of a package is neither a file nor a directory, such as a link.
-    #[error("{}: neither a file nor a directory", .0.display())]
-    NotAFile(PathBuf),
-    /// A path in a package is not UTF-8, so no file list can name it.
-    #[error("{}: path is not UTF-8", .0.display())]
-    NotUtf8(PathBuf),
-    /// A file's name in a package is no package path, as one holding `\` is not.
-    #[error("{}: no path a package can name", .0.display())]
-    NotPath(PathBuf),
+    Read(#[source] Box<dyn Error + Send + Sync>),
     /// Two paths of a package, or the directories on their way, differ only in case, which a
     /// file system that ignores case holds as one, as Windows' and macOS's do by default.
     #[error("{path} and {other} differ only in case")]
@@ -88,46 +80,13 @@ pub enum ContentError {
     /// A row of the package's index is not past the one before it in the order of paths' bytes.
     #[error("the package's index lists {0} out of order")]
     IndexOrder(PackagePath),
+    /// The package's index lists a file of more bytes than a package's file holds, whose read
+    /// would allocate them.
+    #[error("the package's index lists {0} of more than a package file's bytes")]
+    IndexFileLen(PackagePath),
     /// The package's index lists itself, which no list can hold the hash of.
     #[error("the package's index lists itself")]
     IndexListsItself,
-}
-
-/// Why a package does not write.
-#[derive(Debug, Error)]
-pub enum WriteError {
-    /// The package's directory does not make, as when one is there.
-    #[error("the package's directory does not make")]
-    CreateDir(#[source] PathError<DurableCreateError>),
-    /// A directory in the package does not make.
-    #[error("a directory of the package does not make")]
-    Directory(#[source] PathError<DurableError>),
-    /// A file of the package does not write, as one written twice.
-    #[error("a file of the package does not write")]
-    File(#[source] PathError<io::Error>),
-    /// The package's index does not write.
-    #[error("the package's index does not write")]
-    Index(#[source] PathError<DurableError>),
-    /// The files written make no package, as two paths that differ only in case.
-    #[error("the files written make no package")]
-    Package(#[source] ContentError),
-}
-
-/// Why a store does not give the packages that session terms name.
-#[derive(Debug, Error)]
-pub enum StoreError {
-    /// The store holds no mode of the fingerprint the terms name.
-    #[error("no mode of the session's fingerprint is held")]
-    UnknownMode,
-    /// The terms name another count of dependencies than the mode's manifest.
-    #[error("the session names another count of dependencies than the mode")]
-    DependencyCount,
-    /// The store holds no package of the fingerprint the terms give the dependency of this name.
-    #[error("no package of the fingerprint the session gives {0:?} is held")]
-    MissingDependency(PackageName),
-    /// The packages do not load.
-    #[error(transparent)]
-    Load(LoadError),
 }
 
 /// Why a mode's packages do not load: `problem`, in the package `package`.
@@ -167,8 +126,6 @@ impl LoadError {
 
 #[cfg(test)]
 mod tests {
-    use std::error::Error;
-
     use campfire_stats::ModifierProblem;
     use campfire_values::DeclaredName;
 
@@ -207,8 +164,8 @@ mod tests {
                 ][..],
             ),
             (
-                LoadProblem::Content(ContentError::NotUtf8(PathBuf::from("x"))),
-                &["package hero", "x: path is not UTF-8"],
+                LoadProblem::Content(ContentError::Changed { path: path("x") }),
+                &["package hero", "x differs from the package's index"],
             ),
             (
                 LoadProblem::Script {

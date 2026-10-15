@@ -14,10 +14,10 @@ fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
     let world = World::new();
     assert!(timers.check(&world));
     let mut swapped = timers.clone();
-    swapped.timers.swap(0, 1);
+    swapped.timers_mut().swap(0, 1);
     assert!(!swapped.check(&world));
     let mut behind = timers;
-    behind.next_seq = 1;
+    *behind.next_seq_mut() = 1;
     assert!(!behind.check(&world));
 
     // A repeating timer of the longest period, due at the limit, with the count of timers at
@@ -25,22 +25,24 @@ fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
     // past the limit, or a period of no ticks, fails: a time to decode, the rest the check.
     let mut last = Timers::default();
     last.set(Tick::ZERO, "t".to_owned(), Ticks::LIMIT, true, None);
-    last.next_seq = Tick::LIMIT.get();
+    *last.next_seq_mut() = Tick::LIMIT.get();
     assert!(last.check(&world));
     let mut fired = last.clone();
     fired.fire();
-    assert_eq!(fired.timers[0].due, Tick::new(1 << 63));
+    assert_eq!(fired.timers_mut()[0].due, Tick::new(1 << 63));
     let changed = |change: fn(&mut Timers)| {
         let mut timers = last.clone();
         change(&mut timers);
         Match::decodes(&timers) && timers.check(&world)
     };
-    assert!(!changed(|timers| timers.next_seq += 1));
+    assert!(!changed(|timers| *timers.next_seq_mut() += 1));
     assert!(!changed(
-        |timers| timers.timers[0].due = Tick::new(Tick::LIMIT.get() + 1)
+        |timers| timers.timers_mut()[0].due = Tick::new(Tick::LIMIT.get() + 1)
     ));
     assert!(!changed(
-        |timers| timers.timers[0].every = Some(Ticks::new(Tick::LIMIT.get() + 1))
+        |timers| timers.timers_mut()[0].every = Some(Ticks::new(Tick::LIMIT.get() + 1))
     ));
-    assert!(!changed(|timers| timers.timers[0].every = Some(Ticks::ZERO)));
+    assert!(!changed(
+        |timers| timers.timers_mut()[0].every = Some(Ticks::ZERO)
+    ));
 }

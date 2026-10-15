@@ -13,33 +13,31 @@ use bevy_ecs::world::World;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_protocol::SeedChain;
-use campfire_quic::{LINK_MIN_MTU, LinkBinding};
-use campfire_runner::InputRules;
+use campfire_protocol::Signer;
+use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::Worker;
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
-use lightyear::prelude::{Link, LinkMtu, LinkOf, Linked, PeerAddr};
-use secp256k1::Keypair;
+use lightyear::prelude::{LinkOf, Linked, PeerAddr};
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
 use crate::net_protocol::NetProtocol;
-use crate::os::{Entropy, Os};
+use crate::os::Os;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::key_file::KeyFile;
-use crate::sim_server::lobby::{Lobby, LobbySetup};
+use crate::sim_server::lobby::{Lobby, LobbyOpening};
 use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::SessionDir;
+use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
 use crate::sim_server::sim_server_world::SimServerWorld;
 
@@ -47,8 +45,6 @@ pub(crate) mod error;
 
 /// In-process channels have no TLS; the client pins this as the server's TLS key.
 const TLS_KEY: TlsKey = TlsKey::new([0; 32]);
-/// The segments of a local session's seed chain, as a dedicated server's.
-const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
 /// A session's server on a thread of a singleplayer client's process, linked to the client by
 /// in-process channels: the client's player in slot 0, in each other slot the server's bot its
@@ -134,15 +130,16 @@ impl LocalServer {
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
-        LocalServer::end_earlier(&dir, &packages, key, os.entropy)?;
-        let mut root = [0; 32];
-        os.entropy.fill(&mut root);
+        LocalServer::end_earlier(Publisher {
+            data: &dir,
+            packages: &packages,
+            signer: &Signer::new(key, os.entropy),
+        })?;
         let server = ServerSetup {
             key,
             times: SessionTimes::DEFAULT,
             os,
         };
-        let seed_chain = SeedChain::new(root, SEGMENTS);
         let slots = u32::try_from(packages.manifest().slots()).expect("slots fit u32");
         let open = (1..slots)
             .map(PlayerSlot::new)
@@ -153,21 +150,14 @@ impl LocalServer {
             slots: bots,
             takeover: None,
         };
-        let mut lobby = Lobby::new(LobbySetup {
+        let opening = LobbyOpening {
             packages: Arc::clone(&packages),
-            seed_chain,
-            tick_hz,
-            rules: InputRules::LAN,
-            slots: usize::try_from(slots).expect("slots fit usize"),
             bots: bots.clone(),
             open,
             host: HostVisibility::default(),
             server: server.clone(),
-        })
-        .map_err(LocalServerError::Lobby)?;
-        lobby
-            .keep_files(&dir)
-            .map_err(LocalServerError::KeepFiles)?;
+        };
+        let lobby = Lobby::open(opening, &dir).map_err(LocalServerError::Open)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let stop = Arc::new(AtomicBool::new(false));
         let relinks = Relinks::default();
@@ -218,18 +208,13 @@ impl LocalServer {
         }
     }
 
-    /// Ends aborted a session an earlier start left under `data`, of the mode `packages` holds,
-    /// and publishes its log; removes one whose match never started.
-    fn end_earlier(
-        data: &ServerDir,
-        packages: &ModePackages,
-        key: Keypair,
-        entropy: Entropy,
-    ) -> Result<(), LocalServerError> {
-        if let Some(session) = SessionDir::waiting(data).map_err(LocalServerError::Waiting)? {
-            session
-                .abort(data, packages, key, entropy)
-                .map_err(LocalServerError::Abort)?;
+    /// Ends aborted a session an earlier start left under the publisher's data directory, and
+    /// publishes its log by `publisher`; removes one whose match never started.
+    fn end_earlier(publisher: Publisher<'_>) -> Result<(), LocalServerError> {
+        if let Some(session) =
+            SessionDir::waiting(publisher.data).map_err(LocalServerError::Waiting)?
+        {
+            session.abort(publisher).map_err(LocalServerError::Abort)?;
         }
         Ok(())
     }
@@ -329,7 +314,7 @@ impl Runs {
         let address = SocketAddr::from(([127, 0, 0, 1], 1));
         app.world_mut().spawn((
             LinkOf { server },
-            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+            QuicEndpoint::link(),
             PeerAddr(address),
             LinkBinding(LocalServer::BINDING),
             Linked,

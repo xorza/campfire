@@ -4,8 +4,7 @@
 use bevy_app::App;
 use campfire_actions::SlotTimes;
 use campfire_common::Tick;
-use campfire_harness::HashTrail;
-use campfire_harness::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
+use campfire_harness::{End, HashTrail, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_orders::OrdersAction;
@@ -14,7 +13,7 @@ use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::{Life, PoolId, Pools};
 use campfire_units::{Body, Dead};
-use campfire_values::Team;
+use campfire_values::{NameId, Team};
 use campfire_vision::SeenBy;
 
 const MATCH_TICKS: u64 = 600;

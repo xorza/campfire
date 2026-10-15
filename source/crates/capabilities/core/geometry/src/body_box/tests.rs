@@ -3,6 +3,7 @@ use campfire_math::FloorRoot;
 use campfire_math::internals::SplitMix64;
 
 use super::*;
+use crate::placed::Placed;
 use crate::shape::Shape;
 
 impl Frame {
@@ -319,8 +320,8 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     // at x = 2, the spans alone tell.
     let as_shape = Shape::Box(body);
     let comes = |from: Position, to: Position, reach: Num| {
-        let comes = as_shape.comes_within(centre, from, to, reach);
-        assert_eq!(comes, body.comes_within(centre, from, to, reach));
+        let comes = Placed::new(centre, as_shape).comes_closer(from, to, reach);
+        assert_eq!(comes, body.comes_closer(centre, from, to, reach));
         comes
     };
     let bit = Num::EPSILON;
@@ -727,12 +728,12 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
     let approach = body.approach(centre, from, to, reach);
     let (start, path) = ((flat(from) - flat(centre)), (flat(to) - flat(from)));
     let case = format!("{body:?} {from:?} {to:?} {reach:?}");
-    let comes_within = body.comes_within(centre, from, to, reach);
-    assert_eq!(comes_within, approach.nearest == Ordering::Less, "{case}");
-    let by_shape = Shape::Box(*body).comes_within(centre, from, to, reach);
-    assert_eq!(by_shape, comes_within, "{case}");
+    let comes_closer = body.comes_closer(centre, from, to, reach);
+    assert_eq!(comes_closer, approach.nearest == Ordering::Less, "{case}");
+    let by_shape = Placed::new(centre, Shape::Box(*body)).comes_closer(from, to, reach);
+    assert_eq!(by_shape, comes_closer, "{case}");
     let length = Direction::of(path.to_array()).map_or(0, |direction| direction.length());
-    let meets = body.frame().meets_path(start, path);
+    let meets = body.frame().meets_path(start, path, Closure::Closed);
     assert_eq!(
         meets,
         body.frame().entry(start, path, length).is_some(),

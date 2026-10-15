@@ -170,9 +170,9 @@ impl OrderInputs {
     ) {
         let now = tick.start();
         for (entity, order) in checked.0.drain(..) {
+            debug_assert_ne!(order, UnitOrder::Reset, "a player orders no reset");
             let parts = units.get_mut(entity).expect("a checked order's unit");
-            let resets = order.apply(parts, &map.bounds, now);
-            debug_assert!(!resets, "a player orders no reset");
+            order.apply(parts, &map.bounds, now);
         }
     }
 }

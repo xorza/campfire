@@ -1,5 +1,5 @@
 use campfire_script::{NameKind, UnknownName};
-use campfire_values::Stat;
+use campfire_values::{NameId, Stat};
 
 use crate::error::EdgeError;
 use crate::stat_id::StatId;
@@ -62,7 +62,7 @@ impl StatGraph {
                 return Err(looped.map(|at| self.stats[at].clone()).collect());
             };
             done[next] = true;
-            order.push(StatId::new(next));
+            order.push(StatId::at(next));
             let next = u16::try_from(next).expect("stats fit u16");
             for edge in self.edges.iter().filter(|edge| edge.read == next) {
                 reads[usize::from(edge.changed)] -= 1;

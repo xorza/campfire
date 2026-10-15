@@ -14,8 +14,8 @@ fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
     game.run_system_once(|mut near: UnitsNear<'_, '_>| {
         let mut found = Vec::new();
         near.current()
-            .visit_near(Position::ORIGIN, Num::int(2), |body| {
-                found.push((body.id, body.shape.bound()));
+            .visit_near(Position::ORIGIN, Num::int(2), |entry| {
+                found.push((entry.id, entry.body.shape.bound()));
             });
         found.sort_unstable_by_key(|&(id, _)| id);
         (found, near.built_at().unwrap())

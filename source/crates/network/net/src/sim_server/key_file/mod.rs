@@ -1,8 +1,7 @@
-use campfire_protocol::{Nsec, RandomKey};
+use campfire_protocol::{Entropy, Nsec, RandomKey};
 use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
 use secp256k1::Keypair;
 
-use crate::os::Entropy;
 use crate::sim_server::key_file::error::KeyFileError;
 
 pub(crate) mod error;

@@ -9,22 +9,21 @@ use crate::names::NameId;
 pub struct Tag(u8);
 
 impl Tag {
-    /// The most tags a match has.
-    pub const LIMIT: usize = Bits256::BITS;
-
     /// The tag at `index` in the list of names, which is below `LIMIT`.
     pub const fn new(index: u8) -> Tag {
         Tag(index)
     }
 
-    pub const fn index(self) -> usize {
-        self.0 as usize
+    /// Its place in the list of names.
+    pub const fn get(self) -> u8 {
+        self.0
     }
 }
 
 impl NameId for Tag {
     type Scope = ();
-    const LIMIT: usize = Tag::LIMIT;
+    /// The most tags a match has.
+    const LIMIT: usize = Bits256::BITS;
 
     fn at(index: usize) -> Tag {
         Tag(u8::try_from(index).expect("tags fit u8"))

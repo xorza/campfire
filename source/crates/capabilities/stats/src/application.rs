@@ -50,13 +50,13 @@ pub(crate) mod internals {
     impl NewInstance {
         /// A new instance of `id` from `source`: one stack at rank 1 of no ability, that lasts
         /// until it is removed, with no clock, shield, stat share or state.
-        pub fn bare(id: ModifierId, source: Option<StableId>) -> NewInstance {
+        pub const fn bare(id: ModifierId, source: Option<StableId>) -> NewInstance {
             NewInstance {
                 id,
                 source,
                 action: None,
                 rank: Rank::FIRST,
-                lifetime: Lifetime::new(None, Ends::Never),
+                lifetime: Lifetime::applied(Ends::Never),
                 aura_radius: None,
                 stacks: 1,
                 stack_life: None,

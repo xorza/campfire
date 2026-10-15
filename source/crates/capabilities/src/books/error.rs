@@ -1,11 +1,12 @@
 use campfire_actions::{ActionError, ActionProblem};
+use campfire_items::ItemError;
 use campfire_mode::{ModeError, ModeNamesError};
 use campfire_orders::AiError;
 use campfire_progression::TrackError;
 use campfire_script::UnknownName;
 use campfire_stats::ModifierProblem;
 use campfire_units::TypesError;
-use campfire_values::{DeclaredName, PackagePath, Stat};
+use campfire_values::{DeclaredName, PackageIndex, PackagePath, Stat};
 use thiserror::Error;
 
 use crate::books::book_place::BookPlace;
@@ -18,18 +19,21 @@ pub enum BookError {
     /// The unit type makes no unit.
     #[error("{unit_type}")]
     Start {
-        package: u16,
+        package: PackageIndex,
         unit_type: TypePlace,
         #[source]
         error: UnitStartError,
     },
     /// The unit type walks and has a box body, which only a type that stands has.
     #[error("{unit_type}: a box body on a type that walks")]
-    BoxWalks { package: u16, unit_type: TypePlace },
+    BoxWalks {
+        package: PackageIndex,
+        unit_type: TypePlace,
+    },
     /// The unit type's AI does not load.
     #[error("{unit_type}")]
     Ai {
-        package: u16,
+        package: PackageIndex,
         unit_type: TypePlace,
         #[source]
         error: AiError,
@@ -37,7 +41,7 @@ pub enum BookError {
     /// The action's data breaks a rule.
     #[error("action {action}")]
     Action {
-        package: u16,
+        package: PackageIndex,
         action: DeclaredName,
         #[source]
         problem: ActionProblem,
@@ -45,15 +49,23 @@ pub enum BookError {
     /// The modifier does not load.
     #[error("modifier {modifier}")]
     Modifier {
-        package: u16,
+        package: PackageIndex,
         modifier: DeclaredName,
         #[source]
         problem: ModifierProblem,
     },
+    /// The item type's costs break a rule of the item book.
+    #[error("item {item}")]
+    Item {
+        package: PackageIndex,
+        item: DeclaredName,
+        #[source]
+        error: ItemError,
+    },
     /// A time of the area type does not count in ticks.
     #[error("area type {unit_type}: a time too large to count in ticks")]
     AreaTime {
-        package: u16,
+        package: PackageIndex,
         unit_type: DeclaredName,
     },
     /// The mode's teams, relations or map name what the mode does not have.
@@ -70,11 +82,14 @@ pub enum BookError {
     Types(TypesError),
     /// Data names a script at `path` that the package does not hold.
     #[error("no script {path}")]
-    Script { package: u16, path: PackagePath },
+    Script {
+        package: PackageIndex,
+        path: PackagePath,
+    },
     /// Data at `at` names what the mode or its packages do not have.
     #[error("{at}")]
     Unknown {
-        package: u16,
+        package: PackageIndex,
         at: BookPlace,
         #[source]
         name: UnknownName,
@@ -83,12 +98,20 @@ pub enum BookError {
 
 impl BookError {
     /// The error of `name`, which data at `at` of the package at `package` gives.
-    pub(crate) const fn unknown(package: u16, at: BookPlace, name: UnknownName) -> BookError {
+    pub(crate) const fn unknown(
+        package: PackageIndex,
+        at: BookPlace,
+        name: UnknownName,
+    ) -> BookError {
         BookError::Unknown { package, at, name }
     }
 
     /// The error of `error`, which the data of `action` of the package at `package` gives.
-    pub(crate) fn of_action(package: u16, action: &DeclaredName, error: ActionError) -> BookError {
+    pub(crate) fn of_action(
+        package: PackageIndex,
+        action: &DeclaredName,
+        error: ActionError,
+    ) -> BookError {
         match error {
             ActionError::Problem(problem) => BookError::Action {
                 package,

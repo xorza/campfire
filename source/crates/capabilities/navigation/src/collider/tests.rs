@@ -1,6 +1,7 @@
 use std::array;
 
 use bevy_ecs::world::World;
+use campfire_geometry::Radius;
 use campfire_sim::IdAllocator;
 
 use super::*;
@@ -16,7 +17,7 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
             id: ids.allocate(),
             entity: world.spawn_empty().id(),
             point: Vec3::new(x, Num::int(2), z),
-            shape: Shape::Circle(Num::ONE),
+            shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
             layer: Layer::FIRST,
             movable,
             walking: movable,
@@ -173,7 +174,7 @@ fn parted_bodies_lie_the_sum_of_their_radii_apart_rounded_up_to_a_bit() {
             ),
         ]);
         for (collider, radius) in pair.iter_mut().zip(radii) {
-            collider.shape = Shape::Circle(Num::int(radius));
+            collider.shape = Shape::Circle(Radius::new(Num::int(radius)).unwrap());
         }
         let before: [[i64; 2]; 2] =
             array::from_fn(|i| [pair[i].point.x, pair[i].point.z].map(Num::to_bits));

@@ -99,7 +99,7 @@ impl Install {
         let mut archives = Vec::new();
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
-            let mut file = InputFile::ranges(&path).map_err(ZeroHourError::Read)?;
+            let mut file = InputFile::ranges(&path)?;
             let big = BigArchive::read(&mut file, &path)?;
             for entry in big.entries {
                 if let Entry::Vacant(vacant) = files.entry(ArchivePath::of(&entry.path)) {
@@ -241,7 +241,7 @@ impl Install {
                 while at < file.len() {
                     let len = (file.len() - at).min(HASH_CHUNK);
                     let chunk = usize::try_from(len).expect("a chunk fits usize");
-                    let bytes = file.read_at(at, chunk).map_err(ZeroHourError::Read)?;
+                    let bytes = file.read_at(at, chunk)?;
                     hasher.update(bytes);
                     at += len;
                 }
@@ -257,7 +257,7 @@ impl Install {
     /// name ends in `.big`, ignoring case, as the game's search finds them. A name that is not
     /// UTF-8 sorts by its lossy text, and opens by its own.
     fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ZeroHourError> {
-        for entry in DirEntries::read(dir).map_err(ZeroHourError::Read)? {
+        for entry in DirEntries::read(dir)? {
             let name = format!("{at}{}", entry.name.to_string_lossy());
             let path = dir.join(&entry.name);
             let big = Path::new(&entry.name)
@@ -277,7 +277,7 @@ impl Archive {
     /// Its file, open to read ranges of; `ArchiveChanged` when its stamp is not the one its
     /// entries were read with.
     fn open(&self) -> Result<InputRanges, ZeroHourError> {
-        let file = InputFile::ranges(&self.path).map_err(ZeroHourError::Read)?;
+        let file = InputFile::ranges(&self.path)?;
         if file.stamp() == self.stamp {
             Ok(file)
         } else {

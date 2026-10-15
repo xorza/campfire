@@ -30,7 +30,7 @@ pub(crate) struct Pointer<'w, 's> {
     own: OwnPlayer<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
-    data: Option<Res<'w, ClientData>>,
+    data: Res<'w, ClientData>,
     hovers: Option<Res<'w, HoverMap>>,
     nodes: Query<'w, 's, (), With<Node>>,
 }
@@ -79,7 +79,7 @@ impl Pointer<'_, '_> {
     pub(crate) fn ground(&self) -> Option<Vec3> {
         let (camera, place) = *self.camera;
         let ray = camera.viewport_to_world(place, self.cursor()?).ok()?;
-        match self.data.as_deref().and_then(|data| data.heights.as_ref()) {
+        match self.data.heights.as_ref() {
             Some(heights) => heights.hit(ray.origin, *ray.direction),
             None => ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)),
         }

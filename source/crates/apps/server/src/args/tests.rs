@@ -9,7 +9,7 @@ use super::*;
 
 fn read(args: &[&str]) -> Result<Args, clap::Error> {
     CommandLine::try_parse_from(["campfire-server"].iter().chain(args).map(OsString::from))
-        .map(Args::of)
+        .map(Args::from)
 }
 
 #[test]

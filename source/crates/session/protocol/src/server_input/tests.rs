@@ -12,13 +12,7 @@ fn delegation(main: u8, byte: u8) -> Delegation {
         seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
-    Delegation::sign(
-        &Secp256k1::new(),
-        &TestKey::of(main),
-        &terms,
-        TestKey::NOW,
-        &[0; 32],
-    )
+    Delegation::sign(&TestKey::signer(TestKey::of(main)), &terms, TestKey::NOW)
 }
 
 #[test]
@@ -58,8 +52,6 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
             }
         );
     }
-
-    let secp = Secp256k1::new();
     let server = TestKey::of(41);
     let id = SessionId::new([8; 32]);
     let place = InputPlace {
@@ -67,28 +59,27 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
         index: 1,
     };
     let input = &inputs[0];
-    let signature = input.sign(&secp, &server, id, place, &[0; 32]);
+    let signature = input.sign(&TestKey::signer(server), id, place);
     let key = server.x_only_public_key().0;
-    assert!(input.signed_by(&secp, &key, id, place, &signature, &mut Vec::new()));
+    assert!(input.signed_by(&mut Verifier::new(), &key, id, place, &signature));
     // At another tick or index, in another session, under another key, or over another input.
     let other_tick = InputPlace {
         tick: Tick::new(8),
         ..place
     };
     let other_index = InputPlace { index: 0, ..place };
-    assert!(!input.signed_by(&secp, &key, id, other_tick, &signature, &mut Vec::new()));
-    assert!(!input.signed_by(&secp, &key, id, other_index, &signature, &mut Vec::new()));
+    assert!(!input.signed_by(&mut Verifier::new(), &key, id, other_tick, &signature));
+    assert!(!input.signed_by(&mut Verifier::new(), &key, id, other_index, &signature));
     assert!(!input.signed_by(
-        &secp,
+        &mut Verifier::new(),
         &key,
         SessionId::new([9; 32]),
         place,
-        &signature,
-        &mut Vec::new()
+        &signature
     ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!input.signed_by(&secp, &stranger, id, place, &signature, &mut Vec::new()));
-    assert!(!inputs[4].signed_by(&secp, &key, id, place, &signature, &mut Vec::new()));
+    assert!(!input.signed_by(&mut Verifier::new(), &stranger, id, place, &signature));
+    assert!(!inputs[4].signed_by(&mut Verifier::new(), &key, id, place, &signature));
 
     // A delegation that does not parse, and bytes that do not decode.
     let bytes = Binary::encode(&Wire::Join {

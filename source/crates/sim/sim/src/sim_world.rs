@@ -149,8 +149,8 @@ pub(crate) mod internals {
         /// The name of each state type the match registers, in their order.
         fn state_names(&self) -> Vec<&'static str>;
 
-        /// Puts a drawn value of the state type `name` in place of one holder's; false when
-        /// nothing holds one, or no draw decodes.
+        /// Puts a drawn value of the state type `name` in place of one holder's, or where none
+        /// is; false when no draw decodes.
         fn scramble_state(&mut self, name: &str, draws: &mut Draws) -> bool;
 
         /// Changes where the state type `name` sits, as `mutation` says; false when the type has
@@ -229,9 +229,12 @@ pub(crate) mod internals {
         }
 
         fn scramble_state(&mut self, name: &str, draws: &mut Draws) -> bool {
-            self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+            self.insert_resource(Restoring);
+            let scrambled = self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
                 registry.scramble(world, name, draws)
-            })
+            });
+            self.remove_resource::<Restoring>();
+            scrambled
         }
 
         fn mutate_state(&mut self, name: &str, draws: &mut Draws, mutation: Mutation) -> bool {

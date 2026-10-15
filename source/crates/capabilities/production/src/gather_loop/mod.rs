@@ -4,8 +4,9 @@ use bevy_ecs::query::{Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionBook, ActionSlots, KindSpec};
+use campfire_declare::RoleForm;
 use campfire_navigation::Navigation;
-use campfire_players::PlayersWorldCrate;
+use campfire_players::PlayersWorld;
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
 use campfire_values::{Team, UnitTags};
@@ -92,7 +93,7 @@ impl GatherLoop {
     /// First each node whose holder no longer gathers it, as its loop ended or it died, frees. A
     /// node frees to its first waiting worker, by the tick it began to wait, then by stable id,
     /// whose gather's time runs from this tick.
-    pub(crate) fn run(
+    pub(crate) fn run<F: RoleForm>(
         world: &mut World,
         (workers, nodes): (&mut Gatherers, &mut QueryState<(Entity, &StableId, &Node)>),
         view: &mut SystemState<GatherView<'_, '_>>,
@@ -117,7 +118,7 @@ impl GatherLoop {
                 break;
             };
             for taken in 1..=GatherLoop::STEPS {
-                GatherLoop::apply(world, workers, entity, step);
+                GatherLoop::apply::<F>(world, workers, entity, step);
                 if !step.goes_on() || taken == GatherLoop::STEPS {
                     break;
                 }
@@ -199,7 +200,7 @@ impl GatherLoop {
     }
 
     /// Does `step` for the worker of `entity`.
-    fn apply(world: &mut World, workers: &mut Gatherers, entity: Entity, step: Step) {
+    fn apply<F: RoleForm>(world: &mut World, workers: &mut Gatherers, entity: Entity, step: Step) {
         let now = world.resource::<SimTick>().start();
         let Some(order) = world
             .get::<Gatherer>(entity)
@@ -252,7 +253,7 @@ impl GatherLoop {
                     drop_off: Some(drop_off),
                 }),
             ),
-            Step::Deliver(back) => GatherLoop::deliver(world, entity, order, back),
+            Step::Deliver(back) => GatherLoop::deliver::<F>(world, entity, order, back),
         }
     }
 
@@ -303,11 +304,17 @@ impl GatherLoop {
     }
 
     /// Joins the load of the worker of `entity`, which its player's resources take, to them, and
-    /// sends it `back` to a node, or ends its loop with none.
-    fn deliver(world: &mut World, entity: Entity, order: GatherOrder, back: Option<NodeAt>) {
+    /// sends it `back` to a node, or ends its loop with none. A predicting client's form `F` joins
+    /// nothing to the resources, which are the server's, and drops the load as the server does.
+    fn deliver<F: RoleForm>(
+        world: &mut World,
+        entity: Entity,
+        order: GatherOrder,
+        back: Option<NodeAt>,
+    ) {
         Navigation::go_to(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
-        if let Some(load) = gatherer.load() {
+        if let Some(load) = gatherer.load().filter(|_| !F::PREDICTS) {
             let owner = *world
                 .get::<Owner>(entity)
                 .expect("a load joins its owner's");
@@ -346,27 +353,16 @@ impl GatherLoop {
         mut workers: Query<
             '_,
             '_,
-            (Entity, &Gatherer, Option<&mut StatusTags>),
+            (&Gatherer, &mut StatusTags),
             Or<(Changed<Gatherer>, Changed<StatusTags>)>,
         >,
-        mut commands: Commands<'_, '_>,
     ) {
-        for (entity, gatherer, status) in &mut workers {
+        for (gatherer, mut status) in &mut workers {
             let looping = gatherer
                 .order()
                 .is_some_and(|order| order.step != GatherStep::Ordered);
-            match status {
-                Some(mut status) => {
-                    let wanted = status.turned(Production::GATHERING, looping);
-                    status.set_if_neq(wanted);
-                }
-                None if looping => {
-                    commands
-                        .entity(entity)
-                        .insert(StatusTags::from([Production::GATHERING]));
-                }
-                None => {}
-            }
+            let wanted = status.turned(Production::GATHERING, looping);
+            status.set_if_neq(wanted);
         }
     }
 }

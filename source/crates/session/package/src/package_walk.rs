@@ -9,8 +9,8 @@ use crate::file_index::{FileIndex, FileRow};
 
 /// One walk over a package's files, as a package is packed: each file's size and SHA-256, hashed
 /// as it streams past and not kept, into the package's index.
-#[derive(Debug)]
-pub(crate) struct PackageWalk {
+#[derive(Debug, Default)]
+pub struct PackageWalk {
     rows: BTreeMap<PackagePath, FileRow>,
     /// The buffer a file passes through, made at its first use.
     stream: Vec<u8>,
@@ -20,7 +20,7 @@ pub(crate) struct PackageWalk {
 const STREAM_CHUNK: usize = 64 * 1024;
 
 impl PackageWalk {
-    pub(crate) const fn new() -> PackageWalk {
+    pub const fn new() -> PackageWalk {
         PackageWalk {
             rows: BTreeMap::new(),
             stream: Vec::new(),
@@ -28,11 +28,7 @@ impl PackageWalk {
     }
 
     /// Takes the file at `path` whose bytes `file` gives, to its end.
-    pub(crate) fn add(
-        &mut self,
-        path: PackagePath,
-        mut file: impl Read,
-    ) -> Result<(), ContentError> {
+    pub fn add(&mut self, path: PackagePath, mut file: impl Read) -> Result<(), ContentError> {
         self.stream.resize(STREAM_CHUNK, 0);
         let mut hasher = Sha256::new();
         let mut size = 0_u64;
@@ -57,7 +53,7 @@ impl PackageWalk {
     }
 
     /// The index of every file taken.
-    pub(crate) fn finish(self) -> Result<FileIndex, ContentError> {
+    pub fn finish(self) -> Result<FileIndex, ContentError> {
         FileIndex::new(self.rows)
     }
 }

@@ -46,11 +46,16 @@ impl<'a> MatchUnits<'a> {
             .map(|(id, _)| id)
     }
 
-    pub fn position(self, id: StableId) -> Position {
+    /// The unit `id`, which the match holds.
+    pub fn unit(self, id: StableId) -> EntityRef<'a> {
         let entity = self.world.entity_of(id).expect("a unit of the match");
+        self.world.entity(entity)
+    }
+
+    pub fn position(self, id: StableId) -> Position {
         *self
-            .world
-            .get::<Position>(entity)
+            .unit(id)
+            .get::<Position>()
             .expect("a unit stands somewhere")
     }
 
@@ -65,8 +70,7 @@ impl<'a> MatchUnits<'a> {
 
     /// The first shop unit of `unit`'s team, by stable id.
     pub fn shop_of(self, unit: StableId) -> StableId {
-        let entity = self.world.entity_of(unit).expect("a unit of the match");
-        let team = self.world.get::<Team>(entity).expect("a unit of a team");
+        let team = self.unit(unit).get::<Team>().expect("a unit of a team");
         let shops = self.world.resource::<ByType<Shop>>();
         self.all()
             .find(|(_, other)| {

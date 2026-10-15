@@ -7,9 +7,9 @@ use campfire_sim::StableId;
 use rhai::{Dynamic, NativeCallContext};
 
 use crate::script_host::ScriptHost;
-use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
+use crate::scripts::frame::effects::Effect;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::view::View;
@@ -85,7 +85,7 @@ impl Ctx {
 
     /// Queues `effect`; a pure hook's call fails.
     pub fn queue<E: Effect>(&self, effect: E) -> Checked<()> {
-        self.write()?.effects.push(effect);
+        self.write()?.queue(effect);
         Ok(())
     }
 

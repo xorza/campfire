@@ -1,10 +1,15 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::observer::On;
+use bevy_ecs::query::Allow;
+use bevy_ecs::system::Query;
 use bevy_ecs::world::{DeferredWorld, World};
-use campfire_sim::{Restoring, SimComponent};
+use campfire_sim::{Restoring, SimComponent, Unpredicted};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::UnitEntity;
+use campfire_units::{LevelRaised, UnitEntity};
 use campfire_values::UnitType;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -18,19 +23,32 @@ use crate::unit_stats::UnitStats;
 #[component(on_add = Level::give_stats)]
 #[require(UnitStats)]
 #[serde(transparent)]
-pub struct Level(u32);
+pub struct Level(NonZeroU32);
 
 impl Level {
     /// `None` for 0.
     pub const fn new(level: u32) -> Option<Level> {
-        if level == 0 {
-            return None;
+        match NonZeroU32::new(level) {
+            Some(level) => Some(Level(level)),
+            None => None,
         }
-        Some(Level(level))
     }
 
     pub const fn get(self) -> u32 {
-        self.0
+        self.0.get()
+    }
+
+    /// The observer that sets a unit's level as progression raises it.
+    pub(crate) fn raise(
+        raised: On<'_, '_, LevelRaised>,
+        mut levels: Query<'_, '_, &mut Level, Allow<Unpredicted>>,
+    ) {
+        let mut level = levels
+            .get_mut(raised.entity)
+            .expect("a unit whose level rises has one");
+        let to = Level(raised.level);
+        debug_assert!(to > *level, "a level only rises");
+        *level = to;
     }
 
     /// The hook that gives a unit its stats as its first refresh derives them, of its type at its
@@ -51,7 +69,7 @@ impl Level {
         let level = world
             .get::<Level>(entity)
             .expect("the hook's own component")
-            .0;
+            .get();
         let stats = UnitStats::new(book.base_values(unit_type, level));
         *world
             .get_mut::<UnitStats>(entity)
@@ -61,7 +79,13 @@ impl Level {
 
 impl Default for Level {
     fn default() -> Level {
-        Level(1)
+        Level(NonZeroU32::MIN)
+    }
+}
+
+impl From<Level> for NonZeroU32 {
+    fn from(level: Level) -> NonZeroU32 {
+        level.0
     }
 }
 

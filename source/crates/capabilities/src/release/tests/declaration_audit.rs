@@ -8,6 +8,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
@@ -15,7 +16,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Phase, Report, Scratch, SetPlace,
+    ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -24,8 +25,8 @@ use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColu
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
-use campfire_values::{EngineTag, TagProperties};
-use campfire_vision::VisionColumn;
+use campfire_values::{EngineTag, NameId, TagProperties};
+use campfire_vision::{SeenBy, VisionColumn};
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
@@ -92,6 +93,8 @@ struct DeclarationAudit {
     /// The capability of the module whose declarations it visits.
     capability: Option<Capability>,
     kinds: Vec<TypeId>,
+    /// Each kind's parts of its states, by the kind.
+    kind_states: Vec<(Named, Named)>,
     states: Vec<State>,
     resources: Vec<&'static str>,
     requires: Vec<(Named, Named)>,
@@ -162,6 +165,18 @@ impl DeclarationAudit {
             self.call_parts.iter().map(|ty| ty.name).collect(),
         );
         once("part", self.parts.iter().map(|(.., ty)| ty.name).collect());
+        // A state part sits on a declared kind, and never comes with the spawn as well.
+        for (kind, state) in &self.kind_states {
+            if !self.kinds.contains(&kind.id) {
+                problems.push(format!(
+                    "{} is a state of {}, no kind",
+                    state.name, kind.name
+                ));
+            }
+            if self.parts.iter().any(|(.., part)| part.id == state.id) {
+                problems.push(format!("{} is a state and a part of a spawn", state.name));
+            }
+        }
         let kinds_declared = |kinds: &[TypeId]| kinds.iter().all(|kind| self.kinds.contains(kind));
         for state in &self.states {
             let hosted = self.hosts.iter().find(|(ty, _)| ty.id == state.ty.id);
@@ -319,6 +334,10 @@ impl KindVisitor for DeclarationAudit {
     fn kind<K: EntityKind>(&mut self) {
         self.kinds.push(TypeId::of::<K>());
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {
+        self.kind_states.push((Named::of::<K>(), Named::of::<S>()));
+    }
 }
 
 impl Declarations for DeclarationAudit {
@@ -420,6 +439,10 @@ impl Declarations for DeclarationAudit {
     fn server_part<H: Component, C: Component + Default>(&mut self) {
         self.server_parts.push((Named::of::<H>(), Named::of::<C>()));
     }
+
+    fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
+
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
 }
 
 #[test]
@@ -428,11 +451,12 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 27 of a unit, vision's `SeenBy` and items'
-    // `UseGroup` among them, and the 45 books, 14 of the core's, interaction's two among them.
+    // player, the mode's three of the match, the 28 of a unit, items' `UseGroup`, orders'
+    // `NextThink` and the units' `StatusTags` among them, and
+    // the 46 books, 14 of the core's, interaction's two among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 32);
-    assert_eq!(audit.books.len(), 45);
+    assert_eq!(audit.parts.len(), 33);
+    assert_eq!(audit.books.len(), 46);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -443,6 +467,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
             "Units::refill_view",
+            "Level::raise",
             "UnitTracker<StaticBodies>::aged",
             "StaticBodies::part_removed",
             "StaticBodies::state_inserted",
@@ -465,7 +490,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         .collect();
     assert_eq!(
         server,
-        [(type_name::<Player>(), type_name::<PlayerSupply>())]
+        [
+            (type_name::<UnitEntity>(), type_name::<SeenBy>()),
+            (type_name::<Player>(), type_name::<PlayerSupply>()),
+        ]
     );
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();

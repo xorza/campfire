@@ -12,7 +12,7 @@ use campfire_stats::{PoolData, StatRule};
 use campfire_units::TagData;
 use campfire_values::{DeclaredName, MessageId, Scalar, Stat};
 use campfire_visibility::ModeVisibility;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::choice_data::ChoiceData;
 use crate::players_data::PlayersData;
@@ -104,7 +104,7 @@ pub enum InputType {
 
 /// A mode param: a value, a list, or a text, as `ctx.p` reads it in the mode's and the AI's
 /// scripts, and as a marker's params hold it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ModeParam {
     Value(Scalar),
@@ -134,7 +134,7 @@ impl ModeParam {
 }
 
 /// An entry of a list param: a value, or a string that is not a decimal, such as a unit type.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ListEntry {
     Value(Scalar),

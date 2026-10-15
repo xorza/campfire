@@ -12,6 +12,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
+mod error;
 mod inventory;
 mod inventory_data;
 mod item_book;
@@ -25,6 +26,7 @@ mod shop_data;
 mod shopping;
 mod trade_orders;
 
+pub use crate::error::ItemError;
 pub use crate::inventory::{CarrierSlots, Inventory, ItemStack, Purchase};
 pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};
@@ -94,19 +96,15 @@ impl Module for Items {
 
     /// Adds items to a match, on stats: an empty item book until the mode's books fill it, the
     /// inventories its units carry, as state, and the modifiers their items hold, as each tick
-    /// starts once the trades are in, and in Resolve once a use may have spent an item. With the
-    /// core's scripts, as on the server, the tick's orders trade in Inputs; a client predicts no
-    /// trade.
+    /// starts once the trades are in, and in Resolve once a use may have spent an item. On the
+    /// server, the tick's orders trade in Inputs, as a trade pays and refunds the server's
+    /// resources; a client predicts no trade.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
+        cx.systems((
             ItemHolds::want_items.in_set(ItemsSet::HoldAtInputs),
             ItemHolds::want_items.in_set(ItemsSet::Want),
         ));
-        if scripts {
-            schedule.add_systems(TradeOrders::trade_items.in_set(ItemsSet::Commands));
-        }
+        cx.server(TradeOrders::trade_items.in_set(ItemsSet::Commands));
     }
 }
 

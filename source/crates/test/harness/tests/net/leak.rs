@@ -18,7 +18,7 @@ use campfire_common::PlayerSlot;
 use campfire_harness::{End, InProcessMatch, MatchSetup};
 use campfire_net::{JoinState, OrderScript, TickHashes, WatchRequest};
 use campfire_package::ModePackages;
-use campfire_package::internals::Edit;
+use campfire_package_disk::internals::Edit;
 use campfire_players::{HeldOut, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
@@ -68,14 +68,14 @@ impl Role {
         let Some(seen) = seen.and_then(|seen| seen.get()) else {
             return true;
         };
-        let any = seen.teams().next().is_some();
+        let any = seen.iter().next().is_some();
         match self {
             Role::Player { team, out, .. } => {
                 seen.contains(team)
                     || (out && (visibility.spectators() == SpectatorFog::All || any))
             }
             Role::Spectator { teams: None } => true,
-            Role::Spectator { teams: Some(teams) } => seen.teams().any(|team| teams.contains(team)),
+            Role::Spectator { teams: Some(teams) } => seen.iter().any(|team| teams.contains(team)),
         }
     }
 

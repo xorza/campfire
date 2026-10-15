@@ -36,7 +36,7 @@ impl Faults {
         let mut exit = None;
         for fault in faults.pending.drain(..) {
             fault.log();
-            match fault.source().policy() {
+            match fault.policy() {
                 FaultPolicy::EndServer => {
                     exit = Some(AppExit::from_code(ExitStatus::Storage.code()));
                 }

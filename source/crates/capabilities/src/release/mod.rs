@@ -7,8 +7,8 @@ use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_declare::{
-    Book, CapabilityError, CapabilitySet, Declarations, InstallCx, KindVisitor, MatchFacts,
-    ModuleVisitor, Phase, Role,
+    Book, CapabilityError, CapabilitySet, Declarations, KindVisitor, MatchFacts, ModuleVisitor,
+    Phase, Role,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
@@ -24,8 +24,8 @@ use campfire_script::{ApiBuilder, ScriptApi, ScriptBudgets, ScriptHost};
 use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
-use campfire_units::{Predicting, UnitTypeBook, Units};
-use campfire_values::EngineTag;
+use campfire_units::{UnitTypeBook, Units};
+use campfire_values::{EngineTag, NameId};
 use campfire_vision::Vision;
 
 use crate::release::api_binder::ApiBinder;
@@ -101,7 +101,7 @@ impl Release {
     }
 
     /// The set of a mode's `declared` capabilities; an error when one is `mode`, one is declared
-    /// twice, or one lacks a capability it builds on.
+    /// twice, one is of no module this release builds, or one lacks a capability it builds on.
     pub fn capability_set(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
         let mut set = CapabilitySet::CORE;
         for &capability in declared {
@@ -115,11 +115,10 @@ impl Release {
         }
         let rows = Release::rows();
         for capability in set.iter() {
-            if let Some(&needs) = rows
+            let needs = rows
                 .needs(capability)
-                .iter()
-                .find(|&&needs| !set.contains(needs))
-            {
+                .ok_or(CapabilityError::NotBuilt(capability))?;
+            if let Some(&needs) = needs.iter().find(|&&needs| !set.contains(needs)) {
                 return Err(CapabilityError::Needs { capability, needs });
             }
         }
@@ -192,7 +191,6 @@ impl Release {
         let role = spec.role;
         if matches!(role, Role::Client) {
             Unpredicted::register(world);
-            world.insert_resource(Predicting);
         }
         let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
         #[cfg(feature = "internals")]
@@ -220,8 +218,9 @@ impl Release {
             role: &role,
             called: Release::called(set),
         };
-        let mut cx = InstallCx::new(world, schedule, facts);
-        Release::modules(&mut Installing::new(&mut cx, registry));
+        Release::modules(&mut Installing::new(
+            world, schedule, registry, &role, &facts,
+        ));
         UnitTypeBook::new(Release::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
@@ -250,8 +249,7 @@ impl Release {
             role: &role,
             called: Release::called(set),
         };
-        let mut cx = InstallCx::new(world, schedule, facts);
-        Installing::new(&mut cx, registry).install::<Mode>();
+        Installing::new(world, schedule, registry, &role, &facts).install::<Mode>();
         Mode::load(world, setup, load);
         sim.build();
     }

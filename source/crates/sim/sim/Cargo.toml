@@ -7,8 +7,10 @@ autotests = false
 
 [features]
 internals = [
+    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-math/internals",
+    "campfire-schedule/internals",
     "dep:criterion",
 ]
 

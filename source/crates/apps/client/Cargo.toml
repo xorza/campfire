@@ -8,6 +8,7 @@ license.workspace = true
 campfire-actions.workspace = true
 campfire-areas.workspace = true
 campfire-capabilities.workspace = true
+campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-items.workspace = true
@@ -17,6 +18,7 @@ campfire-mode.workspace = true
 campfire-net.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
+campfire-package-disk.workspace = true
 campfire-players.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
@@ -39,6 +41,7 @@ tracing.workspace = true
 [dev-dependencies]
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-package = { workspace = true, features = ["internals"] }
+campfire-package-disk = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

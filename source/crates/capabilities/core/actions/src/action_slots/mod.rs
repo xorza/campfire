@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_declare::PerType;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -359,12 +359,11 @@ impl ActionSlots {
         }
         let ticks = |to: Tick| {
             let held = to.since(since).expect("a charge ends after it starts");
-            Num::from_int(i64::try_from(held.get()).expect("a charge's ticks fit i64"))
-                .expect("a charge's ticks fit a number")
+            i64::try_from(held.get()).expect("a span of ticks within the tick limit fits i64")
         };
-        let charge = ticks(now.min(full))
-            .checked_div(ticks(full))
-            .expect("a charge's most is a tick at least");
+        let charge = Num::ONE
+            .checked_mul_ratio(ticks(now.min(full)), ticks(full), Rounding::NearestEven)
+            .expect("a charge's most is a tick at least, and its share at most 1");
         self.underway = Some(InProgress::Order {
             aim,
             phase: OrderPhase::Started(Started {

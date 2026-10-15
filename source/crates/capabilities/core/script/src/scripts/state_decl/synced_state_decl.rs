@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer};
 
-use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
+use crate::scripts::state_decl::{StateDecl, StateDefault};
+use crate::scripts::state_type::StateType;
 
 /// A declared field of the mode's or a unit type's script state: its type, its first value, and
 /// the clients it is sent to.
@@ -22,6 +23,9 @@ pub enum SyncTo {
 }
 
 impl SyncTo {
+    /// Every class, in the order of their places.
+    pub const ALL: [SyncTo; 4] = [SyncTo::None, SyncTo::Owner, SyncTo::Team, SyncTo::All];
+
     /// Its place among the classes: none, owner, team, all.
     pub const fn index(self) -> usize {
         match self {

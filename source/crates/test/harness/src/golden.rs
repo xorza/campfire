@@ -7,14 +7,14 @@ use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_players::PlayerResources;
+use campfire_players::PlayersWorld;
 use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 use campfire_stats::{PoolId, PoolMeters};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use campfire_units::{Dead, Owner};
-use campfire_values::{DeclaredName, Names, ResourceId, Team};
+use campfire_values::{DeclaredName, NameId, Names, ResourceId, Team};
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout
@@ -119,7 +119,7 @@ impl Golden {
             }
         }
         for slot in (0..self.players).map(PlayerSlot::new) {
-            let Some(amounts) = PlayerResources::of_player(game, slot) else {
+            let Some(amounts) = game.player_resources(slot) else {
                 continue;
             };
             for &resource in &self.resources {

@@ -92,7 +92,7 @@ impl<I: NameId> Names<I> {
     pub fn first_of<K: NameKey<I::Scope>>(keys: impl IntoIterator<Item = K>) -> Names<I> {
         let mut names = Names::default();
         for key in keys {
-            let _refused = names.try_add(key);
+            names.try_add(key).ok();
         }
         names
     }

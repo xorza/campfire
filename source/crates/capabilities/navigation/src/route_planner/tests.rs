@@ -2,7 +2,7 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 
 use campfire_common::{SegmentSeed, Tick};
-use campfire_geometry::{Bounds, Shape};
+use campfire_geometry::{Bounds, Radius, Shape};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_sim::IdAllocator;
 use campfire_units::Layer;
@@ -54,7 +54,7 @@ fn walled(rows: &[&str]) -> Walled {
                 posts.push(IndexedBody {
                     id: ids.allocate(),
                     pos: quarters(center(column), center(row)),
-                    shape: Shape::Circle(quarter),
+                    shape: Shape::Circle(Radius::new(quarter).unwrap()),
                     layer: Layer::FIRST,
                 });
             }
@@ -295,7 +295,9 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
             IndexedBody {
                 id: ids.allocate(),
                 pos: quarters(x, z),
-                shape: Shape::Circle(Num::from_bits(radius << (Num::FRAC_BITS - 2))),
+                shape: Shape::Circle(
+                    Radius::new(Num::from_bits(radius << (Num::FRAC_BITS - 2))).unwrap(),
+                ),
                 layer: Layer::FIRST,
             }
         });

@@ -7,6 +7,7 @@ license.workspace = true
 [features]
 internals = [
     "campfire-actions/internals",
+    "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",

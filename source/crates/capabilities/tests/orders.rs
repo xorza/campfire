@@ -23,17 +23,14 @@ use campfire_orders::*;
 use campfire_players::{OutOfPlay, Players, PlayersWorld};
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, CallError, Filter, Hook, ScriptBudgets, ScriptError, ScriptFailures, ScriptLimits,
-    TagNames,
+    ApiError, CallError, CapabilityRefusal, Filter, Hook, ScriptBudgets, ScriptError,
+    ScriptFailures, ScriptLimits, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
 use campfire_stats::{Life, Stats};
-use campfire_units::{
-    BodyForm, Dead, DeliveryEntity, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units,
-};
-use campfire_values::{PackagePath, Rank, Scalar};
-use campfire_values::{PathId, Team, TeamSet, UnitType};
+use campfire_units::{BodyForm, Dead, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units};
+use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
 use campfire_vision::{SeenBy, Vision};
 
@@ -839,7 +836,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     );
     assert!(matches!(
         failures[0].error,
-        CallError::Api(ApiError::OtherUnit)
+        CallError::Api(api) if api == OrdersRefusal::OtherUnit.refused()
     ));
     assert_eq!(game.part::<ActionSlots>(ally).attack_target(), Some(enemy));
 
@@ -885,9 +882,12 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert_eq!(game.part::<ActionSlots>(friendly).attack_target(), None);
     // A reset of another unit fails as the unit's own does not: of a delivery, which holds no
     // spawn place, as of any.
-    let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), DeliveryEntity);
+    let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), ());
     let reset = Units::read(&mut game, "ctx.order_reset(of)", delivery).unwrap_err();
-    assert_eq!(reset.kind(), FailureKind::Api(ApiError::OtherUnit));
+    assert_eq!(
+        reset.kind(),
+        FailureKind::Api(OrdersRefusal::OtherUnit.refused())
+    );
 }
 
 #[test]
@@ -920,8 +920,8 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     // other waits; none is lost.
     let next = |game: &Match, id| {
         game.try_part::<NextThink>(id)
-            .copied()
-            .map(|next| next.get().get())
+            .and_then(|next| next.get())
+            .map(Tick::get)
     };
     let mut seen = Vec::new();
     for _ in 0..3 {

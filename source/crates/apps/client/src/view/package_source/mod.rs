@@ -15,7 +15,7 @@ use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
-use campfire_values::PackagePath;
+use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;
 
 /// The mode's packages as a Bevy asset source: a path is a package's place among them, the
@@ -73,7 +73,8 @@ impl PackageSource {
     }
 
     /// The asset path of the file at `path` in the package at `place`.
-    pub(crate) fn asset_path(place: u16, path: &PackagePath) -> String {
+    pub(crate) fn asset_path(place: PackageIndex, path: &PackagePath) -> String {
+        let place = place.get();
         format!("{}://{place}/{}", PackageSource::NAME, path.as_str())
     }
 
@@ -178,7 +179,8 @@ impl fmt::Debug for HeldReader {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_package::{PackageDir, PackageFiles, PackageReader, PackageWriter};
+    use campfire_package::PackageReader;
+    use campfire_package_disk::{PackageDir, PackageWriter};
     use campfire_store::internals::Scratch;
     use campfire_values::PackagePath;
 
@@ -191,7 +193,8 @@ pub(crate) mod internals {
                 .unwrap();
         }
         writer.finish().unwrap();
-        PackageFiles::read(&PackageDir::new(scratch.path(dir)))
+        PackageDir::new(scratch.path(dir))
+            .files()
             .unwrap()
             .reader()
             .clone()

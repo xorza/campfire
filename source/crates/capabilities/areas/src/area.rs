@@ -59,8 +59,7 @@ impl SimComponent for Area {
             .and_then(|&unit_type| specs.get(unit_type));
         let by = world
             .resource::<ActionBook>()
-            .get(self.by.action)
-            .is_some_and(|action| action.has_rank(self.by.rank));
+            .ranked(self.by.action, self.by.rank);
         let Delivering {
             action,
             rank,

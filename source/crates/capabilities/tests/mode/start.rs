@@ -1,7 +1,8 @@
-use campfire_units::{MapBook, UnitsWorld};
+use campfire_units::MapBook;
 use campfire_vision::VisionBook;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
@@ -247,7 +248,7 @@ fn on_input(ctx, player, name, value) {
         assert_eq!(crates(&game), [ground(0, 2)], "{value}");
         assert_eq!(
             Mode::failures(&game).last(),
-            Some(&FailureKind::Api(ApiError::NoRoom)),
+            Some(&FailureKind::Api(ModeRefusal::NoRoom.refused())),
             "{value}"
         );
     }

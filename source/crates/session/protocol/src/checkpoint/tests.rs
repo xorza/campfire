@@ -8,6 +8,7 @@ use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
+use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
@@ -19,13 +20,7 @@ fn delegation() -> Delegation {
         seed_contribution: SeedContribution::new([6; 32]),
         expiration: 1_700_086_400,
     };
-    Delegation::sign(
-        &Secp256k1::new(),
-        &TestKey::of(11),
-        &terms,
-        TestKey::NOW,
-        &[0; 32],
-    )
+    Delegation::sign(&TestKey::signer(TestKey::of(11)), &terms, TestKey::NOW)
 }
 
 /// A record whose carry holds a slot of each controller, and an input still due.
@@ -43,7 +38,7 @@ fn record() -> Checkpoint {
         chain,
     };
     let reserved = CarriedSlot {
-        leaver: Some([12; 32]),
+        leaver: Some(MainKey::new([12; 32])),
         ..slot(CarriedControl::Reserved)
     };
     Checkpoint {
@@ -82,21 +77,18 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
             rest: &[9][..],
         }
     );
-
-    let secp = Secp256k1::new();
     let id = SessionId::new([8; 32]);
-    let signature = record.sign(&secp, &TestKey::of(41), id, &[0; 32]);
+    let signature = record.sign(&TestKey::signer(TestKey::of(41)), id);
     let key = TestKey::of(41).x_only_public_key().0;
-    assert!(record.signed_by(&secp, &key, id, &signature, &mut Vec::new()));
+    assert!(record.signed_by(&mut Verifier::new(), &key, id, &signature));
     assert!(!record.signed_by(
-        &secp,
+        &mut Verifier::new(),
         &key,
         SessionId::new([9; 32]),
-        &signature,
-        &mut Vec::new()
+        &signature
     ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!record.signed_by(&secp, &stranger, id, &signature, &mut Vec::new()));
+    assert!(!record.signed_by(&mut Verifier::new(), &stranger, id, &signature));
     // A change to any field, the carry's included.
     let changes: [fn(&mut Checkpoint); 5] = [
         |record| record.segment = 2,
@@ -109,7 +101,7 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
         let mut other = record.clone();
         change(&mut other);
         assert!(
-            !other.signed_by(&secp, &key, id, &signature, &mut Vec::new()),
+            !other.signed_by(&mut Verifier::new(), &key, id, &signature),
             "change {at}"
         );
     }

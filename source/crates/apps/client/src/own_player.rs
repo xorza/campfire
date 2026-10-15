@@ -43,7 +43,7 @@ impl OwnPlayer<'_, '_> {
         if team.is_some() || !watching {
             return team;
         }
-        let mut chosen = chosen.into_iter().flat_map(TeamSet::teams);
+        let mut chosen = chosen.into_iter().flat_map(TeamSet::iter);
         match (chosen.next(), chosen.next()) {
             (Some(alone), None) => Some(alone),
             _ => Some(Team::new(0)),

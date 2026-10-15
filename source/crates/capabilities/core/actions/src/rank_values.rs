@@ -7,7 +7,6 @@ use campfire_stats::PoolCost;
 use campfire_values::{DeclaredName, Rank, TimeTooLarge};
 
 use crate::action_data::ActionData;
-use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
 use crate::cost_target::CostTarget;
 use crate::error::ActionProblem;
@@ -66,10 +65,7 @@ impl RankValues {
             return Err(ActionProblem::RankCount(ranks));
         }
         let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
-        let meters = matches!(
-            data.kind,
-            ActionKind::Use | ActionKind::Build | ActionKind::Gather
-        );
+        let metered = data.kind.metered();
         let mut loaded = LoadedRanks {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
@@ -78,8 +74,10 @@ impl RankValues {
             let fields = data
                 .fields_at(rank, &target)
                 .map_err(ActionProblem::Field)?;
-            if meters && fields.range == ActionRange::Global {
-                return Err(ActionProblem::Global(data.kind));
+            if let Some(kind) = metered
+                && fields.range == ActionRange::Global
+            {
+                return Err(ActionProblem::Global(kind));
             }
             loaded.values.push(RankValues {
                 range: fields.range,

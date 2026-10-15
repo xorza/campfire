@@ -79,7 +79,11 @@ impl LiveCarriers {
     }
 }
 
-impl Cache for LiveCarriers {}
+impl Cache for LiveCarriers {
+    fn installed() -> Option<LiveCarriers> {
+        Some(LiveCarriers::default())
+    }
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {

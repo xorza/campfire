@@ -4,11 +4,11 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{CallError, Frame, Hook, View};
+use campfire_script::{CallError, Ctx, Frame, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::StatsEffect;
 use campfire_units::SpawnAt;
-use campfire_values::{ActionId, Number};
+use campfire_values::{ActionId, NameId, Number};
 
 use crate::action_data::ActionData;
 use crate::action_data::error::EffectRule;
@@ -25,6 +25,7 @@ use crate::effect_names::EffectNames;
 use crate::effect_queues::EffectQueues;
 use crate::error::{ActionError, ActionProblem};
 use crate::launch_id::LaunchId;
+use crate::list_hook::ListHook;
 use crate::lists_of::ListsOf;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
@@ -45,6 +46,14 @@ pub struct EffectSpec {
     pub(crate) to: EffectTo,
 }
 
+/// The list a call runs: the list of `of` that runs before its `hook`, and what it reached.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ListCall {
+    pub of: ListsOf,
+    pub hook: ListHook,
+    pub reached: ActionTarget,
+}
+
 impl EffectListBook {
     /// Adds the lists of `action`, which loaded last, from `data`, their names resolved by
     /// `names`: `on_resolve`, `on_hit` and `on_end`, and the lists each launch of them holds,
@@ -60,11 +69,7 @@ impl EffectListBook {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
         }
         let mut runs = [0..0, 0..0, 0..0];
-        let lists = [
-            (Hook::OnResolve, &data.on_resolve),
-            (Hook::OnHit, &data.on_hit),
-            (Hook::OnEnd, &data.on_end),
-        ];
+        let lists = data.effect_lists();
         for (run, (hook, list)) in runs.iter_mut().zip(lists) {
             *run = self.append(data, hook, list, names)?;
         }
@@ -77,7 +82,7 @@ impl EffectListBook {
     fn append(
         &mut self,
         data: &ActionData,
-        hook: Hook,
+        hook: ListHook,
         list: &[EffectData],
         names: &impl EffectNames,
     ) -> Result<Range<u32>, ActionError> {
@@ -86,7 +91,7 @@ impl EffectListBook {
             .map(|effect| {
                 EffectListBook::holds(data, hook, &effect.does)?;
                 Ok(EffectSpec {
-                    does: self.resolve(data, &effect.does, names)?,
+                    does: self.resolve(data, hook, &effect.does, names)?,
                     to: effect.to,
                 })
             })
@@ -98,7 +103,7 @@ impl EffectListBook {
 
     /// Whether the numbers of `does`, an effect of the action `data`'s list `hook`, hold their
     /// rules: its duration whole milliseconds, then each number a sim number at least 0.
-    fn holds(data: &ActionData, hook: Hook, does: &DoesData) -> Result<(), ActionProblem> {
+    fn holds(data: &ActionData, hook: ListHook, does: &DoesData) -> Result<(), ActionProblem> {
         let broken = |rule| ActionProblem::Effect { list: hook, rule };
         let duration = match does {
             DoesData::Modifier(ModifierFields { duration_ms, .. })
@@ -115,11 +120,12 @@ impl EffectListBook {
         Ok(())
     }
 
-    /// What `does`, an effect of the action `data`, does, its names resolved by `names`; a
-    /// launch's lists appended first.
+    /// What `does`, an effect of the action `data`'s list `hook`, does, its names resolved by
+    /// `names`; a launch's lists appended first.
     fn resolve(
         &mut self,
         data: &ActionData,
+        hook: ListHook,
         does: &DoesData,
         names: &impl EffectNames,
     ) -> Result<DoesSpec, ActionError> {
@@ -177,8 +183,8 @@ impl EffectListBook {
             }) => {
                 let area = names.package_type(area)?;
                 let lists = [
-                    self.append(data, Hook::OnHit, on_hit, names)?,
-                    self.append(data, Hook::OnEnd, on_end, names)?,
+                    self.append(data, ListHook::OnHit, on_hit, names)?,
+                    self.append(data, ListHook::OnEnd, on_end, names)?,
                 ];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
@@ -195,29 +201,29 @@ impl EffectListBook {
                     ms: amount(ms)?,
                 }
             }
-            DoesData::Planned(_) => unreachable!("the load refuses a planned effect"),
+            DoesData::Planned(planned) => {
+                let rule = EffectRule::Planned(*planned);
+                return Err(ActionProblem::Effect { list: hook, rule }.into());
+            }
         };
         Ok(DoesSpec::Capability(of_capability))
     }
 
     /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or
     /// `on_end`, or a launch's `on_hit` or `on_end`.
-    pub fn of(&self, of: ListsOf, hook: Hook) -> &[EffectSpec] {
+    pub fn of(&self, of: ListsOf, hook: ListHook) -> &[EffectSpec] {
         let run = match (of, hook) {
-            (ListsOf::Action(action), _) => {
-                let list = match hook {
-                    Hook::OnResolve => 0,
-                    Hook::OnHit => 1,
-                    Hook::OnEnd => 2,
-                    _ => unreachable!("only a resolve and a delivery's hit and end have lists"),
-                };
-                self.runs.get(action.index()).map(|runs| &runs[list])
-            }
-            (ListsOf::Launch(launch), Hook::OnHit | Hook::OnEnd) => {
-                let list = usize::from(hook == Hook::OnEnd);
+            (ListsOf::Action(action), _) => self
+                .runs
+                .get(action.index())
+                .map(|runs| &runs[hook.index()]),
+            (ListsOf::Launch(launch), ListHook::OnHit | ListHook::OnEnd) => {
+                let list = usize::from(hook == ListHook::OnEnd);
                 Some(&self.launches[launch.0 as usize][list])
             }
-            (ListsOf::Launch(_), _) => unreachable!("a launch's area has a hit and an end alone"),
+            (ListsOf::Launch(_), ListHook::OnResolve) => {
+                unreachable!("a launch's area has a hit and an end alone")
+            }
         };
         run.map_or(&[], |run| {
             &self.effects[run.start as usize..run.end as usize]
@@ -229,20 +235,16 @@ impl EffectListBook {
         (launch.0 as usize) < self.launches.len()
     }
 
-    /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
-    /// its rank, which the match runs: each effect to the unit `reached`, what the list reached, or
-    /// to the acting unit; a spawn where that unit stands, or at the point `reached` is. A
-    /// modifier, a purge and a spawn queue here, as `stats` and the core are below the action
-    /// pipeline; every other effect queues as its capability declared, which can fail the
-    /// call, as experience to a unit without the track fails `ctx.add_xp`.
-    pub fn queue(
-        world: &World,
-        of: ListsOf,
-        hook: Hook,
-        frame: &mut Frame,
-        view: &View,
-        reached: ActionTarget,
-    ) -> Result<(), CallError> {
+    /// Queues the list of `call` in the call `ctx` runs, of the list's action at its rank, which
+    /// the match runs: each effect to the unit the list reached, or to the acting unit; a spawn
+    /// where that unit stands, or at the point the list reached. A modifier, a purge and a spawn
+    /// queue here, as `stats` and the core are below the action pipeline; every other effect
+    /// queues as its capability declared, which can fail the call, as experience to a unit
+    /// without the track fails `ctx.add_xp`.
+    pub fn queue(world: &World, call: ListCall, ctx: &Ctx) -> Result<(), CallError> {
+        let ListCall { of, hook, reached } = call;
+        let mut held = ctx.frame();
+        let (frame, view) = (&mut *held, ctx.view());
         let list = world.resource::<EffectListBook>().of(of, hook);
         if list.is_empty() {
             return Ok(());
@@ -295,17 +297,17 @@ impl EffectListBook {
                         angle: Num::ZERO,
                     };
                     let life = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(ActionsEffect { at, life });
+                    frame.queue(ActionsEffect { at, life });
                 }
                 DoesSpec::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(StatsEffect::Add {
+                    frame.queue(StatsEffect::Add {
                         target: unit(),
                         id,
                         duration,
                     });
                 }
-                DoesSpec::Purge { tag } => frame.effects.push(StatsEffect::Purge {
+                DoesSpec::Purge { tag } => frame.queue(StatsEffect::Purge {
                     carrier: unit(),
                     tag,
                 }),

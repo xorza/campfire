@@ -6,7 +6,7 @@ use super::*;
 /// The mode's sequence of the tick `game` just ran, as a call draws from it.
 fn mode_sequence(game: &Match) -> Rng {
     let opener = game.resource::<SimRng>().opener();
-    opener.open(RngStream::new("script.mode"), 0)
+    opener.open(RngStream::new("script.mode"), StableId::MATCH)
 }
 
 #[test]

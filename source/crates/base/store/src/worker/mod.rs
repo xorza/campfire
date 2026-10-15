@@ -1,6 +1,9 @@
 use std::panic;
 use std::thread::{self, JoinHandle};
 
+pub(crate) mod failure;
+pub(crate) mod worker_lock;
+
 /// A named thread that runs one job until its owner ends it. The owner's `Drop` tells the job to
 /// close, through the job's own wake: a flag and a condition variable, or a channel it drops.
 /// The worker, a field of the owner, drops after that and joins the thread, and a panic of the
@@ -22,6 +25,16 @@ impl Worker {
             .expect("the OS starts a thread");
         Worker {
             thread: Some(thread),
+        }
+    }
+
+    /// Joins the thread, which ended while its owner still needed it, and passes its panic on:
+    /// a worker ends early only by a panic.
+    pub(crate) fn resume_panic(&mut self) -> ! {
+        let thread = self.thread.take().expect("a worker joins once");
+        match thread.join() {
+            Err(payload) => panic::resume_unwind(payload),
+            Ok(()) => panic!("a worker ends only as its owner closes it, or by a panic"),
         }
     }
 }

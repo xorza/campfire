@@ -1,11 +1,13 @@
+use std::sync::Arc;
+
 use bevy::asset::{AssetServer, Handle};
 use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
-use campfire_package::ClientUnit;
+use campfire_client_files::ClientUnit;
 use campfire_units::TypeOriginBook;
-use campfire_values::UnitType;
+use campfire_values::{NameId, PackageIndex, UnitType};
 
 use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;
@@ -30,8 +32,8 @@ pub(crate) struct LookModel {
 /// its materials take, and the names of the nodes its default look hides.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelParts {
-    pub(crate) package: u16,
-    pub(crate) hide: Vec<String>,
+    pub(crate) package: PackageIndex,
+    pub(crate) hide: Arc<[String]>,
 }
 
 impl UnitLooks {
@@ -44,13 +46,11 @@ impl UnitLooks {
         let looks = origins
             .iter()
             .map(|(_, origin)| {
-                let units = &data.units[usize::from(origin.package)];
-                units
+                let package = origin.package;
+                data.units_of(package)
                     .units
                     .get(&*origin.name)
-                    .map_or_else(Vec::new, |unit| {
-                        LookModel::all(origin.package, unit, assets)
-                    })
+                    .map_or_else(Vec::new, |unit| LookModel::all(package, unit, assets))
             })
             .collect();
         UnitLooks { looks }
@@ -64,7 +64,11 @@ impl UnitLooks {
 
 impl LookModel {
     /// The models of `look`, a look of the package at `package`, each loading.
-    pub(crate) fn all(package: u16, look: &ClientUnit, assets: &AssetServer) -> Vec<LookModel> {
+    pub(crate) fn all(
+        package: PackageIndex,
+        look: &ClientUnit,
+        assets: &AssetServer,
+    ) -> Vec<LookModel> {
         look.models
             .iter()
             .map(|model| LookModel {
@@ -74,7 +78,7 @@ impl LookModel {
                 ),
                 parts: ModelParts {
                     package,
-                    hide: model.hide.clone(),
+                    hide: model.hide.as_slice().into(),
                 },
                 scale: model.scale.get(),
             })
@@ -86,7 +90,7 @@ impl LookModel {
 mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
-    use campfire_package::{ClientModel, ClientUnits, ModelScale};
+    use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
     use campfire_units::TypeOrigin;
     use campfire_values::PackagePath;
 
@@ -132,9 +136,13 @@ mod tests {
             package,
             name: name.into(),
         };
-        let origins: TypeOriginBook = [origin(0, "tank"), origin(1, "tank"), origin(0, "tower")]
-            .into_iter()
-            .collect();
+        let origins: TypeOriginBook = [
+            origin(PackageIndex::MODE, "tank"),
+            origin(PackageIndex::new(1), "tank"),
+            origin(PackageIndex::MODE, "tower"),
+        ]
+        .into_iter()
+        .collect();
         let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
         let paths = |unit_type: UnitType| -> Vec<(String, ModelParts)> {
             looks
@@ -144,7 +152,7 @@ mod tests {
                 .collect()
         };
         let types: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
-        let parts = |package, hide: &[&str]| ModelParts {
+        let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
             package,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
         };
@@ -153,11 +161,11 @@ mod tests {
             [
                 (
                     "package://0/client/models/tank.glb#Scene0".to_owned(),
-                    parts(0, &["tank.flash"])
+                    parts(PackageIndex::MODE, &["tank.flash"])
                 ),
                 (
                     "package://0/client/models/tread.glb#Scene0".to_owned(),
-                    parts(0, &[])
+                    parts(PackageIndex::MODE, &[])
                 ),
             ]
         );
@@ -165,7 +173,7 @@ mod tests {
             paths(types[1]),
             [(
                 "package://1/client/models/other.glb#Scene0".to_owned(),
-                parts(1, &[])
+                parts(PackageIndex::new(1), &[])
             )]
         );
         assert!(paths(types[2]).is_empty());

@@ -1,11 +1,11 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
-/// No unit is ever outside them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// No unit is ever outside them. A map's `[bounds]` writes them as `min` and `max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Bounds {
     min: [Num; 2],
     max: [Num; 2],
@@ -55,6 +55,9 @@ impl Bounds {
     /// outside. An axis the path barely moves along cannot be the one it leaves by, so a ratio
     /// too large to hold is never the nearest.
     pub fn exit(self, from: Position, direction: Vec3) -> Num {
+        if !self.contains(from) {
+            return Num::ZERO;
+        }
         let at = from.get();
         let height = Position::BOUND;
         [
@@ -170,15 +173,21 @@ mod tests {
             Position::try_from(Vec3::from((-Position::BOUND, 0, Position::BOUND))).unwrap()
         ));
 
-        // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from a
-        // point past the right edge, 0. Straight up, the path leaves at the world's height.
+        // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from the
+        // right edge on along +x, 0. From a point past the right edge, 0, also back along −x and
+        // straight up, which no ground axis bounds. Straight up, the path leaves at the world's
+        // height.
         let x = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
         let z = Vec3::new(Num::ZERO, Num::ZERO, -Num::ONE);
         let up = Vec3::new(Num::ZERO, Num::ONE, Num::ZERO);
         let origin = Position::from((0, 0, 1));
         assert_eq!(bounds.exit(origin, x), Num::int(4));
         assert_eq!(bounds.exit(origin, z), Num::int(2));
-        assert_eq!(bounds.exit(Position::from((5, 0, 1)), x), Num::ZERO);
+        assert_eq!(bounds.exit(Position::from((4, 0, 1)), x), Num::ZERO);
+        let past = Position::from((5, 0, 1));
+        for direction in [x, -x, up] {
+            assert_eq!(bounds.exit(past, direction), Num::ZERO, "{direction:?}");
+        }
         assert_eq!(bounds.exit(origin, up), Position::BOUND);
     }
 }

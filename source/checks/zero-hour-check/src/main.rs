@@ -16,17 +16,18 @@ use std::env;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
+use campfire_client_files::{ClientObjects, HeightGrid, TerrainFile};
 use campfire_codec::{Binary, Toml};
 use campfire_common::{ExitStatus, MapName};
 use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
-use campfire_mode::HeightGrid;
-use campfire_package::{ClientObjects, ContentError, ModePackages, PackageReader, TerrainFile};
+use campfire_package::{ContentError, PackageReader};
+use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
-use campfire_store::DurableFile;
+use campfire_store::RunDir;
 use campfire_values::PackagePath;
 use tracing::{error, info};
 
@@ -87,13 +88,8 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         .filter(|install| !install.is_empty())
         .map(PathBuf::from)
         .ok_or(CheckError::NoInstall)?;
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is after 1970");
-    DurableFile::create_dir_all(root).map_err(CheckError::RunRoot)?;
-    let dir = root.join(format!("run-{}", since.as_millis()));
-    DurableFile::create_new_dir(&dir).map_err(CheckError::RunDir)?;
-    let out = dir.join("packages");
+    let run = RunDir::create(root, SystemTime::now())?;
+    let out = run.path().join("packages");
     let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
     let imported = zero_hour.write(&out).map_err(CheckError::Import)?;
     info!(
@@ -104,14 +100,10 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         "imported"
     );
     let map = MapName::new(MAP).expect("a map's name");
-    let packages =
-        ModePackages::from_dir(&out.join(ZeroHour::GAME), &map).map_err(CheckError::Load)?;
-    let files = &packages
-        .packages()
-        .next()
-        .expect("a mode has its own package")
-        .package
-        .files;
+    let packages = PackageDir::new(out.join(ZeroHour::GAME))
+        .mode_packages(&map)
+        .map_err(CheckError::Load)?;
+    let files = &packages.mode().package.files;
     let mut failures = Vec::new();
     let heights = read(files, &format!("map/{MAP}/heights.bin"))?;
     let grid = Binary::decode::<HeightGrid>(&heights).map_err(CheckError::Decode)?;

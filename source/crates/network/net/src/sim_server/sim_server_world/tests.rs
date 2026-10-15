@@ -1,29 +1,14 @@
-use std::io;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::ExitStatus;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
-use campfire_runner::{InputRules, SessionRules};
-use campfire_store::{AppendFile, AppendWriter};
+use campfire_protocol::{InputRules, SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
+use campfire_runner::{HostChoices, SessionRules};
+use campfire_store::AppendWriter;
 
 use super::*;
 use crate::sim_server::session_journal::SessionJournal;
-
-/// A journal's file whose every sync fails.
-#[derive(Debug)]
-struct FailingFile;
-
-impl AppendFile for FailingFile {
-    fn append(&mut self, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn sync(&mut self) -> io::Result<()> {
-        Err(io::Error::other("sync failed"))
-    }
-}
 
 #[test]
 fn a_failed_journal_ends_the_server_with_its_exit_code() {
@@ -33,21 +18,21 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     let key = TestKey::of(8);
     let rules = SessionRules::of(&packages);
     let terms = rules
-        .terms(
-            key.x_only_public_key().0,
-            SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
-            packages.manifest().tick_hz.default(),
-            InputRules::LAN,
-            [SlotPlan::Open],
-            rules.visibility().settings(),
-        )
+        .terms(HostChoices {
+            server_key: key.x_only_public_key().0,
+            seed_commitment: SeedChain::new([9; 32], NonZeroU32::MIN).commitment(),
+            tick_hz: packages.manifest().tick_hz.default(),
+            inputs: InputRules::LAN,
+            slots: vec![SlotPlan::Open],
+            visibility: rules.visibility().settings(),
+        })
         .unwrap();
     let header = SessionHeader {
         terms,
         slots: vec![SlotStart::Open],
     };
     let mut log = SessionLog::new(header).unwrap();
-    let journal = SessionJournal(AppendWriter::start("journal", FailingFile));
+    let journal = SessionJournal(AppendWriter::failing_sync("journal"));
     let mut world = World::new();
     world.init_resource::<Faults>();
     world.insert_resource(JournalWatch(journal.watch()));

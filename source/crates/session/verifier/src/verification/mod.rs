@@ -1,14 +1,16 @@
 use std::path::Path;
 
-use crate::verification::error::VerifyError;
 use campfire_common::StateHash;
 use campfire_log::ErrorReport;
-use campfire_package::PackageStore;
-use campfire_protocol::SessionLog;
-use campfire_runner::{Replay, Session, SessionWorld};
+use campfire_package::ModePackages;
+use campfire_package_disk::PackageStore;
+use campfire_protocol::{SessionLog, SessionTerms};
+use campfire_runner::{Replay, SessionRules, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::InputFile;
 use tracing::warn;
+
+use crate::verification::error::VerifyError;
 
 pub(crate) mod error;
 
@@ -34,8 +36,7 @@ impl Verification {
         }
         let bytes = InputFile::read(log, SessionLog::MAX_FILE_LEN).map_err(VerifyError::ReadLog)?;
         let decoded = SessionLog::decode(&bytes).map_err(VerifyError::Decode)?;
-        let packages =
-            Session::packages(&store, &decoded.header().terms).map_err(VerifyError::Start)?;
+        let packages = Verification::packages(&store, &decoded.header().terms)?;
         let mut replay = Replay::of(decoded, &packages).map_err(VerifyError::Start)?;
         if let Some(dir) = snapshots {
             for record in replay.game().session().log().checkpoints() {
@@ -49,5 +50,17 @@ impl Verification {
         }
         replay.run().map_err(VerifyError::Replay)?;
         Ok(replay.game().state_hash())
+    }
+
+    /// The mode and the dependencies `terms` name, from `store`; an error for terms of another
+    /// release first, as its packages need not read in this one.
+    pub fn packages(
+        store: &PackageStore,
+        terms: &SessionTerms,
+    ) -> Result<ModePackages, VerifyError> {
+        SessionRules::check_release(terms).map_err(VerifyError::Release)?;
+        store
+            .mode_packages(terms.mode, &terms.map, &terms.dependencies)
+            .map_err(VerifyError::Packages)
     }
 }

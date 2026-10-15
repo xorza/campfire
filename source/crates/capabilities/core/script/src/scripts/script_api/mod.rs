@@ -5,31 +5,27 @@ use campfire_values::{EngineEnum, TagProperty};
 use rhai::Engine;
 
 use crate::script_host::ScriptHost;
-use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::data_table::DataTable;
 use crate::scripts::hook::Hook;
+use crate::scripts::member_kind::MemberKind;
+use crate::scripts::member_spec::{ArgKinds, MemberSpec, NameArgs};
+use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_member::ApiMember;
-use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::api_reference::ApiReference;
 use crate::scripts::script_api::data_field::DataField;
-use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
-use crate::scripts::script_api::member_kind::MemberKind;
-use crate::scripts::script_api::member_spec::{ArgKinds, MemberSpec, NameArgs};
-use crate::scripts::script_api::status::Status;
 use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
+use crate::scripts::status::Status;
 
+pub(crate) mod api_builder;
 pub(crate) mod api_member;
-pub(crate) mod api_owner;
 pub(crate) mod api_reference;
 pub(crate) mod data_field;
-pub(crate) mod data_table;
 pub(crate) mod enum_record;
 pub(crate) mod hook_status;
-pub(crate) mod member_kind;
-pub(crate) mod member_spec;
-pub(crate) mod status;
 pub(crate) mod tag_property_status;
 
 /// The script API as the engine binds it: every name a script may use, each recorded by the
@@ -38,13 +34,13 @@ pub(crate) mod tag_property_status;
 #[derive(Debug)]
 pub struct ScriptApi {
     /// Sorted by owner, then name.
-    pub members: Vec<ApiMember>,
+    pub(super) members: Vec<ApiMember>,
     /// Each hook, each tag property, and each data field: whether it runs.
     pub(super) hooks: Vec<HookStatus>,
     pub(super) tag_properties: Vec<TagPropertyStatus>,
-    pub data: Vec<DataField>,
+    pub(super) data: Vec<DataField>,
     /// The engine enums, in the order they bind.
-    pub enums: Vec<EnumRecord>,
+    pub(super) enums: Vec<EnumRecord>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`.
     builtins: BTreeSet<String>,
@@ -287,4 +283,23 @@ fn merged<T: Copy + PartialEq>(
         *merged = merged.or(said);
     }
     merged
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::scripts::script_api::ScriptApi;
+    use crate::scripts::script_api::api_member::ApiMember;
+    use crate::scripts::script_api::enum_record::EnumRecord;
+
+    impl ScriptApi {
+        /// Its members, to change as a test changes one.
+        pub const fn members_mut(&mut self) -> &mut Vec<ApiMember> {
+            &mut self.members
+        }
+
+        /// The engine enums, in the order they bind.
+        pub fn enums(&self) -> &[EnumRecord] {
+            &self.enums
+        }
+    }
 }

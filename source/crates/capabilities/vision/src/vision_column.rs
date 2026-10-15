@@ -1,9 +1,8 @@
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
-use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, Checked, Filter, KeptRows, RowFill, ScriptList, ScriptValue, Unit, ViewColumn,
-    ViewColumns,
+    AnyKeptRows, Filter, KeptRows, RowFill, ScriptList, ScriptRadius, ScriptValue, Unit,
+    ViewColumn, ViewColumns,
 };
 use campfire_sim::Position;
 use campfire_values::{Relations, Team, TeamSet};
@@ -11,7 +10,7 @@ use campfire_values::{Relations, Team, TeamSet};
 use crate::seen_by::SeenBy;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
-pub type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
+pub(crate) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
 
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]
@@ -56,20 +55,21 @@ impl VisionColumn {
     pub(crate) fn find(
         of: &Unit,
         pos: Position,
-        radius: Num,
+        radius: ScriptRadius,
         filter: &Filter,
-    ) -> Checked<ScriptList> {
+    ) -> ScriptList {
         let team = of.read(|row| row.team);
-        of.view().find(of, pos, radius, filter, |columns, row| {
-            VisionColumn::sees(columns, row, team)
-        })
+        of.view()
+            .find(of, pos, radius.get(), filter, |columns, row| {
+                VisionColumn::sees(columns, row, team)
+            })
     }
 
     /// `ctx.nearest_visible`: the nearest living target `radius` from the edge of `of`'s body
     /// reaches that `filter` selects and `of`'s team sees.
-    pub(crate) fn nearest(of: &Unit, radius: Num, filter: &Filter) -> Checked<ScriptValue> {
+    pub(crate) fn nearest(of: &Unit, radius: ScriptRadius, filter: &Filter) -> ScriptValue {
         let team = of.read(|row| row.team);
-        of.view().nearest(of, radius, filter, |columns, row| {
+        of.view().nearest(of, radius.get(), filter, |columns, row| {
             VisionColumn::sees(columns, row, team)
         })
     }

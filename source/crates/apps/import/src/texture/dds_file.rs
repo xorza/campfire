@@ -1,6 +1,6 @@
+use campfire_client_files::{Ktx2Image, TextureFormat};
+
 use crate::texture::error::TextureError;
-use crate::texture::ktx2_image::Ktx2Image;
-use crate::texture::texture_format::TextureFormat;
 
 /// A DDS of DXT blocks (Microsoft's `DDS_HEADER`): its format, its base size and its levels'
 /// blocks, as the file holds them, which a KTX2 file of the same block format takes as they are.
@@ -24,7 +24,10 @@ impl<'a> DdsFile<'a> {
     /// more than its full chain, and its bytes end with them.
     pub(crate) fn read(bytes: &'a [u8]) -> Result<DdsFile<'a>, TextureError> {
         let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("4 bytes"));
-        if bytes.len() < 4 + HEADER || &bytes[..4] != MAGIC || word(4) as usize != HEADER {
+        if bytes.len() < 4 + HEADER
+            || &bytes[..4] != MAGIC
+            || usize::try_from(word(4)) != Ok(HEADER)
+        {
             return Err(TextureError::NotDds);
         }
         let (flags, height, width, count) = (word(8), word(12), word(16), word(28));

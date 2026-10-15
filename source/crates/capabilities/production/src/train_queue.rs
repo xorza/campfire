@@ -6,11 +6,11 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionKind};
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
-use campfire_players::{PlayersWorldCrate, ResourceAmount};
+use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
-use campfire_values::{ActionId, Rank, UnitType};
+use campfire_values::{ActionId, NameId, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

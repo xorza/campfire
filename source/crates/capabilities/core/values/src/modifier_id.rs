@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::names::NameId;
+use crate::package_index::PackageIndex;
 
 /// A modifier, by its place in the match's modifier book.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -12,14 +13,10 @@ impl ModifierId {
     pub const fn new(index: u16) -> ModifierId {
         ModifierId(index)
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for ModifierId {
-    type Scope = u16;
+    type Scope = PackageIndex;
     const LIMIT: usize = 1 << u16::BITS;
 
     fn at(index: usize) -> ModifierId {

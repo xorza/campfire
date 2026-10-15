@@ -1,14 +1,27 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use campfire_codec::Toml;
 use campfire_common::Fingerprint;
 use campfire_values::PackagePath;
 use serde::de::DeserializeOwned;
 
-use crate::error::ContentError;
+use crate::error::load_problem::LoadProblem;
+use crate::error::{ContentError, LoadError, PackageRef};
 use crate::file_index::FileIndex;
-use crate::package_dir::PackageDir;
+use crate::files::manifest::Manifest;
+use crate::files::mode_manifest::ModeManifest;
 use crate::package_reader::PackageReader;
+use crate::package_source::PackageSource;
+
+/// The directory of a package's scripts.
+pub(crate) const SCRIPTS: &str = "scripts";
+
+/// The directory of a package's locales.
+pub(crate) const LOCALE: &str = "locale";
+
+/// The directories whose files a load reads, beside the manifest.
+const READ_DIRS: [&str; 3] = ["data", SCRIPTS, LOCALE];
 
 /// A package as a load reads it: the files a load reads, read once into memory and checked
 /// against their rows, each file's bytes by its path in the package, and its reader. A load
@@ -22,26 +35,37 @@ pub struct PackageFiles {
 }
 
 impl PackageFiles {
-    /// The package's index, and the files a load reads, the manifest's and those under `data/`,
-    /// `scripts/` and `locale/`, each read once into memory and checked against its row. Any
-    /// other file, as a session's map, reads on demand; no file the index does not list reads.
-    /// The open checks that every file the index lists is on disk by its exact name, each
-    /// directory listed once, and fails on the first that is not: a file system that ignores
-    /// case, as macOS's and Windows' do by default, would open a name that differs only in case,
-    /// which Linux holds as missing, so one package would load on one OS and fail on another.
-    /// Nothing changes an open package, so a read after the open takes the path as it is.
-    pub fn read(dir: &PackageDir) -> Result<PackageFiles, ContentError> {
-        let index = dir.checked_index()?;
+    /// The file every package has at its root.
+    pub const MANIFEST: &str = "manifest.toml";
+
+    /// The package of `source`: its index, and the files a load reads, the manifest's and those
+    /// under `data/`, `scripts/` and `locale/`, each read once into memory and checked against
+    /// its row. Any other file, as a session's map, reads on demand; no file the index does not
+    /// list reads. The open checks that the source holds every file the index lists by its exact
+    /// name, and fails on the first it does not (`PackageSource::check_names`). Nothing changes
+    /// an open package, so a read after the open takes the path as it is.
+    pub fn read(source: Arc<dyn PackageSource>) -> Result<PackageFiles, ContentError> {
+        let index = FileIndex::decode(&source.read_index()?)?;
+        source.check_names(&mut index.rows().map(|(path, _)| path))?;
+        let reader = PackageReader::new(index, source);
         let mut files = BTreeMap::new();
-        for (path, row) in index.rows() {
-            if PackageDir::reads(path) {
-                files.insert(path.clone(), dir.read_row(path, row)?);
+        for (path, row) in reader.index().rows() {
+            if PackageFiles::reads(path) {
+                files.insert(path.clone(), reader.read_row(path, row)?);
             }
         }
-        Ok(PackageFiles {
-            files,
-            reader: PackageReader::new(index, dir.clone()),
-        })
+        Ok(PackageFiles { files, reader })
+    }
+
+    /// One of the engine's paths in a package, as a package names its files.
+    pub(crate) fn engine_path(path: &str) -> PackagePath {
+        PackagePath::parse(path).expect("the engine's paths are in the package")
+    }
+
+    /// Whether a load reads the file at `path`: the manifest, and the files of its data, its
+    /// scripts and its locales.
+    pub(crate) fn reads(path: &PackagePath) -> bool {
+        path.as_str() == PackageFiles::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -54,7 +78,7 @@ impl PackageFiles {
     }
 
     /// The files under the directory `dir` that a load reads, in the order of their paths.
-    pub(crate) fn files_under<'a>(&'a self, dir: &'a str) -> impl Iterator<Item = &'a PackagePath> {
+    pub fn files_under<'a>(&'a self, dir: &'a str) -> impl Iterator<Item = &'a PackagePath> {
         self.files.keys().filter(move |path| path.is_under(dir))
     }
 
@@ -102,5 +126,16 @@ impl PackageFiles {
     /// The bytes of any file of the package, read now and checked against its row.
     pub fn read_file(&self, path: &PackagePath) -> Result<Vec<u8>, ContentError> {
         self.reader.read_file(path)
+    }
+
+    /// Its manifest, a mode's, as the package `package`; an error for a manifest that does not
+    /// read, or of another kind of package.
+    pub fn mode_manifest(&self, package: &PackageRef) -> Result<ModeManifest, LoadError> {
+        let fail = |problem| LoadError::new(package.clone(), problem);
+        let manifest = self.read_data(&PackageFiles::engine_path(PackageFiles::MANIFEST));
+        match manifest.map_err(LoadProblem::Content).map_err(fail)? {
+            Manifest::Mode(manifest) => Ok(manifest),
+            _ => Err(fail(LoadProblem::WrongKind)),
+        }
     }
 }

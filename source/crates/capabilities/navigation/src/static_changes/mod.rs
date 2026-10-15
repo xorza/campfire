@@ -40,7 +40,7 @@ impl StaticChanges {
         waypoints.iter().any(|&next| {
             let leg = Segment::new(at, next);
             at = next;
-            ours().any(|body| body.comes_within(leg, walker.radius))
+            ours().any(|body| body.comes_closer(leg, walker.radius))
         })
     }
 

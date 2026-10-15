@@ -2,22 +2,24 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bevy_math::UVec2;
+use campfire_client_files::{
+    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
+    TerrainFile,
+};
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
-use campfire_package::{
-    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
-    PackageWriter, TerrainFile, WriteError,
-};
-use campfire_store::DurableFile;
+use campfire_package_disk::{PackageWriter, WriteError};
+use campfire_store::DurableDir;
 use campfire_values::PackagePath;
 
 use crate::texture::dds_file::DdsFile;
-use crate::texture::tga_file::TgaFile;
+use crate::texture::tga_file::{TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::{IniError, ZeroHourError};
 use crate::zero_hour::game_data_ini::GameDataIni;
 use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::{MapImport, MapSources};
@@ -27,10 +29,10 @@ use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni,
 use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
 use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
-use crate::zero_hour::unit_types::UnitTypes;
 
 pub(crate) mod archive_path;
 pub(crate) mod big_archive;
+pub(crate) mod byte_cursor;
 pub(crate) mod chunk_reader;
 pub(crate) mod error;
 pub(crate) mod game_data;
@@ -39,6 +41,7 @@ pub(crate) mod game_version;
 pub(crate) mod hierarchy;
 pub(crate) mod hlod;
 pub(crate) mod import_name;
+pub(crate) mod import_names;
 pub(crate) mod ini_text;
 pub(crate) mod install;
 pub(crate) mod map_file;
@@ -56,7 +59,6 @@ pub(crate) mod terrain;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod terrain_ini;
-pub(crate) mod unit_types;
 pub(crate) mod w3d_chunks;
 pub(crate) mod w3d_fields;
 pub(crate) mod w3d_file;
@@ -119,12 +121,9 @@ impl<'a> ZeroHour<'a> {
     /// `data/units.toml`; each texture becomes a KTX2 file of `client/textures/`, at its path in
     /// the archives.
     pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
-        DurableFile::create_new_dir(out)
-            .map_err(WriteError::CreateDir)
-            .map_err(ZeroHourError::Write)?;
+        DurableDir::create_new(out).map_err(WriteError::CreateDir)?;
         let rules = ZeroHour::write_rules(&out.join(ZeroHour::RULES))?;
-        let mut writer =
-            PackageWriter::create(&out.join(ZeroHour::GAME)).map_err(ZeroHourError::Write)?;
+        let mut writer = PackageWriter::create(&out.join(ZeroHour::GAME))?;
         let mut write = |path: &str, bytes: &[u8]| {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
             writer.write(path, bytes).map_err(ZeroHourError::Write)
@@ -139,12 +138,12 @@ impl<'a> ZeroHour<'a> {
         write(CameraFile::PATH, text.as_bytes())?;
         let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut write);
-        let looks = ZeroHour::write_models(&ini, &mut models)?;
+        let mut object_names = ImportNames::default();
+        let looks = ZeroHour::write_models(&ini, &mut models, &mut object_names)?;
         let ModelReport {
             skipped,
             missing_textures,
         } = models.report();
-        let mut unit_types = UnitTypes::default();
         let mut names = BTreeMap::<MapName, String>::new();
         let mut untextured_cells = BTreeMap::new();
         let mut class_sizes = BTreeMap::new();
@@ -168,7 +167,7 @@ impl<'a> ZeroHour<'a> {
             }
             let sources = MapSources {
                 ini: &ini,
-                types: &mut unit_types,
+                names: &mut object_names,
                 looks: &looks,
                 lights: game_data.global_lights(),
                 game: game_data.game_data(),
@@ -196,9 +195,9 @@ impl<'a> ZeroHour<'a> {
             };
             write(path.texture_path().as_str(), &ktx2)?;
         }
-        write("data/units.toml", unit_types.toml().as_bytes())?;
+        write("data/units.toml", object_names.units_toml().as_bytes())?;
         Ok(Imported {
-            fingerprint: writer.finish().map_err(ZeroHourError::Write)?,
+            fingerprint: writer.finish()?,
             rules,
             skipped_models: skipped,
             missing_textures,
@@ -215,9 +214,9 @@ impl<'a> ZeroHour<'a> {
     fn write_models<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
         ini: &ObjectIni,
         models: &mut ModelWriter<'_, W>,
+        names: &mut ImportNames,
     ) -> Result<ClientUnits, ZeroHourError> {
         let mut units = ClientUnits::default();
-        let mut types = BTreeMap::<String, String>::new();
         let unhidden = DefaultLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -227,13 +226,7 @@ impl<'a> ZeroHour<'a> {
             if entries.is_empty() {
                 continue;
             }
-            let unit_type = object.import_name();
-            if let Some(first) = types.insert(unit_type.as_str().to_owned(), object.name.clone()) {
-                return Err(ZeroHourError::UnitTypeClash {
-                    first,
-                    second: object.name.clone(),
-                });
-            }
+            let unit_type = names.take(object)?;
             let drawn: Vec<&DrawModule> = match object.placed_as() {
                 PlacedAs::Bridge | PlacedAs::Unit => Vec::new(),
                 PlacedAs::Tree => draws
@@ -294,13 +287,13 @@ impl ZeroHour<'_> {
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<Fingerprint, ZeroHourError> {
-        let mut writer = PackageWriter::create(dir).map_err(ZeroHourError::Write)?;
+        let mut writer = PackageWriter::create(dir)?;
         for (path, bytes) in RULES_FILES {
             let path =
                 PackagePath::parse(path).expect("the rules package's paths are package paths");
-            writer.write(path, bytes).map_err(ZeroHourError::Write)?;
+            writer.write(path, bytes)?;
         }
-        writer.finish().map_err(ZeroHourError::Write)
+        Ok(writer.finish()?)
     }
 
     /// `into` after `read` read each INI file of `name`, in the game's order.
@@ -340,12 +333,12 @@ impl ZeroHour<'_> {
             size
         } else {
             let bytes = self.install.read(&path)?;
-            let tga = TgaFile::read(&bytes).map_err(|error| ZeroHourError::Texture {
+            let header = TgaHeader::read(&bytes).map_err(|error| ZeroHourError::Texture {
                 path: path.to_string(),
                 error,
             })?;
-            sizes.insert(path.clone(), tga.size());
-            tga.size()
+            sizes.insert(path.clone(), header.size());
+            header.size()
         };
         Ok(Some(ClassTexture {
             path: path.texture_path(),
@@ -356,7 +349,7 @@ impl ZeroHour<'_> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_package::{ModePackages, PackageDir, PackageFiles};
+    use campfire_package_disk::PackageDir;
     use campfire_store::internals::Scratch;
     use campfire_values::DeclaredName;
     use sha2::{Digest, Sha256};
@@ -364,7 +357,7 @@ mod tests {
     use super::*;
     use crate::texture::internals::ktx2;
     use crate::zero_hour::big_archive::internals::big;
-    use crate::zero_hour::error::VersionDifference;
+    use crate::zero_hour::error::{NameClash, VersionDifference};
     use crate::zero_hour::game_data::GameData;
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
@@ -394,7 +387,7 @@ mod tests {
         assert_eq!(zero_hour.version().name, "fixture");
 
         // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
-        // its import gives, and its two unit types the package's.
+        // its import gives, and the unit types it places the package's.
         let imported = zero_hour.write(&scratch.path("one")).unwrap();
         let fingerprint = imported.fingerprint;
         // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
@@ -419,8 +412,17 @@ mod tests {
             scratch.read("one/zero-hour/package.index"),
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
-        let mode = ModePackages::from_dir(&scratch.path("one/game"), &named);
-        assert!(mode.is_ok(), "{mode:?}");
+        // The package's own reader takes its units file: the tank, the wall and the rocks the
+        // map places.
+        let mode = PackageDir::new(scratch.path("one/game")).mode_packages(&named);
+        let types: Vec<String> = mode
+            .unwrap()
+            .content()
+            .units
+            .keys()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(types, ["americatankcrusader", "fortresswall", "rocks1"]);
         assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
         assert_eq!(
             scratch.names("one/game/map/fixture_map"),
@@ -442,10 +444,10 @@ mod tests {
             ini.read(objects.as_bytes()).unwrap();
         }
         let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
-        let mut types = UnitTypes::default();
+        let mut names = ImportNames::default();
         let sources = MapSources {
             ini: &ini,
-            types: &mut types,
+            names: &mut names,
             looks: &looks,
             lights: 3,
             game: GameData {
@@ -474,7 +476,10 @@ mod tests {
             scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
             expected.objects
         );
-        assert_eq!(scratch.read_text("one/game/data/units.toml"), types.toml());
+        assert_eq!(
+            scratch.read_text("one/game/data/units.toml"),
+            names.units_toml()
+        );
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
         assert_eq!(camera.unwrap().field_of_view, 50.0);
         // Each texture once, at its path in the archives, as its conversion gives it.
@@ -505,7 +510,8 @@ mod tests {
             scratch.read("one/game/package.index")
         );
         assert_eq!(
-            PackageFiles::read(&PackageDir::new(scratch.path("one/game")))
+            PackageDir::new(scratch.path("one/game"))
+                .files()
                 .unwrap()
                 .fingerprint(),
             fingerprint
@@ -652,7 +658,7 @@ mod tests {
         let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("two")),
-            Err(ZeroHourError::UnitTypeClash { first, second })
+            Err(ZeroHourError::NameClash(NameClash { first, second }))
                 if first == "Rock!" && second == "Rock?"
         ));
     }

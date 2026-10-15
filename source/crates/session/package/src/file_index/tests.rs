@@ -1,6 +1,7 @@
 use campfire_codec::BinaryError;
 
 use super::*;
+use crate::package_walk::PackageWalk;
 
 /// An index's bytes: its tag, then `list`.
 fn tagged(list: &[u8]) -> Vec<u8> {
@@ -39,9 +40,39 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
             sha256: [1; 32]
         })
     );
+    // A row of a file of 2 GiB, the most a package's file holds, decodes; one byte more is
+    // refused, as its read would allocate it.
+    let sized = |size: u64| {
+        let wire = [WireRow {
+            path: "big.bin",
+            size,
+            sha256: [0; 32],
+        }];
+        FileIndex::decode(&[INDEX_TAG, &Binary::encode(&wire[..])].concat())
+    };
+    assert!(sized(FileIndex::MAX_FILE_LEN).is_ok());
+    assert!(matches!(
+        sized(FileIndex::MAX_FILE_LEN + 1),
+        Err(ContentError::IndexFileLen(path)) if path.as_str() == "big.bin"
+    ));
+    // An index is untrusted: each byte cut short is refused, and no flip of one panics.
+    for at in 0..bytes.len() {
+        assert!(
+            FileIndex::decode(&bytes[..at]).is_err(),
+            "truncated to {at} bytes"
+        );
+        for flip in [0x01, 0x80, 0xFF] {
+            let mut flawed = bytes.clone();
+            flawed[at] ^= flip;
+            FileIndex::decode(&flawed).ok();
+        }
+    }
     assert_eq!(index.row(&PackagePath::parse("data/b.toml").unwrap()), None);
-    // A row of a file of "abc": its 3 bytes, and SHA-256's own test vector.
-    let abc = FileRow::of(b"abc");
+    // A row of a file of "abc", as a walk takes it: its 3 bytes, and SHA-256's own test vector.
+    let path = PackagePath::parse("abc.txt").unwrap();
+    let mut walk = PackageWalk::default();
+    walk.add(path.clone(), &b"abc"[..]).unwrap();
+    let abc = walk.finish().unwrap().row(&path).unwrap();
     assert_eq!(abc.size, 3);
     assert_eq!(
         abc.sha256[..4],

@@ -21,11 +21,13 @@ mod abilities_api;
 mod abilities_effect;
 mod casts;
 mod channels;
+mod error;
 mod toggles;
 
 pub use crate::abilities_api::AbilitiesApi;
 pub use crate::casts::Casts;
 pub use crate::channels::Channels;
+pub use crate::error::AbilitiesRefusal;
 pub use crate::toggles::Toggles;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
@@ -78,25 +80,21 @@ impl Module for Abilities {
     /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
     /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
-    /// only cools down, as the server's does.
+    /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
+    /// each second, as the toggle's cost is the server's.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.role().scripts();
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
-        if !scripts {
-            schedule.add_systems(
-                (Casts::predict_casts, Channels::predict_channels)
-                    .chain()
-                    .in_set(AbilitiesSet::Resolve),
-            );
-            return;
-        }
-        schedule.add_systems((
+        cx.systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
+        cx.unscripted(
+            (Casts::predict_casts, Channels::predict_channels)
+                .chain()
+                .in_set(AbilitiesSet::Resolve),
+        );
+        cx.scripted(
             (Casts::resolve_casts, Channels::run_channels)
                 .chain()
                 .in_set(AbilitiesSet::Resolve),
-            Toggles::run_toggles.in_set(AbilitiesSet::Toggles),
-        ));
+        );
+        cx.server(Toggles::run_toggles.in_set(AbilitiesSet::Toggles));
     }
 }
 
@@ -149,7 +147,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
     use campfire_stats::{ModifierClocks, Modifiers, PoolId, Pools, StatRule, Stats};
-    use campfire_values::Stat;
+    use campfire_values::{PackageIndex, Stat};
 
     use crate::Abilities;
 
@@ -228,7 +226,7 @@ pub mod internals {
 
         /// Gives `id` the modifier `name` of package 0, from `source`.
         pub fn give_from(world: &mut World, id: StableId, source: StableId, name: &str) {
-            let modifier = Stats::modifier(world, 0, name).unwrap();
+            let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
             let from = Some((source, None, 1));
             Stats::give_modifier(world, id, modifier, from, false);
         }
@@ -243,7 +241,7 @@ pub mod internals {
 
         /// The shield of `id`'s `mark` from `source`, if it carries one.
         pub fn mark(world: &World, id: StableId, source: StableId) -> Option<Num> {
-            let mark = Stats::modifier(world, 0, "mark").unwrap();
+            let mark = Stats::modifier(world, PackageIndex::MODE, "mark").unwrap();
             let entity = world.unit_entity(id);
             let modifiers = world.get::<Modifiers>(entity).unwrap();
             let clocks = world.get::<ModifierClocks>(entity).unwrap();

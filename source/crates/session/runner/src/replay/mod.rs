@@ -2,12 +2,14 @@ use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::Tick;
 use campfire_package::ModePackages;
-use campfire_protocol::{Checkpoint, SeedError, SessionLog, SnapshotFingerprint};
-use campfire_sim::SimWorld;
+use campfire_protocol::{Checkpoint, SeedError, SessionLog};
+use campfire_sim::{SimWorld, TickRate};
 
-use crate::replay::error::{ReplayError, SnapshotCheckError};
+use crate::match_build::MatchBuild;
+use crate::replay::error::ReplayError;
 use crate::session::Session;
-use crate::session::error::StartError;
+use crate::session::error::{SnapshotCheckError, StartError};
+use crate::session::session_source::SessionSource;
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -35,26 +37,18 @@ impl<'p> Replay<'p> {
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Session::start_match(published.rewound(), seeds, packages)?,
+            game: Session::start_match(SessionSource {
+                log: published.rewound(),
+                seeds,
+                packages,
+                signer: None,
+            })?,
             packages,
             ticks,
         })
     }
 
-    /// Runs the next tick the log holds; `false` after its last tick, once the log's result, when
-    /// it holds one, holds for the state. An error when the state at the boundary where a segment
-    /// starts is not the one its checkpoint records, or the result does not hold.
-    pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
-        Replay::check_checkpoint(&self.game)?;
-        if self.game.session().log().next_tick() == self.ticks {
-            self.game.check_result().map_err(ReplayError::Result)?;
-            return Ok(false);
-        }
-        self.game.run_tick_alone();
-        Ok(true)
-    }
-
-    /// Runs every tick the log holds after those that ran, as `run_tick` runs each.
+    /// Runs every tick the log holds after those that ran.
     pub fn run(&mut self) -> Result<(), ReplayError> {
         self.run_each(|_| {})
     }
@@ -98,22 +92,36 @@ impl<'p> Replay<'p> {
         record: &Checkpoint,
         snapshot: &[u8],
     ) -> Result<(), SnapshotCheckError> {
-        if SnapshotFingerprint::of(snapshot) != record.snapshot {
-            return Err(SnapshotCheckError::Fingerprint);
-        }
         let header = self.game.session().log().header();
-        let restored = Session::snapshot_hash(self.packages, header, snapshot)
-            .map_err(SnapshotCheckError::Restore)?;
-        if restored != record.state_hash {
-            return Err(SnapshotCheckError::Hash {
-                logged: record.state_hash,
-                restored,
-            });
-        }
-        Ok(())
+        let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
+        let rate = TickRate::new(header.terms.tick_hz);
+        let mut game = MatchBuild::restore_target(self.packages, rate, slots);
+        Session::restore_checked(&mut game, record, snapshot)
     }
 
     pub const fn game(&self) -> &Match {
         &self.game
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::replay::Replay;
+    use crate::replay::error::ReplayError;
+    use crate::session::session_world::SessionWorld;
+
+    impl Replay<'_> {
+        /// Runs the next tick the log holds; `false` after its last tick, once the log's result,
+        /// when it holds one, holds for the state. An error when the state at the boundary where
+        /// a segment starts is not the one its checkpoint records, or the result does not hold.
+        pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
+            Replay::check_checkpoint(&self.game)?;
+            if self.game.session().log().next_tick() == self.ticks {
+                self.game.check_result().map_err(ReplayError::Result)?;
+                return Ok(false);
+            }
+            self.game.run_tick_alone();
+            Ok(true)
+        }
     }
 }

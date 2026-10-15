@@ -4,23 +4,20 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, View, ViewColumn,
+    AnyKeptRows, CapabilityRefusal, Checked, ColumnRows, KeptRows, RowFill, RunMove, View,
+    ViewColumn,
 };
 use campfire_sim::StableId;
 use campfire_stats::Level;
 use campfire_values::TrackId;
 
-use crate::experience::Experience;
+use crate::error::ProgressionRefusal;
+use crate::experience::{Experience, TrackXp};
 use crate::points::Points;
 use crate::track_book::TrackBook;
 
-/// The parts of a unit progression reads into its row: its experience, its level, which is its
-/// `level` track's, and its points.
-pub type RowReads = (
-    Option<&'static Experience>,
-    Option<&'static Level>,
-    Option<&'static Points>,
-);
+/// The parts of a unit progression reads into its row: its experience and its points.
+pub(crate) type RowReads = (Option<&'static Experience>, Option<&'static Points>);
 
 /// What progression adds to the script view: the tracks the mode declares, and each unit's
 /// tracks, its experience and level on each, and its points, a row each.
@@ -34,7 +31,7 @@ pub struct ProgressionColumn {
 #[derive(Debug, Default, PartialEq, Eq)]
 struct ProgressionRows {
     rows: Vec<TracksRow>,
-    held: Vec<HeldTrack>,
+    held: Vec<TrackXp>,
 }
 
 /// A unit's progress as the view read it: its run of tracks in `held`, in the order of their
@@ -43,14 +40,6 @@ struct ProgressionRows {
 struct TracksRow {
     held: Range<u32>,
     points: Option<Points>,
-}
-
-/// A unit's experience and level on one of its tracks, the unit's level on the `level` track.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct HeldTrack {
-    track: TrackId,
-    xp: Num,
-    level: Level,
 }
 
 impl ViewColumn for ProgressionColumn {
@@ -99,38 +88,19 @@ impl ColumnRows for ProgressionRows {
 
 impl ProgressionRows {
     /// The run of tracks of the unit in row `row`.
-    fn held(&self, row: usize) -> &[HeldTrack] {
+    fn held(&self, row: usize) -> &[TrackXp] {
         let run = &self.rows[row].held;
         &self.held[run.start as usize..run.end as usize]
     }
 }
 
 impl ProgressionColumn {
-    /// Adds the row of a unit with `experience`, or with none, at `level`, the level of its
-    /// `level` track, with `points`.
-    pub fn push(
-        &mut self,
-        experience: Option<&Experience>,
-        level: Option<&Level>,
-        points: Option<&Points>,
-    ) {
+    /// Adds the row of a unit with `experience`, or with none, and with `points`.
+    pub fn push(&mut self, experience: Option<&Experience>, points: Option<&Points>) {
         let rows = self.rows.now_mut();
         let start = u32::try_from(rows.held.len()).expect("tracks fit u32");
-        rows.held.extend(
-            experience
-                .into_iter()
-                .flat_map(Experience::iter)
-                .map(|held| {
-                    let level = held.level.unwrap_or_else(|| {
-                        *level.expect("a unit with the `level` track has a level")
-                    });
-                    HeldTrack {
-                        track: held.track,
-                        xp: held.xp,
-                        level,
-                    }
-                }),
-        );
+        rows.held
+            .extend(experience.into_iter().flat_map(Experience::iter));
         let end = u32::try_from(rows.held.len()).expect("tracks fit u32");
         rows.rows.push(TracksRow {
             held: start..end,
@@ -162,25 +132,29 @@ impl ProgressionColumn {
     /// track.
     pub(crate) fn points(view: &View, row: usize) -> Checked<Points> {
         let points = view.column(|column: &ProgressionColumn| column.rows.now().rows[row].points);
-        Ok(points.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
+        Ok(points
+            .flatten()
+            .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
     }
 
-    fn held(view: &View, row: usize, track: TrackId) -> Checked<HeldTrack> {
+    fn held(view: &View, row: usize, track: TrackId) -> Checked<TrackXp> {
         let held = view.column(|column: &ProgressionColumn| column.find(row, track));
-        Ok(held.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
+        Ok(held
+            .flatten()
+            .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
     }
 
     /// The unit in row `row`'s progress on `track`, when it has the track.
-    fn find(&self, row: usize, track: TrackId) -> Option<HeldTrack> {
+    fn find(&self, row: usize, track: TrackId) -> Option<TrackXp> {
         let held = self.rows.now().held(row);
         held.iter().find(|held| held.track == track).copied()
     }
 
     /// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
     pub(super) fn fill_row(
-        (experience, level, points): ROQueryItem<'_, '_, RowReads>,
+        (experience, points): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, ProgressionColumn>,
     ) {
-        fill.column.push(experience, level, points);
+        fill.column.push(experience, points);
     }
 }

@@ -10,10 +10,11 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, Delivery, EffectQueues};
+use campfire_actions::{ActionTarget, EffectQueues};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
+use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_sim::{Capability, Position, StableId};
+use campfire_units::DeliveryEntity;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod area;
@@ -40,8 +41,8 @@ pub use crate::areas_api::AreasApi;
 pub use crate::areas_effect::AreasEffect;
 pub use crate::error::AreaError;
 
-/// The `areas` capability: area units, which actions deliver. It builds on combat, which a match
-/// installs too.
+/// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an
+/// area holds on the units inside it.
 #[derive(Debug)]
 pub struct Areas;
 
@@ -87,6 +88,7 @@ impl Module for Areas {
         d.engine_tags(&[Areas::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
+        d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
         d.callback::<Deliverers>(DeliveryKind::Area, Areas::deliver);
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
@@ -102,7 +104,7 @@ impl Module for Areas {
     /// delivery, so it triggers none.
     fn install(cx: &mut InstallCx<'_>) {
         cx.server(AreaLife::trigger.in_set(AreasSet::Trigger));
-        cx.schedule.add_systems((
+        cx.systems((
             AreaLife::land.in_set(AreasSet::Land),
             AreaLife::land.in_set(AreasSet::LandAtResolve),
             AreaHolds::hold_inside.in_set(AreasSet::HoldInside),
@@ -114,16 +116,11 @@ impl Areas {
     /// The engine tag of area types: a filter selects their units only when it names it.
     pub const TAG: EngineTag = EngineTag::new(3, "area", TagProperties::NONE.with_named_only());
 
-    /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
-    /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
-    /// nothing; nothing for a unit that is gone.
-    fn deliver(
-        world: &mut World,
-        by: Delivering,
-        from: Position,
-        delivery: Delivery,
-        target: ActionTarget,
-    ) {
+    /// Lands the area of `launcher`, which aimed at `target` from `from`: on the point it aimed
+    /// at, where the unit it aimed at stands, or at `from` for an action that aims at nothing;
+    /// nothing for a unit that is gone.
+    fn deliver(world: &mut World, launcher: Launcher, from: Position, target: ActionTarget) {
+        let Launcher { by, delivery } = launcher;
         let unit_type = delivery.unit_type;
         let at = match target.point(world) {
             Some(at) => at,
@@ -161,7 +158,7 @@ pub mod internals {
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
     use campfire_units::UnitTypeBook;
-    use campfire_values::{DeclaredName, UnitType};
+    use campfire_values::{DeclaredName, PackageIndex, UnitType};
 
     use crate::Areas;
     use crate::area_data::AreaData;
@@ -171,7 +168,12 @@ pub mod internals {
         /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in
         /// ticks at the match's rate, rounded up: its `affects` filter names tags of the match's,
         /// and its `inside` modifiers of the package.
-        pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
+        pub fn load_type(
+            world: &mut World,
+            unit_type: UnitType,
+            package: PackageIndex,
+            data: &AreaData,
+        ) {
             let rate = *world.resource::<TickRate>();
             let mut types = world.resource_mut::<UnitTypeBook>();
             types.give_tag(unit_type, Areas::TAG.tag());

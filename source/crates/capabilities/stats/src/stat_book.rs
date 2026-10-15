@@ -7,7 +7,7 @@ use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{EngineStat, Names, Stat, UnitType};
+use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
 
 use crate::stat_id::StatId;
 use crate::stat_rule::StatRule;
@@ -57,7 +57,7 @@ impl StatBook {
             }
         }
         StatBook {
-            order: (0..count).map(StatId::new).collect(),
+            order: (0..count).map(StatId::at).collect(),
             names: Arc::new(names),
             rules: rules.values().copied().collect(),
             engine,
@@ -99,7 +99,7 @@ impl StatBook {
             sorted
                 .iter()
                 .copied()
-                .eq((0..self.names.len()).map(StatId::new)),
+                .eq((0..self.names.len()).map(StatId::at)),
             "an order holds every stat once"
         );
         let mut positions = vec![0; order.len()];
@@ -137,7 +137,7 @@ impl StatBook {
     pub(crate) fn totals(&self, unit_type: UnitType, level: u32, totals: &mut Vec<StatTotals>) {
         totals.extend(
             (0..self.names.len())
-                .map(|at| StatTotals::base(self.base_bits(unit_type, StatId::new(at), level))),
+                .map(|at| StatTotals::base(self.base_bits(unit_type, StatId::at(at), level))),
         );
     }
 
@@ -149,7 +149,7 @@ impl StatBook {
     /// The value of each stat, by id, of a unit of `unit_type` at `level` with no modifiers, as a
     /// refresh computes it.
     pub fn base_values(&self, unit_type: UnitType, level: u32) -> Vec<Num> {
-        let ids = (0..self.names.len()).map(StatId::new);
+        let ids = (0..self.names.len()).map(StatId::at);
         ids.map(|stat| {
             let totals = StatTotals::base(self.base_bits(unit_type, stat, level));
             self.value(stat, totals)

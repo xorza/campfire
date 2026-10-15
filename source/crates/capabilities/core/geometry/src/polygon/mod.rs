@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
-use campfire_math::{Flat, Num};
+use campfire_math::{Flat, Num, Vec3};
+use campfire_sim::Position;
 
 use crate::halves::Halves;
 use crate::polygon::error::PolygonError;
@@ -16,14 +17,22 @@ pub struct Polygon {
 }
 
 impl Polygon {
-    /// The polygon of `points`; an error for fewer than three, or for two edges that meet where
-    /// they should not: two that do not follow each other meet anywhere, or two that do overlap
-    /// beyond the point they share, as a zero-length edge or a turn straight back does.
+    /// The polygon of `points`; an error for fewer than three, for a point past the world's
+    /// bound, beyond which its edges' products leave a `Flat`'s range, or for two edges that meet
+    /// where they should not: two that do not follow each other meet anywhere, or two that do
+    /// overlap beyond the point they share, as a zero-length edge or a turn straight back does.
     pub fn new(points: impl IntoIterator<Item = [Num; 2]>) -> Result<Polygon, PolygonError> {
-        let points: Vec<[Num; 2]> = points.into_iter().collect();
+        Polygon::of(points.into_iter().collect())
+    }
+
+    fn of(points: Vec<[Num; 2]>) -> Result<Polygon, PolygonError> {
         let count = points.len();
         if count < 3 {
             return Err(PolygonError::TooFewPoints);
+        }
+        let past = |&[x, z]: &[Num; 2]| Position::new(Vec3::new(x, Num::ZERO, z)).is_none();
+        if let Some(point) = points.iter().position(past) {
+            return Err(PolygonError::PastBound { point });
         }
         let polygon = Polygon { points };
         for first in 0..count {
@@ -40,7 +49,7 @@ impl Polygon {
     /// exactly: on an edge when it is on the edge's line between its ends; inside when a ray
     /// from it along +x crosses the edges an odd number of times, each edge counted once over
     /// the half-open span of its z.
-    pub fn holds(&self, at: Flat) -> bool {
+    pub(crate) fn holds(&self, at: Flat) -> bool {
         let mut inside = false;
         for edge in 0..self.points.len() {
             let [a, b] = self.edge(edge);

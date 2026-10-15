@@ -6,12 +6,12 @@ use bevy_app::{
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::Added;
+use bevy_ecs::query::{Added, QueryState};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use bevy_time::{Real, Time, Virtual};
 use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
@@ -19,16 +19,17 @@ use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::{MatchEnd, ModeWorld};
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms};
+use campfire_protocol::{
+    Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
+};
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, SessionRules, SessionWorld, StartError, TermsError};
-use campfire_sim::{SimTick, SimWorld, StateRegistry, TickRate};
-use campfire_store::InputFile;
+use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError, TermsError};
+use campfire_sim::{SimTick, SimWorld, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
-    RoomAllocator, RoomPlugin,
+    RoomAllocator, RoomPlugin, Tick as NetTick,
 };
 use tracing::{trace, trace_span};
 
@@ -38,6 +39,7 @@ use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::match_ended::MatchEnded;
+use crate::events::save_refused::SaveRefused;
 use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
@@ -49,6 +51,7 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
+use crate::save_command::SaveCommand;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
@@ -65,9 +68,10 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
+use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
@@ -89,18 +93,17 @@ pub(crate) mod offering;
 pub(crate) mod pending_restore;
 pub(crate) mod player_link;
 pub(crate) mod receipts;
-pub(crate) mod scope_union;
 pub(crate) mod seats;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
 pub(crate) mod server_setup;
-pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
 pub(crate) mod slot_bot_file;
+pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
@@ -148,7 +151,7 @@ impl Plugin for SimServer {
             Update,
             (
                 Lobby::free_seats,
-                Lobby::offer,
+                Offering::offer_links::<Lobby>,
                 Lobby::take_joins,
                 Lobby::start_when_full,
             )
@@ -159,7 +162,7 @@ impl Plugin for SimServer {
         // the frame may end it.
         app.add_systems(
             Update,
-            (Door::offer, Door::take_joins, Door::watch)
+            (Offering::offer_links::<Door>, Door::take_joins, Door::watch)
                 .chain()
                 .distributive_run_if(resource_exists::<Door>)
                 .distributive_run_if(session_running),
@@ -181,13 +184,14 @@ impl Plugin for SimServer {
         );
         app.add_systems(
             Update,
-            Checkpoints::take_commands
+            SimServer::take_save_commands
                 .after(Door::watch)
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
         );
         app.add_systems(Update, Spectators::choose_teams);
         app.add_observer(Spectators::leave);
+        Viewer::follow_links(app);
         Viewer::follow_out_of_play(app);
         app.add_systems(Last, Dismissing::tell);
         app.add_systems(
@@ -214,7 +218,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
-                Checkpoints::begin.run_if(resource_exists::<Checkpoints>),
+                SimServer::begin_checkpoint.run_if(resource_exists::<Checkpoints>),
                 report_deaths,
                 report_end,
             )
@@ -226,7 +230,7 @@ impl Plugin for SimServer {
             FixedUpdate,
             Shows
                 .in_set(SimTickSystems)
-                .after(Checkpoints::begin)
+                .after(SimServer::begin_checkpoint)
                 .before(report_deaths),
         );
     }
@@ -253,9 +257,61 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) files: Option<SessionFiles>,
     pub(crate) server: &'a ServerSetup,
     pub(crate) bots: ServerBots,
+    /// The lobby's offering, which the door offers from then on.
+    pub(crate) offering: Offering,
 }
 
+/// What a match runs with from the next fixed tick, as it starts or restores: the offering its
+/// door offers, the journal and the snapshots' directory when the server keeps them, its seats,
+/// and the server's bots.
+#[derive(Debug)]
+struct MatchRun {
+    offering: Offering,
+    journal: Option<SessionJournal>,
+    snapshots: Option<SnapshotDir>,
+    seats: Seats,
+    bots: ServerBots,
+}
+
+/// The save commands' links, each with its player.
+type SaveLinks = QueryState<(
+    &'static PlayerLink,
+    &'static mut MessageReceiver<SaveCommand>,
+)>;
+
 impl SimServer {
+    /// Begins the checkpoint due at the boundary before the next tick, as `Checkpoints::begin`
+    /// does, and ends the session with the outcome it gives.
+    fn begin_checkpoint(world: &mut World) {
+        if let Some(outcome) = Checkpoints::begin(world) {
+            world
+                .end_session(outcome)
+                .expect("no checkpoint is on the thread");
+        }
+    }
+
+    /// Takes the save commands of the seated players, as `Checkpoints::take` does, and loads the
+    /// save a load names; each refused one is logged.
+    fn take_save_commands(
+        world: &mut World,
+        (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
+    ) {
+        for (link, mut receiver) in links.iter_mut(world) {
+            if !link.refused() {
+                taken.extend(receiver.receive());
+            }
+        }
+        for command in taken.drain(..) {
+            match Checkpoints::take(world, command) {
+                Ok(None) => {}
+                Ok(Some(segment)) => world
+                    .load_session_save(segment)
+                    .expect("no checkpoint is on the thread"),
+                Err(refusal) => SaveRefused { refusal }.log(),
+            }
+        }
+    }
+
     /// Starts the match of `start.log`'s header in the next fixed tick, recording into its log,
     /// each segment drawing from its seed. From then on a frame advances the server's clock by
     /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
@@ -278,6 +334,7 @@ impl SimServer {
             files,
             server,
             bots,
+            offering,
         } = start;
         assert_eq!(
             clients.len(),
@@ -285,27 +342,27 @@ impl SimServer {
             "one client per player"
         );
         let terms = log.header().terms.clone();
-        SimServer::bound_frames(world, &terms);
-        SimServer::set_visibility(world, &terms).map_err(StartError::Terms)?;
+        SimServer::take_terms(world, &terms, packages).map_err(StartError::Terms)?;
         let slots = log.slot_count();
-        Session::start(world, log, seeds, packages)?;
+        Session::start(
+            world,
+            SessionSource {
+                log,
+                seeds,
+                packages,
+                signer: Some(Signer::new(server.key, server.os.entropy)),
+            },
+        )?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
-        SimServer::open_door(world, terms, server, journal);
-        if let Some(snapshots) = snapshots {
-            Checkpoints::start(
-                world,
-                snapshots,
-                ServerSigner::new(server.key, server.os.entropy),
-            );
-        }
-        world.insert_resource(Seats::new(slots, clients));
-        world.insert_resource(Receipts::new(slots));
-        let start = world.resource::<LocalTimeline>().tick() + 1;
-        world.insert_resource(MatchClock::new(start));
+        let run = MatchRun {
+            offering,
+            journal,
+            snapshots,
+            seats: Seats::new(slots, clients),
+            bots,
+        };
+        let start = SimServer::run_match(world, run);
         let next = world.resource::<Session>().log().next_tick();
-        world.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, world);
-        world.insert_resource(driver);
         for &(slot, client) in clients {
             let team = world.team_of(slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink::new(slot, team));
@@ -324,40 +381,17 @@ impl SimServer {
         Ok(())
     }
 
-    /// Opens the door of the session of `terms` on the server of `server`, which signs what it
-    /// logs; with a `journal`, the log goes into it from now on.
-    fn open_door(
+    /// Takes the session's `terms` before its match starts or restores: bounds the server's
+    /// frames, so a frame advances its clock by the ticks of the max input delay less one at
+    /// most, a tick at least, each as long as the clock's tick now, which a local match's pace may
+    /// have set; and keeps their visibility, which each data filter takes its audience from as
+    /// the match's entities spawn. An error for terms the rules of `packages` do not admit, which
+    /// the session's start refuses as well, after the match's entities spawned.
+    fn take_terms(
         world: &mut World,
-        terms: SessionTerms,
-        server: &ServerSetup,
-        journal: Option<SessionJournal>,
-    ) {
-        if let Some(journal) = journal {
-            world.insert_resource(JournalWatch(journal.watch()));
-            world
-                .resource_mut::<Session>()
-                .keep_journal(Box::new(journal));
-        }
-        world.insert_resource(ServerSigner::new(server.key, server.os.entropy));
-        world.insert_resource(Door::new(Offering::new(terms, server)));
-    }
-
-    /// Keeps the visibility `terms` carry, which each data filter takes its audience from as
-    /// the match's entities spawn; an error for terms whose visibility does not read.
-    fn set_visibility(world: &mut World, terms: &SessionTerms) -> Result<(), TermsError> {
-        let visibility = SessionRules::visibility_of(terms)?;
-        world
-            .resource_mut::<TeamRooms>()
-            .set_spectators(&visibility);
-        world.insert_resource(MatchVisibility(visibility));
-        Ok(())
-    }
-
-    /// Bounds the server's frames for a session of `terms`: a frame advances its clock by the
-    /// ticks of the max input delay less one at most, a tick at least, each as long as the
-    /// clock's tick now, which a local match's pace may have set before the match started or
-    /// restored.
-    fn bound_frames(world: &mut World, terms: &SessionTerms) {
+        terms: &SessionTerms,
+        packages: &ModePackages,
+    ) -> Result<(), TermsError> {
         let session = TickRate::new(terms.tick_hz).length();
         let tick = world.resource::<TickDuration>().0;
         assert!(
@@ -366,11 +400,52 @@ impl SimServer {
                 .any(|speed| speed.tick(session) == tick),
             "the server ticks at the session's rate at a speed, not every {tick:?}"
         );
-        let burst = terms.max_input_delay.get().saturating_sub(1).max(1);
+        let burst = terms.inputs.max_delay.get().saturating_sub(1).max(1);
         let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
         world
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(tick * burst);
+        let visibility = SessionRules::of(packages).check(terms)?;
+        world
+            .resource_mut::<TeamRooms>()
+            .set_spectators(&visibility);
+        world.insert_resource(MatchVisibility(visibility));
+        Ok(())
+    }
+
+    /// Runs the match of the world's session from the next fixed tick, as it starts or restores:
+    /// the door offers `run.offering`, the log goes into the journal, which `JournalWatch`
+    /// watches, and the checkpoints into the snapshots' directory when the server keeps them, and
+    /// the server's bots play their slots. Gives the Lightyear tick the session's next tick runs
+    /// in.
+    fn run_match(world: &mut World, run: MatchRun) -> NetTick {
+        let MatchRun {
+            offering,
+            journal,
+            snapshots,
+            seats,
+            bots,
+        } = run;
+        if let Some(journal) = journal {
+            world.insert_resource(JournalWatch(journal.watch()));
+            world
+                .resource_mut::<Session>()
+                .keep_journal(Box::new(journal));
+        }
+        world.insert_resource(Door::new(offering));
+        if let Some(snapshots) = snapshots {
+            Checkpoints::start(world, snapshots);
+        }
+        let log = world.resource::<Session>().log();
+        let (slots, next) = (log.slot_count(), log.next_tick());
+        world.insert_resource(seats);
+        world.insert_resource(Receipts::new(slots));
+        let start = world.resource::<LocalTimeline>().tick() + 1;
+        world.insert_resource(MatchClock::new(start, next));
+        world.insert_resource(FrameStart(next));
+        let driver = BotDriver::new(bots, next, world);
+        world.insert_resource(driver);
+        start
     }
 
     /// Restores the match of `restored`, a session a crash or a failed journal ended, of the mode
@@ -390,70 +465,35 @@ impl SimServer {
         server: &ServerSetup,
         bots: ServerBots,
     ) -> Result<(), RestoreMatchError> {
-        let RestoredSession {
-            private,
-            log,
-            files: SessionFiles { journal, snapshots },
-            ..
-        } = restored;
-        let terms = log.header().terms.clone();
-        SimServer::bound_frames(world, &terms);
-        SimServer::set_visibility(world, &terms)
+        let terms = restored.log.header().terms.clone();
+        SimServer::take_terms(world, &terms, packages)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
-        let ticks = log.next_tick();
-        let slots = log.slot_count();
-        let seeds = private.seed_chain.seeds();
-        let latest = log
-            .checkpoints()
-            .last()
-            .map(|record| (record.segment, record.snapshot));
-        if let Some((segment, fingerprint)) = latest {
-            let snapshot = InputFile::read(
-                &snapshots.file(fingerprint),
-                StateRegistry::MAX_SNAPSHOT_LEN,
-            )
-            .map_err(RestoreMatchError::ReadSnapshot)?;
-            Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
-                .map_err(RestoreMatchError::Resume)?;
-        } else {
-            Session::start(world, log.rewound(), seeds, packages)
-                .map_err(RestoreMatchError::Start)?;
-        }
-        world.insert_resource(JournalWatch(journal.watch()));
-        world.session_mut().resume_journal(Box::new(journal));
-        let signer = ServerSigner::new(server.key, server.os.entropy);
-        let resumed = world.session().log().next_tick();
-        world.replay_to(ticks, |world| {
-            let ran = world.session().log().next_tick() > resumed;
-            if ran && world.contains_resource::<TickHashes>() {
+        let slots = restored.log.slot_count();
+        let signer = Signer::new(server.key, server.os.entropy);
+        let snapshots = restored.replay(world, packages, signer, |world| {
+            if world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }
-            Checkpoints::take_again(world, &snapshots, &signer)
-                .map_err(RestoreMatchError::WriteSnapshot)
         })?;
-        SimServer::open_door(world, terms, server, None);
-        Checkpoints::start(world, snapshots, signer);
+        let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
+        let now = world.resource::<Time<Real>>().elapsed();
+        let run = MatchRun {
+            offering: Offering::new(terms, server),
+            journal: None,
+            snapshots: Some(snapshots),
+            seats: Seats::gone(slots, players.iter().copied(), now),
+            bots,
+        };
+        SimServer::run_match(world, run);
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began.
-        Checkpoints::begin(world);
-        let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
-        world.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = world.resource::<ServerSigner>();
-            for &slot in &players {
-                signer
-                    .serve(&mut session, ServerInput::Disconnected { slot })
-                    .expect("the server's own input holds");
-            }
-        });
-        let now = world.resource::<Time<Real>>().elapsed();
-        world.insert_resource(Seats::gone(slots, players.into_iter(), now));
-        world.insert_resource(Receipts::new(slots));
-        let next = world.resource::<Session>().log().next_tick();
-        let start = world.resource::<LocalTimeline>().tick() + 1;
-        world.insert_resource(MatchClock::resumed(start, next));
-        world.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, world);
-        world.insert_resource(driver);
+        SimServer::begin_checkpoint(world);
+        let mut session = world.resource_mut::<Session>();
+        for &slot in &players {
+            session
+                .serve(ServerInput::Disconnected { slot })
+                .expect("the server's own input holds");
+        }
         Ok(())
     }
 }
@@ -503,11 +543,10 @@ fn record_inputs(
                 continue;
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                let report = ErrorReport::of(&error).to_string();
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,
-                    error: report.clone(),
+                    error: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 link = link.into_refused();

@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_protocol::EngineRelease;
+use campfire_common::Version;
 use campfire_visibility::VisibilityDecodeError;
 use thiserror::Error;
 
@@ -10,7 +10,7 @@ use thiserror::Error;
 pub enum TermsError {
     /// The terms name another engine release than this one.
     #[error("the session runs on engine release {0}, not this one")]
-    OtherRelease(EngineRelease),
+    OtherRelease(Version),
     /// The packages are another mode than the one the terms name.
     #[error("the mode is not the one the session names")]
     OtherMode,

@@ -5,6 +5,7 @@ use crate::bytes::Bytes;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
+use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
@@ -22,7 +23,7 @@ pub struct LogCarry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CarriedSlot {
     pub(crate) control: CarriedControl,
-    pub(crate) leaver: Option<[u8; 32]>,
+    pub(crate) leaver: Option<MainKey>,
     pub(crate) stamps: StampCount,
     pub(crate) spill: Spill,
 }
@@ -62,7 +63,7 @@ pub(crate) struct CarryWire<'a> {
 struct SlotWire<'a> {
     #[serde(borrow)]
     control: ControlWire<'a>,
-    leaver: Option<[u8; 32]>,
+    leaver: Option<MainKey>,
     stamps: StampCount,
     spill: Spill,
 }

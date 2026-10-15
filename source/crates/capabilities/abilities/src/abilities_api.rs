@@ -1,13 +1,14 @@
 use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
-    ScriptValue, Status, Unit,
+    ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
+    RoleSet, ScriptValue, Status, Unit,
 };
 use campfire_sim::{Capability, Position};
 use campfire_values::{ActionId, Block, TagProperty};
 
 use crate::abilities_effect::AbilitiesEffect;
+use crate::error::AbilitiesRefusal;
 
 /// The script API of `abilities`: the values of a cast that design 08 plans, and the
 /// bookkeeping of cooldowns and charges.
@@ -79,14 +80,18 @@ impl AbilitiesApi {
     /// Where the running call's action's unit stood as the action started.
     fn origin(ctx: &Ctx) -> Checked<Position> {
         let start = ctx.frame().start();
-        Ok(start.ok_or_else(|| ApiError::NoStart.fail())?.origin)
+        Ok(start
+            .ok_or_else(|| AbilitiesRefusal::NoStart.fail())?
+            .origin)
     }
 
     /// The share of its most the running call's charged action charged.
     fn charge(ctx: &Ctx) -> Checked<Num> {
         let start = ctx.frame().start();
-        let start = start.ok_or_else(|| ApiError::NoStart.fail())?;
-        Ok(start.charge.ok_or_else(|| ApiError::NotCharged.fail())?)
+        let start = start.ok_or_else(|| AbilitiesRefusal::NoStart.fail())?;
+        Ok(start
+            .charge
+            .ok_or_else(|| AbilitiesRefusal::NotCharged.fail())?)
     }
 
     /// The range of the running call's action at its rank: meters, or `()` for a global one.
@@ -102,24 +107,24 @@ impl AbilitiesApi {
         }
     }
 
-    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
-    /// package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: ActionId, ms: i64) -> Checked<()> {
-        let action = AbilitiesApi::held(ctx, unit, id)?;
+    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the
+    /// script's package, which it holds.
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: i64) -> Checked<()> {
+        AbilitiesApi::check_held(ctx, unit, action)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
-            id: unit.id,
+            unit: unit.id,
             action,
             cut,
         })
     }
 
-    /// Queues a charge more of `unit`'s action `id` of the script's package, which it holds and
+    /// Queues a charge more of `unit`'s action `action` of the script's package, which it holds and
     /// which has charges.
-    fn add_charge(ctx: &Ctx, unit: &Unit, id: ActionId) -> Checked<()> {
-        let action = AbilitiesApi::held(ctx, unit, id)?;
+    fn add_charge(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
+        AbilitiesApi::check_held(ctx, unit, action)?;
         if !ActionsColumn::has_charges(ctx.view(), action) {
-            return Err(ApiError::NoCharges.fail().into());
+            return Err(AbilitiesRefusal::NoCharges.fail().into());
         }
         ctx.queue(AbilitiesEffect::AddCharge {
             unit: unit.id,
@@ -127,21 +132,21 @@ impl AbilitiesApi {
         })
     }
 
-    /// The action `action`, which `unit` holds.
-    fn held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<ActionId> {
+    /// Refuses `action` unless `unit` holds it.
+    fn check_held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
         if !ActionsColumn::holds(ctx.view(), unit.row_index(), action) {
-            return Err(ApiError::NotHeld.fail().into());
+            return Err(AbilitiesRefusal::NotHeld.fail().into());
         }
-        Ok(action)
+        Ok(())
     }
 
     /// Queues `fraction` of what is left off the cooldowns of `unit`'s actions in `kind`.
     fn reduce_cooldowns(ctx: &Ctx, unit: &Unit, kind: SlotKind, fraction: Num) -> Checked<()> {
         if !(Num::ZERO..=Num::ONE).contains(&fraction) {
-            return Err(ApiError::NotAFraction.fail().into());
+            return Err(AbilitiesRefusal::NotAFraction.fail().into());
         }
         ctx.queue(AbilitiesEffect::ReduceCooldowns {
-            id: unit.id,
+            unit: unit.id,
             kind,
             fraction,
         })

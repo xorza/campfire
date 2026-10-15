@@ -2,10 +2,10 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
-use campfire_protocol::{AfterLeave, LeaveReason, ServerInput, SlotPlan};
+use campfire_protocol::{LeaveReason, ServerInput, SlotPlan};
 use campfire_sim::Position;
 
 use crate::fixed_session::fixed_match::FixedMatch;

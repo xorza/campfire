@@ -17,16 +17,19 @@ use campfire_mode::Mode;
 use campfire_navigation::OnPath;
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList, ScriptValue, Unit, View,
+    ApiError, CapabilityRefusal, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList,
+    ScriptValue, Unit, View,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
-use campfire_stats::{Level, Life, StatRule, Stats};
+use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
-use campfire_values::{Block, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType};
+use campfire_values::{
+    Block, PackageIndex, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType,
+};
 
 /// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
 /// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
@@ -269,13 +272,14 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     view.read(&mut game);
     assert_eq!(view.bounds(), bounds);
 
-    // A restored unit stands within the map's bounds, as every system keeps it: on the edge at
-    // x = 10 it restores; a little past it, though well within the world's bound, it does not.
+    // A restored unit stands within the map's bounds, as every system keeps it: spawned at the
+    // origin and moved to the edge at x = 10, it restores; moved a little past it, though well
+    // within the world's bound, it does not.
     let restores = |x: Num| {
         let mut game = units_match();
         game.resource_mut::<MapBook>().bounds = bounds;
-        let pos = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        let id = spawn_named(&mut game, "unit", pos, Team::new(0));
+        let id = spawn_named(&mut game, "unit", Position::ORIGIN, Team::new(0));
+        *game.part_mut::<Position>(id) = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();
@@ -406,7 +410,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     };
     assert_eq!(spawn_pos(&mut game, of).cast::<Position>(), spawn.get());
     let unit_type = Units::type_named(&game, "unit").unwrap();
-    let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
     assert!(spawn_pos(&mut game, delivery).is_unit());
     assert_eq!(
         value(&mut game, "of.params.help_window_ms").as_int(),
@@ -473,7 +477,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     life.take(Num::int(4));
     let shell = spawn_named(&mut game, "unit", (2, 0, 0), Team::new(1));
     let unit_type = Units::type_named(&game, "unit").unwrap();
-    let bare = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    let bare = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
     // The refresh derives the stats.
     game.step();
 
@@ -503,16 +507,24 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
             r#"of.stat("spirit")"#,
             ApiError::Unknown(NameKind::Stat),
         ),
-        (bare, "of.level", ApiError::NoStats),
-        (bare, r#"of.stat("armor")"#, ApiError::NoStats),
-        (of, r#"of.pool("mana")"#, ApiError::NoPool),
+        (bare, "of.level", StatsRefusal::NoStats.refused()),
+        (bare, r#"of.stat("armor")"#, StatsRefusal::NoStats.refused()),
+        (of, r#"of.pool("mana")"#, StatsRefusal::NoPool.refused()),
         (
             of,
             r#"of.pool_max("rage")"#,
             ApiError::Unknown(NameKind::Pool),
         ),
-        (shell, r#"of.pool("health")"#, ApiError::NoPool),
-        (shell, r#"of.pool_max("health")"#, ApiError::NoPool),
+        (
+            shell,
+            r#"of.pool("health")"#,
+            StatsRefusal::NoPool.refused(),
+        ),
+        (
+            shell,
+            r#"of.pool_max("health")"#,
+            StatsRefusal::NoPool.refused(),
+        ),
     ];
     for (unit, expression, refusal) in refusals {
         let error = read(&mut game, unit, expression).unwrap_err();
@@ -532,11 +544,15 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let first = load(TypeScope::Mode, "grunt");
     let second = load(TypeScope::Mode, "tower");
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
-    let theirs = load(TypeScope::Package(1), "grunt");
+    let theirs = load(TypeScope::Package(PackageIndex::new(1)), "grunt");
     // A scope names a type once.
     assert_eq!(
-        game.resource_mut::<UnitTypeBook>()
-            .load(TypeScope::Package(1), 1, "grunt", &data),
+        game.resource_mut::<UnitTypeBook>().load(
+            TypeScope::Package(PackageIndex::new(1)),
+            PackageIndex::new(1),
+            "grunt",
+            &data
+        ),
         Err(TypesError::Repeated("grunt".to_owned()))
     );
     let view = game.non_send::<View>();
@@ -553,14 +569,21 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     );
     let names = view.names();
     let types = names.table::<UnitType>().unwrap();
-    assert_eq!(types.named((TypeScope::Package(1), "grunt")), Some(theirs));
-    assert_eq!(types.named((TypeScope::Package(2), "grunt")), None);
+    assert_eq!(
+        types.named((TypeScope::Package(PackageIndex::new(1)), "grunt")),
+        Some(theirs)
+    );
+    assert_eq!(
+        types.named((TypeScope::Package(PackageIndex::new(2)), "grunt")),
+        None
+    );
     assert_ne!(theirs, first);
+    drop(names);
     // Each type's origin: its package and its name there.
-    let origins = game.resource::<UnitTypeBook>().origins();
+    let origins = game.resource_mut::<UnitTypeBook>().origin_book();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
-        (origin.package, &*origin.name)
+        (origin.package.get(), &*origin.name)
     };
     assert_eq!(
         [first, second, theirs].map(origin),

@@ -29,6 +29,6 @@ proptest! {
         #[expect(clippy::cast_precision_loss, clippy::float_arithmetic, reason = "the reciprocal")]
         let half = f64::from_bits((0.5 / root as f64).to_bits().wrapping_add_signed(error));
         let exact = Rounding::NearestEven.divide(axis << shift, i128::from(root));
-        prop_assert_eq!(i128::from(aarch64::UnitDivisor::new(root, half, shift).unit(axis)), exact);
+        prop_assert_eq!(i128::from(portable::UnitDivisor::new(root, half, shift).unit(axis)), exact);
     }
 }

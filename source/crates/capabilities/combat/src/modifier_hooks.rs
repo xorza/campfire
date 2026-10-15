@@ -85,7 +85,7 @@ impl ModifierHooks {
                 depth,
             } => self.run(batch, killer, Hook::OnKill, next(depth), || unit(victim)),
             CombatEvent::Takedown {
-                id: taker,
+                unit: taker,
                 victim,
                 depth,
             } => self.run(batch, taker, Hook::OnTakedown, next(depth), || unit(victim)),
@@ -198,10 +198,7 @@ impl ModifierHooks {
                     source: heard.source,
                     stacks: instance.stacks,
                 };
-                let handle =
-                    StatsColumn::held_handle(ctx.view(), call.spare(), of, clocks.state(at));
-                call.handles.push(handle.clone());
-                handle
+                StatsColumn::held_handle(ctx.view(), call, of, clocks.state(at))
             };
             match arg {
                 Some(arg) => batch.call_hook(pool, script, hook, (ctx.clone(), handle, arg)),

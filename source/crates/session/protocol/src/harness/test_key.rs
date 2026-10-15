@@ -3,7 +3,9 @@ use std::num::NonZeroU32;
 
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 
+use crate::entropy::Entropy;
 use crate::seed_chain::SeedChain;
+use crate::signer::Signer;
 
 /// The tests' fixed identities: the key of one byte repeated, the keys of the tests' server, of
 /// each player and of each spectator, the time they sign at, and the server's seed chain.
@@ -35,6 +37,11 @@ impl TestKey {
     /// The key the tests' servers sign with.
     pub fn server() -> Keypair {
         TestKey::of(TestKey::SERVER)
+    }
+
+    /// A signer of `key` whose auxiliary randomness is 32 zero bytes, so each run signs alike.
+    pub fn signer(key: Keypair) -> Signer {
+        Signer::new(key, Entropy::Fixed(0))
     }
 
     /// The keys of every player by slot, each main key sorting after every lower slot's, as a

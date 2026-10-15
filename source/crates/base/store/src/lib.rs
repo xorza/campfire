@@ -13,6 +13,7 @@
 mod append_writer;
 mod data_dir;
 mod dir_entries;
+mod durable_dir;
 mod durable_file;
 mod exchange;
 mod input_file;
@@ -24,6 +25,7 @@ mod pinned_file;
 mod platform;
 #[cfg(feature = "internals")]
 mod race;
+mod run_dir;
 #[cfg(feature = "internals")]
 mod scratch;
 mod secret_file;
@@ -33,13 +35,14 @@ mod stream_writer;
 mod worker;
 
 pub use crate::append_writer::AppendWriter;
-pub use crate::append_writer::append_file::AppendFile;
 pub use crate::append_writer::append_watch::AppendWatch;
 pub use crate::append_writer::error::{AppendError, AppendOpenError};
 pub use crate::append_writer::slow_sync::SlowSync;
 pub use crate::data_dir::DataDir;
 pub use crate::data_dir::error::DataDirError;
 pub use crate::dir_entries::{DirEntries, DirEntry, EntryKind};
+pub use crate::durable_dir::DurableDir;
+pub use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
 pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;
@@ -51,8 +54,11 @@ pub use crate::path_error::PathError;
 pub use crate::platform::owner_only::Exposure;
 pub use crate::platform::shared_port::SharedPort;
 pub use crate::platform::stop_signals::StopSignals;
+pub use crate::run_dir::RunDir;
+pub use crate::run_dir::error::RunDirError;
 pub use crate::secret_file::SecretFile;
 pub use crate::stream_writer::StreamWriter;
+pub use crate::stream_writer::error::StreamError;
 pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;
 

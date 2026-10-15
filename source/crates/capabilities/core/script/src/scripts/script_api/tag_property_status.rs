@@ -1,6 +1,6 @@
 use campfire_values::TagProperty;
 
-use crate::scripts::script_api::status::Status;
+use crate::scripts::status::Status;
 
 /// Whether the release honours a property a tag may have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

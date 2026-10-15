@@ -1,11 +1,9 @@
 use std::ops::Neg;
 
-#[cfg(not(target_arch = "x86_64"))]
-use crate::direction::unit_divisor::aarch64::UnitDivisor;
-#[cfg(target_arch = "x86_64")]
-use crate::direction::unit_divisor::x86_64::UnitDivisor;
+use crate::direction::unit_divisor::UnitDivisor;
 use crate::root;
 use crate::root::{RoundedRoot, WideRoot};
+use crate::rounding::Rounding;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -63,16 +61,13 @@ impl<const N: usize> Direction<N> {
         })
     }
 
-    /// `root / 2^fine`, rounded to nearest, ties to even: adding `2^(fine − 1) − 1` and the
-    /// floor's last bit before the shift rounds a rest past half up, a rest of half up from an odd
-    /// floor only, and a smaller rest down, below 2⁶⁴ for a root of at most 2⁶³.
+    /// `root / 2^fine`, rounded to nearest, ties to even.
     const fn unscaled(root: u64, fine: u32) -> i128 {
         debug_assert!(root <= 1 << 63 && fine <= 62);
         if fine == 0 {
             return root as i128;
         }
-        let odd = (root >> fine) & 1;
-        ((root + (1 << (fine - 1)) - 1 + odd) >> fine) as i128
+        Rounding::NearestEven.shift_right(root as i128, fine)
     }
 
     /// The length of the vector it was taken from, rounded to the nearest unit.
@@ -90,7 +85,7 @@ impl<const N: usize> Direction<N> {
             .fold(0, |dot: i128, (&axis, unit)| {
                 dot.wrapping_add(Direction::<N>::product(axis, unit))
             });
-        Direction::<N>::nearest_unit(dot)
+        Rounding::NearestEven.shift_right(dot, FRACTION)
     }
 
     /// The vector along the direction `length` units long, `length` from 0 to 2⁴⁷, each axis's
@@ -126,15 +121,6 @@ impl<const N: usize> Direction<N> {
     const fn product(axis: i128, unit: i64) -> i128 {
         (axis as i64 as i128).wrapping_mul(unit as i128)
     }
-
-    /// `value / 2⁶²`, rounded to nearest, ties to even, for a value within ±2¹¹²: adding
-    /// `2⁶¹ − 1` and the floor's last bit before the shift rounds a rest past half up, a rest of
-    /// half up from an odd floor only, and a smaller rest down, with no wrap.
-    const fn nearest_unit(value: i128) -> i128 {
-        const HALF_LESS_ONE: i128 = (1 << (FRACTION - 1)) - 1;
-        let odd = (value >> FRACTION) & 1;
-        value.wrapping_add(HALF_LESS_ONE + odd) >> FRACTION
-    }
 }
 
 impl Direction<2> {
@@ -157,7 +143,7 @@ impl Direction<2> {
         let [unit_x, unit_z] = self.unit;
         let cross =
             Direction::<2>::product(x, unit_z).wrapping_sub(Direction::<2>::product(z, unit_x));
-        Direction::<2>::nearest_unit(cross).abs()
+        Rounding::NearestEven.shift_right(cross, FRACTION).abs()
     }
 }
 
@@ -172,7 +158,10 @@ impl Direction<3> {
         let [unit_x, unit_y, unit_z] = self.unit;
         let cross = |a: i128, unit_b: i64, b: i128, unit_a: i64| {
             let product = Direction::<3>::product;
-            Direction::<3>::nearest_unit(product(a, unit_b).wrapping_sub(product(b, unit_a)))
+            Rounding::NearestEven.shift_right(
+                product(a, unit_b).wrapping_sub(product(b, unit_a)),
+                FRACTION,
+            )
         };
         // Each axis of the cross product is below 2⁴⁹ in magnitude, so a square is one widening
         // product below 2⁹⁸, and three cannot wrap.

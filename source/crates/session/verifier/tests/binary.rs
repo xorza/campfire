@@ -5,7 +5,7 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_log::LogEvent;
-use campfire_package::PackageDir;
+use campfire_package_disk::PackageDir;
 use campfire_protocol::{SessionLog, SnapshotFingerprint};
 use campfire_sim::StateRegistry;
 use campfire_store::InputFile;

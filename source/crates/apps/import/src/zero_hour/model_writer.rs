@@ -15,9 +15,16 @@ use crate::zero_hour::{SkipReason, SkippedModel};
 /// objects name that the package lacks; and the textures the models name that no archive holds.
 #[derive(Debug)]
 pub(crate) struct ModelWriter<'i, W> {
+    converter: Converter<'i, W>,
+    parts: BTreeMap<String, Option<ModelParts>>,
+}
+
+/// What converts a model and writes its files: the assets it reads, the writer, and what the
+/// models lacked so far.
+#[derive(Debug)]
+struct Converter<'i, W> {
     assets: ModelAssets<'i>,
     write: W,
-    parts: BTreeMap<String, Option<ModelParts>>,
     skipped: Vec<SkippedModel>,
     missing_textures: BTreeSet<String>,
 }
@@ -33,11 +40,13 @@ pub(crate) struct ModelReport {
 impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> {
     pub(crate) const fn new(assets: ModelAssets<'i>, write: W) -> ModelWriter<'i, W> {
         ModelWriter {
-            assets,
-            write,
+            converter: Converter {
+                assets,
+                write,
+                skipped: Vec::new(),
+                missing_textures: BTreeSet::new(),
+            },
             parts: BTreeMap::new(),
-            skipped: Vec::new(),
-            missing_textures: BTreeSet::new(),
         }
     }
 
@@ -47,59 +56,46 @@ impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> 
     pub(crate) fn parts(&mut self, name: &str) -> Result<Option<&ModelParts>, ZeroHourError> {
         let parts = match self.parts.entry(name.to_owned()) {
             Entry::Occupied(known) => known.into_mut(),
-            Entry::Vacant(new) => {
-                let converted = ModelWriter::convert(
-                    name,
-                    &mut self.assets,
-                    &mut self.write,
-                    &mut self.skipped,
-                    &mut self.missing_textures,
-                )?;
-                new.insert(converted)
-            }
+            Entry::Vacant(new) => new.insert(self.converter.convert(name)?),
         };
         Ok(parts.as_ref())
     }
 
     /// Writes the package's file at `path`.
     pub(crate) fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), ZeroHourError> {
-        (self.write)(path, bytes)
+        (self.converter.write)(path, bytes)
     }
 
     pub(crate) fn report(self) -> ModelReport {
         ModelReport {
-            skipped: self.skipped,
-            missing_textures: self.missing_textures.into_iter().collect(),
+            skipped: self.converter.skipped,
+            missing_textures: self.converter.missing_textures.into_iter().collect(),
         }
     }
+}
 
+impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
     /// Converts the model `name` and writes its files; its parts, or `None` if it draws nothing
     /// or is skipped, which `skipped` gains.
-    fn convert(
-        name: &str,
-        assets: &mut ModelAssets<'_>,
-        write: &mut W,
-        skipped: &mut Vec<SkippedModel>,
-        missing_textures: &mut BTreeSet<String>,
-    ) -> Result<Option<ModelParts>, ZeroHourError> {
-        let reason = match ModelImport::convert(name, assets)? {
+    fn convert(&mut self, name: &str) -> Result<Option<ModelParts>, ZeroHourError> {
+        let reason = match ModelImport::convert(name, &mut self.assets)? {
             Converted::Model(import) => {
-                write(path(name).as_str(), &import.glb.encode())?;
+                (self.write)(path(name).as_str(), &import.glb.encode())?;
                 for material in &import.materials {
                     let text = Toml::write(&material.file);
-                    write(
+                    (self.write)(
                         &format!("client/materials/{}.toml", material.name),
                         text.as_bytes(),
                     )?;
                 }
-                missing_textures.extend(import.missing_textures);
+                self.missing_textures.extend(import.missing_textures);
                 return Ok(Some(import.parts));
             }
             Converted::Nothing => return Ok(None),
             Converted::Emitter => SkipReason::Emitter,
             Converted::Missing => SkipReason::Missing,
         };
-        skipped.push(SkippedModel {
+        self.skipped.push(SkippedModel {
             name: name.to_owned(),
             reason,
         });

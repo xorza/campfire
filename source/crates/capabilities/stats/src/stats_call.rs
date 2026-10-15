@@ -2,7 +2,8 @@ use bevy_ecs::world::World;
 use campfire_script::{
     CallError, CallParams, CallPart, CallStart, Commit, Frame, ParamScope, ScriptValue,
 };
-use campfire_values::{ActionId, ModifierId, Scalar};
+use campfire_sim::StableId;
+use campfire_values::{ActionId, ModifierId, NameId, Scalar};
 
 use crate::Stats;
 use crate::modifier_handle::ModifierHandle;
@@ -21,7 +22,7 @@ pub struct StatsCall {
     modifier: Option<ModifierId>,
     values: Vec<Scalar>,
     modifier_values: Vec<Scalar>,
-    pub handles: Vec<ModifierHandle>,
+    handles: Vec<ModifierHandle>,
     /// The handles of earlier calls that no script holds, for new handles to fill again.
     spare: Vec<ModifierHandle>,
 }
@@ -96,6 +97,24 @@ impl StatsCall {
         self.spare.pop()
     }
 
+    /// The handle the call gave a script of the instance of modifier `id` that `source` applied
+    /// on `carrier`, if it gave one.
+    pub(crate) fn handed(
+        &self,
+        carrier: StableId,
+        id: ModifierId,
+        source: Option<StableId>,
+    ) -> Option<&ModifierHandle> {
+        self.handles
+            .iter()
+            .find(|handle| handle.is(carrier, id, source))
+    }
+
+    /// Keeps `handle`, which the call gives a script, to commit once its effects applied.
+    pub fn hand_out(&mut self, handle: ModifierHandle) {
+        self.handles.push(handle);
+    }
+
     /// The stats' part of `frame`; stats adds it as it installs.
     pub fn of(frame: &Frame) -> &StatsCall {
         frame
@@ -118,5 +137,18 @@ impl StatsCall {
     /// The running call's ability's param at `at`, at its rank.
     pub fn ability_value(frame: &Frame, at: usize) -> Scalar {
         StatsCall::of(frame).values[at]
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::modifier_handle::ModifierHandle;
+    use crate::stats_call::StatsCall;
+
+    impl StatsCall {
+        /// The handles the call gave scripts, to change as a test sets them.
+        pub const fn handles_mut(&mut self) -> &mut Vec<ModifierHandle> {
+            &mut self.handles
+        }
     }
 }

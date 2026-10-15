@@ -1,6 +1,6 @@
 use bevy_ecs::system::ResMut;
 use campfire_actions::Shots;
-use campfire_deliveries::DeliverySpawner;
+use campfire_deliveries::{DeliverySpawner, NewDelivery};
 use campfire_sim::StableId;
 
 use crate::flight_state::FlightState;
@@ -49,7 +49,13 @@ impl Launching {
             payload,
         } in &launches
         {
-            spawner.spawn(source, from, unit_type, id, |id| {
+            let delivery = NewDelivery {
+                source,
+                unit_type,
+                pos: from,
+                id,
+            };
+            spawner.spawn(delivery, |id| {
                 let payload = match payload {
                     LaunchPayload::Action {
                         action,

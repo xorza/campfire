@@ -148,7 +148,8 @@ pub(crate) mod internals {
                 name: DeclaredName::new("basic").unwrap(),
                 ranks: None,
             };
-            SlotKindBook(Arc::new(SlotKinds::from([basic]))).load_into(&mut world);
+            let kinds = SlotKinds::new([basic]).unwrap();
+            SlotKindBook(Arc::new(kinds)).load_into(&mut world);
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }

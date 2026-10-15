@@ -15,11 +15,16 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
         name: "spells",
         value: InputValue::StringList(vec!["haste", "mend"]),
     };
+    let encode = |input: &ModeInput<'_>| {
+        let mut body = Vec::new();
+        input.encode_into(&mut body);
+        body
+    };
     // A string is its length and bytes; a list its count, then each string.
-    let body = hero.encode();
+    let body = encode(&hero);
     assert_eq!(body, [&[4][..], b"hero", &[4], b"rime"].concat());
     assert_eq!(ModeInput::decode(&body, types), Some(hero.clone()));
-    let body = spells.encode();
+    let body = encode(&spells);
     let expected = [&[6][..], b"spells", &[2, 5], b"haste", &[4], b"mend"].concat();
     assert_eq!(body, expected);
     assert_eq!(ModeInput::decode(&body, types), Some(spells.clone()));
@@ -34,10 +39,10 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
         name: "hero",
         value: InputValue::StringList(vec!["rime"]),
     };
-    let hero = hero.encode();
+    let hero = encode(&hero);
     for flawed in [
-        unknown.encode(),
-        as_list.encode(),
+        encode(&unknown),
+        encode(&as_list),
         hero[..hero.len() - 1].to_vec(),
         [hero.as_slice(), &[0]].concat(),
     ] {
@@ -45,7 +50,8 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
     }
 
     // A payload holds each as a command of the mode, the capability of index 12.
-    let payload = ModeInput::payload(&[spells]);
+    let mut payload = Vec::new();
+    spells.write_payload(&mut vec![0xff], &mut payload);
     assert_eq!(payload[..2], [1, 12]);
     let mut bodies = Vec::new();
     assert!(Command::read(&payload, |command, _| {

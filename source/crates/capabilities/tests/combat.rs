@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::component::Component;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
 use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
@@ -15,10 +16,11 @@ use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack};
 use campfire_combat::*;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_declare::ServerForm;
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{PlayerResources, Players, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -29,12 +31,10 @@ use campfire_stats::{
     Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
     PoolBook, PoolCost, PoolId, Pools, StatBook, StatId, StatRule, Stats, StatsSet,
 };
-use campfire_units::{
-    BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorldCrate,
-};
+use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
-    ActionId, Block, DeclaredName, FilterData, ModifierId, Names, Rank, Relation, RelationSet,
-    ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    ActionId, Block, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
+    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -331,7 +331,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // A weapon of 2 m, a windup of 2 ticks, 6 attacks a second, a period of 5 ticks, and 10
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut game = fight_match();
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()
@@ -367,7 +367,8 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .unwrap()
             .to_int()
             .expect("a whole amount");
-        let gold = PlayerResources::of_player(game, PlayerSlot::new(0))
+        let gold = game
+            .player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(gold);
         (mana, gold, Stats::health(game, dummy))
@@ -807,6 +808,10 @@ fn shield_data() -> ModifierData {
     }
 }
 
+/// A part of no meaning, which moves the unit that takes it to another archetype.
+#[derive(Component, Debug)]
+struct Apart;
+
 const ATTACK: DamageCause = DamageCause::Attack {
     roll: Num::ZERO,
     rank: Rank::FIRST,
@@ -859,6 +864,24 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     );
     let attackers = game.try_part::<RecentAttackers>(guarded).unwrap();
     assert_eq!(attackers.iter().count(), 0);
+    // Two units at zero health that no strike took there die with no killer, in stable-id order,
+    // though the lower id's part, inserted after the higher id's spawn, puts it in a later
+    // archetype, which a query meets after.
+    let first = Mode::spawn(&mut game, dummy, (6, 0, 0), Team::new(0), ());
+    let second = Mode::spawn(&mut game, dummy, (7, 0, 0), Team::new(0), ());
+    assert!(first < second);
+    for id in [second, first] {
+        let spent = game.part::<Life>(id).spent(Num::int(100));
+        game.insert_parts(id, spent);
+    }
+    game.insert_parts(first, Apart);
+    game.run_until(4);
+    let died: Vec<_> = game
+        .resource::<Deaths>()
+        .iter()
+        .map(|death| (death.fallen.id, death.killer))
+        .collect();
+    assert_eq!(died, [(first, None), (second, None)]);
 }
 
 #[test]
@@ -885,15 +908,12 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| NewInstance {
-        lifetime: Lifetime::new(
-            None,
-            until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
-        ),
+        lifetime: Lifetime::applied(until.map_or(Ends::Never, |until| Ends::At(Tick::new(until)))),
         shield: Some(Num::int(amount)),
         ..NewInstance::bare(ModifierId::new(id), None)
     };
     for name in ["first", "second", "third"] {
-        Stats::load_modifier(&mut game, 0, name, &shield_data(), None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &shield_data(), None);
     }
     let shields = [
         shield(0, None, 100),
@@ -997,7 +1017,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
             slots.start_attack(0, Tick::new(0));
         }
         game.resource_mut::<PassQueue>().clear();
-        game.run_system_once(Attacks::strike).unwrap();
+        game.run_system_once(Attacks::strike::<ServerForm>).unwrap();
         let queue = game.resource::<PassQueue>();
         let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {

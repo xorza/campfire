@@ -2,16 +2,19 @@
 //! there to prove: each capability it names takes part.
 
 use std::any::TypeId;
+use std::collections::BTreeMap;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, ActionTarget};
 use campfire_areas::Area;
-use campfire_capabilities::Release;
+use campfire_capabilities::{Order, Release};
+use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
-use campfire_harness::{FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
+use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::Num;
 use campfire_mode::ModeWorld;
+use campfire_orders::OrdersAction;
 use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
@@ -215,6 +218,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // The match's setup clears none, so the first tick's messages hold its removals too.
     let start = Removals::of(fixed.game());
     let (mut written, mut removed) = (start.written - start.held, false);
+    let mut watch = ArchetypeWatch::of(fixed.game());
     for tick in 0..ProvingMatch::TICKS {
         proving.play_tick(&mut fixed, tick);
         // The removed-component messages hold this tick's removals alone, as an `App`'s update
@@ -224,6 +228,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         removed |= removals.held > 0;
         written = removals.written;
         record.tick(fixed.game_mut());
+        watch.tick(fixed.game(), tick);
         assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
         if fixed.game().save_due() {
@@ -231,6 +236,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         }
     }
     record.check("proving");
+    watch.assert_kept();
     assert!(removed, "no tick removed a component");
     let world = fixed.game();
     // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by
@@ -405,10 +411,15 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
 /// the test fast.
 const DRAWS: usize = 16;
 
+/// The ticks a restored match plays, its first with an order of every slot of every unit.
+const WINDOW: usize = 5;
+
 /// Drawn values of each state type in turn, each a value its decode accepts with every number at
-/// an edge such as the limit, put in place of one holder's in a snapshot of the proving match:
-/// each restores or is refused, and what restores plays on with no panic. A byte flip seldom
-/// makes a value that decodes, so this reaches the checks the flips do not.
+/// an edge such as the limit, put in place of one holder's in a snapshot of the proving match, or
+/// on a drawn entity when none holds one: each restores or is refused, and what restores plays on
+/// with no panic, its first tick with every unit's every slot ordered, so its actions and their
+/// effects compute on the drawn value. A byte flip seldom makes a value that decodes, so this
+/// reaches the checks the flips do not.
 #[test]
 fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
     let proving = ProvingMatch::load();
@@ -422,29 +433,75 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
     let mut draws = Draws::new(7);
     let (mut restored, mut refused) = (0, 0);
     let mut flawed = Vec::new();
+    let mut undrawn = Vec::new();
     for name in target.state_names() {
+        let mut drawn = false;
         for _ in 0..DRAWS {
             target.restore_in_place(&base).unwrap();
             if !target.scramble_state(name, &mut draws) {
                 continue;
             }
+            drawn = true;
             flawed.clear();
             target.snapshot(&mut flawed);
             if target.restore_in_place(&flawed).is_ok() {
                 restored += 1;
-                for _ in 0..5 {
+                let orders = every_slot_orders(&target);
+                let inputs: Vec<(PlayerSlot, &[u8])> = orders
+                    .iter()
+                    .map(|(slot, payload)| (*slot, payload.as_slice()))
+                    .collect();
+                target.step_with(&inputs);
+                for _ in 1..WINDOW {
                     target.step();
                 }
             } else {
                 refused += 1;
             }
         }
+        if !drawn {
+            undrawn.push(name);
+        }
     }
-    // The draws reach both outcomes, so the checks are exercised, not passed over.
+    // Every state type is drawn, those the match holds nowhere among them, and the draws reach
+    // both outcomes, so the checks are exercised, not passed over.
+    assert_eq!(undrawn, Vec::<&str>::new());
     assert!(
         restored > 0 && refused > 0,
         "{restored} restored, {refused} refused"
     );
+}
+
+/// For each player, an order of each slot of each living unit it controls, at a living unit of
+/// the match: a slot's at the unit as many places past it, by stable id, as the slot's number,
+/// plus one, so the slots of a unit meet different units.
+fn every_slot_orders(world: &World) -> Vec<(PlayerSlot, Vec<u8>)> {
+    let units: Vec<_> = MatchUnits::of(world)
+        .all()
+        .filter(|(_, unit)| unit.contains::<Position>() && !unit.contains::<Dead>())
+        .collect();
+    let mut by_player: BTreeMap<PlayerSlot, Vec<Order>> = BTreeMap::new();
+    for (at, (id, unit)) in units.iter().enumerate() {
+        let (Some(owner), Some(slots)) = (unit.get::<Owner>(), unit.get::<ActionSlots>()) else {
+            continue;
+        };
+        for slot in 0..slots.iter().count() {
+            let (target, _) = units[(at + slot + 1) % units.len()];
+            let slot = u8::try_from(slot).expect("a unit's slots fit u8");
+            let action = OrdersAction::Slot {
+                slot,
+                target: ActionTarget::Unit(target),
+            };
+            by_player
+                .entry(owner.slot())
+                .or_default()
+                .push(Order::one(*id, action));
+        }
+    }
+    by_player
+        .into_iter()
+        .map(|(slot, orders)| (slot, Order::payload(&orders)))
+        .collect()
 }
 
 /// The draws of each mutation of each state type: each picks its holder and its other entity anew.

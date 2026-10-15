@@ -38,17 +38,19 @@ pub enum Hold {
 pub(crate) struct HoldSet(u8);
 
 impl Lifetime {
-    /// The lifetime of an application by `hold`, or of its own until `ends` with none.
-    pub fn new(hold: Option<Hold>, ends: Ends) -> Lifetime {
-        match hold {
-            Some(hold) => Lifetime {
-                holds: HoldSet::of(hold),
-                applied: None,
-            },
-            None => Lifetime {
-                holds: HoldSet::default(),
-                applied: Some(ends),
-            },
+    /// The lifetime of an application by `hold`, which keeps it while it holds.
+    pub const fn held(hold: Hold) -> Lifetime {
+        Lifetime {
+            holds: HoldSet::of(hold),
+            applied: None,
+        }
+    }
+
+    /// The lifetime of an application of its own, until `ends`.
+    pub const fn applied(ends: Ends) -> Lifetime {
+        Lifetime {
+            holds: HoldSet::NONE,
+            applied: Some(ends),
         }
     }
 
@@ -99,6 +101,7 @@ impl Lifetime {
 }
 
 impl HoldSet {
+    const NONE: HoldSet = HoldSet(0);
     const ALL: u8 =
         HoldSet::bit(Hold::Passive) | HoldSet::bit(Hold::Held) | HoldSet::bit(Hold::Running);
 
@@ -152,7 +155,7 @@ mod tests {
     fn an_instance_lasts_while_a_hold_or_its_own_application_keeps_it() {
         let at = |tick| Ends::At(Tick::new(tick));
         // Held, then applied until tick 5: the aura's leaving keeps it until 5, and tick 5 ends it.
-        let held = Lifetime::new(Some(Hold::Held), Ends::Never).joined(Lifetime::new(None, at(5)));
+        let held = Lifetime::held(Hold::Held).joined(Lifetime::applied(at(5)));
         let mut later = held;
         assert_eq!((held.until(), later.lasts(Tick::new(9))), (None, true));
         let mut released = held;
@@ -160,17 +163,16 @@ mod tests {
         assert_eq!(released.until(), Some(Tick::new(5)));
         assert!(released.lasts(Tick::new(4)) && !released.lasts(Tick::new(5)));
         // Applied until tick 5, then held: past tick 5 the hold keeps it; released, it ends.
-        let mut timed = Lifetime::new(None, at(5)).joined(Lifetime::new(Some(Hold::Held), at(0)));
+        let mut timed = Lifetime::applied(at(5)).joined(Lifetime::held(Hold::Held));
         assert!(timed.lasts(Tick::new(7)));
         assert!(!timed.release(Hold::Held));
         // An application that never ends outlasts its holds; a refresh takes the new end.
-        let mut kept =
-            Lifetime::new(None, Ends::Never).joined(Lifetime::new(Some(Hold::Passive), at(0)));
+        let mut kept = Lifetime::applied(Ends::Never).joined(Lifetime::held(Hold::Passive));
         assert!(kept.release(Hold::Passive) && kept.lasts(Tick::new(1_000)));
-        let refreshed = Lifetime::new(None, at(3)).joined(Lifetime::new(None, at(8)));
+        let refreshed = Lifetime::applied(at(3)).joined(Lifetime::applied(at(8)));
         assert_eq!(refreshed.until(), Some(Tick::new(8)));
         // A passive and a hold are two holds, each released alone.
-        let mut both = Lifetime::new(Some(Hold::Passive), Ends::Never);
+        let mut both = Lifetime::held(Hold::Passive);
         both.hold(Hold::Held);
         assert!(both.release(Hold::Held) && both.held_by(Hold::Passive));
         assert!(!both.release(Hold::Passive));

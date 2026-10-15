@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+internals = []
+
 [dependencies]
 arrayvec.workspace = true
 postcard.workspace = true
@@ -11,6 +14,9 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 toml.workspace = true
+
+[dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

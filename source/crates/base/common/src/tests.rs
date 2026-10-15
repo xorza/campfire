@@ -977,81 +977,111 @@ fn module_cycles(imports: &BTreeMap<String, BTreeSet<String>>) -> Vec<Vec<String
     cycles
 }
 
-/// The first name of each path `code` names through `crate::`, a group `crate::{a::X, b}` giving
-/// each of its names: `use crate::a::X;`, `use crate::b;` and `crate::c::f()` name `a`, `b` and
-/// `c`. A macro's `$crate::` names no module of the crate it is written in.
-fn crate_heads(code: &str) -> Vec<&str> {
-    fn lead(text: &str) -> &str {
-        let text = text.trim_start();
-        let end = text
-            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
-            .unwrap_or(text.len());
-        &text[..end]
-    }
-    let mut heads = Vec::new();
+/// Each path `code` names through `crate::`, by its segments, each path of a group its own:
+/// `use crate::a::{b::X, c};` names `a::b::X` and `a::c`, and `crate::d::f()` names `d::f`. A
+/// group's `self` names the path before it, and a glob that path. A macro's `$crate::` names no
+/// module of the crate it is written in.
+fn crate_paths(code: &str) -> Vec<Vec<&str>> {
+    let mut paths = Vec::new();
     for (at, _) in code.match_indices("crate::") {
         if code[..at].ends_with(|c: char| c.is_alphanumeric() || c == '_' || c == '$') {
             continue;
         }
-        let rest = &code[at + "crate::".len()..];
-        let Some(group) = rest.strip_prefix('{') else {
-            heads.push(lead(rest));
-            continue;
-        };
-        let mut depth = 0;
-        let mut start = 0;
-        for (at, c) in group.char_indices() {
-            match c {
-                '{' => depth += 1,
-                '}' if depth == 0 => {
-                    heads.push(lead(&group[start..at]));
-                    break;
-                }
-                '}' => depth -= 1,
-                ',' if depth == 0 => {
-                    heads.push(lead(&group[start..at]));
-                    start = at + 1;
-                }
-                _ => {}
-            }
-        }
+        use_tree(&code[at + "crate::".len()..], Vec::new(), &mut paths);
     }
-    heads.retain(|head| !head.is_empty());
-    heads
+    paths.retain(|path| !path.is_empty());
+    paths
 }
 
-/// The top modules of the crate at `src/`, each with the top modules its production code names
-/// through `crate::`: a top module is a file or a folder of `src/` but the crate's root.
-fn top_imports(src: &str, sources: &[SourceFile]) -> BTreeMap<String, BTreeSet<String>> {
-    let mut imports: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+/// Reads the use tree at the start of `text`, under the segments `path`, and pushes each path
+/// it names to `paths`; how much of `text` it read.
+fn use_tree<'a>(text: &'a str, mut path: Vec<&'a str>, paths: &mut Vec<Vec<&'a str>>) -> usize {
+    let skip = |at: usize| at + (text[at..].len() - text[at..].trim_start().len());
+    let mut at = skip(0);
+    loop {
+        if text[at..].starts_with('{') {
+            at = skip(at + 1);
+            while !text[at..].starts_with('}') && at < text.len() {
+                at = skip(at + use_tree(&text[at..], path.clone(), paths));
+                if text[at..].starts_with(',') {
+                    at = skip(at + 1);
+                } else if !text[at..].starts_with('}') {
+                    return at;
+                }
+            }
+            return (at + 1).min(text.len());
+        }
+        let rest = &text[at..];
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(rest.len());
+        match &rest[..end] {
+            "" | "self" => {}
+            segment => path.push(segment),
+        }
+        at += end;
+        if text[at..].starts_with("::") {
+            at += "::".len();
+        } else {
+            paths.push(path);
+            return at;
+        }
+    }
+}
+
+/// Each module of the crate at `src/` that has children, by its path, its children each with
+/// the siblings its production code names: a child of `a::b` names its sibling `c` by a path
+/// through `crate::a::b::c`. The crate's root is the module of no path.
+fn sibling_imports(
+    src: &str,
+    sources: &[SourceFile],
+) -> BTreeMap<Vec<String>, BTreeMap<String, BTreeSet<String>>> {
+    let mut files = Vec::new();
     for file in sources {
         let Some(rest) = file.path.strip_prefix(&format!("{src}/")) else {
             continue;
         };
-        if rest == "lib.rs" || rest == "main.rs" {
-            continue;
-        }
-        let module = rest
-            .split('/')
-            .next()
-            .unwrap()
+        let mut module: Vec<String> = rest
             .trim_end_matches(".rs")
-            .to_owned();
-        let named = imports.entry(module.clone()).or_default();
+            .split('/')
+            .map(str::to_owned)
+            .collect();
+        if matches!(
+            module.last().map(String::as_str),
+            Some("mod" | "lib" | "main")
+        ) {
+            module.pop();
+        }
+        files.push((module, file));
+    }
+    let mut parents: BTreeMap<Vec<String>, BTreeMap<String, BTreeSet<String>>> = BTreeMap::new();
+    for (module, _) in &files {
+        for depth in 0..module.len() {
+            let children = parents.entry(module[..depth].to_vec()).or_default();
+            children.entry(module[depth].clone()).or_default();
+        }
+    }
+    for (module, file) in &files {
         let Some(code) = file.production() else {
             continue;
         };
-        for head in crate_heads(&code) {
-            if head != module {
-                named.insert(head.to_owned());
+        let paths = crate_paths(&code);
+        for depth in 0..module.len() {
+            let (parent, child) = (&module[..depth], &module[depth]);
+            let children = parents.get_mut(parent).expect("each parent is listed");
+            for path in &paths {
+                let through = path.len() > depth && path.iter().zip(parent).all(|(a, b)| a == b);
+                let Some(&sibling) = path.get(depth).filter(|_| through) else {
+                    continue;
+                };
+                if sibling != child && children.contains_key(sibling) {
+                    let named = children.get_mut(child).expect("each child is listed");
+                    named.insert(sibling.to_owned());
+                }
             }
         }
     }
-    let modules: BTreeSet<String> = imports.keys().cloned().collect();
-    for named in imports.values_mut() {
-        named.retain(|other| modules.contains(other));
-    }
-    imports
+    parents
 }
 
 #[test]
@@ -1060,12 +1090,17 @@ fn no_crates_modules_import_each_other_in_a_cycle() {
     let mut found = Vec::new();
     for krate in &crates() {
         let src = format!("{}/src", krate.path);
-        let cycles = module_cycles(&top_imports(&src, &sources));
-        found.extend(
-            cycles
-                .into_iter()
-                .map(|cycle| format!("{}: {}", krate.name, cycle.join(", "))),
-        );
+        for (parent, imports) in sibling_imports(&src, &sources) {
+            let at: String = parent
+                .iter()
+                .flat_map(|module| ["::", module.as_str()])
+                .collect();
+            found.extend(
+                module_cycles(&imports)
+                    .into_iter()
+                    .map(|cycle| format!("{}{at}: {}", krate.name, cycle.join(", "))),
+            );
+        }
     }
     assert_eq!(found, Vec::<String>::new());
     // Three modules that import in a ring make one cycle; a module that only imports into it stays
@@ -1087,9 +1122,35 @@ fn no_crates_modules_import_each_other_in_a_cycle() {
     })
     .collect();
     assert_eq!(module_cycles(&imports), [["a", "b", "c"]]);
-    // A path, a module, a group with a nested group and a trailing comma, and a macro's own crate.
-    let code = "use crate::a::X;\nuse crate::b;\nuse crate::{c::{Y, Z}, d,\n};\ncrate::e::f();\n$crate::g::H";
-    assert_eq!(crate_heads(code), ["a", "b", "c", "d", "e"]);
+    // A path, a module, a group with a nested group, `self` and a trailing comma, a glob, a call
+    // and a macro's own crate.
+    let code = "use crate::a::X;\nuse crate::b;\nuse crate::{c::{self, Y, z::Z}, d,\n};\nuse crate::e::*;\ncrate::f::g();\n$crate::h::H";
+    let paths: Vec<String> = crate_paths(code)
+        .iter()
+        .map(|path| path.join("::"))
+        .collect();
+    assert_eq!(
+        paths,
+        ["a::X", "b", "c", "c::Y", "c::z::Z", "d", "e", "f::g"]
+    );
+    // Under the crate's `p`, its child `q` names `r` through a group, and `r` names `q` through a
+    // path: a cycle of `p`'s children. The root's `p` naming itself is none.
+    let file = |path: &str, text: &str| SourceFile {
+        path: format!("src/{path}"),
+        text: text.to_owned(),
+        gated: false,
+    };
+    let files = [
+        file("lib.rs", "mod p;"),
+        file("p/mod.rs", "use crate::p::q::Q;"),
+        file("p/q.rs", "use crate::p::{r::R, s};"),
+        file("p/r.rs", "use crate::p::q::Q;"),
+        file("p/s/mod.rs", ""),
+    ];
+    let imports = sibling_imports("src", &files);
+    let under_p = &imports[&vec!["p".to_owned()]];
+    assert_eq!(module_cycles(under_p), [["q", "r"]]);
+    assert!(module_cycles(&imports[&Vec::new()]).is_empty());
 }
 
 /// The one module whose code may differ by OS (design 02, Platform).
@@ -1614,6 +1675,106 @@ pub struct ScriptedMatch;
             (3, "SessionMatch"),
             (4, "HarnessMatchInternals"),
         ]
+    );
+}
+
+/// Each use of a `<Module>WorldCrate` trait outside the crate that declares it, among `files`,
+/// each a source by its crate's name, its path and its text: by the path, the line and the trait.
+/// Such a trait is its own crate's alone (design 02's world rule): another crate takes the
+/// module's `<Module>World`, and a test or a bench its `<Module>WorldInternals`.
+fn foreign_crate_traits<'a>(
+    files: &[(&'a str, &'a str, &'a str)],
+) -> Vec<(&'a str, usize, &'a str)> {
+    let identifiers = |line: &'a str| {
+        line.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|word| !word.is_empty())
+    };
+    let crate_trait = |name: &str| name.len() > "WorldCrate".len() && name.ends_with("WorldCrate");
+    let mut declared = BTreeMap::new();
+    for &(owner, _, text) in files {
+        for line in text.lines() {
+            let mut words = identifiers(line);
+            while let Some(word) = words.next() {
+                if word == "trait"
+                    && let Some(name) = words.next()
+                    && crate_trait(name)
+                {
+                    declared.insert(name, owner);
+                }
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for &(user, path, text) in files {
+        for (line, code) in text.lines().enumerate() {
+            for word in identifiers(code) {
+                if declared.get(word).is_some_and(|&owner| owner != user) {
+                    found.push((path, line + 1, word));
+                }
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn no_crate_names_another_crates_own_world_trait() {
+    let crates = crates();
+    let own = "crates/base/common/src/tests.rs";
+    let files: Vec<SourceFile> = sources()
+        .into_iter()
+        .filter(|file| file.path != own)
+        .collect();
+    let files: Vec<(&str, &str, &str)> = files
+        .iter()
+        .filter_map(|file| {
+            let holder = holder(&crates, &file.path)?;
+            Some((
+                crates[holder].name.as_str(),
+                file.path.as_str(),
+                file.text.as_str(),
+            ))
+        })
+        .collect();
+    let found: Vec<String> = foreign_crate_traits(&files)
+        .into_iter()
+        .map(|(path, line, name)| format!("{path}:{line} {name}"))
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_crate_trait_rule_finds_each_use_outside_its_crate() {
+    // `a` declares `AWorldCrate` and uses it; `b` imports it and names it in a bound; `c` names
+    // `AWorldCrateInternals` and `AWorld`, other traits, and `XWorldCrate`, which no crate
+    // declares.
+    let files = [
+        (
+            "a",
+            "a.rs",
+            "pub(crate) trait AWorldCrate {}
+impl AWorldCrate for World {}
+",
+        ),
+        (
+            "b",
+            "b.rs",
+            "use a::{AWorld, AWorldCrate};
+fn f<W: AWorldCrate>() {}
+",
+        ),
+        (
+            "c",
+            "c.rs",
+            "use a::AWorldCrateInternals;
+use a::AWorld;
+use x::XWorldCrate;
+",
+        ),
+    ];
+    assert_eq!(
+        foreign_crate_traits(&files),
+        [("b.rs", 1, "AWorldCrate"), ("b.rs", 2, "AWorldCrate")]
     );
 }
 

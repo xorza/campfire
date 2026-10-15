@@ -41,13 +41,20 @@ pub(crate) enum Watching {
     Teams(TeamSet),
 }
 
+/// Whether a player plays, or is out of play.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PlayStatus {
+    Playing,
+    Out,
+}
+
 impl Viewer {
-    /// The view of the player of `slot`, of `team`, out of play when `out_of_play`, in a session
-    /// of `visibility`, none before the match starts: out as the session's `out` says.
+    /// The view of the player of `slot`, of `team`, of `status`, in a session of `visibility`,
+    /// none before the match starts: out as the session's `out` says.
     pub(crate) fn player(
         slot: PlayerSlot,
         team: Team,
-        out_of_play: bool,
+        status: PlayStatus,
         visibility: Option<&Visibility>,
     ) -> Viewer {
         let sees_as_spectator =
@@ -55,19 +62,24 @@ impl Viewer {
         Viewer::Player {
             slot,
             team,
-            out: out_of_play && sees_as_spectator,
+            out: status == PlayStatus::Out && sees_as_spectator,
         }
     }
 
     /// The view of the player of `slot`, of `team`, in `world`, as its entity stands.
     pub(crate) fn of_player(world: &World, slot: PlayerSlot, team: Team) -> Viewer {
         let entity = world.player_entity(slot);
-        let out_of_play = entity.is_some_and(|entity| world.entity(entity).contains::<OutOfPlay>());
+        let out = entity.is_some_and(|entity| world.entity(entity).contains::<OutOfPlay>());
+        let status = if out {
+            PlayStatus::Out
+        } else {
+            PlayStatus::Playing
+        };
         let visibility = world.get_resource::<MatchVisibility>();
         Viewer::player(
             slot,
             team,
-            out_of_play,
+            status,
             visibility.map(|visibility| &visibility.0),
         )
     }
@@ -87,6 +99,25 @@ impl Viewer {
         }
     }
 
+    /// Views a link as its player as it gains a `PlayerLink`, or a new one, and as none once it
+    /// loses it.
+    pub(crate) fn follow_links(app: &mut App) {
+        app.add_observer(
+            |linked: On<'_, '_, Insert, PlayerLink>, mut world: DeferredWorld<'_>| {
+                let link = *world
+                    .get::<PlayerLink>(linked.entity)
+                    .expect("an insert's own component");
+                let viewer = Viewer::of_player(&world, link.slot(), link.team());
+                world.commands().entity(linked.entity).insert(viewer);
+            },
+        );
+        app.add_observer(
+            |unlinked: On<'_, '_, Remove, PlayerLink>, mut commands: Commands<'_, '_>| {
+                commands.entity(unlinked.entity).try_remove::<Viewer>();
+            },
+        );
+    }
+
     /// Views each player's link again as its player goes out of play and comes back, which
     /// changes its rooms and what each data filter gives it (design 14, D16): what it held of
     /// the other teams' entities leaves it as a unit that leaves vision does.
@@ -98,7 +129,14 @@ impl Viewer {
              visibility: Option<Res<'_, MatchVisibility>>,
              commands: Commands<'_, '_>| {
                 let visibility = visibility.as_deref().map(|visibility| &visibility.0);
-                Viewer::view_again(out.entity, true, &players, &links, visibility, commands);
+                Viewer::view_again(
+                    out.entity,
+                    PlayStatus::Out,
+                    &players,
+                    &links,
+                    visibility,
+                    commands,
+                );
             },
         );
         app.add_observer(
@@ -108,15 +146,16 @@ impl Viewer {
              visibility: Option<Res<'_, MatchVisibility>>,
              commands: Commands<'_, '_>| {
                 let visibility = visibility.as_deref().map(|visibility| &visibility.0);
-                Viewer::view_again(back.entity, false, &players, &links, visibility, commands);
+                let status = PlayStatus::Playing;
+                Viewer::view_again(back.entity, status, &players, &links, visibility, commands);
             },
         );
     }
 
-    /// Views again the link of the player whose entity is `player`, out of play as `out_of_play`.
+    /// Views again the link of the player whose entity is `player`, of `status`.
     fn view_again(
         player: Entity,
-        out_of_play: bool,
+        status: PlayStatus,
         players: &Query<'_, '_, &Player>,
         links: &Query<'_, '_, (Entity, &PlayerLink)>,
         visibility: Option<&Visibility>,
@@ -127,7 +166,7 @@ impl Viewer {
         };
         for (link, seat) in links {
             if seat.slot() == player.slot() {
-                let viewer = Viewer::player(seat.slot(), seat.team(), out_of_play, visibility);
+                let viewer = Viewer::player(seat.slot(), seat.team(), status, visibility);
                 commands.entity(link).insert(viewer);
             }
         }
@@ -168,7 +207,7 @@ mod tests {
     #[test]
     fn a_viewer_is_the_owner_an_ally_an_enemy_or_a_spectator() {
         let (slot, team) = (PlayerSlot::new, Team::new);
-        let player = Viewer::player(slot(1), team(0), false, None);
+        let player = Viewer::player(slot(1), team(0), PlayStatus::Playing, None);
         // Of a unit of slot 1's: none, as the owner; of slot 2's of its team, an ally; of the
         // other team's, an enemy; of the match's, of no team or owner, an ally.
         assert_eq!(
@@ -201,7 +240,7 @@ mod tests {
             ModeVisibility::default().session(&host).unwrap()
         };
         let (spectators, own_team) = (session("spectators"), session("team"));
-        let out = Viewer::player(slot(1), team(0), true, Some(&spectators));
+        let out = Viewer::player(slot(1), team(0), PlayStatus::Out, Some(&spectators));
         assert_eq!(out.recipient(None, Some(team(1))), Recipients::SPECTATORS);
         assert_eq!(
             out.recipient(Some(slot(1)), Some(team(0))),
@@ -211,13 +250,13 @@ mod tests {
             out.recipient(Some(slot(2)), Some(team(0))),
             Recipients::ALLIES
         );
-        for (out_of_play, visibility) in [
-            (true, Some(&own_team)),
-            (true, None),
-            (false, Some(&spectators)),
+        for (status, visibility) in [
+            (PlayStatus::Out, Some(&own_team)),
+            (PlayStatus::Out, None),
+            (PlayStatus::Playing, Some(&spectators)),
         ] {
-            let viewer = Viewer::player(slot(1), team(0), out_of_play, visibility);
-            assert_eq!(viewer, player, "{out_of_play} {visibility:?}");
+            let viewer = Viewer::player(slot(1), team(0), status, visibility);
+            assert_eq!(viewer, player, "{status:?} {visibility:?}");
         }
     }
 }

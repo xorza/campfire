@@ -1,9 +1,8 @@
 use bevy_math::UVec2;
+use campfire_client_files::{Ktx2Image, TextureFormat};
 
 use crate::texture::error::TextureError;
-use crate::texture::ktx2_image::Ktx2Image;
 use crate::texture::mip_chain::MipChain;
-use crate::texture::texture_format::TextureFormat;
 
 /// An uncompressed true-color TGA (Truevision's TGA 2.0), its texels as 8-bit red, green, blue
 /// and alpha, rows from the top. A texel of 32 bits keeps its alpha whatever the header's count
@@ -15,6 +14,17 @@ pub(crate) struct TgaFile {
     rgba: Vec<u8>,
 }
 
+/// The header of a TGA the importer reads, checked against the bytes after it: its size, the
+/// bytes of a texel, where its texels start, and its descriptor byte.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TgaHeader {
+    width: u32,
+    height: u32,
+    texel: usize,
+    start: usize,
+    descriptor: u8,
+}
+
 /// The header's bytes, and the footer of TGA 2.0 that may follow the texels.
 const HEADER: usize = 18;
 const FOOTER: usize = 26;
@@ -23,11 +33,11 @@ const SIGNATURE: &[u8; 18] = b"TRUEVISION-XFILE.\0";
 /// Uncompressed true color, the image type the importer reads.
 const TRUE_COLOR: u8 = 2;
 
-impl TgaFile {
-    /// The TGA `bytes` hold, refused unless it is uncompressed true color of 24 or 32 bits with no
-    /// color map, and its texels end the file or a footer that names no extension area follows
-    /// them.
-    pub(crate) fn read(bytes: &[u8]) -> Result<TgaFile, TextureError> {
+impl TgaHeader {
+    /// The header of the TGA `bytes` hold, refused unless it is uncompressed true color of 24 or
+    /// 32 bits with no color map, and its texels end the file or a footer that names no extension
+    /// area follows them.
+    pub(crate) fn read(bytes: &[u8]) -> Result<TgaHeader, TextureError> {
         if bytes.len() < HEADER {
             return Err(TextureError::Length {
                 expected: HEADER,
@@ -48,10 +58,15 @@ impl TgaFile {
         if width == 0 || height == 0 {
             return Err(TextureError::Size { width, height });
         }
-        let (columns, rows) = (width as usize, height as usize);
-        let start = HEADER + usize::from(id);
-        let expected = columns * rows * texel;
-        let after = bytes.len().saturating_sub(start);
+        let header = TgaHeader {
+            width,
+            height,
+            texel,
+            start: HEADER + usize::from(id),
+            descriptor,
+        };
+        let expected = header.texels_len();
+        let after = bytes.len().saturating_sub(header.start);
         let footer = bytes.len() >= FOOTER
             && bytes.ends_with(SIGNATURE)
             && bytes[bytes.len() - FOOTER..][..8] == [0; 8];
@@ -61,6 +76,36 @@ impl TgaFile {
                 found: after,
             });
         }
+        Ok(header)
+    }
+
+    /// Its width and height, in texels.
+    pub(crate) const fn size(&self) -> UVec2 {
+        UVec2::new(self.width, self.height)
+    }
+
+    /// The length of its texels as stored.
+    fn texels_len(&self) -> usize {
+        usize::try_from(self.width).expect("a u32 fits usize")
+            * usize::try_from(self.height).expect("a u32 fits usize")
+            * self.texel
+    }
+}
+
+impl TgaFile {
+    /// The TGA `bytes` hold, refused as `TgaHeader::read` refuses its header.
+    pub(crate) fn read(bytes: &[u8]) -> Result<TgaFile, TextureError> {
+        let header = TgaHeader::read(bytes)?;
+        let TgaHeader {
+            width,
+            height,
+            texel,
+            start,
+            descriptor,
+        } = header;
+        let columns = usize::try_from(width).expect("a u32 fits usize");
+        let rows = usize::try_from(height).expect("a u32 fits usize");
+        let expected = header.texels_len();
         let texels = &bytes[start..start + expected];
         // Bit 5 of the descriptor puts the first row at the top, bit 4 the first column at the
         // right.
@@ -89,11 +134,6 @@ impl TgaFile {
             height,
             rgba,
         })
-    }
-
-    /// Its width and height, in texels.
-    pub(crate) const fn size(&self) -> UVec2 {
-        UVec2::new(self.width, self.height)
     }
 
     /// Its KTX2 file: 8-bit RGBA, with its full chain of levels.
@@ -146,6 +186,7 @@ mod tests {
         // and grey 128 of alpha 100, as `MipChain`'s test lays them out from the top.
         let (b, w, g) = ([0, 0, 0, 0], [255, 255, 255, 255], [128, 128, 128, 100]);
         let file = tga(4, 2, 32, 0, &[w, b, g, g, b, w, g, g].concat());
+        assert_eq!(TgaHeader::read(&file).unwrap().size(), UVec2::new(4, 2));
         let ktx2 = TgaFile::read(&file).unwrap().ktx2();
         // Levels 4 × 2, 2 × 1 and 1 × 1, of 32, 8 and 4 bytes. The level index ends at 80 + 3 · 24
         // = 152; the descriptor, 4 + 24 + 4 · 16 = 92 bytes, ends at 244; levels align to 4: 1 × 1

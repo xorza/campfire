@@ -3,8 +3,8 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use campfire_capabilities::Release;
-use campfire_package::ModePackages;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::TestMode;
 use campfire_script::ScriptHost;
 use campfire_sim::TickRate;
 use criterion::Criterion;
@@ -26,7 +26,13 @@ pub(crate) fn build(c: &mut Criterion) {
     group.sample_size(20);
     group.bench_function("3v3", |b| {
         let (dir, map) = (TestMode::Moba3v3.dir(), TestMode::Moba3v3.map());
-        b.iter(|| black_box(ModePackages::from_dir(&dir, &map).expect("the 3v3 loads")));
+        b.iter(|| {
+            black_box(
+                PackageDir::new(dir.clone())
+                    .mode_packages(&map)
+                    .expect("the 3v3 loads"),
+            )
+        });
     });
     group.finish();
     let mut group = c.benchmark_group("integration/match_build");

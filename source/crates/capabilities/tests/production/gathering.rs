@@ -153,6 +153,15 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     });
     assert_eq!(loads, [None, None, None, five]);
     assert_eq!(*client.part::<Node>(node), Node::new(12));
+    // It takes its load to the hall and drops it as the server's does, and joins nothing to its
+    // player's gold, which is the server's.
+    let gold = shop.gold(&client);
+    let delivered = (5..=40).find(|_| {
+        client.step();
+        client.part::<Gatherer>(worker).load().is_none()
+    });
+    assert!(delivered.is_some());
+    assert_eq!(shop.gold(&client), gold);
 }
 
 #[test]
@@ -386,7 +395,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
 
     // A load of another resource, sent to gather gold, is dropped.
-    let wood = ResourceId::nth(1);
+    let wood = ResourceId::new(1);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {

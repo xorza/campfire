@@ -63,7 +63,7 @@ fn a_path_reads_its_packages_file_checked_against_its_index() {
     // The asset path of a package's file names the source.
     let path = PackagePath::parse("client/models/tank.glb").unwrap();
     assert_eq!(
-        PackageSource::asset_path(1, &path),
+        PackageSource::asset_path(PackageIndex::new(1), &path),
         "package://1/client/models/tank.glb"
     );
 }

@@ -4,7 +4,7 @@ use std::slice;
 
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
-use campfire_script::{DataSection, DataTable, Hook};
+use campfire_script::{DataSection, DataTable};
 use campfire_stats::PoolCost;
 use campfire_values::{
     DeclaredName, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, Scalar, Share,
@@ -19,6 +19,7 @@ use crate::construct_data::ConstructData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
 use crate::effect_data::EffectData;
+use crate::list_hook::ListHook;
 use crate::placement_data::PlacementData;
 use crate::range_field::RangeField;
 use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
@@ -418,11 +419,11 @@ impl ActionData {
     }
 
     /// Its effect lists, each with the hook it runs before: `on_resolve`, `on_hit`, `on_end`.
-    pub const fn effect_lists(&self) -> [(Hook, &[EffectData]); 3] {
+    pub const fn effect_lists(&self) -> [(ListHook, &[EffectData]); 3] {
         [
-            (Hook::OnResolve, self.on_resolve.as_slice()),
-            (Hook::OnHit, self.on_hit.as_slice()),
-            (Hook::OnEnd, self.on_end.as_slice()),
+            (ListHook::OnResolve, self.on_resolve.as_slice()),
+            (ListHook::OnHit, self.on_hit.as_slice()),
+            (ListHook::OnEnd, self.on_end.as_slice()),
         ]
     }
 

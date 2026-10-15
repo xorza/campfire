@@ -132,7 +132,9 @@ impl PoolMetersMut<'_> {
     pub fn pay(&mut self, cost: &PoolCost) {
         debug_assert!(self.read().affords(cost), "a unit pays what it affords");
         for (pool, amount) in cost.iter() {
-            self.change(pool, |meter| meter.take(amount));
+            self.change(pool, |meter| {
+                meter.take(amount);
+            });
         }
     }
 

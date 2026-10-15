@@ -52,9 +52,10 @@ impl TerrainView {
             .remove_resource::<ModeFiles>()
             .expect("the plugin inserts the mode's files");
         world.resource_scope(|world, data: Mut<'_, ClientData>| {
-            let (Some(file), Some(grid)) = (&data.terrain, &data.grid) else {
+            let (Some(file), Some(heights)) = (&data.terrain, &data.heights) else {
                 return;
             };
+            let grid = heights.grid();
             let image = TerrainImage::compose(file.texture(), &files);
             let TerrainMeshes { ground, overlay } =
                 TerrainMeshes::of(file.quads(), file.texture().size, grid);

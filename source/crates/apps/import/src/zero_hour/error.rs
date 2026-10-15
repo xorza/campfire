@@ -2,7 +2,8 @@ use std::fmt;
 use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
-use campfire_package::{TerrainFileError, WriteError};
+use campfire_client_files::TerrainFileError;
+use campfire_package_disk::WriteError;
 use campfire_store::{PathError, ReadError};
 use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;
@@ -16,10 +17,10 @@ use crate::texture::error::TextureError;
 pub enum ZeroHourError {
     /// A file or a directory of the install does not read.
     #[error("the install does not read")]
-    Read(#[source] PathError<ReadError>),
+    Read(#[from] PathError<ReadError>),
     /// The package does not write.
     #[error("the package does not write")]
-    Write(#[source] WriteError),
+    Write(#[from] WriteError),
     /// An archive of the install is no archive the game reads.
     #[error("{} is no archive", .archive.display())]
     Archive {
@@ -82,9 +83,8 @@ pub enum ZeroHourError {
     /// Several language folders hold art, and the importer cannot tell which the game reads.
     #[error("several language folders hold art: {0:?}")]
     Languages(Vec<String>),
-    /// Two objects' names give one unit type name.
-    #[error("{first} and {second} give one unit type name")]
-    UnitTypeClash { first: String, second: String },
+    #[error(transparent)]
+    NameClash(#[from] NameClash),
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },
@@ -190,6 +190,9 @@ pub enum MapError {
     /// Its heights are no grid within the world's bound.
     #[error("its heights are no grid within the world's bound")]
     Heights,
+    /// Its heights and the points its objects stand at make no bounds within the world's bound.
+    #[error("its heights and its objects' points make no bounds within the world's bound")]
+    Bounds,
     /// A dictionary entry is of a type the game does not read.
     #[error("a dictionary entry is of type {0}")]
     DictType(u8),
@@ -233,9 +236,17 @@ pub enum MapError {
     /// A number of its lighting is not finite, or a light it draws its objects in goes no way.
     #[error("a number of its lighting is not finite, or an object light goes no way")]
     Lighting,
-    /// Two object templates give one unit type name.
-    #[error("{first} and {second} give one unit type name")]
-    UnitTypeClash { first: String, second: String },
+    #[error(transparent)]
+    NameClash(#[from] NameClash),
+}
+
+/// Two objects of the original whose names give one name in the package, a look's or a unit
+/// type's: the one that took it first, and the one refused.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{first} and {second} give one name")]
+pub struct NameClash {
+    pub first: String,
+    pub second: String,
 }
 
 /// Why a map's terrain is not one the import converts: a count or an index that reaches past
@@ -430,4 +441,21 @@ pub enum ModelError {
     /// A shader mixes its detail stage by a color function no shipped shader uses.
     #[error("a shader mixes its detail stage by function {0}")]
     DetailFunction(u8),
+}
+
+/// Bytes of the original that end inside a field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("it ends inside a field")]
+pub struct Short;
+
+impl From<Short> for MapError {
+    fn from(_: Short) -> MapError {
+        MapError::Short
+    }
+}
+
+impl From<Short> for W3dError {
+    fn from(_: Short) -> W3dError {
+        W3dError::Short
+    }
 }

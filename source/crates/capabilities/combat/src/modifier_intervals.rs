@@ -1,7 +1,7 @@
 use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_script::ScriptsWorldCrate;
+use campfire_script::ScriptsWorld;
 use campfire_sim::{SimTick, StableId};
 use campfire_stats::{CarriedMut, ModifierBook, ModifierClocks, Modifiers};
 use campfire_units::{Dead, TagBook, TagEffect};

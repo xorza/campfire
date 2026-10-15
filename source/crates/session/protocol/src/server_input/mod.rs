@@ -1,6 +1,6 @@
 use campfire_codec::{Binary, Taken};
-use campfire_common::{PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
@@ -8,6 +8,8 @@ use crate::delegation::Delegation;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
+use crate::signer::Signer;
+use crate::verifier::Verifier;
 
 pub(crate) mod error;
 
@@ -51,15 +53,6 @@ pub enum LeaveReason {
     Asked,
     /// The player's link stayed down past the grace period.
     Grace,
-}
-
-/// What the slot of a player who left becomes: reserved for them alone, played by a bot, or
-/// open, as the mode's `[players] leaver` says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AfterLeave {
-    Reserve,
-    Bot,
-    Open,
 }
 
 /// A server input as it is signed and logged: a delegation as its JSON.
@@ -159,34 +152,25 @@ impl<'a> ServerInput<'a> {
         Ok(Taken { value: input, rest })
     }
 
-    /// The server key's signature over the input, logged before `tick` as its `index`th server
-    /// input there, with BIP-340's auxiliary randomness `aux`.
-    pub fn sign<C: Signing>(
-        &self,
-        secp: &Secp256k1<C>,
-        server_key: &Keypair,
-        session_id: SessionId,
-        place: InputPlace,
-        aux: &[u8; 32],
-    ) -> Signature {
+    /// The server key's signature over the input, `server`'s, logged at `place`.
+    pub fn sign(&self, server: &Signer, session_id: SessionId, place: InputPlace) -> Signature {
         let mut message = Vec::new();
         self.write_message(session_id, place, &mut message);
-        Signature::sign(secp, server_key, &message, aux)
+        server.sign(&message)
     }
 
-    /// Whether `signature` is `server_key`'s over the input at `place`, its message written into
-    /// `message`.
-    pub(crate) fn signed_by<C: Verification>(
+    /// Whether `signature` is `server_key`'s over the input at `place`.
+    pub(crate) fn signed_by(
         &self,
-        secp: &Secp256k1<C>,
+        verifier: &mut Verifier,
         server_key: &XOnlyPublicKey,
         session_id: SessionId,
         place: InputPlace,
         signature: &Signature,
-        message: &mut Vec<u8>,
     ) -> bool {
-        self.write_message(session_id, place, message);
-        signature.verifies(secp, server_key, message)
+        verifier.verifies_written(*signature, server_key, |message| {
+            self.write_message(session_id, place, message);
+        })
     }
 
     /// Writes `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian, into

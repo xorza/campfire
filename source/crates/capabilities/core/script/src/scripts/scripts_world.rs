@@ -4,14 +4,14 @@ use crate::script_host::ScriptHost;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_batch::ScriptBatch;
 
-/// What the scripts module gives a world, for its own crate.
-pub trait ScriptsWorldCrate {
+/// What the scripts module gives a world, for every crate.
+pub trait ScriptsWorld {
     /// Reads the view of the match's `ctx`, takes the host out of the world, runs `calls`, puts the
     /// host back, and gives what `calls` gave.
     fn script_batch<T>(&mut self, calls: impl FnOnce(&mut ScriptBatch<'_>) -> T) -> T;
 }
 
-impl ScriptsWorldCrate for World {
+impl ScriptsWorld for World {
     fn script_batch<T>(&mut self, calls: impl FnOnce(&mut ScriptBatch<'_>) -> T) -> T {
         let ctx = self.non_send::<Ctx>().clone();
         ctx.view().read(self);

@@ -1,9 +1,11 @@
 use campfire_actions::TimedSlots;
-use campfire_players::PlayersWorldCrate;
-use campfire_production::{Gatherer, Load, ModeSupplyData, SupplyBook, SupplyCostBook, SupplyData};
+use campfire_production::{
+    Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
+};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
@@ -24,7 +26,15 @@ fn on_mode_input(ctx, player, name, value) {
         unit_type: Some(DeclaredName::new("grunt").unwrap()),
         ..blink_data()
     };
-    let train = Actions::load(&mut game, 0, "train_grunt", &train, None, 1).unwrap();
+    let train = Actions::load(
+        &mut game,
+        PackageIndex::MODE,
+        "train_grunt",
+        &train,
+        None,
+        1,
+    )
+    .unwrap();
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
     let mut owned = game.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(&game).unwrap();
@@ -48,9 +58,7 @@ fn on_mode_input(ctx, player, name, value) {
     };
     let paid = |game: &Match| {
         let mana = game.get::<Pools>(producer).unwrap().current(MANA).unwrap();
-        let held = PlayerResources::of_player(game, player)
-            .unwrap()
-            .amount(gold);
+        let held = game.player_resources(player).unwrap().amount(gold);
         (mana.round(), held)
     };
     let mut grunts = game.query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();
@@ -189,6 +197,6 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::NoSupply)]
+        [FailureKind::Api(ProductionRefusal::NoSupply.refused())]
     );
 }

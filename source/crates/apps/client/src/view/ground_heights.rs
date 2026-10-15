@@ -1,7 +1,6 @@
 use bevy::ecs::resource::Resource;
 use bevy::math::{Vec2, Vec3};
-use campfire_mode::HeightGrid;
-use campfire_package::TerrainQuads;
+use campfire_client_files::{HeightGrid, TerrainQuads};
 
 use crate::view::float_num::FloatNum;
 
@@ -14,8 +13,7 @@ use crate::view::float_num::FloatNum;
 /// ground runs on level past its edge.
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub(crate) struct GroundHeights {
-    /// Row after row, the grid's order.
-    samples: Vec<u8>,
+    grid: HeightGrid,
     columns: usize,
     rows: usize,
     /// The first sample's point on the ground plane, `x` and `z`.
@@ -25,30 +23,44 @@ pub(crate) struct GroundHeights {
     /// Each cell's split, row after row: whether its triangles meet on the diagonal from its
     /// corner 1 to 3.
     flips: Vec<bool>,
+    /// The heights of the lowest and the highest sample, which bound where a ray meets the
+    /// ground.
+    lowest: f32,
+    highest: f32,
 }
 
 impl GroundHeights {
     /// The heights of `grid`, each cell split as `quads` draw it, a terrain's quads over the
     /// grid's cells; with none, each from its first sample to the one across.
-    pub(crate) fn of(grid: &HeightGrid, quads: Option<&TerrainQuads>) -> GroundHeights {
+    pub(crate) fn of(grid: HeightGrid, quads: Option<&TerrainQuads>) -> GroundHeights {
         let columns = grid.columns() as usize;
         let rows = grid.rows() as usize;
         let flips = match quads {
             Some(quads) => {
-                debug_assert!(quads.fits(grid), "a terrain over the grid's cells");
+                debug_assert!(quads.fits(&grid), "a terrain over the grid's cells");
                 quads.ground.iter().map(|quad| quad.flip).collect()
             }
             None => vec![false; (columns - 1) * (rows - 1)],
         };
+        let step = grid.step().float();
+        let samples = grid.samples().iter().copied();
+        let height = |sample: Option<u8>| f32::from(sample.expect("a grid has samples")) * step;
         GroundHeights {
-            samples: grid.samples().to_vec(),
             columns,
             rows,
             origin: Vec2::from(grid.origin().map(FloatNum::float)),
             cell: grid.cell().float(),
-            step: grid.step().float(),
+            step,
             flips,
+            lowest: height(samples.clone().min()),
+            highest: height(samples.max()),
+            grid,
         }
+    }
+
+    /// The heightmap it is of.
+    pub(crate) const fn grid(&self) -> &HeightGrid {
+        &self.grid
     }
 
     /// The ground's height beneath the engine's `x` and `z`.
@@ -108,15 +120,9 @@ impl GroundHeights {
         if direction.y >= 0.0 {
             return None;
         }
-        let (low, high) = self
-            .samples
-            .iter()
-            .fold((u8::MAX, u8::MIN), |(low, high), &sample| {
-                (low.min(sample), high.max(sample))
-            });
         let fall = |height: f32| (height - origin.y) / direction.y;
-        let start = fall(f32::from(high) * self.step).max(0.0);
-        let end = fall(f32::from(low) * self.step).max(start);
+        let start = fall(self.highest).max(0.0);
+        let end = fall(self.lowest).max(start);
         // The ray on the grid's axes, in cells.
         let grid = |t: f32| {
             let at = origin + direction * t;
@@ -193,14 +199,14 @@ impl GroundHeights {
     }
 
     fn sample(&self, column: usize, row: usize) -> f32 {
-        f32::from(self.samples[row * self.columns + column])
+        f32::from(self.grid.samples()[row * self.columns + column])
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use campfire_client_files::GroundQuad;
     use campfire_math::Num;
-    use campfire_package::GroundQuad;
 
     use super::*;
 
@@ -241,8 +247,8 @@ mod tests {
     #[test]
     fn a_height_lies_on_the_triangle_its_cell_draws_and_the_grids_edge_runs_on_past_it() {
         let grid = grid();
-        let unflipped = GroundHeights::of(&grid, Some(&quads([false; 4])));
-        let flipped = GroundHeights::of(&grid, Some(&quads([false, false, true, true])));
+        let unflipped = GroundHeights::of(grid.clone(), Some(&quads([false; 4])));
+        let flipped = GroundHeights::of(grid.clone(), Some(&quads([false, false, true, true])));
         // Cell 2, of column 0 and row 1, has corners of 0, 10, 0 and 0 m. At (−5, −7.5), its
         // fractions 0.5 and 0.25: split from corner 0 to 2, the lower triangle, 0 + 0.5 · 10 +
         // 0.25 · (0 − 10) = 2.5; split from 1 to 3, the triangle of corner 0, 0 + 0.5 · 10 +
@@ -254,7 +260,7 @@ mod tests {
         assert_eq!(unflipped.at(-2.5, -2.5), 0.0);
         assert_eq!(flipped.at(-2.5, -2.5), 2.5);
         // With no terrain, each cell splits from corner 0 to 2.
-        assert_eq!(GroundHeights::of(&grid, None), unflipped);
+        assert_eq!(GroundHeights::of(grid, None), unflipped);
         // On a sample, its height: `[1, 1]`, at (0, −10), 10 m.
         assert_eq!(flipped.at(0.0, -10.0), 10.0);
         // Past the grid, the nearest point of its edge: east of it at `v = 1.5`, halfway from
@@ -270,7 +276,7 @@ mod tests {
         let grid = grid();
         let close = |a: f32, b: f32| (a - b).abs() < 1e-3;
         for flips in [[false; 4], [false, true, true, false]] {
-            let heights = GroundHeights::of(&grid, Some(&quads(flips)));
+            let heights = GroundHeights::of(grid.clone(), Some(&quads(flips)));
             // Straight down, the height beneath.
             let hit = heights
                 .hit(Vec3::new(-5.0, 100.0, -7.5), Vec3::NEG_Y)

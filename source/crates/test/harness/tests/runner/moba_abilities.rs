@@ -20,8 +20,9 @@ use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{AvatarFile, PackageDir, PackageFiles};
+use campfire_package::{AvatarFile, PackageFiles};
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_projectiles::Projectile;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Life, PoolMeters, Pools, Stats};
@@ -39,7 +40,7 @@ const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
 fn hero(name: &str) -> PackageFiles {
     let dir = PackageDir::new(PackageDir::workspace(&format!("test/moba/heroes/{name}")));
-    PackageFiles::read(&dir).unwrap()
+    dir.files().unwrap()
 }
 
 /// The hero `name`, as its data file declares it.
@@ -47,14 +48,25 @@ fn abilities(name: &str) -> AvatarFile {
     let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
-/// The weapon of the tests' armed units: an attack within 2 m with no windup, at the rate and for
-/// the damage of its unit's stats.
+/// The weapons of the tests' armed units: an attack within 2 m with no windup, at the rate and
+/// for the damage of its unit's stats; and one as it is with a windup of 100 ms, 3 ticks, that
+/// costs 12 mana.
 const ACTIONS: &str = r#"
 [actions.arena_strike]
 kind = "attack"
 targeting = "enemies"
 range = "2.0"
 windup_ms = 0
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+
+[actions.arena_costly_strike]
+kind = "attack"
+targeting = "enemies"
+range = "2.0"
+windup_ms = 100
+cost = { mana = 12 }
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
@@ -106,6 +118,12 @@ stats = { health = { base = 500 }, mana = { base = 20 }, attack_damage = { base 
 combat = { on_death = "stay" }
 slots = { weapon = ["arena_strike"] }
 
+[units.arena_costly_archer]
+pools = ["health", "mana"]
+stats = { health = { base = 500 }, mana = { base = 20 }, attack_damage = { base = 10 }, attack_speed = { base = "2.5" } }
+combat = { on_death = "stay" }
+slots = { weapon = ["arena_costly_strike"] }
+
 [units.arena_striker]
 pools = ["health"]
 stats = { health = { base = 500 }, attack_damage = { base = 30 }, attack_speed = { base = 1 } }
@@ -133,6 +151,8 @@ enum Kit {
     Blade,
     /// 20 mana; 10 an attack, 2.5 a second.
     Archer,
+    /// As `Archer`, its attack of a 3-tick windup and 12 mana.
+    CostlyArcher,
     /// 30 an attack, 1 a second.
     Striker,
     /// 200 energy; 30 an attack, 1 a second.
@@ -150,6 +170,7 @@ impl Kit {
             Kit::Energy200 => "arena_energy_200",
             Kit::Blade => "arena_blade",
             Kit::Archer => "arena_archer",
+            Kit::CostlyArcher => "arena_costly_archer",
             Kit::Striker => "arena_striker",
             Kit::EnergyStriker => "arena_energy_striker",
         }
@@ -429,6 +450,39 @@ fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
         "{:?}",
         arena.failures(&game)
     );
+}
+
+#[test]
+fn rimes_chill_arrows_pays_for_no_attack_that_does_not_strike() {
+    let arena = arena();
+    let mut game = arena.start(RATE, 1);
+    let chill = arena.action(&game, "hero-rime", "chill_arrows");
+    let player = Owner::new(PlayerSlot::new(0));
+    // Rime with 20 mana and a weapon of a 3-tick windup that costs 12; an enemy beside her.
+    let rime = spawn_with(
+        &arena,
+        &mut game,
+        0,
+        Team::new(0),
+        Kit::CostlyArcher,
+        player,
+    );
+    let enemy = spawn(&arena, &mut game, 1, Team::new(1), ());
+    arm_with(&mut game, rime, chill);
+    let mana = |game: &Match| pool(&arena, game, rime, "mana").round();
+    // On in tick 0; the attack starts in tick 1, its windup to end in tick 4.
+    arena.tick(&mut game, 0, &[cast(rime, ActionTarget::None)]);
+    arena.tick(&mut game, 0, &[attack(rime, enemy)]);
+    // 10 mana go during the windup: as it ends, she cannot pay its 12, so it does not strike,
+    // and her toggle, which pays as an attack strikes, takes nothing of the 10 left.
+    let entity = game.entity_of(rime).unwrap();
+    let mut pools = game.get_mut::<Pools>(entity).unwrap();
+    pools.take(arena.pool("mana"), Num::int(10));
+    for _ in 2..=4 {
+        arena.step(&mut game);
+    }
+    assert_eq!((toggled(&game, rime), mana(&game)), (true, 10));
+    assert_eq!(health(&arena, &game, enemy), 500);
 }
 
 #[test]

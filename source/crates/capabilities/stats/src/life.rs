@@ -31,8 +31,8 @@ impl Life {
         self.0.max()
     }
 
-    pub const fn above_zero(self) -> bool {
-        !self.0.is_empty()
+    pub const fn is_empty(self) -> bool {
+        self.0.is_empty()
     }
 
     pub(crate) const fn meter(self) -> Meter {
@@ -45,9 +45,7 @@ impl Life {
 
     /// Takes `amount`, which is not negative, down to 0; what it took.
     pub fn take(&mut self, amount: Num) -> Num {
-        let before = self.0.current();
-        self.0.take(amount);
-        before - self.0.current()
+        self.0.take(amount)
     }
 
     /// Adds `amount`, which is not negative, up to its maximum.

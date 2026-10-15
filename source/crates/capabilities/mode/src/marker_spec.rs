@@ -10,7 +10,7 @@ use crate::mode_data::ModeParam;
 /// if it names them, and its params.
 #[derive(Debug, Clone)]
 pub struct MarkerSpec {
-    pub name: Box<str>,
+    pub name: DeclaredName,
     pub tags: Box<[DeclaredName]>,
     pub pos: Option<Position>,
     pub region: Option<Bounds>,

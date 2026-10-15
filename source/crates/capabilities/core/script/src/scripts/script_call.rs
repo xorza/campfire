@@ -61,8 +61,8 @@ impl ScriptCall {
             Err(at) => {
                 let opener = self.opener.expect("a call began");
                 let rng = match drawer {
-                    Some(unit) => opener.open(UNIT_DRAWS, unit.get()),
-                    None => opener.open(MODE_DRAWS, 0),
+                    Some(unit) => opener.open(UNIT_DRAWS, unit),
+                    None => opener.open(MODE_DRAWS, StableId::MATCH),
                 };
                 self.open.insert(at, (drawer, rng));
                 at
@@ -109,8 +109,8 @@ mod tests {
         // Each drawer's picks are its own sequence's, in its own order.
         for drawer in [None, Some(0), Some(1), Some(3)] {
             let mut rng = match drawer {
-                Some(at) => opener.open(UNIT_DRAWS, units[at].get()),
-                None => opener.open(MODE_DRAWS, 0),
+                Some(at) => opener.open(UNIT_DRAWS, units[at]),
+                None => opener.open(MODE_DRAWS, StableId::MATCH),
             };
             let own = drawn.iter().filter(|&&(by, _)| by == drawer);
             for &(_, pick) in own {

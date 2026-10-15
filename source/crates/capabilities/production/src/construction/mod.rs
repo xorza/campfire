@@ -3,7 +3,8 @@ use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
-use campfire_geometry::Metric;
+use campfire_declare::{ByType, RoleForm};
+use campfire_geometry::{Metric, Placed};
 use campfire_math::Num;
 use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
@@ -17,7 +18,7 @@ use crate::Production;
 use crate::build_book::{BuildBook, Style};
 use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
-use crate::construction::build_view::{BuildView, Placed};
+use crate::construction::build_view::{BuildPlace, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{Start, Step};
 use crate::held::Held;
@@ -40,14 +41,12 @@ impl Construction {
         from: Position,
         body: Option<&Body>,
         range: Num,
-        placed: Placed,
+        placed: BuildPlace,
     ) -> bool {
         metric.reaches(
-            from,
-            Body::shape_of(body),
+            Placed::new(from, Body::shape_of(body)),
             range,
-            placed.pos,
-            placed.body.shape(),
+            Placed::new(placed.pos, placed.body.shape()),
         )
     }
 
@@ -136,15 +135,22 @@ impl Construction {
                 }
                 Step::Start(start) => {
                     Navigation::go_to(world, entity, None);
-                    Construction::spawn_site(world, entity, start, &mut paid);
+                    Construction::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
         }
     }
 
     /// Starts the build `start` of the builder of `entity`: pays, goes on cooldown, and spawns
-    /// the site, whose build's paid player resources `paid` holds for its cancel.
-    fn spawn_site(world: &mut World, entity: Entity, start: Start, paid: &mut Vec<ResourceAmount>) {
+    /// the site, whose build's paid player resources `paid` holds for its cancel. A predicting
+    /// client's form `F` pays nothing, as the builder's pools and its player's resources are the
+    /// server's.
+    fn spawn_site<F: RoleForm>(
+        world: &mut World,
+        entity: Entity,
+        start: Start,
+        paid: &mut Vec<ResourceAmount>,
+    ) {
         let now = world.resource::<SimTick>().start();
         let unit = world.entity(entity);
         let team = *unit.get::<Team>().expect("a builder has a team");
@@ -168,13 +174,18 @@ impl Construction {
             let pools = pools.expect("a builder's pools").of(life);
             Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        if let Some(player) = owner.and_then(|owner| world.player_entity(owner.slot())) {
-            let [mut unit, mut held] = world.entity_mut([entity, player]);
-            let mut resources = held.get_mut::<PlayerResources>();
-            pay(&mut unit, resources.as_deref_mut());
-        } else {
-            let [mut unit] = world.entity_mut([entity]);
-            pay(&mut unit, None);
+        let player = owner.and_then(|owner| world.player_entity(owner.slot()));
+        match (F::PREDICTS, player) {
+            (true, _) => {}
+            (false, Some(player)) => {
+                let [mut unit, mut held] = world.entity_mut([entity, player]);
+                let mut resources = held.get_mut::<PlayerResources>();
+                pay(&mut unit, resources.as_deref_mut());
+            }
+            (false, None) => {
+                let [mut unit] = world.entity_mut([entity]);
+                pay(&mut unit, None);
+            }
         }
         let mut times = world
             .get_mut::<SlotTimes>(entity)
@@ -189,8 +200,6 @@ impl Construction {
             owner: owner.map(Owner::slot),
             angle: start.angle,
         };
-        let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, ());
         let spec = world
             .resource::<BuildBook>()
             .of(action)
@@ -198,21 +207,26 @@ impl Construction {
         let start_life = spec.start_life;
         let one_holds = matches!(spec.style, Style::Builder);
         let stays = !matches!(spec.style, Style::Alone);
-        let mut gain = Num::ZERO;
-        if let Some(mut life) = world.get_mut::<Life>(site) {
-            let max = life.max();
+        // The site's life starts at its share of the most its type's life holds, as it spawns.
+        let full = world
+            .resource::<ByType<Life>>()
+            .get(start.unit_type)
+            .copied();
+        let gain = full.map_or(Num::ZERO, |full| {
+            let max = full.max();
             let share =
                 start_life.expect("a building with life has its start life, as its book checked");
-            let starts = share.of_num(max).max(Num::EPSILON).min(max);
-            gain = max - starts;
-            life.take(gain);
-        }
+            max - share.of_num(max).max(Num::EPSILON).min(max)
+        });
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = one_holds.then_some(builder);
         let held = Site::new(action, start.rank, gain, paid, holder);
-        let status = world.get::<StatusTags>(site).copied().unwrap_or_default();
-        let status = status.turned(Production::CONSTRUCTING, true);
-        world.entity_mut(site).insert((held, status));
+        let status = StatusTags::from([Production::CONSTRUCTING]);
+        let spawner = world.non_send::<Spawner>().clone();
+        let site = spawner.spawn(world, at, (held, status));
+        if let Some(mut life) = world.get_mut::<Life>(site) {
+            life.take(gain);
+        }
         let next = stays.then_some(BuildOrder {
             slot: order.slot,
             target: BuildTarget::Site(id),
@@ -285,7 +299,7 @@ impl Construction {
                 continue;
             };
             let range = slots.meters_in(&book, slot);
-            let placed = Placed {
+            let placed = BuildPlace {
                 pos: at,
                 body: *site_body,
             };

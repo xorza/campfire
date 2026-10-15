@@ -6,8 +6,7 @@ use campfire_math::{Num, Vec3};
 use campfire_production::*;
 use campfire_script::View;
 use campfire_sim::{IdAllocator, Position, SimComponent, TickRate};
-use campfire_values::Names;
-use campfire_values::ResourceId;
+use campfire_values::{Names, ResourceId};
 
 #[test]
 fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
@@ -19,7 +18,7 @@ fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
         .set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
     world.insert_non_send(view);
     let entity = world.spawn_empty().id();
-    let [gold, wood] = [0, 1].map(ResourceId::nth);
+    let [gold, wood] = [0, 1].map(ResourceId::new);
     let mut ids = IdAllocator::default();
     let [first, second] = [0, 1].map(|z| NodeAt {
         node: ids.allocate(),

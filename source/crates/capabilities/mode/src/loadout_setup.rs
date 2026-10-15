@@ -1,4 +1,4 @@
-use campfire_values::{ActionId, Names};
+use campfire_values::{ActionId, NameId, Names};
 
 use crate::offer::Offer;
 

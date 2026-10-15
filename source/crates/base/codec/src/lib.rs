@@ -6,21 +6,23 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![expect(
     clippy::disallowed_methods,
-    clippy::disallowed_types,
-    reason = "the one crate that calls the formats and holds their types, which clippy.toml denies the others"
+    reason = "the one crate that calls the formats, which clippy.toml denies the others"
 )]
 
 mod batch;
 mod binary;
 mod compare;
+#[cfg(feature = "internals")]
 mod drop_option;
 mod error;
 mod json;
+mod json_value;
 mod sink;
 mod toml;
 
 pub use crate::binary::{Binary, Taken};
-pub use crate::error::{BinaryError, JsonError, TomlError};
+pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
 pub use crate::json::Json;
+pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;

@@ -1,10 +1,11 @@
-use campfire_script::{Hook, UnknownName};
+use campfire_script::UnknownName;
 use campfire_values::{DeclaredName, TimeTooLarge};
 use thiserror::Error;
 
 use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_data_field::ActionDataField;
-use crate::action_kind::ActionKind;
+use crate::action_kind::MeteredKind;
+use crate::list_hook::ListHook;
 
 /// Why an action's data makes no action of a match: a rule of design 08's checks that its data
 /// breaks, which the action's book holds as it builds. Packages are untrusted, so each is an
@@ -31,7 +32,7 @@ pub enum ActionProblem {
     Bounce,
     /// A use, a build or a gather reaches globally at a rank, where it needs meters.
     #[error("its range is global at a rank, where its kind needs meters")]
-    Global(ActionKind),
+    Global(MeteredKind),
     /// The projectile type its delivery names lacks its `projectile` section.
     #[error("unit type {0} lacks the projectile section its delivery needs")]
     Section(DeclaredName),
@@ -44,7 +45,17 @@ pub enum ActionProblem {
     StartLife,
     /// A number or a duration of an effect of its list `list` breaks `rule`.
     #[error("its {list:?} list: {rule}")]
-    Effect { list: Hook, rule: EffectRule },
+    Effect { list: ListHook, rule: EffectRule },
+}
+
+/// Why the mode's slot kinds do not load. Packages are untrusted, so each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SlotKindsError {
+    /// More kinds than a slot kind's id counts.
+    #[error("more slot kinds than a slot kind's id counts")]
+    TooMany,
+    #[error("the slot kind `{0}` twice")]
+    Repeated(DeclaredName),
 }
 
 /// Why an action's data does not load into a match: a rule it breaks, or a name the match does

@@ -76,7 +76,7 @@ impl Collider {
     /// The radius of a body that may be pushed, which is a circle.
     pub fn radius(&self) -> Num {
         match self.shape {
-            Shape::Circle(radius) => radius,
+            Shape::Circle(radius) => radius.get(),
             Shape::Box(_) => panic!("a box is never pushed, so it has no radius to reach by"),
         }
     }

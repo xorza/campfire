@@ -1,8 +1,10 @@
+use campfire_abilities::AbilitiesRefusal;
 use campfire_actions::SlotTimes;
 use campfire_common::Tick;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {
@@ -52,10 +54,10 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(Mode::failures(&game), []);
     let refused = [
         ("unknown", ApiError::Unknown(NameKind::Ability)),
-        ("unheld", ApiError::NotHeld),
+        ("unheld", AbilitiesRefusal::NotHeld.refused()),
         ("negative", ApiError::NegativeTime),
         ("kind", ApiError::Unknown(NameKind::SlotKind)),
-        ("share", ApiError::NotAFraction),
+        ("share", AbilitiesRefusal::NotAFraction.refused()),
     ];
     for (value, error) in refused {
         Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);

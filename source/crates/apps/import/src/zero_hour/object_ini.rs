@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_package::ModelScale;
+use campfire_client_files::ModelScale;
 
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::import_name::ImportName;
@@ -260,10 +260,25 @@ impl ObjectIni {
         })
     }
 
-    /// Sets `kinds` by a `KindOf` line's flags, as `BitFlags::parse` does: `NONE` clears them;
+    /// Whether the line of `word` and `tokens` opens a block.
+    fn opens(word: &str, tokens: &[&str]) -> bool {
+        OPEN_WITH_VALUE.contains(&word) || (tokens.len() == 1 && OPEN_ALONE.contains(&word))
+    }
+
+    /// A model field's value: none for `NONE`.
+    fn model(tokens: &[&str]) -> Option<String> {
+        tokens
+            .get(1)
+            .filter(|model| !model.eq_ignore_ascii_case("none"))
+            .map(|model| (*model).to_owned())
+    }
+}
+
+impl ObjectKinds {
+    /// Sets the kinds by a `KindOf` line's flags, as `BitFlags::parse` does: `NONE` clears them;
     /// a list of names sets those it names and clears the rest; `+` and `-` set and clear one,
     /// and keep the rest; a list may not mix the two forms.
-    fn kind_of(kinds: &mut ObjectKinds, flags: &[&str], line: usize) -> Result<(), IniError> {
+    fn set_by(&mut self, flags: &[&str], line: usize) -> Result<(), IniError> {
         let mut plain = false;
         let mut signed = false;
         for flag in flags {
@@ -271,7 +286,7 @@ impl ObjectIni {
                 if plain || signed {
                     return Err(IniError::MixedKinds { line });
                 }
-                *kinds = ObjectKinds::default();
+                *self = ObjectKinds::default();
                 break;
             }
             let (name, set) = match flag.strip_prefix('+') {
@@ -287,7 +302,7 @@ impl ObjectIni {
                 None if signed => return Err(IniError::MixedKinds { line }),
                 None => {
                     if !plain {
-                        *kinds = ObjectKinds::default();
+                        *self = ObjectKinds::default();
                     }
                     plain = true;
                 }
@@ -295,32 +310,53 @@ impl ObjectIni {
             let set = set.unwrap_or(true);
             let name = name.to_ascii_lowercase();
             match name.as_str() {
-                OPTIMIZED_TREE => kinds.optimized_tree = set,
-                PROP => kinds.prop = set,
-                CLEARED_BY_BUILD => kinds.cleared_by_build = set,
-                WALK_ON_TOP_OF_WALL => kinds.walk_on_top_of_wall = set,
+                OPTIMIZED_TREE => self.optimized_tree = set,
+                PROP => self.prop = set,
+                CLEARED_BY_BUILD => self.cleared_by_build = set,
+                WALK_ON_TOP_OF_WALL => self.walk_on_top_of_wall = set,
                 _ => {}
             }
         }
         Ok(())
     }
+}
 
-    /// Whether the line of `word` and `tokens` opens a block.
-    fn opens(word: &str, tokens: &[&str]) -> bool {
-        OPEN_WITH_VALUE.contains(&word) || (tokens.len() == 1 && OPEN_ALONE.contains(&word))
+impl DrawModule {
+    /// A field of a default state that the look reads.
+    fn default_field(&mut self, word: &str, tokens: &[&str], line: usize) -> Result<(), IniError> {
+        match word {
+            "model" => self.model = ObjectIni::model(tokens),
+            "hidesubobject" | "showsubobject" => {
+                self.look.hide_show(&tokens[1..], word == "hidesubobject");
+            }
+            "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone" => {
+                let (Some(slot), Some(bone)) = (tokens.get(1), tokens.get(2)) else {
+                    return Err(IniError::WeaponSlot { line });
+                };
+                let slot = SLOTS
+                    .iter()
+                    .position(|known| slot.eq_ignore_ascii_case(known))
+                    .ok_or(IniError::WeaponSlot { line })?;
+                let bones = &mut self.look.weapons[slot];
+                let field = match word {
+                    "weaponfirefxbone" => &mut bones.fire_fx,
+                    "weaponrecoilbone" => &mut bones.recoil,
+                    "weaponmuzzleflash" => &mut bones.muzzle_flash,
+                    _ => &mut bones.launch,
+                };
+                *field = Some((*bone).to_owned()).filter(|bone| !bone.eq_ignore_ascii_case("none"));
+            }
+            _ => {}
+        }
+        Ok(())
     }
+}
 
-    /// A model field's value: none for `NONE`.
-    fn model(tokens: &[&str]) -> Option<String> {
-        tokens
-            .get(1)
-            .filter(|model| !model.eq_ignore_ascii_case("none"))
-            .map(|model| (*model).to_owned())
-    }
-
+impl DefaultLook {
     /// Hides or shows `names`, as `parseShowHideSubObject` does: `NONE` first empties the list,
     /// and a name the list holds keeps its place and takes the new change.
-    fn hide_show(list: &mut Vec<HideShow>, names: &[&str], hide: bool) {
+    fn hide_show(&mut self, names: &[&str], hide: bool) {
+        let list = &mut self.hide_show;
         if names
             .first()
             .is_some_and(|name| name.eq_ignore_ascii_case("none"))
@@ -340,44 +376,6 @@ impl ObjectIni {
                 }),
             }
         }
-    }
-
-    /// A field of a default state that the look reads.
-    fn default_field(
-        module: &mut DrawModule,
-        word: &str,
-        tokens: &[&str],
-        line: usize,
-    ) -> Result<(), IniError> {
-        match word {
-            "model" => module.model = ObjectIni::model(tokens),
-            "hidesubobject" | "showsubobject" => {
-                ObjectIni::hide_show(
-                    &mut module.look.hide_show,
-                    &tokens[1..],
-                    word == "hidesubobject",
-                );
-            }
-            "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone" => {
-                let (Some(slot), Some(bone)) = (tokens.get(1), tokens.get(2)) else {
-                    return Err(IniError::WeaponSlot { line });
-                };
-                let slot = SLOTS
-                    .iter()
-                    .position(|known| slot.eq_ignore_ascii_case(known))
-                    .ok_or(IniError::WeaponSlot { line })?;
-                let bones = &mut module.look.weapons[slot];
-                let field = match word {
-                    "weaponfirefxbone" => &mut bones.fire_fx,
-                    "weaponrecoilbone" => &mut bones.recoil,
-                    "weaponmuzzleflash" => &mut bones.muzzle_flash,
-                    _ => &mut bones.launch,
-                };
-                *field = Some((*bone).to_owned()).filter(|bone| !bone.eq_ignore_ascii_case("none"));
-            }
-            _ => {}
-        }
-        Ok(())
     }
 }
 
@@ -492,7 +490,7 @@ impl Reading {
             Block::DefaultState { named } => {
                 let module = self.draw.as_mut().expect("a state is in a draw");
                 *named |= word == "model";
-                ObjectIni::default_field(module, word, tokens, line)?;
+                module.default_field(word, tokens, line)?;
                 if ObjectIni::opens(word, tokens) {
                     self.stack.push(Block::Other);
                 }
@@ -526,7 +524,7 @@ impl Reading {
                 match word {
                     "fencewidth" => object.fence_width = at.real()?,
                     _ if open.reskin => {}
-                    "kindof" => ObjectIni::kind_of(&mut object.kinds, &tokens[1..], line)?,
+                    "kindof" => object.kinds.set_by(&tokens[1..], line)?,
                     "isbridge" => object.is_bridge = at.yes()?,
                     _ => {
                         let scale = ModelScale::new(at.real()?);

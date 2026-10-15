@@ -1,6 +1,4 @@
-use campfire_common::{PlayerSlot, Tick};
-
-use crate::server_input::AfterLeave;
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 
 /// A change of who controls a slot, as the log applied it, in the tick it applies in: what the
 /// mode's rules check, and what its hooks hear.

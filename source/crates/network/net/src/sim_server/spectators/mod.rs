@@ -7,7 +7,7 @@ use campfire_visibility::{SpectatorFog, Visibility};
 use lightyear::prelude::{Connected, MessageReceiver};
 use tracing::info;
 
-use crate::sim_server::error::JoinError;
+use crate::events::join_refused::error::JoinError;
 use crate::sim_server::viewer::{Viewer, Watching};
 use crate::watch_teams::WatchTeams;
 
@@ -51,7 +51,7 @@ impl Spectators {
     ) {
         if let Ok(Viewer::Spectator(_)) = viewers.get(removed.entity) {
             commands.entity(removed.entity).try_remove::<Viewer>();
-            info!(link = ?removed.entity, "a spectator's link ended");
+            info!(link = removed.entity.to_bits(), "a spectator's link ended");
         }
     }
 

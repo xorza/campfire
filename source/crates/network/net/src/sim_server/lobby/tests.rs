@@ -3,20 +3,20 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_common::ChannelBinding;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
+    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy, SeedContribution,
 };
 use campfire_state_types::DataKind;
+use campfire_store::internals::Scratch;
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
-use secp256k1::{All, Secp256k1};
 
 use super::*;
 use crate::join::{Join, JoinRole};
 use crate::order_script::OrderScript;
-use crate::os::{Clock, Entropy, Os};
+use crate::os::{Clock, Os};
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SlotBot;
@@ -28,7 +28,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         packages: Arc::new(TestMode::Lane.packages()),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
-        rules: InputRules::LAN,
+        inputs: InputRules::LAN,
         slots: 2,
         bots: ServerBots {
             slots: bots
@@ -98,7 +98,6 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
 /// offered them over their links' channel binding, of bytes 3.
 #[derive(Debug)]
 struct Joining {
-    secp: Secp256k1<All>,
     granted: DelegationTerms,
     offered: Offered,
 }
@@ -113,7 +112,6 @@ impl Joining {
             expiration: TestKey::NOW + 60,
         };
         Joining {
-            secp: Secp256k1::new(),
             granted,
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),
@@ -130,13 +128,7 @@ impl Joining {
             session_key: TestKey::of(session).x_only_public_key().0,
             ..self.granted
         };
-        Delegation::sign(
-            &self.secp,
-            &TestKey::of(main),
-            &terms,
-            TestKey::NOW,
-            &[0; 32],
-        )
+        Delegation::sign(&TestKey::signer(TestKey::of(main)), &terms, TestKey::NOW)
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the
@@ -145,10 +137,8 @@ impl Joining {
         Join {
             delegation: json.to_owned(),
             answer: self.offered.challenge.answer(
-                &self.secp,
-                &TestKey::of(session),
+                &TestKey::signer(TestKey::of(session)),
                 &ChannelBinding::new([binding; 32]),
-                &[0; 32],
             ),
             role: JoinRole::Play,
         }
@@ -259,4 +249,42 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
     assert_eq!(seated(&lobby), [links[1]]);
     assert_eq!(take(&mut lobby, links[3], &player(5)), Ok(None));
     assert_eq!(seated(&lobby), [links[1], links[3]]);
+}
+
+#[test]
+fn a_servers_new_session_opens_every_slot_by_the_lan_rules_and_keeps_its_files() {
+    let scratch = Scratch::new();
+    let data = ServerDir::open(&scratch.path("data")).unwrap();
+    let opening = |bots: &[u32]| {
+        let LobbySetup {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+            ..
+        } = setup(bots, &[]);
+        LobbyOpening {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+        }
+    };
+    // The lane mode's 2 slots, both players', at its default and only rate of 30 Hz; the seed
+    // chain of 1024 segments from the server's entropy, every byte 5.
+    let lobby = Lobby::open(opening(&[]), &data).unwrap();
+    let terms = lobby.terms();
+    assert_eq!(terms.slots, [SlotPlan::Player, SlotPlan::Player]);
+    assert_eq!(terms.tick_hz.get(), 30);
+    assert_eq!(terms.inputs, InputRules::LAN);
+    let seed_chain = SeedChain::new([5; 32], NonZeroU32::new(1024).unwrap());
+    assert_eq!(terms.seed_commitment, seed_chain.commitment());
+    assert!(lobby.files.is_some());
+    // A bot of a slot the mode does not have opens no session.
+    assert!(matches!(
+        Lobby::open(opening(&[2]), &data),
+        Err(LobbyOpenError::Lobby(LobbyError::NoSuchSlot(slot))) if slot.get() == 2
+    ));
 }

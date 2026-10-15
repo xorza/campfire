@@ -4,12 +4,13 @@ use std::fmt::{self, Debug};
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    InstallCx, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, StateRegistry};
@@ -31,15 +32,18 @@ pub(super) struct Installer<'a> {
 }
 
 impl<'a> Installer<'a> {
-    /// Installs into the match `cx` builds, its state types into `registry`.
+    /// Installs into the match of `world` and `schedule`, of `set` and `role`, its state types
+    /// into `registry`.
     pub(super) const fn new(
-        cx: &'a mut InstallCx<'_>,
+        world: &'a mut World,
+        schedule: &'a mut Schedule,
         registry: &'a mut StateRegistry,
+        set: CapabilitySet,
+        role: &'a Role,
     ) -> Installer<'a> {
-        let (set, role) = (cx.set(), cx.role());
         Installer {
-            world: &mut *cx.world,
-            schedule: &mut *cx.schedule,
+            world,
+            schedule,
             registry,
             set,
             role,
@@ -82,6 +86,8 @@ impl KindVisitor for Installer<'_> {
         let id = self.world.register_component::<K>();
         self.world.get_resource_or_init::<EntityKinds>().add(id);
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for Installer<'_> {
@@ -123,9 +129,17 @@ impl Declarations for Installer<'_> {
         self.world.insert_resource(R::default());
     }
 
-    fn cache<R: Cache>(&mut self) {}
+    fn cache<R: Cache>(&mut self) {
+        if let Some(cache) = R::installed() {
+            self.world.insert_resource(cache);
+        }
+    }
 
-    fn report<R: Report>(&mut self) {}
+    fn report<R: Report>(&mut self) {
+        if let Some(report) = R::installed() {
+            self.world.insert_resource(report);
+        }
+    }
 
     fn calls<C: Callbacks>(&mut self) {
         self.world.init_resource::<C>();
@@ -190,5 +204,14 @@ impl Declarations for Installer<'_> {
         if let Role::Server(_) = self.role {
             self.world.register_required_components::<H, C>();
         }
+    }
+
+    fn on_insert<C: Component>(&mut self, hook: ComponentHook) {
+        self.world.register_component_hooks::<C>().on_insert(hook);
+    }
+
+    fn non_send<R: 'static>(&mut self, build: fn(&World, &Role) -> R) {
+        let resource = build(self.world, self.role);
+        self.world.insert_non_send(resource);
     }
 }

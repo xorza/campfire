@@ -7,10 +7,13 @@ use campfire_math::Num;
 use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
-use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Rank, Stat, TagSet};
+use campfire_values::{
+    ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
+};
 
 use crate::application::{Application, NewInstance};
 use crate::applier::Applier;
+use crate::applier_param::ApplierParam;
 use crate::error::ModifierError;
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::interval::Interval;
@@ -30,13 +33,15 @@ pub struct ModifierBook {
     entries: Arc<Vec<ModifierEntry>>,
     /// Each modifier's name in its package.
     names: Arc<Names<ModifierId>>,
+    /// The names of the params its modifiers read from the abilities that apply them.
+    appliers: Arc<Names<ApplierParam>>,
 }
 
 /// A loaded modifier: its package, its spec, and its compiled script with the combat events it
 /// hears.
 #[derive(Debug, Clone)]
 pub struct ModifierEntry {
-    pub package: u16,
+    pub package: PackageIndex,
     pub(crate) spec: ModifierSpec,
     pub script: Option<ScriptId>,
     pub hooks: HookSet,
@@ -70,7 +75,7 @@ impl ModifierBook {
     pub fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
         &mut self,
         load: ModifierLoad<'_, S>,
-        package: u16,
+        package: PackageIndex,
         modifiers: &[PackageModifier<'_>],
     ) -> Result<(), ModifierError> {
         let ModifierLoad {
@@ -117,10 +122,11 @@ impl ModifierBook {
                 }
             },
         };
+        let appliers = Arc::make_mut(&mut self.appliers);
         let specs = modifiers
             .iter()
             .map(|modifier| {
-                ModifierSpec::of(modifier.data, &names).map_err(|error| ModifierError {
+                ModifierSpec::of(modifier.data, &names, appliers).map_err(|error| ModifierError {
                     modifier: modifier.name.clone(),
                     error,
                 })
@@ -144,12 +150,19 @@ impl ModifierBook {
 
     /// Whether `other` is this book as one load made it, not a book of another load.
     pub(crate) fn same(&self, other: &ModifierBook) -> bool {
-        Arc::ptr_eq(&self.entries, &other.entries) && Arc::ptr_eq(&self.names, &other.names)
+        Arc::ptr_eq(&self.entries, &other.entries)
+            && Arc::ptr_eq(&self.names, &other.names)
+            && Arc::ptr_eq(&self.appliers, &other.appliers)
     }
 
     /// Each modifier's name in its package.
     pub const fn names(&self) -> &Arc<Names<ModifierId>> {
         &self.names
+    }
+
+    /// The names of the params its modifiers read from the abilities that apply them.
+    pub fn appliers(&self) -> &Names<ApplierParam> {
+        &self.appliers
     }
 
     /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
@@ -200,11 +213,11 @@ impl ModifierBook {
             return Err(ParamProblem::Short);
         }
         let spec = &self.get(id).spec;
-        for name in spec.number_params().filter_map(ParamPlace::applier) {
-            params.gives(action, rank, name, None)?;
+        for param in spec.number_params().filter_map(ParamPlace::applier) {
+            params.gives(action, rank, param, None)?;
         }
-        for name in spec.time_params().filter_map(ParamPlace::applier) {
-            params.gives(action, rank, name, Some(rate))?;
+        for param in spec.time_params().filter_map(ParamPlace::applier) {
+            params.gives(action, rank, param, Some(rate))?;
         }
         Ok(())
     }
@@ -238,7 +251,7 @@ impl ModifierBook {
         duration: Option<Ticks>,
         now: Tick,
         rate: TickRate,
-        param: impl Fn(&ParamPlace) -> ParamRead,
+        param: impl Fn(ParamPlace) -> ParamRead,
     ) -> Application {
         let entry = self.get(id);
         let spec = &entry.spec;
@@ -247,7 +260,7 @@ impl ModifierBook {
                 value: *value,
                 live: None,
             },
-            SpecNumber::Param(place) => param(place),
+            SpecNumber::Param(place) => param(*place),
         };
         // The load refuses a negative value and rank; a scaling param can still give one.
         let not_negative =
@@ -282,10 +295,12 @@ impl ModifierBook {
             source: from.source,
             action: from.action,
             rank: from.rank,
-            lifetime: Lifetime::new(
-                from.hold,
-                duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
-            ),
+            lifetime: match from.hold {
+                Some(hold) => Lifetime::held(hold),
+                None => Lifetime::applied(
+                    duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
+                ),
+            },
             aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius)),
             stacks: u32::from(!counts),
             stack_life,
@@ -322,7 +337,7 @@ pub(crate) mod internals {
 
     use campfire_math::Num;
     use campfire_script::HookSet;
-    use campfire_values::{ModifierId, TagSet};
+    use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
 
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;
@@ -341,14 +356,15 @@ pub(crate) mod internals {
             let book = Arc::make_mut(&mut self.entries);
             let at = book.len();
             let name = format!("{at:05}");
-            let id = Arc::make_mut(&mut self.names).add((u16::MAX, name.as_str()));
+            let none = PackageIndex::new(u16::MAX);
+            let id = Arc::make_mut(&mut self.names).add((none, name.as_str()));
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
                 op,
                 value: SpecNumber::Value(Num::ZERO),
             });
             book.push(ModifierEntry {
-                package: u16::MAX,
+                package: none,
                 spec: ModifierSpec {
                     duration: None,
                     interval: None,

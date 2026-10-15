@@ -2,7 +2,7 @@ use campfire_combat::{DeathView, Fallen};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::LogEvent;
 use campfire_sim::StableId;
-use campfire_values::Team;
+use campfire_values::{NameId, Team};
 use serde::Deserialize;
 use tracing::{debug, info};
 

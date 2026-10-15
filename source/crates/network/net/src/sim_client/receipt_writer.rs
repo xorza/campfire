@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Res, ResMut};
 use campfire_protocol::SignedReceipt;
-use campfire_store::{DurableError, DurableFile, LatestWriter, PathError};
+use campfire_store::{DurableDir, DurableError, DurableFile, LatestWriter, PathError};
 
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
@@ -23,7 +23,7 @@ impl ReceiptWriter {
         ReceiptWriter(LatestWriter::start(
             "receipts",
             move |receipt: &SignedReceipt| {
-                DurableFile::create_dir(&data.layout().receipts_dir())?;
+                DurableDir::create(&data.layout().receipts_dir())?;
                 let file = data.layout().receipt_file(receipt.receipt.session_id);
                 receipt.encode(&mut bytes);
                 DurableFile::write(&file, &bytes)

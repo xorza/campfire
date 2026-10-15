@@ -1,4 +1,4 @@
-use campfire_geometry::{BodyGrid, Placed};
+use campfire_geometry::{BodyGrid, Indexed};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_units::Layer;
@@ -69,7 +69,7 @@ impl Steering {
         &mut self,
         statics: &BodyIndex,
         still: impl IntoIterator<Item = IndexedBody>,
-        walking: impl IntoIterator<Item = Placed<Layer>>,
+        walking: impl IntoIterator<Item = Indexed<Layer>>,
         gatherers: impl IntoIterator<Item = StableId>,
     ) {
         self.still.clear();
@@ -159,18 +159,18 @@ impl Steering {
             // opposite sides, whatever the cells make of their sides.
             let gatherers = &self.gatherers;
             self.walking.visit_near(at, walker.radius + step, |other| {
-                let reach = walker.radius + other.shape.bound();
-                let touching = other.pos.within_ground(at, reach + step);
+                let reach = walker.radius + other.body.shape.bound();
+                let touching = other.body.pos.within_ground(at, reach + step);
                 let passes = gathering && gatherers.binary_search(&other.id).is_ok();
                 if other.id == id || !touching || other.key != walker.layer || passes {
                     return;
                 }
                 let shift = left * (reach / 2);
-                let moved = Position::new(other.pos.get() + shift);
+                let moved = Position::new(other.body.pos.get() + shift);
                 self.blockers.push(IndexedBody {
                     id: other.id,
                     pos: moved.expect("a shift of a body's reach stays within the bound"),
-                    shape: other.shape,
+                    shape: other.body.shape,
                     layer: other.key,
                 });
             });
@@ -202,7 +202,7 @@ impl Steering {
 #[cfg(test)]
 mod tests {
     use campfire_common::Tick;
-    use campfire_geometry::{Bounds, Grid, Shape};
+    use campfire_geometry::{Bounds, Grid, Radius, Shape};
     use campfire_sim::IdAllocator;
 
     use super::*;
@@ -241,7 +241,7 @@ mod tests {
         let standing = IndexedBody {
             id: blocker,
             pos: eighths(43, 0),
-            shape: Shape::Circle(quarter),
+            shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
         let mut steering = Steering::default();
@@ -282,7 +282,7 @@ mod tests {
         let standing = IndexedBody {
             id: blocker,
             pos: eighths(8, 0),
-            shape: Shape::Circle(quarter),
+            shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
         let goal = eighths(48, 0);

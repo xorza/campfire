@@ -14,13 +14,18 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Player};
+use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
+
+use crate::stats_column::RowReads;
 
 mod application;
 mod applier;
+mod applier_param;
 mod carried_mut;
 mod error;
 mod grant_pass;
@@ -68,13 +73,15 @@ mod stats_column;
 mod stats_data;
 mod stats_effect;
 mod stats_world;
+mod type_passive;
 mod unit_pools;
 mod unit_stats;
 
 pub use crate::application::{Application, NewInstance};
 pub use crate::applier::Applier;
+pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
-pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError};
+pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal};
 pub use crate::grant_pass::GrantPass;
 pub use crate::grants::{Grant, GrantChange, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};
@@ -116,10 +123,11 @@ pub use crate::stat_rule::StatRule;
 pub use crate::stat_totals::StatTotals;
 pub use crate::stats_api::StatsApi;
 pub use crate::stats_call::StatsCall;
-pub use crate::stats_column::{RowReads, StatsColumn};
+pub use crate::stats_column::StatsColumn;
 pub use crate::stats_data::{StatValue, StatsData};
 pub use crate::stats_effect::StatsEffect;
-pub use crate::stats_world::{StatsWorld, StatsWorldCrate};
+pub use crate::stats_world::StatsWorld;
+pub use crate::type_passive::TypePassive;
 pub use crate::unit_pools::{PoolMeters, PoolMetersMut, UnitPools, UnitPoolsReadOnly};
 pub use crate::unit_stats::UnitStats;
 
@@ -226,7 +234,10 @@ impl Module for Stats {
         d.call_params::<StatsCall>();
         d.api(StatsApi::register);
         d.book::<ByType<Pools>>();
+        d.book::<ByType<TypePassive>>();
+        d.callback::<SpawnHooks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
+        d.observer(Level::raise);
         d.part::<BodyUnit, Modifiers>(|_| Some(Modifiers::default()));
         d.part::<BodyUnit, ModifierClocks>(|_| Some(ModifierClocks::default()));
         d.part::<BodyUnit, Pools>(|at| at.of_type::<Pools>().copied());
@@ -239,9 +250,7 @@ impl Module for Stats {
     /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
     /// book, as before a mode loads one, nothing changes.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.world.insert_resource(LiveCarriers::default());
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
+        cx.systems((
             ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
             Refresh::regenerate.in_set(StatsSet::Regenerate),
             GrantPass::run.in_set(StatsSet::GrantAtInputs),
@@ -249,11 +258,14 @@ impl Module for Stats {
             GrantPass::run.in_set(StatsSet::GrantAtResolve),
             GrantPass::run.in_set(StatsSet::GrantAtEnd),
             ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
-            HeldPass::run.in_set(StatsSet::Hold),
         ));
+        cx.by_role(
+            HeldPass::run::<ServerForm>.in_set(StatsSet::Hold),
+            HeldPass::run::<ClientForm>.in_set(StatsSet::Hold),
+        );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
-                schedule.add_systems(Refresh::run.in_set(set));
+                cx.systems(Refresh::run.in_set(set));
             }
         }
     }
@@ -270,34 +282,6 @@ impl Stats {
         let book = world.resource::<ModifierBook>().clone();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.purge(|id| book.tags(id).contains(tag));
-        }
-    }
-
-    /// Grants `grant` to the unit `unit` from itself at once, as `GrantPass` does in its passes:
-    /// a unit type's passive as its unit spawns.
-    pub fn grant(world: &mut World, unit: StableId, grant: Grant) {
-        let Some(entity) = world.entity_of(unit) else {
-            return;
-        };
-        let Some(modifiers) = world.get::<Modifiers>(entity) else {
-            return;
-        };
-        match grant.change(modifiers, unit) {
-            Some(GrantChange::Apply(rank)) => {
-                let applier = Applier {
-                    source: Some(unit),
-                    action: grant.action,
-                    rank,
-                    hold: Some(grant.hold),
-                };
-                Stats::add_modifier(world, unit, grant.modifier, applier, None);
-            }
-            Some(GrantChange::Release) => {
-                if let Some(mut carried) = CarriedMut::of(world, entity) {
-                    carried.release(grant.modifier, Some(unit), grant.hold);
-                }
-            }
-            None => {}
         }
     }
 
@@ -321,7 +305,7 @@ impl Stats {
             .source
             .and_then(|source| ParamSource::of(world, source));
         let params = world.resource::<ParamBook>();
-        let param = |place: &ParamPlace| {
+        let param = |place: ParamPlace| {
             let (action, rank) = (applier.action, applier.rank);
             params.modifier_param(id, action, rank, place, source.as_ref())
         };
@@ -384,7 +368,8 @@ pub mod internals {
     use campfire_sim::{SimWorld, StableId, TickRate};
     use campfire_units::{ScriptBook, UnitTypeBook};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, Param, Rank, Stat, TagSet, UnitType,
+        ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
+        UnitType,
     };
 
     use crate::Stats;
@@ -403,7 +388,7 @@ pub mod internals {
 
     impl Stats {
         /// The modifier `name` of `package`, as the match loaded it.
-        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+        pub fn modifier(world: &World, package: PackageIndex, name: &str) -> Option<ModifierId> {
             world
                 .resource::<ModifierBook>()
                 .names()
@@ -482,7 +467,7 @@ pub mod internals {
         /// names one. Modifiers load by package, then name.
         pub fn load_modifier(
             world: &mut World,
-            package: u16,
+            package: PackageIndex,
             name: &str,
             data: &ModifierData,
             script: Option<ScriptId>,
@@ -550,6 +535,7 @@ pub mod internals {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
+            Stats::resolve_appliers(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -564,6 +550,19 @@ pub mod internals {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
+            Stats::resolve_appliers(world);
+        }
+
+        /// Resolves the params the match's modifiers read from their abilities in each action's
+        /// params again; a world with no modifier book has none.
+        fn resolve_appliers(world: &mut World) {
+            world.resource_scope(|world, mut params: Mut<'_, ParamBook>| {
+                let none = Names::default();
+                let appliers = world
+                    .get_resource::<ModifierBook>()
+                    .map_or(&none, ModifierBook::appliers);
+                params.resolve(appliers);
+            });
         }
 
         /// The place of each of `stats` in the match's book, which a world that names no stat

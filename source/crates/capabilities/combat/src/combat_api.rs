@@ -1,8 +1,8 @@
 use campfire_actions::{ActionDataField, ActionsColumn};
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
-    Status, Unit,
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook,
+    MemberSpec, RoleSet, Status, Unit,
 };
 use campfire_sim::Capability;
 use campfire_stats::PoolId;
@@ -12,6 +12,7 @@ use crate::combat_column::CombatColumn;
 use crate::combat_data::CombatData;
 use crate::combat_effect::CombatEffect;
 use crate::damage_handle::DamageHandle;
+use crate::error::CombatRefusal;
 use crate::heal_handle::HealHandle;
 use crate::mode_combat_data::{LeechData, ModeCombatData};
 
@@ -63,7 +64,7 @@ impl CombatApi {
             restore,
             |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
                 CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-                    id: unit.id,
+                    unit: unit.id,
                     pool,
                     amount,
                 })
@@ -124,11 +125,10 @@ impl CombatApi {
     /// Queues `amount` of `kind` damage to `target`.
     fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: DamageKind) -> Checked<()> {
         if amount < Num::ZERO {
-            return Err(ApiError::NegativeDamage.fail().into());
+            return Err(CombatRefusal::NegativeDamage.fail().into());
         }
-        let target = target.id;
         ctx.queue(CombatEffect::Damage {
-            target,
+            unit: target.id,
             amount,
             kind,
         })
@@ -137,7 +137,7 @@ impl CombatApi {
     /// Queues the heal or restore `effect` makes of `amount`, which is not negative.
     fn mend(ctx: &Ctx, amount: Num, effect: impl FnOnce(Num) -> CombatEffect) -> Checked<()> {
         if amount < Num::ZERO {
-            return Err(ApiError::NegativeHeal.fail().into());
+            return Err(CombatRefusal::NegativeHeal.fail().into());
         }
         ctx.queue(effect(amount))
     }
@@ -152,6 +152,6 @@ impl CombatApi {
         if !attacks {
             return Err(ApiError::NoAttack.fail().into());
         }
-        ctx.queue(CombatEffect::AttackHit { target: target.id })
+        ctx.queue(CombatEffect::AttackHit { unit: target.id })
     }
 }

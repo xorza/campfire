@@ -4,11 +4,12 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Cache;
-use campfire_geometry::{BodyBox, CellLevels, Grid, MAX_BOUND, Shape};
+use campfire_geometry::{
+    BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowDirectory, RowEntries, Shape,
+};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_units::{Body, Layer};
-use campfire_values::{RowDirectory, RowEntries};
 
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -128,7 +129,7 @@ impl BucketKey {
             row + BucketKey::ROWS
         };
         let high =
-            ((at.layer.index() as u64) << 56) | ((at.level as u64) << 50) | row.cast_unsigned();
+            ((at.layer.get() as u64) << 56) | ((at.level as u64) << 50) | row.cast_unsigned();
         let low = column.cast_unsigned() ^ (1 << 63);
         BucketKey(((high as u128) << 64) | low as u128)
     }
@@ -147,16 +148,15 @@ impl IndexedBody {
 
     /// Whether `segment` comes closer than `reach` to the body: a walker of that radius along
     /// it would overlap it. Touching is not closer.
-    pub(crate) fn comes_within(&self, segment: Segment, reach: Num) -> bool {
-        self.shape
-            .comes_within(self.pos, segment.start(), segment.end(), reach)
+    pub(crate) fn comes_closer(&self, segment: Segment, reach: Num) -> bool {
+        Placed::new(self.pos, self.shape).comes_closer(segment.start(), segment.end(), reach)
     }
 
     /// Whether the insides of the body and of `body`, a box at `pos`, share a point: touching is
     /// not overlap.
     pub fn overlaps_box(&self, pos: Position, body: &BodyBox) -> bool {
         match &self.shape {
-            Shape::Circle(radius) => body.nearest(pos, self.pos, *radius) == Ordering::Less,
+            Shape::Circle(radius) => body.nearest(pos, self.pos, radius.get()) == Ordering::Less,
             Shape::Box(other) => body.overlaps(pos, other, self.pos),
         }
     }
@@ -165,7 +165,7 @@ impl IndexedBody {
     /// `reach` to the body, as a walker of that radius may not stand in them. Rows in order.
     pub(crate) fn spans_closer(&self, grid: &Grid, reach: Num, mark: impl FnMut(Range<usize>)) {
         match &self.shape {
-            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + *radius, mark),
+            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + radius.get(), mark),
             Shape::Box(body) => grid.box_spans_closer(self.pos, body, reach, mark),
         }
     }
@@ -361,7 +361,7 @@ impl BodyIndex {
             high: [high_x, high_z],
         };
         let met = self.meeting(walker.layer, square, |body| {
-            if body.comes_within(segment, radius) {
+            if body.comes_closer(segment, radius) {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())
@@ -442,7 +442,12 @@ impl Buckets {
     }
 }
 
-impl Cache for BodyIndex {}
+/// Over the world's whole bound.
+impl Cache for BodyIndex {
+    fn installed() -> Option<BodyIndex> {
+        Some(BodyIndex::new(MAX_BOUND))
+    }
+}
 
 #[cfg(test)]
 mod tests;

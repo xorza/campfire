@@ -1,3 +1,5 @@
+use std::panic::{self, AssertUnwindSafe};
+
 use super::*;
 
 #[test]
@@ -43,4 +45,36 @@ fn a_second_job_before_the_first_answer_is_refused() {
     let mut exchange: Exchange<u32, u32> = Exchange::start("one", |job: &mut u32| *job);
     exchange.send(|job| *job = 1);
     exchange.send(|job| *job = 2);
+}
+
+#[test]
+fn a_worker_that_panicked_passes_its_panic_to_the_next_call_that_needs_it() {
+    let panics = || {
+        Exchange::<u32, u32>::start("panics", |job: &mut u32| {
+            if *job == 0 {
+                panic::panic_any(5_u32);
+            }
+            *job
+        })
+    };
+    let payload = |run: &mut dyn FnMut()| {
+        let passed = panic::catch_unwind(AssertUnwindSafe(run)).unwrap_err();
+        passed.downcast_ref::<u32>().copied()
+    };
+    // The answer it never gives: the wait passes its panic on.
+    let mut exchange = panics();
+    exchange.send(|job| *job = 0);
+    assert_eq!(
+        payload(&mut || {
+            let _ = exchange.wait();
+        }),
+        Some(5)
+    );
+    // A take, once it ended: the answers' channel is closed.
+    let mut exchange = panics();
+    exchange.send(|job| *job = 0);
+    assert_eq!(
+        payload(&mut || { while exchange.take().is_none() {} }),
+        Some(5)
+    );
 }

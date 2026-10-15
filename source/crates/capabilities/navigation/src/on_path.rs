@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::UnitEntity;
-use campfire_values::PathId;
+use campfire_values::{NameId, PathId};
 use serde::{Deserialize, Serialize};
 
 use crate::navigation_book::NavigationBook;

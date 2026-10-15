@@ -1,4 +1,4 @@
-use campfire_script::{ScriptList, ScriptValue};
+use campfire_script::{CapabilityRefusal, ScriptList, ScriptValue};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
@@ -28,7 +28,7 @@ fn probe(ctx, unit) {
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call.
     let gold = |game: &Match| {
-        let resources = PlayerResources::of_player(game, PlayerSlot::new(0));
+        let resources = game.player_resources(PlayerSlot::new(0));
         resources.unwrap().amount(resource("gold").unwrap())
     };
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
@@ -139,7 +139,7 @@ fn probe(ctx, unit) {
         ),
         (
             r#"ctx.set_relation("b", "b", Relation::Neutral)"#,
-            ApiError::SelfRelation,
+            ModeRefusal::SelfRelation.refused(),
         ),
         (
             r#"ctx.set_relation("a", "c", Relation::Neutral)"#,

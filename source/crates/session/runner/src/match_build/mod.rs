@@ -33,8 +33,8 @@ impl MatchBuild {
 
     /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books
     /// at the match's rate, and the mode itself.
-    pub(crate) fn install_mode(packages: &ModePackages, world: &mut World, players: u32) {
-        let ModeInputs { units, load } = MatchBuild::books(packages, world);
+    pub(crate) fn install_mode(world: &mut World, packages: &ModePackages, players: u32) {
+        let ModeInputs { units, load } = MatchBuild::books(world, packages);
         let setup = ModeSetup {
             script: packages.mode_script(),
             data: packages.data(),
@@ -47,7 +47,7 @@ impl MatchBuild {
 
     /// The first part of `install_mode`: every package's scripts and the books at the match's
     /// rate in place; what the mode's install takes from them.
-    pub(crate) fn books(packages: &ModePackages, world: &mut World) -> ModeInputs {
+    pub(crate) fn books(world: &mut World, packages: &ModePackages) -> ModeInputs {
         packages.compile_scripts(|source| Units::compile(world, source));
         let rate = *world.resource::<TickRate>();
         packages.books(rate).install(world)
@@ -65,7 +65,7 @@ impl MatchBuild {
     /// The restore target of `spec`, the spec of `packages` for `players` players.
     fn restore_target_of(spec: MatchSpec, packages: &ModePackages, players: u32) -> Match {
         let mut game = Match::new(spec);
-        MatchBuild::install_mode(packages, &mut game, players);
+        MatchBuild::install_mode(&mut game, packages, players);
         game
     }
 }
@@ -92,7 +92,7 @@ pub(crate) mod internals {
             let log = LogCheck::start();
             let spec = MatchBuild::spec(packages, SegmentSeed::ZERO, rate, players);
             let mut game = Match::new(spec).with_log(log);
-            let ModeInputs { units, .. } = MatchBuild::books(packages, &mut game);
+            let ModeInputs { units, .. } = MatchBuild::books(&mut game, packages);
             Vision::clear_grid(&mut game);
             Players::start_without_mode(&mut game, [], 0);
             Mode::load_units(&mut game, &units);

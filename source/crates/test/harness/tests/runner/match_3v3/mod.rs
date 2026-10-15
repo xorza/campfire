@@ -14,7 +14,9 @@ use campfire_actions::{ActionSlot, ActionSlots, SlotKind};
 use campfire_capabilities::Match;
 use campfire_combat::{Deaths, Respawn};
 use campfire_common::Tick;
-use campfire_harness::{FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode};
+use campfire_harness::{
+    ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode,
+};
 use campfire_math::Num;
 use campfire_mode::{ModeParam, ModeWorld};
 use campfire_navigation::PathWalker;
@@ -25,7 +27,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Life, Stats};
 use campfire_units::{Dead, Owner};
-use campfire_values::{Rank, Scalar, Team, UnitType};
+use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
 
 use crate::runner::match_3v3::showcase::Showcase;
 use crate::runner::moba::{gold, level_xp};
@@ -173,9 +175,11 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
     let mut showcase = Showcase::default();
+    let mut watch = ArchetypeWatch::of(fixed.game());
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
         record.tick(fixed.game_mut());
+        watch.tick(fixed.game(), tick);
         let game = fixed.game();
         let failures = game.non_send::<ScriptFailures>();
         assert!(
@@ -204,6 +208,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         }
         showcase.read(game, moba, tick);
     }
+    watch.assert_kept();
     fixed.game_mut().session_mut().reveal_seed();
     Run {
         fixed,
@@ -233,7 +238,7 @@ impl Seen {
                 .packages()
                 .packages()
                 .position(|view| view.package.header.name == "player-spells");
-            let spells = u16::try_from(spells.unwrap()).unwrap();
+            let spells = PackageIndex::new(u16::try_from(spells.unwrap()).unwrap());
             let haste = Stats::modifier(world, spells, "haste").unwrap();
             let carried = Stats::carried_modifiers(world, husk);
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));

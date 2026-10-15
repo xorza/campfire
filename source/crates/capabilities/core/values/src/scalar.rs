@@ -1,8 +1,8 @@
 use campfire_math::Num;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A script value in data: a TOML integer, or a decimal string, which is a `Num`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Scalar {
     Int(i64),

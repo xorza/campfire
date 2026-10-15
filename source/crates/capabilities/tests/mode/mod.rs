@@ -43,16 +43,16 @@ use campfire_sim::{
 use campfire_stats::{
     Application, Hold, Level, Life, ModifierClocks, ModifierData, Modifiers, NewInstance,
     PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule, StatShare, Stats,
-    UnitStats,
+    TypePassive, UnitStats,
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units,
+    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
-    Number, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team,
-    TrackId, TypeScope, UnitTags, UnitType,
+    Number, PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar,
+    Stat, Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 
@@ -119,6 +119,8 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.set_out(player, value == "on");
     } else if name == "phase" {
         ctx.state.phase = 5;
+    } else if name == "markers" {
+        ctx.map.markers(value);
     } else if name == "probe" {
         let grunts = ctx.units_tagged("grunt");
         ctx.state.enemy = ctx.enemy_team("a");
@@ -320,6 +322,7 @@ impl TestType {
         let mut bodies = ByType::default();
         let mut tracks = ByType::default();
         let mut slots = ByType::default();
+        let mut passives = ByType::default();
         for unit in types {
             let unit_type = unit.unit_type;
             lives.set(unit_type, Life::full(Num::int(10)));
@@ -328,6 +331,7 @@ impl TestType {
             bodies.set_some(unit_type, unit.body);
             tracks.set_some(unit_type, (!unit.tracks.is_empty()).then_some(unit.tracks));
             slots.set_some(unit_type, unit.slots());
+            passives.set_some(unit_type, unit.passive.map(TypePassive));
         }
         lives.load_into(game);
         deaths.load_into(game);
@@ -335,6 +339,7 @@ impl TestType {
         bodies.load_into(game);
         tracks.load_into(game);
         slots.load_into(game);
+        passives.load_into(game);
     }
 }
 
@@ -463,7 +468,7 @@ fn slot_kinds() -> SlotKinds {
         name: DeclaredName::new(name).unwrap(),
         ranks: NonZeroU8::new(ranks).map(|count| SlotRanks::new(count, None).unwrap()),
     };
-    SlotKinds::from([kind("basic", 2), kind("spell", 0)])
+    SlotKinds::new([kind("basic", 2), kind("spell", 0)]).unwrap()
 }
 
 /// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may
@@ -560,6 +565,7 @@ fn mode_files() -> ModeFiles {
                 ("phase", InputType::String),
                 ("probe", InputType::String),
                 ("out", InputType::String),
+                ("markers", InputType::String),
             ]
             .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),
@@ -658,10 +664,7 @@ fn setup<'a>(
     types: &[TestType],
     spell: LoadoutSetup,
 ) -> ModeSetup<'a> {
-    let unit_types = types.iter().map(|unit| UnitTypeSetup {
-        unit_type: unit.unit_type,
-        passive: unit.passive,
-    });
+    let unit_types = types.iter().map(|unit| unit.unit_type);
     ModeSetup {
         script,
         data: &files.data,
@@ -804,21 +807,22 @@ fn start_match_setup(
     Stats::load_rules(&mut game, &files.data.stats);
     let blink = blink_data();
     // A spell has one rank; hero X's ability, 2.
-    let strike = Actions::load(&mut game, 0, "strike", &blink, None, 2).unwrap();
-    let blink = Actions::load(&mut game, 0, "blink", &blink, None, 1).unwrap();
+    let strike = Actions::load(&mut game, PackageIndex::MODE, "strike", &blink, None, 2).unwrap();
+    let blink = Actions::load(&mut game, PackageIndex::MODE, "blink", &blink, None, 1).unwrap();
     // Loaded out of name order, each is found by its name, and only in its package.
-    let named = ["blink", "strike", "dash"].map(|name| Actions::named(&game, 0, name));
+    let named =
+        ["blink", "strike", "dash"].map(|name| Actions::named(&game, PackageIndex::MODE, name));
     assert_eq!(named, [Some(blink), Some(strike), None]);
-    assert_eq!(Actions::named(&game, 1, "blink"), None);
+    assert_eq!(Actions::named(&game, PackageIndex::new(1), "blink"), None);
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
     Progression::load_tracks(&mut game, &files.data.tracks);
     for (name, data) in &files.modifiers {
-        Stats::load_modifier(&mut game, 0, name, data, None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, data, None);
     }
     let script = Units::compile_hooked(&mut game, &format!("{script}{PICK}")).unwrap();
-    let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
+    let blessing = Stats::modifier(&game, PackageIndex::MODE, "blessing").unwrap();
     let mut types = test_types(types, strike, blessing);
     adjust(&mut types);
     let setup = setup(files, script, &types, spell);

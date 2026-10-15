@@ -32,23 +32,6 @@ impl OwnerOnly {
         Os::create_dir_owner_only(path)
     }
 
-    /// Makes the directory `path` and each missing one above it; a directory already there stays
-    /// as it is.
-    pub(crate) fn create_dir_all(path: &Path) -> io::Result<()> {
-        let missing: Vec<&Path> = path
-            .ancestors()
-            .take_while(|dir| !dir.as_os_str().is_empty() && !dir.is_dir())
-            .collect();
-        for dir in missing.into_iter().rev() {
-            match Os::create_dir_owner_only(dir) {
-                Ok(()) => {}
-                Err(error) if error.kind() == io::ErrorKind::AlreadyExists && dir.is_dir() => {}
-                Err(error) => return Err(error),
-            }
-        }
-        Ok(())
-    }
-
     /// Who else may open `file`, read from its open handle, so the file checked is the file read;
     /// none when only its owner may.
     pub(crate) fn exposure(file: &File) -> io::Result<Option<Exposure>> {

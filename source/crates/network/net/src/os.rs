@@ -1,8 +1,11 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bevy_ecs::resource::Resource;
+use campfire_protocol::Entropy;
+
 /// What a setup takes from the operating system, or from a test in its place: the clock and the
-/// random bytes.
-#[derive(Debug, Clone)]
+/// random bytes. A client keeps it as a resource, for the random bytes of its retries' waits.
+#[derive(Resource, Debug, Clone)]
 pub struct Os {
     pub clock: Clock,
     pub entropy: Entropy,
@@ -15,15 +18,6 @@ pub enum Clock {
     /// The seconds a test sets, which every holder of a clone reads.
     #[cfg(feature = "internals")]
     Manual(std::sync::Arc<std::sync::atomic::AtomicU64>),
-}
-
-/// What fills a key, a seed, a challenge or BIP-340's auxiliary randomness.
-#[derive(Debug, Clone, Copy)]
-pub enum Entropy {
-    System,
-    /// Every byte this one, so a test's keys and signatures repeat.
-    #[cfg(feature = "internals")]
-    Fixed(u8),
 }
 
 impl Os {
@@ -43,16 +37,6 @@ impl Clock {
                 .as_secs(),
             #[cfg(feature = "internals")]
             Clock::Manual(seconds) => seconds.load(std::sync::atomic::Ordering::Relaxed),
-        }
-    }
-}
-
-impl Entropy {
-    pub fn fill(self, bytes: &mut [u8; 32]) {
-        match self {
-            Entropy::System => getrandom::fill(bytes).expect("the OS gives random bytes"),
-            #[cfg(feature = "internals")]
-            Entropy::Fixed(byte) => bytes.fill(byte),
         }
     }
 }
@@ -82,17 +66,14 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use crate::os::{Clock, Entropy};
+    use crate::os::Clock;
 
     #[test]
-    fn a_manual_clock_reads_what_any_clone_sets_and_fixed_entropy_fills_its_byte() {
+    fn a_manual_clock_reads_what_any_clone_sets() {
         let clock = Clock::manual(10);
         let held = clock.clone();
         assert_eq!(held.unix_now(), 10);
         clock.set(25);
         assert_eq!(held.unix_now(), 25);
-        let mut bytes = [0; 32];
-        Entropy::Fixed(7).fill(&mut bytes);
-        assert_eq!(bytes, [7; 32]);
     }
 }

@@ -1,10 +1,10 @@
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
-use campfire_values::{RowDirectory, RowEntries};
 
 use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
-use crate::shape::Shape;
+use crate::placed::Placed;
+use crate::row_directory::{RowDirectory, RowEntries};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -27,12 +27,12 @@ pub struct BodyGrid<K> {
     /// Each level that holds a body, in order, with its widest bound.
     widest: Vec<LevelWidest>,
     /// Sorted by level, row, column, then stable id, and where each level's rows start.
-    entries: Vec<Placed<K>>,
+    entries: Vec<Indexed<K>>,
     /// Each entry's cell, beside it: a search runs over these dense keys, not over the bodies.
     cells: Vec<CellKey>,
     rows: RowDirectory<u8>,
     /// The bodies of a build and their order, kept between builds.
-    placed: Vec<Placed<K>>,
+    placed: Vec<Indexed<K>>,
     order: Vec<Order>,
 }
 
@@ -43,14 +43,13 @@ struct LevelWidest {
     widest: Num,
 }
 
-/// A body to index: its unit, the key its reader finds the unit by, where it stands, and its
-/// shape, a point's for a unit with no body.
+/// A body to index: its unit, the key its reader finds the unit by, and the body where it
+/// stands, a point for a unit with no body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Placed<K> {
+pub struct Indexed<K> {
     pub id: StableId,
     pub key: K,
-    pub pos: Position,
-    pub shape: Shape,
+    pub body: Placed,
 }
 
 /// A body's place in a build's order: its cell's key above its stable id, so a sort compares one
@@ -85,10 +84,14 @@ impl<K> Default for BodyGrid<K> {
 
 impl<K: Copy> BodyGrid<K> {
     /// Indexes `bodies` in place of what it held.
-    pub fn rebuild(&mut self, bodies: impl IntoIterator<Item = Placed<K>>) {
+    pub fn rebuild(&mut self, bodies: impl IntoIterator<Item = Indexed<K>>) {
         self.placed.clear();
         self.placed.extend(bodies);
-        let narrowest = self.placed.iter().map(|body| body.shape.bound()).min();
+        let narrowest = self
+            .placed
+            .iter()
+            .map(|entry| entry.body.shape.bound())
+            .min();
         let side = narrowest
             .unwrap_or(Num::ZERO)
             .checked_mul_int(2)
@@ -97,14 +100,14 @@ impl<K: Copy> BodyGrid<K> {
         let levels = self.levels;
         self.order.clear();
         self.order
-            .extend(self.placed.iter().enumerate().map(|(placed, body)| {
-                let at = body.pos.get();
-                let level = levels.level(body.shape.bound());
+            .extend(self.placed.iter().enumerate().map(|(placed, entry)| {
+                let at = entry.body.pos.get();
+                let level = levels.level(entry.body.shape.bound());
                 let (row, column) = (at.z.to_bits(), at.x.to_bits());
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
                 let cell = CellKey::new(0, level, row, column);
                 Order {
-                    key: (u128::from(cell.to_bits()) << 64) | u128::from(body.id.get()),
+                    key: (u128::from(cell.to_bits()) << 64) | u128::from(entry.id.get()),
                     placed: u32::try_from(placed).expect("bodies fit u32"),
                 }
             }));
@@ -117,8 +120,8 @@ impl<K: Copy> BodyGrid<K> {
         self.cells
             .extend(self.order.iter().map(|order| order.cell()));
         self.widest.clear();
-        for (body, &cell) in self.entries.iter().zip(&self.cells) {
-            let (level, bound) = (cell.level(), body.shape.bound());
+        for (entry, &cell) in self.entries.iter().zip(&self.cells) {
+            let (level, bound) = (cell.level(), entry.body.shape.bound());
             match self.widest.last_mut() {
                 Some(last) if last.level == level => last.widest = last.widest.max(bound),
                 _ => self.widest.push(LevelWidest {
@@ -133,7 +136,7 @@ impl<K: Copy> BodyGrid<K> {
 
     /// Calls `visit` with each body whose bound's disc may reach into the box of the ground plane
     /// from `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on.
-    pub fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&Placed<K>)) {
+    pub fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&Indexed<K>)) {
         for (rows, &LevelWidest { level, widest }) in self.rows.layers().zip(&self.widest) {
             debug_assert_eq!(rows.layer(), level);
             let grow = widest.to_bits();
@@ -178,7 +181,7 @@ impl<K: Copy> BodyGrid<K> {
 
     /// Calls `visit` with each body whose bound's disc may come within `reach` of `pos` on the
     /// ground plane, as `visit` does.
-    pub fn visit_near(&self, pos: Position, reach: Num, visit: impl FnMut(&Placed<K>)) {
+    pub fn visit_near(&self, pos: Position, reach: Num, visit: impl FnMut(&Indexed<K>)) {
         let pos = pos.get();
         let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
         let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));

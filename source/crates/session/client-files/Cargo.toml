@@ -1,0 +1,28 @@
+[package]
+name = "campfire-client-files"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "campfire-math/internals",
+    "campfire-sim/internals",
+    "campfire-values/internals",
+]
+
+[dependencies]
+campfire-math.workspace = true
+campfire-sim.workspace = true
+campfire-values.workspace = true
+
+bevy_math.workspace = true
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+campfire-client-files = { workspace = true, features = ["internals"] }
+campfire-codec = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

@@ -10,6 +10,8 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
+use crate::progression_column::RowReads;
+
 mod error;
 mod experience;
 mod learn_orders;
@@ -24,7 +26,7 @@ mod track_book;
 mod track_data;
 mod track_set;
 
-pub use crate::error::TrackError;
+pub use crate::error::{ProgressionRefusal, TrackError};
 pub use crate::experience::{Experience, Raised, TrackXp};
 pub use crate::learn_orders::LearnOrders;
 pub use crate::learning::Learning;
@@ -32,7 +34,7 @@ pub use crate::level_ups::{LevelUp, LevelUps};
 pub use crate::points::Points;
 pub use crate::progression_action::ProgressionAction;
 pub use crate::progression_api::ProgressionApi;
-pub use crate::progression_column::{ProgressionColumn, RowReads};
+pub use crate::progression_column::ProgressionColumn;
 pub use crate::progression_effect::ProgressionEffect;
 pub use crate::track_book::TrackBook;
 pub use crate::track_data::{Thresholds, TrackData};
@@ -82,14 +84,7 @@ impl Module for Progression {
         d.book::<ByType<TrackSet>>();
         d.part::<BodyUnit, Experience>(|at| {
             let tracks = *at.of_type::<TrackSet>()?;
-            (!tracks.is_empty()).then(|| {
-                Experience::new(
-                    tracks,
-                    at.world()
-                        .get_resource::<TrackBook>()
-                        .and_then(TrackBook::level_track),
-                )
-            })
+            (!tracks.is_empty()).then(|| Experience::new(tracks))
         });
         d.part::<BodyUnit, Points>(|at| {
             Points::at_spawn(
@@ -104,8 +99,7 @@ impl Module for Progression {
     /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
     /// effects queue through its callback.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.schedule
-            .add_systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
+        cx.systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
     }
 }
 

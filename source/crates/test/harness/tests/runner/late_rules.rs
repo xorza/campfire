@@ -13,7 +13,7 @@ use campfire_mode::{MatchResult, ModeWorld};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::{Life, Stats};
 use campfire_units::Dead;
-use campfire_values::Team;
+use campfire_values::{PackageIndex, Team};
 
 use crate::runner::moba::{gold, run_to};
 
@@ -67,7 +67,7 @@ fn the_3v3s_late_rules_follow_each_fall() {
         Some(Tick::new(8402))
     );
     assert_eq!(gold(&moba, world, 2), 150);
-    let blessing = Stats::modifier(world, 0, "warden_blessing").unwrap();
+    let blessing = Stats::modifier(world, PackageIndex::MODE, "warden_blessing").unwrap();
     let blessed: Vec<bool> = (0..Moba3v3::PLAYERS)
         .map(|slot| {
             Stats::carried_modifiers(world, MatchUnits::of(world).hero(slot))

@@ -123,7 +123,11 @@ impl Deaths {
     }
 }
 
-impl Report for Deaths {}
+impl Report for Deaths {
+    fn installed() -> Option<Deaths> {
+        Some(Deaths::default())
+    }
+}
 
 #[cfg(test)]
 mod tests {

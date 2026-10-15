@@ -9,6 +9,7 @@ use std::{env, fmt};
 use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotKindData};
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::{Release, UnitTypeData};
+use campfire_codec::Toml;
 use campfire_combat::{CombatData, LeechData, ModeCombatData};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
@@ -69,7 +70,7 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
             }
         }
     }
-    for _ in &api.enums {
+    for _ in api.enums() {
         let functions = EnumRecord::FUNCTIONS
             .iter()
             .chain(&EnumRecord::MEMBER_FUNCTIONS);
@@ -236,7 +237,7 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                let field = api.data[0];
+                let field = api.data()[0];
                 api.record_field(field.table, field.name, field.status, field.capability);
             },
             "is recorded once",
@@ -349,11 +350,11 @@ fn the_reference_is_what_the_registry_writes() {
         held == written,
         "the reference differs from the registry: run this test with CAMPFIRE_BLESS=1"
     );
-    api.members[0].spec.description = "another description";
+    api.members_mut()[0].spec.description = "another description";
     assert_ne!(api.reference(), held);
     // A script's literal is checked by a method's name alone, so every handle's method of a
     // name marks the same names.
-    let methods = api.members.iter().filter(|member| {
+    let methods = api.members().iter().filter(|member| {
         member.spec.owner != ApiOwner::Ctx && member.spec.kind == MemberKind::Method
     });
     for member in methods {
@@ -374,7 +375,8 @@ fn the_data_fields_are_the_schemas() {
     let mut mode = serde_fields::<ModeData>();
     mode.extend(["actions", "modifiers", "items", "script"]);
     mode.sort_unstable();
-    let mut unit_type = UnitTypeData::FIELDS.to_vec();
+    let empty = Toml::parse::<UnitTypeData>("").unwrap();
+    let mut unit_type = empty.fields().map(|(name, _)| name).to_vec();
     unit_type.sort_unstable();
     // Its fields as `given` names them are those its table reads.
     assert_eq!(unit_type, serde_fields::<UnitTypeData>());

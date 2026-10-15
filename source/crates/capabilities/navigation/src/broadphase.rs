@@ -268,7 +268,7 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
-    use campfire_geometry::Shape;
+    use campfire_geometry::{Radius, Shape};
     use campfire_math::{Num, Vec3};
     use campfire_units::Layer;
 
@@ -346,7 +346,7 @@ mod tests {
                     7..=14 => 2,
                     _ => at % 2,
                 };
-                collider.shape = Shape::Circle(sizes[size]);
+                collider.shape = Shape::Circle(Radius::new(sizes[size]).unwrap());
             }
             let index = statics(&colliders);
             assert_eq!(
@@ -373,10 +373,10 @@ mod tests {
         for seed in [6, 7] {
             let mut colliders = scene(seed, 400, 80, 1, false);
             for collider in colliders.iter_mut().filter(|collider| collider.movable) {
-                collider.shape = Shape::Circle(walker);
+                collider.shape = Shape::Circle(Radius::new(walker).unwrap());
             }
             colliders[0].point = Vec3::ZERO;
-            colliders[0].shape = Shape::Circle(Num::from_int(64).unwrap());
+            colliders[0].shape = Shape::Circle(Radius::new(Num::int(64)).unwrap());
             colliders[0].movable = false;
             colliders[0].walking = false;
             let expected = every_pair(&colliders);

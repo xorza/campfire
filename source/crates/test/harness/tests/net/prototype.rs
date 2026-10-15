@@ -10,16 +10,15 @@ use campfire_actions::ActionSlots;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Tick, Ticks};
-use campfire_harness::HashTrail;
-use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
-    PlayerLink, TickHashes,
+    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders, TickHashes,
 };
 use campfire_orders::OrdersAction;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_players::{PlayerResources, PlayersWorld};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
@@ -32,7 +31,7 @@ use campfire_units::{
     DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, SyncAll, SyncNone, Units,
     UnitsWorld,
 };
-use campfire_values::{DeclaredName, Names, Relation, Relations, ResourceId, Team};
+use campfire_values::{DeclaredName, Names, PackageIndex, Relation, Relations, ResourceId, Team};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
     Replicate, RollbackMode,
@@ -138,14 +137,7 @@ fn server_and_replay_agree_on_every_tick() {
 
         let link = local.link(0);
         let server_world = local.server_mut().world_mut();
-        assert!(
-            !server_world
-                .entity(link)
-                .get::<PlayerLink>()
-                .unwrap()
-                .refused(),
-            "{case}"
-        );
+        assert!(!server_world.link_refused(link).unwrap(), "{case}");
         server_world.resource_mut::<Session>().reveal_seed();
         let live = server_world.resource::<TickHashes>().get().to_vec();
         let ticks = started + u64::try_from(MATCH_FRAMES).unwrap();
@@ -200,10 +192,10 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         .collect();
     assert_eq!(client_links, [LINK_MIN_MTU]);
     let refused = |local: &InProcessMatch| {
-        let link = local.server().world().entity(link);
+        let world = local.server().world();
         (
-            link.get::<PlayerLink>().map(|player| player.refused()),
-            link.contains::<Connected>(),
+            world.link_refused(link),
+            world.entity(link).contains::<Connected>(),
         )
     };
     assert_eq!(refused(&local), (Some(false), true));
@@ -453,7 +445,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     let avatar = local.avatar(0);
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
-        let modifier = Stats::modifier(world, 0, name).unwrap();
+        let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
         Stats::give_modifier(world, avatar, modifier, None, false);
         let mut frames = 0;
         while !carries(local.client(0)) {
@@ -670,10 +662,7 @@ impl Handoff {
 
     fn slot(&self, client: usize) -> PlayerSlot {
         let world = self.local.server().world();
-        world
-            .get::<PlayerLink>(self.local.link(client))
-            .unwrap()
-            .slot()
+        world.link_slot(self.local.link(client)).unwrap()
     }
 
     /// Gives the hero to `owner` on the server, or takes its owner.
@@ -768,7 +757,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     game.local.cut_link(1);
     game.step_first_until(|game| {
         let server = game.local.server().world();
-        server.get::<PlayerLink>(game.local.link(1)).is_none()
+        server.link_slot(game.local.link(1)).is_none()
     });
     game.set_owner(Some(second));
     game.step_first_until(|game| game.held(0) == Held::Unpredicted);

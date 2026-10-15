@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use bevy::app::{App, Plugin, Startup};
 use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
-use bevy::ecs::hierarchy::Children;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
@@ -19,10 +17,10 @@ use bevy::image::{
 use bevy::math::{Quat, Vec3};
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
-use bevy::world_serialization::WorldAssetRoot;
-use bevy::world_serialization::WorldInstanceReady;
-use campfire_package::{ClientObject, MaterialFile, ModePackages};
+use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
+use campfire_client_files::{ClientObject, MaterialFile};
 use campfire_units::TypeOriginBook;
+use campfire_values::PackageIndex;
 
 use tracing::error;
 
@@ -33,30 +31,28 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::package_source::PackageSource;
 use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
 
-/// Draws units and the map's client objects with their packages' models: reads the mode's client
-/// data as it starts, loads each unit type's models, places each client object still, and dresses
-/// each model once its scene spawns: the nodes its default look hides hidden, and each primitive
-/// whose glTF material has a material file in that file's material.
+/// Draws units and the map's client objects with their packages' models: loads each unit type's
+/// models, places each client object still, and dresses each model once its scene spawns: the
+/// nodes its default look hides hidden, and each primitive whose glTF material has a material
+/// file in that file's material.
 #[derive(Debug)]
-pub(crate) struct UnitModels {
-    pub(crate) packages: Arc<ModePackages>,
-}
+pub(crate) struct UnitModels;
 
 /// The root of a client object's drawing, which stands still where the map places it, of no unit.
 #[derive(Component, Debug)]
 pub(crate) struct StillObject;
 
-/// The material of each material file once a primitive takes it, by its package's place and name.
+/// The material of each material file once a primitive takes it, by its name, each by its
+/// package's place.
 #[derive(Resource, Debug, Default)]
 struct FileMaterials {
-    made: BTreeMap<(u16, String), Handle<FileMaterial>>,
+    made: BTreeMap<PackageIndex, BTreeMap<String, Handle<FileMaterial>>>,
 }
 
 impl Plugin for UnitModels {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "file_material.wgsl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
-        app.insert_resource(ClientData::read(&self.packages));
         app.init_resource::<FileMaterials>();
         app.add_systems(Startup, (UnitModels::load_looks, UnitModels::place_objects));
         app.add_observer(UnitModels::dress);
@@ -100,7 +96,7 @@ impl UnitModels {
                     Visibility::default(),
                 ))
                 .id();
-            for model in LookModel::all(0, look, &assets) {
+            for model in LookModel::all(PackageIndex::MODE, look, &assets) {
                 commands.spawn((
                     WorldAssetRoot(model.scene),
                     model.parts,
@@ -148,19 +144,21 @@ impl UnitModels {
                 material: material.map(|material| material.0.as_str()),
             })
         });
-        let Dressing { hidden, files } = Dressing::of(parts, spawned, &data.materials);
+        let files = data.materials_of(parts.package);
+        let Dressing { hidden, filed } = Dressing::of(&parts.hide, spawned, files);
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
-        for (node, key) in files {
-            let file = &data.materials[&key];
-            let handle = made
-                .made
-                .entry(key)
-                .or_insert_with(|| {
-                    materials.add(UnitModels::material(parts.package, file, &assets))
-                })
-                .clone();
+        let made = made.made.entry(parts.package).or_default();
+        for (node, name) in filed {
+            let handle = if let Some(handle) = made.get(name) {
+                handle.clone()
+            } else {
+                let file = &files[name];
+                let handle = materials.add(UnitModels::material(parts.package, file, &assets));
+                made.insert(name.to_owned(), handle.clone());
+                handle
+            };
             commands
                 .entity(node)
                 .remove::<MeshMaterial3d<StandardMaterial>>()
@@ -170,7 +168,7 @@ impl UnitModels {
 
     /// The material of `file` of the package at `package`, its texture loaded as the glTF loads a
     /// base color: sRGB, wrapped as the file says.
-    fn material(package: u16, file: &MaterialFile, assets: &AssetServer) -> FileMaterial {
+    fn material(package: PackageIndex, file: &MaterialFile, assets: &AssetServer) -> FileMaterial {
         let texture = file.texture.as_ref().map(|texture| {
             let wrap = |clamp: bool| {
                 if clamp {
@@ -205,34 +203,35 @@ struct Node<'a> {
 }
 
 /// What a spawned model's dressing does: the nodes it hides, and the nodes whose material a
-/// material file replaces, each with the file's key.
+/// material file replaces, each with the file's name.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Dressing {
+struct Dressing<'f> {
     hidden: Vec<Entity>,
-    files: Vec<(Entity, (u16, String))>,
+    filed: Vec<(Entity, &'f str)>,
 }
 
-impl Dressing {
-    /// The dressing of a model of `parts` whose scene spawned `nodes`: each node of a name its
-    /// look hides, and each node whose glTF material has a file of its package among `files`.
+impl<'f> Dressing<'f> {
+    /// The dressing of a model that hides the nodes named in `hide`, whose scene spawned `nodes`:
+    /// each node of a name it hides, and each node whose glTF material has a file among `files`,
+    /// its model's package's.
     fn of<'a>(
-        parts: &ModelParts,
+        hide: &[String],
         nodes: impl Iterator<Item = Node<'a>>,
-        files: &BTreeMap<(u16, String), MaterialFile>,
-    ) -> Dressing {
+        files: &'f BTreeMap<String, MaterialFile>,
+    ) -> Dressing<'f> {
         let mut dressing = Dressing::default();
         for node in nodes {
             if node
                 .name
-                .is_some_and(|name| parts.hide.iter().any(|hidden| hidden == name))
+                .is_some_and(|name| hide.iter().any(|hidden| hidden == name))
             {
                 dressing.hidden.push(node.entity);
             }
-            if let Some(material) = node.material {
-                let key = (parts.package, material.to_owned());
-                if files.contains_key(&key) {
-                    dressing.files.push((node.entity, key));
-                }
+            if let Some((name, _)) = node
+                .material
+                .and_then(|material| files.get_key_value(material))
+            {
+                dressing.filed.push((node.entity, name.as_str()));
             }
         }
         dressing
@@ -251,13 +250,11 @@ mod tests {
     use bevy::ecs::world::World;
     use bevy::gltf::{Gltf, GltfMaterial, GltfPlugin};
     use bevy::mesh::MeshPlugin;
-    use bevy::world_serialization::WorldAsset;
-    use bevy::world_serialization::WorldSerializationPlugin;
-    use campfire_math::Num;
-    use campfire_mode::HeightGrid;
-    use campfire_package::{
-        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
+    use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
+    use campfire_client_files::{
+        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, HeightGrid, ModelScale,
     };
+    use campfire_math::Num;
     use campfire_values::{DeclaredName, PackagePath};
 
     use super::*;
@@ -373,7 +370,7 @@ mod tests {
         };
         let data = ClientData {
             units: vec![looks],
-            heights: Some(GroundHeights::of(&grid, None)),
+            heights: Some(GroundHeights::of(grid, None)),
             objects: ClientObjects {
                 objects: vec![
                     object("oak", 3, -2, 1, 90),
@@ -409,7 +406,7 @@ mod tests {
         // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
         // y; each model at its own scale, with the nodes its look hides; the ghost is none.
         let parts = |hide: &[&str]| ModelParts {
-            package: 0,
+            package: PackageIndex::MODE,
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
         };
         let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
@@ -448,15 +445,9 @@ mod tests {
             depth_bias: 0,
             double_sided: false,
         };
-        // Files for the tank's `tank_3` in package 1, and for `tank_0` in package 0 alone.
-        let files = BTreeMap::from([
-            ((1, "tank_3".to_owned()), file.clone()),
-            ((0, "tank_0".to_owned()), file),
-        ]);
-        let parts = ModelParts {
-            package: 1,
-            hide: vec!["tank.turret".to_owned(), "tank.flash".to_owned()],
-        };
+        // The files of the model's package: `tank_3`'s, and not `tank_0`'s.
+        let files = BTreeMap::from([("tank_3".to_owned(), file)]);
+        let hide = ["tank.turret".to_owned(), "tank.flash".to_owned()];
         let nodes = [
             Node {
                 entity: turret,
@@ -480,13 +471,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            Dressing::of(&parts, nodes.into_iter(), &files),
+            Dressing::of(&hide, nodes.into_iter(), &files),
             Dressing {
                 hidden: vec![turret, flash],
-                files: vec![
-                    (flash, (1, "tank_3".to_owned())),
-                    (other, (1, "tank_3".to_owned()))
-                ],
+                filed: vec![(flash, "tank_3"), (other, "tank_3")],
             }
         );
     }

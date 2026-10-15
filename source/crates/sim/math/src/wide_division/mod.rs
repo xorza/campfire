@@ -4,12 +4,12 @@
 //! those its library division takes longer than a float estimate and its exact correction.
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
-mod aarch64;
+mod portable;
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
 
 #[cfg(not(target_arch = "x86_64"))]
-use crate::wide_division::aarch64 as platform;
+use crate::wide_division::portable as platform;
 #[cfg(target_arch = "x86_64")]
 use crate::wide_division::x86_64 as platform;
 

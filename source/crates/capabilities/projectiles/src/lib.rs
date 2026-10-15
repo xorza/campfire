@@ -12,13 +12,14 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionRange, ActionTarget, Aim, Delivery, DeliveryShape};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
+use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, StableId};
 use campfire_units::MapBook;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
+mod error;
 mod flight_state;
 mod flights;
 mod flying;
@@ -31,6 +32,7 @@ mod projectiles_api;
 mod projectiles_effect;
 mod struck_units;
 
+pub use crate::error::ProjectilesRefusal;
 pub use crate::flight_state::FlightState;
 pub use crate::flying::Flying;
 pub use crate::launches::{Launch, LaunchPayload, Launches};
@@ -99,7 +101,7 @@ impl Module for Projectiles {
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
     /// delivery, so it flies none.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.schedule.add_systems((
+        cx.systems((
             Launching::take_shots.in_set(ProjectilesSet::TakeShots),
             Launching::launch.in_set(ProjectilesSet::Launch),
         ));
@@ -112,21 +114,19 @@ impl Projectiles {
     pub const TAG: EngineTag =
         EngineTag::new(2, "projectile", TagProperties::NONE.with_named_only());
 
-    /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
-    /// projectile at a unit for a homing type, or the fan's projectiles along lines spread evenly
-    /// over its spread around the aim, which for an action aimed at a point end there at the
-    /// latest; nothing for no target, a unit that is gone, or an aim of no direction.
-    fn deliver(
-        world: &mut World,
-        by: Delivering,
-        from: Position,
-        delivery: Delivery,
-        target: ActionTarget,
-    ) {
-        let Delivery {
-            unit_type,
-            shape: DeliveryShape::Projectile { fan, .. },
-        } = delivery
+    /// Launches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
+    /// at a unit for a homing type, or the fan's projectiles along lines spread evenly over its
+    /// spread around the aim, which for an action aimed at a point end there at the latest;
+    /// nothing for no target, a unit that is gone, or an aim of no direction.
+    fn deliver(world: &mut World, launcher: Launcher, from: Position, target: ActionTarget) {
+        let Launcher {
+            by,
+            delivery:
+                Delivery {
+                    unit_type,
+                    shape: DeliveryShape::Projectile { fan, .. },
+                },
+        } = launcher
         else {
             panic!("projectiles deliver a fan of projectiles");
         };

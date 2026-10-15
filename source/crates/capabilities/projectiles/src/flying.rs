@@ -98,7 +98,7 @@ impl Flying {
             };
             let by = aloft.strikes_by();
             if flights.fly(&targets, aloft) {
-                flights.deliveries.ended.push(entity);
+                flights.deliveries.end(entity);
             } else {
                 flying.push(by);
             }

@@ -1,5 +1,4 @@
 use campfire_math::Num;
-use campfire_script::{CallError, ScriptFn};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, DamageKind, Hit, Rank};
 
@@ -18,10 +17,6 @@ pub struct Damage {
     pub depth: u8,
     pub hit: Option<Hit>,
 }
-
-/// What turns each damage of the pass into its final amount: the mode's `calc_damage`, which
-/// the mode gives combat when its script defines one.
-pub type DamageWeigher = ScriptFn<Damage, Result<Num, CallError>>;
 
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
 /// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect. An attack names

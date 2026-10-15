@@ -4,7 +4,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::{USizeVec2, UVec2};
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
-use campfire_package::{BorderWrap, PackageReader, TerrainTexture, TextureCopy, TextureLevels};
+use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy, TextureLevels};
+use campfire_package::PackageReader;
 use campfire_values::PackagePath;
 use tracing::error;
 
@@ -25,6 +26,14 @@ pub(crate) struct TerrainImage {
 
 const BLACK: [u8; 4] = [0, 0, 0, 255];
 
+/// One level of a texture as it is composed: its texels, `width` a row, and the level.
+#[derive(Debug)]
+struct LevelTexels<'t> {
+    texels: &'t mut [u8],
+    width: usize,
+    level: u32,
+}
+
 impl TerrainImage {
     /// The texture of `texture`, its copies' textures read from `files`, each once.
     pub(crate) fn compose(texture: &TerrainTexture, files: &PackageReader) -> TerrainImage {
@@ -39,13 +48,16 @@ impl TerrainImage {
         let mut rest = texels.as_mut_slice();
         for level in 0..texture.levels {
             let (this, next) = rest.split_at_mut(texels_of(level) * 4);
-            let row = (texture.size.x >> level) as usize;
+            let mut target = LevelTexels {
+                texels: this,
+                width: (texture.size.x >> level) as usize,
+                level,
+            };
             for copy in &texture.copies {
-                let source = sources[&copy.texture].as_ref();
-                TerrainImage::copy(this, row, copy, source, level);
+                TerrainImage::copy(&mut target, copy, sources[&copy.texture].as_ref());
             }
             for wrap in &texture.wraps {
-                TerrainImage::wrap(this, row, *wrap, level);
+                TerrainImage::wrap(&mut target, *wrap);
             }
             rest = next;
         }
@@ -83,15 +95,15 @@ impl TerrainImage {
         ClientData::logged(path, TextureLevels::of_ktx2(&bytes, levels))
     }
 
-    /// Copies `copy`'s rectangle of level `level` of `source` into `texels`, `width` texels a
-    /// row; none, logged, when the source has no texture or lacks the rectangle.
-    fn copy(
-        texels: &mut [u8],
-        width: usize,
-        copy: &TextureCopy,
-        source: Option<&TextureLevels>,
-        level: u32,
-    ) {
+    /// Copies `copy`'s rectangle of `source` at the target's level into `target`; none, logged,
+    /// when the source has no texture or lacks the rectangle.
+    fn copy(target: &mut LevelTexels<'_>, copy: &TextureCopy, source: Option<&TextureLevels>) {
+        let LevelTexels {
+            texels,
+            width,
+            level,
+        } = target;
+        let (width, level) = (*width, *level);
         let holds = |source: &TextureLevels| {
             let end = copy.from.checked_add(copy.size);
             end.is_some_and(|end| end.cmple(source.size()).all())
@@ -114,9 +126,15 @@ impl TerrainImage {
         }
     }
 
-    /// Wraps `wrap`'s border of level `level` in `texels`, `width` texels a row: its columns from
-    /// the rectangle's opposite side, then its rows, each the border's full width.
-    fn wrap(texels: &mut [u8], width: usize, wrap: BorderWrap, level: u32) {
+    /// Wraps `wrap`'s border at the target's level in `target`: its columns from the rectangle's
+    /// opposite side, then its rows, each the border's full width.
+    fn wrap(target: &mut LevelTexels<'_>, wrap: BorderWrap) {
+        let LevelTexels {
+            texels,
+            width,
+            level,
+        } = target;
+        let (width, level) = (*width, *level);
         let USizeVec2 { x, y } = (wrap.at >> level).as_usizevec2();
         let USizeVec2 {
             x: columns,

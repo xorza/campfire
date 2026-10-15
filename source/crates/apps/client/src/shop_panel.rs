@@ -156,7 +156,11 @@ impl ShopPanel {
         else {
             return;
         };
-        let served = shopping.serving(shop, avatar.id).is_some();
+        let service = if shopping.serving(shop, avatar.id).is_some() {
+            Service::Serves
+        } else {
+            Service::Refuses
+        };
         let amount = funds_rows
             .of(owner)
             .map_or(0, |held| held.amount(sold.resource()));
@@ -170,7 +174,7 @@ impl ShopPanel {
                 write!(line, "{price}").expect("a String takes any text");
             }
             ui_style::set_text(&mut texts, row.price, &line);
-            let color = if dimmed(served, purchase, amount) {
+            let color = if dimmed(service, purchase, amount) {
                 DIMMED
             } else {
                 TEXT
@@ -236,11 +240,18 @@ impl ShopPanel {
     }
 }
 
-/// Whether the panel dims an item: the shop does not serve the avatar now, as a living one out of
-/// its reach; or the shop does not sell it, or the avatar cannot pay its price now, or has no
-/// room for it.
-fn dimmed(served: bool, purchase: Option<Purchase>, amount: i64) -> bool {
-    !served || purchase.is_none_or(|purchase| !purchase.room || amount < purchase.price)
+/// Whether a shop serves the avatar now; it refuses a living one out of its reach.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Service {
+    Serves,
+    Refuses,
+}
+
+/// Whether the panel dims an item: the shop refuses the avatar now; or the shop does not sell
+/// it, or the avatar cannot pay its price now, or has no room for it.
+fn dimmed(service: Service, purchase: Option<Purchase>, amount: i64) -> bool {
+    service == Service::Refuses
+        || purchase.is_none_or(|purchase| !purchase.room || amount < purchase.price)
 }
 
 #[cfg(test)]
@@ -273,12 +284,12 @@ mod tests {
     fn an_item_is_dimmed_out_of_a_shop_too_dear_or_with_no_room() {
         let buys = |price, room| Some(Purchase { price, room });
         // Served, with 300 to spend: an item of 300 with room is bright.
-        assert!(!dimmed(true, buys(300, true), 300));
+        assert!(!dimmed(Service::Serves, buys(300, true), 300));
         // A living avatar out of the shop's reach; too poor by one; no room; one it does not
         // sell.
-        assert!(dimmed(false, buys(300, true), 300));
-        assert!(dimmed(true, buys(301, true), 300));
-        assert!(dimmed(true, buys(50, false), 300));
-        assert!(dimmed(true, None, 300));
+        assert!(dimmed(Service::Refuses, buys(300, true), 300));
+        assert!(dimmed(Service::Serves, buys(301, true), 300));
+        assert!(dimmed(Service::Serves, buys(50, false), 300));
+        assert!(dimmed(Service::Serves, None, 300));
     }
 }

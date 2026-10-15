@@ -1,3 +1,4 @@
+use campfire_geometry::Radius;
 use campfire_sim::IdAllocator;
 
 use super::*;
@@ -5,7 +6,7 @@ fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
         pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
-        shape: Shape::Circle(radius),
+        shape: Shape::Circle(Radius::new(radius).unwrap()),
         layer: Layer::FIRST,
     }
 }
@@ -221,7 +222,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "({x}, {z})");
     }
 }
@@ -242,7 +243,7 @@ fn lattice(ids: &mut IdAllocator) -> (BodyIndex, Vec<IndexedBody>) {
 }
 
 #[test]
-fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
+fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
     let mut ids = IdAllocator::default();
     let (index, bodies) = lattice(&mut ids);
     // Segments of every direction and length over the lattice, long diagonals, lines along an
@@ -266,7 +267,9 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         scattered.push(IndexedBody {
             id: ids.allocate(),
             pos: Position::new(at).unwrap(),
-            shape: Shape::Circle(Num::from_bits(next(3).cast_signed() * quarter)),
+            shape: Shape::Circle(
+                Radius::new(Num::from_bits(next(3).cast_signed() * quarter)).unwrap(),
+            ),
             layer: Layer::FIRST,
         });
     }
@@ -292,7 +295,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }

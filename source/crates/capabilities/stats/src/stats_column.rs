@@ -5,12 +5,13 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue, View,
-    ViewColumn,
+    AnyKeptRows, CapabilityRefusal, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue,
+    View, ViewColumn,
 };
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ModifierId, Rank};
+use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
+use crate::error::StatsRefusal;
 use crate::level::Level;
 use crate::life::Life;
 use crate::meter::Meter;
@@ -27,7 +28,7 @@ use crate::unit_pools::PoolMeters;
 use crate::unit_stats::UnitStats;
 
 /// The parts of a unit the stats read into its row.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Option<&'static Level>,
     Option<&'static Life>,
     Option<&'static Pools>,
@@ -196,7 +197,7 @@ impl StatsRows {
 impl StatsColumn {
     /// Adds the row of a unit at `level`, with `life` and `pools`, the values `stats` of the stats
     /// it carries, and `modifiers` with their `clocks`.
-    pub fn push(
+    fn push(
         &mut self,
         level: Option<u32>,
         pools: (Option<&Life>, Option<&Pools>),
@@ -212,7 +213,7 @@ impl StatsColumn {
     /// What `read` gives of the column; an error for a match with no stats.
     fn read<R>(view: &View, read: impl FnOnce(&StatsColumn) -> Checked<R>) -> Checked<R> {
         view.column(read)
-            .unwrap_or_else(|| Err(ApiError::NoStats.fail().into()))
+            .unwrap_or_else(|| Err(StatsRefusal::NoStats.fail().into()))
     }
 
     /// The level of the unit in row `row`; an error for a unit with no stats.
@@ -220,7 +221,7 @@ impl StatsColumn {
         StatsColumn::read(view, |column| {
             Ok(column.rows.now().rows[row]
                 .level
-                .ok_or_else(|| ApiError::NoStats.fail())?)
+                .ok_or_else(|| StatsRefusal::NoStats.fail())?)
         })
     }
 
@@ -233,7 +234,7 @@ impl StatsColumn {
                 .stats(row)
                 .get(stat.index())
                 .copied()
-                .ok_or_else(|| ApiError::NoStats.fail().into())
+                .ok_or_else(|| StatsRefusal::NoStats.fail().into())
         })
     }
 
@@ -251,7 +252,7 @@ impl StatsColumn {
             pools
                 .meter(pool)
                 .map(read)
-                .ok_or_else(|| ApiError::NoPool.fail().into())
+                .ok_or_else(|| StatsRefusal::NoPool.fail().into())
         })
     }
 
@@ -269,7 +270,7 @@ impl StatsColumn {
             let checked = column
                 .modifier_book
                 .check_way(id, action, rank, call.params(), rate);
-            Ok(checked.map_err(|problem| ApiError::ModifierParam(problem).fail())?)
+            Ok(checked.map_err(|problem| StatsRefusal::param(problem).fail())?)
         })
     }
 
@@ -292,11 +293,7 @@ impl StatsColumn {
         id: ModifierId,
         source: Option<StableId>,
     ) -> ModifierHandle {
-        if let Some(handle) = call
-            .handles
-            .iter()
-            .find(|handle| handle.is(carrier, id, source))
-        {
+        if let Some(handle) = call.handed(carrier, id, source) {
             view.column(|column: &StatsColumn| column.apply_again(handle, id))
                 .expect("a match that applies a modifier has stats");
             return handle.clone();
@@ -329,22 +326,25 @@ impl StatsColumn {
                 ModifierHandle::new(spare, of, state, schema, view.clone())
             })
             .expect("a match that applies a modifier has stats");
-        call.handles.push(handle.clone());
+        call.hand_out(handle.clone());
         handle
     }
 
-    /// The handle of the instance `of`, as a call sees it: its stacks, and `state`, filling
-    /// `spare` again when given.
+    /// The handle of the instance `of` that the running call gives a script, as the call sees
+    /// it: its stacks, and `state`. The call keeps it, as `applied_handle`'s, so an application
+    /// of the instance in the call finds it.
     pub fn held_handle(
         view: &View,
-        spare: Option<ModifierHandle>,
+        call: &mut StatsCall,
         of: HandleOf,
         state: &[StateValue],
     ) -> ModifierHandle {
         let schema = view
             .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.state))
             .expect("a match with modifiers has stats");
-        ModifierHandle::new(spare, of, state, schema, view.clone())
+        let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
+        call.hand_out(handle.clone());
+        handle
     }
 
     /// Applies `id` again through `handle`, which the running call took: a removed instance is

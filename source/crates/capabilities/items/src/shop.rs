@@ -70,12 +70,12 @@ impl Shop {
         self.selects(buyer) && (buyer.dead || reaches(self.reach))
     }
 
-    /// What a sale of `count` items of `cost` each gives back: the sell share of their cost,
-    /// rounded down to a whole amount, exactly.
+    /// What a sale of `count` items of `cost` each gives back, no more than a stack of the item:
+    /// the sell share of their cost, rounded down to a whole amount, exactly.
     pub(crate) fn refund(&self, cost: i64, count: u32) -> i64 {
         let whole = cost
             .checked_mul(i64::from(count))
-            .expect("a stack's cost fits");
+            .expect("the item book bounds a full stack's cost");
         self.sell_share.of(whole)
     }
 }

@@ -54,6 +54,24 @@ fn a_polygon_needs_three_points_and_edges_that_meet_only_where_they_follow() {
     for (at, error) in refused {
         assert_eq!(Polygon::new(points(&at)), Err(error), "{at:?}");
     }
+    // A point past the world's bound, 2²⁰ m, by a bit, on either axis and either side, or at a
+    // number's end; a triangle to the bound itself is one.
+    let bound = Position::BOUND;
+    let bit = Num::from_bits(1);
+    for past in [
+        [bound + bit, Num::ZERO],
+        [Num::ZERO, -bound - bit],
+        [Num::MIN, Num::MAX],
+    ] {
+        let at = [[Num::ZERO; 2], [Num::ONE, Num::ZERO], past];
+        assert_eq!(
+            Polygon::new(at),
+            Err(PolygonError::PastBound { point: 2 }),
+            "{past:?}"
+        );
+    }
+    let corner = Polygon::new([[-bound, -bound], [bound, -bound], [bound, bound]]);
+    assert!(corner.unwrap().holds_point([bound, Num::ZERO]));
     // A triangle, a box, and a concave arrow, each simple; a point on a straight run between two
     // edges is no fault.
     for at in [

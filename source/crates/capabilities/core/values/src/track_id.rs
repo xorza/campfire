@@ -8,26 +8,25 @@ use crate::names::NameId;
 pub struct TrackId(u8);
 
 impl TrackId {
-    /// The most tracks a mode declares: every place a `TrackSet` holds.
-    pub const LIMIT: usize = 32;
-
     /// The track at `index`, which is below the limit.
     pub const fn new(index: u8) -> TrackId {
         assert!(
-            (index as usize) < TrackId::LIMIT,
+            (index as usize) < <TrackId as NameId>::LIMIT,
             "a track is below the limit"
         );
         TrackId(index)
     }
 
-    pub const fn index(self) -> usize {
-        self.0 as usize
+    /// Its place in the mode's tracks.
+    pub const fn get(self) -> u8 {
+        self.0
     }
 }
 
 impl NameId for TrackId {
     type Scope = ();
-    const LIMIT: usize = TrackId::LIMIT;
+    /// The most tracks a mode declares: every place a `TrackSet` holds.
+    const LIMIT: usize = 32;
 
     fn at(index: usize) -> TrackId {
         TrackId::new(u8::try_from(index).expect("tracks fit u8"))

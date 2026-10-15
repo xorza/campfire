@@ -12,13 +12,8 @@ pub struct MatchClock {
 }
 
 impl MatchClock {
-    /// The clock of a match that starts, sim tick 0, in `start`.
-    pub const fn new(start: NetTick) -> MatchClock {
-        MatchClock::resumed(start, Tick::new(0))
-    }
-
     /// The clock of a match that runs sim tick `first` in `start`.
-    pub const fn resumed(start: NetTick, first: Tick) -> MatchClock {
+    pub const fn new(start: NetTick, first: Tick) -> MatchClock {
         MatchClock { start, first }
     }
 
@@ -49,12 +44,13 @@ mod tests {
 
     #[test]
     fn a_resumed_clock_runs_its_first_sim_tick_in_its_start() {
-        let fresh = MatchClock::new(NetTick(100));
+        // A match that starts, its sim tick 0 at Lightyear tick 100.
+        let fresh = MatchClock::new(NetTick(100), Tick::new(0));
         assert_eq!(fresh.sim_tick(NetTick(99)), None);
         assert_eq!(fresh.sim_tick(NetTick(100)), Some(Tick::new(0)));
         assert_eq!(fresh.sim_tick(NetTick(103)), Some(Tick::new(3)));
         // Restored at sim tick 5000 in a server whose timeline runs from 0.
-        let resumed = MatchClock::resumed(NetTick(7), Tick::new(5000));
+        let resumed = MatchClock::new(NetTick(7), Tick::new(5000));
         assert_eq!(resumed.sim_tick(NetTick(6)), None);
         assert_eq!(resumed.sim_tick(NetTick(7)), Some(Tick::new(5000)));
         assert_eq!(resumed.sim_tick(NetTick(9)), Some(Tick::new(5002)));

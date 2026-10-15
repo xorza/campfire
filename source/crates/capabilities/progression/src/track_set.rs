@@ -1,6 +1,6 @@
 use campfire_declare::PerType;
 use campfire_sim::Capability;
-use campfire_values::TrackId;
+use campfire_values::{NameId, TrackId};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -24,7 +24,7 @@ impl<const N: usize> From<[TrackId; N]> for TrackSet {
 
 impl TrackSet {
     pub const fn contains(self, track: TrackId) -> bool {
-        self.0 & (1 << track.index()) != 0
+        self.0 & (1 << track.get()) != 0
     }
 
     pub const fn is_empty(self) -> bool {

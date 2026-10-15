@@ -82,14 +82,16 @@ impl Meter {
         self.settle();
     }
 
-    /// Takes `amount`, which is not negative, down to 0 at the least.
-    pub fn take(&mut self, amount: Num) {
+    /// Takes `amount`, which is not negative, down to 0 at the least; what it took.
+    pub fn take(&mut self, amount: Num) -> Num {
         debug_assert!(
             amount >= Num::ZERO,
             "a meter takes an amount that is not negative"
         );
+        let before = self.current;
         self.current = (self.current - amount).max(Num::ZERO);
         self.settle();
+        before - self.current
     }
 
     /// Drops what regen carried once the amount is at either end, as its field says.
@@ -143,9 +145,10 @@ mod tests {
         assert_eq!(Meter::new(-Num::EPSILON), None);
         let mut meter = Meter::new(Num::int(10)).unwrap();
         assert_eq!((meter.current(), meter.max()), (Num::int(10), Num::int(10)));
-        meter.take(Num::int(4));
+        // 4 of 10 leaves 6, all 4 taken; 7 of 6 takes the 6 left.
+        assert_eq!(meter.take(Num::int(4)), Num::int(4));
         assert_eq!(meter.current(), Num::int(6));
-        meter.take(Num::int(7));
+        assert_eq!(meter.take(Num::int(7)), Num::int(6));
         assert!(meter.is_empty());
         // Adding 3 to 0 of 10 gives 3; 9 more stops at 10; the most a number holds, at 10 too.
         for (added, current) in [

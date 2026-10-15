@@ -3,7 +3,6 @@ use crate::harness::test_key::TestKey;
 
 #[test]
 fn a_results_signature_holds_only_over_it() {
-    let secp = Secp256k1::new();
     let server = TestKey::server();
     let key = server.x_only_public_key().0;
     let id = SessionId::new([8; 32]);
@@ -12,14 +11,13 @@ fn a_results_signature_holds_only_over_it() {
         outcome: Outcome::Won { team: 1 },
         state_hash: StateHash::new([3; 32]),
     };
-    let signature = result.sign(&secp, &server, id, &[0; 32]);
-    assert!(result.signed_by(&secp, &key, id, &signature, &mut Vec::new()));
+    let signature = result.sign(&TestKey::signer(server), id);
+    assert!(result.signed_by(&mut Verifier::new(), &key, id, &signature));
     assert!(!result.signed_by(
-        &secp,
+        &mut Verifier::new(),
         &key,
         SessionId::new([9; 32]),
-        &signature,
-        &mut Vec::new()
+        &signature
     ));
     let others = [
         SessionResult {
@@ -41,7 +39,7 @@ fn a_results_signature_holds_only_over_it() {
     ];
     for other in others {
         assert!(
-            !other.signed_by(&secp, &key, id, &signature, &mut Vec::new()),
+            !other.signed_by(&mut Verifier::new(), &key, id, &signature),
             "{other:?}"
         );
     }

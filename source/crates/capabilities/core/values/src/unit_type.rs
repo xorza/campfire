@@ -22,11 +22,6 @@ impl UnitType {
     pub const fn new(index: u16) -> UnitType {
         UnitType(index)
     }
-
-    /// Its place in the match's unit types, from 0.
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for UnitType {

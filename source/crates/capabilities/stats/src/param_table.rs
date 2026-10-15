@@ -92,6 +92,11 @@ impl ParamTable {
         self.params.named(run, name)
     }
 
+    /// How many runs it holds.
+    pub(crate) const fn runs(&self) -> usize {
+        self.params.runs()
+    }
+
     /// Whether it holds run `run`.
     pub(crate) const fn has_run(&self, run: usize) -> bool {
         self.params.has_run(run)
@@ -186,7 +191,7 @@ mod tests {
             let name = DeclaredName::new("p").unwrap();
             let params = BTreeMap::from([(name, Param::Scaling(scaling))]);
             let mut table = ParamTable::default();
-            let at = |stat: &Stat| Ok::<_, Infallible>(StatId::new(usize::from(*stat == armor)));
+            let at = |stat: &Stat| Ok::<_, Infallible>(StatId::new(u16::from(*stat == armor)));
             assert_eq!(table.push(&params, at), Ok(0));
             table
         };

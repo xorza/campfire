@@ -9,13 +9,14 @@ use std::time::{Duration, Instant};
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
+use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_net::Listening;
-use campfire_package::internals::TestMode;
-use campfire_quic::{LINK_MIN_MTU, LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
+use campfire_package_disk::internals::TestMode;
+use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
-use lightyear::link::{Link, LinkMtu, LinkStart, Linked};
+use lightyear::link::{LinkStart, Linked};
 
 /// The longest each step waits, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
@@ -75,7 +76,10 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
     let end = until("the client's unlink", || client.update().end);
     assert_eq!(end, LinkEnd::PeerStopped);
     let status = until("the server's exit", || server.0.try_wait().unwrap());
-    assert_eq!(status.code(), Some(i32::from(StopSignals::EXIT_CODE)));
+    assert_eq!(
+        status.code(),
+        Some(i32::from(ExitStatus::Interrupted.code()))
+    );
 }
 
 /// The server's process, killed if the test fails before it exits.
@@ -112,10 +116,7 @@ impl ClientApp {
             .unwrap();
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
-        let entity = app
-            .world_mut()
-            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
-            .id();
+        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
         ClientApp { app, entity }
     }
