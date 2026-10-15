@@ -104,7 +104,6 @@ Files: `base/common/src/tests.rs`, `capabilities/core/{units,declare,players}/sr
 - [ ] Guard: the cycle test checks the siblings under every parent of the module tree.
 - [ ] The wrappers go: `units/src/lib.rs:14`, `declare/src/lib.rs:10`, `players/src/lib.rs:6`.
 - [ ] `net/src/sim_server/session_dir/mod.rs:218-255`: one replay in `sim_server` serves restore and abort, resuming from the snapshot.
-- [ ] `net/src/sim_server/checkpoints/mod.rs:26`: `Checkpoints` returns its decision, and the world trait acts on it.
 - [ ] `orders/src/lib.rs:137-149`: `apply_order` is inlined into `UnitOrder`'s `Effect` impl.
 - [ ] Any further cycle the guard names.
 

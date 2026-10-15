@@ -6,7 +6,7 @@ use bevy_app::{
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::Added;
+use bevy_ecs::query::{Added, QueryState};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
@@ -38,6 +38,7 @@ use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::match_ended::MatchEnded;
+use crate::events::save_refused::SaveRefused;
 use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
@@ -49,6 +50,7 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
+use crate::save_command::SaveCommand;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
@@ -68,6 +70,7 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::sim_server_world::SimServerWorld;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::tick_hashes::TickHashes;
@@ -181,7 +184,7 @@ impl Plugin for SimServer {
         );
         app.add_systems(
             Update,
-            Checkpoints::take_commands
+            SimServer::take_save_commands
                 .after(Door::watch)
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
@@ -215,7 +218,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
-                Checkpoints::begin.run_if(resource_exists::<Checkpoints>),
+                SimServer::begin_checkpoint.run_if(resource_exists::<Checkpoints>),
                 report_deaths,
                 report_end,
             )
@@ -227,7 +230,7 @@ impl Plugin for SimServer {
             FixedUpdate,
             Shows
                 .in_set(SimTickSystems)
-                .after(Checkpoints::begin)
+                .after(SimServer::begin_checkpoint)
                 .before(report_deaths),
         );
     }
@@ -256,7 +259,48 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) bots: ServerBots,
 }
 
+/// The save commands' links, each with its player.
+type SaveLinks = QueryState<(
+    &'static PlayerLink,
+    &'static mut MessageReceiver<SaveCommand>,
+)>;
+
 impl SimServer {
+    /// Begins the checkpoint due at the boundary before the next tick, as `Checkpoints::begin`
+    /// does, and ends the session with the outcome it gives.
+    fn begin_checkpoint(world: &mut World) {
+        if let Some(outcome) = Checkpoints::begin(world) {
+            world
+                .end_session(outcome)
+                .expect("no checkpoint is on the thread");
+        }
+    }
+
+    /// Takes the save commands of the seated players, as `Checkpoints::take` does, and loads the
+    /// save a load names; each refused one is logged.
+    fn take_save_commands(
+        world: &mut World,
+        (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
+    ) {
+        for (link, mut receiver) in links.iter_mut(world) {
+            if !link.refused() {
+                taken.extend(receiver.receive());
+            }
+        }
+        for command in taken.drain(..) {
+            match Checkpoints::take(world, command) {
+                Ok(None) => {}
+                Ok(Some(segment)) => world
+                    .load_session_save(segment)
+                    .expect("no checkpoint is on the thread"),
+                Err(error) => SaveRefused {
+                    reason: ErrorReport::of(&error).to_string(),
+                }
+                .log(),
+            }
+        }
+    }
+
     /// Starts the match of `start.log`'s header in the next fixed tick, recording into its log,
     /// each segment drawing from its seed. From then on a frame advances the server's clock by
     /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
@@ -441,7 +485,7 @@ impl SimServer {
         Checkpoints::start(world, snapshots, signer);
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began.
-        Checkpoints::begin(world);
+        SimServer::begin_checkpoint(world);
         let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             let signer = world.resource::<ServerSigner>();
