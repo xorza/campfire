@@ -10,6 +10,9 @@ pub enum CapabilityError {
     DeclaresMode,
     #[error("declares {0:?} twice")]
     Repeated(Capability),
+    /// A capability is declared that no module of this release builds, as one the design plans.
+    #[error("declares {0:?}, which this release does not build")]
+    NotBuilt(Capability),
     /// A capability is declared without one it builds on.
     #[error("declares {capability:?} without {needs:?}")]
     Needs {

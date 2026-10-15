@@ -13,12 +13,12 @@ pub(super) struct CapabilityRow {
 }
 
 impl CapabilityRows {
-    /// What `capability` builds on; nothing for one the release does not run yet.
-    pub(super) fn needs(&self, capability: Capability) -> &'static [Capability] {
+    /// What `capability` builds on; none for one the release does not build.
+    pub(super) fn needs(&self, capability: Capability) -> Option<&'static [Capability]> {
         self.0
             .iter()
             .find(|row| row.capability == capability)
-            .map_or(&[], |row| row.needs)
+            .map(|row| row.needs)
     }
 }
 

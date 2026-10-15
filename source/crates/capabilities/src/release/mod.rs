@@ -101,7 +101,7 @@ impl Release {
     }
 
     /// The set of a mode's `declared` capabilities; an error when one is `mode`, one is declared
-    /// twice, or one lacks a capability it builds on.
+    /// twice, one is of no module this release builds, or one lacks a capability it builds on.
     pub fn capability_set(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
         let mut set = CapabilitySet::CORE;
         for &capability in declared {
@@ -115,11 +115,10 @@ impl Release {
         }
         let rows = Release::rows();
         for capability in set.iter() {
-            if let Some(&needs) = rows
+            let needs = rows
                 .needs(capability)
-                .iter()
-                .find(|&&needs| !set.contains(needs))
-            {
+                .ok_or(CapabilityError::NotBuilt(capability))?;
+            if let Some(&needs) = needs.iter().find(|&&needs| !set.contains(needs)) {
                 return Err(CapabilityError::Needs { capability, needs });
             }
         }

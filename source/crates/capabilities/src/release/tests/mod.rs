@@ -3,8 +3,8 @@ use std::fmt::Debug;
 use std::path::Path;
 
 use Capability::{
-    Abilities, Combat, Items, Mode, Navigation, Orders, Production, Progression, Projectiles,
-    Stats, Vision,
+    Abilities, Combat, Hitboxes, Items, Mode, Navigation, Orders, Production, Progression,
+    Projectiles, Quests, Stats, Vision,
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
@@ -44,6 +44,9 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             },
         ),
         (&[Combat, Vision, Combat], CapabilityError::Repeated(Combat)),
+        // A capability the design plans, of no module this release builds.
+        (&[Stats, Quests], CapabilityError::NotBuilt(Quests)),
+        (&[Hitboxes], CapabilityError::NotBuilt(Hitboxes)),
         (
             &[Projectiles],
             CapabilityError::Needs {

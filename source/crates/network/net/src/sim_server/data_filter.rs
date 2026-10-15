@@ -333,7 +333,7 @@ mod tests {
 
     use bevy_ecs::world::World;
     use campfire_codec::Toml;
-    use campfire_sim::{Capability, OnAny, SimComponent};
+    use campfire_sim::{OnAny, SimComponent};
     use campfire_state_types::SentOnChange;
     use campfire_values::TeamSet;
     use campfire_visibility::{ModeVisibility, Visibility};
@@ -405,12 +405,8 @@ mod tests {
 
     impl Kinds {
         fn of_every_capability() -> Kinds {
-            let declared: Vec<Capability> = Capability::ALL
-                .into_iter()
-                .filter(|&capability| capability != Capability::Mode)
-                .collect();
             let mut kinds = Kinds::default();
-            Release::state_types(Release::capability_set(&declared).unwrap(), &mut kinds);
+            Release::state_types(Release::capabilities(), &mut kinds);
             kinds
         }
 
