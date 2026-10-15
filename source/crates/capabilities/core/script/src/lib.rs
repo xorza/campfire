@@ -20,11 +20,11 @@ pub use crate::scripts::core_api::CoreApi;
 pub use crate::scripts::ctx::{Ctx, Params};
 pub use crate::scripts::ctx_fn::{CtxFn, Fallible, GetFn, MethodFn, Plain, WithCtx, WithoutCtx};
 pub use crate::scripts::data_section::DataSection;
-pub use crate::scripts::effects::{Effect, Effects};
 pub use crate::scripts::error::{
     ApiError, CallError, Checked, CtxMisuse, ParamProblem, UnknownName,
 };
 pub use crate::scripts::frame::Frame;
+pub use crate::scripts::frame::effects::{Effect, Effects};
 pub use crate::scripts::hook::Hook;
 pub use crate::scripts::hook_set::HookSet;
 pub use crate::scripts::name_kind::NameKind;

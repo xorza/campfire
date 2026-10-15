@@ -12,7 +12,6 @@ pub(crate) mod core_api;
 pub(crate) mod ctx;
 pub(crate) mod ctx_fn;
 pub(crate) mod data_section;
-pub(crate) mod effects;
 pub(crate) mod error;
 pub(crate) mod frame;
 pub(crate) mod hook;
