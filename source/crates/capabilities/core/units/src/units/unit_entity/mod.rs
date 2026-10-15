@@ -7,8 +7,11 @@ use campfire_sim::{HostRule, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::{Deserialize, Serialize};
 
-use crate::units::body_unit::BodyUnit;
-use crate::units::delivery_entity::DeliveryEntity;
+use crate::units::unit_entity::body_unit::BodyUnit;
+use crate::units::unit_entity::delivery_entity::DeliveryEntity;
+
+pub(crate) mod body_unit;
+pub(crate) mod delivery_entity;
 
 /// Every unit, a delivery among them: the group of the two kinds of unit, `BodyUnit` and
 /// `DeliveryEntity`, which each requires. It is state, as the restore checks of what every unit

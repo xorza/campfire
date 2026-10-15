@@ -7,11 +7,11 @@ use bevy_ecs::world::World;
 use campfire_declare::{EntityParts, SpawnParts};
 use campfire_values::UnitType;
 
-use crate::units::body_unit::BodyUnit;
 use crate::units::facing::Facing;
 use crate::units::spawn_at::SpawnAt;
 use crate::units::spawn_hooks::SpawnHooks;
 use crate::units::unit_entity::UnitEntity;
+use crate::units::unit_entity::body_unit::BodyUnit;
 
 /// How the match spawns a unit of a type the mode spawns, owned by a player or none: its core
 /// with the parts the caller gives, and the parts the modules declare, then what the mode does

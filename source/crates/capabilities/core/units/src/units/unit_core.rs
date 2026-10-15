@@ -4,10 +4,10 @@ use campfire_declare::EntityKind;
 use campfire_sim::{Position, StableId};
 use campfire_values::{Team, UnitTags, UnitType};
 
-use crate::units::body_unit::BodyUnit;
 use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::spawn_target::SpawnTarget;
+use crate::units::unit_entity::body_unit::BodyUnit;
 use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_states::UnitStates;
 

@@ -6,7 +6,7 @@ use campfire_declare::Cache;
 use campfire_geometry::{BodyGrid, Placed};
 
 use crate::units::body::Body;
-use crate::units::body_unit::BodyUnit;
+use crate::units::unit_entity::body_unit::BodyUnit;
 use crate::units::unit_tracker::{TrackedUnits, Tracking};
 
 /// The body units of a match, the dead and those a client only holds among them, as one
