@@ -31,7 +31,7 @@ use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
-    ProcessExit, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
+    ProcessExit, Publisher, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
     SimServerPlugins, SimServerWorld,
 };
 use campfire_package::ModePackages;
@@ -183,15 +183,13 @@ fn open(
         error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
         ExitCode::from(ExitStatus::Failure)
     };
-    let found = Opening::find(
-        waiting,
+    let publisher = Publisher {
         data,
-        &packages,
-        times.restore_window,
-        key,
-        Os::SYSTEM.entropy,
-    )
-    .map_err(no_session)?;
+        packages: &packages,
+        server_key: key,
+        entropy: Os::SYSTEM.entropy,
+    };
+    let found = Opening::find(waiting, times.restore_window, publisher).map_err(no_session)?;
     let setup = OpeningSetup {
         data,
         packages,

@@ -4,14 +4,13 @@ use std::time::{Duration, SystemTime};
 
 use campfire_common::MapName;
 use campfire_net::{
-    Entropy, Lobby, LobbyOpening, PendingRestore, RestoredSession, ServerBots, ServerDir,
+    Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
     ServerSetup, SessionDir,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
 use campfire_runner::SessionRules;
 use campfire_visibility::HostVisibility;
-use secp256k1::Keypair;
 
 use crate::opening::error::OpeningError;
 
@@ -119,17 +118,13 @@ impl Opening {
         }
     }
 
-    /// The session `waiting` to restore, of the mode `packages` holds, within the restore
-    /// window `window`: when it is past the window or ended, its log is published under the data
-    /// directory `data` instead, the server key `key` signing its result with auxiliary
-    /// randomness from `entropy`, and none restores. An error for a session that does not end.
+    /// The session `waiting` to restore within the restore window `window`: when it is past the
+    /// window or ended, `publisher` publishes its log instead, and none restores. An error for a
+    /// session that does not end.
     pub(crate) fn find(
         waiting: Option<RestoredSession>,
-        data: &ServerDir,
-        packages: &ModePackages,
         window: Duration,
-        key: Keypair,
-        entropy: Entropy,
+        publisher: Publisher<'_>,
     ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(session) = waiting else {
             return Ok(None);
@@ -140,9 +135,7 @@ impl Opening {
         if session.log.result().is_none() && idle <= window {
             return Ok(Some(session));
         }
-        session
-            .abort(data, packages, key, entropy)
-            .map_err(OpeningError::Abort)?;
+        session.abort(publisher).map_err(OpeningError::Abort)?;
         Ok(None)
     }
 

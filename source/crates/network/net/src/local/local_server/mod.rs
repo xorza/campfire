@@ -20,13 +20,12 @@ use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{LinkOf, Linked, PeerAddr};
-use secp256k1::Keypair;
 use tracing::error;
 
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
 use crate::net_protocol::NetProtocol;
-use crate::os::{Entropy, Os};
+use crate::os::Os;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
@@ -37,7 +36,7 @@ use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::SessionDir;
+use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
 use crate::sim_server::sim_server_world::SimServerWorld;
 
@@ -130,7 +129,12 @@ impl LocalServer {
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
-        LocalServer::end_earlier(&dir, &packages, key, os.entropy)?;
+        LocalServer::end_earlier(Publisher {
+            data: &dir,
+            packages: &packages,
+            server_key: key,
+            entropy: os.entropy,
+        })?;
         let server = ServerSetup {
             key,
             times: SessionTimes::DEFAULT,
@@ -204,18 +208,13 @@ impl LocalServer {
         }
     }
 
-    /// Ends aborted a session an earlier start left under `data`, of the mode `packages` holds,
-    /// and publishes its log; removes one whose match never started.
-    fn end_earlier(
-        data: &ServerDir,
-        packages: &ModePackages,
-        key: Keypair,
-        entropy: Entropy,
-    ) -> Result<(), LocalServerError> {
-        if let Some(session) = SessionDir::waiting(data).map_err(LocalServerError::Waiting)? {
-            session
-                .abort(data, packages, key, entropy)
-                .map_err(LocalServerError::Abort)?;
+    /// Ends aborted a session an earlier start left under the publisher's data directory, and
+    /// publishes its log by `publisher`; removes one whose match never started.
+    fn end_earlier(publisher: Publisher<'_>) -> Result<(), LocalServerError> {
+        if let Some(session) =
+            SessionDir::waiting(publisher.data).map_err(LocalServerError::Waiting)?
+        {
+            session.abort(publisher).map_err(LocalServerError::Abort)?;
         }
         Ok(())
     }

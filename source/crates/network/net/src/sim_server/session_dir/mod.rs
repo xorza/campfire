@@ -58,6 +58,17 @@ pub struct RestoredSession {
     pub modified: SystemTime,
 }
 
+/// What publishes a session that ends unrestored: the server's data directory, the packages of
+/// its mode, and the server's key, which signs its result with auxiliary randomness from
+/// `entropy`.
+#[derive(Debug, Clone, Copy)]
+pub struct Publisher<'a> {
+    pub data: &'a ServerDir,
+    pub packages: &'a ModePackages,
+    pub server_key: Keypair,
+    pub entropy: Entropy,
+}
+
 impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
@@ -275,18 +286,17 @@ impl RestoredSession {
     }
 
     /// Ends the session aborted, as a server back past the restore window does, unless it
-    /// ended before the crash: replays the log, of the mode `packages` holds, as `replay` does,
+    /// ended before the crash: replays the log, of the mode `publisher` names, as `replay` does,
     /// to the state its last tick left; logs an aborted result there, into the journal too; and
-    /// publishes the log under
-    /// `data`, its seed revealed, and logs `SessionAborted`. `server_key` signs what it logs, with
-    /// auxiliary randomness from `entropy`. The published file's path.
-    pub fn abort(
-        self,
-        data: &ServerDir,
-        packages: &ModePackages,
-        server_key: Keypair,
-        entropy: Entropy,
-    ) -> Result<PathBuf, AbortError> {
+    /// publishes the log under the publisher's data directory, its seed revealed, and logs
+    /// `SessionAborted`. The publisher's key signs what it logs. The published file's path.
+    pub fn abort(self, publisher: Publisher<'_>) -> Result<PathBuf, AbortError> {
+        let Publisher {
+            data,
+            packages,
+            server_key,
+            entropy,
+        } = publisher;
         let mut world = World::new();
         let signer = ServerSigner::new(server_key, entropy);
         self.replay(&mut world, packages, &signer, |_| {})

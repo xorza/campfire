@@ -102,7 +102,7 @@ pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
     AbortError, FindError, RestoreError, WaitingError,
 };
-pub use crate::sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
+pub use crate::sim_server::session_dir::{Publisher, RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
 pub use crate::sim_server::sim_server_world::SimServerWorld;

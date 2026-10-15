@@ -12,8 +12,8 @@ use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    AbortError, CheckpointFailed, Entropy, RestoreMatchError, SeedsRanOut, ServerDir, SessionDir,
-    SimServerWorld, TickHashes,
+    AbortError, CheckpointFailed, Entropy, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
+    SessionDir, SimServerWorld, TickHashes,
 };
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
@@ -124,7 +124,12 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     let abort = |data: &ServerDir| {
         let session = SessionDir::find(data).unwrap().unwrap();
         let session = session.restore().unwrap().unwrap();
-        session.abort(data, local.packages(), TestKey::server(), Entropy::Fixed(6))
+        session.abort(Publisher {
+            data,
+            packages: local.packages(),
+            server_key: TestKey::server(),
+            entropy: Entropy::Fixed(6),
+        })
     };
     // With the latest snapshot gone, it reads that snapshot, and fails.
     let latest = snapshots.join(latest.to_string());
