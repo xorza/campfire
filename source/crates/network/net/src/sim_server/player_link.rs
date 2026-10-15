@@ -1,16 +1,12 @@
 use bevy_ecs::component::Component;
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::DeferredWorld;
 use campfire_common::PlayerSlot;
 use campfire_values::Team;
 
-use crate::sim_server::viewer::Viewer;
-
 /// Which player a client link carries the inputs of, their team, and whether the log refused one
 /// of its messages, which ended the link. A link with one views the match as that player, and
-/// only while it has one. Immutable: a change inserts a new one.
+/// only while it has one, as `Viewer` follows it. Immutable: a change inserts a new one.
 #[derive(Component, Debug, Clone, Copy)]
-#[component(immutable, on_insert = view_as_player, on_remove = stop_viewing)]
+#[component(immutable)]
 pub struct PlayerLink {
     slot: PlayerSlot,
     team: Team,
@@ -47,19 +43,4 @@ impl PlayerLink {
             ..self
         }
     }
-}
-
-fn view_as_player(mut world: DeferredWorld<'_>, context: HookContext) {
-    let link = *world
-        .get::<PlayerLink>(context.entity)
-        .expect("on_insert runs on an entity with a PlayerLink");
-    let viewer = Viewer::of_player(&world, link.slot(), link.team());
-    world.commands().entity(context.entity).insert(viewer);
-}
-
-fn stop_viewing(mut world: DeferredWorld<'_>, context: HookContext) {
-    world
-        .commands()
-        .entity(context.entity)
-        .try_remove::<Viewer>();
 }

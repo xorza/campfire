@@ -87,6 +87,25 @@ impl Viewer {
         }
     }
 
+    /// Views a link as its player as it gains a `PlayerLink`, or a new one, and as none once it
+    /// loses it.
+    pub(crate) fn follow_links(app: &mut App) {
+        app.add_observer(
+            |linked: On<'_, '_, Insert, PlayerLink>, mut world: DeferredWorld<'_>| {
+                let link = *world
+                    .get::<PlayerLink>(linked.entity)
+                    .expect("an insert's own component");
+                let viewer = Viewer::of_player(&world, link.slot(), link.team());
+                world.commands().entity(linked.entity).insert(viewer);
+            },
+        );
+        app.add_observer(
+            |unlinked: On<'_, '_, Remove, PlayerLink>, mut commands: Commands<'_, '_>| {
+                commands.entity(unlinked.entity).try_remove::<Viewer>();
+            },
+        );
+    }
+
     /// Views each player's link again as its player goes out of play and comes back, which
     /// changes its rooms and what each data filter gives it (design 14, D16): what it held of
     /// the other teams' entities leaves it as a unit that leaves vision does.

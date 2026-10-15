@@ -188,6 +188,7 @@ impl Plugin for SimServer {
         );
         app.add_systems(Update, Spectators::choose_teams);
         app.add_observer(Spectators::leave);
+        Viewer::follow_links(app);
         Viewer::follow_out_of_play(app);
         app.add_systems(Last, Dismissing::tell);
         app.add_systems(
