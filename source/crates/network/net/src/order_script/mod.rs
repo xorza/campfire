@@ -131,6 +131,17 @@ impl OrderScript {
             learn,
         } in file.order
         {
+            let named = [
+                to.is_some(),
+                attack.is_some(),
+                cast.is_some(),
+                learn.is_some(),
+            ];
+            match named.into_iter().filter(|&named| named).count() {
+                0 => return Err(OrderScriptError::NoAction { tick }),
+                1 => {}
+                _ => return Err(OrderScriptError::ManyActions { tick }),
+            }
             let action = match (to, attack, cast, target, learn) {
                 (Some(to), None, None, None, None) => {
                     let [x, z] = to;
@@ -146,7 +157,7 @@ impl OrderScript {
                 (None, None, None, None, Some(slot)) => {
                     Action::Progression(ProgressionAction::Learn { slot })
                 }
-                _ => return Err(OrderScriptError::Action { tick }),
+                _ => return Err(OrderScriptError::StrayTarget { tick }),
             };
             let tick = Tick::new(tick);
             if orders

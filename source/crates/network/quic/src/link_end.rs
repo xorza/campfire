@@ -18,7 +18,9 @@ pub enum LinkEnd {
     TimedOut,
     /// The peer's endpoint holds no connection of this one: it started again since.
     Reset,
-    /// The server takes no connection: it has not started, or it ended.
+    /// The server refused the connection before its handshake: it has not started, it ended,
+    /// or the address holds as many connections or handshakes as its limit lets (design 15,
+    /// D13).
     Refused,
     /// The server presented a key the client did not pin.
     WrongServerKey,

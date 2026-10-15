@@ -550,11 +550,10 @@ fn record_inputs(
                 continue;
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                let report = ErrorReport::of(&error).to_string();
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,
-                    error: report.clone(),
+                    error: ErrorReport::of(&error).to_string(),
                 }
                 .log();
                 link = link.into_refused();

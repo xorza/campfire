@@ -81,20 +81,27 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         (third.tick.get(), third.action),
         (10, Action::Orders(OrdersAction::Attack { target })) if target.get() == 3
     ));
-    for flawed in [
-        "[[order]]\ntick = 9\n",
-        "[[order]]\ntick = 9\ncast = 0\nmove = [1, 1]\n",
-        "[[order]]\ntick = 9\nattack = 3\ncast = 0\n",
-        "[[order]]\ntick = 9\ntarget = 3\n",
-        "[[order]]\ntick = 9\nattack = 3\ntarget = 4\n",
-        "[[order]]\ntick = 9\nlearn = 0\ncast = 0\n",
-        "[[order]]\ntick = 9\nlearn = 0\ntarget = 4\n",
+    let (none, many, stray) = (
+        OrderScriptError::NoAction { tick: 9 },
+        OrderScriptError::ManyActions { tick: 9 },
+        OrderScriptError::StrayTarget { tick: 9 },
+    );
+    for (flawed, error) in [
+        ("[[order]]\ntick = 9\n", none.clone()),
+        ("[[order]]\ntick = 9\ntarget = 3\n", none),
+        (
+            "[[order]]\ntick = 9\ncast = 0\nmove = [1, 1]\n",
+            many.clone(),
+        ),
+        ("[[order]]\ntick = 9\nattack = 3\ncast = 0\n", many.clone()),
+        ("[[order]]\ntick = 9\nlearn = 0\ncast = 0\n", many),
+        (
+            "[[order]]\ntick = 9\nattack = 3\ntarget = 4\n",
+            stray.clone(),
+        ),
+        ("[[order]]\ntick = 9\nlearn = 0\ntarget = 4\n", stray),
     ] {
-        assert_eq!(
-            flaw(flawed),
-            OrderScriptError::Action { tick: 9 },
-            "{flawed}"
-        );
+        assert_eq!(flaw(flawed), error, "{flawed}");
     }
 }
 
