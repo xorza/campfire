@@ -2,7 +2,6 @@
 //! of avatars, loadout and unit types.
 
 pub(crate) mod avatar_file;
-pub(crate) mod backends;
 pub(crate) mod content_table;
 pub(crate) mod dependency;
 pub(crate) mod manifest;

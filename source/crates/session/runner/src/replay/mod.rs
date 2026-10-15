@@ -42,20 +42,7 @@ impl<'p> Replay<'p> {
         })
     }
 
-    /// Runs the next tick the log holds; `false` after its last tick, once the log's result, when
-    /// it holds one, holds for the state. An error when the state at the boundary where a segment
-    /// starts is not the one its checkpoint records, or the result does not hold.
-    pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
-        Replay::check_checkpoint(&self.game)?;
-        if self.game.session().log().next_tick() == self.ticks {
-            self.game.check_result().map_err(ReplayError::Result)?;
-            return Ok(false);
-        }
-        self.game.run_tick_alone();
-        Ok(true)
-    }
-
-    /// Runs every tick the log holds after those that ran, as `run_tick` runs each.
+    /// Runs every tick the log holds after those that ran.
     pub fn run(&mut self) -> Result<(), ReplayError> {
         self.run_each(|_| {})
     }
@@ -108,5 +95,27 @@ impl<'p> Replay<'p> {
 
     pub const fn game(&self) -> &Match {
         &self.game
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::replay::Replay;
+    use crate::replay::error::ReplayError;
+    use crate::session::session_world::SessionWorld;
+
+    impl Replay<'_> {
+        /// Runs the next tick the log holds; `false` after its last tick, once the log's result,
+        /// when it holds one, holds for the state. An error when the state at the boundary where
+        /// a segment starts is not the one its checkpoint records, or the result does not hold.
+        pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
+            Replay::check_checkpoint(&self.game)?;
+            if self.game.session().log().next_tick() == self.ticks {
+                self.game.check_result().map_err(ReplayError::Result)?;
+                return Ok(false);
+            }
+            self.game.run_tick_alone();
+            Ok(true)
+        }
     }
 }

@@ -308,7 +308,7 @@ One promise on every OS. Code that differs by OS lives only in `store`'s `platfo
 
 ## Backends
 
-Collision, pathfinding, movement and visibility each have one interface and pluggable backends, chosen per mode ([Navigation](04-capabilities/navigation.md), [Vision](04-capabilities/vision.md)). Movement, how a unit follows its route each tick, defaults to local steering, and an imported game's own movement is a backend of it. Collision works within each layer: circles and boxes on a plane now; static 3D level geometry or `physics` later. A physics backend may use strictly deterministic floating point inside itself, as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/), pinned per release and checked by the goldens on every OS; everything else is fixed-point, and a NaN panics before it reaches a snapshot.
+Collision, pathfinding, movement and visibility each have one interface and pluggable backends ([Navigation](04-capabilities/navigation.md), [Vision](04-capabilities/vision.md)): each has one backend now, and a mode will choose among them in its manifest once a second one comes, as an imported game's movement. Movement, how a unit follows its route each tick, defaults to local steering, and an imported game's own movement is a backend of it. Collision works within each layer: circles and boxes on a plane now; static 3D level geometry or `physics` later. A physics backend may use strictly deterministic floating point inside itself, as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/), pinned per release and checked by the goldens on every OS; everything else is fixed-point, and a NaN panics before it reaches a snapshot.
 
 ## Bevy
 

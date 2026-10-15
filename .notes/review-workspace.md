@@ -139,7 +139,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 Needs Batch 7. Files: the `*_world.rs` of `players`, `script`, `units` and `stats`, `network/net/src/sim_server/{sim_server_world/mod,player_link}.rs`, `base/{codec,schedule,store,log}`, `session/{package,runner}/src/**`, `base/common/src/tests.rs`. Goldens: none move.
 
-- [ ] Dead shipped code in `package` and `runner` goes behind `internals`. `ModePackages::script_book()` and `Backends` are deleted.
 - [ ] Private fields with methods: `script_api`, `script_batch`, `Deliveries`, `StatsCall.handles`, `Applier`, `Timers`, `Choices`, `StatsData`, `EntityKinds`, and `Frame`'s `effects`.
 - [ ] The narrowest visibility for `Unit::new`, `record`, `Halves`, `Polygon::holds`, `Approach`, `Navigation::walker`, the `push`es of `StatsColumn` and `NavigationColumn`, `snapshot_hash`, `restore_target`, `PackageView`, `production::Held`, the `RowReads` aliases, `TagProperty::ALL` and `PlayersData::DEFAULT`.
 

@@ -65,3 +65,16 @@ The units file type is `package`'s `UnitsFile`, a map of `capabilities`' `UnitTy
 | --- | --- | --- |
 | **A. Keep the import's writer, and test it (recommended)** | The import keeps its `UnitsToml`, and a test reads what it writes through `package`'s `UnitsFile`, so a change of the format fails the test. | Two types say the units file's shape, one of them the import's, for the names alone. |
 | B. `Serialize` on every unit type section | `UnitTypeData` and each capability's section derive or implement `Serialize`, each with a round-trip test, and the import writes `UnitsFile`. | About forty types in a dozen crates; the import depends on `package` and through it on every capability. |
+
+## Batch 11: change-driven passes, now or in an optimization session
+
+Every item of Batch 11 changes what a pass costs and keeps what it gives: the `DueRun`, the static bodies' patches, the routing's and the steering's changed sets, the held modifiers, the passives, the gathers and the homing shots, the seeds' derivation, the admission map, and the box probes. Its last item already waits for the user's optimization session, to run each item's bench.
+
+AGENTS.md: "Optimization has its own sessions, which the user starts; until then a step's checks are its tests." The established practice is to measure a pass before and after a change of its cost. Some of the changes add work per change (a sorted run kept in step, change filters, a dormant set for dead thinkers) to remove work per tick, which pays only where the bench shows the scan's cost.
+
+Blocked: all of Batch 11.
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| **A. In the optimization session (recommended)** | The batch moves whole to the user's next optimization session, where each item's bench measures the pass before and after its change, and an item that does not pay is dropped. | The scans stay until then. |
+| B. Now, measured later | Each item is written now, its tests holding its results, and the session measures them. | Changes land unmeasured; a change that costs more than the scan it removes stays until the session finds it. |

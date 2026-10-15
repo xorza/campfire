@@ -44,13 +44,6 @@ pub struct Session {
     autosave: Option<Ticks>,
 }
 
-/// A session's log and seeds, as `Session::into_parts` gives them.
-#[derive(Debug)]
-pub(crate) struct SessionParts {
-    pub(crate) log: SessionLog,
-    pub(crate) seeds: ServerSeeds,
-}
-
 impl Session {
     /// Builds the match of `log`'s header in `world`, of the mode `packages` holds, at the
     /// header's tick rate and with the randomness of `segment`'s seed; the session of `log`,
@@ -255,14 +248,6 @@ impl Session {
         self.log.reveal_seed(last);
     }
 
-    /// The session's log and seeds, its match's world left.
-    pub(crate) fn into_parts(self) -> SessionParts {
-        SessionParts {
-            log: self.log,
-            seeds: self.seeds,
-        }
-    }
-
     pub const fn log(&self) -> &SessionLog {
         &self.log
     }
@@ -352,21 +337,32 @@ impl Session {
         Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
         Ok(Match::from_built(world))
     }
+}
 
-    /// Loads into `game`, a session's match, the save that starts segment `segment`, whose
-    /// snapshot is `snapshot`: the log goes back to it, as `SessionLog::load` says, and the match
-    /// of the mode `packages` holds resumes from it, as `resume_match` does.
-    pub fn load_save(
-        mut game: Match,
-        segment: u32,
-        snapshot: &[u8],
-        packages: &ModePackages,
-    ) -> Result<Match, ResumeError> {
-        let session = game
-            .remove_resource::<Session>()
-            .expect("a session's match holds its session");
-        let SessionParts { mut log, seeds } = session.into_parts();
-        log.load(segment).map_err(ResumeError::Load)?;
-        Session::resume_match(log.rewound(), seeds, packages, segment, snapshot)
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_capabilities::Match;
+    use campfire_package::ModePackages;
+
+    use crate::session::Session;
+    use crate::session::error::ResumeError;
+
+    impl Session {
+        /// Loads into `game`, a session's match, the save that starts segment `segment`, whose
+        /// snapshot is `snapshot`: the log goes back to it, as `SessionLog::load` says, and the
+        /// match of the mode `packages` holds resumes from it, as `resume_match` does.
+        pub fn load_save(
+            mut game: Match,
+            segment: u32,
+            snapshot: &[u8],
+            packages: &ModePackages,
+        ) -> Result<Match, ResumeError> {
+            let session = game
+                .remove_resource::<Session>()
+                .expect("a session's match holds its session");
+            let (mut log, seeds) = (session.log, session.seeds);
+            log.load(segment).map_err(ResumeError::Load)?;
+            Session::resume_match(log.rewound(), seeds, packages, segment, snapshot)
+        }
     }
 }

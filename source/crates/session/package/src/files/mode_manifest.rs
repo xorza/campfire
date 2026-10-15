@@ -10,7 +10,6 @@ use campfire_values::Speed;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::files::backends::Backends;
 use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
 use crate::files::package_name::PackageName;
@@ -26,7 +25,6 @@ pub struct ModeManifest {
     pub tick_hz: TickRange,
     /// The playing teams, in order; their slots in that order make the player slots.
     pub teams: Vec<TeamManifest>,
-    pub backends: Backends,
     /// The most any unit walks.
     pub max_move_speed: Speed,
     pub script_limits: ScriptLimits,
@@ -54,7 +52,6 @@ impl<'de> Deserialize<'de> for ModeManifest {
             capabilities: Vec<Capability>,
             tick_hz: TickRange,
             teams: Vec<TeamManifest>,
-            backends: Backends,
             max_move_speed: Speed,
             script_limits: ScriptLimits,
             #[serde(default)]
@@ -72,7 +69,6 @@ impl<'de> Deserialize<'de> for ModeManifest {
                 .map_err(D::Error::custom)?,
             tick_hz: fields.tick_hz,
             teams: fields.teams,
-            backends: fields.backends,
             max_move_speed: fields.max_move_speed,
             script_limits: fields.script_limits,
             dependencies: fields.dependencies,

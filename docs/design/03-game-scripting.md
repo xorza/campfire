@@ -22,7 +22,7 @@ A game mode is one content package, which holds any number of maps; a session's 
 ```
 my-mode/
   manifest.toml       name, version, kind, package API version, capabilities, dependencies,
-                      teams and slots, tick-rate range, backends, move speed cap, script pools
+                      teams and slots, tick-rate range, move speed cap, script pools
                       (the fields: Script API, Data files)
   package.index       every other file's path, size and SHA-256: the package's identity ([Packages](05-protocol-spec.md#packages))
   map/<name>/         one map: bounds, terrain or grid or geometry, paths, placed units, markers

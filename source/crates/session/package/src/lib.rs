@@ -43,9 +43,6 @@ pub use crate::error::way::Way;
 pub use crate::error::{ContentError, LoadError, PackageRef};
 pub use crate::file_index::FileIndex;
 pub use crate::files::avatar_file::AvatarFile;
-pub use crate::files::backends::{
-    Backends, CollisionBackend, PathfindingBackend, VisibilityBackend,
-};
 pub use crate::files::dependency::Dependency;
 pub use crate::files::mode_manifest::ModeManifest;
 pub use crate::files::package_header::PackageHeader;

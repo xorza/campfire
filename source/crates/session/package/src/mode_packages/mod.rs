@@ -237,12 +237,6 @@ impl ModePackages {
         packages.collect()
     }
 
-    /// The hooks each script of its packages defines, as the load read them, in the order a
-    /// match compiles them.
-    pub const fn script_book(&self) -> &ScriptBook {
-        &self.scripts
-    }
-
     /// The hooks each script of `packages` defines, in the order a match compiles them: the
     /// mode's scripts, then each dependency's, each package's in the order of their paths.
     fn read_hooks<'p>(packages: impl IntoIterator<Item = &'p Package>) -> ScriptBook {
