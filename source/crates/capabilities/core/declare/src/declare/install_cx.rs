@@ -99,17 +99,17 @@ impl<'a> InstallCx<'a> {
         }
     }
 
-    /// Adds `vision` to a server's match and `holding` to a client's: two forms of the same
-    /// systems, which test what a team sees by the server's vision, or by the units a client
-    /// holds, as it holds only those its team sees.
-    pub fn sighted<M, N>(
+    /// Adds `server` to a server's match and `client` to a predicting client's: two forms of the
+    /// same systems, as a system of a `RoleForm` takes, or one that tests what a team sees by the
+    /// server's vision or by the units a client holds, as it holds only those its team sees.
+    pub fn by_role<M, N>(
         &mut self,
-        vision: impl IntoScheduleConfigs<ScheduleSystem, M>,
-        holding: impl IntoScheduleConfigs<ScheduleSystem, N>,
+        server: impl IntoScheduleConfigs<ScheduleSystem, M>,
+        client: impl IntoScheduleConfigs<ScheduleSystem, N>,
     ) {
         match self.facts.role {
-            Role::Server(_) => self.schedule.add_systems(vision),
-            Role::Client => self.schedule.add_systems(holding),
+            Role::Server(_) => self.schedule.add_systems(server),
+            Role::Client => self.schedule.add_systems(client),
         };
     }
 }

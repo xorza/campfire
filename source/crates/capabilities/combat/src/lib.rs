@@ -10,7 +10,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::EffectQueues;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_math::RngStream;
 use campfire_script::Ctx;
 use campfire_sim::Capability;
@@ -179,14 +181,19 @@ impl Module for Combat {
         schedule.add_systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
-            (Attacks::attack_events, Attacks::strike)
-                .chain()
-                .in_set(CombatSet::Strike),
             ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
             DamagePass::run.in_set(CombatSet::Damage),
             Dying::die.in_set(CombatSet::Die),
             Dying::respawn.in_set(CombatSet::Respawn),
         ));
+        cx.by_role(
+            (Attacks::attack_events, Attacks::strike::<ServerForm>)
+                .chain()
+                .in_set(CombatSet::Strike),
+            (Attacks::attack_events, Attacks::strike::<ClientForm>)
+                .chain()
+                .in_set(CombatSet::Strike),
+        );
         cx.server((
             Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
             Dying::forget_attackers

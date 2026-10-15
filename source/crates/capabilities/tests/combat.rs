@@ -16,6 +16,7 @@ use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack};
 use campfire_combat::*;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_declare::ServerForm;
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
@@ -1020,7 +1021,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
             slots.start_attack(0, Tick::new(0));
         }
         game.resource_mut::<PassQueue>().clear();
-        game.run_system_once(Attacks::strike).unwrap();
+        game.run_system_once(Attacks::strike::<ServerForm>).unwrap();
         let queue = game.resource::<PassQueue>();
         let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {

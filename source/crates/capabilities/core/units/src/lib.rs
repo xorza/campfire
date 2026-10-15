@@ -39,7 +39,6 @@ pub use crate::units::new_unit_states::NewUnitStates;
 pub use crate::units::owner::Owner;
 pub use crate::units::player::Player;
 pub use crate::units::player_units::{Commanded, HeldPlayerUnits, PlayerUnits};
-pub use crate::units::predicting::Predicting;
 pub use crate::units::script_book::ScriptBook;
 pub use crate::units::spawn_at::SpawnAt;
 pub use crate::units::spawn_hooks::SpawnHooks;

@@ -176,7 +176,7 @@ impl Module for Production {
     /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.sighted(
+        cx.by_role(
             ProductionOrders::apply_production_orders::<ByVision>.in_set(ProductionSet::Commands),
             ProductionOrders::apply_production_orders::<ByHolding>.in_set(ProductionSet::Commands),
         );
@@ -193,7 +193,7 @@ impl Module for Production {
             ));
             return;
         }
-        cx.sighted(
+        cx.by_role(
             Production::builds::<ByVision>(),
             Production::builds::<ByHolding>(),
         );

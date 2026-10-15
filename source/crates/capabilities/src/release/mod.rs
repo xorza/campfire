@@ -24,7 +24,7 @@ use campfire_script::{ApiBuilder, ScriptApi, ScriptBudgets, ScriptHost};
 use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
-use campfire_units::{Predicting, UnitTypeBook, Units};
+use campfire_units::{UnitTypeBook, Units};
 use campfire_values::EngineTag;
 use campfire_vision::Vision;
 
@@ -192,7 +192,6 @@ impl Release {
         let role = spec.role;
         if matches!(role, Role::Client) {
             Unpredicted::register(world);
-            world.insert_resource(Predicting);
         }
         let mut sim = SimWorldBuilder::new(world, spec.seed, spec.rate);
         #[cfg(feature = "internals")]

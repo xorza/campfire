@@ -11,7 +11,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::{Predicting, UnitEntity};
+use campfire_units::UnitEntity;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -91,9 +91,7 @@ impl Module for Vision {
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
         // What each team sees is the server's (design 14, D12): a predicting client holds none.
-        d.part::<UnitEntity, SeenBy>(|at| {
-            (!at.world().contains_resource::<Predicting>()).then_some(SeenBy::UNTOLD)
-        });
+        d.server_part::<UnitEntity, SeenBy>();
     }
 
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit

@@ -25,7 +25,7 @@ use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResourc
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
 use campfire_values::{EngineTag, TagProperties};
-use campfire_vision::VisionColumn;
+use campfire_vision::{SeenBy, VisionColumn};
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
@@ -428,10 +428,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 27 of a unit, vision's `SeenBy` and items'
-    // `UseGroup` among them, and the 45 books, 14 of the core's, interaction's two among them.
+    // player, the mode's three of the match, the 26 of a unit, items' `UseGroup` among them, and
+    // the 45 books, 14 of the core's, interaction's two among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 32);
+    assert_eq!(audit.parts.len(), 31);
     assert_eq!(audit.books.len(), 45);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 14);
@@ -465,7 +465,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         .collect();
     assert_eq!(
         server,
-        [(type_name::<Player>(), type_name::<PlayerSupply>())]
+        [
+            (type_name::<UnitEntity>(), type_name::<SeenBy>()),
+            (type_name::<Player>(), type_name::<PlayerSupply>()),
+        ]
     );
     // The engine tags keep their numbers while the module list keeps its order.
     let engine: Vec<&str> = audit.engine_tags.iter().map(|tag| tag.name()).collect();

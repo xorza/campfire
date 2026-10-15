@@ -94,8 +94,8 @@ pub trait Declarations: StateTypes + KindVisitor {
     /// `system`, which the module runs out of the schedule, by the id `R` keeps.
     fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static);
 
-    /// `C`, a part derived from the match's state, which every entity that holds `H` spawns
-    /// with on a server's match, by Bevy's required component; a client receives it from the
-    /// server, as it does not compute it.
+    /// `C`, a part the server alone computes, which every entity that holds `H` spawns with on a
+    /// server's match, by Bevy's required component, its default; a client receives it from the
+    /// server, or, of state only the server holds, never holds it, as it does not compute it.
     fn server_part<H: Component, C: Component + Default>(&mut self);
 }

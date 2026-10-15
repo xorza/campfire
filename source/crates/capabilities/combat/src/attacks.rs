@@ -7,11 +7,12 @@ use campfire_actions::{
     Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
+use campfire_declare::RoleForm;
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorldCrate};
 use campfire_script::ScriptsWorldCrate;
 use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, ForcedMove, Owner, Predicting};
+use campfire_units::{Body, Dead, ForcedMove, Owner};
 use campfire_values::{Block, Team, UnitTags};
 
 use crate::ROLL_STREAM;
@@ -205,18 +206,17 @@ impl Attacks {
     /// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops
     /// instead, and spends nothing. A client that predicts the attack only makes the weapon ready
     /// again, as the damage, the launch and the cost come from the server.
-    pub fn strike(
+    pub fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
             Res<'_, PoolBook>,
         ),
-        (mut queue, mut fired, mut resources, predicting): (
+        (mut queue, mut fired, mut resources): (
             ResMut<'_, PassQueue>,
             ResMut<'_, Shots>,
             PlayerRowsMut<'_, '_, PlayerResources>,
-            Option<Res<'_, Predicting>>,
         ),
         mut attackers: Query<
             '_,
@@ -270,7 +270,7 @@ impl Attacks {
             let period = weapon.period(stats, clock.rate().hz().get(), values.windup);
             times.cool_down(wielded.slot, started.after(period));
             slots.stop();
-            if predicting.is_some() {
+            if F::PREDICTS {
                 continue;
             }
             let amount = weapon.damage(stats);

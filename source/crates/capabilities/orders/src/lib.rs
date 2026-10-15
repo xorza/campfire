@@ -101,7 +101,7 @@ impl Module for Orders {
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.sighted(
+        cx.by_role(
             Orders::check_orders::<ByVision>(),
             Orders::check_orders::<ByHolding>(),
         );

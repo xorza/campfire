@@ -75,7 +75,6 @@ pub(crate) mod new_unit_states;
 pub(crate) mod owner;
 pub(crate) mod player;
 pub(crate) mod player_units;
-pub(crate) mod predicting;
 pub(crate) mod row_marks;
 pub(crate) mod row_source;
 pub(crate) mod script_book;

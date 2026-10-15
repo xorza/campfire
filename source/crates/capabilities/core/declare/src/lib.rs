@@ -28,6 +28,7 @@ pub use crate::declare::per_type::PerType;
 pub use crate::declare::phase::Phase;
 pub use crate::declare::report::Report;
 pub use crate::declare::role::Role;
+pub use crate::declare::role_form::{ClientForm, RoleForm, ServerForm};
 pub use crate::declare::scratch::Scratch;
 pub use crate::declare::server_only::ServerOnly;
 pub use crate::declare::set_place::SetPlace;

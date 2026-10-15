@@ -106,7 +106,6 @@ Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry
 
 Files: `sim/sim/src/{sim_world,state_registry/mod}.rs`, `test/harness/tests/runner/resume.rs`, `capabilities/combat/src/{dying,attacks}.rs`, `capabilities/core/declare/src/declare/{install_cx,role}.rs`, every module's `install`, `capabilities/abilities/src/lib.rs`, `capabilities/items/src/lib.rs`, `capabilities/vision/src/lib.rs`, `sim/sim/src/{capability,sim_rng}.rs`, `capabilities/src/release/*`, `capabilities/core/script/src/scripts/script_call.rs`, `capabilities/production/src/{trains,lib,production_orders}.rs`, `docs/design/14-replication-audiences.md`. Goldens: they move for the RNG key, and maybe for the order of deaths.
 
-- [ ] `vision/src/lib.rs:95`: `SeenBy`'s default is fixed at install by role. This removes the issue log's **Combat** item for vision. The other cases of that item (`Attacks::strike`, the held pass) take the same change.
 - [ ] `combat/src/attacks.rs:186-197`: toggles pay only for the attacks that strike, by `Wielded::strikes`.
 - [ ] `sim/sim/src/capability.rs:10-29`: delete `Character`, `Physics`, `World`, `Quests` and `Hitboxes`, which no module builds, so the load refuses their names. This follows the rule of no dead code. Design 04 keeps them as planned.
 - [ ] `sim/sim/src/sim_rng.rs:89`: `RngOpener::open` takes a `StableId`, and mode draws are keyed by `StableId::MATCH` (`script_call.rs:64-65`).

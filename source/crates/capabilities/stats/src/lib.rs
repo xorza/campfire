@@ -14,7 +14,9 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{BodyUnit, Dead, Player};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
@@ -240,8 +242,7 @@ impl Module for Stats {
     /// book, as before a mode loads one, nothing changes.
     fn install(cx: &mut InstallCx<'_>) {
         cx.world.insert_resource(LiveCarriers::default());
-        let schedule = &mut *cx.schedule;
-        schedule.add_systems((
+        cx.systems((
             ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
             Refresh::regenerate.in_set(StatsSet::Regenerate),
             GrantPass::run.in_set(StatsSet::GrantAtInputs),
@@ -249,11 +250,14 @@ impl Module for Stats {
             GrantPass::run.in_set(StatsSet::GrantAtResolve),
             GrantPass::run.in_set(StatsSet::GrantAtEnd),
             ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
-            HeldPass::run.in_set(StatsSet::Hold),
         ));
+        cx.by_role(
+            HeldPass::run::<ServerForm>.in_set(StatsSet::Hold),
+            HeldPass::run::<ClientForm>.in_set(StatsSet::Hold),
+        );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
-                schedule.add_systems(Refresh::run.in_set(set));
+                cx.systems(Refresh::run.in_set(set));
             }
         }
     }

@@ -14,6 +14,13 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct SeenBy(Option<TeamSet>);
 
+/// Every unit spawns untold, which the Vision stage tells.
+impl Default for SeenBy {
+    fn default() -> SeenBy {
+        SeenBy::UNTOLD
+    }
+}
+
 impl SeenBy {
     /// Of a unit no Vision stage has spoken of: one that spawned after the last, or in a match
     /// whose map gives no grid. Each reader decides who sees it.

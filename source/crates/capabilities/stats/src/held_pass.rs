@@ -1,9 +1,10 @@
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
+use campfire_declare::RoleForm;
 use campfire_geometry::Shape;
 use campfire_players::{OnMatch, PlayerRows};
 use campfire_sim::{EntityIndex, Position, StableId, TickClock, Unpredicted};
-use campfire_units::{Dead, MapBook, Owner, Predicting, TagEffect, UnitsNear};
+use campfire_units::{Dead, MapBook, Owner, TagEffect, UnitsNear};
 use campfire_values::{Rank, Relation, Relations, TagSet, Team, UnitTags};
 
 use crate::applier::Applier;
@@ -53,7 +54,6 @@ type HeldCarriers<'w, 's> = Query<
 /// hold, as a mode hides them from it, and those it does not hold at all (design 14, D5).
 #[derive(SystemParam, Debug)]
 pub(crate) struct UnseenSources<'w, 's> {
-    predicting: Option<Res<'w, Predicting>>,
     index: Res<'w, EntityIndex>,
     modifiers: Query<'w, 's, Has<Modifiers>, Allow<Unpredicted>>,
 }
@@ -79,7 +79,7 @@ impl HeldPass {
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
     )]
-    pub(crate) fn run(
+    pub(crate) fn run<F: RoleForm>(
         books: StatBooks<'_>,
         clock: TickClock<'_>,
         map: Res<'_, MapBook>,
@@ -147,7 +147,7 @@ impl HeldPass {
             let first = held.partition_point(|entry| entry.target < id);
             let mine = held[first..].iter().take_while(|entry| entry.target == id);
             let kept = |modifier, source| {
-                unseen.holds(source)
+                unseen.holds::<F>(source)
                     || mine
                         .clone()
                         .any(|entry| entry.modifier == modifier && entry.source == source)
@@ -209,10 +209,10 @@ impl HeldPass {
 }
 
 impl UnseenSources<'_, '_> {
-    /// Whether an instance from `source` stays as the server sent it: on a predicting client, a
-    /// source it cannot see the aura of.
-    fn holds(&self, source: Option<StableId>) -> bool {
-        self.predicting.is_some()
+    /// Whether an instance from `source` stays as the server sent it: in a predicting client's
+    /// form `F`, a source it cannot see the aura of.
+    fn holds<F: RoleForm>(&self, source: Option<StableId>) -> bool {
+        F::PREDICTS
             && source.is_some_and(|source| {
                 let entity = self.index.get(source);
                 !entity.is_some_and(|entity| self.modifiers.get(entity).unwrap_or(false))

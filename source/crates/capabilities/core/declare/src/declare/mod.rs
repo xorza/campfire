@@ -20,6 +20,7 @@ pub(crate) mod per_type;
 pub(crate) mod phase;
 pub(crate) mod report;
 pub(crate) mod role;
+pub(crate) mod role_form;
 pub(crate) mod scratch;
 pub(crate) mod server_only;
 pub(crate) mod set_place;
