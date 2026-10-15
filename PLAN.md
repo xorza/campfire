@@ -19,11 +19,3 @@ The open steps, in the order they are done, and the foundations. The rules are i
 ### U9. The Zero Hour check compares fingerprints
 
 (`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.
-
-## 2. The command panel
-
-`client`: a new `command_panel`, `orders`, `pointer`, `view`. It needs P4 to be played.
-
-### P6. The client's command panel and the build preview
-
-(`client`; design 18, D7.) The panel of the first selected producer, builder or site: its buttons with names, costs and whether they are affordable; the queue with the head's progress and a cancel by click; a site's progress and cancel; the player's money. A build button shows the building's look at the cursor, red over a wall or a held body, placed by a left click and dropped by a right click or Esc. A right click with producers selected and no walker sets their rally point. Check: the panel's rows, the preview's colour and the right click's order, each against a fixture, as design 18's checks give them; the user plays the slice.

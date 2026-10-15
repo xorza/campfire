@@ -69,6 +69,7 @@ pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::NodeBook;
 pub use crate::node_data::NodeData;
+pub use crate::placement::Placement;
 pub use crate::player_supply::PlayerSupply;
 pub use crate::production_action::ProductionAction;
 pub use crate::production_api::ProductionApi;

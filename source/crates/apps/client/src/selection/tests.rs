@@ -1,5 +1,5 @@
-use campfire_capabilities::Action;
 use campfire_math::Num;
+use campfire_orders::OrdersAction;
 use campfire_sim::IdAllocator;
 
 use super::*;

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use campfire_math::Num;
 use campfire_values::{DeclaredName, PackagePath};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -15,14 +16,17 @@ pub struct ClientUnits {
     pub objects: BTreeMap<DeclaredName, ClientUnit>,
 }
 
-/// A unit type's look: the models drawn at its unit's place, all of them, and its variants, the
-/// models it draws in their stead on a map of their conditions.
+/// A unit type's look: the models drawn at its unit's place, all of them; its variants, the
+/// models it draws in their stead on a map of their conditions; and the angle in degrees a
+/// client's preview of a build places it at, 0 when it gives none.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientUnit {
     pub models: Vec<ClientModel>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub variants: Vec<LookVariant>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placement_angle: Option<Num>,
 }
 
 /// A look's models on a map of some conditions, as a night or snowy weather, by name: any game
@@ -40,6 +44,7 @@ impl ClientUnit {
         ClientUnit {
             models,
             variants: Vec::new(),
+            placement_angle: None,
         }
     }
 
@@ -143,6 +148,10 @@ mod tests {
             [units.tree]
             models = [{ model = "client/models/ptxbirch04.glb", scale = 1.25 }]
 
+            [units.barracks]
+            models = []
+            placement_angle = "-135"
+
             [objects.tree]
             models = [{ model = "client/models/ptxbirch04.glb", scale = 1.25 }]
         "#;
@@ -158,6 +167,13 @@ mod tests {
         );
         assert!(!Toml::write(&units).contains("scale = 1.0"));
         assert_eq!(units.objects["tree"], units.units["tree"]);
+        // A build's angle; none for a look that gives none, which it does not write.
+        assert_eq!(
+            units.units["barracks"].placement_angle,
+            Some(Num::int(-135))
+        );
+        assert_eq!(units.units["tree"].placement_angle, None);
+        assert_eq!(Toml::write(&units).matches("placement_angle").count(), 1);
         assert_eq!(
             Toml::parse::<ClientUnits>(&Toml::write(&units)).unwrap(),
             units

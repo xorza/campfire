@@ -43,13 +43,16 @@ use campfire_package_disk::PackageDir;
 use campfire_protocol::RandomKey;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
-use campfire_values::{Team, TeamSet};
+use campfire_values::{DeclaredName, Names, ResourceId, Team, TeamSet};
 use lightyear::prelude::Connect;
 use secp256k1::Keypair;
 use tracing::error;
 
+use crate::action_names::ActionNames;
 use crate::args::{Args, CommandLine};
 use crate::bot::Bot;
+use crate::build_preview::BuildPreview;
+use crate::command_panel::{BuildButtons, CommandPanel};
 use crate::connection::Connection;
 use crate::hud::Hud;
 use crate::inventory_bar::InventoryBar;
@@ -66,8 +69,11 @@ use crate::view::player_camera::PlayerCamera;
 use crate::view::terrain_view::TerrainView;
 use crate::view::unit_models::UnitModels;
 
+mod action_names;
 mod args;
 mod bot;
+mod build_preview;
+mod command_panel;
 mod connection;
 mod hud;
 mod inventory_bar;
@@ -76,6 +82,7 @@ mod link_watch;
 mod local_keys;
 mod orders;
 mod own_player;
+mod placing;
 mod pointer;
 mod selecting;
 mod selection;
@@ -173,8 +180,9 @@ fn main() -> ExitCode {
 }
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD, the
-/// selection, the orders, the shop panel and the inventory bar, with the keys of a local match
-/// that `pace` follows, and the models and item names of `packages`.
+/// selection, the orders, the shop panel, the inventory bar, the command panel and the build
+/// preview, with the keys of a local match that `pace` follows, and the models and the item and
+/// action names of `packages`.
 fn add_ends(
     app: &mut App,
     script: Option<OrderScript>,
@@ -236,6 +244,33 @@ fn add_ends(
             ShopPanel,
             InventoryBar,
         ));
+    }
+    // The command panel reads production's books; a build places a box only navigation tests,
+    // so a mode of no navigation has no preview, and the panel no build button.
+    let capabilities = &packages.manifest().capabilities;
+    if capabilities.contains(Capability::Production) {
+        let navigates = capabilities.contains(Capability::Navigation);
+        let names: Names<ResourceId> = packages
+            .data()
+            .resources
+            .iter()
+            .map(DeclaredName::as_str)
+            .collect();
+        let resources = names.iter().map(|(resource, _)| resource).collect();
+        let builds = if navigates {
+            BuildButtons::Shown
+        } else {
+            BuildButtons::Hidden
+        };
+        app.add_plugins((
+            ActionNames {
+                packages: Arc::clone(packages),
+            },
+            CommandPanel { resources, builds },
+        ));
+        if navigates {
+            app.add_plugins(BuildPreview);
+        }
     }
 }
 

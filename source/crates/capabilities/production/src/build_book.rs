@@ -140,6 +140,11 @@ impl BuildBook {
 }
 
 impl BuildSpec<'_> {
+    /// The building's box, before its angle turns it.
+    pub const fn form(self) -> BodyForm {
+        self.form
+    }
+
     /// The progress a tick adds to a site with `builders` builders that build it: 1 for `alone`;
     /// for `builder`, 1 with one or more, else 0; for `builders`, the table's entry for the
     /// count, the last for a count past it, and 0 for none.

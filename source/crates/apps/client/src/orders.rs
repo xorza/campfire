@@ -1,8 +1,10 @@
 use std::slice;
 
 use bevy::app::{App, Plugin, Update};
-use bevy::ecs::query::Allow;
-use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::query::{Allow, Has};
+use bevy::ecs::schedule::SystemCondition;
+use bevy::ecs::schedule::common_conditions::{not, resource_exists};
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Query, Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::common_conditions::input_just_pressed;
@@ -15,23 +17,36 @@ use campfire_interaction::Using;
 use campfire_math::{Num, Vec3 as SimVec3};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
+use campfire_production::{ProductionAction, RallyTarget, TrainQueue};
 use campfire_progression::ProgressionAction;
-use campfire_sim::{Position, StableId, Unpredicted};
+use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
+use campfire_units::MoveStep;
 use campfire_values::Team;
 
 use crate::own_player::OwnPlayer;
+use crate::placing::Placing;
 use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
 
 /// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may
-/// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else it
-/// orders the selection, as one group order, to attack an enemy under the cursor, and anywhere
-/// else but the UI to walk there, and S stops it (design 17, D7); Q, W, E and R cast the
+/// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else, with
+/// producers selected and no walker, it sets their rally point at the unit under the cursor or
+/// the ground point (design 18, D7); else it orders the selection, as one group order, to attack
+/// an enemy under the cursor, and anywhere else but the UI to walk there, and S stops it (design
+/// 17, D7); while the player places a build, the right click is the preview's; Q, W, E and R cast the
 /// avatar's abilities of slots 0 to 3, and with Ctrl held learn their next rank; 1 to 6 cast the
 /// actions of its inventory's slots. A key aims as its slot's action takes: at the unit under
 /// the cursor, at the ground point under it, or at nothing (design 13, D11).
 #[derive(Debug)]
 pub(crate) struct Orders;
+
+/// The systems that turn clicks and keys into orders, which the build preview reads the clicks
+/// after.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct OrderSystems;
+
+/// Whether a unit walks, and whether it trains units.
+type Movers<'w, 's> = Query<'w, 's, (Has<MoveStep>, Has<TrainQueue>), Allow<Unpredicted>>;
 
 /// A unit's slots, and the slot kind of its inventory's, if it carries one.
 type Casters<'w, 's> =
@@ -58,10 +73,14 @@ impl Plugin for Orders {
         app.add_systems(
             Update,
             (
-                Orders::click.run_if(input_just_pressed(MouseButton::Right)),
+                Orders::click.run_if(
+                    input_just_pressed(MouseButton::Right)
+                        .and_then(not(resource_exists::<Placing>)),
+                ),
                 Orders::cast.run_if(Orders::cast_pressed),
                 Orders::stop.run_if(input_just_pressed(STOP_KEY)),
             )
+                .in_set(OrderSystems)
                 .after(SelectionSystems),
         );
     }
@@ -72,6 +91,7 @@ impl Orders {
         pointer: Pointer<'_, '_>,
         own: OwnPlayer<'_, '_>,
         (selection, using): (Res<'_, Selection>, Using<'_, '_>),
+        (index, movers): (Res<'_, EntityIndex>, Movers<'_, '_>),
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         if pointer.over_ui() {
@@ -85,8 +105,19 @@ impl Orders {
             .avatar()
             .filter(|avatar| selection.get().contains(&avatar.id));
         let uses = |object| avatar.is_some_and(|avatar| using.of(avatar.entity, object).is_some());
-        let order = match Orders::click_action(under, own.team(), point, uses) {
-            Some(action @ OrdersAction::Use { .. }) => {
+        let held = selection.get().iter().filter_map(|&unit| {
+            let entity = index.get(unit)?;
+            let (walks, trains) = movers.get(entity).ok()?;
+            Some(Mover { walks, trains })
+        });
+        let click = Click {
+            under,
+            team: own.team(),
+            point,
+            selected: Selected::of(held),
+        };
+        let order = match Orders::click_action(click, uses) {
+            Some(action @ Action::Orders(OrdersAction::Use { .. })) => {
                 avatar.map(|avatar| Order::one(avatar.id, action))
             }
             action => action.and_then(|action| selection.order(action)),
@@ -155,25 +186,43 @@ impl Orders {
         }
     }
 
-    /// What a right click at `point` of the ground orders a player of `team`: an attack on
-    /// `under`, the unit under the cursor, when it is of another team, else a move to the point;
-    /// none far off any map.
-    fn click_action(
-        under: Option<Pointed>,
-        team: Option<Team>,
-        point: Vec3,
-        uses: impl Fn(StableId) -> bool,
-    ) -> Option<OrdersAction> {
-        match under {
-            Some(unit) if uses(unit.id) => Some(OrdersAction::Use { target: unit.id }),
-            Some(unit) if team.is_some_and(|team| unit.team != team) => {
-                Some(OrdersAction::Attack { target: unit.id })
+    /// What `click` orders: a use of the unit under the cursor that `uses` says the avatar may
+    /// use; for a selection of producers, a rally point at the unit or the point; an attack on
+    /// the unit when it is of another team than the player's; else a move to the point. None far
+    /// off any map.
+    fn click_action(click: Click, uses: impl Fn(StableId) -> bool) -> Option<Action> {
+        let Click {
+            under,
+            team,
+            point,
+            selected,
+        } = click;
+        let ground = || {
+            let x = Num::try_from(point.x).ok()?;
+            let z = Num::try_from(point.z).ok()?;
+            Some([x, z])
+        };
+        let action = match under {
+            Some(unit) if uses(unit.id) => OrdersAction::Use { target: unit.id }.into(),
+            _ if selected == Selected::Producers => {
+                let target = if let Some(unit) = under {
+                    RallyTarget::Unit(unit.id)
+                } else {
+                    let [x, z] = ground()?;
+                    RallyTarget::Point { x, z }
+                };
+                let target = Some(target);
+                ProductionAction::Rally { target }.into()
             }
-            _ => Some(OrdersAction::Move {
-                x: Num::try_from(point.x).ok()?,
-                z: Num::try_from(point.z).ok()?,
-            }),
-        }
+            Some(unit) if team.is_some_and(|team| unit.team != team) => {
+                OrdersAction::Attack { target: unit.id }.into()
+            }
+            _ => {
+                let [x, z] = ground()?;
+                OrdersAction::Move { x, z }.into()
+            }
+        };
+        Some(action)
     }
 
     /// Whether a cast key or an item key went down this frame.
@@ -186,6 +235,47 @@ impl Orders {
         match key_use {
             KeyUse::Learn => Action::Progression(ProgressionAction::Learn { slot }),
             KeyUse::Cast => Action::Orders(OrdersAction::Slot { slot, target }),
+        }
+    }
+}
+
+/// A right click: the unit under the cursor, the player's team, the ground point under the
+/// cursor, and what the selection holds.
+#[derive(Debug, Clone, Copy)]
+struct Click {
+    under: Option<Pointed>,
+    team: Option<Team>,
+    point: Vec3,
+    selected: Selected,
+}
+
+/// What a selection holds, as a right click reads it: producers and no walker, whose rally point
+/// a click sets, or any other units, which a click moves or sends to attack.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Selected {
+    Producers,
+    Movers,
+}
+
+/// A selected unit, as a right click reads it: whether it walks, and whether it trains units.
+#[derive(Debug, Clone, Copy)]
+struct Mover {
+    walks: bool,
+    trains: bool,
+}
+
+impl Selected {
+    /// What a selection of `units` holds: producers when one trains and none walks.
+    fn of(units: impl IntoIterator<Item = Mover>) -> Selected {
+        let (mut walks, mut trains) = (false, false);
+        for unit in units {
+            walks |= unit.walks;
+            trains |= unit.trains;
+        }
+        if trains && !walks {
+            Selected::Producers
+        } else {
+            Selected::Movers
         }
     }
 }
@@ -295,7 +385,8 @@ mod tests {
     }
 
     #[test]
-    fn a_right_click_uses_what_the_avatar_may_use_attacks_an_enemy_and_else_walks() {
+    fn a_right_click_uses_what_the_avatar_may_use_rallies_producers_attacks_an_enemy_and_else_walks()
+     {
         let mut ids = IdAllocator::default();
         let (north, south) = (Team::new(0), Team::new(1));
         let mut unit = |team| Pointed {
@@ -306,16 +397,23 @@ mod tests {
         let (enemy, friend) = (unit(south), unit(north));
         let point = Vec3::new(3.0, 1.0, -2.5);
         // To (3, −2.5): x = 3, z = −5 / 2, the height not sent.
-        let walk = Some(OrdersAction::Move {
-            x: Num::int(3),
-            z: Num::int(-5) / Num::int(2),
-        });
+        let (x, z) = (Num::int(3), Num::int(-5) / Num::int(2));
+        let walk = Some(OrdersAction::Move { x, z }.into());
         let shrine = unit(south);
         let usable = |id| id == shrine.id;
-        let click = |under, team| Orders::click_action(under, team, point, usable);
+        let click_by = |selected, under, team, point| {
+            let click = Click {
+                under,
+                team,
+                point,
+                selected,
+            };
+            Orders::click_action(click, usable)
+        };
+        let click = |under, team| click_by(Selected::Movers, under, team, point);
         assert_eq!(
             click(Some(enemy), Some(north)),
-            Some(OrdersAction::Attack { target: enemy.id })
+            Some(OrdersAction::Attack { target: enemy.id }.into())
         );
         assert_eq!(click(Some(friend), Some(north)), walk);
         assert_eq!(click(None, Some(north)), walk);
@@ -323,11 +421,56 @@ mod tests {
         assert_eq!(click(Some(enemy), None), walk);
         // A unit the avatar may use is used, before an attack of an enemy or a walk: the
         // hostile shrine by either team's client.
-        let used = Some(OrdersAction::Use { target: shrine.id });
+        let used = Some(OrdersAction::Use { target: shrine.id }.into());
         assert_eq!(click(Some(shrine), Some(north)), used);
         assert_eq!(click(Some(shrine), Some(south)), used);
-        // A ground point far off any map orders nothing.
+        // Producers rally to the point, or to the unit under the cursor, an enemy's too.
+        let rally = |target| {
+            Some(
+                ProductionAction::Rally {
+                    target: Some(target),
+                }
+                .into(),
+            )
+        };
+        let producers = |under| click_by(Selected::Producers, under, Some(north), point);
+        assert_eq!(producers(None), rally(RallyTarget::Point { x, z }));
+        assert_eq!(producers(Some(friend)), rally(RallyTarget::Unit(friend.id)));
+        assert_eq!(producers(Some(enemy)), rally(RallyTarget::Unit(enemy.id)));
+        // A ground point far off any map orders nothing, a walk or a rally.
         let far = Vec3::new(1e15, 0.0, 0.0);
-        assert_eq!(Orders::click_action(None, Some(north), far, usable), None);
+        for selected in [Selected::Movers, Selected::Producers] {
+            assert_eq!(click_by(selected, None, Some(north), far), None);
+        }
+    }
+
+    #[test]
+    fn a_selection_of_producers_and_no_walker_rallies() {
+        let (walker, producer, tower) = (
+            Mover {
+                walks: true,
+                trains: false,
+            },
+            Mover {
+                walks: false,
+                trains: true,
+            },
+            Mover {
+                walks: false,
+                trains: false,
+            },
+        );
+        // A barracks alone, or with a tower; a barracks with a ranger, a ranger alone, a tower
+        // alone, and nothing.
+        for (units, selected) in [
+            (&[producer][..], Selected::Producers),
+            (&[producer, tower], Selected::Producers),
+            (&[producer, walker], Selected::Movers),
+            (&[walker], Selected::Movers),
+            (&[tower], Selected::Movers),
+            (&[], Selected::Movers),
+        ] {
+            assert_eq!(Selected::of(units.iter().copied()), selected, "{units:?}");
+        }
     }
 }

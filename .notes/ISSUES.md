@@ -4,6 +4,9 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
+- **Production.** A predicting client panics as a build it predicts starts, or a train of a unit it predicts finishes: `Construction::start_builds` and `Trains::finish_trains` run on the client and spawn the site or the trained unit through the `Spawner`, which only the mode installs, and no client installs the mode (`construction/mod.rs:225`, `trains.rs:224`). The predicting worlds of the tests load a `Spawner` through their fixtures, so no test meets it. The options: a predicting client spawns neither, and takes the site, the trained unit, the builder's order and the queue from the server; or it spawns a stand-in that the server's unit replaces.
+- **Production.** A mode of `production` with no `navigation` loads a `build` action, as the load asks only for `production`, but the sim installs no system that starts a build without navigation, so the order does nothing; the client's command panel hides its button. The options: the load refuses a build in a mode of no navigation, or a build without navigation places its site with no test of room.
+
 ## Research
 
 - **Navigation.** The levels by size of B2 make the Collide stage slower for walkers of ordinary sizes, with no wide body present, and the 3v3's ticks faster. On an i9-13980HX, with each walker's cell one `CellKey`, `integration/collision/spread` takes 95.5 µs against 59.8 µs with one level of cells twice the widest walker's radius, `crowded` 325.0 µs against 257.4 µs, `boxes` 681.4 µs against 613.8 µs, and `bridge`, with a 1,117 × 100 m box 2 m past the crowded scene, 715.4 µs against 650.9 µs; the scenes' walkers of 0.2 to 1.19 m spread over four levels, and each occupied cell searches the nine cells around its own at each coarser level. `integration/server_tick/mean_3v3` takes 479.2 ms, and 519.4 ms with one level.

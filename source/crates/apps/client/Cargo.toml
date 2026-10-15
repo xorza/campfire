@@ -21,6 +21,7 @@ campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-players.workspace = true
+campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
@@ -30,6 +31,7 @@ campfire-stats.workspace = true
 campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
+campfire-vision.workspace = true
 
 async-lock.workspace = true
 bevy.workspace = true
@@ -40,9 +42,11 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+campfire-actions = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-package = { workspace = true, features = ["internals"] }
 campfire-package-disk = { workspace = true, features = ["internals"] }
+campfire-production = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 
 [lints]

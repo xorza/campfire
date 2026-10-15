@@ -1,7 +1,6 @@
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::SystemSet;
-use campfire_capabilities::Order;
-use campfire_orders::OrdersAction;
+use campfire_capabilities::{Action, Order};
 use campfire_players::OrderUnits;
 use campfire_sim::StableId;
 
@@ -55,7 +54,7 @@ impl Selection {
 
     /// The order of `action` to every selected unit, as one group order; none for an empty
     /// selection.
-    pub(crate) fn order(&self, action: OrdersAction) -> Option<Order> {
+    pub(crate) fn order(&self, action: impl Into<Action>) -> Option<Order> {
         Some(Order {
             units: OrderUnits::new(&self.0)?,
             action: action.into(),

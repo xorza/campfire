@@ -394,8 +394,8 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     let mut ini = ObjectIni::default();
     ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
     ini.read(OBJECTS.as_bytes()).unwrap();
-    // The command center: its fields, a `ProductionUpdate` of the default queue of 9, and its
-    // exit's points of `X:` and `Y:`, the height dropped.
+    // The command center: its fields, a `ProductionUpdate` of the default queue of 9, its exit's
+    // points of `X:` and `Y:`, the height dropped, and the angle its placement shows at.
     assert_eq!(
         build(&ini, "AmericaCommandCenter"),
         BuildData {
@@ -408,6 +408,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
                 create: [-18.0, 35.0],
                 rally: [60.0, 35.0],
             }),
+            placement_angle: Some(-135.0),
         }
     );
     // The barracks' queue of 5, and its points, of a `QueueProductionExitUpdate`, which names them

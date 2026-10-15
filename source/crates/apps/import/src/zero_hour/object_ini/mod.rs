@@ -1049,6 +1049,7 @@ Object AmericaCommandCenter\r
   BuildCost = 2000\r
   BuildTime = 45.0\r
   CommandSet = AmericaCommandCenterCommandSet\r
+  PlacementViewAngle = -135\r
   Behavior = ProductionUpdate ModuleTag_11\r
   End\r
   Behavior = DefaultProductionExitUpdate ModuleTag_13\r

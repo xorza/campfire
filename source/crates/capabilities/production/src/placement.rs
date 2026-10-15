@@ -17,7 +17,7 @@ use crate::build_book::{BuildSpec, PlacementCheck};
 /// and the living units, the walkers among them and what each team sees of them, by `S`. A
 /// client tests the units it holds and does not predict too, where the server last had them.
 #[derive(SystemParam, Debug)]
-pub(crate) struct Placement<'w, 's, S: TeamSight> {
+pub struct Placement<'w, 's, S: TeamSight> {
     navigation: Option<Res<'w, NavigationBook>>,
     statics: Res<'w, BodyIndex>,
     relations: OnMatch<'w, 's, Relations>,
@@ -43,7 +43,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
     /// static body of its layer, or the body on its layer of a walker that is not of a team
     /// friendly to `team` and that `team` sees, all of a match with no vision; and it meets its
     /// placement's rules. Touching is not overlap.
-    pub(crate) fn passes(&self, team: Team, pos: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
+    pub fn passes(&self, team: Team, pos: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
         let Shape::Box(boxed) = body.shape() else {
             panic!("a building's body is a box");
         };

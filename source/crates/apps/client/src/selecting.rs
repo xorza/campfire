@@ -6,6 +6,8 @@ use bevy::ecs::component::Component;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::schedule::SystemCondition;
+use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Local, Res, ResMut, Single};
 use bevy::input::common_conditions::{input_just_pressed, input_just_released};
 use bevy::input::mouse::MouseButton;
@@ -15,13 +17,15 @@ use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
 use campfire_sim::{EntityIndex, StableId};
 
 use crate::own_player::OwnPlayer;
+use crate::placing::Placing;
 use crate::pointer::Pointer;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
 /// Selects the player's own units with the left button (design 17, D7): a click on one selects
 /// it alone, and a drag selects each whose ground point shows within the rectangle it draws; a
-/// click or a drag that meets none of them leaves the selection as it is. Each frame, a unit the
+/// click or a drag that meets none of them leaves the selection as it is, and a press while the
+/// player places a build is the preview's. Each frame, a unit the
 /// client no longer holds leaves the selection, and an empty selection takes the avatar.
 #[derive(Debug)]
 pub(crate) struct Selecting;
@@ -61,7 +65,9 @@ impl Plugin for Selecting {
             Update,
             (
                 Selecting::keep,
-                Selecting::press.run_if(input_just_pressed(MouseButton::Left)),
+                Selecting::press.run_if(
+                    input_just_pressed(MouseButton::Left).and_then(not(resource_exists::<Placing>)),
+                ),
                 Selecting::follow,
                 Selecting::release.run_if(input_just_released(MouseButton::Left)),
                 Selecting::draw_box,
