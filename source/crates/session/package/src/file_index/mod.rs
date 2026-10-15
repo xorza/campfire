@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt::Write as _;
 
-use campfire_common::{ContentHash, Fingerprint};
+use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_values::PackagePath;
 
 use crate::error::ContentError;
@@ -19,7 +19,7 @@ pub struct FileIndex {
     rows: BTreeMap<PackagePath, FileRow>,
     /// Its one encoding, as `package.index` holds it.
     bytes: Vec<u8>,
-    fingerprint: Fingerprint,
+    fingerprint: PackageFingerprint,
 }
 
 /// A file's size and SHA-256, as its row lists them.
@@ -52,7 +52,7 @@ impl FileIndex {
             return Err(ContentError::IndexListsItself);
         }
         let bytes = FileIndex::encode_rows(&rows);
-        let fingerprint = Fingerprint::of(&bytes);
+        let fingerprint = PackageFingerprint::of(&bytes);
         Ok(FileIndex {
             rows,
             bytes,
@@ -112,7 +112,7 @@ impl FileIndex {
         digits.parse().ok()
     }
 
-    pub const fn fingerprint(&self) -> Fingerprint {
+    pub const fn fingerprint(&self) -> PackageFingerprint {
         self.fingerprint
     }
 

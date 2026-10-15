@@ -1,3 +1,4 @@
+use blake3::Hasher;
 use secp256k1::{Secp256k1, schnorr};
 
 use super::*;

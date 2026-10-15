@@ -1,5 +1,4 @@
-use blake3::Hasher;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{DomainHasher, HashDomain, PlayerSlot, Tick};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +10,7 @@ use crate::signer::Signer;
 use crate::verifier::Verifier;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
-const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";
+const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/input-hash/v1");
 /// Starts every signed chain head, so no other signature of the session key counts as one.
 const SIGNATURE_DOMAIN: &[u8] = b"campfire/input/v1";
 const HEAD_MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 8 + 32;
@@ -64,15 +63,14 @@ impl InputChain {
     /// previous head ‖ u32 slot ‖ u64 seq ‖ u64 stamp ‖ payload)`, little-endian, seq counting
     /// the player's inputs from 0; the payload comes last, so it needs no length.
     pub fn extend<'a>(&mut self, stamp: Tick, payload: &'a [u8]) -> PlayerInput<'a> {
-        let mut hasher = Hasher::new();
+        let mut hasher = DomainHasher::new(HASH_DOMAIN);
         hasher
-            .update(HASH_DOMAIN)
             .update(self.head.as_bytes())
             .update(&self.slot.get().to_le_bytes())
             .update(&self.next_seq.to_le_bytes())
             .update(&stamp.get().to_le_bytes())
             .update(payload);
-        self.head = InputHash::new(*hasher.finalize().as_bytes());
+        self.head = InputHash::new(hasher.finish());
         self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");
         PlayerInput {
             slot: self.slot,

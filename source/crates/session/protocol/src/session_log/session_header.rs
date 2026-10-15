@@ -1,5 +1,4 @@
-use blake3::Hasher;
-use campfire_common::{PlayerSlot, SegmentSeed};
+use campfire_common::{DomainHasher, HashDomain, PlayerSlot, SegmentSeed};
 
 use crate::delegation::Delegation;
 use crate::server_seed::ServerSeed;
@@ -8,7 +7,7 @@ use crate::session_terms::SessionTerms;
 use crate::slot_start::SlotStart;
 
 /// Starts the segment seed, so no other BLAKE3 use can produce one.
-const SEGMENT_SEED_DOMAIN: &[u8] = b"campfire/segment-seed/v1";
+const SEGMENT_SEED_DOMAIN: HashDomain = HashDomain::new("campfire/segment-seed/v1");
 
 /// What the log fixes before the first tick: the session's terms, and how each of its slots
 /// starts.
@@ -33,15 +32,14 @@ impl SessionHeader {
         if !server_seed.check(segment, &self.terms.seed_commitment) {
             return Err(SeedError::WrongSeed);
         }
-        let mut hasher = Hasher::new();
+        let mut hasher = DomainHasher::new(SEGMENT_SEED_DOMAIN);
         hasher
-            .update(SEGMENT_SEED_DOMAIN)
             .update(&segment.to_le_bytes())
             .update(server_seed.as_bytes());
         for (_, delegation) in self.players() {
             hasher.update(delegation.terms().seed_contribution.as_bytes());
         }
-        Ok(SegmentSeed::new(*hasher.finalize().as_bytes()))
+        Ok(SegmentSeed::new(hasher.finish()))
     }
 
     /// The players who started, by slot, with their delegations.

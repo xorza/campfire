@@ -1,9 +1,9 @@
+use campfire_common::ContentHash;
 use campfire_package_disk::PackageDir;
 use campfire_sim::Capability;
 use campfire_store::internals::Scratch;
 use campfire_values::DeclaredName;
 use serde::Deserialize;
-use sha2::{Digest, Sha256};
 
 use super::*;
 use crate::texture::internals::ktx2;
@@ -29,7 +29,7 @@ use crate::zero_hour::weapon_ini::internals::WEAPONS;
 fn version_of(scratch: &Scratch) -> [GameVersion; 1] {
     let archives = ["A.big", "b.big", "c.BIG", "ZH_Generals/base.big"].map(|path| ArchiveHash {
         path,
-        sha256: Sha256::digest(scratch.read(format!("zh/{path}"))).into(),
+        sha256: ContentHash::of(&scratch.read(format!("zh/{path}"))),
     });
     [GameVersion {
         name: "fixture",
@@ -210,7 +210,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let units: UnitsView = Toml::parse(&scratch.read_text("one/game/data/units.toml")).unwrap();
     let command = |name: &str| {
         let slots = units.units[name].slots.as_ref();
-        slots.map(|slots| slots.command.clone()).unwrap_or_default()
+        slots.map_or_default(|slots| slots.command.clone())
     };
     assert_eq!(
         command("americacommandcenter"),
@@ -223,7 +223,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // its armor, and the command center's tag of victory.
     let weapons = |name: &str| {
         let slots = units.units[name].slots.as_ref();
-        slots.map(|slots| slots.weapon.clone()).unwrap_or_default()
+        slots.map_or_default(|slots| slots.weapon.clone())
     };
     assert_eq!(weapons("americainfantryranger"), ["weapon_rangerrifle"]);
     assert_eq!(weapons("americatankcrusader"), ["weapon_rangerrifle"]);

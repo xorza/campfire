@@ -51,7 +51,7 @@ pub use crate::state_copy::StateCopy;
 pub use crate::state_registry::breach::Breach;
 pub use crate::state_registry::error::SnapshotError;
 pub use crate::state_registry::state_delta::StateDelta;
-pub use crate::state_registry::{StateRegistry, TypeHash};
+pub use crate::state_registry::{PartHash, PartHashMeaning, StateRegistry, TypeHash};
 pub use crate::tick_clock::TickClock;
 pub use crate::tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use crate::tick_rate::TickRate;

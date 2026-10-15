@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_common::Bytes32;
+use campfire_common::ContentHash;
 
 use crate::zero_hour::error::{VersionDifference, ZeroHourError};
 use crate::zero_hour::install::HashedArchive;
@@ -25,13 +25,13 @@ struct Difference {
 #[derive(Debug)]
 pub struct ArchiveHash {
     pub path: &'static str,
-    pub sha256: [u8; 32],
+    pub sha256: ContentHash,
 }
 
 impl ArchiveHash {
     /// The archive at `path` whose SHA-256 is the 64 lowercase hex digits `hex`.
     pub const fn new(path: &'static str, hex: &str) -> ArchiveHash {
-        let sha256 = Bytes32::of_hex(hex).get();
+        let sha256 = ContentHash::of_hex(hex);
         ArchiveHash { path, sha256 }
     }
 }
@@ -190,7 +190,7 @@ impl GameVersion {
         found: &[HashedArchive],
         known: &'a [GameVersion],
     ) -> Result<&'a GameVersion, ZeroHourError> {
-        let found: BTreeMap<String, [u8; 32]> = found
+        let found: BTreeMap<String, ContentHash> = found
             .iter()
             .map(|archive| (archive.name.to_ascii_lowercase(), archive.sha256))
             .collect();
@@ -215,8 +215,8 @@ impl GameVersion {
 
     /// The first archive, in the order of paths ignoring case, where `found` differs from this
     /// version, and how.
-    fn difference(&self, found: &BTreeMap<String, [u8; 32]>) -> Option<Difference> {
-        let ours: BTreeMap<String, [u8; 32]> = self
+    fn difference(&self, found: &BTreeMap<String, ContentHash>) -> Option<Difference> {
+        let ours: BTreeMap<String, ContentHash> = self
             .archives
             .iter()
             .map(|archive| (archive.path.to_ascii_lowercase(), archive.sha256))
@@ -248,20 +248,21 @@ mod tests {
             "x.big",
             "00010203040506070809aaabacadaeaf101112131415161718191a1b1c1d1eff",
         );
-        assert_eq!(hash.sha256[..3], [0x00, 0x01, 0x02]);
-        assert_eq!(hash.sha256[10..12], [0xAA, 0xAB]);
-        assert_eq!(hash.sha256[31], 0xFF);
+        let bytes = hash.sha256.as_bytes();
+        assert_eq!(bytes[..3], [0x00, 0x01, 0x02]);
+        assert_eq!(bytes[10..12], [0xAA, 0xAB]);
+        assert_eq!(bytes[31], 0xFF);
 
         let archive = |path, byte| ArchiveHash {
             path,
-            sha256: [byte; 32],
+            sha256: ContentHash::new([byte; 32]),
         };
         let found = |archives: &[(&str, u8)]| -> Vec<HashedArchive> {
             archives
                 .iter()
                 .map(|&(name, byte)| HashedArchive {
                     name: name.to_owned(),
-                    sha256: [byte; 32],
+                    sha256: ContentHash::new([byte; 32]),
                 })
                 .collect()
         };

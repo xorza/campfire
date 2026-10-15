@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_codec::Toml;
-use campfire_common::Fingerprint;
+use campfire_common::PackageFingerprint;
 use campfire_values::PackagePath;
 use serde::de::DeserializeOwned;
 
@@ -68,7 +68,7 @@ impl PackageFiles {
         path.as_str() == PackageFiles::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
-    pub const fn fingerprint(&self) -> Fingerprint {
+    pub const fn fingerprint(&self) -> PackageFingerprint {
         self.reader.fingerprint()
     }
 

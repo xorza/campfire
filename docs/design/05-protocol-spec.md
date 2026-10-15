@@ -23,12 +23,12 @@ Not in the protocol: state replication between client and server (`net`), intern
 | --- | --- | --- |
 | `ContentHash` | the SHA-256 of a file's bytes, as a package's row lists it | each package file; an import's pinned archive |
 | `…Fingerprint` | the `ContentHash` of an artifact published whole | `PackageFingerprint`, of a package's index; `SnapshotFingerprint`, of a snapshot |
-| `…Hash` | a BLAKE3 digest of a domain | `StateHash`, `InputHash`, a journal frame's hash, a layout's `TypeHash` |
+| `…Hash` | a BLAKE3 digest of a domain | `StateHash`, `InputHash`, a journal frame's `FrameHash`; and `PartHash`, one state type's encoding, which the state hash folds after the type's name under its own domain, so a part needs none |
 | `…Id` | an identity made by a hash | `SessionId`, of the terms; `DelegationId`, the Nostr event's id |
 | `…Commitment` | a BLAKE3 digest that binds a secret before it shows | `SeedCommitment`, of the first server seed |
 | a role's name | a key or a random value, no hash | `MainKey`, `TlsKey`, `SeedContribution`, `ConnectChallenge`, `ChannelBinding`; a seed in a `Secret` |
 
-The primitives, `Bytes32`, `Value32`, `ContentHash`, `DomainHasher` and `Secret`, live in `common`; each marker lives in the crate that owns its concept.
+The primitives, `Bytes32`, `Value32`, `ContentHash`, `DomainHasher` and `Secret`, live in `common`; each marker lives in the crate that owns its concept. Every hash goes through the two hashers but the state hash's parts, which the sim's buffered `HashSink` makes, and the random stream's keyed BLAKE3, a key's function, not a domain's.
 
 ## Packages
 

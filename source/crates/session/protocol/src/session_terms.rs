@@ -1,7 +1,6 @@
 use std::num::NonZeroU32;
 
-use blake3::Hasher;
-use campfire_common::{Fingerprint, MapName, Version};
+use campfire_common::{DomainHasher, HashDomain, MapName, PackageFingerprint, Version};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +11,7 @@ use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v3";
+const SESSION_ID_DOMAIN: HashDomain = HashDomain::new("campfire/session-id/v3");
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -40,11 +39,11 @@ pub struct SessionTerms {
     /// The tag of the engine release the session runs on.
     pub release: Version,
     /// The fingerprint of the mode package.
-    pub mode: Fingerprint,
+    pub mode: PackageFingerprint,
     /// The mode's map the session plays.
     pub map: MapName,
     /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
-    pub dependencies: Vec<Fingerprint>,
+    pub dependencies: Vec<PackageFingerprint>,
     /// How the server opens each slot the session plays, by slot.
     pub slots: Vec<SlotPlan>,
     /// Who receives each kind of the session's state, as the mode and its host set it: the bytes
@@ -60,9 +59,8 @@ impl SessionTerms {
     /// visibility)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let release = self.release.to_string();
-        let mut hasher = Hasher::new();
+        let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
         hasher
-            .update(SESSION_ID_DOMAIN)
             .update(&self.server_key.serialize())
             .update(&self.tick_hz.get().to_le_bytes())
             .update(&self.inputs.max_delay.get().to_le_bytes())
@@ -86,7 +84,7 @@ impl SessionTerms {
         hasher
             .update(&len(self.visibility.len()).to_le_bytes())
             .update(&self.visibility);
-        SessionId::new(*hasher.finalize().as_bytes())
+        SessionId::new(hasher.finish())
     }
 
     /// The most bytes a journal record of a session of these terms can hold; `None` past a

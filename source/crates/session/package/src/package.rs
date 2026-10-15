@@ -1,4 +1,4 @@
-use campfire_common::Fingerprint;
+use campfire_common::PackageFingerprint;
 use campfire_script::{Hook, ScriptApi, ScriptFacts, ScriptFunction, ScriptHost};
 use campfire_values::PackagePath;
 
@@ -74,7 +74,7 @@ impl Package {
     }
 
     /// The fingerprint of its files' index.
-    pub const fn fingerprint(&self) -> Fingerprint {
+    pub const fn fingerprint(&self) -> PackageFingerprint {
         self.files.fingerprint()
     }
 

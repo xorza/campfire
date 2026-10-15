@@ -1,4 +1,4 @@
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{MapName, PackageFingerprint};
 use campfire_import::{DropCause, WeaponDrop};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
@@ -178,6 +178,6 @@ pub(crate) struct TerrainDrawn {
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 #[display("the fingerprints {game} and rules {rules}")]
 pub(crate) struct Fingerprints {
-    pub(crate) game: Fingerprint,
-    pub(crate) rules: Fingerprint,
+    pub(crate) game: PackageFingerprint,
+    pub(crate) rules: PackageFingerprint,
 }

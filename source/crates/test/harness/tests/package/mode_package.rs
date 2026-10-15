@@ -3019,7 +3019,7 @@ fn fails_each(flaws: &[Flaw]) {
         let named = match package {
             PackageRef::Name(name) => name == flaw.package,
             PackageRef::Dir(dir) => dir.ends_with(flaw.package),
-            PackageRef::Fingerprint(_) => false,
+            PackageRef::PackageFingerprint(_) => false,
         };
         assert!(named && (flaw.refused)(problem), "{flaw:?}: {error:?}");
     }

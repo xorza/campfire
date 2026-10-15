@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, TlsKey, Version};
+use campfire_common::{PackageFingerprint, TlsKey, Version};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -101,7 +101,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         ),
         (
             TICK_HZ,
-            |terms| terms.mode = Fingerprint::new([0; 32]),
+            |terms| terms.mode = PackageFingerprint::new([0; 32]),
             TermsMismatch::Terms(TermsError::OtherMode),
         ),
         (

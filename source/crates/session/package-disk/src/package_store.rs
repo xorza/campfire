@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{MapName, PackageFingerprint};
 use campfire_package::{ContentError, ModePackages, PackageFiles, PackageRef};
 use campfire_store::{DirEntries, EntryKind};
 
@@ -33,7 +33,7 @@ impl PackageStore {
         Ok(store)
     }
 
-    pub fn get(&self, fingerprint: Fingerprint) -> Option<&PackageFiles> {
+    pub fn get(&self, fingerprint: PackageFingerprint) -> Option<&PackageFiles> {
         let at = self
             .packages
             .binary_search_by_key(&fingerprint, PackageFiles::fingerprint)
@@ -46,13 +46,13 @@ impl PackageStore {
     /// them.
     pub fn mode_packages(
         &self,
-        mode: Fingerprint,
+        mode: PackageFingerprint,
         map: &MapName,
-        dependencies: &[Fingerprint],
+        dependencies: &[PackageFingerprint],
     ) -> Result<ModePackages, StoreError> {
         let files = self.get(mode).ok_or(StoreError::UnknownMode)?;
         let manifest = files
-            .mode_manifest(&PackageRef::Fingerprint(mode))
+            .mode_manifest(&PackageRef::PackageFingerprint(mode))
             .map_err(StoreError::Load)?;
         if manifest.dependencies.len() != dependencies.len() {
             return Err(StoreError::DependencyCount);

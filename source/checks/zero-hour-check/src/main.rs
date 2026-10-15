@@ -30,7 +30,7 @@ use std::process::ExitCode;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
 use campfire_codec::{Binary, Toml, TomlError};
-use campfire_common::{ExitStatus, Fingerprint, MapName};
+use campfire_common::{ExitStatus, MapName, PackageFingerprint};
 use campfire_import::{DropCause, DroppedButton, GameVersion, WeaponDrop, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_math::Num;
@@ -64,8 +64,12 @@ const MAP: &str = "tournament_desert";
 /// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
 /// again.
 const FINGERPRINTS: Fingerprints = Fingerprints {
-    game: Fingerprint::of_hex("f5c57357cb7ec525f8b2bdbe62620f4e24792303956bd38e224541565e4c376b"),
-    rules: Fingerprint::of_hex("d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874"),
+    game: PackageFingerprint::of_hex(
+        "f5c57357cb7ec525f8b2bdbe62620f4e24792303956bd38e224541565e4c376b",
+    ),
+    rules: PackageFingerprint::of_hex(
+        "d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874",
+    ),
 };
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row

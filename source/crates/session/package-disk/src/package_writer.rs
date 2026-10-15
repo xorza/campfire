@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
-use campfire_common::{ContentHash, Fingerprint};
+use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_package::{FileIndex, PackageWalk};
 use campfire_store::{DurableDir, DurableFile, OutputFile};
 use campfire_values::PackagePath;
@@ -52,7 +52,7 @@ impl PackageWriter {
     }
 
     /// Writes the package's index; its fingerprint.
-    pub fn finish(self) -> Result<Fingerprint, WriteError> {
+    pub fn finish(self) -> Result<PackageFingerprint, WriteError> {
         let index = self.rows.finish().map_err(WriteError::Package)?;
         DurableFile::write(&self.root.join(FileIndex::PATH), index.bytes())
             .map_err(WriteError::Index)?;
@@ -63,7 +63,6 @@ impl PackageWriter {
 #[cfg(test)]
 mod tests {
     use campfire_store::internals::Scratch;
-    use sha2::{Digest, Sha256};
 
     use super::*;
     use crate::package_dir::PackageDir;
@@ -94,7 +93,7 @@ mod tests {
         )
         .into_bytes();
         assert_eq!(scratch.read("one/package.index"), index);
-        assert_eq!(fingerprint, Fingerprint::new(Sha256::digest(&index).into()));
+        assert_eq!(fingerprint, PackageFingerprint::of(&index));
         assert_eq!(
             PackageDir::new(scratch.path("one"))
                 .files()

@@ -1,9 +1,9 @@
 use std::mem;
 
 use bevy_ecs::world::World;
-use campfire_common::{Bytes32, StateHash};
+use campfire_common::StateHash;
 use campfire_runner::{Replay, ReplayError};
-use campfire_sim::{SimWorld, TypeHash};
+use campfire_sim::{PartHash, SimWorld, TypeHash};
 
 /// The state hashes of a match after one tick: by state type, in the registry's order, and in
 /// total.
@@ -19,7 +19,7 @@ pub(crate) struct MatchHashes<'a> {
 pub struct HashTrail {
     /// The state types, in the order of each tick's run of `types`.
     names: Vec<&'static str>,
-    types: Vec<Bytes32>,
+    types: Vec<PartHash>,
     totals: Vec<StateHash>,
     scratch: Vec<TypeHash>,
 }
@@ -136,7 +136,7 @@ mod tests {
             names: vec!["a", "b"],
             types: types
                 .iter()
-                .flat_map(|&[a, b]| [Bytes32::new([a; 32]), Bytes32::new([b; 32])])
+                .flat_map(|&[a, b]| [PartHash::new([a; 32]), PartHash::new([b; 32])])
                 .collect(),
             totals: types
                 .iter()

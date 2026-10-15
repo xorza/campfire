@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::str::Utf8Error;
 
 use campfire_codec::TomlError;
-use campfire_common::Fingerprint;
+use campfire_common::PackageFingerprint;
 use campfire_values::PackagePath;
 use derive_more::Display;
 use thiserror::Error;
@@ -108,7 +108,7 @@ pub enum PackageRef {
     #[display("at {}", _0.display())]
     Dir(PathBuf),
     #[display("of fingerprint {_0}")]
-    Fingerprint(Fingerprint),
+    PackageFingerprint(PackageFingerprint),
 }
 
 impl LoadError {

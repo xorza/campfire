@@ -70,7 +70,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             TermsError::OtherRelease(Version::new(0, 0, 9)),
         ),
         (
-            |terms| terms.mode = Fingerprint::new([0; 32]),
+            |terms| terms.mode = PackageFingerprint::new([0; 32]),
             TermsError::OtherMode,
         ),
         (

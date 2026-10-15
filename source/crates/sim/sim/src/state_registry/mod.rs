@@ -8,9 +8,8 @@ use bevy_ecs::query::{Allow, QueryState};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
 use bevy_ecs::world::{Mut, World};
-use blake3::Hasher;
 use campfire_codec::{Binary, BinaryError, Sink, Taken};
-use campfire_common::{Bytes32, StateHash};
+use campfire_common::{DomainHasher, HashDomain, Meaning, StateHash, Value32};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -39,9 +38,9 @@ mod hash_sink;
 pub(crate) mod state_delta;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
-const HASH_DOMAIN: &[u8] = b"campfire/state/v1";
+const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/state/v1");
 /// The domain of `StateRegistry::digest`.
-const DIGEST_DOMAIN: &[u8] = b"campfire/digest/v1";
+const DIGEST_DOMAIN: HashDomain = HashDomain::new("campfire/digest/v1");
 /// Starts every snapshot, so other bytes are refused at once.
 const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
 /// The built-in type listing every live stable id, so an entity with no registered component
@@ -133,7 +132,19 @@ type Holders<C> =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypeHash {
     pub name: &'static str,
-    pub hash: Bytes32,
+    pub hash: PartHash,
+}
+
+/// The BLAKE3 of one state type's encoding, a part the state hash folds after the type's name
+/// under the state's domain, which a part needs no domain of its own for.
+pub type PartHash = Value32<PartHashMeaning>;
+
+/// The meaning of a `PartHash`.
+#[derive(Debug)]
+pub enum PartHashMeaning {}
+
+impl Meaning for PartHashMeaning {
+    const NAME: &'static str = "PartHash";
 }
 
 /// One type's part of a snapshot, and the bytes after it.
@@ -280,9 +291,9 @@ impl StateRegistry {
     /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
     /// derives from the state, which no state hash can equal.
     pub fn digest(bytes: &[u8]) -> StateHash {
-        let mut hasher = Hasher::new();
-        hasher.update(DIGEST_DOMAIN).update(bytes);
-        StateHash::new(*hasher.finalize().as_bytes())
+        let mut hasher = DomainHasher::new(DIGEST_DOMAIN);
+        hasher.update(bytes);
+        StateHash::new(hasher.finish())
     }
 
     pub fn hash(&self, world: &World) -> StateHash {
@@ -304,8 +315,7 @@ impl StateRegistry {
         out.clear();
         out.extend_from_slice(SNAPSHOT_TAG);
         out.extend_from_slice(&StateRegistry::DATA_VERSION.to_le_bytes());
-        let mut total = Hasher::new();
-        total.update(HASH_DOMAIN);
+        let mut total = DomainHasher::new(HASH_DOMAIN);
         for entry in &self.entries {
             out.extend_from_slice(&name_len(entry.name).to_le_bytes());
             out.extend_from_slice(entry.name.as_bytes());
@@ -313,11 +323,11 @@ impl StateRegistry {
             out.extend_from_slice(&[0; BODY_LEN_BYTES]);
             (entry.encode)(world, out);
             let body = &out[len_at + BODY_LEN_BYTES..];
-            fold(&mut total, entry.name, blake3::hash(body).as_bytes());
+            fold(&mut total, entry.name, &HashSink::of(body));
             let body_len = u64::try_from(body.len()).expect("snapshot above 2⁶⁴ bytes");
             out[len_at..len_at + BODY_LEN_BYTES].copy_from_slice(&body_len.to_le_bytes());
         }
-        StateHash::new(*total.finalize().as_bytes())
+        StateHash::new(total.finish())
     }
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
@@ -525,8 +535,7 @@ impl StateRegistry {
     }
 
     fn combine(&self, world: &World, mut per_type: Option<&mut Vec<TypeHash>>) -> StateHash {
-        let mut total = Hasher::new();
-        total.update(HASH_DOMAIN);
+        let mut total = DomainHasher::new(HASH_DOMAIN);
         let mut sink = HashSink::new();
         for entry in &self.entries {
             (entry.encode)(world, &mut sink);
@@ -535,11 +544,11 @@ impl StateRegistry {
             if let Some(per_type) = per_type.as_deref_mut() {
                 per_type.push(TypeHash {
                     name: entry.name,
-                    hash: Bytes32::new(hash),
+                    hash,
                 });
             }
         }
-        StateHash::new(*total.finalize().as_bytes())
+        StateHash::new(total.finish())
     }
 }
 
@@ -550,11 +559,11 @@ impl Default for StateRegistry {
 }
 
 /// Adds the hash of the type `name` to a state hash's `total`.
-fn fold(total: &mut Hasher, name: &str, hash: &[u8; 32]) {
+fn fold(total: &mut DomainHasher, name: &str, hash: &PartHash) {
     total
         .update(&name_len(name).to_le_bytes())
         .update(name.as_bytes())
-        .update(hash);
+        .update(hash.as_bytes());
 }
 
 fn name_len(name: &str) -> u32 {

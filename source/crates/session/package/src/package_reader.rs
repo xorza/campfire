@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_common::{ContentHash, Fingerprint};
+use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_values::PackagePath;
 
 use crate::error::ContentError;
@@ -21,7 +21,7 @@ impl PackageReader {
         PackageReader { index, source }
     }
 
-    pub const fn fingerprint(&self) -> Fingerprint {
+    pub const fn fingerprint(&self) -> PackageFingerprint {
         self.index.fingerprint()
     }
 

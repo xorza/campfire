@@ -198,7 +198,9 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     assert!(matches!(resume(3, &first), Some(ResumeError::NoCheckpoint)));
     assert!(matches!(
         resume(1, &garbage),
-        Some(ResumeError::Snapshot(SnapshotCheckError::Fingerprint))
+        Some(ResumeError::Snapshot(
+            SnapshotCheckError::PackageFingerprint
+        ))
     ));
     assert!(matches!(
         resume(1, &first),

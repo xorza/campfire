@@ -3,5 +3,5 @@
 # `rustc` lists whole as its search path, so a build waits on its lock. The pin goes back to stable
 # 1.100 when it is released (PLAN.md).
 [toolchain]
-channel = "beta-2026-10-15"
+channel = "beta-2026-10-14"
 components = ["rustfmt", "clippy"]
