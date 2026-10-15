@@ -12,11 +12,19 @@ use crate::players::player_resources::PlayerResources;
 pub trait PlayersWorld {
     /// The entity of player `slot`, once it spawned.
     fn player_entity(&self, slot: PlayerSlot) -> Option<Entity>;
+
+    /// The resources of player `slot`, on its entity: none for a player the session lacks, or in
+    /// a match that keeps no players' resources.
+    fn player_resources(&self, slot: PlayerSlot) -> Option<&PlayerResources>;
 }
 
 impl PlayersWorld for World {
     fn player_entity(&self, slot: PlayerSlot) -> Option<Entity> {
         self.entity_of(StableId::of_player(slot))
+    }
+
+    fn player_resources(&self, slot: PlayerSlot) -> Option<&PlayerResources> {
+        self.get(self.player_entity(slot)?)
     }
 }
 
@@ -37,7 +45,7 @@ pub trait PlayersWorldCrate {
 
 impl PlayersWorldCrate for World {
     fn owner_resources<'w>(&'w self, owner: Option<&Owner>) -> Option<&'w PlayerResources> {
-        PlayerResources::of_player(self, owner?.slot())
+        self.player_resources(owner?.slot())
     }
 
     fn player_resources_mut(&mut self, slot: PlayerSlot) -> Option<Mut<'_, PlayerResources>> {

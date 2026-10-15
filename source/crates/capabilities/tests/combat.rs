@@ -20,7 +20,7 @@ use campfire_declare::ServerForm;
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{PlayerResources, Players, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -369,7 +369,8 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .unwrap()
             .to_int()
             .expect("a whole amount");
-        let gold = PlayerResources::of_player(game, PlayerSlot::new(0))
+        let gold = game
+            .player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(gold);
         (mana, gold, Stats::health(game, dummy))

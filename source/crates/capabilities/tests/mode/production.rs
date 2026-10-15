@@ -48,9 +48,7 @@ fn on_mode_input(ctx, player, name, value) {
     };
     let paid = |game: &Match| {
         let mana = game.get::<Pools>(producer).unwrap().current(MANA).unwrap();
-        let held = PlayerResources::of_player(game, player)
-            .unwrap()
-            .amount(gold);
+        let held = game.player_resources(player).unwrap().amount(gold);
         (mana.round(), held)
     };
     let mut grunts = game.query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();

@@ -15,9 +15,7 @@ use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
-use campfire_players::{
-    OutOfPlay, PlayerResources, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount,
-};
+use campfire_players::{OutOfPlay, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
@@ -391,7 +389,7 @@ impl ShopRead {
 
 /// Player 0's gold.
 fn gold(game: &World) -> i64 {
-    let resources = PlayerResources::of_player(game, PlayerSlot::new(0));
+    let resources = game.player_resources(PlayerSlot::new(0));
     resources.unwrap().amount(ResourceId::nth(0))
 }
 

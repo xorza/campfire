@@ -9,7 +9,7 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declare::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{PlayerResources, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};
@@ -150,7 +150,7 @@ impl Shop {
 
     /// Player 0's gold.
     fn gold(self, game: &World) -> i64 {
-        PlayerResources::of_player(game, PlayerSlot::new(0))
+        game.player_resources(PlayerSlot::new(0))
             .unwrap()
             .amount(self.gold)
     }
@@ -307,9 +307,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         shop.spawns(&mut game),
         [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
     );
-    let held = PlayerResources::of_player(&game, player)
-        .unwrap()
-        .amount(gold);
+    let held = game.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {
         let entity = game.unit_entity(id);
@@ -345,9 +343,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         shop.spawns(&mut client),
         [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
     );
-    let held = PlayerResources::of_player(&client, player)
-        .unwrap()
-        .amount(gold);
+    let held = client.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 5);
 }
 

@@ -1,7 +1,6 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
 use campfire_script::View;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
@@ -9,7 +8,6 @@ use campfire_units::Player;
 use campfire_values::ResourceId;
 use serde::{Deserialize, Serialize};
 
-use crate::players::players_world::PlayersWorld;
 use crate::players::resource_amount::ResourceAmount;
 
 /// A player's resources, such as gold, on its entity: an amount for each resource the mode
@@ -19,12 +17,6 @@ use crate::players::resource_amount::ResourceAmount;
 pub struct PlayerResources(Vec<i64>);
 
 impl PlayerResources {
-    /// The resources of player `slot` in `world`, on its entity: none for a player the session
-    /// lacks, or in a match that keeps no players' resources.
-    pub fn of_player(world: &World, slot: PlayerSlot) -> Option<&PlayerResources> {
-        world.get(world.player_entity(slot)?)
-    }
-
     /// None of each of `resources` resources.
     pub fn new(resources: usize) -> PlayerResources {
         PlayerResources(vec![0; resources])
