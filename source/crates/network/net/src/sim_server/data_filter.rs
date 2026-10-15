@@ -2,49 +2,41 @@ use std::fmt::Debug;
 use std::marker::PhantomData;
 
 use bevy_app::App;
-use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::component::{Component, Immutable, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{HookContext, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
 use bevy_ecs::system::{Commands, Query, Res};
-use bevy_ecs::world::DeferredWorld;
+use bevy_ecs::world::{DeferredWorld, World};
 use bevy_replicon::prelude::{AppVisibilityExt, FilterScope, SingleComponent, VisibilityFilter};
-use campfire_actions::{SlotTimes, UseGroup};
+use bevy_replicon::shared::replication::registry::ReplicationRegistry;
+use bevy_replicon::shared::replication::registry::receive_fns::MutWrite;
+use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
-use campfire_combat::{OnDeath, Respawn};
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
-use campfire_items::Inventory;
-use campfire_mode::ModeState;
-use campfire_navigation::{OnPath, PathWalker, Progress, Route};
-use campfire_players::PlayerResources;
-use campfire_production::{Builder, Gatherer, PlayerSupply, Site, TrainQueue};
-use campfire_progression::{Experience, Points};
 use campfire_sim::SimResource;
-use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
-use campfire_stats::{Life, ModifierClocks, Modifiers, PlayerModifiers, Pools};
-use campfire_units::{Owner, Player, SpawnPoint, SyncAll, SyncOwner, SyncTeam, UnitState};
+use campfire_state_types::{
+    DataKind, Declared, Recipients, Replication, Sending, SendingWays, StateTypes,
+};
+use campfire_units::{Owner, Player};
 use campfire_values::Team;
 
 use crate::sim_server::match_visibility::MatchVisibility;
-use crate::sim_server::scope_union::ScopeUnion;
 use crate::sim_server::viewer::Viewer;
 
-/// A kind of state whose audience a mode may set, or that the owner alone receives, and the
-/// types of the kind, which its filter hides from every client outside the kind's audience in
-/// the match. A test checks each scope holds exactly the types the capabilities' lists give the
-/// kind.
+/// A kind of state whose audience a mode may set, or that the owner alone receives, whose filter
+/// hides the kind's types from every client outside its audience in the match.
 pub(crate) trait FilteredKind: Send + Sync + Debug + 'static {
     const KIND: DataKind;
-    type Scope: FilterScope;
 }
 
-/// Declares a filtered kind of each name, of its `DataKind` and its scope; the registration of
-/// every filter; the dispatch of a state type to its kind's filter, whose match is exhaustive, so
-/// a new `DataKind` is filtered or named as unfiltered; and the test's list of the kinds.
+/// Declares a filtered kind of each name, of its `DataKind`; the registration of every filter;
+/// the dispatch of a state type to its kind's filter, whose match is exhaustive, so a new
+/// `DataKind` is filtered or named as unfiltered; and the test's list of the kinds.
 macro_rules! filtered_kinds {
-    ($($(#[$doc:meta])* $name:ident: $kind:ident = $scope:ty;)+) => {
+    ($($(#[$doc:meta])* $name:ident: $kind:ident;)+) => {
         $(
             $(#[$doc])*
             #[derive(Debug)]
@@ -52,7 +44,6 @@ macro_rules! filtered_kinds {
 
             impl FilteredKind for $name {
                 const KIND: DataKind = DataKind::$kind;
-                type Scope = $scope;
             }
         )+
 
@@ -77,49 +68,132 @@ macro_rules! filtered_kinds {
             }
         }
 
-        /// Each filtered kind's name, and the listed types of its kind its scope lacks with the
-        /// count of its scope's types no list gives it, as `tests::scope_of` finds them.
+        /// The filtered kinds, in the order of their declaration.
         #[cfg(test)]
-        fn scopes(kinds: &tests::Kinds) -> Vec<(&'static str, (Vec<&'static str>, usize))> {
-            vec![$((stringify!($name), tests::scope_of::<$name>(kinds))),+]
-        }
+        const FILTERED: &[DataKind] = &[$(DataKind::$kind),+];
     };
 }
 
 filtered_kinds! {
     /// A unit's life pool.
-    LifeKind: Life = SingleComponent<Life>;
+    LifeKind: Life;
     /// A unit's pools other than its life.
-    PoolsKind: Pools = SingleComponent<Pools>;
+    PoolsKind: Pools;
     /// A unit's modifiers.
-    ModifiersKind: Modifiers = SingleComponent<Modifiers>;
+    ModifiersKind: Modifiers;
     /// A unit's slots' ready ticks, charges and toggles.
-    CooldownsKind: Cooldowns = SingleComponent<SlotTimes>;
+    CooldownsKind: Cooldowns;
     /// A unit's experience and points.
-    ProgressionKind: Progression = (Experience, Points);
+    ProgressionKind: Progression;
     /// A unit's inventory.
-    InventoryKind: Inventory = (Inventory, UseGroup);
+    InventoryKind: Inventory;
     /// The mode's script state fields of `sync = "all"`.
-    ModeStateKind: ModeState = SingleComponent<ModeState<SyncAll>>;
+    ModeStateKind: ModeState;
     /// A player's resources.
-    ResourcesKind: Resources = SingleComponent<PlayerResources>;
+    ResourcesKind: Resources;
     /// A player's supply.
-    SupplyKind: Supply = SingleComponent<PlayerSupply>;
+    SupplyKind: Supply;
     /// A producer's train queue.
-    QueuesKind: Queues = SingleComponent<TrainQueue>;
+    QueuesKind: Queues;
     /// The modifiers a player holds for its units.
-    PlayerModifiersKind: PlayerModifiers = SingleComponent<PlayerModifiers>;
+    PlayerModifiersKind: PlayerModifiers;
     /// What only the owner's prediction reads.
-    PredictionKind: Prediction = ScopeUnion<
-        (SpawnPoint, Route, Progress, ModifierClocks, Respawn),
-        (OnDeath, Builder, Gatherer, Site, PathWalker, OnPath),
-    >;
+    PredictionKind: Prediction;
     /// A unit's script state fields of `sync = "owner"`.
-    UnitStateOwnerKind: UnitStateOwner = SingleComponent<UnitState<SyncOwner>>;
+    UnitStateOwnerKind: UnitStateOwner;
     /// A unit's script state fields of `sync = "team"`.
-    UnitStateTeamKind: UnitStateTeam = SingleComponent<UnitState<SyncTeam>>;
+    UnitStateTeamKind: UnitStateTeam;
     /// A unit's script state fields of `sync = "all"`.
-    UnitStateAllKind: UnitStateAll = SingleComponent<UnitState<SyncAll>>;
+    UnitStateAllKind: UnitStateAll;
+}
+
+/// The types of `K`'s kind in the state lists of every capability of the release, as one scope,
+/// which the filter of `K` hides together. The lists give it, so no type of the kind goes to a
+/// client outside its audience.
+#[derive(Debug)]
+pub(crate) struct KindScope<K>(PhantomData<K>);
+
+impl<K: FilteredKind> FilterScope for KindScope<K> {
+    fn visibility_scope(world: &mut World, registry: &mut ReplicationRegistry) -> VisibilityScope {
+        let mut scope = ScopeTypes {
+            kind: K::KIND,
+            world,
+            registry,
+            scope: None,
+        };
+        Release::state_types(Release::capabilities(), &mut scope);
+        scope
+            .scope
+            .expect("the release's lists give each filtered kind a type")
+    }
+}
+
+/// Reads the capabilities' lists for `KindScope`: each sent type of `kind` joins `scope`.
+struct ScopeTypes<'a> {
+    kind: DataKind,
+    world: &'a mut World,
+    registry: &'a mut ReplicationRegistry,
+    /// The components of the types read so far; none before the first.
+    scope: Option<VisibilityScope>,
+}
+
+impl ScopeTypes<'_> {
+    /// Adds `C` to the scope when it is of its kind.
+    fn add<C: Replication + Component<Mutability: MutWrite<C>>>(&mut self) {
+        if C::KIND != self.kind {
+            return;
+        }
+        let one = SingleComponent::<C>::visibility_scope(self.world, self.registry);
+        match (&mut self.scope, one) {
+            (None, one) => self.scope = Some(one),
+            (Some(VisibilityScope::Components(held)), VisibilityScope::Components(mask)) => {
+                *held |= &mask;
+            }
+            _ => unreachable!("a component's scope holds components"),
+        }
+    }
+}
+
+impl StateTypes for ScopeTypes<'_> {
+    fn component<C: Replication>(&mut self) {
+        <C::Sending as Sending<C>>::visit(self);
+    }
+
+    fn derived<C: Component>(&mut self) {}
+
+    fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
+        self.add::<C>();
+    }
+
+    fn resource<R: SimResource + Default>(&mut self) {}
+
+    fn sim_component<C: Replication>(&mut self) {
+        self.component::<C>();
+    }
+}
+
+impl SendingWays for ScopeTypes<'_> {
+    fn once<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.add::<C>();
+    }
+
+    fn on_insert<C: Replication + Component<Mutability = Immutable>>(&mut self, _: Declared) {
+        self.add::<C>();
+    }
+
+    fn on_change<C: Replication + Component<Mutability = Mutable>>(&mut self, _: Declared) {
+        self.add::<C>();
+    }
+
+    fn predicted<C: Replication + Component<Mutability = Mutable> + Clone + PartialEq + Debug>(
+        &mut self,
+        _: Declared,
+    ) {
+        self.add::<C>();
+    }
+
+    // No client receives it, so no filter hides it.
+    fn server<C: Replication>(&mut self, _: Declared) {}
 }
 
 /// Each entity's owner, a unit's or a player's entity's slot, and its team, of the entities that
@@ -280,7 +354,7 @@ impl<K: FilteredKind> DataFilter<K> {
 
 impl<K: FilteredKind> VisibilityFilter for DataFilter<K> {
     type ClientComponent = Viewer;
-    type Scope = K::Scope;
+    type Scope = KindScope<K>;
 
     fn is_visible(&self, _client: Entity, viewer: Option<&Viewer>) -> bool {
         viewer.is_some_and(|viewer| {
@@ -329,13 +403,12 @@ impl StateTypes for FilterRequirements<'_> {
 
 #[cfg(test)]
 mod tests {
-    use std::any::TypeId;
-    use std::collections::BTreeSet;
-
-    use bevy_ecs::world::World;
+    use bevy_ecs::world::Mut;
     use campfire_codec::Toml;
+    use campfire_progression::{Experience, Points};
     use campfire_sim::{OnAny, SimComponent};
     use campfire_state_types::SentOnChange;
+    use campfire_units::{SyncAll, UnitState};
     use campfire_values::TeamSet;
     use campfire_visibility::{ModeVisibility, Visibility};
     use serde::{Deserialize, Serialize};
@@ -361,122 +434,39 @@ mod tests {
         type Sending = SentOnChange;
     }
 
-    /// A scope's types, by their `TypeId`s.
-    pub(super) trait TypeList {
-        fn type_ids() -> Vec<TypeId>;
-    }
-
-    impl<C: Component> TypeList for SingleComponent<C> {
-        fn type_ids() -> Vec<TypeId> {
-            vec![TypeId::of::<C>()]
-        }
-    }
-
-    impl<A: TypeList, B: TypeList> TypeList for ScopeUnion<A, B> {
-        fn type_ids() -> Vec<TypeId> {
-            let mut ids = A::type_ids();
-            ids.extend(B::type_ids());
-            ids
-        }
-    }
-
-    /// `TypeList` for the tuples replicon takes as scopes, 2 to 10 types.
-    macro_rules! type_list {
-        ($($C:ident),+) => {
-            impl<$($C: Component),+> TypeList for ($($C,)+) {
-                fn type_ids() -> Vec<TypeId> {
-                    vec![$(TypeId::of::<$C>()),+]
-                }
-            }
-        };
-    }
-    type_list!(C1, C2);
-    type_list!(C1, C2, C3);
-    type_list!(C1, C2, C3, C4);
-    type_list!(C1, C2, C3, C4, C5);
-    type_list!(C1, C2, C3, C4, C5, C6);
-    type_list!(C1, C2, C3, C4, C5, C6, C7);
-    type_list!(C1, C2, C3, C4, C5, C6, C7, C8);
-    type_list!(C1, C2, C3, C4, C5, C6, C7, C8, C9);
-    type_list!(C1, C2, C3, C4, C5, C6, C7, C8, C9, C10);
-
-    /// Every type of the capabilities' lists, with its kind.
-    #[derive(Debug, Default)]
-    pub(super) struct Kinds(Vec<(DataKind, TypeId, &'static str)>);
-
-    impl Kinds {
-        fn of_every_capability() -> Kinds {
-            let mut kinds = Kinds::default();
-            Release::state_types(Release::capabilities(), &mut kinds);
-            kinds
-        }
-
-        fn push<C: Replication>(&mut self) {
-            self.0.push((C::KIND, TypeId::of::<C>(), C::NAME));
-        }
-
-        /// The names of the listed types of `kind` whose ids `has` says, sorted.
-        fn names(&self, kind: DataKind, has: impl Fn(TypeId) -> bool) -> Vec<&'static str> {
-            let mut names: Vec<_> = self
-                .0
-                .iter()
-                .filter(|&&(of, id, _)| of == kind && has(id))
-                .map(|&(_, _, name)| name)
-                .collect();
-            names.sort_unstable();
-            names
-        }
-    }
-
-    impl StateTypes for Kinds {
-        fn component<C: Replication>(&mut self) {
-            self.push::<C>();
-        }
-
-        fn derived<C: Component>(&mut self) {}
-
-        fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self) {
-            self.push::<C>();
-        }
-
-        fn resource<R: SimResource + Default>(&mut self) {}
-
-        fn sim_component<C: Replication>(&mut self) {
-            self.component::<C>();
-        }
-    }
-
-    /// The listed types of `K`'s kind its scope lacks, and the types of its scope no list gives
-    /// that kind, by the names of the first and the count of the second: both empty.
-    pub(super) fn scope_of<K: FilteredKind>(kinds: &Kinds) -> (Vec<&'static str>, usize)
-    where
-        K::Scope: TypeList,
-    {
-        let scope: BTreeSet<TypeId> = K::Scope::type_ids().into_iter().collect();
-        let lacking = kinds.names(K::KIND, |id| !scope.contains(&id));
-        let listed = kinds.names(K::KIND, |id| scope.contains(&id));
-        (lacking, scope.len() - listed.len())
+    /// The components of `S` as replicon registers them in `app`, as the text of their mask,
+    /// which replicon gives no other way to compare.
+    fn mask<S: FilterScope>(app: &mut App) -> String {
+        let world = app.world_mut();
+        world.init_resource::<ReplicationRegistry>();
+        world.resource_scope(|world, mut registry: Mut<'_, ReplicationRegistry>| {
+            let VisibilityScope::Components(mask) = S::visibility_scope(world, &mut registry)
+            else {
+                unreachable!("a components scope");
+            };
+            format!("{mask:?}")
+        })
     }
 
     #[test]
-    fn each_filtered_kinds_scope_holds_exactly_the_types_the_lists_give_it() {
-        // A type a list gives a kind its scope lacks would go to every client, and one its scope
-        // holds of another kind would go to the kind's clients alone: each fails here by its
-        // name.
-        let kinds = Kinds::of_every_capability();
-        let flawed: Vec<_> = scopes(&kinds)
-            .into_iter()
-            .filter(|(_, scope)| *scope != (vec![], 0))
-            .collect();
-        assert_eq!(flawed, []);
-        // Every kind is filtered but the three the dispatch names as unfiltered.
-        assert_eq!(scopes(&kinds).len(), DataKind::ALL.len() - 3);
-        // The check itself: `Stray`, of the kind, which the scope lacks, fails by its name, and
-        // `Points`, of the scope, which this list does not give, counts once.
-        let mut stray = Kinds::default();
-        stray.push::<Experience>();
-        stray.push::<Stray>();
-        assert_eq!(scope_of::<ProgressionKind>(&stray), (vec!["test.stray"], 1));
+    fn each_filtered_kinds_scope_holds_the_types_the_lists_give_it() {
+        // Progression's kind holds its experience and its points; that of a unit's script state
+        // fields of `sync = "all"`, their one component alone.
+        let mut app = App::new();
+        let progression = mask::<KindScope<ProgressionKind>>(&mut app);
+        assert_eq!(progression, mask::<(Experience, Points)>(&mut app));
+        let all = mask::<KindScope<UnitStateAllKind>>(&mut app);
+        assert_ne!(all, progression);
+        assert_eq!(all, mask::<SingleComponent<UnitState<SyncAll>>>(&mut app));
+        // Every kind is filtered once but the three the dispatch names as unfiltered.
+        for kind in DataKind::ALL {
+            let filters = FILTERED
+                .iter()
+                .filter(|&&filtered| filtered == kind)
+                .count();
+            let unfiltered = matches!(kind, DataKind::Unit | DataKind::Match | DataKind::Server);
+            assert_eq!(filters, usize::from(!unfiltered), "{kind:?}");
+        }
     }
 
     #[test]
