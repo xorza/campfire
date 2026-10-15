@@ -27,7 +27,7 @@ use campfire_stats::{Level, Life, Pools};
 use campfire_units::Dead;
 use campfire_values::{Rank, Team};
 
-use crate::hud::gauge::{Cooling, Gauge, GaugeKind};
+use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};
 use crate::hud::ring::Ring;
 use crate::own_player::OwnPlayer;
 use crate::view::ViewSystems;
@@ -98,6 +98,8 @@ impl GaugeScratch {
             ranks,
             slots,
         } = self;
+        let of = u16::try_from(slots.len()).expect("a unit's slots fit u16");
+        let at = |slot| SlotPlace { slot, of };
         let slots = slots.iter().copied();
         ranks.clear();
         ranks.extend((0..).zip(slots.clone()).filter_map(|(slot, held)| {
@@ -108,7 +110,7 @@ impl GaugeScratch {
         }));
         if !ranks.is_empty() {
             kinds.extend(ranks.iter().map(|ranked| GaugeKind::Learnable {
-                slot: ranked.slot,
+                at: at(ranked.slot),
                 row,
             }));
             row += 1;
@@ -117,7 +119,7 @@ impl GaugeScratch {
             (0..)
                 .zip(slots.clone())
                 .map(|(slot, _)| GaugeKind::Cooldown {
-                    slot,
+                    at: at(slot),
                     row,
                     cooling: None,
                 }),
@@ -125,7 +127,7 @@ impl GaugeScratch {
         row += 1;
         for &Ranked { slot, ranks } in &*ranks {
             kinds.extend((1..=ranks).map(|rank| GaugeKind::Rank {
-                slot,
+                at: at(slot),
                 rank,
                 ranks,
                 row,
@@ -139,7 +141,7 @@ impl GaugeScratch {
                 continue;
             };
             kinds.extend((1..=max).map(|charge| GaugeKind::Charge {
-                slot,
+                at: at(slot),
                 charge,
                 max,
                 row,
@@ -526,7 +528,11 @@ impl Hud {
                         life.map(|life| Gauge::share(life.current(), life.max()))
                     }
                     GaugeKind::Pool { pool, .. } => fill(*pool),
-                    GaugeKind::Cooldown { slot, cooling, .. } => {
+                    GaugeKind::Cooldown {
+                        at: SlotPlace { slot, .. },
+                        cooling,
+                        ..
+                    } => {
                         let learned = slots
                             .and_then(|slots| slots.slot(*slot))
                             .filter(|held| held.rank.is_some());
@@ -541,16 +547,22 @@ impl Hud {
                             cooling.map_or(1.0, |cooling| cooling.filled(now))
                         })
                     }
-                    GaugeKind::Rank { slot, rank, .. } => {
-                        slots.and_then(|slots| slots.slot(*slot)).map(|held| {
-                            if Rank::count(held.rank) >= *rank {
-                                1.0
-                            } else {
-                                0.0
-                            }
-                        })
-                    }
-                    GaugeKind::Charge { slot, charge, .. } => {
+                    GaugeKind::Rank {
+                        at: SlotPlace { slot, .. },
+                        rank,
+                        ..
+                    } => slots.and_then(|slots| slots.slot(*slot)).map(|held| {
+                        if Rank::count(held.rank) >= *rank {
+                            1.0
+                        } else {
+                            0.0
+                        }
+                    }),
+                    GaugeKind::Charge {
+                        at: SlotPlace { slot, .. },
+                        charge,
+                        ..
+                    } => {
                         let held = slots.and_then(|slots| slots.slot(*slot));
                         let rule = learning
                             .as_ref()
@@ -566,7 +578,10 @@ impl Hud {
                             GaugeKind::charge_fill(*charge, charges, rule, now)
                         })
                     }
-                    GaugeKind::Learnable { slot, .. } => {
+                    GaugeKind::Learnable {
+                        at: SlotPlace { slot, .. },
+                        ..
+                    } => {
                         let held = slots.and_then(|slots| slots.slot(*slot));
                         let learnable = learning
                             .as_ref()
@@ -818,19 +833,21 @@ mod tests {
             ..GaugeScratch::default()
         };
         scratch.ability_rows(1);
+        // Each of the three slots' gauges knows the row of three it centres on.
+        let at = |slot| SlotPlace { slot, of: 3 };
         let cooldown = |slot| GaugeKind::Cooldown {
-            slot,
+            at: at(slot),
             row: 2,
             cooling: None,
         };
         let rank = |rank| GaugeKind::Rank {
-            slot: 0,
+            at: at(0),
             rank,
             ranks: 3,
             row: 3,
         };
         let charge = |charge| GaugeKind::Charge {
-            slot: 1,
+            at: at(1),
             charge,
             max: 2,
             row: 4,
@@ -838,7 +855,7 @@ mod tests {
         assert_eq!(
             scratch.kinds,
             [
-                GaugeKind::Learnable { slot: 0, row: 1 },
+                GaugeKind::Learnable { at: at(0), row: 1 },
                 cooldown(0),
                 cooldown(1),
                 cooldown(2),
@@ -850,38 +867,27 @@ mod tests {
             ]
         );
         // With no ability that ranks up, the cooldowns take the first row and the charges the
-        // next.
+        // next; the two slots centre on a row of two.
         let mut scratch = GaugeScratch {
             slots: slots[1..].to_vec(),
             ..GaugeScratch::default()
         };
         scratch.ability_rows(1);
+        let at = |slot| SlotPlace { slot, of: 2 };
+        let cooldown = |slot| GaugeKind::Cooldown {
+            at: at(slot),
+            row: 1,
+            cooling: None,
+        };
+        let charge = |charge| GaugeKind::Charge {
+            at: at(0),
+            charge,
+            max: 2,
+            row: 2,
+        };
         assert_eq!(
             scratch.kinds,
-            [
-                GaugeKind::Cooldown {
-                    slot: 0,
-                    row: 1,
-                    cooling: None
-                },
-                GaugeKind::Cooldown {
-                    slot: 1,
-                    row: 1,
-                    cooling: None
-                },
-                GaugeKind::Charge {
-                    slot: 0,
-                    charge: 1,
-                    max: 2,
-                    row: 2
-                },
-                GaugeKind::Charge {
-                    slot: 0,
-                    charge: 2,
-                    max: 2,
-                    row: 2
-                },
-            ]
+            [cooldown(0), cooldown(1), charge(1), charge(2)]
         );
     }
 }
