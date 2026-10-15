@@ -8,7 +8,7 @@ use bevy_ecs::system::{Commands, Query, Res};
 use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_log::LogEvent;
 use campfire_protocol::{ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
@@ -20,12 +20,12 @@ use tracing::debug;
 use crate::close_code::CloseCode;
 use crate::dismissed::Dismissed;
 use crate::events::join_refused::JoinRefused;
+use crate::events::join_refused::error::JoinError;
 use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
-use crate::sim_server::error::JoinError;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::server_setup::ServerSetup;
 
@@ -181,7 +181,7 @@ impl Offered {
         let now = time.elapsed();
         for (link, offered) in &links {
             if now.saturating_sub(offered.first) >= ANSWER_WINDOW {
-                debug!(?link, "the link left the offer unanswered");
+                debug!(link = link.to_bits(), "the link left the offer unanswered");
                 commands.trigger(CloseLink {
                     entity: link,
                     code: CloseCode::Unanswered.app(),
@@ -228,7 +228,7 @@ impl Offering {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
                 Some(mut offered) => {
-                    debug!(?link, "sent the offer again");
+                    debug!(link = link.to_bits(), "sent the offer again");
                     offered.sent = now;
                     offered.challenge
                 }
@@ -244,7 +244,7 @@ impl Offering {
                         sent: now,
                         first: real,
                     });
-                    debug!(?link, "offered the terms");
+                    debug!(link = link.to_bits(), "offered the terms");
                     challenge
                 }
             };
@@ -279,8 +279,8 @@ impl Offering {
     /// Refuses the join of `link` for `error`, logged; see `Dismissing::refuse`.
     pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
         JoinRefused {
-            link: format!("{link:?}"),
-            error: ErrorReport::of(&error).to_string(),
+            link: link.to_bits(),
+            error,
         }
         .log();
         Dismissing::refuse(commands, link, error);

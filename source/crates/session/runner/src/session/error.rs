@@ -4,6 +4,7 @@ use campfire_protocol::{
 };
 use campfire_script::CallError;
 use campfire_sim::SnapshotError;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::session_rules::error::TermsError;
@@ -74,7 +75,7 @@ pub enum CheckpointBeginError {
 }
 
 /// Why a session refused a server input: the log's structure, or the mode's rules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ServerInputRefused {
     #[error(transparent)]
     Log(ServerInputError),

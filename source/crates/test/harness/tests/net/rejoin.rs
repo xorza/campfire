@@ -10,8 +10,8 @@ use campfire_math::Num;
 use campfire_mode::PlayersData;
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
-    SessionTimes, TickHashes,
+    CloseCode, InputsDiscarded, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss,
+    OrderScript, SessionTimes, TickHashes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
@@ -289,7 +289,13 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
         local.step();
     }
     // The server refuses the new player's join, and tells their client, which stops.
-    assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    let refused: Vec<JoinError> = local
+        .log()
+        .take::<JoinRefused>()
+        .iter()
+        .map(|refused| refused.error)
+        .collect();
+    assert_eq!(refused, [JoinError::NoSlot]);
     assert!(!playing(&local, late));
     let state = local.client(late).world().resource::<JoinState>();
     assert_eq!(state.loss(), Some(Loss::JoinRefused));

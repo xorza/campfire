@@ -1,10 +1,11 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::delegation::error::ScopeError;
 
 /// Why a server refuses a joining player's connect answer. The answer comes from the player, so
 /// each is an expected failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ConnectError {
     #[error(transparent)]
     Scope(ScopeError),

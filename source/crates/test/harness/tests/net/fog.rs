@@ -8,7 +8,7 @@ use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
 use campfire_navigation::{Progress, Route};
 use campfire_net::{
-    CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
 };
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
@@ -221,7 +221,13 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
             .is_none()
     );
     assert_eq!(held(&mut local, stranger), []);
-    assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    let refused: Vec<JoinError> = local
+        .log()
+        .take::<JoinRefused>()
+        .iter()
+        .map(|refused| refused.error)
+        .collect();
+    assert_eq!(refused, [JoinError::NoSlot]);
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {

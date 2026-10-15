@@ -1,8 +1,9 @@
 use campfire_common::AfterLeave;
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Why the mode's `[players]` refuses a change of a slot's controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum SlotRuleError {
     /// A new player took an open slot, and the mode has no late join.
     #[error("a late join, which the mode does not allow")]

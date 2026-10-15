@@ -8,7 +8,7 @@ use bevy_app::App;
 use bevy_ecs::query::{Allow, With};
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    CloseCode, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
+    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_stats::Life;
@@ -94,7 +94,13 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
     let second = local.add_spectator();
     step_until(&mut local, |local| state(local, second).loss().is_some());
     assert_eq!(state(&local, second).loss(), Some(Loss::JoinRefused));
-    assert_eq!(local.log().take::<JoinRefused>().len(), 1);
+    let refused: Vec<JoinError> = local
+        .log()
+        .take::<JoinRefused>()
+        .iter()
+        .map(|refused| refused.error)
+        .collect();
+    assert_eq!(refused, [JoinError::NoSpectatorPlace]);
     assert_eq!(
         local.log().take::<LinkLost>(),
         [LinkLost {

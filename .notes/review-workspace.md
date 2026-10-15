@@ -123,12 +123,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 - [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue.
 - [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
 
-### Batch 13. Names resolved at the load
-
-Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mode/src/{game_map,marker,marker_tag,marker_spec,mode_map}.rs`, `capabilities/core/{script,actions,values}/src/**`, `session/protocol/src/**`, `network/net/src/events/*`, `network/quic/src/{port_mapper/mod,error}.rs`. Goldens: none move.
-
-- [ ] `net/src/events/join_refused`: typed fields, as D12 says.
-
 ### Batch 14. Sibling APIs (RC10)
 
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.

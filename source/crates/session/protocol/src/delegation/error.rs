@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
-use nostr::error::Error as NostrError;
+use nostr::error::{Error as NostrError, ErrorKind};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::delegation::Delegation;
@@ -8,12 +7,12 @@ use crate::delegation::delegation_tag::DelegationTag;
 
 /// Why a delegation does not let a session key sign for a player. A delegation comes from the
 /// player, so each is an expected failure.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum DelegationError {
     /// The JSON holds more than `Delegation::MAX_JSON` bytes.
     #[error("delegation holds more than {} bytes", Delegation::MAX_JSON)]
     TooLong,
-    /// The JSON is not a Nostr event, as nostr's error says.
+    /// The JSON is not a Nostr event, of the kind nostr's error says.
     #[error("delegation is not a Nostr event")]
     NotEvent(#[source] EventError),
     /// The event id is not the hash of the event.
@@ -35,7 +34,7 @@ pub enum DelegationError {
 }
 
 /// Why a delegation does not grant its session key this session on this server.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum ScopeError {
     #[error("the delegation names another server")]
     OtherServer,
@@ -43,22 +42,33 @@ pub enum ScopeError {
     OtherSession,
 }
 
-/// Why nostr reads no event from a JSON text: its own error, shared so a delegation's error
-/// clones, and equal to another of the same kind, as nostr's error does not compare.
-#[derive(Debug, Clone, Error)]
-#[error(transparent)]
-pub struct EventError(Arc<NostrError>);
-
-impl EventError {
-    pub(crate) fn new(error: NostrError) -> EventError {
-        EventError(Arc::new(error))
-    }
+/// Why nostr reads no event from a JSON text: the kind of its error, as nostr sorts its errors,
+/// which a log keeps.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
+pub enum EventError {
+    #[error("the text is no well-formed event")]
+    Malformed,
+    #[error("the event breaks a rule of the protocol")]
+    Invalid,
+    #[error("the event lacks required data")]
+    Missing,
+    #[error("the event holds a value nostr does not support")]
+    Unsupported,
+    #[error("a cryptographic operation failed")]
+    Crypto,
+    #[error("nostr refuses the event for another cause")]
+    Other,
 }
 
-impl PartialEq for EventError {
-    fn eq(&self, other: &EventError) -> bool {
-        self.0.kind() == other.0.kind()
+impl From<NostrError> for EventError {
+    fn from(error: NostrError) -> EventError {
+        match error.kind() {
+            ErrorKind::Malformed => EventError::Malformed,
+            ErrorKind::Invalid => EventError::Invalid,
+            ErrorKind::Missing => EventError::Missing,
+            ErrorKind::Unsupported => EventError::Unsupported,
+            ErrorKind::Crypto => EventError::Crypto,
+            _ => EventError::Other,
+        }
     }
 }
-
-impl Eq for EventError {}

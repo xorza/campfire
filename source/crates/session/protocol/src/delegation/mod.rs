@@ -94,7 +94,7 @@ impl Delegation {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
-            .map_err(|error| DelegationError::NotEvent(EventError::new(error)))?;
+            .map_err(|error| DelegationError::NotEvent(EventError::from(error)))?;
         if !event.verify_id() {
             return Err(DelegationError::WrongId);
         }

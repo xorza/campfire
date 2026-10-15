@@ -13,12 +13,12 @@ use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::close_code::CloseCode;
+use crate::events::join_refused::error::JoinError;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_clock::MatchClock;
 use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
-use crate::sim_server::error::JoinError;
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLink, Joined, Offered, Offering, ToAnswer,
@@ -203,7 +203,11 @@ impl Door {
                 chain,
                 loaded,
             });
-        info!(slot = slot.get(), ?link, "a player took their seat");
+        info!(
+            slot = slot.get(),
+            link = link.to_bits(),
+            "a player took their seat"
+        );
     }
 
     /// Logs `input`, signed by the server.

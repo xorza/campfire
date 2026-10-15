@@ -107,11 +107,10 @@ fn a_flawed_delegation_is_refused() {
     };
     // Text nostr reads as no event: an error of its kind `Malformed`, which the delegation's
     // keeps as its source.
-    let malformed = || {
-        let error = Event::from_json("[").unwrap_err();
-        assert_eq!(error.kind(), ErrorKind::Malformed);
-        DelegationError::NotEvent(EventError::new(error))
-    };
+    let error = Event::from_json("[").unwrap_err();
+    assert_eq!(error.kind(), ErrorKind::Malformed);
+    assert_eq!(EventError::from(error), EventError::Malformed);
+    let malformed = || DelegationError::NotEvent(EventError::Malformed);
     let not_event = Delegation::parse("not JSON").unwrap_err();
     assert!(StdError::source(&not_event).is_some());
     let cases = [

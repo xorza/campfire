@@ -12,10 +12,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. It waits for the user's next optimization session (D11), where each item's bench decides it. Goldens: none move.
 
-### H13. Names resolved at the load
-
-(`stats`, `mode`, `script`, `actions`, `values`, `protocol`, `net`, `quic`.) Applier params, marker tags, `PackageId`, the main key, slot plans and refusals become typed at their boundary. Goldens: none move.
-
 ### H14. Sibling APIs
 
 (`values`, `geometry`, `actions`, `deliveries`, `players`, `units`, `script`, `stats`, `combat`, `abilities`, `net`, `quic`, the apps, `harness`; review RC10.) One shape for ids, sets, placed bodies and callback tables; flags become enums; wide signatures become parameter structs. Goldens: none move.

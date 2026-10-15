@@ -17,7 +17,7 @@ use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::Connected;
 use tracing::info;
 
-use crate::sim_server::error::JoinError;
+use crate::events::join_refused::error::JoinError;
 use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
@@ -240,7 +240,7 @@ impl Lobby {
                 Ok(viewer) => {
                     commands.entity(link).insert((Joined, viewer));
                     watching += 1;
-                    info!(?link, "a spectator joined");
+                    info!(link = link.to_bits(), "a spectator joined");
                 }
                 Err(error) => Offering::refuse(&mut commands, link, error),
             }
@@ -249,7 +249,7 @@ impl Lobby {
             match lobby.seat(link, delegation) {
                 Ok(older) => {
                     info!(
-                        ?link,
+                        link = link.to_bits(),
                         joined = lobby.joined(),
                         of = lobby.players,
                         "a player joined"
@@ -316,7 +316,10 @@ impl Lobby {
         lobby.joined.retain(|&(link, _)| {
             let connected = live.contains(link);
             if !connected {
-                info!(?link, "a player left the lobby; their seat is free");
+                info!(
+                    link = link.to_bits(),
+                    "a player left the lobby; their seat is free"
+                );
                 if let Ok(mut gone) = commands.get_entity(link) {
                     gone.remove::<Joined>();
                 }

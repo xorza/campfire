@@ -5,9 +5,9 @@ use campfire_visibility::Visibility;
 use lightyear::prelude::MessageSender;
 use tracing::info;
 
+use crate::events::join_refused::error::JoinError;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::MatchChannel;
-use crate::sim_server::error::JoinError;
 use crate::sim_server::offering::Joined;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::Viewer;
@@ -56,5 +56,5 @@ fn tell_start(world: &mut World, link: Entity) {
             start_tick: start_tick.0,
             first,
         });
-    info!(?link, "a spectator watches");
+    info!(link = link.to_bits(), "a spectator watches");
 }
