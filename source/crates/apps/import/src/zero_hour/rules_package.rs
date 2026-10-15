@@ -1,3 +1,5 @@
+use campfire_math::Num;
+
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
 pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
@@ -12,28 +14,37 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
 ];
 
 /// The imported package's manifest: a mode of one player, on the team `player`, beside the
-/// `neutral` team every placed object stands on, with no capability, as a map that only stands
-/// needs, at the game's 30 logic frames a second, depending on the rules package beside it.
-pub(crate) const MODE_MANIFEST: &str = r#"# Zero Hour, imported from the player's install: its maps stand, and no rule runs yet.
+/// `neutral` team every placed object stands on, whose units drive (design 17): of `stats`,
+/// `orders` and `navigation`, no unit faster than `max_move_speed` meters a second, at the
+/// game's 30 logic frames a second, depending on the rules package beside it.
+pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
+    format!(
+        r#"# Zero Hour, imported from the player's install: its units drive on its maps.
 name = "zero-hour-game"
 version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = []
-tick_hz = { min = 30, max = 30, default = 30 }
-teams = [{ name = "player", slots = 1 }, { name = "neutral", slots = 0 }]
-max_move_speed = "1.0"
-script_limits = { per_call = 1000, player = 1000, think = 1000, mode = 1000 }
+capabilities = ["stats", "orders", "navigation"]
+tick_hz = {{ min = 30, max = 30, default = 30 }}
+teams = [{{ name = "player", slots = 1 }}, {{ name = "neutral", slots = 0 }}]
+max_move_speed = "{max_move_speed}"
+script_limits = {{ per_call = 1000, player = 1000, think = 1000, mode = 1000 }}
 
 [dependencies]
-zero-hour = { path = "../zero-hour" }
-"#;
+zero-hour = {{ path = "../zero-hour" }}
+"#
+    )
+}
 
-/// The imported package's mode data: its name and its teams' names, and the rules package's mode
-/// script.
+/// The imported package's mode data: its name and its teams' names, the rules package's mode
+/// script, and the stats its unit types drive by.
 pub(crate) const MODE_DATA: &str = r#"name = "mode-name"
 script = { package = "zero-hour", path = "scripts/mode.rhai" }
+
+[stats]
+move_speed = {}
+turn_rate = {}
 
 [teams.player]
 name = "team-player"

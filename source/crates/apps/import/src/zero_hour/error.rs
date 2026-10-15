@@ -90,6 +90,22 @@ pub enum ZeroHourError {
     MapNameClash { first: String, second: String },
 }
 
+/// Why an object gives no unit type.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum TypeError {
+    #[error(transparent)]
+    NameClash(#[from] NameClash),
+    /// It names a locomotor no file defines, which the game refuses.
+    #[error("it names the locomotor {0}, which no file defines")]
+    NoLocomotor(String),
+    /// A speed, a turn rate or a radius of it is not finite, or past what the engine holds.
+    #[error("a number of it is past what the engine holds")]
+    Number,
+    /// Its body is a circle or a box no unit type of the engine may have.
+    #[error("its body is none the engine holds")]
+    Body,
+}
+
 /// How an install's archive differs from a version's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
 pub enum VersionDifference {
@@ -238,6 +254,13 @@ pub enum MapError {
     Lighting,
     #[error(transparent)]
     NameClash(#[from] NameClash),
+    /// An object it places gives no unit type.
+    #[error("object {object}")]
+    UnitType {
+        object: String,
+        #[source]
+        error: TypeError,
+    },
 }
 
 /// Two objects of the original whose names give one name in the package, a look's or a unit
@@ -367,9 +390,13 @@ pub enum IniError {
     /// A weapon bone names no slot of `PRIMARY`, `SECONDARY` and `TERTIARY`, or no bone.
     #[error("line {line}: a weapon bone names no slot and bone")]
     WeaponSlot { line: usize },
-    /// A `KindOf` mixes a list of names with names of `+` or `-`, or `NONE` with either.
-    #[error("line {line}: a KindOf mixes its forms")]
-    MixedKinds { line: usize },
+    /// A list of flags, as a `KindOf`, mixes names with names of `+` or `-`, or `NONE` with
+    /// either.
+    #[error("line {line}: a list of flags mixes its forms")]
+    MixedFlags { line: usize },
+    /// A value of a fixed list the game reads, as a surface or a geometry, is none of the list.
+    #[error("line {line}: a value is none the game knows")]
+    NotListed { line: usize },
     /// An object's `Scale` is not positive, or not finite.
     #[error("line {line}: an object's scale is not positive")]
     Scale { line: usize },

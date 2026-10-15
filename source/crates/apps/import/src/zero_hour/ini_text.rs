@@ -4,6 +4,23 @@ use crate::zero_hour::error::IniError;
 #[derive(Debug)]
 pub(crate) struct IniText(String);
 
+/// A field's list of flags, as `INI::parseBitString32` and `KindOf` read it: `NONE`, which clears
+/// every flag and ends the list; names, which clear every flag and set those; or names of `+` and
+/// `-`, which set and clear those and keep the others.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum FlagList<'a> {
+    Clear,
+    Only(Vec<&'a str>),
+    Change(Vec<FlagChange<'a>>),
+}
+
+/// A flag a list of `+` and `-` sets, or clears.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FlagChange<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) set: bool,
+}
+
 /// A line of an INI file that holds a token: its number, from 1, and its tokens, as the game's
 /// reader splits them: the text before a `;`, cut at every `=` and every char up to a space.
 #[derive(Debug)]
@@ -51,19 +68,91 @@ impl IniLine<'_> {
         }
     }
 
-    /// The value of a field of a whole number.
+    /// The value of a field of a whole number: its longest prefix of one, as `sscanf`'s `%d`
+    /// reads it, the rest of the token ignored.
     pub(crate) fn int(&self) -> Result<i32, IniError> {
-        self.value()?.parse().map_err(|error| IniError::Number {
+        let value = self.value()?;
+        let digits = value.strip_prefix(['+', '-']).unwrap_or(value);
+        let end = value.len() - digits.len() + IniLine::digits(digits);
+        value[..end].parse().map_err(|error| IniError::Number {
             line: self.number,
             error,
         })
     }
 
-    /// The value of a field of a real number.
+    /// The value of a field of a real number: its longest prefix of one, as `sscanf`'s `%f` and
+    /// the game's `from_chars` read it, the rest of the token ignored, so a token of `40v.0` is
+    /// 40; or the whole token, for one of infinity or of no number.
     pub(crate) fn real(&self) -> Result<f32, IniError> {
-        self.value()?.parse().map_err(|error| IniError::Real {
+        let value = self.value()?;
+        let real = value
+            .parse()
+            .or_else(|_| value[..IniLine::real_prefix(value)].parse());
+        real.map_err(|error| IniError::Real {
             line: self.number,
             error,
+        })
+    }
+
+    /// The length of `text`'s longest prefix of a decimal real: a sign, digits with a point
+    /// among them or after them, and an exponent of digits.
+    fn real_prefix(text: &str) -> usize {
+        let unsigned = text.strip_prefix(['+', '-']).unwrap_or(text);
+        let mut at = text.len() - unsigned.len();
+        let whole = IniLine::digits(&text[at..]);
+        at += whole;
+        let mut fraction = 0;
+        if let Some(rest) = text[at..].strip_prefix('.') {
+            fraction = IniLine::digits(rest);
+            at += 1 + fraction;
+        }
+        if whole + fraction == 0 {
+            return 0;
+        }
+        if let Some(rest) = text[at..].strip_prefix(['e', 'E']) {
+            let exponent = rest.strip_prefix(['+', '-']).unwrap_or(rest);
+            let digits = IniLine::digits(exponent);
+            if digits > 0 {
+                at += 1 + rest.len() - exponent.len() + digits;
+            }
+        }
+        at
+    }
+
+    /// The count of ASCII digits `text` starts with.
+    fn digits(text: &str) -> usize {
+        text.bytes().take_while(u8::is_ascii_digit).count()
+    }
+
+    /// The list of flags its tokens from the second give; an error for a list that mixes names
+    /// with names of `+` or `-`, or `NONE` with either.
+    pub(crate) fn flags(&self) -> Result<FlagList<'_>, IniError> {
+        let mixed = IniError::MixedFlags { line: self.number };
+        let mut only = Vec::new();
+        let mut changes = Vec::new();
+        for &flag in &self.tokens[1..] {
+            if flag.eq_ignore_ascii_case("none") {
+                if !only.is_empty() || !changes.is_empty() {
+                    return Err(mixed);
+                }
+                return Ok(FlagList::Clear);
+            }
+            let change = match flag.split_at_checked(1) {
+                Some(("+", name)) => Some(FlagChange { name, set: true }),
+                Some(("-", name)) => Some(FlagChange { name, set: false }),
+                _ => None,
+            };
+            match change {
+                Some(_) if !only.is_empty() => return Err(mixed),
+                Some(change) => changes.push(change),
+                None if !changes.is_empty() => return Err(mixed),
+                None => only.push(flag),
+            }
+        }
+        Ok(if only.is_empty() {
+            FlagList::Change(changes)
+        } else {
+            FlagList::Only(only)
         })
     }
 
@@ -97,6 +186,22 @@ mod tests {
                 (4, vec!["End"]),
             ]
         );
+        // A number's longest prefix, the rest ignored, as the game's scanners read it: Zero
+        // Hour's own `GeometryHeight = 40v.0` is 40.
+        let number = |token: &str| IniText::of(format!("Field = {token}\n").as_bytes());
+        let real = |token: &str| number(token).lines().next().unwrap().real().ok();
+        let int = |token: &str| number(token).lines().next().unwrap().int().ok();
+        assert_eq!(real("40v.0"), Some(40.0));
+        assert_eq!(real("-2.5e1x"), Some(-25.0));
+        assert_eq!(real(".5."), Some(0.5));
+        assert_eq!(real("3.e"), Some(3.0));
+        assert_eq!(real("+1e+2"), Some(100.0));
+        assert_eq!(real("inf"), Some(f32::INFINITY));
+        assert_eq!(real("v40"), None);
+        assert_eq!(real("-."), None);
+        assert_eq!(int("12ab"), Some(12));
+        assert_eq!(int("-7.5"), Some(-7));
+        assert_eq!(int("x1"), None);
         // A byte past ASCII is one char of Latin-1.
         let latin = IniText::of(b"Name = \xe9t\xe9");
         assert_eq!(

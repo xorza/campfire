@@ -1,27 +1,45 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use campfire_codec::Toml;
+use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
-use toml::Table;
 
-use crate::zero_hour::error::NameClash;
+use crate::zero_hour::error::{NameClash, TypeError};
 use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::locomotor_ini::LocomotorIni;
 use crate::zero_hour::object_ini::IniObject;
 
 /// The name each object of the original takes in the package, for its look and for its unit
 /// type, with the object that took it, so a look and a unit type of one name are of one object:
-/// the second object to give a name is refused. It keeps the unit types the maps place.
+/// the second object to give a name is refused. It keeps the unit types the maps place, each
+/// with the fields its object gives.
 #[derive(Debug, Default)]
 pub(crate) struct ImportNames {
     taken: BTreeMap<ImportName, String>,
-    placed: BTreeSet<ImportName>,
+    placed: BTreeMap<ImportName, ImportedType>,
 }
 
-/// `data/units.toml` of types with no field yet: `[units.<name>]`, each empty.
+/// An object's unit type, by its name, and the fields its object gives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NamedType {
+    pub(crate) name: DeclaredName,
+    pub(crate) imported: ImportedType,
+}
+
+/// `data/units.toml`: `[units.<name>]` of each type, the fields its object gives.
 #[derive(Debug, Serialize)]
 struct UnitsToml<'a> {
-    units: BTreeMap<&'a str, Table>,
+    units: BTreeMap<&'a str, ImportedType>,
+}
+
+/// The package's `data/units.toml`, and the largest speed of its types, when one drives.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct UnitsFile {
+    pub(crate) text: String,
+    pub(crate) max_speed: Option<Num>,
 }
 
 impl ImportNames {
@@ -41,23 +59,38 @@ impl ImportNames {
         Ok(name)
     }
 
-    /// The unit type of `object`, which a map places, its name taken as `take` takes it.
-    pub(crate) fn unit_type(&mut self, object: &IniObject) -> Result<DeclaredName, NameClash> {
+    /// The unit type of `object`, which a map places, its name taken as `take` takes it, and its
+    /// locomotors those of `locomotors`.
+    pub(crate) fn unit_type(
+        &mut self,
+        object: &IniObject,
+        locomotors: &LocomotorIni,
+    ) -> Result<NamedType, TypeError> {
         let name = self.take(object)?;
         let declared = name.declared();
-        self.placed.insert(name);
-        Ok(declared)
+        let imported = match self.placed.entry(name) {
+            Entry::Occupied(placed) => *placed.get(),
+            Entry::Vacant(new) => *new.insert(ImportedType::of(object, locomotors)?),
+        };
+        Ok(NamedType {
+            name: declared,
+            imported,
+        })
     }
 
     /// The package's `data/units.toml`: each unit type the maps place, in the order of their
-    /// names.
-    pub(crate) fn units_toml(&self) -> String {
-        let units = self
+    /// names, of the fields its object gives.
+    pub(crate) fn units_file(&self) -> UnitsFile {
+        let units: BTreeMap<&str, ImportedType> = self
             .placed
             .iter()
-            .map(|name| (name.as_str(), Table::new()))
+            .map(|(name, &imported)| (name.as_str(), imported))
             .collect();
-        Toml::write(&UnitsToml { units })
+        let max_speed = units.values().filter_map(ImportedType::move_speed).max();
+        UnitsFile {
+            text: Toml::write(&UnitsToml { units }),
+            max_speed,
+        }
     }
 }
 
@@ -85,27 +118,28 @@ mod tests {
             "Object Rocks1\nEnd\nObject AmericaTank\nEnd\nObject ROCKS1\nEnd\nObject Oak\nEnd\n";
         ini.read(objects.as_bytes()).unwrap();
         let object = |name: &str| ini.object(name.as_bytes()).unwrap();
+        let locomotors = LocomotorIni::default();
         let mut names = ImportNames::default();
         // A look's name, then the same object placed: one name. Another object placed.
         assert_eq!(names.take(object("Rocks1")).unwrap().as_str(), "rocks1");
-        assert_eq!(
-            names.unit_type(object("Rocks1")).unwrap().as_str(),
-            "rocks1"
-        );
-        assert_eq!(
-            names.unit_type(object("AmericaTank")).unwrap().as_str(),
-            "americatank"
-        );
+        for (object_name, name) in [("Rocks1", "rocks1"), ("AmericaTank", "americatank")] {
+            let placed = names.unit_type(object(object_name), &locomotors).unwrap();
+            assert_eq!(placed.name.as_str(), name);
+        }
         // Another object of the same name is refused, as a look or a unit type alike.
         let clash = NameClash {
             first: "Rocks1".to_owned(),
             second: "ROCKS1".to_owned(),
         };
         assert_eq!(names.take(object("ROCKS1")), Err(clash.clone()));
-        assert_eq!(names.unit_type(object("ROCKS1")), Err(clash));
-        // A look alone is no unit type: the file lists the placed types.
+        let refused = names.unit_type(object("ROCKS1"), &locomotors);
+        assert_eq!(refused, Err(TypeError::NameClash(clash)));
+        // A look alone is no unit type: the file lists the placed types, which neither drive nor
+        // block, so no speed bounds them.
         names.take(object("Oak")).unwrap();
-        let toml = names.units_toml();
+        let file = names.units_file();
+        assert_eq!(file.max_speed, None);
+        let toml = file.text;
         assert_eq!(toml, "[units.americatank]\n\n[units.rocks1]\n");
         let units: Units = Toml::parse(&toml).unwrap();
         let read: Vec<&str> = units.units.keys().map(DeclaredName::as_str).collect();

@@ -4,7 +4,7 @@ use campfire_client_files::ModelScale;
 
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::ini_text::{IniLine, IniText};
+use crate::zero_hour::ini_text::{FlagList, IniLine, IniText};
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -16,8 +16,9 @@ pub(crate) struct ObjectIni {
 
 /// An object as the game holds it once read, a reskin a copy of its base with its own fields
 /// over it (`ThingTemplate::copyFrom`): its name as the INI writes it, its draw modules, and the
-/// fields that say how the game draws and places it: its kinds, its fence's width, its asset
-/// scale and whether it is a landmark bridge, each the game's default when absent.
+/// fields that say how the game draws, places and moves it: its kinds, its fence's width, its
+/// asset scale, whether it is a landmark bridge, its geometry and its normal locomotors by name,
+/// each the game's default when absent.
 #[derive(Debug, Clone)]
 pub(crate) struct IniObject {
     pub(crate) name: String,
@@ -26,18 +27,44 @@ pub(crate) struct IniObject {
     fence_width: f32,
     scale: ModelScale,
     is_bridge: bool,
+    geometry: Geometry,
+    /// The locomotors of its `SET_NORMAL`, in the order its line names them.
+    locomotors: Vec<String>,
 }
 
-/// The kinds of an object's `KindOf` that decide who draws its placed objects
-/// (`GameLogic::startNewGame`): an optimized tree and a prop the client alone draws; an object a
-/// build clears, which is fluff, the client's too, unless it is a fence; and a wall a unit walks
-/// on top of, which the game spawns with the bridges.
+/// The kinds of an object's `KindOf` that the import reads: those that decide who draws its
+/// placed objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone
+/// draws, an object a build clears, which is fluff, the client's too, unless it is a fence, and a
+/// wall a unit walks on top of, which the game spawns with the bridges; and a structure, which
+/// routes block when it is not small.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
     prop: bool,
     cleared_by_build: bool,
     walk_on_top_of_wall: bool,
+    structure: bool,
+}
+
+/// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
+/// height, and whether it is small, which the pathfinder routes over.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Geometry {
+    pub(crate) shape: GeometryShape,
+    /// Its radius, or a box's half extent along the object's `x`.
+    pub(crate) major: f32,
+    /// A box's half extent along the object's `y`.
+    pub(crate) minor: f32,
+    pub(crate) height: f32,
+    pub(crate) small: bool,
+}
+
+/// The shapes of `GeometryNames`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GeometryShape {
+    Sphere,
+    Cylinder,
+    Box,
 }
 
 /// Who draws an object a map places, as a multiplayer game spawns it (design 12, D14): a unit of
@@ -103,6 +130,10 @@ const OPTIMIZED_TREE: &str = "optimized_tree";
 const PROP: &str = "prop";
 const CLEARED_BY_BUILD: &str = "cleared_by_build";
 const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
+const STRUCTURE: &str = "structure";
+
+/// The locomotor set an object moves by, of `TheLocomotorSetNames`.
+const SET_NORMAL: &str = "set_normal";
 
 /// The keywords that open a block wherever they start a line.
 const OPEN_WITH_VALUE: [&str; 8] = [
@@ -243,6 +274,8 @@ impl ObjectIni {
                 fence_width: 0.0,
                 scale: ModelScale::ONE,
                 is_bridge: false,
+                geometry: Geometry::DEFAULT,
+                locomotors: Vec::new(),
             },
             Some(base) => IniObject {
                 name: name.to_owned(),
@@ -275,49 +308,82 @@ impl ObjectIni {
 }
 
 impl ObjectKinds {
-    /// Sets the kinds by a `KindOf` line's flags, as `BitFlags::parse` does: `NONE` clears them;
-    /// a list of names sets those it names and clears the rest; `+` and `-` set and clear one,
-    /// and keep the rest; a list may not mix the two forms.
-    fn set_by(&mut self, flags: &[&str], line: usize) -> Result<(), IniError> {
-        let mut plain = false;
-        let mut signed = false;
-        for flag in flags {
-            if flag.eq_ignore_ascii_case("none") {
-                if plain || signed {
-                    return Err(IniError::MixedKinds { line });
-                }
+    /// Sets the kinds by a `KindOf` line's flags, as `BitFlags::parse` does; a kind the import
+    /// does not read changes nothing.
+    fn set_by(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
+        match at.flags()? {
+            FlagList::Clear => *self = ObjectKinds::default(),
+            FlagList::Only(names) => {
                 *self = ObjectKinds::default();
-                break;
-            }
-            let (name, set) = match flag.strip_prefix('+') {
-                Some(name) => (name, Some(true)),
-                None => match flag.strip_prefix('-') {
-                    Some(name) => (name, Some(false)),
-                    None => (*flag, None),
-                },
-            };
-            match set {
-                Some(_) if plain => return Err(IniError::MixedKinds { line }),
-                Some(_) => signed = true,
-                None if signed => return Err(IniError::MixedKinds { line }),
-                None => {
-                    if !plain {
-                        *self = ObjectKinds::default();
-                    }
-                    plain = true;
+                for name in names {
+                    self.set(name, true);
                 }
             }
-            let set = set.unwrap_or(true);
-            let name = name.to_ascii_lowercase();
-            match name.as_str() {
-                OPTIMIZED_TREE => self.optimized_tree = set,
-                PROP => self.prop = set,
-                CLEARED_BY_BUILD => self.cleared_by_build = set,
-                WALK_ON_TOP_OF_WALL => self.walk_on_top_of_wall = set,
-                _ => {}
+            FlagList::Change(changes) => {
+                for change in changes {
+                    self.set(change.name, change.set);
+                }
             }
         }
         Ok(())
+    }
+
+    /// Sets or clears the kind `name`, of either case.
+    fn set(&mut self, name: &str, set: bool) {
+        let kind = match name.to_ascii_lowercase().as_str() {
+            OPTIMIZED_TREE => &mut self.optimized_tree,
+            PROP => &mut self.prop,
+            CLEARED_BY_BUILD => &mut self.cleared_by_build,
+            WALK_ON_TOP_OF_WALL => &mut self.walk_on_top_of_wall,
+            STRUCTURE => &mut self.structure,
+            _ => return,
+        };
+        *kind = set;
+    }
+}
+
+impl Geometry {
+    /// A thing's geometry until its fields say otherwise: a sphere of radius 1, not small.
+    const DEFAULT: Geometry = Geometry {
+        shape: GeometryShape::Sphere,
+        major: 1.0,
+        minor: 1.0,
+        height: 1.0,
+        small: false,
+    };
+
+    /// The radius of the circle round it on the ground, as `calcBoundingStuff` computes it: a
+    /// box's `√(major² + minor²)`, each step in the game's `f32`, else its major radius.
+    #[expect(
+        clippy::imprecise_flops,
+        reason = "the game's own formula, rounded at each step as the game rounds it"
+    )]
+    pub(crate) fn bounding_circle(&self) -> f32 {
+        match self.shape {
+            GeometryShape::Sphere | GeometryShape::Cylinder => self.major,
+            GeometryShape::Box => (self.major * self.major + self.minor * self.minor).sqrt(),
+        }
+    }
+
+    /// Takes a geometry field of `word`; whether `word` is one.
+    fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<bool, IniError> {
+        match word {
+            "geometry" => {
+                let value = at.value()?.to_ascii_lowercase();
+                self.shape = match value.as_str() {
+                    "sphere" => GeometryShape::Sphere,
+                    "cylinder" => GeometryShape::Cylinder,
+                    "box" => GeometryShape::Box,
+                    _ => return Err(IniError::NotListed { line: at.number }),
+                };
+            }
+            "geometrymajorradius" => self.major = at.real()?,
+            "geometryminorradius" => self.minor = at.real()?,
+            "geometryheight" => self.height = at.real()?,
+            "geometryissmall" => self.small = at.yes()?,
+            _ => return Ok(false),
+        }
+        Ok(true)
     }
 }
 
@@ -399,6 +465,21 @@ impl IniObject {
         } else {
             PlacedAs::Unit
         }
+    }
+
+    /// The geometry of its `Geometry` fields.
+    pub(crate) const fn geometry(&self) -> Geometry {
+        self.geometry
+    }
+
+    /// The names of the locomotors it moves by, its `SET_NORMAL`'s.
+    pub(crate) fn locomotors(&self) -> &[String] {
+        &self.locomotors
+    }
+
+    /// Whether it is a structure, of `KindOf`.
+    pub(crate) const fn is_structure(&self) -> bool {
+        self.kinds.structure
     }
 
     /// The asset scale every drawable of it takes: its `Scale`.
@@ -513,23 +594,43 @@ impl Reading {
                 });
                 self.stack.push(Block::Draw { kind, states: 0 });
             }
-            Block::Object if matches!(word, "kindof" | "fencewidth" | "scale" | "isbridge") => {
+            Block::Object
+                if matches!(
+                    word,
+                    "kindof" | "fencewidth" | "scale" | "isbridge" | "locomotor"
+                ) || word.starts_with("geometry") =>
+            {
                 let open = self
                     .object
                     .as_mut()
                     .expect("an object block holds an object");
                 let object = &mut open.object;
-                // A reskin's table sets its fence's width; the game's release build skips a field
-                // the table lacks, as its kinds, its scale and whether it is a bridge.
+                // A reskin's table sets its fence's width and its geometry; the game's release
+                // build skips a field the table lacks, as its kinds, its scale, whether it is a
+                // bridge and its locomotors.
+                if object.geometry.field(word, at)? {
+                    return Ok(());
+                }
                 match word {
                     "fencewidth" => object.fence_width = at.real()?,
                     _ if open.reskin => {}
-                    "kindof" => object.kinds.set_by(&tokens[1..], line)?,
+                    "kindof" => object.kinds.set_by(at)?,
                     "isbridge" => object.is_bridge = at.yes()?,
-                    _ => {
+                    "locomotor" => {
+                        let set = at.value()?;
+                        // `scanIndexList` finds a set of either case.
+                        if set.eq_ignore_ascii_case(SET_NORMAL) {
+                            let names = tokens[2..]
+                                .iter()
+                                .filter(|name| !name.eq_ignore_ascii_case("none"));
+                            object.locomotors = names.map(|&name| name.to_owned()).collect();
+                        }
+                    }
+                    "scale" => {
                         let scale = ModelScale::new(at.real()?);
                         object.scale = scale.ok_or(IniError::Scale { line })?;
                     }
+                    _ => {}
                 }
             }
             _ if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
@@ -614,8 +715,9 @@ End
 
     /// `Data\INI\Object.ini` of the fixture install: two reskins of the tank, one with its own
     /// draw module, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
-    /// reskin, an optimized tree, fluff, a wall a unit walks on, and the fixture map's tank and
-    /// its fence.
+    /// reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a box of half
+    /// extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of half
+    /// extents 4 and 3, and its fence.
     pub(crate) const OBJECTS: &str = "ObjectReskin TankCamo Tank\r
 End\r
 ObjectReskin TankRed Tank\r
@@ -667,9 +769,16 @@ Object Bush\r
 End\r
 Object AmericaTankCrusader\r
   KindOf = VEHICLE\r
+  Locomotor = SET_NORMAL TankTreads\r
+  Geometry = BOX\r
+  GeometryMajorRadius = 4.0\r
+  GeometryMinorRadius = 3.0\r
 End\r
 Object FortressWall\r
-  KindOf = WALK_ON_TOP_OF_WALL IMMOBILE\r
+  KindOf = WALK_ON_TOP_OF_WALL IMMOBILE STRUCTURE\r
+  Geometry = BOX\r
+  GeometryMajorRadius = 10.0\r
+  GeometryMinorRadius = 2.5\r
 End\r
 Object Rocks1\r
   KindOf = CLEARED_BY_BUILD\r
@@ -679,287 +788,4 @@ End\r
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
-
-    /// Objects of each kind a placed object can be, their reskins, and lists of each form.
-    const PLACED: &str = "Object Oak
-  KindOf = OPTIMIZED_TREE SHRUBBERY
-End
-Object Bench
-  KindOf = prop
-  Scale = 1.5
-End
-ObjectReskin BenchRed Bench
-  KindOf = NONE
-  Scale = 3.0
-End
-Object Bush
-  KindOf = CLEARED_BY_BUILD SHRUBBERY
-End
-Object Gravel
-  KindOf = CLEARED_BY_BUILD
-  FenceWidth = 0.0
-End
-Object Fence
-  KindOf = CLEARED_BY_BUILD
-  FenceWidth = 10.0
-End
-ObjectReskin FenceDown Fence
-  FenceWidth = 0.0
-End
-ObjectReskin FenceRed Fence
-End
-Object Tank
-  KindOf = VEHICLE
-End
-Object Cleared
-  KindOf = PROP
-  KindOf = VEHICLE
-End
-Object Added
-  KindOf = VEHICLE
-  KindOf = +OPTIMIZED_TREE
-End
-Object Removed
-  KindOf = PROP OPTIMIZED_TREE
-  KindOf = -OPTIMIZED_TREE -PROP
-End
-Object Emptied
-  KindOf = PROP
-  KindOf = NONE PROP
-End
-Object Bridge
-  IsBridge = Yes
-End
-ObjectReskin BridgeRed Bridge
-  IsBridge = No
-End
-Object Wall
-  KindOf = WALK_ON_TOP_OF_WALL PROP
-End
-Object Crossing
-  IsBridge = no
-End
-";
-
-    fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
-        ini.objects[name].draws().to_vec()
-    }
-
-    #[test]
-    fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
-        let mut ini = ObjectIni::default();
-        ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
-        ini.read(OBJECTS.as_bytes()).unwrap();
-        let names: Vec<&str> = ini.objects().map(|object| object.name.as_str()).collect();
-        assert_eq!(
-            names,
-            [
-                "AmericaTankCrusader",
-                "Bush",
-                "FortressWall",
-                "Oak",
-                "Rock",
-                "RockRed",
-                "Rocks1",
-                "Stump",
-                "Tank",
-                "TankCamo",
-                "TankRed",
-                "Tree"
-            ]
-        );
-        // The tank's default state: its model; its hides and shows, the second of `Barrel`
-        // changing the first in its place; its weapon bones, a bone `None` none; `Turret =
-        // TurretBone` is a field, and the debris draw module names no model.
-        let model = |model: &str, look| DrawModule {
-            kind: DrawKind::Family,
-            model: Some(model.to_owned()),
-            look,
-        };
-        let change = |name: &str, hide| HideShow {
-            name: name.to_owned(),
-            hide,
-        };
-        let tank_look = DefaultLook {
-            hide_show: vec![
-                change("Turret", true),
-                change("Barrel", true),
-                change("Hatch", true),
-            ],
-            weapons: [
-                WeaponBones {
-                    muzzle_flash: Some("MuzzleFX".to_owned()),
-                    ..WeaponBones::default()
-                },
-                WeaponBones {
-                    fire_fx: Some("Fire".to_owned()),
-                    ..WeaponBones::default()
-                },
-                WeaponBones::default(),
-            ],
-        };
-        let tank = [
-            model("TANK", tank_look),
-            DrawModule {
-                kind: DrawKind::Other,
-                model: None,
-                look: DefaultLook::default(),
-            },
-        ];
-        assert_eq!(draws_of(&ini, "Tank"), tank);
-        // A reskin of no draw module keeps its base's; one of its own keeps none of them, and its
-        // `ShowSubObject = None` empties the list before `Hatch`.
-        assert_eq!(draws_of(&ini, "TankCamo"), tank);
-        let red = DefaultLook {
-            hide_show: vec![change("Hatch", false)],
-            ..DefaultLook::default()
-        };
-        assert_eq!(draws_of(&ini, "TankRed"), [model("TANK", red)]);
-        // The tree names its model by `ModelName`; the stump's `NONE` is no model; a first state
-        // of no flag is the default.
-        let tree = DrawModule {
-            kind: DrawKind::Tree,
-            model: Some("PTOak01".to_owned()),
-            look: DefaultLook::default(),
-        };
-        assert_eq!(draws_of(&ini, "Tree"), [tree]);
-        let stump = draws_of(&ini, "Stump");
-        assert_eq!((stump[0].kind, &stump[0].model), (DrawKind::Prop, &None));
-        assert_eq!(
-            draws_of(&ini, "Rock"),
-            [model("Rock01", DefaultLook::default())]
-        );
-        // A template finds its object of its case alone, as `findTemplate` does.
-        assert_eq!(
-            ini.object(b"Tank").map(|tank| tank.name.as_str()),
-            Some("Tank")
-        );
-        assert!(ini.object(b"tank").is_none());
-        // A name read before, in this file or an earlier one, and a reskin whose base is not yet
-        // read, are refused at their line.
-        let mut again = ObjectIni::default();
-        again.read(b"Object Rock\nEnd\n").unwrap();
-        assert_eq!(
-            again.read(b"Object Sand\nEnd\nObjectReskin Rock Sand\nEnd\n"),
-            Err(IniError::Redefined { line: 3 })
-        );
-        assert_eq!(
-            again.read(b"ObjectReskin Gravel Pebble\nEnd\nObject Pebble\nEnd\n"),
-            Err(IniError::NoBase { line: 1 })
-        );
-    }
-
-    #[test]
-    fn kinds_fences_and_scales_place_objects_as_a_multiplayer_game_does() {
-        let mut ini = ObjectIni::default();
-        ini.read(PLACED.as_bytes()).unwrap();
-        let placed = |name: &str| ini.objects[name].placed_as();
-        let scale = |name: &str| ini.objects[name].scale().get();
-        // A tree, a prop, and fluff: a build clears it, and its fence is 0 wide, or none; a fence
-        // a build clears, and an object of neither kind, are units.
-        assert_eq!(placed("Oak"), PlacedAs::Tree);
-        assert_eq!(placed("Bench"), PlacedAs::Prop);
-        assert_eq!(placed("Bush"), PlacedAs::Prop);
-        assert_eq!(placed("Gravel"), PlacedAs::Prop);
-        assert_eq!(placed("Fence"), PlacedAs::Unit);
-        assert_eq!(placed("Tank"), PlacedAs::Unit);
-        // A reskin keeps its base's kinds and scale, whatever its own lines give, and its own
-        // fence's width, or its base's: a fence of width 0 is fluff, a fence's reskin a fence.
-        assert_eq!(placed("BenchRed"), PlacedAs::Prop);
-        assert_eq!(placed("FenceDown"), PlacedAs::Prop);
-        assert_eq!(placed("FenceRed"), PlacedAs::Unit);
-        assert_eq!((scale("Bench"), scale("BenchRed")), (1.5, 1.5));
-        assert_eq!(scale("Oak"), 1.0);
-        // A plain list clears the kinds before it sets its own; `+` and `-` keep the others;
-        // `NONE` clears them all, and ends the list.
-        assert_eq!(placed("Cleared"), PlacedAs::Unit);
-        assert_eq!(placed("Added"), PlacedAs::Tree);
-        assert_eq!(placed("Removed"), PlacedAs::Unit);
-        assert_eq!(placed("Emptied"), PlacedAs::Unit);
-        // A landmark bridge and a wall a unit walks on are bridge-like, whatever else they are;
-        // a bridge's reskin is one, as its table cannot say otherwise.
-        assert_eq!(placed("Bridge"), PlacedAs::Bridge);
-        assert_eq!(placed("BridgeRed"), PlacedAs::Bridge);
-        assert_eq!(placed("Wall"), PlacedAs::Bridge);
-        assert_eq!(placed("Crossing"), PlacedAs::Unit);
-        // A list mixes no forms, and `NONE` follows none; a scale is positive.
-        let read = |text: &str| ObjectIni::default().read(text.as_bytes());
-        for kinds in [
-            "PROP +SHRUBBERY",
-            "+PROP SHRUBBERY",
-            "PROP NONE",
-            "+PROP NONE",
-        ] {
-            let text = format!("Object A\n KindOf = {kinds}\nEnd\n");
-            assert_eq!(
-                read(&text),
-                Err(IniError::MixedKinds { line: 2 }),
-                "{kinds}"
-            );
-        }
-        for value in ["0.0", "-1.0", "inf"] {
-            let text = format!("Object A\n Scale = {value}\nEnd\n");
-            assert_eq!(read(&text), Err(IniError::Scale { line: 2 }), "{value}");
-        }
-        assert!(matches!(
-            read("Object A\n FenceWidth = wide\nEnd\n"),
-            Err(IniError::Real { line: 2, .. })
-        ));
-    }
-
-    #[test]
-    fn a_file_the_game_cannot_read_is_refused_at_its_line() {
-        let read = |text: &str| ObjectIni::default().read(text.as_bytes());
-        assert_eq!(
-            read("Object A\n  Draw = W3DModelDraw M\n"),
-            Err(IniError::Unclosed)
-        );
-        assert_eq!(
-            read("Object A\nEnd\nEnd\n"),
-            Err(IniError::StrayEnd { line: 3 })
-        );
-        assert_eq!(read("Weapon A\nEnd\n"), Err(IniError::NotBlock { line: 1 }));
-        assert_eq!(read("Object\nEnd\n"), Err(IniError::NoName { line: 1 }));
-        assert_eq!(
-            read("ObjectReskin A\nEnd\n"),
-            Err(IniError::NoName { line: 1 })
-        );
-        let state =
-            |line: &str| format!("Object A\n Draw = W3DModelDraw M\n  {line}\n  End\n End\nEnd\n");
-        assert_eq!(
-            read(&state("ConditionState = DAMAGED")),
-            Err(IniError::NoDefaultState { line: 3 })
-        );
-        // A default state of no model; one after another state.
-        assert_eq!(
-            read(&state("ConditionState NONE")),
-            Err(IniError::NoModel { line: 4 })
-        );
-        let late = "Object A\n Draw = W3DModelDraw M\n  ConditionState\n   Model = X\n  End\n  DefaultConditionState\n";
-        assert_eq!(read(late), Err(IniError::LateDefaultState { line: 6 }));
-        let field = |line: &str| {
-            format!(
-                "Object A\n Draw = W3DModelDraw M\n  DefaultConditionState\n   {line}\n  End\n End\nEnd\n"
-            )
-        };
-        assert_eq!(
-            read(&field("WeaponMuzzleFlash = QUATERNARY Flash")),
-            Err(IniError::WeaponSlot { line: 4 })
-        );
-        assert_eq!(
-            read(&field("WeaponLaunchBone = PRIMARY")),
-            Err(IniError::WeaponSlot { line: 4 })
-        );
-        // `ArmorSet` alone opens a block: after `;`, which starts a comment, it is alone and needs
-        // its `End`; before `//`, which the game does not strip, it is a field.
-        assert_eq!(read("Object A\n ArmorSet ; note\n End\nEnd\n"), Ok(()));
-        assert_eq!(
-            read("Object A\n ArmorSet ; note\nEnd\n"),
-            Err(IniError::Unclosed)
-        );
-        assert_eq!(read("Object A\n ArmorSet // note\nEnd\n"), Ok(()));
-    }
-}
+mod tests;

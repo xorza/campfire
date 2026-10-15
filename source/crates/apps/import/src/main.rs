@@ -42,6 +42,7 @@ fn main() -> ExitCode {
             skipped_models,
             missing_textures,
             untextured_cells,
+            dropped_waypoints,
         }) => {
             for skipped in &skipped_models {
                 let model = &skipped.name;
@@ -66,6 +67,13 @@ fn main() -> ExitCode {
                 if cells > 0 {
                     warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
                 }
+            }
+            for (map, waypoints) in &dropped_waypoints {
+                warn!(
+                    %map,
+                    waypoints = %waypoints.join(", "),
+                    "a map's waypoints past its bounds are dropped"
+                );
             }
             info!(
                 packages = %args.out.display(),

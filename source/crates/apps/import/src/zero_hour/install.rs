@@ -294,6 +294,7 @@ pub(crate) mod internals {
 
     use crate::texture::internals::textures;
     use crate::zero_hour::big_archive::internals::big;
+    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
@@ -337,6 +338,7 @@ pub(crate) mod internals {
                 ("Art\\Terrain\\TSand.tga", &sign),
                 ("Data\\INI\\Terrain.ini", TERRAIN_TYPES),
                 ("Data\\INI\\GameData.ini", GAME_DATA),
+                ("Data\\INI\\Locomotor.ini", LOCOMOTORS.as_bytes()),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),
                 ("Data\\INI\\Object\\Deep\\More.ini", b""),
                 ("Data\\INI\\Object\\Misc.ini", MORE_OBJECTS.as_bytes()),
