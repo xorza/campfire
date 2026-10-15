@@ -161,11 +161,13 @@ mod tests {
         port.wake();
         port.wait(&mut events, None).unwrap();
         assert!(woke(&events));
-        // None since: a wait of no time finds nothing.
+        // None since: a wait of no time finds nothing. A wake then ends a wait, which waits for
+        // it: a loopback datagram may reach its socket a moment after its send, as on macOS.
         port.wait(&mut events, Some(Duration::ZERO)).unwrap();
         assert!(!woke(&events));
         port.wake();
-        port.wait(&mut events, Some(Duration::ZERO)).unwrap();
+        port.wait(&mut events, Some(Duration::from_secs(5)))
+            .unwrap();
         assert!(woke(&events));
     }
 }
