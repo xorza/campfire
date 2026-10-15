@@ -8,8 +8,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::Level;
 use campfire_units::{UnitTypeCore, Units};
-use campfire_values::DeclaredName;
-use campfire_values::{Team, TrackId};
+use campfire_values::{DeclaredName, Team, TrackId};
 use serde::Serialize;
 
 const fn track(at: u8) -> TrackId {

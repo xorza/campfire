@@ -8,8 +8,10 @@ use campfire_math::Num;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
 use campfire_units::UnitTypeBook;
-use campfire_values::{DeclaredName, FilterData, Number, Param, ParamRef, Ranked, Scalar, Stat};
-use campfire_values::{ModifierId, NameId, Names};
+use campfire_values::{
+    DeclaredName, FilterData, ModifierId, NameId, Names, Number, Param, ParamRef, Ranked, Scalar,
+    Stat,
+};
 
 fn name(text: &str) -> DeclaredName {
     DeclaredName::new(text).unwrap()

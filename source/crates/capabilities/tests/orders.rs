@@ -30,8 +30,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
 use campfire_stats::{Life, Stats};
 use campfire_units::{BodyForm, Dead, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units};
-use campfire_values::{PackagePath, Rank, Scalar};
-use campfire_values::{PathId, Team, TeamSet, UnitType};
+use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
 use campfire_vision::{SeenBy, Vision};
 

@@ -16,8 +16,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
 use campfire_units::{BodyForm, DashTo, Dead, UnitTypeCore, Units};
-use campfire_values::FilterData;
-use campfire_values::{Team, TypeScope, UnitType};
+use campfire_values::{FilterData, Team, TypeScope, UnitType};
 use campfire_vision::{SeenBy, Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line

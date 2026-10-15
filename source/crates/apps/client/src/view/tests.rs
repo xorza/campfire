@@ -1,19 +1,18 @@
 use std::time::Duration;
 
 use bevy::asset::{AssetApp, AssetPlugin, AssetServer};
+use bevy::ecs::system::RunSystemOnce;
 use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
-use campfire_client_files::HeightGrid;
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
+use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, HeightGrid, ModelScale};
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 use campfire_units::{TypeOrigin, TypeOriginBook};
-use campfire_values::PackageIndex;
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::{DeclaredName, PackageIndex, PackagePath};
 
 use super::*;
 use crate::view::unit_looks::ModelParts;
@@ -440,4 +439,55 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
     app.update();
     assert_eq!(rings(app.world(), tower), []);
     assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
+}
+
+#[test]
+fn a_model_drawing_stands_as_tall_as_the_top_of_its_shown_bounds() {
+    // An axis turned to rise: x along y, y along −x. A box at (2, 5, 0) of half extents
+    // (3, 1, 1), its frame 1 m up, reaches 1 + 2 + 3 = 6 m: the half extent along x rises.
+    let turned = Affine3A::from_cols(Vec3A::Y, Vec3A::NEG_X, Vec3A::Z, Vec3A::Y);
+    let bounds = |center: Vec3, half: Vec3| Aabb::from_min_max(center - half, center + half);
+    let wide = bounds(Vec3::new(2.0, 5.0, 0.0), Vec3::new(3.0, 1.0, 1.0));
+    assert_eq!(View::bounds_top(turned, &wide), 6.0);
+
+    // A root 2 m tall, its model 1 m up and twice as tall: its mesh, of y from 0 to 1, reaches
+    // 1 + 2 · 1 = 3 m; its child 1 m above it in its frame, 1 + 2 · 1 = 3 m, of half extent
+    // 0.25, reaches 3 + 2 · 0.25 = 3.5 m. A hidden node 10 m tall counts for nothing, nor does
+    // its child.
+    let mut world = World::new();
+    let shape = Shape {
+        radius: 0.5,
+        height: 2.0,
+        footing: Footing::Circle(0.5),
+    };
+    let root = world.spawn((shape, FitsModel, Transform::default())).id();
+    let doubled = Transform::from_xyz(0.0, 1.0, 0.0).with_scale(Vec3::new(1.0, 2.0, 1.0));
+    let model = world
+        .spawn((
+            doubled,
+            bounds(Vec3::Y * 0.5, Vec3::splat(0.5)),
+            ChildOf(root),
+        ))
+        .id();
+    let small = bounds(Vec3::ZERO, Vec3::splat(0.25));
+    world.spawn((Transform::from_xyz(0.0, 1.0, 0.0), small, ChildOf(model)));
+    let tall = bounds(Vec3::ZERO, Vec3::splat(10.0));
+    let hidden = world
+        .spawn((
+            Transform::default(),
+            tall,
+            Visibility::Hidden,
+            ChildOf(root),
+        ))
+        .id();
+    world.spawn((Transform::default(), tall, ChildOf(hidden)));
+    // A root whose models have no bounds yet keeps its height, and waits.
+    let waiting = world.spawn((shape, FitsModel, Transform::default())).id();
+    world.spawn((Transform::default(), ChildOf(waiting)));
+    world.run_system_once(View::fit_models).unwrap();
+    world.flush();
+    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.5);
+    assert!(!world.entity(root).contains::<FitsModel>());
+    assert_eq!(world.get::<Shape>(waiting).unwrap().height, 2.0);
+    assert!(world.entity(waiting).contains::<FitsModel>());
 }

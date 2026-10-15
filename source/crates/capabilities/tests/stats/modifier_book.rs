@@ -7,9 +7,9 @@ use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
 use campfire_units::{ScriptBook, UnitTypeBook};
-use campfire_values::ActionId;
 use campfire_values::{
-    DeclaredName, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
+    ActionId, DeclaredName, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
+    Stat,
 };
 
 fn name(text: &str) -> DeclaredName {

@@ -181,6 +181,7 @@ mod tests {
     use super::*;
 
     /// Whether `registry` registers each type the lists of a set send, by name.
+    #[derive(Debug)]
     struct Registered<'a> {
         registry: &'a ComponentRegistry,
         types: BTreeMap<&'static str, bool>,

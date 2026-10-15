@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::marker::PhantomData;
 
 use bevy_app::App;
@@ -135,6 +135,14 @@ struct ScopeTypes<'a> {
     registry: &'a mut ReplicationRegistry,
     /// The components of the types read so far; none before the first.
     scope: Option<VisibilityScope>,
+}
+
+impl Debug for ScopeTypes<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ScopeTypes")
+            .field("kind", &self.kind)
+            .finish_non_exhaustive()
+    }
 }
 
 impl ScopeTypes<'_> {

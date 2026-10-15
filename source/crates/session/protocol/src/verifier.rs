@@ -39,10 +39,7 @@ impl Verifier {
     ) -> bool {
         self.message.clear();
         write(&mut self.message);
-        let signature = schnorr::Signature::from_byte_array(signature.to_bytes());
-        self.secp
-            .verify_schnorr(&signature, &self.message, key)
-            .is_ok()
+        self.verifies(signature, key, &self.message)
     }
 }
 

@@ -9,9 +9,9 @@ use crate::player_input::PlayerInput;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
-use crate::session_log::file;
 use crate::session_log::{
-    Control, Entry, LoggedCheckpoint, LoggedResult, SegmentStart, SessionLog, offset, put, take,
+    Control, Entry, LoggedCheckpoint, LoggedResult, SegmentStart, SessionLog, file, offset, put,
+    take,
 };
 
 /// The bytes that start each kind of journal record.

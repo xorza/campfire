@@ -7,8 +7,7 @@ use campfire_protocol::{
 };
 
 use crate::fixed_session::FixedSession;
-use campfire_runner::ServerInputRefused;
-use campfire_runner::SessionWorld;
+use campfire_runner::{ServerInputRefused, SessionWorld};
 
 /// A match of a `FixedSession`, and the input chain of each slot's player, so a test sends inputs
 /// as a player's client would, and server inputs as its server would.

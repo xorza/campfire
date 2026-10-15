@@ -4,8 +4,7 @@
 use bevy_app::App;
 use campfire_actions::SlotTimes;
 use campfire_common::Tick;
-use campfire_harness::HashTrail;
-use campfire_harness::{End, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
+use campfire_harness::{End, HashTrail, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_net::{OrderScript, TickHashes};
 use campfire_orders::OrdersAction;

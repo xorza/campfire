@@ -5,8 +5,7 @@ use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
-use bevy::ecs::hierarchy::Children;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
 use bevy::ecs::resource::Resource;
@@ -18,8 +17,7 @@ use bevy::image::{
 use bevy::math::{Quat, Vec3};
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
-use bevy::world_serialization::WorldAssetRoot;
-use bevy::world_serialization::WorldInstanceReady;
+use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use campfire_client_files::{ClientObject, MaterialFile};
 use campfire_units::TypeOriginBook;
 use campfire_values::PackageIndex;
@@ -252,8 +250,7 @@ mod tests {
     use bevy::ecs::world::World;
     use bevy::gltf::{Gltf, GltfMaterial, GltfPlugin};
     use bevy::mesh::MeshPlugin;
-    use bevy::world_serialization::WorldAsset;
-    use bevy::world_serialization::WorldSerializationPlugin;
+    use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
     use campfire_client_files::{
         Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, HeightGrid, ModelScale,
     };

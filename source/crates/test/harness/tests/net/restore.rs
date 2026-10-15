@@ -3,8 +3,7 @@
 //! its log; and it refuses a session of another release, naming it.
 
 use campfire_common::{StateHash, Tick, Version};
-use campfire_harness::HashTrail;
-use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{Publisher, RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, Outcome, SessionLog, SessionPrivate, Signer};

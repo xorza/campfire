@@ -16,8 +16,7 @@ use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpre
 use campfire_units::{
     BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, UnitTypeCore, Units,
 };
-use campfire_values::Rank;
-use campfire_values::{ActionId, ResourceId, Team, TypeScope, UnitType};
+use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 use serde::Serialize;
 
 /// The point `(x, z)` in halves of a meter.
