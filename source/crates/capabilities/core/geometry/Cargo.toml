@@ -9,7 +9,6 @@ internals = [
     "campfire-common/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
-    "campfire-values/internals",
     "dep:criterion",
 ]
 
@@ -17,7 +16,6 @@ internals = [
 campfire-common = { workspace = true, optional = true }
 campfire-math.workspace = true
 campfire-sim.workspace = true
-campfire-values.workspace = true
 
 criterion = { workspace = true, optional = true }
 serde.workspace = true

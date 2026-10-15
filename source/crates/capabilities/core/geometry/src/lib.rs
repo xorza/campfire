@@ -17,6 +17,7 @@ mod metric;
 mod placed;
 mod polygon;
 mod radius;
+mod row_directory;
 mod shape;
 
 #[cfg(feature = "internals")]
@@ -36,6 +37,7 @@ pub use crate::polygon::Polygon;
 pub use crate::polygon::error::PolygonError;
 pub use crate::radius::Radius;
 pub use crate::radius::error::NotRadius;
+pub use crate::row_directory::{LayerView, RowDirectory, RowEntries};
 pub use crate::shape::Shape;
 
 #[cfg(feature = "internals")]

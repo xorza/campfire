@@ -4,11 +4,12 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Cache;
-use campfire_geometry::{BodyBox, CellLevels, Grid, MAX_BOUND, Placed, Shape};
+use campfire_geometry::{
+    BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowDirectory, RowEntries, Shape,
+};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_units::{Body, Layer};
-use campfire_values::{RowDirectory, RowEntries};
 
 use crate::segment::Segment;
 use crate::walker::Walker;
