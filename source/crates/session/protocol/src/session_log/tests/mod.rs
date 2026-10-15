@@ -8,7 +8,6 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
-use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::input_rules::InputRules;
@@ -17,6 +16,7 @@ use crate::session_log::error::SeedError;
 use crate::session_result::{Outcome, SessionResult};
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
+use campfire_common::Version;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -27,7 +27,7 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 /// Two segments: the root `[5; 32]` is segment 1's seed, and its hash segment 0's.
 const SEED_CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
-const RELEASE: EngineRelease = EngineRelease::new(0, 1, 0);
+const RELEASE: Version = Version::new(0, 1, 0);
 /// What the terms carry of the visibility, which the protocol does not read.
 const VISIBILITY: [u8; 3] = [7, 0, 1];
 const MODE: Fingerprint = Fingerprint::new([51; 32]);
@@ -641,7 +641,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.inputs.max_payload_len += 1,
         |terms| terms.inputs.max_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
-        |terms| terms.release = EngineRelease::new(0, 1, 1),
+        |terms| terms.release = Version::new(0, 1, 1),
         |terms| terms.mode = Fingerprint::new([50; 32]),
         |terms| terms.map = MapName::new("lanes").unwrap(),
         |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),

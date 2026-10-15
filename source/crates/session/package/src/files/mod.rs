@@ -13,4 +13,3 @@ pub(crate) mod package_header;
 pub(crate) mod package_name;
 pub(crate) mod tick_range;
 pub(crate) mod units_file;
-pub(crate) mod version;

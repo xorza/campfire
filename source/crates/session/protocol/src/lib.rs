@@ -9,7 +9,6 @@ mod checkpoint;
 mod connect;
 mod controller;
 mod delegation;
-mod engine_release;
 #[cfg(feature = "internals")]
 mod harness;
 mod input_chain;
@@ -50,8 +49,6 @@ pub use crate::delegation::delegation_tag::DelegationTag;
 pub use crate::delegation::error::{DelegationError, EventError, ScopeError};
 pub use crate::delegation::seed_contribution::SeedContribution;
 pub use crate::delegation::{Delegation, DelegationTerms};
-pub use crate::engine_release::EngineRelease;
-pub use crate::engine_release::error::NotRelease;
 pub use crate::input_chain::InputChain;
 pub use crate::input_hash::InputHash;
 pub use crate::input_rules::InputRules;

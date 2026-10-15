@@ -14,8 +14,8 @@ use crate::files::dependency::Dependency;
 use crate::files::package_header::PackageHeader;
 use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
-use crate::files::version::Version;
 use crate::language::Language;
+use campfire_common::Version;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
 #[derive(Debug, Clone, PartialEq, Eq)]

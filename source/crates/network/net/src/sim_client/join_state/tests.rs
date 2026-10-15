@@ -1,9 +1,9 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, TlsKey};
+use campfire_common::{Fingerprint, TlsKey, Version};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{ConnectChallenge, EngineRelease, InputHash, Receipt, SeedChain, SlotPlan};
+use campfire_protocol::{ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan};
 use campfire_runner::TermsError;
 use secp256k1::XOnlyPublicKey;
 
@@ -95,8 +95,8 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         ),
         (
             TICK_HZ,
-            |terms| terms.release = EngineRelease::new(0, 0, 9),
-            TermsMismatch::Terms(TermsError::OtherRelease(EngineRelease::new(0, 0, 9))),
+            |terms| terms.release = Version::new(0, 0, 9),
+            TermsMismatch::Terms(TermsError::OtherRelease(Version::new(0, 0, 9))),
         ),
         (
             TICK_HZ,

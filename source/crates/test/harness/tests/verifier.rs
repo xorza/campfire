@@ -9,7 +9,7 @@ use std::path::Path;
 
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Match, Order};
-use campfire_common::{AfterLeave, Fingerprint, PlayerSlot, StateHash, Tick, Ticks};
+use campfire_common::{AfterLeave, Fingerprint, PlayerSlot, StateHash, Tick, Ticks, Version};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
@@ -20,9 +20,9 @@ use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
-    Applied, EngineRelease, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
-    ServerInput, ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange,
-    SlotChangeKind, SlotPlan, SnapshotFingerprint, Taken,
+    Applied, InputRules, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError, ServerInput,
+    ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange, SlotChangeKind,
+    SlotPlan, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
     Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionWorld, SlotRuleError,
@@ -708,10 +708,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         refusal(log, &store)
     };
     let refused = [
-        other(|terms| terms.release = EngineRelease::new(0, 0, 9)),
+        other(|terms| terms.release = Version::new(0, 0, 9)),
         // Another release first: its packages need not read in this one.
         other(|terms| {
-            terms.release = EngineRelease::new(0, 0, 9);
+            terms.release = Version::new(0, 0, 9);
             terms.mode = Fingerprint::new([0; 32]);
         }),
         other(|terms| terms.mode = Fingerprint::new([0; 32])),
@@ -729,7 +729,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
                 Some(VerifyError::Packages(StoreError::MissingDependency(dependency))),
                 Some(VerifyError::Packages(StoreError::DependencyCount)),
                 Some(VerifyError::Start(StartError::Terms(TermsError::TickRate(hz)))),
-            ] if *release == EngineRelease::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
+            ] if *release == Version::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"
     );

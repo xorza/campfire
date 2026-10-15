@@ -3,10 +3,10 @@ use std::num::NonZeroU32;
 use campfire_common::{Fingerprint, MapName, Ticks};
 
 use super::*;
-use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
 use crate::slot_plan::SlotPlan;
+use campfire_common::Version;
 
 #[test]
 fn a_private_record_round_trips_and_other_bytes_are_refused() {
@@ -24,7 +24,7 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
                 max_per_tick: 4,
             },
             seed_commitment: seed_chain.commitment(),
-            release: EngineRelease::new(0, 1, 0),
+            release: Version::new(0, 1, 0),
             mode: Fingerprint::new([1; 32]),
             map: MapName::new("lane").unwrap(),
             dependencies: vec![Fingerprint::new([2; 32])],

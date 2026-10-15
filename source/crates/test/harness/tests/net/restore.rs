@@ -2,12 +2,12 @@
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
 //! its log; and it refuses a session of another release, naming it.
 
-use campfire_common::{StateHash, Tick};
+use campfire_common::{StateHash, Tick, Version};
 use campfire_harness::HashTrail;
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{Entropy, RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{EngineRelease, Outcome, SessionLog, SessionPrivate};
+use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
 use campfire_runner::{Replay, Session};
 use campfire_store::internals::Scratch;
 
@@ -76,14 +76,14 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .join("private");
     let ours = scratch.read(&path);
     let mut private = SessionPrivate::decode(&ours).unwrap();
-    private.terms.release = EngineRelease::new(0, 0, 9);
+    private.terms.release = Version::new(0, 0, 9);
     let mut bytes = Vec::new();
     private.encode(&mut bytes);
     scratch.write(&path, bytes);
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
-        matches!(&refused, Some(RestoreError::OtherRelease(release)) if *release == EngineRelease::new(0, 0, 9)),
+        matches!(&refused, Some(RestoreError::OtherRelease(release)) if *release == Version::new(0, 0, 9)),
         "{refused:?}"
     );
 

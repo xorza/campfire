@@ -1,6 +1,7 @@
 use std::ffi::OsString;
 
-use campfire_protocol::{EngineRelease, JournalReplayError, NotJournal, SessionPrivateError};
+use campfire_common::Version;
+use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
 use campfire_store::{AppendOpenError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
@@ -28,7 +29,7 @@ pub enum RestoreError {
     Private(#[source] SessionPrivateError),
     /// The session runs on another engine release than this one, which restores it.
     #[error("the session runs on release {0}, which restores it")]
-    OtherRelease(EngineRelease),
+    OtherRelease(Version),
     #[error("the journal file")]
     NotJournal(#[source] NotJournal),
     #[error("the journal")]

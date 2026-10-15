@@ -51,7 +51,6 @@ pub use crate::files::mode_manifest::ModeManifest;
 pub use crate::files::package_header::PackageHeader;
 pub use crate::files::package_name::PackageName;
 pub use crate::files::tick_range::TickRange;
-pub use crate::files::version::Version;
 pub use crate::language::Language;
 pub use crate::locale_package::LocalePackage;
 pub use crate::mode_packages::ModePackages;

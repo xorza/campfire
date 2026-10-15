@@ -1,8 +1,8 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{Fingerprint, MapName, Version};
 use campfire_package::{ModePackages, TickRange};
-use campfire_protocol::{EngineRelease, InputRules, SeedCommitment, SessionTerms, SlotPlan};
+use campfire_protocol::{InputRules, SeedCommitment, SessionTerms, SlotPlan};
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 
@@ -62,7 +62,7 @@ impl SessionRules {
             tick_hz,
             inputs: rules,
             seed_commitment,
-            release: EngineRelease::CURRENT,
+            release: Version::ENGINE,
             mode: self.mode,
             map: self.map.clone(),
             dependencies: self.dependencies.to_vec(),
@@ -113,8 +113,8 @@ impl SessionRules {
 
     /// An error for `terms` of another engine release than this one, which a verifier checks
     /// before it reads the packages, as another release's packages need not read in this one.
-    pub const fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
-        if !terms.release.is_current() {
+    pub fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
+        if terms.release != Version::ENGINE {
             return Err(TermsError::OtherRelease(terms.release));
         }
         Ok(())

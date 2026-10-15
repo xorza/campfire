@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
 use bevy_ecs::world::World;
+use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
@@ -162,7 +163,7 @@ impl SessionDir {
             return Ok(None);
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
-        if !private.terms.release.is_current() {
+        if private.terms.release != Version::ENGINE {
             return Err(RestoreError::OtherRelease(private.terms.release));
         }
         let path = self.journal();
@@ -304,7 +305,7 @@ mod tests {
 
     use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
-    use campfire_protocol::{EngineRelease, InputRules, SeedChain, SessionTerms, SlotPlan};
+    use campfire_protocol::{InputRules, SeedChain, SessionTerms, SlotPlan};
     use campfire_store::internals::Scratch;
     use campfire_visibility::Visibility;
 
@@ -329,7 +330,7 @@ mod tests {
                     max_per_tick: 4,
                 },
                 seed_commitment: seed_chain.commitment(),
-                release: EngineRelease::CURRENT,
+                release: Version::ENGINE,
                 mode: Fingerprint::new([1; 32]),
                 map: MapName::new("lane").unwrap(),
                 dependencies: Vec::new(),

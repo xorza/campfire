@@ -7,12 +7,12 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
-use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
+use campfire_common::Version;
 
 const EXPIRATION: u64 = TestKey::NOW + 60;
 
@@ -27,7 +27,7 @@ fn terms() -> SessionTerms {
             max_per_tick: 4,
         },
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
-        release: EngineRelease::new(0, 1, 0),
+        release: Version::new(0, 1, 0),
         mode: Fingerprint::new([5; 32]),
         map: MapName::new("lane").unwrap(),
         dependencies: vec![Fingerprint::new([4; 32])],

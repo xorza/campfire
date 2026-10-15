@@ -42,7 +42,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             tick_hz: NonZeroU32::new(60).unwrap(),
             inputs,
             seed_commitment: commitment,
-            release: EngineRelease::CURRENT,
+            release: Version::ENGINE,
             mode: packages.fingerprint(),
             map: TestMode::Moba3v3.map(),
             dependencies,
@@ -59,8 +59,8 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         (|terms| terms.slots.clear(), slots(0)),
         (|terms| terms.slots = vec![SlotPlan::Open; 7], slots(7)),
         (
-            |terms| terms.release = EngineRelease::new(0, 0, 9),
-            TermsError::OtherRelease(EngineRelease::new(0, 0, 9)),
+            |terms| terms.release = Version::new(0, 0, 9),
+            TermsError::OtherRelease(Version::new(0, 0, 9)),
         ),
         (
             |terms| terms.mode = Fingerprint::new([0; 32]),
