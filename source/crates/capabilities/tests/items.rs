@@ -245,10 +245,16 @@ fn an_items_action_sits_in_its_slot_and_spends_its_uses_in_the_use_group() {
     carrier.order(&mut game, &[buy(POTION, shop), buy(POTION, shop)]);
     assert_eq!(carrier.items(&game), [Some((0, 2)), None, None]);
     assert_eq!(carrier.actions(&game), [drink, None, None]);
-    // A restored inventory holds stacks its book allows: a potion of its one use, two at most to
-    // a slot, and a flash with no uses.
+    // A restored inventory holds a slot for each of the 3 action slots of the carrier's use
+    // group, and stacks its book allows: a potion of its one use, two at most to a slot, and a
+    // flash with no uses.
+    let sized = |slots: u8| {
+        let inventory = Inventory::new(NonZeroU8::new(slots).unwrap());
+        inventory.check(&game, game.unit_entity(carrier.id))
+    };
+    assert!(sized(3) && !sized(2) && !sized(4));
     let restored = |item: u32, count: u32, uses: Option<u32>| {
-        let mut inventory = Inventory::new(NonZeroU8::new(1).unwrap());
+        let mut inventory = Inventory::new(NonZeroU8::new(3).unwrap());
         let stack = ItemStack {
             item: ItemId::nth(item),
             count: NonZeroU32::new(count).unwrap(),

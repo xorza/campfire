@@ -266,9 +266,22 @@ impl SimComponent for Inventory {
     const NAME: &'static str = "items.inventory";
     type Host = UnitEntity;
 
-    // Each stack is of an item type the book holds, no larger than its type's, and with uses left
-    // only for a consumable, no more than its type's.
-    fn check(&self, world: &World, _: Entity) -> bool {
+    // Each of its slots has an action slot of its carrier's use group, which the slot's item
+    // fills; each stack is of an item type the book holds, no larger than its type's, and with
+    // uses left only for a consumable, no more than its type's.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let group = world
+            .get::<ActionSlots>(entity)
+            .zip(world.get::<UseGroup>(entity));
+        let actions = group.map(|(slots, group)| {
+            slots
+                .iter()
+                .filter(|held| held.kind == group.kind())
+                .count()
+        });
+        if actions.is_some_and(|count| count != self.slots.len()) {
+            return false;
+        }
         let book = world.resource::<ItemBook>();
         self.slots.iter().flatten().all(|carried| {
             book.get(carried.item).is_some_and(|spec| {
