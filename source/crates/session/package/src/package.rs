@@ -6,8 +6,7 @@ use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::script_problem::ScriptProblem;
 use crate::files::package_header::PackageHeader;
-use crate::package_files::PackageFiles;
-use crate::package_files::SCRIPTS;
+use crate::package_files::{PackageFiles, SCRIPTS};
 use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
 

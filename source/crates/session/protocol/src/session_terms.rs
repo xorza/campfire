@@ -94,8 +94,7 @@ impl SessionTerms {
     /// input by a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a
     /// checkpoint by its carry, each slot's delegation and its inputs still to apply, which the
     /// stamps' window bounds, as a slot logs at most `max_per_tick` of a stamp and none stamped
-    /// past `max_lead` nor before `max_delay`; the header by the terms and
-    /// a delegation a slot.
+    /// past `max_lead` nor before `max_delay`; the header by the terms and a delegation a slot.
     pub(crate) fn largest_record(&self) -> Option<u64> {
         let payload = u64::from(self.inputs.max_payload_len);
         let inputs = u64::from(self.inputs.max_per_tick);

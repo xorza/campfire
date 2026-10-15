@@ -15,9 +15,11 @@ pub enum TrackError {
 }
 
 campfire_common::enum_all! {
-    /// Why the progression capability refused a script call: a script gave it a value it does not take.
+    /// Why the progression capability refused a script call: a script gave it a value it does not
+    /// take.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ProgressionRefusal {
+        /// A negative amount of experience.
         NegativeXp,
         /// Experience on a track the unit does not have.
         NoTrack,

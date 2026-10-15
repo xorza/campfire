@@ -9,11 +9,10 @@ use campfire_protocol::{
     Delegation, DelegationTerms, InputChain, InputRules, SeedChain, SeedContribution, ServerSeed,
     ServerSeeds, SessionHeader, SessionLog, SessionTerms, Signer, SlotPlan, SlotStart,
 };
+use campfire_runner::{HostChoices, Session, SessionRules, SessionSource};
 use secp256k1::XOnlyPublicKey;
 
 use crate::fixed_session::fixed_match::FixedMatch;
-use campfire_runner::SessionRules;
-use campfire_runner::{HostChoices, Session, SessionSource};
 
 pub(crate) mod fixed_match;
 

@@ -10,7 +10,7 @@ use crate::rank_values::RankValues;
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
 pub struct Action {
-    /// Its package: PackageIndex::MODE the mode, then each package the mode depends on.
+    /// Its package: `PackageIndex::MODE` the mode, then each package the mode depends on.
     pub package: PackageIndex,
     pub kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.

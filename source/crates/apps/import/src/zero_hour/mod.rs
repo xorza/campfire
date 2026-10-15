@@ -293,7 +293,7 @@ impl ZeroHour<'_> {
                 PackagePath::parse(path).expect("the rules package's paths are package paths");
             writer.write(path, bytes)?;
         }
-        writer.finish().map_err(ZeroHourError::Write)
+        Ok(writer.finish()?)
     }
 
     /// `into` after `read` read each INI file of `name`, in the game's order.

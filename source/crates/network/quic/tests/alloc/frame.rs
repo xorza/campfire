@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bytes::Bytes;
 use campfire_common::internals::AllocAudit;
-use campfire_quic::{AddressLimit, LinkTimes, QuicEndpoint};
+use campfire_quic::{AddressLimit, LinkTimes, ServerSocket};
 use lightyear::link::server::LinkOf;
 use lightyear::link::{Link, LinkStart, Linked};
 
@@ -16,7 +16,7 @@ use crate::loopback::{self, ClientApp, PACKET};
 /// its own thread, which no window counts.
 #[test]
 fn a_frame_that_moves_a_packet_each_way_allocates_nothing() {
-    let quic = QuicEndpoint::server(
+    let quic = ServerSocket::bind(
         ([127, 0, 0, 1], 0).into(),
         &loopback::secret(),
         LinkTimes::CAMPFIRE,

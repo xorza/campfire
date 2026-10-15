@@ -1746,7 +1746,8 @@ fn no_crate_names_another_crates_own_world_trait() {
 #[test]
 fn the_crate_trait_rule_finds_each_use_outside_its_crate() {
     // `a` declares `AWorldCrate` and uses it; `b` imports it and names it in a bound; `c` names
-    // `AWorldCrateInternals` and `AWorld`, other traits, and `XWorldCrate`, which no crate declares.
+    // `AWorldCrateInternals` and `AWorld`, other traits, and `XWorldCrate`, which no crate
+    // declares.
     let files = [
         (
             "a",

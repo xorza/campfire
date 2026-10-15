@@ -1,7 +1,6 @@
 use bevy::ecs::resource::Resource;
 use bevy::math::{Vec2, Vec3};
-use campfire_client_files::HeightGrid;
-use campfire_client_files::TerrainQuads;
+use campfire_client_files::{HeightGrid, TerrainQuads};
 
 use crate::view::float_num::FloatNum;
 

@@ -4,6 +4,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::durable_dir::DurableDir;
 use crate::run_dir::error::RunDirError;
 
+pub(crate) mod error;
+
 /// The directory of one run of a check, below its run root, named for the run's start in UTC, to
 /// the millisecond: `2026-09-30T17-45-12.123Z`. A run never touches another run's directory.
 #[derive(Debug)]
@@ -61,8 +63,6 @@ impl RunDir {
         [year, month, day]
     }
 }
-
-pub(crate) mod error;
 
 #[cfg(test)]
 mod tests {

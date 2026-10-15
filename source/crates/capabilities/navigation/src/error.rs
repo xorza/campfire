@@ -41,7 +41,8 @@ pub enum MapProblem {
 }
 
 campfire_common::enum_all! {
-    /// Why the navigation capability refused a script call: a script gave it a value it does not take.
+    /// Why the navigation capability refused a script call: a script gave it a value it does not
+    /// take.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum NavigationRefusal {
         /// A distance that is not more than 0, or beyond the world's bound.

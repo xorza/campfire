@@ -4,6 +4,8 @@ use tracing::warn;
 
 use crate::events::receipt_refused::error::ReceiptRefusal;
 
+pub(crate) mod error;
+
 /// The client refused a receipt the server sent, for `refusal`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct ReceiptRefused {
@@ -18,8 +20,6 @@ impl LogEvent for ReceiptRefused {
         warn!(refusal = %JsonText(&self.refusal), "{}", Self::MESSAGE);
     }
 }
-
-pub(crate) mod error;
 
 #[cfg(test)]
 mod tests;

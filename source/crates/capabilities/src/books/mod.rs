@@ -70,7 +70,7 @@ impl Books {
     }
 
     /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as
-    /// `ModeMap::check_walkable` says, among its placed units of the types that do not walk.
+    /// `WalkCheck::run` says, among its placed units of the types that do not walk.
     pub fn check_walkable(&self) -> Result<(), MapProblem> {
         let standing = &self.inputs.units.unit_types;
         let walkers = self

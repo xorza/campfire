@@ -85,10 +85,10 @@ impl PackageDir {
     /// The map of the mode in this directory that a session plays, as
     /// `ModePackages::choose_map` chooses it from the mode's index.
     pub fn choose_map(&self, map: Option<MapName>) -> Result<MapName, LoadError> {
-        let package = PackageRef::Dir(self.root.clone());
         if let Some(map) = map {
             return Ok(map);
         }
+        let package = PackageRef::Dir(self.root.clone());
         let index = self
             .read_index()
             .and_then(|bytes| FileIndex::decode(&bytes))

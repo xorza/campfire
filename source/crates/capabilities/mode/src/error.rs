@@ -111,7 +111,7 @@ campfire_common::enum_all! {
         /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
         /// stands.
         NoRoom,
-        /// A `calc_damage` that returns no number.
+        /// A `calc_damage` or a `calc_heal` that returns no number.
         NotAnAmount,
         /// A point outside the map's bounds.
         OutOfBounds,
@@ -156,7 +156,7 @@ impl CapabilityRefusal for ModeRefusal {
             ModeRefusal::NoRoom => {
                 "the box has no room there: past the bounds, or over a wall or a body that stands"
             }
-            ModeRefusal::NotAnAmount => "calc_damage returns no number",
+            ModeRefusal::NotAnAmount => "calc_damage or calc_heal returns no number",
             ModeRefusal::OutOfBounds => "point is outside the map's bounds",
             ModeRefusal::PlayerOffTeam => "player is not on the unit's team",
             ModeRefusal::RepeatedChoiceValue => "value is chosen twice",

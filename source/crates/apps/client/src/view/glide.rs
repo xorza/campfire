@@ -68,8 +68,8 @@ impl Spot {
 }
 
 impl Glide {
-    /// A predicted unit's drawing at rest at `spot`.
-    /// A drawing at rest at `spot`, which `follows` what it follows.
+    /// A drawing at rest at `spot` that follows `follows`: a received unit's from `time` of app
+    /// time.
     pub(crate) const fn rest(spot: Spot, follows: Follows, time: Duration) -> Glide {
         match follows {
             Follows::Ticks => Glide::ticked(spot),
@@ -77,6 +77,7 @@ impl Glide {
         }
     }
 
+    /// A predicted unit's drawing at rest at `spot`.
     pub(crate) const fn ticked(spot: Spot) -> Glide {
         Glide::Ticked {
             before: spot,

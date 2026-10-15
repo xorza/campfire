@@ -11,7 +11,7 @@ use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::ScriptBook;
-use campfire_values::{DeclaredName, EngineTag, PackagePath};
+use campfire_values::{DeclaredName, EngineTag, PackageIndex, PackagePath};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;
@@ -29,7 +29,6 @@ use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_files::PackageFiles;
 use crate::package_view::{PackageView, ViewKind};
-use campfire_values::PackageIndex;
 
 mod load_check;
 mod name_tables;

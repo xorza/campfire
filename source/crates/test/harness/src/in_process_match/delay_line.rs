@@ -95,7 +95,6 @@ impl DelayLine {
         }
     }
 
-    /// Loses every packet sent from now on if `lost`, or passes them by the model again.
     /// Loses every payload it takes from now on.
     pub(crate) const fn lose_all(&mut self) {
         self.lost = true;

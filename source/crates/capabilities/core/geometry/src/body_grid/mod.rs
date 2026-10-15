@@ -1,10 +1,10 @@
-use crate::row_directory::{RowDirectory, RowEntries};
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
 use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
 use crate::placed::Placed;
+use crate::row_directory::{RowDirectory, RowEntries};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;

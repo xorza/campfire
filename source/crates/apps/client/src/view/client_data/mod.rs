@@ -4,16 +4,14 @@ use std::sync::Arc;
 
 use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
-use campfire_client_files::HeightGrid;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, MapLights, MaterialFile, TerrainFile,
+    CameraFile, ClientObjects, ClientUnits, HeightGrid, MapLights, MaterialFile, TerrainFile,
 };
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
-use campfire_values::PackageIndex;
-use campfire_values::PackagePath;
+use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;
 
 use crate::view::ground_heights::GroundHeights;

@@ -77,9 +77,9 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let filter = |text| Filter::parse(text, types.tags()).unwrap();
     let mut appliers = Names::default();
     let spec = ModifierSpec::of(&data, &names, &mut appliers);
-    // `bind_ms` and `slow` are its own, the first and second of its params by name;
-    // `stun_ms` is the applier's, the one name the spec adds to `appliers`. 1500 ms at 30 Hz is 1500 × 30 / 1000 = 45 ticks. The
-    // changes follow the stats' order, an engine stat's first.
+    // `bind_ms` and `slow` are its own, the first and second of its params by name; `stun_ms` is
+    // the applier's, the one name the spec adds to `appliers`. 1500 ms at 30 Hz is
+    // 1500 × 30 / 1000 = 45 ticks. The changes follow the stats' order, an engine stat's first.
     let expected = ModifierSpec {
         duration: Some(SpecTime::Param(ParamPlace::Own(0))),
         interval: Some(SpecTime::Fixed(Ticks::new(45))),

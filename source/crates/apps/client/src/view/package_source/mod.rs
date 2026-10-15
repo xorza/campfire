@@ -15,8 +15,7 @@ use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
-use campfire_values::PackageIndex;
-use campfire_values::PackagePath;
+use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;
 
 /// The mode's packages as a Bevy asset source: a path is a package's place among them, the

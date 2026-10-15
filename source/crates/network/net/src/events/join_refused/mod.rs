@@ -4,6 +4,8 @@ use tracing::warn;
 
 use crate::events::join_refused::error::JoinError;
 
+pub(crate) mod error;
+
 /// The server refused the join of `link`, its entity's bits, as the lobby's other lines name it,
 /// for `error`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -20,8 +22,6 @@ impl LogEvent for JoinRefused {
         warn!(link = self.link, error = %JsonText(&self.error), "{}", Self::MESSAGE);
     }
 }
-
-pub(crate) mod error;
 
 #[cfg(test)]
 mod tests;

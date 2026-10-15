@@ -509,8 +509,6 @@ impl Grid {
     }
 }
 
-/// The rows a disc may reach on a grid, in halves of a bit: its center from the grid's min, its
-/// reach, whether a center at the reach is out, and the first and last row.
 /// The part of a cell that a span along an axis must hold, or meet, for the cell to count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CellPart {
@@ -518,6 +516,8 @@ enum CellPart {
     Square,
 }
 
+/// The rows a disc may reach on a grid, in halves of a bit: its center from the grid's min, its
+/// reach, whether a center at the reach is out, and the first and last row.
 #[derive(Debug, Clone, Copy)]
 struct Rows {
     from: [i64; 2],

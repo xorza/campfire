@@ -4,6 +4,8 @@ use tracing::warn;
 
 use crate::events::save_refused::error::SaveRefusal;
 
+pub(crate) mod error;
+
 /// The server refused a player's save command, for `refusal`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub struct SaveRefused {
@@ -18,8 +20,6 @@ impl LogEvent for SaveRefused {
         warn!(refusal = %JsonText(&self.refusal), "{}", Self::MESSAGE);
     }
 }
-
-pub(crate) mod error;
 
 #[cfg(test)]
 mod tests;

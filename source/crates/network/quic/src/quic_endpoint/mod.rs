@@ -55,9 +55,8 @@ const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
-/// connections within its `AddressLimit` (D13), and spawns a `LinkOf` for
-/// each once its handshake completes; a client connects to its server, and its entity carries
-/// the connection. Taken from a started entity, by any path, it ends that entity's link;
+/// connections within its `AddressLimit` (D13), and spawns a `LinkOf` for each once its
+/// handshake completes; a client connects to its server, and its entity carries the connection. Taken from a started entity, by any path, it ends that entity's link;
 /// dropped, it closes every connection with `AppCode::STOPPED`, waits until its thread wrote the
 /// closes, and joins it.
 #[derive(Component, Debug)]
@@ -85,30 +84,6 @@ enum Side {
 }
 
 impl QuicEndpoint {
-    /// A server's socket on `address`, whose TLS key and reset key both derive from `secret`,
-    /// the secret of the server's own key (D6, D8). It binds now, before its app runs, so a port
-    /// in use is this error, not a server with no link (D2); it serves once its limit for each
-    /// address is known.
-    pub fn server(
-        address: SocketAddr,
-        secret: &Zeroizing<[u8; 32]>,
-        times: LinkTimes,
-    ) -> Result<ServerSocket, BindError> {
-        let key = ServerKey::derive(secret);
-        let config = QuicEndpoint::server_config(key.server_config(), times);
-        let port = UdpPort::bind(address).map_err(|error| BindError { address, error })?;
-        let local = port
-            .local_address()
-            .map_err(|error| BindError { address, error })?;
-        Ok(ServerSocket {
-            port,
-            local,
-            server: Arc::new(config),
-            config: QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
-            key: key.public(),
-        })
-    }
-
     /// A link of `LINK_MIN_MTU`, as every link of a session starts, over QUIC or in process: its
     /// transport fixes its fragments by it then.
     pub fn link() -> Link {
@@ -461,6 +436,30 @@ pub struct ServerSocket {
 }
 
 impl ServerSocket {
+    /// A server's socket on `address`, whose TLS key and reset key both derive from `secret`,
+    /// the secret of the server's own key (D6, D8). It binds now, before its app runs, so a port
+    /// in use is this error, not a server with no link (D2); it serves once its limit for each
+    /// address is known.
+    pub fn bind(
+        address: SocketAddr,
+        secret: &Zeroizing<[u8; 32]>,
+        times: LinkTimes,
+    ) -> Result<ServerSocket, BindError> {
+        let key = ServerKey::derive(secret);
+        let config = QuicEndpoint::server_config(key.server_config(), times);
+        let port = UdpPort::bind(address).map_err(|error| BindError { address, error })?;
+        let local = port
+            .local_address()
+            .map_err(|error| BindError { address, error })?;
+        Ok(ServerSocket {
+            port,
+            local,
+            server: Arc::new(config),
+            config: QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
+            key: key.public(),
+        })
+    }
+
     /// The address the socket is bound to, its port the OS's when the address named 0.
     pub const fn local_address(&self) -> SocketAddr {
         self.local

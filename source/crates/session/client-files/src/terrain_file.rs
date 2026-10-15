@@ -1,10 +1,10 @@
-use crate::height_grid::HeightGrid;
 use bevy_math::{UVec2, Vec2};
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::error::TerrainFileError;
+use crate::height_grid::HeightGrid;
 
 /// A map's terrain, `client/maps/<name>/terrain.bin`, through `Binary` (design 16): a ground quad
 /// for each cell of the map's height grid and the overlays drawn over them, each with its own

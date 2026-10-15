@@ -18,8 +18,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::SystemTime;
 
-use campfire_client_files::HeightGrid;
-use campfire_client_files::{ClientObjects, TerrainFile};
+use campfire_client_files::{ClientObjects, HeightGrid, TerrainFile};
 use campfire_codec::{Binary, Toml};
 use campfire_common::{ExitStatus, MapName};
 use campfire_harness::FixedSession;
@@ -104,12 +103,7 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     let packages = PackageDir::new(out.join(ZeroHour::GAME))
         .mode_packages(&map)
         .map_err(CheckError::Load)?;
-    let files = &packages
-        .packages()
-        .next()
-        .expect("a mode has its own package")
-        .package
-        .files;
+    let files = &packages.mode().package.files;
     let mut failures = Vec::new();
     let heights = read(files, &format!("map/{MAP}/heights.bin"))?;
     let grid = Binary::decode::<HeightGrid>(&heights).map_err(CheckError::Decode)?;

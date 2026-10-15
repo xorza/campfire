@@ -10,8 +10,8 @@ use campfire_units::UnitTypeBook;
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 
 /// A projectile type as a match runs it: its speed a tick, half its width, the radius of the
-/// circle it flies as, its range if it has its own, whether it homes, stops at its first hit, or hits a unit once a cast, and the units it
-/// hits, none when it hits nothing.
+/// circle it flies as, its range if it has its own, whether it homes, stops at its first hit, or
+/// hits a unit once a cast, and the units it hits, none when it hits nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProjectileSpec {
     pub(crate) speed: Num,

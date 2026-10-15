@@ -20,6 +20,9 @@ use campfire_sim::{Capability, Position, SimEdge, SimSet};
 use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 use crate::navigation_column::RowReads;
+use crate::pathing_grid::PathingGrid;
+use crate::route_planner::Walkable;
+use crate::terrain::Terrain;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -57,10 +60,6 @@ mod walker;
 mod walking;
 mod wall;
 mod walls;
-
-use crate::pathing_grid::PathingGrid;
-use crate::route_planner::Walkable;
-use crate::terrain::Terrain;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;

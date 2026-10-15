@@ -107,8 +107,8 @@ impl AbilitiesApi {
         }
     }
 
-    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the script's
-    /// package, which it holds.
+    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the
+    /// script's package, which it holds.
     fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: i64) -> Checked<()> {
         AbilitiesApi::check_held(ctx, unit, action)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;

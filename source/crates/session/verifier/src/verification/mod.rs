@@ -1,6 +1,5 @@
 use std::path::Path;
 
-use crate::verification::error::VerifyError;
 use campfire_common::StateHash;
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
@@ -10,6 +9,8 @@ use campfire_runner::{Replay, SessionRules, SessionWorld};
 use campfire_sim::{SimWorld, StateRegistry};
 use campfire_store::InputFile;
 use tracing::warn;
+
+use crate::verification::error::VerifyError;
 
 pub(crate) mod error;
 

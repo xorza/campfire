@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use campfire_common::MapName;
-
 use campfire_package::ModePackages;
 
 use crate::package_dir::PackageDir;

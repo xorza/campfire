@@ -33,7 +33,7 @@ use campfire_net::{
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_protocol::Signer;
-use campfire_quic::{AddressLimit, LinkTimes, PortMap, QuicEndpoint};
+use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
 use campfire_store::StopSignals;
 use campfire_visibility::HostVisibility;
 use lightyear::prelude::Linked;
@@ -108,7 +108,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
     let secret = Zeroizing::new(key.secret_bytes());
-    let socket = QuicEndpoint::server(address, &secret, LinkTimes::CAMPFIRE).map_err(|error| {
+    let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE).map_err(|error| {
         error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
         ExitCode::from(ExitStatus::Failure)
     })?;

@@ -57,7 +57,7 @@ mod tests {
         }
     }
 
-    /// The second case under another capability: the same code, another owner.
+    /// The first case's code under another capability: the same code and message, another owner.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     struct Other;
 

@@ -1,10 +1,10 @@
 use campfire_math::Num;
+use campfire_values::EngineEnum;
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_arg::ScriptArg;
-use campfire_values::EngineEnum;
 
 /// A radius a script gives a query or a reveal: a number not below 0. One below 0 fails the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

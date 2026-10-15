@@ -1,9 +1,9 @@
 use std::collections::BTreeSet;
 
 use bevy_math::Vec3;
-use campfire_client_files::HeightGrid;
 use campfire_client_files::{
-    ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, TerrainFile, TerrainSurface,
+    ClientObject, ClientObjects, ClientUnits, HeightGrid, MapLight, MapLights, TerrainFile,
+    TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
 use campfire_geometry::{Bounds, Metric};

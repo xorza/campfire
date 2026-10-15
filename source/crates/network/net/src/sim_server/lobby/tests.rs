@@ -28,7 +28,7 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
         packages: Arc::new(TestMode::Lane.packages()),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
-        rules: InputRules::LAN,
+        inputs: InputRules::LAN,
         slots: 2,
         bots: ServerBots {
             slots: bots

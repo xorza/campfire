@@ -1,4 +1,3 @@
-use crate::scripts::script_radius::ScriptRadius;
 use campfire_geometry::Shape;
 use campfire_sim::Position;
 use campfire_values::Tag;
@@ -10,6 +9,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_builder::ApiBuilder;
+use crate::scripts::script_radius::ScriptRadius;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit::Unit;

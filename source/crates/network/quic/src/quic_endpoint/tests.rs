@@ -91,7 +91,7 @@ impl Loopback {
     /// The server's endpoint on `address`, bound and not started, its key and its reset key the
     /// same at each bind.
     fn bind_at(address: SocketAddr, times: LinkTimes) -> Loopback {
-        let quic = QuicEndpoint::server(address, &server_secret(), times).unwrap();
+        let quic = ServerSocket::bind(address, &server_secret(), times).unwrap();
         let address = quic.local_address();
         let key = quic.tls_key();
         let mut server = App::new();
@@ -394,7 +394,7 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
 fn a_port_in_use_is_an_error_that_names_its_address() {
     let first = Loopback::bind(LinkTimes::CAMPFIRE);
     let taken = first.address;
-    let refused = QuicEndpoint::server(taken, &server_secret(), LinkTimes::CAMPFIRE).unwrap_err();
+    let refused = ServerSocket::bind(taken, &server_secret(), LinkTimes::CAMPFIRE).unwrap_err();
     assert_eq!(refused.address, taken);
     assert_eq!(refused.error.kind(), ErrorKind::AddrInUse);
 }
@@ -867,7 +867,7 @@ impl Blob {
 #[test]
 fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let tick = Duration::from_millis(16);
-    let quic = QuicEndpoint::server(
+    let quic = ServerSocket::bind(
         SocketAddr::from(([127, 0, 0, 1], 0)),
         &server_secret(),
         LinkTimes::CAMPFIRE,

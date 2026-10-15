@@ -535,7 +535,7 @@ impl InProcessMatch {
             tick_hz: packages.manifest().tick_hz.default(),
             packages,
             seed_chain: self.setup.seed_chain,
-            rules: InputRules::LAN,
+            inputs: InputRules::LAN,
             slots: self.setup.players + self.setup.bots.len(),
             bots: self.server_bots(),
             open: Vec::new(),

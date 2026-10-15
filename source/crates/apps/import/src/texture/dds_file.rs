@@ -1,5 +1,6 @@
-use crate::texture::error::TextureError;
 use campfire_client_files::{Ktx2Image, TextureFormat};
+
+use crate::texture::error::TextureError;
 
 /// A DDS of DXT blocks (Microsoft's `DDS_HEADER`): its format, its base size and its levels'
 /// blocks, as the file holds them, which a KTX2 file of the same block format takes as they are.

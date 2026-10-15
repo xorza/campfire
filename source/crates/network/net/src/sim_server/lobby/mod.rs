@@ -73,7 +73,7 @@ pub struct LobbySetup {
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
-    pub rules: InputRules,
+    pub inputs: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
     /// The bots the server plays: their slots are the bots'.
@@ -107,8 +107,7 @@ impl Lobby {
             host,
             server,
         } = opening;
-        let mut root = [0; 32];
-        server.os.entropy.fill(&mut root);
+        let root = server.os.entropy.random();
         let manifest = packages.manifest();
         let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
         let tick_hz = manifest.tick_hz.default();
@@ -116,7 +115,7 @@ impl Lobby {
             packages,
             seed_chain: SeedChain::new(root, Lobby::SEGMENTS),
             tick_hz,
-            rules: InputRules::LAN,
+            inputs: InputRules::LAN,
             slots,
             bots,
             open,
@@ -136,7 +135,7 @@ impl Lobby {
             packages,
             seed_chain,
             tick_hz,
-            rules,
+            inputs,
             slots,
             bots,
             open,
@@ -172,7 +171,7 @@ impl Lobby {
                 server_key: server.key.x_only_public_key().0,
                 seed_commitment: seed_chain.commitment(),
                 tick_hz,
-                inputs: rules,
+                inputs,
                 slots: plan,
                 visibility: &visibility,
             })

@@ -30,7 +30,6 @@ pub(crate) struct Checkpoints {
     thread: CheckpointThread,
 }
 
-/// The links that may send save commands, with whether each is refused.
 impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
     /// copy of the state starts as a full copy of the state now, and the snapshots go to

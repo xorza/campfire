@@ -1,5 +1,4 @@
-use campfire_script::UnknownName;
-use campfire_script::{CapabilityRefusal, ParamProblem};
+use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;
 use thiserror::Error;

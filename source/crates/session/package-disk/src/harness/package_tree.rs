@@ -4,10 +4,9 @@ use std::str;
 use std::sync::Arc;
 
 use campfire_codec::Toml;
+use campfire_package::{LoadError, ModePackages};
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use toml::{Table, Value};
-
-use campfire_package::{LoadError, ModePackages};
 
 use crate::harness::test_mode::TestMode;
 use crate::package_dir::PackageDir;

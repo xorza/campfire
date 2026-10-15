@@ -33,9 +33,10 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::package_source::PackageSource;
 use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
 
-/// Draws units and the map's client objects with their packages' models: loads each unit type's models, places each client object still, and dresses
-/// each model once its scene spawns: the nodes its default look hides hidden, and each primitive
-/// whose glTF material has a material file in that file's material.
+/// Draws units and the map's client objects with their packages' models: loads each unit type's
+/// models, places each client object still, and dresses each model once its scene spawns: the
+/// nodes its default look hides hidden, and each primitive whose glTF material has a material
+/// file in that file's material.
 #[derive(Debug)]
 pub(crate) struct UnitModels;
 
@@ -253,9 +254,8 @@ mod tests {
     use bevy::mesh::MeshPlugin;
     use bevy::world_serialization::WorldAsset;
     use bevy::world_serialization::WorldSerializationPlugin;
-    use campfire_client_files::HeightGrid;
     use campfire_client_files::{
-        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
+        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, HeightGrid, ModelScale,
     };
     use campfire_math::Num;
     use campfire_values::{DeclaredName, PackagePath};

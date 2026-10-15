@@ -2,12 +2,14 @@ use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 
 campfire_common::enum_all! {
-    /// Why the abilities capability refused a script call: a script gave it a value it does not take.
+    /// Why the abilities capability refused a script call: a script gave it a value it does not
+    /// take.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum AbilitiesRefusal {
         /// An ability with no charges.
         NoCharges,
-        /// A value of an action's start in a call of an action that did not start, such as a weapon's.
+        /// A value of an action's start in a call of an action that did not start, such as a
+        /// weapon's.
         NoStart,
         /// A fraction below 0 or above 1.
         NotAFraction,
