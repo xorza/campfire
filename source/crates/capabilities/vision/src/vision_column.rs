@@ -11,7 +11,7 @@ use campfire_values::{Relations, Team, TeamSet};
 use crate::seen_by::SeenBy;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
-pub type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
+pub(crate) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
 
 /// What vision adds to the script view: the teams that see each unit, a row each.
 #[derive(Debug, Default)]

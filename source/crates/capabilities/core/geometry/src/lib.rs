@@ -28,7 +28,6 @@ pub use crate::bounds::Bounds;
 pub use crate::cell_key::CellKey;
 pub use crate::cell_levels::CellLevels;
 pub use crate::grid::Grid;
-pub use crate::halves::Halves;
 pub use crate::metric::Metric;
 pub use crate::polygon::Polygon;
 pub use crate::polygon::error::PolygonError;

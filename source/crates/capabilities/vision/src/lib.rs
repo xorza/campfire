@@ -13,6 +13,8 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_sim::Capability;
 use campfire_units::UnitEntity;
 
+use crate::vision_column::RowReads;
+
 #[cfg(feature = "internals")]
 pub mod bench;
 mod brush_map;
@@ -43,7 +45,7 @@ pub use crate::sight::Sight;
 pub use crate::team_sight::{ByHolding, ByVision, TeamSight};
 pub use crate::vision_api::VisionApi;
 pub use crate::vision_book::VisionBook;
-pub use crate::vision_column::{RowReads, VisionColumn};
+pub use crate::vision_column::VisionColumn;
 pub use crate::vision_data::VisionData;
 pub use crate::vision_grid::VisionGrid;
 

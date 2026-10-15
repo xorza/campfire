@@ -21,6 +21,8 @@ use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, Tic
 use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
+use crate::stats_column::RowReads;
+
 mod application;
 mod applier;
 mod carried_mut;
@@ -119,7 +121,7 @@ pub use crate::stat_rule::StatRule;
 pub use crate::stat_totals::StatTotals;
 pub use crate::stats_api::StatsApi;
 pub use crate::stats_call::StatsCall;
-pub use crate::stats_column::{RowReads, StatsColumn};
+pub use crate::stats_column::StatsColumn;
 pub use crate::stats_data::{StatValue, StatsData};
 pub use crate::stats_effect::StatsEffect;
 pub use crate::stats_world::StatsWorld;

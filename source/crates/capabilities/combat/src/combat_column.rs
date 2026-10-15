@@ -17,7 +17,7 @@ use crate::recent_attackers::RecentAttackers;
 
 /// The parts of a unit combat reads into its row: whether it is dead, its life and tags, what
 /// it does when it dies, and who struck it recently.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Has<Dead>,
     Option<&'static Life>,
     Option<&'static UnitTags>,

@@ -14,7 +14,7 @@ use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
 use crate::train_queue::TrainQueue;
 
 /// The parts of a unit production adds to its row of the script view.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Option<&'static Owner>,
     Option<&'static UnitType>,
     Has<Dead>,

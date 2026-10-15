@@ -8,7 +8,6 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
@@ -19,6 +18,8 @@ use campfire_geometry::Grid;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
 use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
+
+use crate::navigation_column::RowReads;
 
 #[cfg(feature = "internals")]
 pub mod bench;
@@ -69,7 +70,7 @@ pub use crate::group_box::GroupBox;
 pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
-pub use crate::navigation_column::{NavigationColumn, RowReads};
+pub use crate::navigation_column::NavigationColumn;
 pub use crate::navigation_effect::NavigationEffect;
 pub use crate::on_path::OnPath;
 pub use crate::party::{Party, PartyKey, PartyOrder};
@@ -219,16 +220,6 @@ impl Module for Navigation {
 }
 
 impl Navigation {
-    /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
-    pub fn walker(step: MoveStep) -> impl Bundle {
-        (
-            step,
-            Destination::default(),
-            Route::default(),
-            Progress::default(),
-        )
-    }
-
     /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
     /// does not change untouched.
     pub fn go_to(world: &mut World, entity: Entity, target: Option<Position>) {
@@ -289,21 +280,35 @@ impl Navigation {
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
+    use campfire_units::{Destination, MoveStep};
 
     use crate::Navigation;
     pub use crate::broadphase::internals::scene;
     use crate::navigation_book::NavigationBook;
     use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
+    use crate::progress::Progress;
+    use crate::route::Route;
     use crate::walker::Walker;
     use crate::wall::Wall;
     use crate::walls::Walls;
 
     impl Navigation {
+        /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
+        pub fn walker(step: MoveStep) -> impl Bundle {
+            (
+                step,
+                Destination::default(),
+                Route::default(),
+                Progress::default(),
+            )
+        }
+
         /// Whether the pathing grid of `world` holds the cell at `cell` open to `walker`.
         pub fn cell_open(world: &World, walker: Walker, cell: usize) -> bool {
             world.resource::<PathingGrid>().clearance(walker).open(cell)

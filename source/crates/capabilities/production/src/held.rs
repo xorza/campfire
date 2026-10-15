@@ -3,7 +3,7 @@ use campfire_values::UnitType;
 
 /// A living, complete unit a player owns, by its type, for a requirement to find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Held {
+pub(crate) struct Held {
     pub owner: PlayerSlot,
     pub(crate) unit_type: UnitType,
 }

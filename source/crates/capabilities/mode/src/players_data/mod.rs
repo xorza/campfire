@@ -5,7 +5,7 @@ use serde::Deserialize;
 /// The mode's `[players]`: who may take a slot once the match started, beside the players it
 /// started with. A player who left keeps the right to take their slot back while it is reserved,
 /// played by a bot or still open; the server's door and the log's records follow these rules.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields, default)]
 pub struct PlayersData {
     /// A new player may take an open slot.
@@ -24,6 +24,12 @@ impl PlayersData {
         bot_takeover: false,
         leaver: AfterLeave::Reserve,
     };
+}
+
+impl Default for PlayersData {
+    fn default() -> PlayersData {
+        PlayersData::DEFAULT
+    }
 }
 
 impl DataSection for PlayersData {

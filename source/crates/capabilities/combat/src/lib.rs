@@ -18,6 +18,8 @@ use campfire_sim::Capability;
 use campfire_stats::Life;
 use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
+use crate::combat_column::RowReads;
+
 mod attacks;
 mod combat_api;
 mod combat_bindings;
@@ -52,7 +54,7 @@ pub use crate::attacks::Attacks;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_bindings::CombatBindings;
 pub use crate::combat_book::CombatBook;
-pub use crate::combat_column::{CombatColumn, RowReads};
+pub use crate::combat_column::CombatColumn;
 pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
 pub use crate::combat_event::{CombatEvent, CombatEvents};

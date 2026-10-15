@@ -18,6 +18,8 @@ use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
+use crate::production_column::RowReads;
+
 mod build_book;
 mod build_target;
 mod builder;
@@ -59,7 +61,6 @@ pub use crate::construction::step::{Start, Step};
 pub use crate::drop_off_data::DropOffData;
 pub use crate::gather_loop::GatherLoop;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
-pub use crate::held::Held;
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::NodeBook;
@@ -67,7 +68,7 @@ pub use crate::node_data::NodeData;
 pub use crate::player_supply::PlayerSupply;
 pub use crate::production_action::ProductionAction;
 pub use crate::production_api::ProductionApi;
-pub use crate::production_column::{ProductionColumn, RowReads};
+pub use crate::production_column::ProductionColumn;
 pub use crate::production_data::ProductionData;
 pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;

@@ -49,7 +49,7 @@ impl Polygon {
     /// exactly: on an edge when it is on the edge's line between its ends; inside when a ray
     /// from it along +x crosses the edges an odd number of times, each edge counted once over
     /// the half-open span of its z.
-    pub fn holds(&self, at: Flat) -> bool {
+    pub(crate) fn holds(&self, at: Flat) -> bool {
         let mut inside = false;
         for edge in 0..self.points.len() {
             let [a, b] = self.edge(edge);

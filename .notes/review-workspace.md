@@ -135,12 +135,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 - [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
 - [ ] Waits for the user's optimization session: each item's bench.
 
-### Batch 12. The published surface (RC6)
-
-Needs Batch 7. Files: the `*_world.rs` of `players`, `script`, `units` and `stats`, `network/net/src/sim_server/{sim_server_world/mod,player_link}.rs`, `base/{codec,schedule,store,log}`, `session/{package,runner}/src/**`, `base/common/src/tests.rs`. Goldens: none move.
-
-- [ ] The narrowest visibility for `Unit::new`, `record`, `Halves`, `Polygon::holds`, `Approach`, `Navigation::walker`, the `push`es of `StatsColumn` and `NavigationColumn`, `snapshot_hash`, `restore_target`, `PackageView`, `production::Held`, the `RowReads` aliases, `TagProperty::ALL` and `PlayersData::DEFAULT`.
-
 ### Batch 13. Names resolved at the load
 
 Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mode/src/{game_map,marker,marker_tag,marker_spec,mode_map}.rs`, `capabilities/core/{script,actions,values}/src/**`, `session/protocol/src/**`, `network/net/src/events/*`, `network/quic/src/{port_mapper/mod,error}.rs`. Goldens: none move.

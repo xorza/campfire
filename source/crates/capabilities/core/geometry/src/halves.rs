@@ -5,16 +5,16 @@ use campfire_sim::Position;
 /// twice the world's bound, they and their sums fit a `Flat`'s `i64`s, and their products its
 /// `i128` ones.
 #[derive(Debug)]
-pub struct Halves;
+pub(crate) struct Halves;
 
 impl Halves {
     /// `value` in halves of a bit, exactly.
-    pub const fn of(value: Num) -> i128 {
+    pub(crate) const fn of(value: Num) -> i128 {
         2 * value.to_bits() as i128
     }
 
     /// Where `pos` stands on the ground plane, in halves of a bit.
-    pub const fn ground(pos: Position) -> Flat {
+    pub(crate) const fn ground(pos: Position) -> Flat {
         let point = pos.get();
         Flat::new(Halves::of(point.x), Halves::of(point.z))
     }

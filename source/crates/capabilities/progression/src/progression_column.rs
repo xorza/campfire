@@ -15,7 +15,7 @@ use crate::points::Points;
 use crate::track_book::TrackBook;
 
 /// The parts of a unit progression reads into its row: its experience and its points.
-pub type RowReads = (Option<&'static Experience>, Option<&'static Points>);
+pub(crate) type RowReads = (Option<&'static Experience>, Option<&'static Points>);
 
 /// What progression adds to the script view: the tracks the mode declares, and each unit's
 /// tracks, its experience and level on each, and its points, a row each.

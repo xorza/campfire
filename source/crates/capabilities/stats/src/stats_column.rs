@@ -27,7 +27,7 @@ use crate::unit_pools::PoolMeters;
 use crate::unit_stats::UnitStats;
 
 /// The parts of a unit the stats read into its row.
-pub type RowReads = (
+pub(crate) type RowReads = (
     Option<&'static Level>,
     Option<&'static Life>,
     Option<&'static Pools>,
@@ -196,7 +196,7 @@ impl StatsRows {
 impl StatsColumn {
     /// Adds the row of a unit at `level`, with `life` and `pools`, the values `stats` of the stats
     /// it carries, and `modifiers` with their `clocks`.
-    pub fn push(
+    fn push(
         &mut self,
         level: Option<u32>,
         pools: (Option<&Life>, Option<&Pools>),

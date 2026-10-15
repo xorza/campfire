@@ -14,7 +14,7 @@ pub struct Unit {
 
 impl Unit {
     /// Only the view makes a handle, of a unit it read: `View::unit` for any other code.
-    pub const fn new(id: StableId, row: usize, view: View) -> Unit {
+    pub(crate) const fn new(id: StableId, row: usize, view: View) -> Unit {
         Unit { id, row, view }
     }
 

@@ -24,10 +24,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. Each item names its bench for the next optimization session. Goldens: none move.
 
-### H12. The published surface
-
-(the world traits, `net`, `codec`, `schedule`, `store`, `log`, `package`, `runner`; review RC6.) After H7. Guard first: the world-trait test fails on a `*WorldCrate` import outside its crate. Then `internals` features for the base crates, private fields, and the narrowest visibility. Goldens: none move.
-
 ### H13. Names resolved at the load
 
 (`stats`, `mode`, `script`, `actions`, `values`, `protocol`, `net`, `quic`.) Applier params, marker tags, `PackageId`, the main key, slot plans and refusals become typed at their boundary. Goldens: none move.
