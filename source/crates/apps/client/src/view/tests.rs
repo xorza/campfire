@@ -247,7 +247,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         models: vec![ClientModel {
             model: PackagePath::parse("client/models/tank.glb").unwrap(),
             scale: ModelScale::new(1.25).unwrap(),
-            hide: vec!["tank.flash".to_owned()],
+            hide: ["tank.flash".to_owned()].into(),
         }],
     };
     let data = ClientData {
@@ -303,7 +303,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         model.get::<ModelParts>(),
         Some(&ModelParts {
             package: PackageIndex::MODE,
-            hide: vec!["tank.flash".to_owned()],
+            hide: ["tank.flash".to_owned()].into(),
         })
     );
     let transform = model.get::<Transform>().unwrap();

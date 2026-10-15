@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy::asset::{AssetServer, Handle};
 use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
@@ -32,7 +34,7 @@ pub(crate) struct LookModel {
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelParts {
     pub(crate) package: PackageIndex,
-    pub(crate) hide: Vec<String>,
+    pub(crate) hide: Arc<[String]>,
 }
 
 impl UnitLooks {
@@ -77,7 +79,7 @@ impl LookModel {
                 ),
                 parts: ModelParts {
                     package,
-                    hide: model.hide.clone(),
+                    hide: model.hide.as_slice().into(),
                 },
                 scale: model.scale.get(),
             })

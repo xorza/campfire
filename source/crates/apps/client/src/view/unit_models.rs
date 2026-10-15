@@ -43,10 +43,11 @@ pub(crate) struct UnitModels;
 #[derive(Component, Debug)]
 pub(crate) struct StillObject;
 
-/// The material of each material file once a primitive takes it, by its package's place and name.
+/// The material of each material file once a primitive takes it, by its name, each by its
+/// package's place.
 #[derive(Resource, Debug, Default)]
 struct FileMaterials {
-    made: BTreeMap<(PackageIndex, String), Handle<FileMaterial>>,
+    made: BTreeMap<PackageIndex, BTreeMap<String, Handle<FileMaterial>>>,
 }
 
 impl Plugin for UnitModels {
@@ -144,19 +145,21 @@ impl UnitModels {
                 material: material.map(|material| material.0.as_str()),
             })
         });
-        let Dressing { hidden, files } = Dressing::of(parts, spawned, &data.materials);
+        let files = data.materials_of(parts.package);
+        let Dressing { hidden, filed } = Dressing::of(&parts.hide, spawned, files);
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
-        for (node, key) in files {
-            let file = &data.materials[&key];
-            let handle = made
-                .made
-                .entry(key)
-                .or_insert_with(|| {
-                    materials.add(UnitModels::material(parts.package, file, &assets))
-                })
-                .clone();
+        let made = made.made.entry(parts.package).or_default();
+        for (node, name) in filed {
+            let handle = if let Some(handle) = made.get(name) {
+                handle.clone()
+            } else {
+                let file = &files[name];
+                let handle = materials.add(UnitModels::material(parts.package, file, &assets));
+                made.insert(name.to_owned(), handle.clone());
+                handle
+            };
             commands
                 .entity(node)
                 .remove::<MeshMaterial3d<StandardMaterial>>()
@@ -201,34 +204,35 @@ struct Node<'a> {
 }
 
 /// What a spawned model's dressing does: the nodes it hides, and the nodes whose material a
-/// material file replaces, each with the file's key.
+/// material file replaces, each with the file's name.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Dressing {
+struct Dressing<'f> {
     hidden: Vec<Entity>,
-    files: Vec<(Entity, (PackageIndex, String))>,
+    filed: Vec<(Entity, &'f str)>,
 }
 
-impl Dressing {
-    /// The dressing of a model of `parts` whose scene spawned `nodes`: each node of a name its
-    /// look hides, and each node whose glTF material has a file of its package among `files`.
+impl<'f> Dressing<'f> {
+    /// The dressing of a model that hides the nodes named in `hide`, whose scene spawned `nodes`:
+    /// each node of a name it hides, and each node whose glTF material has a file among `files`,
+    /// its model's package's.
     fn of<'a>(
-        parts: &ModelParts,
+        hide: &[String],
         nodes: impl Iterator<Item = Node<'a>>,
-        files: &BTreeMap<(PackageIndex, String), MaterialFile>,
-    ) -> Dressing {
+        files: &'f BTreeMap<String, MaterialFile>,
+    ) -> Dressing<'f> {
         let mut dressing = Dressing::default();
         for node in nodes {
             if node
                 .name
-                .is_some_and(|name| parts.hide.iter().any(|hidden| hidden == name))
+                .is_some_and(|name| hide.iter().any(|hidden| hidden == name))
             {
                 dressing.hidden.push(node.entity);
             }
-            if let Some(material) = node.material {
-                let key = (parts.package, material.to_owned());
-                if files.contains_key(&key) {
-                    dressing.files.push((node.entity, key));
-                }
+            if let Some((name, _)) = node
+                .material
+                .and_then(|material| files.get_key_value(material))
+            {
+                dressing.filed.push((node.entity, name.as_str()));
             }
         }
         dressing
@@ -444,15 +448,9 @@ mod tests {
             depth_bias: 0,
             double_sided: false,
         };
-        // Files for the tank's `tank_3` in package 1, and for `tank_0` in package 0 alone.
-        let files = BTreeMap::from([
-            ((PackageIndex::new(1), "tank_3".to_owned()), file.clone()),
-            ((PackageIndex::MODE, "tank_0".to_owned()), file),
-        ]);
-        let parts = ModelParts {
-            package: PackageIndex::new(1),
-            hide: vec!["tank.turret".to_owned(), "tank.flash".to_owned()],
-        };
+        // The files of the model's package: `tank_3`'s, and not `tank_0`'s.
+        let files = BTreeMap::from([("tank_3".to_owned(), file)]);
+        let hide = ["tank.turret".to_owned(), "tank.flash".to_owned()];
         let nodes = [
             Node {
                 entity: turret,
@@ -476,13 +474,10 @@ mod tests {
             },
         ];
         assert_eq!(
-            Dressing::of(&parts, nodes.into_iter(), &files),
+            Dressing::of(&hide, nodes.into_iter(), &files),
             Dressing {
                 hidden: vec![turret, flash],
-                files: vec![
-                    (flash, (PackageIndex::new(1), "tank_3".to_owned())),
-                    (other, (PackageIndex::new(1), "tank_3".to_owned()))
-                ],
+                filed: vec![(flash, "tank_3"), (other, "tank_3")],
             }
         );
     }

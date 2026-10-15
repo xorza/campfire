@@ -19,8 +19,8 @@ use tracing::error;
 use crate::view::ground_heights::GroundHeights;
 
 /// The client data of the mode's packages, which the view draws units by: each package's unit
-/// looks, `client/units.toml`, by its place, and every material file, `client/materials/<name>.toml`,
-/// by its package's place and its name; the map's heightmap and the ground's heights from it; and
+/// looks, `client/units.toml`, and its material files, `client/materials/<name>.toml`, by their
+/// names, each by the package's place; the map's heightmap and the ground's heights from it; and
 /// the mode's own package's camera, `client/camera.toml`, the map's lights,
 /// `client/maps/<map>/lights.toml`, its client objects, `client/maps/<map>/objects.toml`,
 /// whose looks are its package's, and its terrain, `client/maps/<map>/terrain.bin`, kept when its
@@ -30,7 +30,7 @@ use crate::view::ground_heights::GroundHeights;
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ClientData {
     pub(crate) units: Vec<ClientUnits>,
-    pub(crate) materials: BTreeMap<(PackageIndex, String), MaterialFile>,
+    pub(crate) materials: Vec<BTreeMap<String, MaterialFile>>,
     /// The ground's heights from the map's heightmap; none for a map of no heightmap.
     pub(crate) heights: Option<GroundHeights>,
     /// The map's terrain over its heights; none for a map of no heights, of no terrain file, or
@@ -97,8 +97,14 @@ impl ClientData {
     }
 
     fn read_package(&mut self, place: PackageIndex, files: &PackageReader) {
+        debug_assert_eq!(
+            usize::from(place.get()),
+            self.units.len(),
+            "packages read in their places' order"
+        );
         let units = ClientData::toml::<ClientUnits>(files, UNITS, Toml::parse);
         self.units.push(units.unwrap_or_default());
+        let mut materials = BTreeMap::new();
         for path in files.files_under(MATERIALS) {
             let Some(name) = path
                 .as_str()
@@ -110,14 +116,20 @@ impl ClientData {
             };
             let file = ClientData::toml::<MaterialFile>(files, path.as_str(), Toml::parse);
             if let Some(file) = file {
-                self.materials.insert((place, name.to_owned()), file);
+                materials.insert(name.to_owned(), file);
             }
         }
+        self.materials.push(materials);
     }
 
     /// The unit looks of the package at `place`.
     pub(crate) fn units_of(&self, place: PackageIndex) -> &ClientUnits {
         &self.units[usize::from(place.get())]
+    }
+
+    /// The material files of the package at `place`, by their names.
+    pub(crate) fn materials_of(&self, place: PackageIndex) -> &BTreeMap<String, MaterialFile> {
+        &self.materials[usize::from(place.get())]
     }
 
     /// The bytes of the file at `path`; none for a file the package lacks, and none, logged, for

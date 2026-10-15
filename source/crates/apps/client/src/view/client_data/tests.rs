@@ -46,10 +46,17 @@ double_sided = true
     assert!(data.units[1].units.is_empty());
     // The material file by its package and name; the one that does not read, and the file
     // that is no TOML, are not there.
-    let key = (PackageIndex::MODE, "tank_3".to_owned());
-    let keys: Vec<&(PackageIndex, String)> = data.materials.keys().collect();
-    assert_eq!(keys, [&key]);
-    assert_eq!(data.materials[&key].blend, Blend::Add);
+    let names: Vec<&str> = data
+        .materials_of(PackageIndex::MODE)
+        .keys()
+        .map(String::as_str)
+        .collect();
+    assert_eq!(names, ["tank_3"]);
+    assert_eq!(
+        data.materials_of(PackageIndex::MODE)["tank_3"].blend,
+        Blend::Add
+    );
+    assert!(data.materials_of(PackageIndex::new(1)).is_empty());
 }
 
 #[test]
