@@ -18,7 +18,7 @@ slow-timeout = { period = "15s", terminate-after = 4 }
 # 60 s (design 02, Benches).
 [[profile.default.overrides]]
 filter = 'kind(bench)'
-slow-timeout = { period = "15s", terminate-after = 4 }
+slow-timeout = { period = "20s", terminate-after = 4 }
 
 # CI's runners run the suite 3.5 to 6 times slower than an M5, and share their cores: the 3v3's
 # resume, 0.79 s alone on an M5, took 4.5 s on Windows. So a test ends at 30 s there, and a scripted

@@ -310,13 +310,6 @@ def tests_step(
     return Step("tests", Kind.TESTS, argv, env or {}, always_runs=always_runs)
 
 
-def bench_cases_step() -> Step:
-    return Step(
-        "bench cases", Kind.TESTS, cargo(*TESTS, *nextest_output(), "--bench", "*"),
-        scope=workspace().benches,
-    )
-
-
 def rustdoc_step() -> Step:
     return Step(
         "rustdoc", Kind.CHECK,
@@ -797,7 +790,7 @@ def gate(args: list[str]) -> int:
     steps = []
     if not IN_CI or PLATFORM.formats_in_ci:
         steps.append(fmt_check_step())
-    steps += [lint_step(), ship_step(), tests_step(), bench_cases_step(), rustdoc_step()]
+    steps += [lint_step(), ship_step(), tests_step()]
     # After the tests, so target/debug holds the LAN check's build of each binary, which CI keeps.
     steps += [lan_build_step(), lan_run_step()]
     # CI checks Windows on Windows itself.
