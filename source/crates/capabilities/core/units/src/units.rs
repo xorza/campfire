@@ -158,6 +158,7 @@ impl Module for Units {
         // The spawner gives a unit the facing of its angle, which its body turns by; this part
         // holds every unit to one.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
+        d.part::<BodyUnit, StatusTags>(|_| Some(StatusTags::default()));
         d.part::<BodyUnit, SpawnPoint>(|at| at.pos().map(SpawnPoint::new));
         d.part::<BodyUnit, Body>(|at| {
             at.of_type::<BodyForm>()

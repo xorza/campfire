@@ -3,7 +3,7 @@ use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
-use campfire_declare::RoleForm;
+use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_navigation::Navigation;
@@ -202,8 +202,6 @@ impl Construction {
             owner: owner.map(Owner::slot),
             angle: start.angle,
         };
-        let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, ());
         let spec = world
             .resource::<BuildBook>()
             .of(action)
@@ -211,21 +209,26 @@ impl Construction {
         let start_life = spec.start_life;
         let one_holds = matches!(spec.style, Style::Builder);
         let stays = !matches!(spec.style, Style::Alone);
-        let mut gain = Num::ZERO;
-        if let Some(mut life) = world.get_mut::<Life>(site) {
-            let max = life.max();
+        // The site's life starts at its share of the most its type's life holds, as it spawns.
+        let full = world
+            .resource::<ByType<Life>>()
+            .get(start.unit_type)
+            .copied();
+        let gain = full.map_or(Num::ZERO, |full| {
+            let max = full.max();
             let share =
                 start_life.expect("a building with life has its start life, as its book checked");
-            let starts = share.of_num(max).max(Num::EPSILON).min(max);
-            gain = max - starts;
-            life.take(gain);
-        }
+            max - share.of_num(max).max(Num::EPSILON).min(max)
+        });
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = one_holds.then_some(builder);
         let held = Site::new(action, start.rank, gain, paid, holder);
-        let status = world.get::<StatusTags>(site).copied().unwrap_or_default();
-        let status = status.turned(Production::CONSTRUCTING, true);
-        world.entity_mut(site).insert((held, status));
+        let status = StatusTags::from([Production::CONSTRUCTING]);
+        let spawner = world.non_send::<Spawner>().clone();
+        let site = spawner.spawn(world, at, (held, status));
+        if let Some(mut life) = world.get_mut::<Life>(site) {
+            life.take(gain);
+        }
         let next = stays.then_some(BuildOrder {
             slot: order.slot,
             target: BuildTarget::Site(id),

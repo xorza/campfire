@@ -353,27 +353,16 @@ impl GatherLoop {
         mut workers: Query<
             '_,
             '_,
-            (Entity, &Gatherer, Option<&mut StatusTags>),
+            (&Gatherer, &mut StatusTags),
             Or<(Changed<Gatherer>, Changed<StatusTags>)>,
         >,
-        mut commands: Commands<'_, '_>,
     ) {
-        for (entity, gatherer, status) in &mut workers {
+        for (gatherer, mut status) in &mut workers {
             let looping = gatherer
                 .order()
                 .is_some_and(|order| order.step != GatherStep::Ordered);
-            match status {
-                Some(mut status) => {
-                    let wanted = status.turned(Production::GATHERING, looping);
-                    status.set_if_neq(wanted);
-                }
-                None if looping => {
-                    commands
-                        .entity(entity)
-                        .insert(StatusTags::from([Production::GATHERING]));
-                }
-                None => {}
-            }
+            let wanted = status.turned(Production::GATHERING, looping);
+            status.set_if_neq(wanted);
         }
     }
 }
