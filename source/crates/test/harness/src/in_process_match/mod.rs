@@ -26,7 +26,7 @@ use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{InputRules, SeedChain, ServerInput};
-use campfire_quic::{LINK_MIN_MTU, LinkBinding};
+use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{Body, MoveStep, Owner, UnitsWorld};
@@ -35,7 +35,7 @@ use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
-    Connect, Connected, Link, LinkMtu, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
+    Connect, Connected, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, PredictionMetrics, RollbackMode, SyncSystems, Unlink, UnlinkReason,
 };
 use lightyear::transport::plugin::TransportSystems;
@@ -380,7 +380,7 @@ impl InProcessMatch {
                 LinkOf {
                     server: self.server_entity,
                 },
-                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+                QuicEndpoint::link(),
                 PeerAddr(address),
                 BINDING,
                 Linked,

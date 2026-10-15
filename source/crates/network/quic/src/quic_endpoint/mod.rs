@@ -55,7 +55,7 @@ const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
-/// connections within the `AddressLimit` its entity must hold (D13), and spawns a `LinkOf` for
+/// connections within its `AddressLimit` (D13), and spawns a `LinkOf` for
 /// each once its handshake completes; a client connects to its server, and its entity carries
 /// the connection. Taken from a started entity, by any path, it ends that entity's link;
 /// dropped, it closes every connection with `AppCode::STOPPED`, waits until its thread wrote the
@@ -75,6 +75,7 @@ pub struct QuicEndpoint {
 enum Side {
     Server {
         key: TlsKey,
+        limit: AddressLimit,
     },
     Client {
         server: SocketAddr,
@@ -84,22 +85,34 @@ enum Side {
 }
 
 impl QuicEndpoint {
-    /// A server's endpoint on `address`, whose TLS key and reset key both derive from `secret`,
+    /// A server's socket on `address`, whose TLS key and reset key both derive from `secret`,
     /// the secret of the server's own key (D6, D8). It binds now, before its app runs, so a port
-    /// in use is this error, not a server with no link (D2).
+    /// in use is this error, not a server with no link (D2); it serves once its limit for each
+    /// address is known.
     pub fn server(
         address: SocketAddr,
         secret: &Zeroizing<[u8; 32]>,
         times: LinkTimes,
-    ) -> Result<QuicEndpoint, BindError> {
+    ) -> Result<ServerSocket, BindError> {
         let key = ServerKey::derive(secret);
         let config = QuicEndpoint::server_config(key.server_config(), times);
-        QuicEndpoint::open(
-            address,
-            Some(Arc::new(config)),
-            QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
-            Side::Server { key: key.public() },
-        )
+        let port = UdpPort::bind(address).map_err(|error| BindError { address, error })?;
+        let local = port
+            .local_address()
+            .map_err(|error| BindError { address, error })?;
+        Ok(ServerSocket {
+            port,
+            local,
+            server: Arc::new(config),
+            config: QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
+            key: key.public(),
+        })
+    }
+
+    /// A link of `LINK_MIN_MTU`, as every link of a session starts, over QUIC or in process: its
+    /// transport fixes its fragments by it then.
+    pub fn link() -> Link {
+        Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU))
     }
 
     /// A client's endpoint, which connects to `server` and takes only the key `pin`.
@@ -173,6 +186,17 @@ impl QuicEndpoint {
         let bind_error = |error| BindError { address, error };
         let port = UdpPort::bind(address).map_err(bind_error)?;
         let local = port.local_address().map_err(bind_error)?;
+        Ok(QuicEndpoint::run(port, local, server, config, side))
+    }
+
+    /// The endpoint of `port`, bound to `local`, with its thread running.
+    fn run(
+        port: UdpPort,
+        local: SocketAddr,
+        server: Option<Arc<ServerConfig>>,
+        config: EndpointConfig,
+        side: Side,
+    ) -> QuicEndpoint {
         let max_payload =
             usize::try_from(config.get_max_udp_payload_size()).expect("a UDP payload fits usize");
         let endpoint = Endpoint::new(Arc::new(config), server, !port.may_fragment(), None);
@@ -180,12 +204,12 @@ impl QuicEndpoint {
         let shared = Arc::new(SharedEndpoint::new(state, port));
         let thread = IoThread::new(Arc::clone(&shared), max_payload);
         let worker = Worker::start("campfire-quic", move || thread.run());
-        Ok(QuicEndpoint {
+        QuicEndpoint {
             shared,
             side,
             local,
             _worker: worker,
-        })
+        }
     }
 
     /// The address the socket is bound to, its port the OS's when the address named 0.
@@ -197,7 +221,7 @@ impl QuicEndpoint {
     /// names, or the one a client pinned.
     pub const fn tls_key(&self) -> TlsKey {
         match &self.side {
-            Side::Server { key } => *key,
+            Side::Server { key, .. } => *key,
             Side::Client { pin, .. } => *pin,
         }
     }
@@ -212,22 +236,23 @@ impl QuicEndpoint {
     }
 
     /// Opens the endpoint on its entity `entity`, whose `link` a client's connection fills: a
-    /// server takes connections within its `limit` for each address, and is linked at once; a
+    /// server takes connections within its limit for each address, and is linked at once; a
     /// client connects, and is linked once its handshake completes.
     pub(crate) fn start(
         &self,
         entity: Entity,
         link: Option<&Link>,
-        limit: Option<&AddressLimit>,
         commands: &mut Commands<'_, '_>,
     ) {
-        let Side::Client { server, config, .. } = &self.side else {
-            let limit = limit.expect("a server's endpoint starts with its limit for each address");
-            self.shared.lock().start_accepting(*limit, Instant::now());
-            commands
-                .entity(entity)
-                .insert((LocalAddr(self.local), Linked));
-            return;
+        let (server, config) = match &self.side {
+            Side::Client { server, config, .. } => (server, config),
+            Side::Server { limit, .. } => {
+                self.shared.lock().start_accepting(*limit, Instant::now());
+                commands
+                    .entity(entity)
+                    .insert((LocalAddr(self.local), Linked));
+                return;
+            }
         };
         let link = link.expect("a client's endpoint is on the entity of its link");
         assert_eq!(
@@ -279,7 +304,7 @@ impl QuicEndpoint {
             match news {
                 News::Connected { key } => {
                     if let Some(peer) = state.peer(key) {
-                        self.link(endpoint, peer, commands);
+                        self.link_peer(endpoint, peer, commands);
                     }
                 }
                 News::Lost { entity, end, .. } => QuicEndpoint::unlink(entity, end, commands),
@@ -309,7 +334,7 @@ impl QuicEndpoint {
     /// the server on `endpoint`, spawned whole, its peer id its own entity (D9). A connection
     /// closed since is not linked: a client's loss is in the news after it, and a server's has no
     /// entity to tell.
-    fn link(&self, endpoint: Entity, peer: &mut Peer, commands: &mut Commands<'_, '_>) {
+    fn link_peer(&self, endpoint: Entity, peer: &mut Peer, commands: &mut Commands<'_, '_>) {
         if peer.connection.is_closed() {
             return;
         }
@@ -329,7 +354,7 @@ impl QuicEndpoint {
                 let link = commands
                     .spawn((
                         LinkOf { server: endpoint },
-                        Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+                        QuicEndpoint::link(),
                         PeerAddr(remote),
                         binding,
                         QuicLink::new(Arc::downgrade(&self.shared), peer.key()),
@@ -421,6 +446,48 @@ impl Drop for QuicEndpoint {
     fn drop(&mut self) {
         self.shared.lock().close_all(Instant::now());
         self.shared.wake();
+    }
+}
+
+/// A server's socket, bound, and what its endpoint takes: it serves once its limit for each
+/// address is known, so no server's endpoint exists without one.
+#[derive(Debug)]
+pub struct ServerSocket {
+    port: UdpPort,
+    local: SocketAddr,
+    server: Arc<ServerConfig>,
+    config: EndpointConfig,
+    key: TlsKey,
+}
+
+impl ServerSocket {
+    /// The address the socket is bound to, its port the OS's when the address named 0.
+    pub const fn local_address(&self) -> SocketAddr {
+        self.local
+    }
+
+    /// The TLS key the server presents, which its listing names.
+    pub const fn tls_key(&self) -> TlsKey {
+        self.key
+    }
+
+    /// The server's endpoint, which takes connections within `limit` for each address once it
+    /// starts.
+    pub fn serve(self, limit: AddressLimit) -> QuicEndpoint {
+        let ServerSocket {
+            port,
+            local,
+            server,
+            config,
+            key,
+        } = self;
+        QuicEndpoint::run(
+            port,
+            local,
+            Some(server),
+            config,
+            Side::Server { key, limit },
+        )
     }
 }
 

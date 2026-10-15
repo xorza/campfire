@@ -154,7 +154,10 @@ fn main() -> ExitCode {
     let listening = announce(&opening, &mode, local, tls_key);
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
-    let server = app.world_mut().spawn((RawServer, endpoint, limit)).id();
+    let server = app
+        .world_mut()
+        .spawn((RawServer, endpoint.serve(limit)))
+        .id();
     app.world_mut().trigger(Start { entity: server });
     let exit = app.run();
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP

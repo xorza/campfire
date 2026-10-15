@@ -96,7 +96,7 @@ impl Loopback {
         let key = quic.tls_key();
         let mut server = App::new();
         server.add_plugins(QuicPlugin);
-        let endpoint = server.world_mut().spawn((quic, ROOMY)).id();
+        let endpoint = server.world_mut().spawn(quic.serve(ROOMY)).id();
         Loopback {
             server,
             endpoint,
@@ -166,10 +166,7 @@ impl ClientApp {
     fn start(quic: QuicEndpoint) -> ClientApp {
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
-        let entity = app
-            .world_mut()
-            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
-            .id();
+        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
         ClientApp { app, entity }
     }
@@ -889,7 +886,10 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     server.add_systems(Update, Blob::receive);
     server.finish();
     server.cleanup();
-    let endpoint = server.world_mut().spawn((RawServer, quic, ROOMY)).id();
+    let endpoint = server
+        .world_mut()
+        .spawn((RawServer, quic.serve(ROOMY)))
+        .id();
     server.world_mut().trigger(Start { entity: endpoint });
 
     let mut client = App::new();
@@ -905,12 +905,7 @@ fn a_message_of_three_fragments_crosses_lightyear_whole() {
     let quic = QuicEndpoint::client(address, &key, LinkTimes::CAMPFIRE).unwrap();
     let entity = client
         .world_mut()
-        .spawn((
-            Client,
-            RawClient,
-            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
-            quic,
-        ))
+        .spawn((Client, RawClient, QuicEndpoint::link(), quic))
         .id();
     client.world_mut().trigger(Connect { entity });
 

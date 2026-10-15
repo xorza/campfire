@@ -13,10 +13,10 @@ use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_net::Listening;
 use campfire_package_disk::internals::TestMode;
-use campfire_quic::{LINK_MIN_MTU, LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
+use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
-use lightyear::link::{Link, LinkMtu, LinkStart, Linked};
+use lightyear::link::{LinkStart, Linked};
 
 /// The longest each step waits, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
@@ -116,10 +116,7 @@ impl ClientApp {
             .unwrap();
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
-        let entity = app
-            .world_mut()
-            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
-            .id();
+        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
         ClientApp { app, entity }
     }

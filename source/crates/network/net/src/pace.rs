@@ -28,7 +28,7 @@ impl Default for Pace {
     fn default() -> Pace {
         Pace {
             paused: AtomicBool::new(false),
-            speed: AtomicU8::new(PaceSpeed::Normal.place()),
+            speed: AtomicU8::new(PaceSpeed::Normal as u8),
         }
     }
 }
@@ -47,21 +47,11 @@ impl Pace {
     }
 
     pub fn set_speed(&self, speed: PaceSpeed) {
-        self.speed.store(speed.place(), Ordering::Relaxed);
+        self.speed.store(speed as u8, Ordering::Relaxed);
     }
 }
 
 impl PaceSpeed {
-    /// The speed's place in `ALL`.
-    const fn place(self) -> u8 {
-        match self {
-            PaceSpeed::Half => 0,
-            PaceSpeed::Normal => 1,
-            PaceSpeed::Double => 2,
-            PaceSpeed::Quadruple => 3,
-        }
-    }
-
     /// The tick length at this speed of a session whose ticks last `tick`.
     pub const fn tick(self, tick: Duration) -> Duration {
         match self {

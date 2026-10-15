@@ -54,7 +54,7 @@ pub use crate::link_binding::LinkBinding;
 pub use crate::link_end::LinkEnd;
 pub use crate::link_times::LinkTimes;
 pub use crate::port_map::PortMap;
-pub use crate::quic_endpoint::QuicEndpoint;
+pub use crate::quic_endpoint::{QuicEndpoint, ServerSocket};
 pub use crate::quic_plugin::QuicPlugin;
 
 /// The length of every connection id Campfire's endpoints give, which `LINK_MIN_MTU` counts

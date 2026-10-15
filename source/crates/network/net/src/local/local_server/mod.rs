@@ -13,13 +13,13 @@ use bevy_ecs::world::World;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_quic::{LINK_MIN_MTU, LinkBinding};
+use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::Worker;
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;
-use lightyear::prelude::{Link, LinkMtu, LinkOf, Linked, PeerAddr};
+use lightyear::prelude::{LinkOf, Linked, PeerAddr};
 use secp256k1::Keypair;
 use tracing::error;
 
@@ -315,7 +315,7 @@ impl Runs {
         let address = SocketAddr::from(([127, 0, 0, 1], 1));
         app.world_mut().spawn((
             LinkOf { server },
-            Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
+            QuicEndpoint::link(),
             PeerAddr(address),
             LinkBinding(LocalServer::BINDING),
             Linked,

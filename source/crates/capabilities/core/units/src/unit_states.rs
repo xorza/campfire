@@ -1,19 +1,31 @@
+use std::fmt;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_script::{StatePlace, StateValue, SyncTo};
 use campfire_values::UnitType;
 
-use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
+use crate::unit_state::{StateSync, SyncCall, UnitState};
 use crate::unit_state_book::UnitStateBook;
 
 /// A new unit's script state: the values of each class of its fields, in the order of their
-/// names, each class a `UnitState` of its own as the unit spawns.
+/// names, by the class's place, each class a `UnitState` of its own as the unit spawns.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct UnitStates {
-    none: Vec<StateValue>,
-    owner: Vec<StateValue>,
-    team: Vec<StateValue>,
-    all: Vec<StateValue>,
+pub struct UnitStates([Vec<StateValue>; SyncTo::ALL.len()]);
+
+/// Inserts a class's values into a unit as its `UnitState`, unless it has none.
+struct InsertClass<'t, 'w> {
+    target: &'t mut EntityWorldMut<'w>,
+    values: Vec<StateValue>,
+}
+
+/// Writes the field at `at` of a class of the unit of `entity`.
+#[derive(Debug)]
+struct WriteClass<'w> {
+    world: &'w mut World,
+    entity: Entity,
+    at: usize,
+    value: StateValue,
 }
 
 impl UnitStates {
@@ -29,12 +41,7 @@ impl UnitStates {
     }
 
     const fn class_mut(&mut self, sync: SyncTo) -> &mut Vec<StateValue> {
-        match sync {
-            SyncTo::None => &mut self.none,
-            SyncTo::Owner => &mut self.owner,
-            SyncTo::Team => &mut self.team,
-            SyncTo::All => &mut self.all,
-        }
+        &mut self.0[sync.index()]
     }
 
     /// Adds `value`, the next field of class `sync`.
@@ -51,43 +58,52 @@ impl UnitStates {
 
     /// Inserts a component into `target` for each class it holds a field of.
     pub fn insert_into(self, target: &mut EntityWorldMut<'_>) {
-        let UnitStates {
-            none,
-            owner,
-            team,
-            all,
-        } = self;
-        UnitStates::insert_class::<SyncNone>(target, none);
-        UnitStates::insert_class::<SyncOwner>(target, owner);
-        UnitStates::insert_class::<SyncTeam>(target, team);
-        UnitStates::insert_class::<SyncAll>(target, all);
-    }
-
-    fn insert_class<S: StateSync>(
-        target: &mut EntityWorldMut<'_>,
-        values: impl IntoIterator<Item = StateValue>,
-    ) {
-        let values: Vec<StateValue> = values.into_iter().collect();
-        if !values.is_empty() {
-            target.insert(UnitState::<S>::new(values));
+        for (sync, values) in SyncTo::ALL.into_iter().zip(self.0) {
+            InsertClass { target, values }.on(sync);
         }
-    }
-
-    fn write_class<S: StateSync>(world: &mut World, entity: Entity, at: usize, value: StateValue) {
-        let mut state = world
-            .get_mut::<UnitState<S>>(entity)
-            .expect("a unit holds the class of each field its type declares");
-        state.set(at, value);
     }
 
     /// Writes `value` to the field at `place` of the unit of `entity`, which holds the field's
     /// class, as a unit holds each class its type declares a field of.
     pub fn write(world: &mut World, entity: Entity, place: StatePlace, value: StateValue) {
-        match place.sync {
-            SyncTo::None => UnitStates::write_class::<SyncNone>(world, entity, place.at, value),
-            SyncTo::Owner => UnitStates::write_class::<SyncOwner>(world, entity, place.at, value),
-            SyncTo::Team => UnitStates::write_class::<SyncTeam>(world, entity, place.at, value),
-            SyncTo::All => UnitStates::write_class::<SyncAll>(world, entity, place.at, value),
+        let at = place.at;
+        WriteClass {
+            world,
+            entity,
+            at,
+            value,
         }
+        .on(place.sync);
+    }
+}
+
+/// The values it inserts: the unit it inserts them into prints nothing.
+impl fmt::Debug for InsertClass<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("InsertClass")
+            .field("values", &self.values)
+            .finish_non_exhaustive()
+    }
+}
+
+impl SyncCall for InsertClass<'_, '_> {
+    type Output = ();
+
+    fn call<S: StateSync>(self) {
+        if !self.values.is_empty() {
+            self.target.insert(UnitState::<S>::new(self.values));
+        }
+    }
+}
+
+impl SyncCall for WriteClass<'_> {
+    type Output = ();
+
+    fn call<S: StateSync>(self) {
+        let mut state = self
+            .world
+            .get_mut::<UnitState<S>>(self.entity)
+            .expect("a unit holds the class of each field its type declares");
+        state.set(self.at, self.value);
     }
 }

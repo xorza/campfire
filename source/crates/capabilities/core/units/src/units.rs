@@ -1,4 +1,5 @@
 use bevy_ecs::change_detection::CheckChangeTicks;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
@@ -8,7 +9,7 @@ use campfire_declare::{
 };
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StateSchema, SyncTo, View, ViewApi,
+    ScriptList, StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -40,7 +41,7 @@ use crate::unit_entity::UnitEntity;
 use crate::unit_entity::body_unit::BodyUnit;
 use crate::unit_entity::delivery_entity::DeliveryEntity;
 use crate::unit_grid::{GridUnits, UnitGrid};
-use crate::unit_state::{SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
+use crate::unit_state::{StateSync, SyncAll, SyncCall, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::unit_state_book::UnitStateBook;
 use crate::unit_ticks::UnitTicks;
 use crate::unit_tracker::UnitTracker;
@@ -225,14 +226,9 @@ impl Units {
             let Some(&unit_type) = world.get::<UnitType>(entity) else {
                 return false;
             };
-            let unit = world.entity(entity);
             let states = |schema: &StateSchema| {
-                schema.places().iter().all(|place| match place.sync {
-                    SyncTo::None => unit.contains::<UnitState<SyncNone>>(),
-                    SyncTo::Owner => unit.contains::<UnitState<SyncOwner>>(),
-                    SyncTo::Team => unit.contains::<UnitState<SyncTeam>>(),
-                    SyncTo::All => unit.contains::<UnitState<SyncAll>>(),
-                })
+                let holds = |place: &StatePlace| HoldsClass { world, entity }.on(place.sync);
+                schema.places().iter().all(holds)
             };
             let schema = book.schema(unit_type);
             !(types.contains(unit_type) && schema.is_some_and(states))
@@ -280,6 +276,21 @@ impl Units {
             world.insert_resource(budgets);
         }
         world.insert_non_send(view);
+    }
+}
+
+/// Whether the unit of `entity` holds a class's `UnitState`.
+#[derive(Debug)]
+struct HoldsClass<'w> {
+    world: &'w World,
+    entity: Entity,
+}
+
+impl SyncCall for HoldsClass<'_> {
+    type Output = bool;
+
+    fn call<S: StateSync>(self) -> bool {
+        self.world.entity(self.entity).contains::<UnitState<S>>()
     }
 }
 

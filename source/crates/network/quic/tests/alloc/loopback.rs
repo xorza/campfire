@@ -8,7 +8,7 @@ use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
 use bevy_ecs::world::Mut;
 use campfire_common::TlsKey;
 use campfire_quic::{LINK_MIN_MTU, LinkTimes, QuicEndpoint, QuicPlugin};
-use lightyear::link::{Link, LinkMtu, LinkStart, Linked};
+use lightyear::link::{Link, LinkStart, Linked};
 use zeroize::Zeroizing;
 
 /// The longest a fixture waits for loopback, inside a test's bound of 1 s.
@@ -55,10 +55,7 @@ impl ClientApp {
     pub(crate) fn connect(server: SocketAddr, key: &TlsKey) -> ClientApp {
         let quic = QuicEndpoint::client(server, key, LinkTimes::CAMPFIRE).unwrap();
         let mut app = app();
-        let entity = app
-            .world_mut()
-            .spawn((Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)), quic))
-            .id();
+        let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
         ClientApp { app, entity }
     }

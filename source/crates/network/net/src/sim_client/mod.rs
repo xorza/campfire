@@ -19,7 +19,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{PlayerInput, SignedReceipt};
-use campfire_quic::{CloseLink, LINK_MIN_MTU, LinkBinding, LinkEnd, QuicPlugin};
+use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
 use campfire_units::{Dead, Owner, PlayerUnits, UnitsWorld};
@@ -28,9 +28,9 @@ use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
 use lightyear::prelude::{
-    Client, Connect, Link, LinkMtu, LocalTimeline, MessageReceiver, MessageSender, Predicted,
-    PredictionManager, Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline,
-    UnlinkReason, Unlinked, is_in_rollback,
+    Client, Connect, LocalTimeline, MessageReceiver, MessageSender, Predicted, PredictionManager,
+    Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline, UnlinkReason, Unlinked,
+    is_in_rollback,
 };
 use secp256k1::{Keypair, Secp256k1, VerifyOnly};
 use tracing::info;
@@ -177,12 +177,7 @@ impl SimClient {
     /// links it (design 15, D5).
     pub fn spawn(world: &mut World) -> Entity {
         world
-            .spawn((
-                Client,
-                RawClient,
-                ReplicationReceiver,
-                Link::default().with_mtu(LinkMtu::new(LINK_MIN_MTU)),
-            ))
+            .spawn((Client, RawClient, ReplicationReceiver, QuicEndpoint::link()))
             .id()
     }
 }

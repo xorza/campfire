@@ -32,6 +32,24 @@ pub trait StateSync: Debug + Clone + PartialEq + Eq + Send + Sync + 'static {
     type Sending: Sending<UnitState<Self>>;
 }
 
+/// What runs with the class type of a `SyncTo` that only a value names: `on` is the one place a
+/// class's value picks its type.
+pub(crate) trait SyncCall: Sized {
+    type Output;
+
+    fn call<S: StateSync>(self) -> Self::Output;
+
+    /// Runs `call` with the class type of `sync`.
+    fn on(self, sync: SyncTo) -> Self::Output {
+        match sync {
+            SyncTo::None => self.call::<SyncNone>(),
+            SyncTo::Owner => self.call::<SyncOwner>(),
+            SyncTo::Team => self.call::<SyncTeam>(),
+            SyncTo::All => self.call::<SyncAll>(),
+        }
+    }
+}
+
 /// The fields of `sync = "none"`, the default, which no client receives.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SyncNone;

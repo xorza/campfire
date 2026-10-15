@@ -25,7 +25,7 @@ fn a_frame_that_moves_a_packet_each_way_allocates_nothing() {
     let (address, key) = (quic.local_address(), quic.tls_key());
     let mut server = loopback::app();
     let limit = AddressLimit::new(NonZeroU32::MIN, Duration::from_secs(60));
-    let endpoint = server.world_mut().spawn((quic, limit)).id();
+    let endpoint = server.world_mut().spawn(quic.serve(limit)).id();
     server.world_mut().trigger(LinkStart { entity: endpoint });
     let mut client = ClientApp::connect(address, &key);
     let mut link = None;

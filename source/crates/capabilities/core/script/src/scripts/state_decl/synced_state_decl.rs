@@ -23,6 +23,9 @@ pub enum SyncTo {
 }
 
 impl SyncTo {
+    /// Every class, in the order of their places.
+    pub const ALL: [SyncTo; 4] = [SyncTo::None, SyncTo::Owner, SyncTo::Team, SyncTo::All];
+
     /// Its place among the classes: none, owner, team, all.
     pub const fn index(self) -> usize {
         match self {
