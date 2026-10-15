@@ -164,7 +164,9 @@ impl PortMapper {
     /// renewal failed. How long until the next turn: a renewal's time; when no router mapped the
     /// port, the lifetime of a PCP refusal, for which RFC 6887 §7.2 has a client expect the same
     /// answer, or else `retry`. A server started again meets such a refusal for the mapping its
-    /// last run left, under that run's nonce, which forwards to the same port until it ends.
+    /// last run left, under that run's nonce, which forwards to the same port until it ends: so a
+    /// refusal's wait is at most the lifetime the map asks for, as a router's refusal may last
+    /// for years.
     pub(crate) fn turn(&mut self) -> Duration {
         if let Some(held) = &mut self.held {
             match held.renew(self.internal_port, self.times) {
@@ -199,7 +201,9 @@ impl PortMapper {
                     self.told = true;
                 }
                 match unmapped.pmp {
-                    MapError::PcpRefused { lasts, .. } => lasts.max(RENEWAL_MIN),
+                    MapError::PcpRefused { lasts, .. } => {
+                        lasts.clamp(RENEWAL_MIN, self.times.lifetime.max(RENEWAL_MIN))
+                    }
                     _ => self.times.retry,
                 }
             }

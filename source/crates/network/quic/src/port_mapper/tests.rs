@@ -185,9 +185,12 @@ fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps
 #[test]
 fn a_pcp_refusal_is_asked_again_once_its_lifetime_ends() {
     // NOT_AUTHORIZED for the 7,000 s an earlier run's mapping has left, NO_RESOURCES for 30 s,
-    // and NETWORK_FAILURE for 1 s, which the floor of 4 s lifts.
+    // and NETWORK_FAILURE for 1 s, which the floor of 4 s lifts. A refusal past the 7,200 s a
+    // mapping lasts, 7,201 s or about 136 years, waits those 7,200 s.
     for (result, lasts, wait) in [
         (2, 7000, Duration::from_secs(7000)),
+        (2, 7201, TIMES.lifetime),
+        (2, u32::MAX, TIMES.lifetime),
         (8, 30, Duration::from_secs(30)),
         (7, 1, RENEWAL_MIN),
     ] {
