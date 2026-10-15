@@ -73,7 +73,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                 };
                 let inside = match other.shape() {
                     Shape::Circle(radius) => {
-                        boxed.nearest(pos, other_pos, radius) == Ordering::Less
+                        boxed.nearest(pos, other_pos, radius.get()) == Ordering::Less
                     }
                     Shape::Box(other) => boxed.overlaps(pos, &other, other_pos),
                 };

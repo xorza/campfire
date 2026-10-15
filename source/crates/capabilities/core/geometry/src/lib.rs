@@ -16,6 +16,7 @@ mod halves;
 mod metric;
 mod placed;
 mod polygon;
+mod radius;
 mod shape;
 
 #[cfg(feature = "internals")]
@@ -33,6 +34,8 @@ pub use crate::metric::Metric;
 pub use crate::placed::Placed;
 pub use crate::polygon::Polygon;
 pub use crate::polygon::error::PolygonError;
+pub use crate::radius::Radius;
+pub use crate::radius::error::NotRadius;
 pub use crate::shape::Shape;
 
 #[cfg(feature = "internals")]

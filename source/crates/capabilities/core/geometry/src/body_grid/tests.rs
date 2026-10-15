@@ -2,6 +2,7 @@ use campfire_math::Vec3;
 use campfire_sim::IdAllocator;
 
 use super::*;
+use crate::radius::Radius;
 use crate::shape::Shape;
 
 /// `tenths` of a meter.
@@ -16,7 +17,7 @@ fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Indexed<()> {
         key: (),
         body: Placed::new(
             Position::new(Vec3::new(m(x), Num::ZERO, m(z))).unwrap(),
-            Shape::Circle(m(radius)),
+            Shape::Circle(Radius::new(m(radius)).unwrap()),
         ),
     }
 }

@@ -76,14 +76,13 @@ impl Metric {
         };
         match (from_shape, to_shape) {
             (Shape::Circle(from_radius), Shape::Circle(to_radius)) => {
-                debug_assert!(from_radius >= Num::ZERO && to_radius >= Num::ZERO);
                 let reach = range
-                    .checked_add(from_radius)
-                    .and_then(|reach| reach.checked_add(to_radius));
+                    .checked_add(from_radius.get())
+                    .and_then(|reach| reach.checked_add(to_radius.get()));
                 reach.is_none_or(|reach| self.within(from, to, reach))
             }
-            (Shape::Circle(radius), Shape::Box(body)) => within(&body, to, from, radius),
-            (Shape::Box(body), Shape::Circle(radius)) => within(&body, from, to, radius),
+            (Shape::Circle(radius), Shape::Box(body)) => within(&body, to, from, radius.get()),
+            (Shape::Box(body), Shape::Circle(radius)) => within(&body, from, to, radius.get()),
             (Shape::Box(body), Shape::Box(other)) => {
                 debug_assert!(self == Metric::Planar, "a box lies on a planar map");
                 body.nearest_box(from, &other, to, range) != Ordering::Greater
@@ -102,9 +101,12 @@ impl Metric {
     ) -> Approach {
         let Placed { pos, shape } = body;
         match shape {
-            Shape::Circle(radius) => {
-                Approach::of_circle(self.offset(from, to), self.offset(from, pos), reach, radius)
-            }
+            Shape::Circle(radius) => Approach::of_circle(
+                self.offset(from, to),
+                self.offset(from, pos),
+                reach,
+                radius.get(),
+            ),
             Shape::Box(body) => {
                 debug_assert!(self == Metric::Planar, "a box lies on a planar map");
                 body.approach(pos, from, to, reach)
@@ -124,6 +126,8 @@ impl Metric {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::body_bound::MAX_BOUND;
+    use crate::radius::Radius;
 
     #[test]
     fn a_reach_runs_from_edge_to_edge() {
@@ -138,9 +142,9 @@ mod tests {
             (Num::ZERO, num(8), num(2), true),
             (Num::ZERO, num(8) - Num::EPSILON, num(2), false),
             // A reach past what a number holds reaches all.
-            (Num::MAX, Num::MAX, Num::ZERO, true),
+            (MAX_BOUND, Num::MAX, Num::ZERO, true),
         ];
-        let circle = Shape::Circle;
+        let circle = |radius| Shape::Circle(Radius::new(radius).unwrap());
         for (from_radius, range, to_radius, reaches) in cases {
             let met = Metric::Planar.reaches(
                 Placed::new(from, circle(from_radius)),
@@ -241,7 +245,7 @@ mod tests {
             assert_eq!(met, expected, "{at:?} within {reach:?}");
         }
         // A circle of 1 m is met within a reach 1 m shorter.
-        let circle = Shape::Circle(num(1));
+        let circle = Shape::Circle(Radius::new(num(1)).unwrap());
         assert_eq!(
             Metric::Planar.meets(
                 from,
@@ -287,7 +291,7 @@ mod tests {
         assert_eq!(entered, Some(num(3)));
         // A reach and a radius whose sum passes every number reach every distance, as
         // `reaches` counts them: met at the path's nearest point, 4 m along, and come within.
-        let huge = Shape::Circle(Num::MAX);
+        let huge = Shape::Circle(Radius::new(MAX_BOUND).unwrap());
         let far = Position::from((4, 0, 900));
         assert_eq!(
             Metric::Planar.meets(from, to, Placed::new(far, huge), Num::MAX),

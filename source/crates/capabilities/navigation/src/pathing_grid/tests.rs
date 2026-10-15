@@ -1,4 +1,4 @@
-use campfire_geometry::{Bounds, Polygon, Shape};
+use campfire_geometry::{Bounds, Polygon, Radius, Shape};
 use campfire_math::Vec3;
 use campfire_sim::{IdAllocator, Position};
 use campfire_units::Layer;
@@ -79,7 +79,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     let tower = IndexedBody {
         id: ids.allocate(),
         pos: at(Num::ZERO, Num::ZERO),
-        shape: Shape::Circle(Num::ONE),
+        shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer: Layer::FIRST,
     };
     follow(&mut grid, &mut index, &[tower]);
@@ -95,13 +95,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     let post = IndexedBody {
         id: ids.allocate(),
         pos: at(Num::int(2), -(Num::int(1) + Num::HALF)),
-        shape: Shape::Circle(Num::HALF),
+        shape: Shape::Circle(Radius::new(Num::HALF).unwrap()),
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
         pos: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
-        shape: Shape::Circle(Num::HALF),
+        shape: Shape::Circle(Radius::new(Num::HALF).unwrap()),
         layer: Layer::FIRST,
     };
     follow(&mut grid, &mut index, &[tower, post, corner]);
@@ -191,7 +191,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let tower = IndexedBody {
         id: IdAllocator::default().allocate(),
         pos: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
-        shape: Shape::Circle(Num::ONE),
+        shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer: Layer::FIRST,
     };
     index.update(&[tower]);

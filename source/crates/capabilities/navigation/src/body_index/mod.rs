@@ -155,7 +155,7 @@ impl IndexedBody {
     /// not overlap.
     pub fn overlaps_box(&self, pos: Position, body: &BodyBox) -> bool {
         match &self.shape {
-            Shape::Circle(radius) => body.nearest(pos, self.pos, *radius) == Ordering::Less,
+            Shape::Circle(radius) => body.nearest(pos, self.pos, radius.get()) == Ordering::Less,
             Shape::Box(other) => body.overlaps(pos, other, self.pos),
         }
     }
@@ -164,7 +164,7 @@ impl IndexedBody {
     /// `reach` to the body, as a walker of that radius may not stand in them. Rows in order.
     pub(crate) fn spans_closer(&self, grid: &Grid, reach: Num, mark: impl FnMut(Range<usize>)) {
         match &self.shape {
-            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + *radius, mark),
+            Shape::Circle(radius) => grid.spans_closer(self.pos, reach + radius.get(), mark),
             Shape::Box(body) => grid.box_spans_closer(self.pos, body, reach, mark),
         }
     }

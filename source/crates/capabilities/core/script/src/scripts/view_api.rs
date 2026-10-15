@@ -42,7 +42,7 @@ impl ViewApi {
                     "its body's radius, 0 with no body, `()` for a box",
                 ),
                 |unit: &mut Unit| match unit.read(|row| row.shape) {
-                    Shape::Circle(radius) => ScriptValue::of(radius),
+                    Shape::Circle(radius) => ScriptValue::of(radius.get()),
                     Shape::Box(_) => ScriptValue::UNIT,
                 },
             )

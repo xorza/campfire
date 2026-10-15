@@ -1,3 +1,4 @@
+use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, RelationSet};
@@ -29,8 +30,8 @@ pub enum ProjectileHits {
     Units(FilterData),
 }
 
-/// Data is untrusted, so a speed that is not positive, or a width or a range that is negative,
-/// fails to read.
+/// Data is untrusted, so a speed that is not positive, a width or a range that is negative, or a
+/// width whose half, the radius of the circle it flies as, is past `MAX_BOUND`, fails to read.
 impl<'de> Deserialize<'de> for ProjectileData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileData, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -55,6 +56,9 @@ impl<'de> Deserialize<'de> for ProjectileData {
         let width = fields.width.unwrap_or(Num::ZERO);
         if width < Num::ZERO {
             return Err(D::Error::custom("a projectile's width is not negative"));
+        }
+        if width.to_bits() > 2 * MAX_BOUND.to_bits() {
+            return Err(D::Error::custom("a projectile's width is at most 4,096 m"));
         }
         if fields.range.is_some_and(|range| range < Num::ZERO) {
             return Err(D::Error::custom("a projectile's range is not negative"));

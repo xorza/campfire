@@ -1,6 +1,7 @@
 use std::num::NonZeroI64;
 
 use campfire_declare::PerType;
+use campfire_geometry::Radius;
 use campfire_math::Num;
 use campfire_script::{Filter, UnknownName};
 use campfire_sim::{Capability, TickRate};
@@ -8,13 +9,13 @@ use campfire_units::UnitTypeBook;
 
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 
-/// A projectile type as a match runs it: its speed a tick, its width, its range if it has its
-/// own, whether it homes, stops at its first hit, or hits a unit once a cast, and the units it
+/// A projectile type as a match runs it: its speed a tick, half its width, the radius of the
+/// circle it flies as, its range if it has its own, whether it homes, stops at its first hit, or hits a unit once a cast, and the units it
 /// hits, none when it hits nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProjectileSpec {
     pub(crate) speed: Num,
-    pub(crate) width: Num,
+    pub(crate) half_width: Radius,
     pub(crate) range: Option<Num>,
     pub homing: bool,
     pub(crate) stop_on_hit: bool,
@@ -39,7 +40,8 @@ impl ProjectileSpec {
                 .speed
                 .checked_div_int(NonZeroI64::from(rate.hz()).get())
                 .expect("a speed over a tick rate fits"),
-            width: data.width,
+            half_width: Radius::new(data.width / 2)
+                .expect("the decode bounds a projectile's width"),
             range: data.range,
             homing: data.homing,
             stop_on_hit: data.stop_on_hit,

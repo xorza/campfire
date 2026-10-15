@@ -94,7 +94,7 @@ impl Flights<'_> {
         let offset = metric.offset(from, moved);
         let flown = flown + offset.length();
         if !metric.reaches(
-            Placed::new(moved, Shape::Circle(spec.width / 2)),
+            Placed::new(moved, Shape::Circle(spec.half_width)),
             Num::ZERO,
             Placed::new(unit.pos, unit.shape),
         ) {
@@ -152,7 +152,7 @@ impl Flights<'_> {
         self.met.clear();
         if let Some(hits) = spec.hits {
             let (start, end) = (from.get(), to.get());
-            let half = spec.width / 2;
+            let half = spec.half_width.get();
             let low = [start.x.min(end.x), start.z.min(end.z)]
                 .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
             let high = [start.x.max(end.x), start.z.max(end.z)]

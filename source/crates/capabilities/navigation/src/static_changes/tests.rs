@@ -1,4 +1,4 @@
-use campfire_geometry::Shape;
+use campfire_geometry::{Radius, Shape};
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 use campfire_units::Layer;
@@ -15,7 +15,7 @@ fn a_route_is_blocked_only_by_a_body_of_its_layer_put_in_since_the_last_check() 
     let mut post = |x, z, layer| IndexedBody {
         id: ids.allocate(),
         pos: Position::from((x, 0, z)),
-        shape: Shape::Circle(Num::ONE),
+        shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer,
     };
     let (far, touching, near, above) = (

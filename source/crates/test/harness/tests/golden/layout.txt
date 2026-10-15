@@ -1,4 +1,4 @@
-data_version 17
+data_version 18
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
 actions.use_group dbfe58d458cf8fc1
@@ -49,7 +49,7 @@ stats.modifier_clocks ec5229286fb45706
 stats.modifiers 4b12779c9769ac49
 stats.player_modifiers 231a6834c3db968b
 stats.pools 1a2e521912094b8d
-units.body 928bee7234a1783a
+units.body 05d9fcce82644de0
 units.body_unit 6f07fc05a6a4e4ce
 units.dead 6f07fc05a6a4e4ce
 units.destination 23559fe6d37131a3

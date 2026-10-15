@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_geometry::{BodyBox, MAX_BOUND, Shape};
+use campfire_geometry::{BodyBox, Radius, Shape};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
@@ -25,9 +25,12 @@ impl Body {
     /// A circle on the first layer; `None` unless `radius` is positive and at most
     /// `MAX_BOUND`.
     pub const fn new(radius: Num) -> Option<Body> {
-        if radius.to_bits() <= 0 || radius.to_bits() > MAX_BOUND.to_bits() {
+        if radius.to_bits() <= 0 {
             return None;
         }
+        let Some(radius) = Radius::new(radius) else {
+            return None;
+        };
         Some(Body {
             shape: Shape::Circle(radius),
             layer: Layer::FIRST,
@@ -55,7 +58,7 @@ impl Body {
     /// A circle's radius; `None` for a box.
     pub const fn radius(self) -> Option<Num> {
         match self.shape {
-            Shape::Circle(radius) => Some(radius),
+            Shape::Circle(radius) => Some(radius.get()),
             Shape::Box(_) => None,
         }
     }
@@ -115,7 +118,7 @@ impl<'de> Deserialize<'de> for Body {
         }
         let fields = Fields::deserialize(deserializer)?;
         let body = match fields.shape {
-            Shape::Circle(radius) => Body::new(radius)
+            Shape::Circle(radius) => Body::new(radius.get())
                 .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 2,048 m"))?,
             Shape::Box(body) => Body::of_box(body),
         };
@@ -127,7 +130,7 @@ impl<'de> Deserialize<'de> for Body {
 pub(crate) mod internals {
     use std::cmp::Ordering;
 
-    use campfire_geometry::{Metric, Placed, Shape};
+    use campfire_geometry::{Metric, Placed, Radius, Shape};
     use campfire_math::Num;
     use campfire_sim::Position;
 
@@ -156,7 +159,8 @@ pub(crate) mod internals {
             to: Position,
             to_body: Option<&Body>,
         ) -> bool {
-            let bound = Placed::new(to, Shape::Circle(Body::shape_of(to_body).bound()));
+            let bound = Radius::new(Body::shape_of(to_body).bound()).expect("a bound is a radius");
+            let bound = Placed::new(to, Shape::Circle(bound));
             Metric::Planar.reaches(Placed::new(from, Body::shape_of(from_body)), range, bound)
         }
 
@@ -166,7 +170,7 @@ pub(crate) mod internals {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };
-            boxed.nearest(centre, pos, radius) == Ordering::Less
+            boxed.nearest(centre, pos, radius.get()) == Ordering::Less
         }
     }
 }
@@ -194,7 +198,10 @@ mod tests {
         }
         assert_eq!(Body::shape_of(None), Shape::POINT);
         let circle = Body::new(Num::int(2)).unwrap();
-        assert_eq!(Body::shape_of(Some(&circle)), Shape::Circle(Num::int(2)));
+        assert_eq!(
+            Body::shape_of(Some(&circle)),
+            Shape::Circle(Radius::new(Num::int(2)).unwrap())
+        );
         // On the first layer, unless placed on another; a unit with no body is on the first.
         let air = circle.on(Layer::new(1));
         assert_eq!(Body::layer_of(Some(&circle)), Layer::FIRST);

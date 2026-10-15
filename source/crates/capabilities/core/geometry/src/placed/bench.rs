@@ -8,6 +8,7 @@ use crate::body_box::BodyBox;
 use crate::body_box::bench::COUNT;
 use crate::kernel_scene::KernelScene;
 use crate::placed::Placed;
+use crate::radius::Radius;
 use crate::shape::Shape;
 
 /// A body, and a path from one point to another.
@@ -34,7 +35,7 @@ fn beside(seed: u64, boxes: bool) -> Vec<Beside> {
                 let angle = Num::from_int(scene.below(360).cast_signed()).unwrap();
                 Shape::Box(BodyBox::new(size, angle).unwrap())
             } else {
-                Shape::Circle(length(20, 500))
+                Shape::Circle(Radius::new(length(20, 500)).unwrap())
             };
             let pos = Position::new(scene.point(20)).unwrap();
             let from = scene.point(20);

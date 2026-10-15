@@ -202,7 +202,7 @@ impl Steering {
 #[cfg(test)]
 mod tests {
     use campfire_common::Tick;
-    use campfire_geometry::{Bounds, Grid, Shape};
+    use campfire_geometry::{Bounds, Grid, Radius, Shape};
     use campfire_sim::IdAllocator;
 
     use super::*;
@@ -241,7 +241,7 @@ mod tests {
         let standing = IndexedBody {
             id: blocker,
             pos: eighths(43, 0),
-            shape: Shape::Circle(quarter),
+            shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
         let mut steering = Steering::default();
@@ -282,7 +282,7 @@ mod tests {
         let standing = IndexedBody {
             id: blocker,
             pos: eighths(8, 0),
-            shape: Shape::Circle(quarter),
+            shape: Shape::Circle(Radius::new(quarter).unwrap()),
             layer: Layer::FIRST,
         };
         let goal = eighths(48, 0);

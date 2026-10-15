@@ -59,7 +59,7 @@ impl Placed {
             Shape::Circle(radius) => {
                 let path = from.ground_offset(to);
                 let off = from.ground_offset(pos);
-                Approach::nearest_of_circle(path, off, reach, radius) == Ordering::Less
+                Approach::nearest_of_circle(path, off, reach, radius.get()) == Ordering::Less
             }
             Shape::Box(body) => body.comes_closer(pos, from, to, reach),
         }
