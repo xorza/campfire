@@ -83,9 +83,8 @@ pub enum ZeroHourError {
     /// Several language folders hold art, and the importer cannot tell which the game reads.
     #[error("several language folders hold art: {0:?}")]
     Languages(Vec<String>),
-    /// Two objects' names give one unit type name.
-    #[error("{first} and {second} give one unit type name")]
-    UnitTypeClash { first: String, second: String },
+    #[error(transparent)]
+    NameClash(#[from] NameClash),
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },
@@ -237,9 +236,17 @@ pub enum MapError {
     /// A number of its lighting is not finite, or a light it draws its objects in goes no way.
     #[error("a number of its lighting is not finite, or an object light goes no way")]
     Lighting,
-    /// Two object templates give one unit type name.
-    #[error("{first} and {second} give one unit type name")]
-    UnitTypeClash { first: String, second: String },
+    #[error(transparent)]
+    NameClash(#[from] NameClash),
+}
+
+/// Two objects of the original whose names give one name in the package, a look's or a unit
+/// type's: the one that took it first, and the one refused.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{first} and {second} give one name")]
+pub struct NameClash {
+    pub first: String,
+    pub second: String,
 }
 
 /// Why a map's terrain is not one the import converts: a count or an index that reaches past

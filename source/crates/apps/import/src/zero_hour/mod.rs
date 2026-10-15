@@ -19,6 +19,7 @@ use crate::zero_hour::error::{IniError, ZeroHourError};
 use crate::zero_hour::game_data_ini::GameDataIni;
 use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::{MapImport, MapSources};
@@ -28,7 +29,6 @@ use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni,
 use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
 use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
-use crate::zero_hour::unit_types::UnitTypes;
 
 pub(crate) mod archive_path;
 pub(crate) mod big_archive;
@@ -40,6 +40,7 @@ pub(crate) mod game_version;
 pub(crate) mod hierarchy;
 pub(crate) mod hlod;
 pub(crate) mod import_name;
+pub(crate) mod import_names;
 pub(crate) mod ini_text;
 pub(crate) mod install;
 pub(crate) mod map_file;
@@ -57,7 +58,6 @@ pub(crate) mod terrain;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod terrain_ini;
-pub(crate) mod unit_types;
 pub(crate) mod w3d_chunks;
 pub(crate) mod w3d_fields;
 pub(crate) mod w3d_file;
@@ -140,12 +140,12 @@ impl<'a> ZeroHour<'a> {
         write(CameraFile::PATH, text.as_bytes())?;
         let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut write);
-        let looks = ZeroHour::write_models(&ini, &mut models)?;
+        let mut object_names = ImportNames::default();
+        let looks = ZeroHour::write_models(&ini, &mut models, &mut object_names)?;
         let ModelReport {
             skipped,
             missing_textures,
         } = models.report();
-        let mut unit_types = UnitTypes::default();
         let mut names = BTreeMap::<MapName, String>::new();
         let mut untextured_cells = BTreeMap::new();
         let mut class_sizes = BTreeMap::new();
@@ -169,7 +169,7 @@ impl<'a> ZeroHour<'a> {
             }
             let sources = MapSources {
                 ini: &ini,
-                types: &mut unit_types,
+                names: &mut object_names,
                 looks: &looks,
                 lights: game_data.global_lights(),
                 game: game_data.game_data(),
@@ -197,7 +197,7 @@ impl<'a> ZeroHour<'a> {
             };
             write(path.texture_path().as_str(), &ktx2)?;
         }
-        write("data/units.toml", unit_types.toml().as_bytes())?;
+        write("data/units.toml", object_names.units_toml().as_bytes())?;
         Ok(Imported {
             fingerprint: writer.finish().map_err(ZeroHourError::Write)?,
             rules,
@@ -216,9 +216,9 @@ impl<'a> ZeroHour<'a> {
     fn write_models<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
         ini: &ObjectIni,
         models: &mut ModelWriter<'_, W>,
+        names: &mut ImportNames,
     ) -> Result<ClientUnits, ZeroHourError> {
         let mut units = ClientUnits::default();
-        let mut types = BTreeMap::<String, String>::new();
         let unhidden = DefaultLook::default();
         for object in ini.objects() {
             let scale = object.scale();
@@ -228,13 +228,7 @@ impl<'a> ZeroHour<'a> {
             if entries.is_empty() {
                 continue;
             }
-            let unit_type = object.import_name();
-            if let Some(first) = types.insert(unit_type.as_str().to_owned(), object.name.clone()) {
-                return Err(ZeroHourError::UnitTypeClash {
-                    first,
-                    second: object.name.clone(),
-                });
-            }
+            let unit_type = names.take(object)?;
             let drawn: Vec<&DrawModule> = match object.placed_as() {
                 PlacedAs::Bridge | PlacedAs::Unit => Vec::new(),
                 PlacedAs::Tree => draws
@@ -365,7 +359,7 @@ mod tests {
     use super::*;
     use crate::texture::internals::ktx2;
     use crate::zero_hour::big_archive::internals::big;
-    use crate::zero_hour::error::VersionDifference;
+    use crate::zero_hour::error::{NameClash, VersionDifference};
     use crate::zero_hour::game_data::GameData;
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
@@ -443,10 +437,10 @@ mod tests {
             ini.read(objects.as_bytes()).unwrap();
         }
         let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
-        let mut types = UnitTypes::default();
+        let mut names = ImportNames::default();
         let sources = MapSources {
             ini: &ini,
-            types: &mut types,
+            names: &mut names,
             looks: &looks,
             lights: 3,
             game: GameData {
@@ -475,7 +469,10 @@ mod tests {
             scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
             expected.objects
         );
-        assert_eq!(scratch.read_text("one/game/data/units.toml"), types.toml());
+        assert_eq!(
+            scratch.read_text("one/game/data/units.toml"),
+            names.units_toml()
+        );
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
         assert_eq!(camera.unwrap().field_of_view, 50.0);
         // Each texture once, at its path in the archives, as its conversion gives it.
@@ -654,7 +651,7 @@ mod tests {
         let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
         assert!(matches!(
             clash.write(&scratch.path("two")),
-            Err(ZeroHourError::UnitTypeClash { first, second })
+            Err(ZeroHourError::NameClash(NameClash { first, second }))
                 if first == "Rock!" && second == "Rock?"
         ));
     }
