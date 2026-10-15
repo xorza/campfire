@@ -8,10 +8,10 @@ use campfire_declare::{
 };
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StateSchema, SyncTo, UnitRow, View, ViewApi,
+    ScriptList, StateSchema, SyncTo, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
-use campfire_values::{EngineTag, Relations, TagProperties, Team, UnitTags, UnitType};
+use campfire_values::{Relations, Team, UnitTags, UnitType};
 
 use crate::units::arrived_short::ArrivedShort;
 use crate::units::avatar::Avatar;
@@ -148,7 +148,7 @@ impl Module for Units {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
-        d.engine_tags(&[Units::AVATAR, Dead::TAG]);
+        d.engine_tags(&[Avatar::TAG, Dead::TAG]);
         Units::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();
@@ -245,17 +245,9 @@ impl Module for Units {
 }
 
 impl Units {
-    /// The engine tag of avatars, the units players play as, which `unit.is_avatar` tests.
-    pub const AVATAR: EngineTag = EngineTag::new(0, "avatar", TagProperties::NONE);
-
-    /// Whether the unit of `row` is an avatar.
-    pub(crate) const fn is_avatar(row: &UnitRow) -> bool {
-        row.tags.tags.contains(Units::AVATAR.tag())
-    }
-
     /// Every avatar of `view`, living or dead, of `team` or of every team, by stable id.
     pub fn avatars(view: &View, team: Option<Team>) -> ScriptList {
-        view.units_where(|row| Units::is_avatar(row) && team.is_none_or(|team| row.team == team))
+        view.units_where(|row| Avatar::tagged(row) && team.is_none_or(|team| row.team == team))
     }
 
     /// The observer of Bevy's check of change ticks: the script view's next read fills every

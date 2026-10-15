@@ -8,7 +8,6 @@ use campfire_script::View;
 use campfire_sim::Capability;
 use campfire_values::{Tag, TagProperties, TagSet, UnitTags, UnitType};
 
-use crate::units::Units;
 use crate::units::avatar::Avatar;
 use crate::units::tag_book::tag_effect::TagEffect;
 
@@ -45,7 +44,7 @@ impl TagBook {
             .map_or_else(UnitTags::default, |book| {
                 book.unit_tags(unit_type, iter::empty())
             });
-        let avatar = tags.tags.contains(Units::AVATAR.tag());
+        let avatar = tags.tags.contains(Avatar::TAG.tag());
         *world
             .get_mut::<UnitTags>(entity)
             .expect("a unit type requires its tags") = tags;

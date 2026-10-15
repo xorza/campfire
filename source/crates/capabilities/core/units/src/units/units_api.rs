@@ -5,7 +5,7 @@ use campfire_script::{
 };
 use campfire_sim::Position;
 
-use crate::units::Units;
+use crate::units::avatar::Avatar;
 use crate::units::collision_data::CollisionData;
 use crate::units::tag_data::TagData;
 use crate::units::unit_state_access::UnitStateAccess;
@@ -22,7 +22,7 @@ impl UnitsApi {
         let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
         api.bind(
             field("is_avatar", "whether it is an avatar"),
-            |unit: &mut Unit| unit.read(Units::is_avatar),
+            |unit: &mut Unit| unit.read(Avatar::tagged),
         )
         .bind(
             field(

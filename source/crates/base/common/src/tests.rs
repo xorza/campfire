@@ -1091,7 +1091,10 @@ fn no_crates_modules_import_each_other_in_a_cycle() {
     for krate in &crates() {
         let src = format!("{}/src", krate.path);
         for (parent, imports) in sibling_imports(&src, &sources) {
-            let at: String = parent.iter().map(|module| format!("::{module}")).collect();
+            let at: String = parent
+                .iter()
+                .flat_map(|module| ["::", module.as_str()])
+                .collect();
             found.extend(
                 module_cycles(&imports)
                     .into_iter()

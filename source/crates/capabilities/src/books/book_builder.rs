@@ -25,7 +25,7 @@ use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
     PoolId, SpecError, StatBook, StatId,
 };
-use campfire_units::{TypesError, UnitTypeBook, Units};
+use campfire_units::{Avatar, TypesError, UnitTypeBook};
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Names, PackagePath, Share, Stat,
     Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
@@ -752,7 +752,7 @@ impl<'a> BookBuilder<'a> {
         };
         let mut combat = file.combat.clone();
         if unit.declared.is_none() {
-            self.books.types.give_tag(unit_type, Units::AVATAR.tag());
+            self.books.types.give_tag(unit_type, Avatar::TAG.tag());
             if let Some(combat) = &mut combat {
                 combat.on_death = OnDeath::Stay;
             }
