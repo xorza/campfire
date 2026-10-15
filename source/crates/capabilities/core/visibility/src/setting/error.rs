@@ -1,4 +1,4 @@
-use campfire_state_types::DataKind;
+use campfire_state_types::{DataKind, Recipients};
 use thiserror::Error;
 
 use crate::setting::Setting;
@@ -20,14 +20,14 @@ pub enum VisibilityError {
     #[error("no mode adds {recipient} to the audience of {}, or takes them from it", .kind.name())]
     Recipient {
         kind: DataKind,
-        recipient: &'static str,
+        recipient: Recipients,
     },
     #[error("{0} is named twice")]
     Repeated(Setting),
     #[error("{recipient} is named twice for {}", .kind.name())]
     RepeatedRecipient {
         kind: DataKind,
-        recipient: &'static str,
+        recipient: Recipients,
     },
     /// A host's setting that the mode's `host` list does not leave to the host.
     #[error("the mode does not leave {0} to the host")]

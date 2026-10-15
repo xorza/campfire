@@ -133,8 +133,12 @@ impl Visibility {
         match value {
             SettingValue::Audience(kind, recipients) => {
                 let settable = kind.settable();
-                if let Some(recipient) = recipients.without(settable).names().next() {
-                    return Err(VisibilityError::Recipient { kind, recipient });
+                let refused = recipients.without(settable);
+                if refused != Recipients::NONE {
+                    return Err(VisibilityError::Recipient {
+                        kind,
+                        recipient: refused,
+                    });
                 }
                 self.audiences[kind.index()] = kind.audience().without(settable) | recipients;
             }

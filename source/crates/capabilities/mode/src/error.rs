@@ -36,9 +36,12 @@ pub enum ModeError {
     /// A relation of a team to itself, or of a pair the relations name before.
     #[error("a relation of \"{0}\" and \"{1}\" again, or of a team to itself")]
     RepeatedRelation(DeclaredName, DeclaredName),
-    /// Two teams, two paths or two markers share a name.
-    #[error("\"{0}\" names two teams, paths or markers")]
-    RepeatedName(DeclaredName),
+    #[error("\"{0}\" names two teams")]
+    RepeatedTeam(DeclaredName),
+    #[error("\"{0}\" names two paths")]
+    RepeatedPath(DeclaredName),
+    #[error("\"{0}\" names two markers")]
+    RepeatedMarker(DeclaredName),
     #[error("no team \"{0}\"")]
     UnknownTeam(DeclaredName),
     #[error("no unit type \"{0}\"")]

@@ -724,10 +724,12 @@ impl ModeApi {
         let book = ModeSpec::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let mut frame = ctx.write()?;
-        let players = frame.part_mut::<PlayersCall>();
+        let players = frame
+            .part_mut::<PlayersCall>()
+            .expect("every call holds the players'");
         let resources = players
-            .and_then(|players| players.resources_mut(slot))
-            .ok_or_else(|| ApiError::NoMode.fail())?;
+            .resources_mut(slot)
+            .expect("a mode that names a resource keeps each player's resources");
         resources
             .add(resource, amount)
             .ok_or_else(|| ApiError::ResourceOverflow.fail().into())

@@ -82,7 +82,6 @@ impl Setting {
                 for name in names {
                     let recipient = Recipients::named(name).ok_or_else(|| unknown(name))?;
                     if recipients.contains(recipient) {
-                        let recipient = recipient.names().next().expect("one recipient");
                         return Err(VisibilityError::RepeatedRecipient { kind, recipient });
                     }
                     recipients = recipients | recipient;

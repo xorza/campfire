@@ -108,14 +108,14 @@ fn each_flaw_of_a_modes_visibility_fails_its_read_with_its_own_error() {
             r#"life = ["allies"]"#,
             VisibilityError::Recipient {
                 kind: DataKind::Life,
-                recipient: "allies",
+                recipient: Recipients::ALLIES,
             },
         ),
         (
             r#"unit_state_owner = ["enemies"]"#,
             VisibilityError::Recipient {
                 kind: DataKind::UnitStateOwner,
-                recipient: "enemies",
+                recipient: Recipients::ENEMIES,
             },
         ),
         (
@@ -126,7 +126,7 @@ fn each_flaw_of_a_modes_visibility_fails_its_read_with_its_own_error() {
             r#"inventory = ["allies", "allies"]"#,
             VisibilityError::RepeatedRecipient {
                 kind: DataKind::Inventory,
-                recipient: "allies",
+                recipient: Recipients::ALLIES,
             },
         ),
         (
@@ -244,7 +244,7 @@ fn a_host_sets_only_what_the_mode_leaves_it_each_once() {
         lives.session(&hosted(&[host("life=allies")], 0)),
         Err(VisibilityError::Recipient {
             kind: DataKind::Life,
-            recipient: "allies",
+            recipient: Recipients::ALLIES,
         })
     );
 }

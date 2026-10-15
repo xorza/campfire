@@ -46,7 +46,7 @@ impl ModeMap {
             match names.try_add(team.name.as_str()) {
                 Ok(_) => {}
                 Err(NamesError::Repeated) => {
-                    return Err(ModeError::RepeatedName(team.name.clone()));
+                    return Err(ModeError::RepeatedTeam(team.name.clone()));
                 }
                 Err(NamesError::Full) => return Err(ModeError::TooManyTeams),
             }
@@ -101,7 +101,7 @@ impl ModeMap {
         let mut points = Vec::with_capacity(map.paths.len());
         for path in &map.paths {
             if path_names.try_add(path.name.as_str()).is_err() {
-                return Err(ModeError::RepeatedName(path.name.clone()));
+                return Err(ModeError::RepeatedPath(path.name.clone()));
             }
             if path.points.is_empty() {
                 return Err(ModeError::EmptyPath(path.name.clone()));
@@ -179,7 +179,7 @@ impl ModeMap {
                 .iter()
                 .any(|other| other.name == marker.name)
             {
-                return Err(ModeError::RepeatedName(marker.name.clone()));
+                return Err(ModeError::RepeatedMarker(marker.name.clone()));
             }
             let marker_team = marker.team.as_ref().map(&team).transpose()?;
             let region = marker.region.map(|region| {

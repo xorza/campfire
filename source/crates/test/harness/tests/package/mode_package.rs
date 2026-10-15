@@ -2405,7 +2405,7 @@ static MAP_FLAWS: &[Flaw] = &[
         MAP,
         Edit::Set("markers.3.name", r#""camp1""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedMarker(name)) if name == "camp1"),
     ),
     // The layers have names of their own, a unit type moves on one of them, and they are
     // navigation's.

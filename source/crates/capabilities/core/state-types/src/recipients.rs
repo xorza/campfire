@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::BitOr;
 
 /// The clients beside an entity's owner that receive a kind of its state (design 14, D1): its
@@ -64,6 +65,22 @@ impl Recipients {
     ];
 }
 
+/// Its recipients' names, as a mode's `[visibility]` writes them, joined by commas: `none` for
+/// the owner alone.
+impl fmt::Display for Recipients {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut names = self.names();
+        let Some(first) = names.next() else {
+            return f.write_str("none");
+        };
+        f.write_str(first)?;
+        for name in names {
+            write!(f, ", {name}")?;
+        }
+        Ok(())
+    }
+}
+
 impl BitOr for Recipients {
     type Output = Recipients;
 
@@ -92,6 +109,10 @@ mod tests {
             Recipients::ALL
         );
         assert_eq!(Recipients::ALL.without(ally_spectator), Recipients::ENEMIES);
+        // Its text: its names, by commas, or none.
+        assert_eq!(ally_spectator.to_string(), "allies, spectators");
+        assert_eq!(Recipients::ENEMIES.to_string(), "enemies");
+        assert_eq!(Recipients::NONE.to_string(), "none");
     }
 
     #[test]
