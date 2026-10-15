@@ -5,6 +5,7 @@ use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::{Deserialize, Serialize};
 
+use crate::units::map_book::MapBook;
 use crate::units::unit_entity::UnitEntity;
 
 /// Where a unit spawned, and where it comes back when it respawns.
@@ -27,9 +28,10 @@ impl SimComponent for SpawnPoint {
     const NAME: &'static str = "units.spawn_point";
     type Host = UnitEntity;
 
-    // Its decode keeps it within the bound.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
+    // A unit respawns where it spawned, so the point lies within the map's bounds, as its
+    // place does.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        world.resource::<MapBook>().bounds.contains(self.0)
     }
 }
 

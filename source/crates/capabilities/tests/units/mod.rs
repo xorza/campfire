@@ -269,13 +269,14 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     view.read(&mut game);
     assert_eq!(view.bounds(), bounds);
 
-    // A restored unit stands within the map's bounds, as every system keeps it: on the edge at
-    // x = 10 it restores; a little past it, though well within the world's bound, it does not.
+    // A restored unit stands within the map's bounds, as every system keeps it: spawned at the
+    // origin and moved to the edge at x = 10, it restores; moved a little past it, though well
+    // within the world's bound, it does not.
     let restores = |x: Num| {
         let mut game = units_match();
         game.resource_mut::<MapBook>().bounds = bounds;
-        let pos = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-        let id = spawn_named(&mut game, "unit", pos, Team::new(0));
+        let id = spawn_named(&mut game, "unit", Position::ORIGIN, Team::new(0));
+        *game.part_mut::<Position>(id) = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();

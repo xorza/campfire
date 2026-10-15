@@ -6,7 +6,7 @@ use campfire_orders::NextThink;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
+use campfire_units::{MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
 
 use super::*;
 
@@ -56,6 +56,11 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // The map has one path, 0.
     let on_path = |path| OnPath::new(PathId::new(path));
     assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
+    // A unit respawns where it spawned: on the map's far corner, or a meter past it along x.
+    let [x, z] = game.resource::<MapBook>().bounds.max();
+    let point = |x: Num| SpawnPoint::new(Position::new(Vec3::new(x, Num::ZERO, z)).unwrap());
+    assert!(point(x).check(&game, grunt));
+    assert!(!point(x + Num::ONE).check(&game, grunt));
 
     // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
     let mut choices = game.resource::<Choices>().clone();
