@@ -1,0 +1,35 @@
+# Perf journal: change-driven passes
+
+The journal of the optimization session on branch `perf-change-driven-passes`, from [optimization](optimization.md). Host: `local`, an AMD Ryzen 7 6800U (Zen 3+, 8 cores, SMT), governor `performance`. Runs are pinned with `taskset -c 12` on the bench binary; base and candidate interleave.
+
+## Method on this host
+
+- **The clock moves.** The laptop runs at 85 °C under its power limit, and the boost cannot be turned off without root. Each run is scaled by its process's mean clock, `perf stat -e cycles,task-clock`, to megacycles per iteration (`../campfire-perf/tools/ab.py`).
+- **Between processes, not within.** Criterion's interval within a run is about ±0.2 %; the spread between runs of one binary is far larger. A verdict reads the median of the pairs, base and candidate run back to back.
+- **Instructions as evidence of work removed.** With `--warm-up-time 1e-9 --measurement-time 1e-9 --sample-size 10`, criterion runs a fixed 55 iterations, so `perf stat -e instructions:u` over the process counts a fixed workload.
+
+## Noise floors
+
+A/A of two builds of one tree, four rounds, clock-scaled:
+
+| Host | Case | Spread of runs | Pairs | Medians |
+| --- | --- | --- | --- | --- |
+| local | `server_tick/mean_3v3` | 1.4 % | −1.49 to +1.38 % | +0.08 % |
+| local | `battle/crowded_act` | 40 to 54 % | −25 to +12 % | −7.6 %: unusable as it is |
+| local | `battle/crowded_resolve` | 13 to 15 % | −1.12 to +1.14 % | +0.27 % |
+
+## Profiles at the start
+
+Self time, `perf record` at 2 kHz on core 12, frame pointers. `mean_3v3`, inclusive: `Thinking::think` 45.7 %, of which the script calls 45.2 %; `Walking::steer` 4.0 %; the stat refresh 3.4 % (2.6 % self, its `Or<(Changed<…>, …)>` filter); `HeldPass::run` 3.3 % (0.7 % self, `UnitsNear::current` 2.0 %); `Walking::collide` 3.2 %; `Holds::want_passives` 1.0 %; `Refresh::regenerate` 0.8 %; `Holds::hold_charges` 0.47 %; `Toggles::run_toggles` 0.46 %; `GrantPass::run` 0.4 %; `BodyIndex::update` 0.73 % self, the first tick's take of every static body. The battle tick: the scripts lead, `Targets::living` 2.3 %, `Metric::reaches` 1.8 %, `Walking::collide` 1.9 %, `want_passives` 0.6 %.
+
+## Current numbers
+
+| Case | local |
+| --- | --- |
+
+## Ideas
+
+| Idea | Evidence | Numbers | Verdict |
+| --- | --- | --- | --- |
+| Seeds: derive each segment's seed once, a table in `ServerSeeds` | `ServerSeeds::seed` hashes back from the last segment each call; the lobby's chain has 1,024 segments, and a segment's start in the server's tick takes up to 1,023 BLAKE3 hashes; `begin_checkpoint` derives one more only to test it is known | | |
+| `BodyBox::push_out`: one `Edges` and one probe | `push_out` makes the probe three times and `Edges` twice for a point that overlaps: its own test, `Edges::against`'s, `nearest_to`'s | | |

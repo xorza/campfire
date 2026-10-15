@@ -31,8 +31,32 @@ fn scene(seed: u64) -> Vec<(BodyBox, Position, Position)> {
         .collect()
 }
 
+/// Each box of `scene` with a point beside it as a broadphase pairs a walker with a box: within
+/// the box's extent and `radius` of its centre on each axis, so most points overlap the box or
+/// lie near it.
+fn near(
+    scene: &[(BodyBox, Position, Position)],
+    radius: Num,
+    seed: u64,
+) -> Vec<(BodyBox, Position, Vec3)> {
+    let mut words = SplitMix64::new(seed);
+    let mut draw = |half: Num| {
+        let span = 2 * half.to_bits();
+        Num::from_bits((words.next_u64() % span.cast_unsigned()).cast_signed() - half.to_bits())
+    };
+    scene
+        .iter()
+        .map(|&(body, centre, _)| {
+            let [x, z] = body.extent().map(|extent| extent + radius);
+            let off = Vec3::new(draw(x), Num::ZERO, draw(z));
+            (body, centre, centre.get() + off)
+        })
+        .collect()
+}
+
 /// A box's primitives over `COUNT` inputs: a point's reach of 3 m to a box, two boxes' overlap,
-/// and two boxes' reach of 3 m, `reach_box`, as `Metric::reaches` takes it.
+/// two boxes' reach of 3 m, `reach_box`, as `Metric::reaches` takes it, and the push of a walker
+/// of 0.5 m out of a box it may overlap, `push_out`, as the collider pushes one.
 pub(crate) fn body_box(c: &mut Criterion) {
     let mut group = c.benchmark_group("atomic/body_box");
     group.throughput(Throughput::Elements(COUNT as u64));
@@ -57,6 +81,15 @@ pub(crate) fn body_box(c: &mut Criterion) {
         bench.iter(|| {
             for ((body, centre, _), (other, other_centre, _)) in points.iter().zip(&others) {
                 black_box(body.nearest_box(*centre, other, black_box(*other_centre), reach));
+            }
+        });
+    });
+    let radius = Num::HALF;
+    let pushes = near(&points, radius, 3);
+    group.bench_function("push_out", |bench| {
+        bench.iter(|| {
+            for (body, centre, at) in &pushes {
+                black_box(body.push_out(*centre, black_box(*at), radius));
             }
         });
     });

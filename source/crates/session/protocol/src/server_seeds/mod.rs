@@ -33,6 +33,9 @@ impl ServerSeeds {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod bench;
+
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU32;
