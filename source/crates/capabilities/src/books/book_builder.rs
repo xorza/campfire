@@ -9,7 +9,7 @@ use campfire_actions::{
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
-use campfire_items::{Inventory, ItemBook, ItemId, ItemSpec, Shop, ShopData};
+use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
 use campfire_navigation::Walker;
 use campfire_orders::Ai;
@@ -381,7 +381,18 @@ impl<'a> BookBuilder<'a> {
             let at = BookPlace::Item(name.clone());
             specs.push(spec().map_err(|name| BookError::unknown(index, at, name))?);
         }
-        Ok(ItemBook::new(ids, specs))
+        ItemBook::new(ids, specs).map_err(|error| {
+            let (ItemError::StackCost(item) | ItemError::CheaperThanComponents(item)) = error;
+            let name = items
+                .keys()
+                .nth(item.index())
+                .expect("an item of the package");
+            BookError::Item {
+                package: index,
+                item: name.clone(),
+                error,
+            }
+        })
     }
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`

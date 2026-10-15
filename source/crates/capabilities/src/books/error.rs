@@ -1,4 +1,5 @@
 use campfire_actions::{ActionError, ActionProblem};
+use campfire_items::ItemError;
 use campfire_mode::{ModeError, ModeNamesError};
 use campfire_orders::AiError;
 use campfire_progression::TrackError;
@@ -49,6 +50,14 @@ pub enum BookError {
         modifier: DeclaredName,
         #[source]
         problem: ModifierProblem,
+    },
+    /// The item type's costs break a rule of the item book.
+    #[error("item {item}")]
+    Item {
+        package: u16,
+        item: DeclaredName,
+        #[source]
+        error: ItemError,
     },
     /// A time of the area type does not count in ticks.
     #[error("area type {unit_type}: a time too large to count in ticks")]

@@ -10,7 +10,7 @@ use campfire_actions::{
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
-use campfire_items::ItemData;
+use campfire_items::{ItemData, ItemError};
 use campfire_math::Num;
 use campfire_mode::{ModeList, ModeNamesError, Offers};
 use campfire_progression::TrackError;
@@ -1327,10 +1327,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's item types: an item costs in the mode's player resources, at least what its
-    /// components cost in each, is built from items of the mode and never from itself, and holds
-    /// no modifier that is another's passive; and no unit type or choice fills an inventory's slot
-    /// kind. Item types need `items`.
+    /// The mode's item types: an item costs in the mode's player resources, is built from items
+    /// of the mode and never from itself, and holds no modifier that is another's passive; and no
+    /// unit type or choice fills an inventory's slot kind. Item types need `items`. Its costs
+    /// against its stack and its components the item book holds.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let content = &packages.content;
@@ -1372,22 +1372,6 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
                 looped.clone(),
             )));
-        }
-        for (id, item) in items {
-            let mut parts: BTreeMap<&DeclaredName, u64> = BTreeMap::new();
-            for component in &item.components {
-                for (resource, &amount) in &items[component].cost {
-                    *parts.entry(resource).or_default() += u64::from(amount);
-                }
-            }
-            let covers = |(resource, parts): (&&DeclaredName, &u64)| {
-                u64::from(item.cost.get(*resource).copied().unwrap_or(0)) >= *parts
-            };
-            if !parts.iter().all(covers) {
-                return Err(LoadProblem::Item(ItemProblem::CheaperThanComponents(
-                    id.clone(),
-                )));
-            }
         }
         Ok(())
     }
@@ -1837,6 +1821,17 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
         ),
         BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
         BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
+        BookError::Item {
+            package,
+            item,
+            error,
+        } => (
+            package,
+            LoadProblem::Item(match error {
+                ItemError::StackCost(_) => ItemProblem::StackCost(item),
+                ItemError::CheaperThanComponents(_) => ItemProblem::CheaperThanComponents(item),
+            }),
+        ),
         BookError::AreaTime { package, unit_type } => (
             package,
             LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),

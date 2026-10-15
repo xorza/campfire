@@ -101,7 +101,7 @@ fn fountain() -> Place {
     Place::UnitType(name("fountain"))
 }
 
-const FLAWS: [Flaw; 22] = [
+const FLAWS: [Flaw; 23] = [
     // An item has a name, a message of the mode's own language.
     Flaw {
         edits: &[(MODE_DATA, Edit::Remove("items.health_potion.name"))],
@@ -165,6 +165,21 @@ const FLAWS: [Flaw; 22] = [
         )],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "warblade"),
+    },
+    // A full stack's cost is what an amount holds: (2³² − 1)², about 1.8 · 10¹⁹, is past 2⁶³ − 1.
+    Flaw {
+        edits: &[
+            (
+                MODE_DATA,
+                Edit::Set("items.health_potion.stack", "4294967295"),
+            ),
+            (
+                MODE_DATA,
+                Edit::Set("items.health_potion.cost", "{ gold = 4294967295 }"),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::StackCost(item)) if item == "health_potion"),
     },
     // A stack and uses of at least one.
     Flaw {

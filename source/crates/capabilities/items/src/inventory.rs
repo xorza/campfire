@@ -97,6 +97,10 @@ impl Inventory {
                 price -= component.cost_in(resource);
             }
         }
+        debug_assert!(
+            price >= 0,
+            "an item costs its components at least, as its book holds"
+        );
         Purchase {
             price,
             room: self.place(item, spec.stack, given_up).is_some(),

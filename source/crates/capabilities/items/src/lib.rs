@@ -12,6 +12,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
+mod error;
 mod inventory;
 mod inventory_data;
 mod item_book;
@@ -25,6 +26,7 @@ mod shop_data;
 mod shopping;
 mod trade_orders;
 
+pub use crate::error::ItemError;
 pub use crate::inventory::{CarrierSlots, Inventory, ItemStack, Purchase};
 pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};

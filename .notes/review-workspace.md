@@ -116,7 +116,6 @@ Goes before the batches that edit `package`, so each fix lands in its final crat
 
 Files: `session/package/src/{package_dir/mod.rs,client_data/texture_levels.rs,mode_packages/{load_check,name_tables}.rs}`, `capabilities/src/books/*`, `capabilities/core/actions/src/{effect_list_book,slot_kinds}.rs`, `capabilities/items/src/{shop,inventory}.rs`, `capabilities/core/geometry/src/{polygon/mod,bounds}.rs`. Goldens: none move.
 
-- [ ] `items/src/shop.rs` (`refund`), `inventory.rs:83-98`: the load bounds stack × cost and refuses an item that costs less than its components.
 - [ ] `geometry/src/polygon/mod.rs:115`: `Polygon::new` refuses a point past `Position::BOUND` with a `PolygonError` case.
 - [ ] `geometry/src/bounds.rs:53-73`: `exit` gives 0 for a point outside.
 

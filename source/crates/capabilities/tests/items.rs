@@ -184,14 +184,17 @@ fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> 
             action,
         };
     let names = ["drink", "flash", "might"].into_iter().collect();
-    game.insert_resource(ItemBook::new(
-        names,
-        [
-            item(50, 2, Some(1), Some(drink), Vec::new()),
-            item(100, 1, None, Some(flash), Vec::new()),
-            item(300, 1, None, None, vec![might]),
-        ],
-    ));
+    game.insert_resource(
+        ItemBook::new(
+            names,
+            [
+                item(50, 2, Some(1), Some(drink), Vec::new()),
+                item(100, 1, None, Some(flash), Vec::new()),
+                item(300, 1, None, None, vec![might]),
+            ],
+        )
+        .unwrap(),
+    );
     let sells = [POTION, FLASH, CHARM].map(ItemId::nth).to_vec();
     Players::spawn(game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
@@ -438,7 +441,8 @@ fn shop_match() -> ShopMatch {
             item(50, &[], 3),
             item(125, &[], 1),
         ],
-    );
+    )
+    .unwrap();
     let sells = [0, 1, 2].map(ItemId::nth).to_vec();
     game.insert_resource(book);
     Players::spawn(&mut game, 2, 1);
