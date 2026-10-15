@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::path::Path;
 use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,49 +18,76 @@ use tracing::error;
 
 use crate::args::{Args, Server};
 
-/// The server the client plays on, once it is open: a remote one, by its pin and its address, or
-/// a local one, running. Dropped, a local server ends the session and publishes its log.
+/// The server the client plays on, once it is open, with the client's data directory: a remote
+/// one, by its pin and its address, or a local one, running, its data in the directory. Dropped, a
+/// local server ends the session and publishes its log.
 #[derive(Debug)]
 pub(crate) enum Connection {
-    Remote { pin: ServerPin, address: SocketAddr },
-    Local(LocalServer),
+    Remote {
+        pin: ServerPin,
+        address: SocketAddr,
+        data: Option<Arc<ClientDir>>,
+    },
+    Local {
+        server: LocalServer,
+        data: Arc<ClientDir>,
+    },
 }
 
 impl Connection {
-    /// The server `args` names; a local one starts, of the mode `packages` holds, its data in
-    /// the client's data directory `data`, following `pace`. The exit code when a local server
-    /// does not start.
+    /// The server `args` names, its data directory open; a local one starts, of the mode
+    /// `packages` holds, its data in that directory, following `pace`. The exit code when the
+    /// directory does not open or a local server does not start.
     pub(crate) fn open(
         args: &Args,
-        data: Option<&ClientDir>,
         packages: &Arc<ModePackages>,
         pace: &Arc<Pace>,
     ) -> Result<Connection, ExitCode> {
         match &args.server {
-            &Server::Remote {
+            Server::Remote {
                 address,
                 tls_key,
                 key,
                 tick_hz,
+                data,
             } => Ok(Connection::Remote {
                 pin: ServerPin {
-                    key,
-                    tls_key,
-                    tick_hz,
+                    key: *key,
+                    tls_key: *tls_key,
+                    tick_hz: *tick_hz,
                 },
-                address,
+                address: *address,
+                data: data.as_deref().map(Connection::open_dir).transpose()?,
             }),
-            Server::Local { bots } => {
-                Connection::start_local(data, packages, bots, pace).map(Connection::Local)
+            Server::Local { bots, data } => {
+                let data = Connection::open_dir(data)?;
+                let server = Connection::start_local(&data, packages, bots, pace)?;
+                Ok(Connection::Local { server, data })
             }
         }
+    }
+
+    /// The client's data directory, if it has one.
+    pub(crate) fn data(&self) -> Option<Arc<ClientDir>> {
+        match self {
+            Connection::Remote { data, .. } => data.clone(),
+            Connection::Local { data, .. } => Some(Arc::clone(data)),
+        }
+    }
+
+    /// The client's data directory at `path`; the exit code when it does not open.
+    fn open_dir(path: &Path) -> Result<Arc<ClientDir>, ExitCode> {
+        ClientDir::open(path).map(Arc::new).map_err(|error| {
+            error!(error = %ErrorReport::of(&error), "the data directory does not open");
+            ExitCode::from(ExitStatus::Failure)
+        })
     }
 
     /// What the client pins of the server.
     pub(crate) const fn pin(&self) -> ServerPin {
         match self {
             Connection::Remote { pin, .. } => *pin,
-            Connection::Local(local) => local.pin(),
+            Connection::Local { server, .. } => server.pin(),
         }
     }
 
@@ -75,7 +103,7 @@ impl Connection {
         tick: Duration,
     ) -> Result<(), ExitCode> {
         match self {
-            Connection::Remote { pin, address } => {
+            Connection::Remote { pin, address, .. } => {
                 let endpoint = QuicEndpoint::client(*address, &pin.tls_key, LinkTimes::CAMPFIRE).map_err(
                     |error| {
                         error!(error = %ErrorReport::of(&error), "the client's socket does not open");
@@ -84,15 +112,17 @@ impl Connection {
                 )?;
                 app.world_mut().entity_mut(client).insert(endpoint);
             }
-            Connection::Local(local) => {
-                app.world_mut().entity_mut(client).insert(local.take_link());
+            Connection::Local { server, .. } => {
+                app.world_mut()
+                    .entity_mut(client)
+                    .insert(server.take_link());
                 app.add_plugins((
                     LocalPace {
                         pace: Arc::clone(pace),
                         tick,
                     },
                     LocalRelink {
-                        relinks: local.relinks(),
+                        relinks: server.relinks(),
                     },
                 ));
             }
@@ -104,7 +134,7 @@ impl Connection {
     /// directory `data`, its bots those of `bots`, following `pace`; the exit code when it does
     /// not start.
     fn start_local(
-        data: Option<&ClientDir>,
+        data: &ClientDir,
         packages: &Arc<ModePackages>,
         bots: &[SlotBotFile],
         pace: &Arc<Pace>,
@@ -117,10 +147,7 @@ impl Connection {
                 error!(error = %ErrorReport::of(&error), "a server bot's orders file does not read");
                 ExitCode::from(ExitStatus::Failure)
             })?;
-        let data = data
-            .expect("--local has --data")
-            .layout()
-            .local_server_dir();
+        let data = data.layout().local_server_dir();
         LocalServer::start(LocalServerSetup {
             packages: Arc::clone(packages),
             data,

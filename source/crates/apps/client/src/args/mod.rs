@@ -12,16 +12,15 @@ use crate::args::error::{ServerAddressError, ServerBotError};
 
 mod error;
 
-/// What the command line names: the orders file a bot plays, the player's key file, the data
-/// directory, whether the player watches and the teams it watches, the mode to play and its map,
-/// and the server: as its listing gives it, or a local one.
+/// What the command line names: the orders file a bot plays, the player's key file, whether the
+/// player watches and the teams it watches, the mode to play and its map, and the server: as its
+/// listing gives it, or a local one, each with the data directory.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) bot: Option<PathBuf>,
     pub(crate) spectate: bool,
     pub(crate) watch: Vec<DeclaredName>,
     pub(crate) key: Option<PathBuf>,
-    pub(crate) data: Option<PathBuf>,
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
     pub(crate) server: Server,
@@ -30,15 +29,20 @@ pub(crate) struct Args {
 /// The server the client plays on.
 #[derive(Debug)]
 pub(crate) enum Server {
-    /// A server elsewhere, as its listing gives it.
+    /// A server elsewhere, as its listing gives it, and the data directory, if one is named.
     Remote {
         address: SocketAddr,
         tls_key: TlsKey,
         key: XOnlyPublicKey,
         tick_hz: NonZeroU32,
+        data: Option<PathBuf>,
     },
-    /// A local server, on a thread of the client's process, with the bots of `bots`.
-    Local { bots: Vec<SlotBotFile> },
+    /// A local server, on a thread of the client's process, with the bots of `bots`, its data in
+    /// the data directory `data`, which it needs.
+    Local {
+        bots: Vec<SlotBotFile>,
+        data: PathBuf,
+    },
 }
 
 /// Joins a session on a server, or plays a mode alone on a local server.
@@ -111,9 +115,11 @@ impl Args {
                 tls_key: remote.tls_key,
                 key: remote.server_key,
                 tick_hz: remote.tick_hz,
+                data: line.data,
             },
             None => Server::Local {
                 bots: line.server_bots,
+                data: line.data.expect("clap takes --local only with --data"),
             },
         };
         Args {
@@ -121,7 +127,6 @@ impl Args {
             spectate: line.spectate,
             watch: line.watch,
             key: line.key,
-            data: line.data,
             mode: line.mode,
             map: line.map,
             server,

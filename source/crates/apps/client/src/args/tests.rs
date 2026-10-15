@@ -60,11 +60,11 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "--map",
         "lane",
     ]);
-    assert_eq!(local.data, Some("d".into()));
     assert_eq!(local.map, MapName::new("lane"));
-    let Server::Local { bots } = local.server else {
+    let Server::Local { bots, data } = local.server else {
         panic!("a local server");
     };
+    assert_eq!(data, PathBuf::from("d"));
     let bots: Vec<(u32, PathBuf)> = bots
         .into_iter()
         .map(|bot| (bot.slot.get(), bot.path))

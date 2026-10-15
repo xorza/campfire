@@ -116,7 +116,6 @@ Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client format
 
 - [ ] Guard: a round-trip test of the units file the import writes; the map's and KTX2's are done. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
 - [ ] `import/src/zero_hour/unit_types.rs:20`: the units file type derives `Serialize`, and the import writes it. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
-- [ ] `client/src/args/mod.rs:22,40`: `Server::Local { bots, data }`.
 
 ### Batch 11. Change-driven passes (RC4)
 

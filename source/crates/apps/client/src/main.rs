@@ -35,8 +35,7 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
-    WatchRequest,
+    JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient, WatchRequest,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -117,22 +116,12 @@ fn main() -> ExitCode {
         Ok(key) => key,
         Err(code) => return code,
     };
-    let data = match &args.data {
-        None => None,
-        Some(path) => match ClientDir::open(path) {
-            Ok(data) => Some(Arc::new(data)),
-            Err(error) => {
-                error!(error = %ErrorReport::of(&error), "the data directory does not open");
-                return ExitCode::from(ExitStatus::Failure);
-            }
-        },
-    };
     let watch = match watched_teams(&args, &packages) {
         Ok(watch) => watch,
         Err(code) => return code,
     };
     let pace = Arc::new(Pace::default());
-    let mut connection = match Connection::open(&args, data.as_deref(), &packages, &pace) {
+    let mut connection = match Connection::open(&args, &packages, &pace) {
         Ok(connection) => connection,
         Err(code) => return code,
     };
@@ -147,10 +136,10 @@ fn main() -> ExitCode {
         } else {
             JoinRole::Play
         },
-        local: matches!(connection, Connection::Local(_)),
+        local: matches!(connection, Connection::Local { .. }),
         packages: Arc::clone(&packages),
         os: Os::SYSTEM,
-        data,
+        data: connection.data(),
     };
     if let Err(error) = sim_client.check() {
         error!(error = %ErrorReport::of(&error), "the mode does not run at the listing's rate");
