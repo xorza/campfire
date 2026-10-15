@@ -1,9 +1,8 @@
 use campfire_actions::ActionsColumn;
 use campfire_script::{
     ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, Status, Unit,
+    RoleSet, ScriptPosition, Status, Unit,
 };
-use campfire_sim::Position;
 
 use crate::ai_data::AiData;
 use crate::error::OrdersRefusal;
@@ -40,7 +39,7 @@ impl OrdersApi {
                 &[&["unit", "pos"]],
                 "`unit` drops its target and walks to `pos`, within the map, off its path",
             ),
-            |ctx: &mut Ctx, unit: Unit, to: Position| {
+            |ctx: &mut Ctx, unit: Unit, to: ScriptPosition| {
                 let to = to.get();
                 OrdersApi::order(ctx, &unit, UnitOrder::Move {
                         x: to.x,

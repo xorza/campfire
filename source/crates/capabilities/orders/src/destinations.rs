@@ -41,7 +41,11 @@ impl Destinations {
             }
             let path = path.get();
             let mut waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
-            if waypoint.is_some_and(|at| position.within_ground(at, Body::shape_of(body).bound())) {
+            if waypoint.is_some_and(|at| {
+                position
+                    .get()
+                    .within_ground(at, Body::shape_of(body).bound())
+            }) {
                 walker.advance();
                 waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
             }
@@ -89,7 +93,7 @@ impl Destinations {
                 }
                 Some((unit, ActionRange::Meters(range)))
                     if !targets.reaches(
-                        Placed::new(position, Body::shape_of(body)),
+                        Placed::new(position.get(), Body::shape_of(body)),
                         range,
                         &unit,
                     ) =>

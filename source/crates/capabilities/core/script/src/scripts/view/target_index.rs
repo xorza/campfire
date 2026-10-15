@@ -1,6 +1,5 @@
 use campfire_geometry::{BodyGrid, Indexed, Placed, Shape};
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use campfire_values::Team;
 
 use crate::scripts::view::filter::Filter;
@@ -23,7 +22,7 @@ pub(crate) struct TargetIndex {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TargetQuery<'a> {
     pub team: Team,
-    pub(crate) from: Position,
+    pub(crate) from: Vec3,
     pub shape: Shape,
     pub(crate) radius: Num,
     pub(crate) filter: &'a Filter,

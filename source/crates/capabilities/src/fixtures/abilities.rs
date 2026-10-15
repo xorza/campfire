@@ -5,10 +5,10 @@ use campfire_abilities::internals::{MANA, RAGE};
 use campfire_actions::{ActionData, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
+use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, StableId};
 use campfire_stats::{Life, Pools};
 use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
@@ -32,7 +32,7 @@ pub trait AbilitiesFixtures {
     /// A `combatant` of `team` with `parts`.
     fn spawn_combatant(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         parts: impl Bundle,
     ) -> StableId;
@@ -40,7 +40,7 @@ pub trait AbilitiesFixtures {
     /// A `caster` of `team` with `parts`.
     fn spawn_caster(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         parts: impl Bundle,
     ) -> StableId;
@@ -49,7 +49,7 @@ pub trait AbilitiesFixtures {
     fn attacker(
         world: &mut World,
         unit_type: UnitType,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         target: StableId,
     ) -> StableId;
@@ -102,7 +102,7 @@ impl AbilitiesFixtures for Abilities {
 
     fn spawn_combatant(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         parts: impl Bundle,
     ) -> StableId {
@@ -111,7 +111,7 @@ impl AbilitiesFixtures for Abilities {
 
     fn spawn_caster(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         parts: impl Bundle,
     ) -> StableId {
@@ -121,7 +121,7 @@ impl AbilitiesFixtures for Abilities {
     fn attacker(
         world: &mut World,
         unit_type: UnitType,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         target: StableId,
     ) -> StableId {
@@ -144,11 +144,11 @@ impl AbilitiesFixtures for Abilities {
                 Rank::new(rank),
             )])),
         );
-        Mode::spawn_named(world, name, Position::ORIGIN, Team::new(0), parts)
+        Mode::spawn_named(world, name, Vec3::ZERO, Team::new(0), parts)
     }
 
     fn fighter(world: &mut World, fighter: UnitType, slots: TimedSlots) -> StableId {
-        Mode::spawn(world, fighter, Position::ORIGIN, Team::new(0), slots)
+        Mode::spawn(world, fighter, Vec3::ZERO, Team::new(0), slots)
     }
 
     fn walking_caster(world: &mut World, action: ActionId) -> StableId {

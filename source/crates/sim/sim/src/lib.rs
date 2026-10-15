@@ -36,7 +36,6 @@ pub use crate::host_rule::{Either, HostRule, KindMarker, OnAny};
 pub use crate::id_allocator::IdAllocator;
 pub use crate::ordered::{Keyed, Ordered};
 pub use crate::position::Position;
-pub use crate::position::error::OutOfBounds;
 pub use crate::restoring::Restoring;
 pub use crate::sim_rng::{RngOpener, SimRng};
 pub use crate::sim_state::{SimComponent, SimResource};

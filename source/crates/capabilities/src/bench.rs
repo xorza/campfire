@@ -12,7 +12,7 @@ use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_script::Filter;
-use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
 use campfire_units::{
     Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
 };
@@ -83,7 +83,7 @@ fn two_fields() -> Match {
     let action = Actions::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));
-    let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
+    let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
     for field in [0, 40] {
         let body = BodyForm::box_sized([Num::int(16), Num::int(2)]).unwrap();
         let core = Core {
@@ -166,7 +166,7 @@ struct Core {
 }
 
 /// A unit of `core` at `pos` with `parts`, of the next stable id, spawned as every unit is.
-fn spawn(world: &mut World, core: Core, pos: Position, parts: impl Bundle) -> StableId {
+fn spawn(world: &mut World, core: Core, pos: Vec3, parts: impl Bundle) -> StableId {
     let Core {
         unit_type,
         team,

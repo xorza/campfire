@@ -76,6 +76,8 @@ pub enum NumError {
     IntegerBeyondNum,
     /// `clamp` with a low bound above the high one.
     ClampBounds,
+    /// A coordinate of `vector` that is neither a `Num` nor an integer.
+    NotNumber,
 }
 
 #[cfg(feature = "internals")]

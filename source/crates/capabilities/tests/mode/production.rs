@@ -2,6 +2,7 @@ use campfire_actions::TimedSlots;
 use campfire_production::{
     Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
 };
+use campfire_sim::Position;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
@@ -96,11 +97,11 @@ fn on_mode_input(ctx, player, name, value) {
         assert_eq!(trained(&mut game), made, "tick {at}");
     }
     // Each grunt stands where the producer stood, its player's, and the queue is empty.
-    let pos = *game.get::<Position>(producer).unwrap();
+    let pos = game.get::<Position>(producer).unwrap().get();
     let made: Vec<_> = grunts
         .iter(&game)
         .filter(|&(&unit_type, ..)| unit_type != hero)
-        .map(|(_, owner, &grunt_pos)| (owner.slot(), grunt_pos))
+        .map(|(_, owner, grunt_pos)| (owner.slot(), grunt_pos.get()))
         .collect();
     assert_eq!(made, [(player, pos); 3]);
     assert!(
@@ -161,7 +162,7 @@ fn on_mode_input(ctx, player, name, value) {
         .into_iter()
         .zip(loads)
     {
-        let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+        let pos = Vec3::ZERO;
         let owner = Owner::new(PlayerSlot::new(slot));
         let id = Mode::spawn(&mut game, grunt, pos, Team::new(0), owner);
         if dead {

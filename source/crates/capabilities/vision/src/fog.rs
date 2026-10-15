@@ -1,8 +1,7 @@
 use std::ops::Range;
 
 use campfire_geometry::BodyBox;
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use campfire_values::{Relations, Team, TeamSet};
 
 use crate::sight_cache::{SightCache, Sighting};
@@ -25,7 +24,7 @@ pub struct Fog {
 /// A box's key among the covers: where it stands, and its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Covering {
-    pos: Position,
+    pos: Vec3,
     body: BodyBox,
 }
 
@@ -52,7 +51,7 @@ impl Fog {
         &mut self,
         grid: &VisionGrid,
         slot: usize,
-        pos: Position,
+        pos: Vec3,
         team: Team,
         range: Num,
         detects: bool,
@@ -72,7 +71,7 @@ impl Fog {
     }
 
     /// Reveals the cells within `radius` of `pos`, brush included, to `team`'s group.
-    pub(crate) fn reveal(&mut self, grid: &VisionGrid, pos: Position, team: Team, radius: Num) {
+    pub(crate) fn reveal(&mut self, grid: &VisionGrid, pos: Vec3, team: Team, radius: Num) {
         let group = self.groups.of(team);
         let maps = &mut self.maps;
         grid.grid.spans_within(pos, radius, |cells| {
@@ -88,7 +87,7 @@ impl Fog {
         &mut self,
         grid: &VisionGrid,
         slot: usize,
-        pos: Position,
+        pos: Vec3,
         body: Option<BodyBox>,
         team: Team,
         hidden: bool,

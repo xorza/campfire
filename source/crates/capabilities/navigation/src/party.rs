@@ -1,5 +1,6 @@
 use campfire_common::{PlayerSlot, Tick};
-use campfire_sim::{Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 /// The units that share one route search when they ask for routes in one tick: those one order
@@ -8,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Party {
     pub key: PartyKey,
-    pub goal: Position,
+    pub goal: Vec3,
 }
 
 /// The order parties sort in: by key, then goal, each coordinate by its bits. The ticks their
@@ -22,7 +23,7 @@ pub struct PartyOrder {
 
 impl Party {
     pub const fn order(self) -> PartyOrder {
-        let goal = self.goal.get();
+        let goal = self.goal;
         PartyOrder {
             key: self.key,
             goal: [goal.x.to_bits(), goal.y.to_bits(), goal.z.to_bits()],

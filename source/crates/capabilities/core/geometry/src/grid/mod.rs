@@ -1,7 +1,8 @@
 use std::ops::{Range, RangeInclusive};
 
-use campfire_math::{Flat, FloorRoot, I64x4, Num, Rounding, Vec3};
 use campfire_sim::Position;
+
+use campfire_math::{Flat, FloorRoot, I64x4, Num, Rounding, Vec3};
 
 use crate::body_box::BodyBox;
 use crate::bounds::Bounds;
@@ -62,19 +63,19 @@ impl Grid {
     }
 
     /// The point of the bounds nearest `pos` on the ground plane, at its height.
-    pub fn clamp(&self, pos: Position) -> Position {
+    pub fn clamp(&self, pos: Vec3) -> Vec3 {
         self.bounds.clamp(pos)
     }
 
     /// The cell of the point of the bounds nearest `pos`.
-    pub fn nearest_cell(&self, pos: Position) -> usize {
+    pub fn nearest_cell(&self, pos: Vec3) -> usize {
         self.cell_of(self.clamp(pos))
             .expect("a point of the bounds is in a cell")
     }
 
     /// The square of the distance from `pos` to the nearest center of the cells from column and
     /// row `low` to `high`, both in, on the ground plane, in halves of a bit, exactly.
-    pub fn box_distance(&self, low: [usize; 2], high: [usize; 2], pos: Position) -> u128 {
+    pub fn box_distance(&self, low: [usize; 2], high: [usize; 2], pos: Vec3) -> u128 {
         // Centres and positions lie within 2⁴⁸ halves of a bit, so each offset fits `i64` and
         // each square `i128`, and the wrapping steps skip the checks a release build makes.
         let step = self.cell.to_bits();
@@ -97,14 +98,14 @@ impl Grid {
 
     /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
     /// halves of a bit, exactly.
-    pub fn center_distance(&self, cell: usize, pos: Position) -> u128 {
+    pub fn center_distance(&self, cell: usize, pos: Vec3) -> u128 {
         let square = [cell % self.columns(), cell / self.columns()];
         self.box_distance(square, square, pos)
     }
 
     /// The center of `cell` at height `y`, rounded down to a whole bit, or the point of the bounds
     /// nearest it: a cell of the last row or column may reach past them.
-    pub fn center(&self, cell: usize, y: Num) -> Position {
+    pub fn center(&self, cell: usize, y: Num) -> Vec3 {
         let (column, row) = (cell % self.columns(), cell / self.columns());
         let along = |axis: usize, index: usize| {
             let index = i64::try_from(index).expect("a cell of the grid");
@@ -112,30 +113,29 @@ impl Grid {
             Num::from_bits(self.bounds.min()[axis].to_bits() + cell * index + cell / 2)
         };
         let [x, z] = self.bounds.clamp_ground([along(0, column), along(1, row)]);
-        Position::new(Vec3::new(x, y, z)).expect("bounds are within the world's bound")
+        Vec3::new(x, y, z)
     }
 
     /// The cell `pos` stands in; `None` outside the bounds. A point on the line between two cells
     /// is in the one after it, and a point on the max edge in the last.
-    pub fn cell_of(&self, pos: Position) -> Option<usize> {
+    pub fn cell_of(&self, pos: Vec3) -> Option<usize> {
         if !self.bounds.contains(pos) {
             return None;
         }
-        let point = pos.get();
-        let x = self.index(0, point.x);
-        let z = self.index(1, point.z);
+        let x = self.index(0, pos.x);
+        let z = self.index(1, pos.z);
         Some(z * self.size[0] as usize + x)
     }
 
     /// Calls `reveal` with each row's run of the cells whose centers are within `radius` of `pos`
     /// on the ground plane, exactly, as every range is; rows in order.
-    pub fn spans_within(&self, pos: Position, radius: Num, reveal: impl FnMut(Range<usize>)) {
+    pub fn spans_within(&self, pos: Vec3, radius: Num, reveal: impl FnMut(Range<usize>)) {
         self.spans(pos, radius, false, reveal);
     }
 
     /// Calls `mark` with each row's run of the cells whose centers are closer than `radius` to
     /// `pos` on the ground plane, exactly: a center at `radius` is not closer. Rows in order.
-    pub fn spans_closer(&self, pos: Position, radius: Num, mark: impl FnMut(Range<usize>)) {
+    pub fn spans_closer(&self, pos: Vec3, radius: Num, mark: impl FnMut(Range<usize>)) {
         self.spans(pos, radius, true, mark);
     }
 
@@ -146,7 +146,7 @@ impl Grid {
     /// pays only as it spawns or goes.
     pub fn box_spans_closer(
         &self,
-        pos: Position,
+        pos: Vec3,
         body: &BodyBox,
         reach: Num,
         mut mark: impl FnMut(Range<usize>),
@@ -196,7 +196,7 @@ impl Grid {
 
     /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point
     /// with, `body` at `pos`: the cells it covers, touching not counted. Rows in order.
-    pub fn box_covers(&self, pos: Position, body: &BodyBox, mut mark: impl FnMut(Range<usize>)) {
+    pub fn box_covers(&self, pos: Vec3, body: &BodyBox, mut mark: impl FnMut(Range<usize>)) {
         let centre = Halves::ground(pos);
         let point = centre.to_array();
         let extent = body.extent();
@@ -251,13 +251,7 @@ impl Grid {
     /// The runs of `spans_within`, or of `spans_closer` when `strict`: with whole half-bits, a
     /// square below `reach²` is one at most `reach² − 1`. Four rows a step in lanes when every
     /// square fits them, else one row at a time.
-    fn spans(
-        &self,
-        pos: Position,
-        radius: Num,
-        strict: bool,
-        mut reveal: impl FnMut(Range<usize>),
-    ) {
+    fn spans(&self, pos: Vec3, radius: Num, strict: bool, mut reveal: impl FnMut(Range<usize>)) {
         let rows = self.disc_rows(pos, radius, strict);
         if rows.fit_lanes(self.cell.to_bits()) {
             self.rows_in_lanes(&rows, &mut reveal);
@@ -267,8 +261,7 @@ impl Grid {
     }
 
     /// The rows a disc of `radius` around `pos` may reach, in halves of a bit.
-    fn disc_rows(&self, pos: Position, radius: Num, strict: bool) -> Rows {
-        let point = pos.get();
+    fn disc_rows(&self, pos: Vec3, radius: Num, strict: bool) -> Rows {
         let cell = self.cell.to_bits();
         // In halves of a bit, so each cell's center, half a cell from its edge, is whole. A
         // position and `min` are within 2⁴⁴ bits of the origin and a center within 2⁴⁶, so every
@@ -279,10 +272,7 @@ impl Grid {
         };
         let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
         let min = self.bounds.min();
-        let from = [
-            twice(point.x) - twice(min[0]),
-            twice(point.z) - twice(min[1]),
-        ];
+        let from = [twice(pos.x) - twice(min[0]), twice(pos.z) - twice(min[1])];
         Rows {
             from,
             reach,
@@ -395,12 +385,7 @@ impl Grid {
     /// line between columns grows by the same step, so its quotient by the denominator carries
     /// from one column to the next: a segment divides at most four times, however many columns
     /// it crosses.
-    pub fn touches(
-        &self,
-        from: Position,
-        to: Position,
-        mut hit: impl FnMut(usize) -> bool,
-    ) -> bool {
+    pub fn touches(&self, from: Vec3, to: Vec3, mut hit: impl FnMut(usize) -> bool) -> bool {
         let columns = self.columns();
         self.touches_columns(from, to, |column, rows| {
             rows.into_iter().any(|row| hit(row * columns + column))
@@ -411,16 +396,15 @@ impl Grid {
     /// column and its run of rows, empty in a column the segment touches no row of.
     pub fn touches_columns(
         &self,
-        from: Position,
-        to: Position,
+        from: Vec3,
+        to: Vec3,
         mut hit: impl FnMut(usize, Range<usize>) -> bool,
     ) -> bool {
         let min = self.bounds.min().map(|axis| i128::from(axis.to_bits()));
-        let ground = |pos: Position| {
-            let point = pos.get();
+        let ground = |pos: Vec3| {
             [
-                i128::from(point.x.to_bits()) - min[0],
-                i128::from(point.z.to_bits()) - min[1],
+                i128::from(pos.x.to_bits()) - min[0],
+                i128::from(pos.z.to_bits()) - min[1],
             ]
         };
         let (mut a, mut b) = (ground(from), ground(to));

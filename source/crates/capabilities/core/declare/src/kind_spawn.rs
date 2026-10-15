@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_sim::Position;
 use campfire_values::UnitType;
 
@@ -37,8 +38,10 @@ impl<'w, H> KindSpawn<'w, H> {
 
     /// The unit's place, which its core holds; none for a restored unit that lacks it, which
     /// the core's check refuses.
-    pub fn pos(&self) -> Option<Position> {
-        self.world.get::<Position>(self.entity).copied()
+    pub fn pos(&self) -> Option<Vec3> {
+        self.world
+            .get::<Position>(self.entity)
+            .map(|place| place.get())
     }
 
     /// What the book of `T` holds for the unit's type, which its core holds; none when the type

@@ -64,7 +64,7 @@ impl RoomMaking {
                 .filter(|&(_, _, &walker_pos, other)| {
                     let radius = Walker::walking(Some(other)).radius;
                     other.layer() == body.layer()
-                        && boxed.nearest(pos, walker_pos, radius) == Ordering::Less
+                        && boxed.nearest(pos.get(), walker_pos.get(), radius) == Ordering::Less
                 })
                 .map(|(entity, &id, ..)| Keyed { id, entity }),
         );
@@ -77,12 +77,13 @@ impl RoomMaking {
             let planner = world.get_resource::<RoutePlanner>();
             let place = if let (Some(grid), Some(planner)) = (grid, planner) {
                 let walkable = Walkable::of(grid.clearance(kind), world.resource::<BodyIndex>());
-                planner.stand_at(walkable, walker_pos).unwrap_or(walker_pos)
+                planner
+                    .stand_at(walkable, walker_pos.get())
+                    .unwrap_or_else(|| walker_pos.get())
             } else {
-                let out = boxed
-                    .push_out(pos, walker_pos.get(), kind.radius)
-                    .expect("the box overlaps the walker, so it pushes the walker out");
-                Position::new(out).expect("a push stays near the bounds")
+                boxed
+                    .push_out(pos.get(), walker_pos.get(), kind.radius)
+                    .expect("the box overlaps the walker, so it pushes the walker out")
             };
             NavigationEffect::put(world, walker, place, now);
         }

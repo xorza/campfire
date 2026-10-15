@@ -2,7 +2,6 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use campfire_geometry::internals::{COUNT, Density, KernelScene};
-use campfire_sim::Position;
 use campfire_units::Layer;
 use criterion::{Criterion, Throughput};
 
@@ -34,7 +33,7 @@ pub(crate) fn body_index(c: &mut Criterion) {
             let mut to = from;
             to.x += KernelScene::centimeters(points.below(400).cast_signed() - 200);
             to.z += KernelScene::centimeters(points.below(400).cast_signed() - 200);
-            Segment::new(Position::new(from).unwrap(), Position::new(to).unwrap())
+            Segment::new(from, to)
         })
         .collect();
 
@@ -57,7 +56,7 @@ pub(crate) fn body_index(c: &mut Criterion) {
         bench.iter(|| {
             let mut met = 0;
             for step in &steps {
-                let at = black_box(step.start()).get();
+                let at = black_box(step.start());
                 index.near(walker.layer, at, walker.radius, |_| met += 1);
             }
             black_box(met);

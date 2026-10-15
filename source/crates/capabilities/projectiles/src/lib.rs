@@ -15,7 +15,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{Capability, StableId};
 use campfire_units::MapBook;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
@@ -118,7 +118,7 @@ impl Projectiles {
     /// at a unit for a homing type, or the fan's projectiles along lines spread evenly over its
     /// spread around the aim, which for an action aimed at a point end there at the latest;
     /// nothing for no target, a unit that is gone, or an aim of no direction.
-    fn deliver(world: &mut World, launcher: Launcher, from: Position, target: ActionTarget) {
+    fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
         let Launcher {
             by,
             delivery:
@@ -142,7 +142,7 @@ impl Projectiles {
             Projectiles::push(world, by, unit_type, from, None, [homing]);
             return;
         }
-        let Some(at) = target.point(world) else {
+        let Some(at) = target.pos(world) else {
             return;
         };
         let offset = world.resource::<MapBook>().metric.offset(from, at);
@@ -189,7 +189,7 @@ impl Projectiles {
 
     /// How far a line of `range` flies from `from` along `direction`: up to the edge of the map's
     /// bounds, which a global range flies to.
-    fn reach(bounds: Bounds, range: Option<Num>, from: Position, direction: Vec3) -> Num {
+    fn reach(bounds: Bounds, range: Option<Num>, from: Vec3, direction: Vec3) -> Num {
         let exit = bounds.exit(from, direction);
         range.map_or(exit, |range| range.min(exit))
     }
@@ -200,7 +200,7 @@ impl Projectiles {
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
-        from: Position,
+        from: Vec3,
         id: Option<StableId>,
         flights: impl IntoIterator<Item = Flight>,
     ) {
@@ -268,7 +268,7 @@ pub mod internals {
             world.resource_mut::<Launches>().push(Launch {
                 id: None,
                 source,
-                from: Position::ORIGIN,
+                from: Vec3::ZERO,
                 unit_type,
                 flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
                 payload: LaunchPayload::Attack {
@@ -294,12 +294,12 @@ pub mod internals {
         }
 
         /// Where each projectile is, by stable id.
-        pub fn projectiles(world: &World) -> Vec<Position> {
+        pub fn projectiles(world: &World) -> Vec<Vec3> {
             world
                 .resource::<EntityIndex>()
                 .iter()
                 .filter(|&(_, entity)| world.get::<Projectile>(entity).is_some())
-                .map(|(_, entity)| *world.get::<Position>(entity).unwrap())
+                .map(|(_, entity)| world.get::<Position>(entity).unwrap().get())
                 .collect()
         }
     }

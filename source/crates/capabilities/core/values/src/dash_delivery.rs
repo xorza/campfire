@@ -1,5 +1,5 @@
-use campfire_math::Num;
-use campfire_sim::{Position, StableId};
+use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 use crate::action_id::ActionId;
@@ -38,10 +38,10 @@ impl DashDelivery {
 
     /// Adds the way of a step from `from` to `to`. A dash goes at most a step a tick, so only a
     /// match far past any session's length reaches the end of a number, where it stays.
-    pub fn went(&mut self, from: Position, to: Position) {
+    pub fn went(&mut self, from: Vec3, to: Vec3) {
         self.dashed = self
             .dashed
-            .checked_add(from.get().distance(to.get()))
+            .checked_add(from.distance(to))
             .unwrap_or(Num::MAX);
     }
 }

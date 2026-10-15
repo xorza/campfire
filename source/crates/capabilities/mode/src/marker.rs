@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
+use campfire_math::Vec3;
 use campfire_script::{ScriptMap, ScriptText};
-use campfire_sim::Position;
 use campfire_values::Team;
 
 /// A marker of the map, as `ctx.map.markers(tag)` lists it: a handle on its names resolved.
@@ -13,7 +13,7 @@ pub struct Marker(Rc<MarkerInfo>);
 #[derive(Debug)]
 pub struct MarkerInfo {
     pub name: ScriptText,
-    pub pos: Option<Position>,
+    pub pos: Option<Vec3>,
     pub team: Option<Team>,
     pub(crate) params: ScriptMap,
 }

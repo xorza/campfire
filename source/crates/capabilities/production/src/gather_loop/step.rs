@@ -1,5 +1,6 @@
 use bevy_ecs::entity::Entity;
-use campfire_sim::{Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::StableId;
 
 use crate::gatherer::NodeAt;
 
@@ -9,7 +10,7 @@ pub(crate) enum Step {
     /// Nothing changes.
     Hold,
     /// It walks to the point.
-    Walk(Position),
+    Walk(Vec3),
     /// It stands where it is, its step as it was.
     Stand,
     /// Its loop ends.

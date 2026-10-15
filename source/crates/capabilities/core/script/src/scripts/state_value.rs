@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::script_text::ScriptText;
@@ -22,7 +22,6 @@ pub enum StateValue {
     Text(Arc<str>),
     Entity(Option<StableId>),
     EntityList(Arc<[StableId]>),
-    Pos(Position),
     Vec(Vec3),
 }
 
@@ -48,7 +47,6 @@ impl StateValue {
                     .collect::<Option<_>>()?;
                 StateValue::EntityList(ids)
             }
-            StateType::Pos => StateValue::Pos(value.clone().try_cast::<Position>()?),
             StateType::Vec => StateValue::Vec(value.clone().try_cast::<Vec3>()?),
         })
     }
@@ -62,7 +60,6 @@ impl StateValue {
             StateValue::Text(_) => StateType::String,
             StateValue::Entity(_) => StateType::Entity,
             StateValue::EntityList(_) => StateType::EntityList,
-            StateValue::Pos(_) => StateType::Pos,
             StateValue::Vec(_) => StateType::Vec,
         }
     }
@@ -82,7 +79,6 @@ impl StateValue {
                     .map(ScriptValue::of)
                     .collect::<ScriptList>(),
             ),
-            StateValue::Pos(pos) => ScriptValue::of(*pos),
             StateValue::Vec(vec) => ScriptValue::of(*vec),
         }
     }

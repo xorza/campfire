@@ -1,23 +1,23 @@
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
+use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, StableId};
 use campfire_units::{BodyForm, Destination, MoveStep, UnitTypeCore, Units};
 use campfire_values::{Team, TypeScope, UnitType};
 
 /// The test fixtures of `Navigation` that need a crate above its own.
 pub trait NavigationFixtures {
     /// A unit at `pos` walking a meter a tick to `to`.
-    fn unit(world: &mut World, pos: impl Into<Position>, to: Option<Position>) -> StableId;
+    fn unit(world: &mut World, pos: impl Into<Vec3>, to: Option<Vec3>) -> StableId;
 
     /// A unit at `pos` with a body of `radius`, walking `step` a tick to `to`, or one that does not
     /// walk when `step` is `None`.
     fn body(
         world: &mut World,
-        pos: impl Into<Position>,
-        to: Option<Position>,
+        pos: impl Into<Vec3>,
+        to: Option<Vec3>,
         step: Option<Num>,
         radius: impl Into<Num>,
     ) -> StableId;
@@ -26,8 +26,8 @@ pub trait NavigationFixtures {
     /// not walk when `step` is `None`.
     fn body_on(
         world: &mut World,
-        pos: impl Into<Position>,
-        to: Option<Position>,
+        pos: impl Into<Vec3>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: BodyForm,
     ) -> StableId;
@@ -41,9 +41,9 @@ pub trait NavigationFixtures {
     /// `to`, or one that does not walk when `step` is `None`, as `spawn_turned` spawns one.
     fn spawn_unit(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
-        to: Option<Position>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId;
@@ -53,24 +53,24 @@ pub trait NavigationFixtures {
     /// its own.
     fn spawn_turned(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         angle: Num,
         team: Team,
-        to: Option<Position>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId;
 }
 
 impl NavigationFixtures for Navigation {
-    fn unit(world: &mut World, pos: impl Into<Position>, to: Option<Position>) -> StableId {
+    fn unit(world: &mut World, pos: impl Into<Vec3>, to: Option<Vec3>) -> StableId {
         Navigation::spawn_unit(world, pos, Team::new(0), to, Some(Num::ONE), None)
     }
 
     fn body(
         world: &mut World,
-        pos: impl Into<Position>,
-        to: Option<Position>,
+        pos: impl Into<Vec3>,
+        to: Option<Vec3>,
         step: Option<Num>,
         radius: impl Into<Num>,
     ) -> StableId {
@@ -80,8 +80,8 @@ impl NavigationFixtures for Navigation {
 
     fn body_on(
         world: &mut World,
-        pos: impl Into<Position>,
-        to: Option<Position>,
+        pos: impl Into<Vec3>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: BodyForm,
     ) -> StableId {
@@ -99,9 +99,9 @@ impl NavigationFixtures for Navigation {
 
     fn spawn_unit(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
-        to: Option<Position>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId {
@@ -110,10 +110,10 @@ impl NavigationFixtures for Navigation {
 
     fn spawn_turned(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         angle: Num,
         team: Team,
-        to: Option<Position>,
+        to: Option<Vec3>,
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId {

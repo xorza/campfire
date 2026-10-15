@@ -1,3 +1,4 @@
+use campfire_sim::Position;
 use campfire_units::MapBook;
 use campfire_vision::VisionBook;
 
@@ -13,11 +14,11 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     assert_eq!(
         Mode::placed_units(&game),
         [
-            (0, Position::from((-8, 0, 0)), 0, None),
-            (1, Position::from((0, 0, 0)), 2, None),
-            (2, Position::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
-            (3, Position::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
-            (4, Position::from((10, 0, 0)), 1, Some(PathEnd::End)),
+            (0, Vec3::from((-8, 0, 0)), 0, None),
+            (1, Vec3::from((0, 0, 0)), 2, None),
+            (2, Vec3::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
+            (3, Vec3::from((-10, 0, 0)), 0, Some(PathEnd::Start)),
+            (4, Vec3::from((10, 0, 0)), 1, Some(PathEnd::End)),
         ]
     );
     let tower = Mode::entity_by_id(&game, 0);
@@ -141,7 +142,7 @@ fn on_mode_input(ctx, player, name, value) {
     files.map = raised(files.map, 3);
     let mut game = start_match(script, ScriptLimits::ROOMY, &files).unwrap();
     assert_eq!(game.resource::<MapBook>().metric, Metric::Spatial);
-    let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
+    let up = |x| Vec3::new(Num::int(x), Num::int(3), Num::ZERO);
     let walkers = |game: &Match| <[_; 3]>::try_from(&Mode::placed_units(game)[1..]).unwrap();
     assert_eq!(
         walkers(&game),
@@ -196,7 +197,9 @@ fn a_box_spawns_only_where_it_has_room() {
     // spawns one at (0, 2). An input then asks for one at (1, 2), over it; for two in one call, at
     // (4, 2) and (5, 2), the second over the first; for one at (10, 0), past the bounds at
     // x = 10; and for one at (2, 2), which touches the first, and has room. Each refused call
-    // fails, and spawns nothing.
+    // fails, and spawns nothing. A vector moves a marker's point: c0's 3 m along +z is (0, 5),
+    // clear of the first. A point 2,000,000 m off is past the world's bound of 2²⁰ m, which
+    // the call refuses before it reads the point.
     let script = r#"
 fn crate_at(ctx, marker) {
     ctx.spawn_unit("crate", "a", ctx.map.markers(marker)[0].pos)
@@ -210,6 +213,10 @@ fn on_input(ctx, player, name, value) {
     if value == "twice" {
         crate_at(ctx, "c4");
         crate_at(ctx, "c5");
+    } else if value == "shifted" {
+        ctx.spawn_unit("crate", "a", ctx.map.markers("c0")[0].pos + vector(0, 0, 3));
+    } else if value == "far" {
+        ctx.spawn_unit("crate", "a", vector(0, 0, 2000000));
     } else {
         crate_at(ctx, value);
     }
@@ -227,7 +234,7 @@ fn on_input(ctx, player, name, value) {
     }
     let mut game = start_match(&format!("{script}{PICKING}"), ScriptLimits::ROOMY, &files).unwrap();
     let crates = |game: &Match| {
-        let mut at: Vec<Position> = game
+        let mut at: Vec<Vec3> = game
             .resource::<EntityIndex>()
             .iter()
             .map(|(_, entity)| game.entity(entity))
@@ -235,13 +242,12 @@ fn on_input(ctx, player, name, value) {
                 unit.get::<Body>()
                     .is_some_and(|body| body.half_edges().is_some())
             })
-            .map(|unit| *unit.get::<Position>().unwrap())
+            .map(|unit| unit.get::<Position>().unwrap().get())
             .collect();
-        at.sort_unstable_by_key(|pos| (pos.get().x, pos.get().z));
+        at.sort_unstable_by_key(|pos| (pos.x, pos.z));
         at
     };
-    let ground =
-        |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+    let ground = |x: i64, z: i64| Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
     assert_eq!(crates(&game), [ground(0, 2)]);
     for value in ["c1", "twice", "c10"] {
         Mode::tick_inputs(&mut game, &[(0, input("phase", value))]);
@@ -255,6 +261,14 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("phase", "c2"))]);
     assert_eq!(crates(&game), [ground(0, 2), ground(2, 2)]);
     assert!(Mode::failures(&game).is_empty());
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "shifted"))]);
+    assert_eq!(crates(&game), [ground(0, 2), ground(0, 5), ground(2, 2)]);
+    Mode::tick_inputs(&mut game, &[(0, input("phase", "far"))]);
+    assert_eq!(crates(&game), [ground(0, 2), ground(0, 5), ground(2, 2)]);
+    assert_eq!(
+        Mode::failures(&game).last(),
+        Some(&FailureKind::Api(ApiError::PastBound))
+    );
 }
 
 #[test]
@@ -266,8 +280,8 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     files.map.units[0].angle = Num::int(-90);
     let game = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
     let tower = game.entity(Mode::entity_by_id(&game, 0));
-    let raised = Position::new(Vec3::new(Num::int(-8), Num::int(3), Num::ZERO)).unwrap();
-    assert_eq!(tower.get::<Position>(), Some(&raised));
+    let raised = Vec3::new(Num::int(-8), Num::int(3), Num::ZERO);
+    assert_eq!(tower.get::<Position>().map(|pos| pos.get()), Some(raised));
     assert_eq!(
         tower.get::<Facing>().map(|facing| facing.degrees()),
         Some(Num::int(270))
@@ -288,7 +302,7 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
     );
     map.metric = Metric::Spatial;
     let space = MapPoint::Space([Num::ZERO, Num::ONE, Num::ZERO]);
-    let lifted = Position::new(Vec3::new(Num::ZERO, Num::int(1), Num::ZERO)).unwrap();
+    let lifted = Vec3::new(Num::ZERO, Num::int(1), Num::ZERO);
     assert_eq!(map.placed_at(&space, Num::ZERO), Ok(lifted));
     assert_eq!(
         map.placed_at(&space, Num::int(3)),

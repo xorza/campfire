@@ -82,7 +82,7 @@ impl Flights<'_> {
             let hit = Hit {
                 delivery: Some(id),
                 target: Some(target),
-                pos: from,
+                pos: from.get(),
                 distance: flown,
                 direction: None,
             };
@@ -90,15 +90,15 @@ impl Flights<'_> {
             return true;
         };
         let metric = targets.metric();
-        let moved = metric.step_toward(from, unit.pos, spec.speed);
-        let offset = metric.offset(from, moved);
+        let moved = metric.step_toward(from.get(), unit.pos, spec.speed);
+        let offset = metric.offset(from.get(), moved);
         let flown = flown + offset.length();
         if !metric.reaches(
             Placed::new(moved, Shape::Circle(spec.half_width)),
             Num::ZERO,
             Placed::new(unit.pos, unit.shape),
         ) {
-            *position = moved;
+            *position = Position::from(moved);
             state.fly_to(flown);
             return false;
         }
@@ -144,14 +144,15 @@ impl Flights<'_> {
             direction: Some(direction),
         };
         let offset = direction.checked_mul(step).expect("a step fits");
-        let Some(to) = from.get().checked_add(offset).and_then(Position::new) else {
-            self.end(projectile, line(from, flown));
+        let to = from.get().checked_add(offset);
+        let Some(to) = to.filter(|&to| Position::from(to).within_bound()) else {
+            self.end(projectile, line(from.get(), flown));
             return true;
         };
         let metric = targets.metric();
         self.met.clear();
         if let Some(hits) = spec.hits {
-            let (start, end) = (from.get(), to.get());
+            let (start, end) = (from.get(), to);
             let half = spec.half_width.get();
             let low = [start.x.min(end.x), start.z.min(end.z)]
                 .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
@@ -167,7 +168,8 @@ impl Flights<'_> {
                 if !selects || struck.contains(Struck { by, id: unit.id }) {
                     return;
                 }
-                if let Some(place) = metric.meets(from, to, Placed::new(unit.pos, unit.shape), half)
+                if let Some(place) =
+                    metric.meets(from.get(), to, Placed::new(unit.pos, unit.shape), half)
                 {
                     met.push((place, unit.id));
                 }
@@ -183,7 +185,6 @@ impl Flights<'_> {
             let pos = from
                 .get()
                 .checked_add(direction.checked_mul(travelled).expect("within a step"))
-                .and_then(Position::new)
                 .expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);
             self.struck.insert(Struck { by, id: struck });
@@ -193,7 +194,7 @@ impl Flights<'_> {
                 return true;
             }
         }
-        *position = to;
+        *position = Position::from(to);
         state.fly_to(flown + step);
         if flown + step < range {
             return false;

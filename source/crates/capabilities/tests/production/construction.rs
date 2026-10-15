@@ -3,7 +3,7 @@ use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker, Wall};
 use campfire_orders::OrdersAction;
 use campfire_script::Filter;
-use campfire_sim::EntityIndex;
+use campfire_sim::{EntityIndex, Position};
 use campfire_stats::Life;
 use campfire_units::{Layer, MapBook, StatusTags};
 use campfire_values::{RelationSet, Share, TeamSet};
@@ -121,13 +121,7 @@ impl Yard {
 
     /// A builder of `team`, owned by player `owner`, at `pos`, of a half meter, that walks a
     /// meter a tick, with the build in its slot 0.
-    fn builder(
-        self,
-        game: &mut World,
-        pos: impl Into<Position>,
-        team: Team,
-        owner: u32,
-    ) -> StableId {
+    fn builder(self, game: &mut World, pos: impl Into<Vec3>, team: Team, owner: u32) -> StableId {
         let pos = pos.into();
         let build = self.build;
         let slots = TimedSlots::new(ActionSlots::new([(build, SlotKind::new(0), Rank::new(1))]));
@@ -187,7 +181,7 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     }
     assert_eq!(shop.gold(&game), 85);
     assert_eq!(Production::order_of(&game, builder), None);
-    assert_eq!(*game.part::<Position>(builder), halves(-6, 0));
+    assert_eq!(game.part::<Position>(builder).get(), halves(-6, 0));
 }
 
 #[test]
@@ -285,7 +279,7 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     Production::tick_ordering(&mut game, 0, builder, away);
     assert_eq!(Production::order_of(&game, builder), None);
     game.step();
-    assert_eq!(*game.part::<Position>(builder), halves(-10, 0));
+    assert_eq!(game.part::<Position>(builder).get(), halves(-10, 0));
     Production::tick_ordering(&mut game, 0, builder, at_site(depot));
     let mut seen = Vec::new();
     for _ in 4..=7 {
@@ -434,7 +428,7 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         }
         let builder = yard.builder(
             &mut game,
-            Position::new(Vec3::new(Num::int(x - 3), Num::ZERO, Num::ZERO)).unwrap(),
+            Vec3::new(Num::int(x - 3), Num::ZERO, Num::ZERO),
             Team::new(0),
             0,
         );
@@ -493,7 +487,7 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     assert_eq!(shop.depots(&mut game).len(), 1);
-    let at = |id| *game.part::<Position>(id);
+    let at = |id| game.part::<Position>(id).get();
     assert_eq!([at(hidden), at(friend)], [halves(1, 3), halves(-1, -3)]);
 
     // On a predicting client, an enemy walker in the box that it holds as the server sent it
@@ -533,15 +527,10 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
         },
     );
     let inside = Vec3::new(Num::HALF, Num::ZERO, Num::QUARTER * 3);
-    let pressed = Production::yard_walker(
-        &mut game,
-        Position::new(inside).unwrap(),
-        Team::new(0),
-        None,
-    );
+    let pressed = Production::yard_walker(&mut game, inside, Team::new(0), None);
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!(*game.part::<Position>(pressed), halves(3, 3));
+    assert_eq!(game.part::<Position>(pressed).get(), halves(3, 3));
 }
 
 #[test]

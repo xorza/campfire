@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimResource};
 use campfire_values::{NameId, Team};
 use serde::{Deserialize, Serialize};
@@ -17,7 +17,7 @@ pub struct Reveals(Vec<Reveal>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Reveal {
     pub team: Team,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) radius: Num,
     pub(crate) last: Tick,
 }
@@ -45,13 +45,16 @@ impl SimResource for Reveals {
     const NAME: &'static str = "vision.reveals";
 
     // A reveal of a team the grid's match lacks has no group, and one of a negative radius no
-    // cells; a match with no grid makes none.
+    // cells; a match with no grid makes none; its place lies within the world's bound, as every
+    // place does.
     fn check(&self, world: &World) -> bool {
         let grid = world
             .get_resource::<VisionBook>()
             .and_then(VisionBook::grid);
         self.0.iter().all(|reveal| {
-            reveal.radius >= Num::ZERO && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
+            reveal.radius >= Num::ZERO
+                && grid.is_some_and(|grid| reveal.team.index() < grid.teams)
+                && Position::from(reveal.pos).within_bound()
         })
     }
 }

@@ -1,8 +1,7 @@
 use std::mem;
 use std::ops::Range;
 
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 
 /// The runs of cells each seer's sight covered the tick before, or each box: runs that only their
 /// key decides, `K`, a sight's place and range or a box's place and shape, so a seer that stood
@@ -21,7 +20,7 @@ pub(crate) struct SightCache<K> {
 /// A sight's key: where from, and how far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Sighting {
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) range: Num,
 }
 
@@ -94,7 +93,6 @@ impl<K: Copy + PartialEq> SightCache<K> {
 #[cfg(test)]
 mod tests {
     use campfire_geometry::{Bounds, Grid};
-    use campfire_math::Vec3;
 
     use super::*;
 
@@ -103,9 +101,9 @@ mod tests {
         // 1 m cells over ±20 m; sights of 5 m and 6 m from two places a third of a meter apart.
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
         let grid = Grid::new(Num::ONE, bounds).unwrap();
-        let at = |x: Num| Position::new(Vec3::new(x, Num::ZERO, Num::int(2))).unwrap();
+        let at = |x: Num| Vec3::new(x, Num::ZERO, Num::int(2));
         let (here, there) = (at(Num::ONE), at(Num::ONE + Num::ONE / 3));
-        let spans = |pos: Position, range: Num| {
+        let spans = |pos: Vec3, range: Num| {
             let mut runs = Vec::new();
             grid.spans_within(pos, range, |run| runs.push(run));
             runs
@@ -113,7 +111,7 @@ mod tests {
         let mut cache = SightCache::default();
         // Each step: a tick of sights, each `(slot, place, range, from the grid)`.
         let (five, six) = (Num::int(5), Num::int(6));
-        let ticks: [&[(usize, Position, Num, bool)]; 7] = [
+        let ticks: [&[(usize, Vec3, Num, bool)]; 7] = [
             &[(0, here, five, true), (3, there, six, true)],
             // The same place and range take the runs again; another place, or range, does not.
             &[(0, here, five, false), (3, there, five, true)],

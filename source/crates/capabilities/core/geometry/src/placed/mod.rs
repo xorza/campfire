@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 
 use crate::approach::Approach;
 use crate::shape::Shape;
@@ -12,29 +11,29 @@ pub(crate) mod bench;
 /// A body where it stands: its unit's position, and its shape around it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Placed {
-    pub pos: Position,
+    pub pos: Vec3,
     pub shape: Shape,
 }
 
 impl Placed {
-    pub const fn new(pos: Position, shape: Shape) -> Placed {
+    pub const fn new(pos: Vec3, shape: Shape) -> Placed {
         Placed { pos, shape }
     }
 
     /// A point at `pos`, as a unit with no body is.
-    pub const fn point(pos: Position) -> Placed {
+    pub const fn point(pos: Vec3) -> Placed {
         Placed::new(pos, Shape::POINT)
     }
 
     /// Whether the straight path from `from` to `to` on the ground plane comes closer than
     /// `reach` to it, exactly: closer than `reach` and its radius to a circle's centre, or than
     /// `reach` to a box. Touching at `reach` is not closer.
-    pub fn comes_closer(self, from: Position, to: Position, reach: Num) -> bool {
+    pub fn comes_closer(self, from: Vec3, to: Vec3, reach: Num) -> bool {
         let Placed { pos, shape } = self;
         // A path whose span along an axis lies at least `reach` beyond the shape's comes no
         // closer: most shapes a search of buckets finds lie so, and take no exact test. A reach
         // past every number saturates, and no span lies beyond it.
-        let (centre, ends) = (pos.get(), [from.get(), to.get()]);
+        let (centre, ends) = (pos, [from, to]);
         let extent = shape.extent();
         let reach_bits = reach.to_bits();
         let clear = |centre: Num, ends: [Num; 2], extent: Num| {

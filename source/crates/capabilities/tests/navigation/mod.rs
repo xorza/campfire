@@ -49,24 +49,23 @@ fn blocking_walk_match() -> Match {
 #[test]
 fn a_unit_walks_to_its_destination_exactly() {
     let mut game = walk_match();
-    let straight = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, 5))));
+    let straight = Navigation::unit(&mut game, (0, 0, 0), Some(Vec3::from((0, 0, 5))));
     // Offset (3, 0, 4), distance 5: the first meter is 3/5 and 4/5, each rounded once:
     // 10 066 329.6 → 10 066 330 and 13 421 772.8 → 13 421 773. The height stays at y = 2.
-    let slanted = Navigation::unit(&mut game, (4, 2, 0), Some(Position::from((7, 2, 4))));
+    let slanted = Navigation::unit(&mut game, (4, 2, 0), Some(Vec3::from((7, 2, 4))));
     let still = Navigation::unit(&mut game, (9, 0, 9), None);
 
     game.step();
-    assert_eq!(*game.part::<Position>(straight), Position::from((0, 0, 1)));
+    assert_eq!(game.part::<Position>(straight).get(), Vec3::from((0, 0, 1)));
     assert_eq!(
-        *game.part::<Position>(slanted),
-        Position::new(Vec3::new(
+        game.part::<Position>(slanted).get(),
+        Vec3::new(
             Num::from_bits(4 * ONE + 10_066_330),
             Num::int(2),
             Num::from_bits(13_421_773)
-        ))
-        .unwrap()
+        )
     );
-    assert_eq!(*game.part::<Position>(still), Position::from((9, 0, 9)));
+    assert_eq!(game.part::<Position>(still).get(), Vec3::from((9, 0, 9)));
     // With no turn rate, each faces its way at once: along `+z`, 270°; the one that stands keeps
     // its spawn's 0°.
     assert_eq!(game.part::<Facing>(straight).degrees(), Num::int(270));
@@ -74,11 +73,11 @@ fn a_unit_walks_to_its_destination_exactly() {
     // Straight along z, one meter a tick: done in the fifth tick, and the destination dropped.
     for z in 2..=5 {
         game.step();
-        assert_eq!(*game.part::<Position>(straight), Position::from((0, 0, z)));
+        assert_eq!(game.part::<Position>(straight).get(), Vec3::from((0, 0, z)));
     }
     assert_eq!(game.part::<Destination>(straight).get(), None);
     game.step();
-    assert_eq!(*game.part::<Position>(straight), Position::from((0, 0, 5)));
+    assert_eq!(game.part::<Position>(straight).get(), Vec3::from((0, 0, 5)));
 }
 
 #[test]
@@ -87,25 +86,25 @@ fn a_walker_turns_at_its_turn_rate_and_walks_once_it_faces_its_way() {
     // 11.25° is left, through tick 26, at 78°, 12° short; in tick 27 it turns to 81°, 9° short,
     // and walks its meter; then it turns on as it walks, to 90° in tick 30.
     let mut game = walk_match();
-    let walker = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, -10))));
+    let walker = Navigation::unit(&mut game, (0, 0, 0), Some(Vec3::from((0, 0, -10))));
     game.insert_parts(walker, TurnStep::new(Num::int(3)).unwrap());
     for tick in 1..=26 {
         game.step();
         assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(3 * tick));
         assert_eq!(
-            *game.part::<Position>(walker),
-            Position::from((0, 0, 0)),
+            game.part::<Position>(walker).get(),
+            Vec3::from((0, 0, 0)),
             "tick {tick}"
         );
     }
     game.step();
     assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(81));
-    assert_eq!(*game.part::<Position>(walker), Position::from((0, 0, -1)));
+    assert_eq!(game.part::<Position>(walker).get(), Vec3::from((0, 0, -1)));
     for _ in 28..=30 {
         game.step();
     }
     assert_eq!(game.part::<Facing>(walker).degrees(), Num::int(90));
-    assert_eq!(*game.part::<Position>(walker), Position::from((0, 0, -4)));
+    assert_eq!(game.part::<Position>(walker).get(), Vec3::from((0, 0, -4)));
 }
 
 #[test]
@@ -117,19 +116,19 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
     let outside = Navigation::unit(&mut game, (6, 1, 2), None);
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
-    let past = Navigation::unit(&mut game, (3, 0, 0), Some(Position::from((5, 0, 0))));
+    let past = Navigation::unit(&mut game, (3, 0, 0), Some(Vec3::from((5, 0, 0))));
     let inside = Navigation::unit(&mut game, (1, 0, 1), None);
     let id = Navigation::spawn_unit(&mut game, (9, 0, 9), Team::new(0), None, None, None);
 
     game.step();
-    assert_eq!(*game.part::<Position>(outside), Position::from((4, 1, 2)));
-    assert_eq!(*game.part::<Position>(past), Position::from((4, 0, 0)));
-    assert_eq!(*game.part::<Position>(inside), Position::from((1, 0, 1)));
+    assert_eq!(game.part::<Position>(outside).get(), Vec3::from((4, 1, 2)));
+    assert_eq!(game.part::<Position>(past).get(), Vec3::from((4, 0, 0)));
+    assert_eq!(game.part::<Position>(inside).get(), Vec3::from((1, 0, 1)));
     game.step();
-    assert_eq!(*game.part::<Position>(past), Position::from((4, 0, 0)));
+    assert_eq!(game.part::<Position>(past).get(), Vec3::from((4, 0, 0)));
     assert_eq!(game.part::<Destination>(past).get(), None);
     // A unit that does not walk is not moved: the map's check keeps it within the bounds.
-    assert_eq!(*game.part::<Position>(id), Position::from((9, 0, 9)));
+    assert_eq!(game.part::<Position>(id).get(), Vec3::from((9, 0, 9)));
 }
 
 #[test]
@@ -144,14 +143,14 @@ fn bodies_part_and_block_the_way() {
     let a = Navigation::body(
         &mut game,
         (0, 0, 0),
-        Some(Position::from((10, 0, 0))),
+        Some(Vec3::from((10, 0, 0))),
         Some(quarter),
         half,
     );
     let b = Navigation::body(
         &mut game,
         (3, 0, 0),
-        Some(Position::from((-10, 0, 0))),
+        Some(Vec3::from((-10, 0, 0))),
         Some(quarter),
         half,
     );
@@ -161,7 +160,7 @@ fn bodies_part_and_block_the_way() {
     let c = Navigation::body(
         &mut game,
         (-6, 0, 0),
-        Some(Position::from((-6, 0, 8))),
+        Some(Vec3::from((-6, 0, 8))),
         Some(quarter),
         half,
     );
@@ -171,7 +170,7 @@ fn bodies_part_and_block_the_way() {
     let d = Navigation::body(
         &mut game,
         (18, 0, 0),
-        Some(Position::from((22, 0, 0))),
+        Some(Vec3::from((22, 0, 0))),
         Some(quarter),
         half,
     );
@@ -181,7 +180,7 @@ fn bodies_part_and_block_the_way() {
     let rooted = Navigation::body(
         &mut game,
         (0, 0, 10),
-        Some(Position::from((10, 0, 10))),
+        Some(Vec3::from((10, 0, 10))),
         Some(quarter),
         half,
     );
@@ -189,7 +188,7 @@ fn bodies_part_and_block_the_way() {
     let walker = Navigation::body(
         &mut game,
         (3, 0, 10),
-        Some(Position::from((-10, 0, 10))),
+        Some(Vec3::from((-10, 0, 10))),
         Some(quarter),
         half,
     );
@@ -197,33 +196,33 @@ fn bodies_part_and_block_the_way() {
         game.step();
     }
     assert_eq!(
-        [a, b].map(|id| *game.part::<Position>(id)),
-        [Position::from((1, 0, 0)), Position::from((2, 0, 0))]
+        [a, b].map(|id| game.part::<Position>(id).get()),
+        [Vec3::from((1, 0, 0)), Vec3::from((2, 0, 0))]
     );
     for _ in 5..16 {
         game.step();
     }
     assert_eq!(
-        [a, b].map(|id| *game.part::<Position>(id)),
-        [Position::from((1, 0, 0)), Position::from((2, 0, 0))]
+        [a, b].map(|id| game.part::<Position>(id).get()),
+        [Vec3::from((1, 0, 0)), Vec3::from((2, 0, 0))]
     );
-    let c_at = Position::new(Vec3::new(Num::int(-6), Num::ZERO, Num::int(2) + half)).unwrap();
+    let c_at = Vec3::new(Num::int(-6), Num::ZERO, Num::int(2) + half);
     assert_eq!(
-        [c, tower].map(|id| *game.part::<Position>(id)),
-        [c_at, Position::from((-6, 0, 4))]
+        [c, tower].map(|id| game.part::<Position>(id).get()),
+        [c_at, Vec3::from((-6, 0, 4))]
     );
     // D, 16 ticks on at a quarter meter, passed the dead body at 20 to reach 22.
     assert_eq!(
-        [d, dead].map(|id| *game.part::<Position>(id)),
-        [Position::from((22, 0, 0)), Position::from((20, 0, 0))]
+        [d, dead].map(|id| game.part::<Position>(id).get()),
+        [Vec3::from((22, 0, 0)), Vec3::from((20, 0, 0))]
     );
     assert_eq!(
-        [rooted, walker].map(|id| *game.part::<Position>(id)),
-        [Position::from((0, 0, 10)), Position::from((1, 0, 10))]
+        [rooted, walker].map(|id| game.part::<Position>(id).get()),
+        [Vec3::from((0, 0, 10)), Vec3::from((1, 0, 10))]
     );
     assert_eq!(
         game.part::<Destination>(rooted).get(),
-        Some(Position::from((10, 0, 10)))
+        Some(Vec3::from((10, 0, 10)))
     );
 }
 
@@ -241,14 +240,14 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     let blocked = Navigation::body(
         &mut game,
         (0, 0, 0),
-        Some(Position::from((4, 0, 0))),
+        Some(Vec3::from((4, 0, 0))),
         Some(quarter),
         half,
     );
     let passing = Navigation::body(
         &mut game,
         (0, 0, 4),
-        Some(Position::from((4, 0, 4))),
+        Some(Vec3::from((4, 0, 4))),
         Some(quarter),
         half,
     );
@@ -262,14 +261,14 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     for _ in 0..16 {
         game.step();
     }
-    let places = [blocked, passing, fixed, resting].map(|id| *game.part::<Position>(id));
+    let places = [blocked, passing, fixed, resting].map(|id| game.part::<Position>(id).get());
     assert_eq!(
         places,
         [
-            Position::from((1, 0, 0)),
-            Position::from((4, 0, 4)),
-            Position::from((2, 0, 0)),
-            Position::from((2, 0, 4))
+            Vec3::from((1, 0, 0)),
+            Vec3::from((4, 0, 4)),
+            Vec3::from((2, 0, 0)),
+            Vec3::from((2, 0, 4))
         ]
     );
 }
@@ -283,8 +282,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [-2, -2], [2, 2], [ground(half)]);
     let quarter = |value: i64| Num::from_bits(value << 22);
-    let place =
-        |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
+    let place = |x: i64, z: i64| Vec3::new(quarter(x), Num::ZERO, quarter(z));
     let blocked = |game: &Match| {
         (0..16)
             .filter(|&cell| !Navigation::cell_open(game, ground(half), cell))
@@ -295,7 +293,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     Navigation::body(
         &mut game,
         place(0, 0),
-        Some(Position::from((0, 0, 1))),
+        Some(Vec3::from((0, 0, 1))),
         Some(Num::ONE),
         half,
     );
@@ -317,7 +315,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     game.step();
     assert_eq!(blocked(&game), [0]);
     // The tower moves to (−0.5, 1.5): column 1 of row 3, cell 13. Then it goes.
-    *game.part_mut::<Position>(tower) = place(-2, 6);
+    *game.part_mut::<Position>(tower) = Position::from(place(-2, 6));
     game.step();
     assert_eq!(blocked(&game), [13]);
     game.entity_mut(tower_entity).despawn();
@@ -344,7 +342,7 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
         let walker = Navigation::body(
             &mut game,
             (-4, 0, 0),
-            Some(Position::from((4, 0, 0))),
+            Some(Vec3::from((4, 0, 0))),
             Some(quarter),
             half,
         );
@@ -366,12 +364,12 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
             );
             // Three ticks more than the 32 a straight 8 m takes, a quarter meter a tick.
             assert_eq!(arrived, Some(34));
-            assert_eq!(*game.part::<Position>(walker), Position::from((4, 0, 0)));
+            assert_eq!(game.part::<Position>(walker).get(), Vec3::from((4, 0, 0)));
         } else {
             // It stops against the tower, the two radii from its centre, pressed there.
             assert_eq!(arrived, None);
-            let stop = Position::new(Vec3::new(-(tower_radius + half), Num::ZERO, Num::ZERO));
-            assert_eq!(*game.part::<Position>(walker), stop.unwrap());
+            let stop = Vec3::new(-(tower_radius + half), Num::ZERO, Num::ZERO);
+            assert_eq!(game.part::<Position>(walker).get(), stop);
         }
     }
 }
@@ -399,12 +397,12 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
         vec![ground(Num::ZERO)],
         &[barrier],
     );
-    let walker = Navigation::unit(&mut game, (2, 0, 1), Some(Position::from((8, 0, 1))));
+    let walker = Navigation::unit(&mut game, (2, 0, 1), Some(Vec3::from((8, 0, 1))));
     // Its route goes over the wall's top, row 4, and keeps a waypoint only where the line on would
     // touch a blocked cell: from (2, 1) to the next cell, (4.5, 4.5), it is at z = 3.8 at x = 4,
     // on cell (4, 3); from (3.5, 4.5) to the cell after (6.5, 4.5), (7.5, 3.5), at z = 3.875 at
     // x = 6, on cell (5, 3). From (6.5, 4.5) it goes straight to its goal.
-    let point = |x: i64, z: i64| Position::new(Vec3::new(half * x, Num::ZERO, half * z)).unwrap();
+    let point = |x: i64, z: i64| Vec3::new(half * x, Num::ZERO, half * z);
     game.step();
     let corners = [point(7, 9), point(13, 9), point(16, 2)];
     assert_eq!(game.part::<Route>(walker).ahead(), corners);
@@ -420,12 +418,12 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
         steps += 1;
     }
     assert_eq!(steps, 11);
-    assert_eq!(*game.part::<Position>(walker), Position::from((8, 0, 1)));
+    assert_eq!(game.part::<Position>(walker).get(), Vec3::from((8, 0, 1)));
 }
 
 /// Whether the bodies of radii `a` and `b` at `first` and `second` overlap on the ground plane,
 /// exactly.
-fn overlap(first: Position, a: Num, second: Position, b: Num) -> bool {
+fn overlap(first: Vec3, a: Num, second: Vec3, b: Num) -> bool {
     let reach = u128::from((a + b).to_bits().unsigned_abs());
     first.ground_offset(second).length_squared_bits() < reach * reach
 }
@@ -439,7 +437,7 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
     let half = Num::HALF;
     let quarter = Num::QUARTER;
     let creep_radius = Num::from_bits((35 << Num::FRAC_BITS) / 100);
-    let creep_at = Position::new(Vec3::new(Num::int(2), Num::ZERO, half)).unwrap();
+    let creep_at = Vec3::new(Num::int(2), Num::ZERO, half);
     for planned in [true, false] {
         let mut game = walk_match();
         if planned {
@@ -456,7 +454,7 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
         let walker = Navigation::body(
             &mut game,
             (-4, 0, 0),
-            Some(Position::from((4, 0, 0))),
+            Some(Vec3::from((4, 0, 0))),
             Some(quarter),
             half,
         );
@@ -464,24 +462,27 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
         let mut arrived = None;
         for tick in 0..80 {
             game.step();
-            let pos = *game.part::<Position>(walker);
-            touched |= overlap(pos, half, Position::from((0, 0, 0)), half);
+            let pos = game.part::<Position>(walker).get();
+            touched |= overlap(pos, half, Vec3::from((0, 0, 0)), half);
             touched |= overlap(pos, half, creep_at, creep_radius);
             if arrived.is_none() && game.part::<Destination>(walker).get().is_none() {
                 arrived = Some(tick);
             }
         }
-        let still = [*game.part::<Position>(hero), *game.part::<Position>(creep)];
+        let still = [
+            game.part::<Position>(hero).get(),
+            game.part::<Position>(creep).get(),
+        ];
         if planned {
             assert!(!touched);
             // Seven ticks more than the 32 a straight 8 m takes, round both.
             assert_eq!(arrived, Some(38));
-            assert_eq!(*game.part::<Position>(walker), Position::from((4, 0, 0)));
-            assert_eq!(still, [Position::from((0, 0, 0)), creep_at]);
+            assert_eq!(game.part::<Position>(walker).get(), Vec3::from((4, 0, 0)));
+            assert_eq!(still, [Vec3::from((0, 0, 0)), creep_at]);
         } else {
             // Against the hero, the two radii, 1 m, from its centre.
             assert_eq!(arrived, None);
-            assert_eq!(*game.part::<Position>(walker), Position::from((-1, 0, 0)));
+            assert_eq!(game.part::<Position>(walker).get(), Vec3::from((-1, 0, 0)));
         }
     }
 }
@@ -502,14 +503,14 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         let east = Navigation::body(
             &mut game,
             (-4, 0, 0),
-            Some(Position::from((4, 0, 0))),
+            Some(Vec3::from((4, 0, 0))),
             Some(quarter),
             half,
         );
         let west = Navigation::body(
             &mut game,
             (4, 0, 0),
-            Some(Position::from((-4, 0, 0))),
+            Some(Vec3::from((-4, 0, 0))),
             Some(quarter),
             half,
         );
@@ -518,7 +519,7 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         for tick in 0..120 {
             game.step();
             for (side, id) in sides.iter_mut().zip([east, west]) {
-                let z = game.part::<Position>(id).get().z;
+                let z = game.part::<Position>(id).z;
                 if z.to_bits().abs() > side.to_bits().abs() {
                     *side = z;
                 }
@@ -532,14 +533,14 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         if planned {
             // Seven ticks more each than the 32 a straight 8 m takes, round the other.
             assert_eq!(arrived, [Some(38); 2]);
-            assert_eq!(*game.part::<Position>(east), Position::from((4, 0, 0)));
-            assert_eq!(*game.part::<Position>(west), Position::from((-4, 0, 0)));
+            assert_eq!(game.part::<Position>(east).get(), Vec3::from((4, 0, 0)));
+            assert_eq!(game.part::<Position>(west).get(), Vec3::from((-4, 0, 0)));
             assert!(sides[0] < Num::ZERO && sides[1] > Num::ZERO, "{sides:?}");
         } else {
             // Pressed together, each half a metre from where they met, at x = 0.
             assert_eq!(arrived, [None; 2]);
-            let half_x = |x: Num| Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
-            let pressed = [east, west].map(|id| *game.part::<Position>(id));
+            let half_x = |x: Num| Vec3::new(x, Num::ZERO, Num::ZERO);
+            let pressed = [east, west].map(|id| game.part::<Position>(id).get());
             assert_eq!(pressed, [half_x(-half), half_x(half)]);
         }
     }
@@ -574,7 +575,7 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     let flying = Navigation::body_on(
         &mut game,
         (1, 0, 3),
-        Some(Position::from((11, 0, 3))),
+        Some(Vec3::from((11, 0, 3))),
         Some(Num::ONE),
         body,
     );
@@ -585,23 +586,23 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     let walking = Navigation::body(
         &mut game,
         (1, 0, 1),
-        Some(Position::from((11, 0, 1))),
+        Some(Vec3::from((11, 0, 1))),
         Some(Num::ONE),
         half,
     );
-    let short = Position::new(Vec3::new(Num::int(4) + half, Num::ZERO, half)).unwrap();
+    let short = Vec3::new(Num::int(4) + half, Num::ZERO, half);
     let mut flown = Vec::new();
     for _ in 0..12 {
         game.step();
-        flown.push(*game.part::<Position>(flying));
-        assert_eq!(*game.part::<Position>(standing), Position::from((3, 0, 3)));
+        flown.push(game.part::<Position>(flying).get());
+        assert_eq!(game.part::<Position>(standing).get(), Vec3::from((3, 0, 3)));
     }
-    let line: Vec<Position> = (2..=11)
+    let line: Vec<Vec3> = (2..=11)
         .chain([11; 2])
-        .map(|x| Position::from((x, 0, 3)))
+        .map(|x| Vec3::from((x, 0, 3)))
         .collect();
     assert_eq!(flown, line);
-    assert_eq!(*game.part::<Position>(walking), short);
+    assert_eq!(game.part::<Position>(walking).get(), short);
 }
 
 #[test]
@@ -619,7 +620,7 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
         vec![ground(Num::ZERO)],
     );
     let half = Num::HALF;
-    let place = |x: i64| Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, half)).unwrap();
+    let place = |x: i64| Vec3::new(Num::int(x) + half, Num::ZERO, half);
     let (start, far, near) = (place(0), place(15), place(3));
     let units = [None, Some(far), Some(near), Some(far)]
         .map(|goal| Navigation::unit(&mut game, start, goal));
@@ -659,10 +660,8 @@ fn a_walker_steers_with_the_work_the_routes_left() {
     // with two, they do 46, and the walker keeps its route, and steers in tick 2.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let place = |x: i64, z: i64| {
-        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
-    };
-    let goal = place(11, 1).unwrap();
+    let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);
+    let goal = place(11, 1);
     for (askers, steered) in [(0, [true, true]), (1, [true, true]), (2, [false, true])] {
         let mut game = walk_match();
         Navigation::load_open_pathing(
@@ -672,24 +671,12 @@ fn a_walker_steers_with_the_work_the_routes_left() {
             [12, 3],
             vec![ground(Num::ZERO), ground(quarter)],
         );
-        let walker = Navigation::body(
-            &mut game,
-            place(0, 1).unwrap(),
-            Some(goal),
-            Some(quarter),
-            quarter,
-        );
+        let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(quarter), quarter);
         game.step();
         assert_eq!(game.part::<Route>(walker).ahead(), [goal]);
-        Navigation::body(
-            &mut game,
-            place(3, 1).unwrap(),
-            None,
-            Some(quarter),
-            quarter,
-        );
+        Navigation::body(&mut game, place(3, 1), None, Some(quarter), quarter);
         for _ in 0..askers {
-            Navigation::unit(&mut game, place(0, 0).unwrap(), Some(place(11, 0).unwrap()));
+            Navigation::unit(&mut game, place(0, 0), Some(place(11, 0)));
         }
         let ticks = [(); 2].map(|()| {
             game.step();
@@ -707,19 +694,11 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     // walker asks again in the next tick, and goes round it.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let place = |x: i64, z: i64| {
-        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
-    };
+    let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);
     let mut game = walk_match();
     Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
-    let goal = place(7, 1).unwrap();
-    let walker = Navigation::body(
-        &mut game,
-        place(0, 1).unwrap(),
-        Some(goal),
-        Some(Num::ONE),
-        quarter,
-    );
+    let goal = place(7, 1);
+    let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(Num::ONE), quarter);
     game.step();
     let entity = game.unit_entity(walker);
     let changed = |game: &Match| {
@@ -729,11 +708,11 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
             .last_changed()
     };
     let planned = changed(&game);
-    Navigation::body(&mut game, place(5, 0).unwrap(), None, None, half);
+    Navigation::body(&mut game, place(5, 0), None, None, half);
     game.step();
     assert_eq!(changed(&game), planned);
     assert_eq!(game.part::<Route>(walker).ahead(), [goal]);
-    Navigation::body(&mut game, place(5, 1).unwrap(), None, None, half);
+    Navigation::body(&mut game, place(5, 1), None, None, half);
     game.step();
     assert_ne!(game.part::<Route>(walker).ahead(), [goal]);
     assert!(game.part::<Route>(walker).reached());
@@ -747,22 +726,13 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     // cell it reaches, (3.5, 1.5), 3 m on, which it arrives at in tick 2, a meter a tick.
     let quarter = Num::QUARTER;
     let half = Num::HALF;
-    let place = |x: i64, z: i64| {
-        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
-    };
-    let goal = place(6, 1).unwrap();
+    let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);
+    let goal = place(6, 1);
     let walled = || {
         let mut game = walk_match();
         Navigation::load_open_pathing(&mut game, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
-        let towers =
-            [0, 1, 2].map(|z| Navigation::body(&mut game, place(4, z).unwrap(), None, None, half));
-        let walker = Navigation::body(
-            &mut game,
-            place(0, 1).unwrap(),
-            Some(goal),
-            Some(Num::ONE),
-            quarter,
-        );
+        let towers = [0, 1, 2].map(|z| Navigation::body(&mut game, place(4, z), None, None, half));
+        let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(Num::ONE), quarter);
         let middle = game.unit_entity(towers[1]);
         (game, middle, walker)
     };
@@ -776,14 +746,14 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     for _ in 0..4 {
         game.step();
     }
-    assert_eq!(*game.part::<Position>(walker), goal);
+    assert_eq!(game.part::<Position>(walker).get(), goal);
     // The middle tower stands, and the walker arrives short.
     let (mut game, middle, walker) = walled();
     for _ in 0..3 {
         game.step();
     }
-    let short = place(3, 1).unwrap();
-    assert_eq!(*game.part::<Position>(walker), short);
+    let short = place(3, 1);
+    assert_eq!(game.part::<Position>(walker).get(), short);
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert!(game.part::<ArrivedShort>(walker).of_goal(goal));
     // Sent there again, as an order would, it plans nothing, and stays with no destination.
@@ -799,7 +769,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     game.step();
     assert_eq!(changed(&game), before);
     assert_eq!(game.part::<Destination>(walker).get(), None);
-    assert_eq!(*game.part::<Position>(walker), short);
+    assert_eq!(game.part::<Position>(walker).get(), short);
     // The middle tower dies, and the walker goes on through its cell from the next tick: 3 m to
     // the gap, (4.5, 1.5), then 2 m on, in 3 ticks. Its route reached the goal, so it forgets the
     // route, and its progress.
@@ -809,7 +779,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     for _ in 0..2 {
         game.step();
     }
-    assert_eq!(*game.part::<Position>(walker), goal);
+    assert_eq!(game.part::<Position>(walker).get(), goal);
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert_eq!(game.part::<Route>(walker).goal(), None);
     assert_eq!(*game.part::<Progress>(walker), Progress::default());
@@ -1078,7 +1048,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
 #[test]
 fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
     let mut game = blocking_walk_match();
-    let unit = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, 5))));
+    let unit = Navigation::unit(&mut game, (0, 0, 0), Some(Vec3::from((0, 0, 5))));
     game.insert_parts(unit, Dead);
     // Tags that block moving hold their unit where it stands, its destination kept, until they
     // end; tags that block anything else let it walk.
@@ -1091,24 +1061,24 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
         .step_by(2)
         .zip(cases)
         .map(|(x, (blocks, _))| {
-            let id = Navigation::unit(&mut game, (x, 0, 0), Some(Position::from((x, 0, 5))));
+            let id = Navigation::unit(&mut game, (x, 0, 0), Some(Vec3::from((x, 0, 5))));
             Units::set_blocks(&mut game, id, blocks);
             (id, x)
         })
         .collect();
     game.step();
-    assert_eq!(*game.part::<Position>(unit), Position::from((0, 0, 0)));
+    assert_eq!(game.part::<Position>(unit).get(), Vec3::from((0, 0, 0)));
     assert_eq!(game.part::<Destination>(unit).get(), None);
     for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i16::from(walks);
         assert_eq!(
-            *game.part::<Position>(id),
-            Position::from((x, 0, z)),
+            game.part::<Position>(id).get(),
+            Vec3::from((x, 0, z)),
             "{blocks:?}"
         );
         assert_eq!(
             game.part::<Destination>(id).get(),
-            Some(Position::from((x, 0, 5))),
+            Some(Vec3::from((x, 0, 5))),
             "{blocks:?}"
         );
         Units::set_blocks(&mut game, id, &[]);
@@ -1118,8 +1088,8 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
     for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i16::from(walks) + 1;
         assert_eq!(
-            *game.part::<Position>(id),
-            Position::from((x, 0, z)),
+            game.part::<Position>(id).get(),
+            Vec3::from((x, 0, z)),
             "{blocks:?}"
         );
     }
@@ -1128,7 +1098,7 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
 #[test]
 fn every_navigation_type_is_state() {
     let mut game = walk_match();
-    let id = Navigation::unit(&mut game, (0, 0, 0), Some(Position::from((0, 0, 5))));
+    let id = Navigation::unit(&mut game, (0, 0, 0), Some(Vec3::from((0, 0, 5))));
     let entity = game.unit_entity(id);
     game.insert_parts(
         id,
@@ -1138,13 +1108,8 @@ fn every_navigation_type_is_state() {
         ),
     );
     let mut route = game.get_mut::<Route>(entity).unwrap();
-    route.ask(Position::from((3, 0, 4)), Tick::new(2), None);
-    let lane = || {
-        Paths::new([(
-            "lane",
-            &[Position::from((0, 0, 0)), Position::from((0, 0, 5))][..],
-        )])
-    };
+    route.ask(Vec3::from((3, 0, 4)), Tick::new(2), None);
+    let lane = || Paths::new([("lane", &[Vec3::from((0, 0, 0)), Vec3::from((0, 0, 5))][..])]);
     Navigation::load_paths(&mut game, lane());
     // A restore loads the map first, as the packages give it.
     let mut restored = walk_match();

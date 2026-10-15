@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use rhai::{EvalAltResult, INT, ImmutableString};
 
 use super::*;
@@ -75,12 +75,24 @@ fn num_arithmetic_is_exact_and_checked() {
         Num::from_int(4).unwrap()
     );
 
-    // 2²⁰ × 2²⁰ = 2⁴⁰ is past 40.24's range, 1 / 0 has no value, and 2³⁹ is no `Num`.
+    // A vector takes a `Num` or an integer on each axis: (1, 2.5, −3).
+    let vector = run(&mut host, "vector(1, num(5) / 2, -3)")
+        .unwrap()
+        .cast::<Vec3>();
+    assert_eq!(
+        vector,
+        Vec3::new(Num::ONE, Num::from_bits(5 * HALF), Num::int(-3))
+    );
+
+    // 2²⁰ × 2²⁰ = 2⁴⁰ is past 40.24's range, 1 / 0 has no value, and 2³⁹ is no `Num`; a vector
+    // of a text, or of an integer past a `Num`, is none.
     for (body, expected) in [
         ("num(1 << 20) * num(1 << 20)", NumError::Overflow),
         ("num(1) / 0", NumError::Overflow),
         ("num(1 << 39)", NumError::IntegerBeyondNum),
         ("clamp(num(1), num(4), num(0))", NumError::ClampBounds),
+        ("vector(0, \"one\", 0)", NumError::NotNumber),
+        ("vector(0, 0, 1 << 39)", NumError::IntegerBeyondNum),
     ] {
         let Err(ScriptError::Raised(raised)) = run(&mut host, body) else {
             panic!("{body} raises");

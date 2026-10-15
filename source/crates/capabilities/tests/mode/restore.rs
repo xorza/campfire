@@ -2,11 +2,16 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::{SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
+use campfire_navigation::{Party, PartyKey};
 use campfire_orders::NextThink;
+use campfire_production::{Gatherer, NodeAt};
 use campfire_progression::{LevelUp, LevelUps};
-use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
+use campfire_sim::{HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
+use campfire_units::{
+    DashTo, ForcedMove, MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState,
+};
+use campfire_values::{ActionStart, DashDelivery};
 
 use super::*;
 
@@ -61,7 +66,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(on_path(0).check(&game, grunt) && !on_path(1).check(&game, grunt));
     // A unit respawns where it spawned: on the map's far corner, or a meter past it along x.
     let [x, z] = game.resource::<MapBook>().bounds.max();
-    let point = |x: Num| SpawnPoint::new(Position::new(Vec3::new(x, Num::ZERO, z)).unwrap());
+    let point = |x: Num| SpawnPoint::new(Vec3::new(x, Num::ZERO, z));
     assert!(point(x).check(&game, grunt));
     assert!(!point(x + Num::ONE).check(&game, grunt));
 
@@ -250,7 +255,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         None
     );
     // Each case breaks the match and names the error that refuses it.
-    let cases: [fn(&mut World) -> SnapshotError; 12] = [
+    let cases: [fn(&mut World) -> SnapshotError; 13] = [
         |world| {
             let entity = world.match_entity().unwrap();
             world.entity_mut(entity).remove::<Relations>();
@@ -323,11 +328,22 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             world.entity_mut(unit).insert(slots);
             lacks(ActionSlots::NAME, SlotTimes::NAME, id_of(world, unit))
         },
+        // A unit a bit past the world's bound of 2²⁰ m above the ground: within the map's
+        // bounds on the ground plane, and refused, as no place lies past the world's bound.
+        |world| {
+            let unit = first::<UnitType>(world);
+            let height = Position::BOUND + Num::EPSILON;
+            *world.get_mut::<Position>(unit).unwrap() =
+                Position::from(Vec3::new(Num::ZERO, height, Num::ZERO));
+            invalid(Position::NAME, Some(id_of(world, unit)))
+        },
         // A player's entity takes a unit's kind and place.
         |world| {
             let entity = world.player_entity(PlayerSlot::new(0)).unwrap();
-            let pos = Position::new(Vec3::ZERO).unwrap();
-            world.entity_mut(entity).insert((UnitEntity, pos));
+            let pos = Vec3::ZERO;
+            world
+                .entity_mut(entity)
+                .insert((UnitEntity, Position::from(pos)));
             let id = StableId::of_player(PlayerSlot::new(0));
             invalid(UnitEntity::NAME, Some(id))
         },
@@ -360,7 +376,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
         attackers.struck(unit, at, game.resource::<EntityIndex>());
         assert_eq!(Match::decodes(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
-        route.ask(*game.get::<Position>(grunt).unwrap(), at, None);
+        route.ask(game.get::<Position>(grunt).unwrap().get(), at, None);
         assert_eq!(Match::decodes(&route), holds, "{at}");
     }
 }
@@ -523,6 +539,60 @@ fn hosts<C: SimComponent>(world: &World, entity: Entity) -> bool {
 }
 
 /// The first entity that holds a `C`.
+/// Each state type that holds a place refuses one a bit past the world's bound of 2²⁰ m, as no
+/// place lies past it, and takes one at the bound: a destination, a dash's point and the start
+/// of the action it delivers, a route's goal and its party's, an ordered point, and a gatherer's
+/// last node.
+#[test]
+fn a_place_past_the_world_bound_fails_its_types_check() {
+    let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
+    let grunt = Mode::entity_by_id(&game, 2);
+    let id = *game.get::<StableId>(grunt).unwrap();
+    let past = Vec3::new(Num::ZERO, Num::ZERO, Position::BOUND + Num::EPSILON);
+    let at = Vec3::new(Num::ZERO, Num::ZERO, Position::BOUND);
+    let start = |origin| ActionStart {
+        origin,
+        charge: None,
+    };
+    let party = |goal| Party {
+        key: PartyKey::Spawn(id),
+        goal,
+    };
+    let strike = game
+        .resource::<ActionBook>()
+        .names()
+        .named((PackageIndex::MODE, "strike"))
+        .unwrap();
+    for (point, holds) in [(at, true), (past, false)] {
+        let destination = Destination::to(Some(point));
+        assert_eq!(destination.check(&game, grunt), holds, "{point:?}");
+        let dash = |to, start| ForcedMove::Dash {
+            to,
+            step: Num::ONE,
+            delivers: Some(DashDelivery::new(id, ActionId::new(0), Rank::FIRST, start)),
+        };
+        assert_eq!(dash(DashTo::Point(point), None).check(&game, grunt), holds);
+        let started = dash(DashTo::Unit(id), Some(start(point)));
+        assert_eq!(started.check(&game, grunt), holds);
+        let mut route = game.get::<Route>(grunt).unwrap().clone();
+        route.ask(point, Tick::new(0), None);
+        assert_eq!(route.check(&game, grunt), holds, "{point:?}");
+        route.ask(at, Tick::new(0), Some(party(point)));
+        assert_eq!(route.check(&game, grunt), holds, "{point:?}");
+        let mut slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
+        slots.order(0, ActionTarget::Point(point));
+        assert_eq!(slots.check(&game, grunt), holds, "{point:?}");
+        let gatherer = Gatherer {
+            last: Some(NodeAt {
+                node: id,
+                pos: point,
+            }),
+            ..Gatherer::default()
+        };
+        assert_eq!(gatherer.check(&game, grunt), holds, "{point:?}");
+    }
+}
+
 fn first<C: Component>(world: &mut World) -> Entity {
     let mut holders = world.query_filtered::<Entity, With<C>>();
     holders.iter(world).next().unwrap()

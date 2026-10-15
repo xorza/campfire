@@ -1,7 +1,8 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
 use campfire_deliveries::Delivering;
-use campfire_sim::{Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::StableId;
 use campfire_values::UnitType;
 
 /// The areas that land this tick: those actions deliver, and those scripts place. Not state: it
@@ -15,7 +16,7 @@ pub struct AreaLaunches(pub(crate) Vec<AreaLaunch>);
 pub struct AreaLaunch {
     pub id: Option<StableId>,
     pub(crate) by: Delivering,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) unit_type: UnitType,
     pub(crate) aimed: Option<StableId>,
 }

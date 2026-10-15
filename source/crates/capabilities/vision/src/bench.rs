@@ -3,7 +3,6 @@ use std::hint::black_box;
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use campfire_values::{Relations, Team};
 use criterion::{Criterion, Throughput};
 
@@ -29,9 +28,9 @@ const SIGHT: i64 = 10;
 fn fog(c: &mut Criterion) {
     let span = Density::Spread.span();
     let mut scene = KernelScene::new(11);
-    let units: Vec<(Position, Team)> = (0..KernelScene::UNITS)
+    let units: Vec<(Vec3, Team)> = (0..KernelScene::UNITS)
         .map(|_| {
-            let pos = Position::new(scene.point(span)).unwrap();
+            let pos = scene.point(span);
             let team = Team::new(u8::try_from(scene.below(2)).unwrap());
             (pos, team)
         })
@@ -49,14 +48,14 @@ fn fog(c: &mut Criterion) {
     fog.rebuild(&vision, &Relations::default());
     let mut seen = Vec::with_capacity(KernelScene::UNITS);
 
-    let moved: Vec<(Position, Team)> = units
+    let moved: Vec<(Vec3, Team)> = units
         .iter()
         .map(|&(at, team)| {
             let step = Vec3::new(Num::EPSILON, Num::ZERO, Num::ZERO);
-            (Position::new(at.get() + step).unwrap(), team)
+            (at + step, team)
         })
         .collect();
-    let mut tick = |fog: &mut Fog, units: &[(Position, Team)]| {
+    let mut tick = |fog: &mut Fog, units: &[(Vec3, Team)]| {
         fog.begin_tick();
         for (slot, &(pos, team)) in units.iter().enumerate() {
             fog.sight(&vision, slot, pos, team, range, false);

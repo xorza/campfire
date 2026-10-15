@@ -96,7 +96,7 @@ impl ModeMap {
         }
         let pathing = map.pathing()?;
         let walls = map.walls(layers)?;
-        let point = |point: &MapPoint| map.point(point);
+        let point = |point: &MapPoint| map.pos(point);
         let mut path_names = Names::default();
         let mut points = Vec::with_capacity(map.paths.len());
         for path in &map.paths {
@@ -172,7 +172,7 @@ impl ModeMap {
         map: &MapData,
         team: impl Fn(&DeclaredName) -> Result<Team, ModeError>,
     ) -> Result<Vec<MarkerSpec>, ModeError> {
-        let point = |point: &MapPoint| map.point(point);
+        let point = |point: &MapPoint| map.pos(point);
         let mut markers = Vec::with_capacity(map.markers.len());
         for (at, marker) in map.markers.iter().enumerate() {
             if map.markers[..at]

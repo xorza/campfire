@@ -2,7 +2,7 @@ use std::mem;
 use std::ops::Range;
 
 use campfire_geometry::Grid;
-use campfire_sim::Position;
+use campfire_math::Vec3;
 
 /// The cells of one layer of the pathing grid a walker can go between, as 0 A.D.'s hierarchical
 /// pathfinder keeps them: the grid in chunks of `CHUNK` × `CHUNK` cells, each chunk's open cells
@@ -179,7 +179,7 @@ impl Regions {
         &self,
         grid: &Grid,
         reach: Reach,
-        goal: Position,
+        goal: Vec3,
         candidates: &mut Vec<Candidate>,
         work: &mut u32,
     ) -> Option<usize> {

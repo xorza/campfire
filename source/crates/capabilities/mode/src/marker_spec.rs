@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_geometry::Bounds;
-use campfire_sim::Position;
+use campfire_math::Vec3;
 use campfire_values::{DeclaredName, Team};
 
 use crate::mode_data::ModeParam;
@@ -12,7 +12,7 @@ use crate::mode_data::ModeParam;
 pub struct MarkerSpec {
     pub name: DeclaredName,
     pub tags: Box<[DeclaredName]>,
-    pub pos: Option<Position>,
+    pub pos: Option<Vec3>,
     pub region: Option<Bounds>,
     pub team: Option<Team>,
     pub params: BTreeMap<DeclaredName, ModeParam>,

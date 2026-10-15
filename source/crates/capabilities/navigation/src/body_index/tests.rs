@@ -5,7 +5,7 @@ use super::*;
 fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
-        pos: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
+        pos: Vec3::new(Num::int(x), Num::ZERO, Num::int(z)),
         shape: Shape::Circle(Radius::new(radius).unwrap()),
         layer: Layer::FIRST,
     }
@@ -95,7 +95,7 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
     assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
     assert_eq!(near_on(&index, air, -10, -10, Num::ONE), [above]);
     assert_eq!(near_on(&index, Layer::new(2), -10, -10, Num::ONE), []);
-    let at = |x| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-13))).unwrap();
+    let at = |x| Vec3::new(Num::int(x), Num::ZERO, Num::int(-13));
     let (beside, past) = (Segment::new(at(-12), at(-7)), Segment::new(at(30), at(31)));
     for (layer, blocked) in [(Layer::FIRST, true), (air, true), (Layer::new(2), false)] {
         let walker = Walker {
@@ -191,7 +191,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         let expected: Vec<StableId> = bodies
             .iter()
             .filter(|body| {
-                let (at, bound) = (body.pos.get(), body.shape.bound());
+                let (at, bound) = (body.pos, body.shape.bound());
                 let cell = index.levels.cell(index.levels.level(bound));
                 let rows = Buckets::covering(cell, Num::int(z), reach);
                 let columns = Buckets::covering(cell, Num::int(x), reach);
@@ -213,8 +213,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
             true
         });
         assert_eq!((any, visits), (!expected.is_empty(), usize::from(any)));
-        let point =
-            |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+        let point = |x: i64, z: i64| Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
         let segment = Segment::new(point(x, z), point(x + 4, z - 2));
         let walker = Walker {
             layer: Layer::FIRST,
@@ -266,7 +265,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
         let at = Vec3::new(along(), Num::ZERO, along());
         scattered.push(IndexedBody {
             id: ids.allocate(),
-            pos: Position::new(at).unwrap(),
+            pos: at,
             shape: Shape::Circle(
                 Radius::new(Num::from_bits(next(3).cast_signed() * quarter)).unwrap(),
             ),
@@ -288,7 +287,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
             2 => Vec3::new(along(), Num::ZERO, from.z),
             _ => Vec3::new(along(), Num::ZERO, along()),
         };
-        let segment = Segment::new(Position::new(from).unwrap(), Position::new(to).unwrap());
+        let segment = Segment::new(from, to);
         let walker = Walker {
             layer: Layer::FIRST,
             radius: Num::from_bits((next(4).cast_signed() + 1) * quarter),
@@ -334,8 +333,7 @@ fn a_layer_whose_rows_spread_wide_still_meets_exactly_its_bodies() {
         let met = near_on(&index, Layer::new(layer), 0, z, Num::int(3));
         assert_eq!(met, expected, "layer {layer} at {z}");
     }
-    let point =
-        |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
+    let point = |x: i64, z: i64| Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
     let walker = |layer: u8| Walker {
         layer: Layer::new(layer),
         radius: Num::ONE,

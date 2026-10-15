@@ -13,7 +13,8 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, EffectQueues};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
-use campfire_sim::{Capability, Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::{Capability, StableId};
 use campfire_units::DeliveryEntity;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
@@ -119,10 +120,10 @@ impl Areas {
     /// Lands the area of `launcher`, which aimed at `target` from `from`: on the point it aimed
     /// at, where the unit it aimed at stands, or at `from` for an action that aims at nothing;
     /// nothing for a unit that is gone.
-    fn deliver(world: &mut World, launcher: Launcher, from: Position, target: ActionTarget) {
+    fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
         let Launcher { by, delivery } = launcher;
         let unit_type = delivery.unit_type;
-        let at = match target.point(world) {
+        let at = match target.pos(world) {
             Some(at) => at,
             None if target == ActionTarget::None => from,
             None => return,
@@ -136,7 +137,7 @@ impl Areas {
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
-        pos: Position,
+        pos: Vec3,
         aimed: Option<StableId>,
         id: Option<StableId>,
     ) {

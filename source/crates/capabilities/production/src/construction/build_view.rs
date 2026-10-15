@@ -88,7 +88,7 @@ pub(super) struct Building<'a> {
 /// turned by the order's angle, or the site's.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct BuildPlace {
-    pub pos: Position,
+    pub pos: Vec3,
     pub(super) body: Body,
 }
 
@@ -125,15 +125,15 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     pub(super) fn placed(
         &self,
         building: Building<'_>,
-        from: Position,
+        from: Vec3,
         owner: Option<&Owner>,
         target: BuildTarget,
     ) -> Option<BuildPlace> {
         match target {
             BuildTarget::Point { x, z, angle } => {
-                let at = Vec3::new(x, from.get().y, z);
+                let at = Vec3::new(x, from.y, z);
                 Some(BuildPlace {
-                    pos: Position::new(at).expect("a point within the bounds"),
+                    pos: at,
                     body: building.spec.form.at(angle),
                 })
             }
@@ -141,7 +141,10 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
                 let same = unit_type == building.unit_type && site_owner == owner;
-                same.then_some(BuildPlace { pos: at, body })
+                same.then_some(BuildPlace {
+                    pos: at.get(),
+                    body,
+                })
             }
         }
     }
@@ -155,7 +158,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             return None;
         };
         let building = self.building(slots, order.slot)?;
-        let placed = self.placed(building, from, owner, order.target)?;
+        let placed = self.placed(building, from.get(), owner, order.target)?;
         let life = self.life.as_deref().and_then(PoolBook::life);
         let purse = Purse::of(pools.of(life), self.resources.of(owner));
         let modifiers = self.modifiers.of(owner);
@@ -203,7 +206,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             BuildTarget::Point { .. } => self.start(entity, order, held).is_some(),
             BuildTarget::Site(_) => self
                 .building(slots, order.slot)
-                .and_then(|building| self.placed(building, from, owner, order.target))
+                .and_then(|building| self.placed(building, from.get(), owner, order.target))
                 .is_some(),
         }
     }
@@ -212,7 +215,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// building `placed`: it comes within its range.
     pub(super) fn in_range(
         &self,
-        from: Position,
+        from: Vec3,
         body: Option<&Body>,
         building: Building<'_>,
         placed: BuildPlace,
@@ -250,14 +253,14 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let Some(building) = self.building(slots, order.slot) else {
             return Step::End;
         };
-        let Some(placed) = self.placed(building, from, owner, order.target) else {
+        let Some(placed) = self.placed(building, from.get(), owner, order.target) else {
             return Step::End;
         };
-        if !self.in_range(from, body, building, placed) {
+        if !self.in_range(from.get(), body, building, placed) {
             let Shape::Box(boxed) = placed.body.shape() else {
                 panic!("a building's body is a box");
             };
-            let to = boxed.nearest_point(placed.pos, from);
+            let to = boxed.nearest_point(placed.pos, from.get());
             return if Destination::gives_up(destination, arrived, to) {
                 Step::End
             } else {

@@ -31,6 +31,9 @@ pub enum ApiError {
     Unknown(NameKind),
     #[error("radius is negative")]
     NegativeRadius,
+    /// A place with a coordinate past the world's bound, 2²⁰ m.
+    #[error("point is past the world's bound")]
+    PastBound,
     #[error("time is negative")]
     NegativeTime,
     /// A time too long to count in ticks.

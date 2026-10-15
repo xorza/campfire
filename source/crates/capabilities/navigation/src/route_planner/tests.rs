@@ -3,7 +3,7 @@ use std::collections::BinaryHeap;
 
 use campfire_common::{SegmentSeed, Tick};
 use campfire_geometry::{Bounds, Radius, Shape};
-use campfire_math::{Num, Rng, RngStream, Vec3};
+use campfire_math::{Num, Rng, RngStream};
 use campfire_sim::IdAllocator;
 use campfire_units::Layer;
 
@@ -13,9 +13,9 @@ use crate::terrain::Terrain;
 use crate::walker::Walker;
 
 /// The point `(x, z)` in quarters of a meter.
-fn quarters(x: i64, z: i64) -> Position {
+fn quarters(x: i64, z: i64) -> Vec3 {
     let quarter = |value: i64| Num::from_bits(value << (Num::FRAC_BITS - 2));
-    Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap()
+    Vec3::new(quarter(x), Num::ZERO, quarter(z))
 }
 
 /// A walker of 0.25 m on the first layer.
@@ -133,12 +133,11 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
 
     // A goal in a blocked cell that a walker may stand on: (3.5, 0.5) is a post, but (3.85,
     // 0.0) is clear of it by √(0.35² + 0.5²) ≈ 0.61 m, so the route ends on it.
-    let edge = Position::new(Vec3::new(
+    let edge = Vec3::new(
         Num::from_bits((385 << Num::FRAC_BITS) / 100),
         Num::ZERO,
         Num::ZERO,
-    ))
-    .unwrap();
+    );
     let tucked = planner.plan(walkable, start, edge, &mut waypoints);
     assert!(tucked.reached);
     assert_eq!(waypoints.last(), Some(&edge));

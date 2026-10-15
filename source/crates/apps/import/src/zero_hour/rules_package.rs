@@ -1,5 +1,8 @@
 use campfire_math::Num;
 
+use crate::zero_hour::map_import::START;
+use crate::zero_hour::skirmish_start::SkirmishStart;
+
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
 pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
@@ -38,20 +41,41 @@ zero-hour = {{ path = "../zero-hour" }}
 }
 
 /// The imported package's mode data: its name and its teams' names, the rules package's mode
-/// script, and the stats its unit types drive by.
-pub(crate) const MODE_DATA: &str = r#"name = "mode-name"
-script = { package = "zero-hour", path = "scripts/mode.rhai" }
+/// script, the stats its unit types drive by, the markers its players start at, and its params
+/// of what each starts with, `start` (design 17, D6).
+pub(crate) fn mode_data(start: &SkirmishStart) -> String {
+    let units: Vec<String> = start
+        .units
+        .iter()
+        .map(|unit| format!("\"{unit}\""))
+        .collect();
+    format!(
+        r#"name = "mode-name"
+script = {{ package = "zero-hour", path = "scripts/mode.rhai" }}
 
 [stats]
-move_speed = {}
-turn_rate = {}
+move_speed = {{}}
+turn_rate = {{}}
 
 [teams.player]
 name = "team-player"
 
 [teams.neutral]
 name = "team-neutral"
-"#;
+
+[navigation]
+spawn_tags = ["{START}"]
+
+[params]
+start_building = "{building}"
+start_units = [{units}]
+start_offset = "{offset}"
+"#,
+        building = start.building,
+        units = units.join(", "),
+        offset = start.offset,
+    )
+}
 
 /// The imported package's text in its own language, of the names its mode data gives.
 pub(crate) const MODE_TEXT: &str =

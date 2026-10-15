@@ -54,6 +54,7 @@ pub use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 pub use crate::scripts::script_fn::ScriptFn;
 pub use crate::scripts::script_limits::ScriptLimits;
 pub use crate::scripts::script_names::ScriptNames;
+pub use crate::scripts::script_position::ScriptPosition;
 pub use crate::scripts::script_radius::ScriptRadius;
 pub use crate::scripts::script_role::{ParamScope, ScriptRole};
 pub use crate::scripts::script_text::ScriptText;

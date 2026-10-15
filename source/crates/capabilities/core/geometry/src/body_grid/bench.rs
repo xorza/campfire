@@ -1,7 +1,7 @@
 use std::hint::black_box;
 
-use campfire_math::Num;
-use campfire_sim::{IdAllocator, Position};
+use campfire_math::{Num, Vec3};
+use campfire_sim::IdAllocator;
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::bench::COUNT;
@@ -22,13 +22,13 @@ pub(crate) fn body_grid(c: &mut Criterion) {
         .map(|body| Indexed {
             id: ids.allocate(),
             key: (),
-            body: Placed::new(Position::new(body.point).unwrap(), body.shape),
+            body: Placed::new(body.point, body.shape),
         })
         .collect();
     let mut points = KernelScene::new(21);
-    let near: Vec<(Position, Num)> = (0..COUNT)
+    let near: Vec<(Vec3, Num)> = (0..COUNT)
         .map(|_| {
-            let pos = Position::new(points.point(span)).unwrap();
+            let pos = points.point(span);
             let reach = Num::from_int(1 + points.below(8).cast_signed()).unwrap();
             (pos, reach)
         })

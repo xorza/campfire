@@ -5,8 +5,8 @@ use std::rc::Rc;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_geometry::{Bounds, Metric, Shape};
-use campfire_math::Num;
-use campfire_sim::{Position, StableId, TickRate};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
 use crate::scripts::error::ApiError;
@@ -244,7 +244,7 @@ impl View {
     pub fn find(
         &self,
         of: &Unit,
-        pos: Position,
+        pos: Vec3,
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,

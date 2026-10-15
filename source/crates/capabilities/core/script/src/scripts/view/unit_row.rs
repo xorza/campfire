@@ -1,18 +1,19 @@
 use campfire_common::PlayerSlot;
 use campfire_geometry::Shape;
-use campfire_sim::{Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::StableId;
 use campfire_values::{Team, UnitTags, UnitType};
 
 /// A unit as the view read it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitRow {
     pub id: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
     pub team: Team,
     /// Its body's shape, a point for a unit with no body.
     pub shape: Shape,
     /// Where it spawned, if it did as a unit of the mode.
-    pub spawn: Option<Position>,
+    pub spawn: Option<Vec3>,
     pub unit_type: UnitType,
     /// The player who controls it.
     pub owner: Option<PlayerSlot>,

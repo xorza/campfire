@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
-use campfire_math::Num;
 use campfire_sim::Position;
+
+use campfire_math::Num;
 
 use crate::zero_hour::chunk_reader::ChunkReader;
 use crate::zero_hour::error::MapError;

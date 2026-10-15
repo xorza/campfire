@@ -5,12 +5,12 @@ use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::{Deliveries, Delivering};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_projectiles::Projectiles;
 use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Position, SimComponent};
+use campfire_sim::{Capability, SimComponent};
 use campfire_stats::{ModifierData, Stats};
 use campfire_units::{UnitTypeBook, UnitTypeCore, Units};
 use campfire_values::{
@@ -102,7 +102,7 @@ fn an_area_is_state_and_restores() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Areas];
     let mut game = Match::unscripted(&declared);
     let (field, action, warding, source_type) = loads(&mut game);
-    let source = Mode::spawn(&mut game, source_type, Position::ORIGIN, Team::new(0), ());
+    let source = Mode::spawn(&mut game, source_type, Vec3::ZERO, Team::new(0), ());
     let by = Delivering {
         source,
         action,
@@ -112,7 +112,7 @@ fn an_area_is_state_and_restores() {
     };
     let area = Area::new(by, None, Tick::new(9));
     let trigger = AreaTrigger::at(Tick::new(5));
-    let id = Deliveries::spawn_of(&mut game, source, field, Position::ORIGIN, (area, trigger));
+    let id = Deliveries::spawn_of(&mut game, source, field, Vec3::ZERO, (area, trigger));
     let mut restored = Match::unscripted(&declared);
     loads(&mut restored);
     Release::restore_into(&game, &mut restored);
@@ -122,7 +122,7 @@ fn an_area_is_state_and_restores() {
     let entity = game.unit_entity(id);
     let triggers = |at| AreaTrigger::at(Tick::new(at)).check(&game, entity);
     assert_eq!([5, 9, 10].map(triggers), [true, true, false]);
-    let id = Mode::spawn(&mut game, source_type, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(&mut game, source_type, Vec3::ZERO, Team::new(0), ());
     assert!(!trigger.check(&game, game.unit_entity(id)));
     // Its times are at most the limit: a tick past it fails to decode.
     let past = Tick::new(Tick::LIMIT.get() + 1);
@@ -139,7 +139,7 @@ fn an_area_is_state_and_restores() {
     assert!(!area.check(&game, entity));
     // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
     // would fail as an ally takes it.
-    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, ());
+    let warded = Deliveries::spawn_of(&mut game, source, warding, Vec3::ZERO, ());
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));

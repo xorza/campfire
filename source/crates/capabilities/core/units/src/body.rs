@@ -131,8 +131,7 @@ pub(crate) mod internals {
     use std::cmp::Ordering;
 
     use campfire_geometry::{Metric, Placed, Radius, Shape};
-    use campfire_math::Num;
-    use campfire_sim::Position;
+    use campfire_math::{Num, Vec3};
 
     use crate::body::Body;
 
@@ -140,10 +139,10 @@ pub(crate) mod internals {
         /// Whether `range` from the edge of `from_body` at `from` reaches the edge of `to_body`
         /// at `to`, on a planar map, by the reach rule; a unit with no body is a point.
         pub fn reaches(
-            from: Position,
+            from: Vec3,
             from_body: Option<&Body>,
             range: Num,
-            to: Position,
+            to: Vec3,
             to_body: Option<&Body>,
         ) -> bool {
             let from = Placed::new(from, Body::shape_of(from_body));
@@ -153,10 +152,10 @@ pub(crate) mod internals {
         /// Whether `range` from the edge of `from_body` at `from` reaches the least circle round
         /// `to` that holds `to_body`, as a body measured by its bound would be reached.
         pub fn reaches_bound(
-            from: Position,
+            from: Vec3,
             from_body: Option<&Body>,
             range: Num,
-            to: Position,
+            to: Vec3,
             to_body: Option<&Body>,
         ) -> bool {
             let bound = Radius::new(Body::shape_of(to_body).bound()).expect("a bound is a radius");
@@ -166,7 +165,7 @@ pub(crate) mod internals {
 
         /// Whether this circle at `pos` overlaps the box `body` at `centre`: a body collision
         /// left inside the box.
-        pub fn sinks_into(&self, pos: Position, body: &Body, centre: Position) -> bool {
+        pub fn sinks_into(&self, pos: Vec3, body: &Body, centre: Vec3) -> bool {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };

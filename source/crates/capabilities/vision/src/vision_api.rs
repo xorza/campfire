@@ -1,8 +1,8 @@
+use campfire_math::Vec3;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Filter, MemberSpec,
-    RoleSet, ScriptRadius, Status, Unit,
+    RoleSet, ScriptPosition, ScriptRadius, Status, Unit,
 };
-use campfire_sim::Position;
 use campfire_values::TagProperty;
 
 use crate::vision_column::VisionColumn;
@@ -25,8 +25,8 @@ impl VisionApi {
         .roles(RoleSet::ACTING);
         api.call(
             reveal,
-            |ctx: &mut Ctx, pos: Position, radius: ScriptRadius, ms: i64| {
-                VisionApi::reveal(ctx, pos, radius, ms)
+            |ctx: &mut Ctx, pos: ScriptPosition, radius: ScriptRadius, ms: i64| {
+                VisionApi::reveal(ctx, pos.get(), radius, ms)
             },
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
@@ -37,7 +37,7 @@ impl VisionApi {
 
     /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`
     /// rounded up to ticks.
-    fn reveal(ctx: &Ctx, pos: Position, radius: ScriptRadius, ms: i64) -> Checked<()> {
+    fn reveal(ctx: &Ctx, pos: Vec3, radius: ScriptRadius, ms: i64) -> Checked<()> {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.row(id));
         let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;
@@ -69,8 +69,8 @@ impl VisionApi {
         );
         api.call(
             visible,
-            |_: &mut Ctx, of: Unit, pos: Position, radius: ScriptRadius, filter: Filter| {
-                Ok(VisionColumn::find(&of, pos, radius, &filter))
+            |_: &mut Ctx, of: Unit, pos: ScriptPosition, radius: ScriptRadius, filter: Filter| {
+                Ok(VisionColumn::find(&of, pos.get(), radius, &filter))
             },
         );
         let nearest = MemberSpec::call(

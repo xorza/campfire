@@ -9,7 +9,7 @@ use campfire_actions::{ActionData, ActionSlot, ActionSlots, SlotTime, SlotTimes,
 use campfire_common::Tick;
 use campfire_harness::{MatchUnits, Moba3v3, ScriptedMode};
 use campfire_items::{Inventory, ItemId, ItemStack};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_progression::Points;
 use campfire_sim::{Position, SimWorld, TickRate};
 use campfire_stats::{Level, PoolId, PoolMeters, Stats};
@@ -442,9 +442,11 @@ fn assert_consumables(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase, world: 
     let units = MatchUnits::of(world);
     let gale = units.hero(1);
     let ward = |x: i16| {
-        let pos = Position::from((x, 0, -23));
+        let pos = Vec3::from((x, 0, -23));
         let found = units.all().find(|(id, unit)| {
-            *id != gale && unit.get::<Position>() == Some(&pos) && MatchUnits::owned_by(unit, 1)
+            *id != gale
+                && unit.get::<Position>().map(|at| at.get()) == Some(pos)
+                && MatchUnits::owned_by(unit, 1)
         });
         let (_, unit) = found.expect("a ward");
         let team = *unit.get::<Team>().unwrap();

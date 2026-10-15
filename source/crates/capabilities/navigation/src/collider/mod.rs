@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use campfire_geometry::{BodyBox, Shape};
 use campfire_math::{Direction, Num, Vec3};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::Layer;
 
 use crate::collider::contact::Contact;
@@ -83,17 +83,13 @@ impl Collider {
 
     /// The box of the two, where it stands, and the other, which may be pushed: none when
     /// neither is a box. Only a body that may not be pushed is one.
-    const fn boxed<'a>(
-        a: &'a Collider,
-        b: &'a Collider,
-    ) -> Option<(BodyBox, Position, &'a Collider)> {
+    const fn boxed<'a>(a: &'a Collider, b: &'a Collider) -> Option<(BodyBox, Vec3, &'a Collider)> {
         let (body, at, mover) = match (a.shape, b.shape) {
             (Shape::Box(body), _) => (body, a.point, b),
             (_, Shape::Box(body)) => (body, b.point, a),
             _ => return None,
         };
-        let pos = Position::new(at).expect("a static body stands within the bound");
-        Some((body, pos, mover))
+        Some((body, at, mover))
     }
 
     /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a

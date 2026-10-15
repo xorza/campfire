@@ -1,7 +1,6 @@
 use std::hint::black_box;
 
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -18,7 +17,7 @@ use crate::kernel_scene::KernelScene;
 /// touches, as a route's way is tested: `touches`, which visits every cell.
 pub(crate) fn grid(c: &mut Criterion) {
     let mut scene = KernelScene::new(5);
-    let bodies: Vec<(Position, Num, BodyBox)> = (0..COUNT)
+    let bodies: Vec<(Vec3, Num, BodyBox)> = (0..COUNT)
         .map(|_| {
             let mut length = |from: u64, to: u64| {
                 let cm = from + scene.below(to - from + 1);
@@ -28,14 +27,14 @@ pub(crate) fn grid(c: &mut Criterion) {
             let size = [length(100, 900), length(100, 900)];
             let angle = Num::from_int(scene.below(360).cast_signed()).unwrap();
             let body = BodyBox::new(size, angle).unwrap();
-            (Position::new(scene.point(20)).unwrap(), radius, body)
+            (scene.point(20), radius, body)
         })
         .collect();
-    let segments: Vec<(Position, Position)> = (0..COUNT)
+    let segments: Vec<(Vec3, Vec3)> = (0..COUNT)
         .map(|_| {
             let from = scene.point(20);
             let to = from + scene.point(5);
-            (Position::new(from).unwrap(), Position::new(to).unwrap())
+            (from, to)
         })
         .collect();
     let edge = Num::int(24);

@@ -30,7 +30,7 @@ impl Polygon {
         if count < 3 {
             return Err(PolygonError::TooFewPoints);
         }
-        let past = |&[x, z]: &[Num; 2]| Position::new(Vec3::new(x, Num::ZERO, z)).is_none();
+        let past = |&[x, z]: &[Num; 2]| !Position::from(Vec3::new(x, Num::ZERO, z)).within_bound();
         if let Some(point) = points.iter().position(past) {
             return Err(PolygonError::PastBound { point });
         }

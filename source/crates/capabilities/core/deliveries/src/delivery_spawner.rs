@@ -3,7 +3,8 @@ use std::fmt;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
+use campfire_math::Vec3;
+use campfire_sim::{EntityIndex, IdAllocator, StableId};
 use campfire_units::{DeliveryEntity, Owner, UnitCore, UnitFilter};
 use campfire_values::{Team, UnitType};
 
@@ -29,7 +30,7 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 pub struct NewDelivery {
     pub source: StableId,
     pub unit_type: UnitType,
-    pub pos: Position,
+    pub pos: Vec3,
     pub id: Option<StableId>,
 }
 

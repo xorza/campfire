@@ -9,7 +9,7 @@ use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_stats::Stats;
 use campfire_units::DeliveryEntity;
-use campfire_values::UnitType;
+use campfire_values::{ActionStart, UnitType};
 use serde::{Deserialize, Serialize};
 
 use crate::area_spec::AreaSpec;
@@ -51,7 +51,7 @@ impl SimComponent for Area {
     // An area of a type with no area section, or of an action the book lacks or at a rank past
     // its ranks, or of a launch the match did not load, has no rules for its trigger or its
     // hooks; and one whose action does not give a param its inside modifiers read would fail as
-    // a unit takes one.
+    // a unit takes one; its action's start lies within the world's bound, as every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let specs = world.resource::<ByType<AreaSpec>>();
         let spec = world
@@ -73,7 +73,8 @@ impl SimComponent for Area {
         });
         let applies = |modifier| Stats::modifier_has_way(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
-        by && launched && spec.is_some_and(holds)
+        let start = self.by.start.is_none_or(ActionStart::within_bound);
+        by && launched && spec.is_some_and(holds) && start
     }
 }
 

@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_geometry::{Metric, Placed};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
@@ -69,12 +69,12 @@ impl Targets<'_, '_> {
 
     /// Whether `range` from the body `from` reaches the point `pos`, from the edge of the body,
     /// exactly.
-    pub(crate) fn reaches_point(&self, from: Placed, range: Num, pos: Position) -> bool {
+    pub(crate) fn reaches_point(&self, from: Placed, range: Num, pos: Vec3) -> bool {
         self.map.metric.reaches(from, range, Placed::point(pos))
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
-    pub fn toward(&self, from: Position, to: Position, step: Num) -> Position {
+    pub fn toward(&self, from: Vec3, to: Vec3, step: Num) -> Vec3 {
         self.map.metric.step_toward(from, to, step)
     }
 
@@ -107,7 +107,7 @@ impl Targets<'_, '_> {
     fn body((&id, &pos, &team, _, body, tags): TargetRow<'_>) -> LivingUnit {
         LivingUnit {
             id,
-            pos,
+            pos: pos.get(),
             team,
             shape: Body::shape_of(body),
             tags: tags.map_or_else(TagSet::default, |tags| tags.tags),

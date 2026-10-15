@@ -731,17 +731,13 @@ mod tests {
 
         // A unit of 600 life at (3, 0, −2), whose life gauge showed it full.
         let life = |max| Life::full(Num::int(max));
-        let pos = Position::new(campfire_math::Vec3::new(
-            Num::int(3),
-            Num::ZERO,
-            Num::int(-2),
-        ));
+        let pos = Position::from((3, 0, -2));
         let unit = app
             .world_mut()
             .spawn((
                 IdAllocator::default().allocate(),
                 BodyUnit,
-                pos.unwrap(),
+                pos,
                 Team::new(0),
                 // A type the client data draws with no model, as every type of a view with no
                 // looks.

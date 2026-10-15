@@ -1,14 +1,14 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
 use campfire_players::PlayersCall;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx, DataTable,
-    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptText, ScriptValue, StateType,
-    StateValue, Status, TextArg, Unit,
+    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptPosition, ScriptText, ScriptValue,
+    StateType, StateValue, Status, TextArg, Unit,
 };
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{Capability, StableId};
 use campfire_units::{NewUnit, SpawnAt, Units};
 use campfire_values::{NameId, PathId, Rank, Relation, ResourceId, Tag, Team, UnitType};
 
@@ -265,14 +265,14 @@ impl ModeApi {
         .capability(Capability::Abilities);
         api.call(
             spawn_unit,
-            |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: Position| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos, None)
+            |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition| {
+                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), None)
             },
         )
         .call(
             spawn_unit,
-            |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: Position, player: i64| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos, Some(player))
+            |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition, player: i64| {
+                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), Some(player))
             },
         )
         .call(
@@ -537,7 +537,7 @@ impl ModeApi {
         ctx: &Ctx,
         unit_type: UnitType,
         team: Team,
-        pos: Position,
+        pos: Vec3,
         player: Option<i64>,
     ) -> Checked<NewUnit> {
         let book = ModeSpec::of_or_fail(ctx)?;
@@ -749,7 +749,6 @@ impl ModeApi {
             StateType::String,
             StateType::Entity,
             StateType::EntityList,
-            StateType::Pos,
             StateType::Vec,
         ]
         .into_iter()

@@ -1,5 +1,4 @@
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use campfire_values::{DamageKind, EngineEnum, Relation};
 use rhai::{Array, Dynamic, ImmutableString, Variant};
 
@@ -135,7 +134,7 @@ macro_rules! enum_script_arg {
     )*};
 }
 
-plain_script_arg!((), i64, bool, Position, Vec3);
+plain_script_arg!((), i64, bool, Vec3);
 enum_script_arg!(Relation);
 
 impl ScriptArg for Num {

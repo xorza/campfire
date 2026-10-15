@@ -1,6 +1,6 @@
 use campfire_geometry::{Bounds, Polygon, Radius, Shape};
 use campfire_math::Vec3;
-use campfire_sim::{IdAllocator, Position};
+use campfire_sim::IdAllocator;
 use campfire_units::Layer;
 
 use super::*;
@@ -71,7 +71,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     let mut grid = grid();
     let mut index = BodyIndex::new(Num::ONE);
     let mut ids = IdAllocator::default();
-    let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
+    let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
     // A tower of 1 m at the origin. Centers sit at ±0.5, ±1.5 and ±2.5. For a walker of 0.5
     // m it blocks the centers closer than 1.5 m: the four at √0.5 ≈ 0.71 m; the next, such as
     // (1.5, 0.5) at √2.5 ≈ 1.58 m, are open. For a walker of 1 m, closer than 2 m: those
@@ -190,7 +190,7 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
     let mut index = BodyIndex::new(Num::ONE);
     let tower = IndexedBody {
         id: IdAllocator::default().allocate(),
-        pos: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
+        pos: Vec3::ZERO,
         shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
         layer: Layer::FIRST,
     };
@@ -249,14 +249,14 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
             let x = next(47).cast_signed() - 24;
             let z = next(35).cast_signed() - 16;
             let [x, z] = at(x, z);
-            Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
+            Vec3::new(x, Num::ZERO, z)
         };
         // Lines along each axis and single points among them.
         let (from, other) = (point(), point());
         let to = match case % 9 {
             0 => from,
-            1 => Position::new(Vec3::new(from.get().x, Num::ZERO, other.get().z)).unwrap(),
-            2 => Position::new(Vec3::new(other.get().x, Num::ZERO, from.get().z)).unwrap(),
+            1 => Vec3::new(from.x, Num::ZERO, other.z),
+            2 => Vec3::new(other.x, Num::ZERO, from.z),
             _ => other,
         };
         let segment = Segment::new(from, to);

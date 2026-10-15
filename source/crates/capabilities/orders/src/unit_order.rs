@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, ActionTarget, SlotTimes};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_navigation::{Party, PathWalker, Progress, Route};
 use campfire_production::{
     BuildOrder, BuildTarget, Builder, GatherOrder, GatherStep, Gatherer, NodeAt,
@@ -130,8 +130,8 @@ impl UnitOrder {
                 }
             }
         }
-        self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at);
-        let ground = |x, z| bounds.ground_point([x, z], at);
+        self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at.get());
+        let ground = |x, z| bounds.ground_point([x, z], at.get());
         let to = match self {
             UnitOrder::Attack { target } => {
                 if let Some(slots) = &mut slots {
@@ -142,10 +142,7 @@ impl UnitOrder {
             }
             UnitOrder::Slot { slot, target } => {
                 let target = match target {
-                    ActionTarget::Point(point) => {
-                        let point = point.get();
-                        ActionTarget::Point(ground(point.x, point.z))
-                    }
+                    ActionTarget::Point(point) => ActionTarget::Point(ground(point.x, point.z)),
                     target => target,
                 };
                 if let Some(slots) = &mut slots {
@@ -215,7 +212,7 @@ impl UnitOrder {
         builder: Option<&mut Mut<'_, Builder>>,
         gatherer: Option<&mut Mut<'_, Gatherer>>,
         bounds: &Bounds,
-        pos: Position,
+        pos: Vec3,
     ) {
         let build = match self {
             UnitOrder::Build { slot, target } => {

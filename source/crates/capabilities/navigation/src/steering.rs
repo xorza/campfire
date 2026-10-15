@@ -1,6 +1,6 @@
 use campfire_geometry::{BodyGrid, Indexed};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::Layer;
 
 use crate::body_index::{BodyIndex, IndexedBody};
@@ -31,7 +31,7 @@ pub(crate) struct Steering {
     /// The units that block the walker that steers now.
     blockers: Vec<IndexedBody>,
     /// The short route of the walker that steers now.
-    short: Vec<Position>,
+    short: Vec<Vec3>,
 }
 
 /// A walker that may steer this tick: its unit, where it stands, its step, its kind, whether
@@ -39,7 +39,7 @@ pub(crate) struct Steering {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Steered {
     pub id: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) step: Num,
     pub(crate) walker: Walker,
     pub(crate) stuck: bool,
@@ -124,15 +124,14 @@ impl Steering {
         };
         let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
         let reach = grid.cell() * window_cells;
-        let look = at.get().step_toward(route.ahead()[0].get(), reach);
-        let look = Position::new(look).expect("a step ends between two points within the bound");
+        let look = at.step_toward(route.ahead()[0], reach);
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
             return None;
         }
         let clearance = grid.clearance(walker);
         let cells = clearance.grid();
         let window = Window::around(cells, cells.nearest_cell(at), Steering::WINDOW);
-        let inside = |pos: &Position| {
+        let inside = |pos: &Vec3| {
             let cell = cells.nearest_cell(*pos);
             window.contains(cell % cells.columns(), cell / cells.columns())
         };
@@ -148,7 +147,7 @@ impl Steering {
         // a body blocks one it comes closer to than the two radii.
         let half_cell = grid.cell() / 2;
         let near = reach + half_cell + walker.radius;
-        standing.near(walker.layer, at.get(), near, |body| {
+        standing.near(walker.layer, at, near, |body| {
             self.blockers.push(*body);
         });
         let way = at.ground_offset(goal);
@@ -166,10 +165,9 @@ impl Steering {
                     return;
                 }
                 let shift = left * (reach / 2);
-                let moved = Position::new(other.body.pos.get() + shift);
                 self.blockers.push(IndexedBody {
                     id: other.id,
-                    pos: moved.expect("a shift of a body's reach stays within the bound"),
+                    pos: other.body.pos + shift,
                     shape: other.body.shape,
                     layer: other.key,
                 });
@@ -194,7 +192,7 @@ impl Steering {
     }
 
     /// The short route of the last detour.
-    pub(crate) fn short(&self) -> &[Position] {
+    pub(crate) fn short(&self) -> &[Vec3] {
         &self.short
     }
 }
@@ -209,9 +207,9 @@ mod tests {
     use crate::terrain::Terrain;
 
     /// The point `(x, z)` in eighths of a meter.
-    fn eighths(x: i64, z: i64) -> Position {
+    fn eighths(x: i64, z: i64) -> Vec3 {
         let eighth = |value: i64| Num::from_bits(value << (Num::FRAC_BITS - 3));
-        Position::new(Vec3::new(eighth(x), Num::ZERO, eighth(z))).unwrap()
+        Vec3::new(eighth(x), Num::ZERO, eighth(z))
     }
 
     #[test]

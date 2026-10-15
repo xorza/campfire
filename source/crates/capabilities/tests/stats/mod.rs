@@ -136,7 +136,7 @@ fn unit(game: &mut Match, unit_type: u16) -> Entity {
     }
     Units::give_type(game, unit_type, MoveStep::new(Num::ZERO).unwrap());
     Units::give_type(game, unit_type, TurnStep::new(Num::ZERO).unwrap());
-    let id = Mode::spawn(game, unit_type, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(game, unit_type, Vec3::ZERO, Team::new(0), ());
     game.unit_entity(id)
 }
 
@@ -613,7 +613,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         ..modifier_data(None)
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
-    let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
+    let at = |x: i64| Vec3::new(Num::int(x), Num::ZERO, Num::ZERO);
     let spawn =
         |game: &mut Match, x: i64, team: u8| Mode::spawn(game, plain, at(x), Team::new(team), ());
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
@@ -648,8 +648,8 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     // The near ally leaves, and the far one comes to 3 m with a body of 1 m: its edge is within
     // 2 m, as an area's radius reaches it.
     let near_entity = entity(&game, near);
-    *game.get_mut::<Position>(near_entity).unwrap() = at(5);
-    let moved = (at(-3), Body::new(Num::int(1)).unwrap());
+    *game.get_mut::<Position>(near_entity).unwrap() = Position::from(at(5));
+    let moved = (Position::from(at(-3)), Body::new(Num::int(1)).unwrap());
     let far_entity = entity(&game, far);
     game.entity_mut(far_entity).insert(moved);
     game.step();
@@ -709,7 +709,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
@@ -752,8 +752,8 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
         None,
     );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
-    let gone = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
+    let gone = Mode::spawn(&mut game, plain, Vec3::ZERO, Team::new(0), ());
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
@@ -873,7 +873,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     // restore or a client's replication gives it, holds its type's tags at once, and keeps them,
     // as it has no level to derive stats or tags from.
     let id = game.resource_mut::<IdAllocator>().allocate();
-    let pos = Position::new(Vec3::ZERO).unwrap();
+    let pos = Position::from(Vec3::ZERO);
     let delivery = (id, UnitType::new(1), pos, Team::new(0), DeliveryEntity);
     let bolt = game.spawn(delivery).id();
     let tags = |game: &Match| game.get::<UnitTags>(bolt).map(|tags| tags.tags);

@@ -89,7 +89,7 @@ impl Dying {
                 continue;
             }
             pools.fill();
-            *position = spawn.get();
+            *position = Position::from(spawn.get());
             commands.entity(entity).remove::<(Dead, Respawn)>();
         }
     }

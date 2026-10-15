@@ -1,5 +1,5 @@
-use campfire_math::Num;
-use rhai::{Engine, EvalAltResult, INT};
+use campfire_math::{Num, Vec3};
+use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use crate::script_host::error::{NumError, Raised};
 
@@ -9,9 +9,9 @@ type Comparison = fn(&Num, &Num) -> bool;
 type Extreme = fn(Num, Num) -> Num;
 
 /// `Num` in scripts: `num(i)`, the four operators, the comparisons, `min` and `max` with a `Num` or
-/// an integer on either side, unary minus, `clamp`, and `round`, `floor` and `ceil` to an integer.
-/// Arithmetic is checked: an overflow, or an integer beyond a `Num`, fails the call with its
-/// `NumError`.
+/// an integer on either side, unary minus, `clamp`, and `round`, `floor` and `ceil` to an integer;
+/// and `vector(x, y, z)`, a vector of three `Num`s or integers. Arithmetic is checked: an
+/// overflow, or an integer beyond a `Num`, fails the call with its `NumError`.
 #[derive(Debug)]
 pub(crate) struct NumApi;
 
@@ -73,6 +73,12 @@ impl NumApi {
             }
             Ok(n.clamp(low, high))
         });
+        engine.register_fn(
+            "vector",
+            |x: Dynamic, y: Dynamic, z: Dynamic| -> Checked<Vec3> {
+                Ok(Vec3::new(coordinate(x)?, coordinate(y)?, coordinate(z)?))
+            },
+        );
         engine.register_fn("round", |n: Num| n.round());
         engine.register_fn("floor", |n: Num| n.floor());
         engine.register_fn("ceil", |n: Num| n.ceil());
@@ -82,6 +88,16 @@ impl NumApi {
 /// An integer as a `Num`; one beyond a `Num` fails the call.
 fn from_int(value: INT) -> Checked<Num> {
     Num::from_int(value).ok_or_else(|| Raised::error(NumError::IntegerBeyondNum).into())
+}
+
+/// A vector's coordinate, a `Num` or an integer; any other value fails the call.
+fn coordinate(value: Dynamic) -> Checked<Num> {
+    match value.as_int() {
+        Ok(int) => from_int(int),
+        Err(_) => value
+            .try_cast::<Num>()
+            .ok_or_else(|| Raised::error(NumError::NotNumber).into()),
+    }
 }
 
 fn checked(value: Option<Num>) -> Checked<Num> {

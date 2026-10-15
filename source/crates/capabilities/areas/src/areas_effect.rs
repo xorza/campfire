@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_actions::CapabilityDoesSpec;
 use campfire_deliveries::Delivering;
+use campfire_math::Vec3;
 use campfire_script::{CallError, Effect, Frame, View};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::MapBook;
 use campfire_values::UnitType;
 
@@ -15,7 +16,7 @@ pub struct AreasEffect {
     pub id: Option<StableId>,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
-    pub pos: Position,
+    pub pos: Vec3,
 }
 
 impl AreasEffect {

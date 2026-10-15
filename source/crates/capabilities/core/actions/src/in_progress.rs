@@ -1,4 +1,5 @@
 use campfire_common::Tick;
+use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
 use campfire_values::ActionStart;
 use serde::{Deserialize, Serialize};
@@ -24,7 +25,7 @@ pub enum InProgress {
     /// released, or full.
     Charge {
         aim: SlotAim,
-        origin: Position,
+        origin: Vec3,
         since: Tick,
         full: Tick,
         released: bool,
@@ -49,6 +50,26 @@ pub enum OrderPhase {
 }
 
 impl InProgress {
+    /// Whether each of its places lies within the world's bound, as a restore checks it.
+    pub(crate) fn within_bound(self) -> bool {
+        match self {
+            InProgress::Attack { .. } => true,
+            InProgress::Order { aim, phase } => {
+                let started = match phase {
+                    OrderPhase::Started(started) => started.start.within_bound(),
+                    OrderPhase::Ordered | OrderPhase::Approaching => true,
+                };
+                aim.target.within_bound() && started
+            }
+            InProgress::Charge { aim, origin, .. } => {
+                aim.target.within_bound() && Position::from(origin).within_bound()
+            }
+            InProgress::Channel { aim, start, .. } => {
+                aim.target.within_bound() && start.within_bound()
+            }
+        }
+    }
+
     /// The slot whose action is under way.
     pub const fn slot(self) -> u8 {
         let mut copy = self;

@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::{Deserialize, Serialize};
@@ -14,15 +15,15 @@ use crate::unit_entity::UnitEntity;
 /// so a capability walks a unit with no dependency on navigation (design 02, Contracts).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Destination(Option<Position>);
+pub struct Destination(Option<Vec3>);
 
 impl Destination {
     /// A destination of `target`, none for no target.
-    pub const fn to(target: Option<Position>) -> Destination {
+    pub const fn to(target: Option<Vec3>) -> Destination {
         Destination(target)
     }
 
-    pub const fn get(self) -> Option<Position> {
+    pub const fn get(self) -> Option<Vec3> {
         self.0
     }
 
@@ -32,7 +33,7 @@ impl Destination {
     pub fn walk_to(
         destination: &mut Mut<'_, Destination>,
         arrived: Option<&ArrivedShort>,
-        target: Option<Position>,
+        target: Option<Vec3>,
     ) {
         let short =
             target.is_some_and(|target| arrived.is_some_and(|arrived| arrived.of_goal(target)));
@@ -46,7 +47,7 @@ impl Destination {
     pub fn gives_up(
         destination: Option<&Destination>,
         arrived: Option<&ArrivedShort>,
-        target: Position,
+        target: Vec3,
     ) -> bool {
         destination.is_none_or(|destination| {
             destination.get().is_none() && arrived.is_some_and(|arrived| arrived.of_goal(target))
@@ -58,10 +59,11 @@ impl SimComponent for Destination {
     const NAME: &'static str = "units.destination";
     type Host = UnitEntity;
 
-    // Its decode keeps the point within the bound; the cells a unit walks over to it are its
-    // route's, whose check holds them to a kind of walker the mode has.
+    // Its point lies within the world's bound, as every place does; the cells a unit walks over
+    // to it are its route's, whose check holds them to a kind of walker the mode has.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.0
+            .is_none_or(|point| Position::from(point).within_bound())
     }
 }
 

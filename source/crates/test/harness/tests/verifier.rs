@@ -13,7 +13,7 @@ use campfire_common::{AfterLeave, Fingerprint, PlayerSlot, StateHash, Tick, Tick
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
@@ -117,7 +117,7 @@ fn session() -> FixedSession {
 }
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    pos: Position,
+    pos: Vec3,
     destination: Destination,
 }
 
@@ -127,7 +127,7 @@ fn hero(game: &Match, slot: u32) -> Hero {
     let entity = game.entity_of(id).unwrap();
     let hero = game.entity(entity);
     Hero {
-        pos: *hero.get::<Position>().unwrap(),
+        pos: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -333,7 +333,7 @@ fn run_and_replay_agree_on_every_tick() {
     let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
     let game = fixed.game();
     let arrived = Hero {
-        pos: Position::from((-2, 0, 5)),
+        pos: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(game, 0), arrived);
@@ -371,7 +371,7 @@ fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
 /// The hero standing at (`x`, `z`), with nowhere to walk.
 fn standing(x: i16, z: i16) -> Hero {
     Hero {
-        pos: Position::from((x, 0, z)),
+        pos: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     }
 }

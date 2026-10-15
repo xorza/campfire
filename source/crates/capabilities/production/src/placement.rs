@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_geometry::{Placed, Shape};
+use campfire_math::Vec3;
 use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook, Walls};
 use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
@@ -42,13 +43,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
     /// static body of its layer, or the body on its layer of a walker that is not of a team
     /// friendly to `team` and that `team` sees, all of a match with no vision; and it meets its
     /// placement's rules. Touching is not overlap.
-    pub(crate) fn passes(
-        &self,
-        team: Team,
-        pos: Position,
-        body: Body,
-        spec: BuildSpec<'_>,
-    ) -> bool {
+    pub(crate) fn passes(&self, team: Team, pos: Vec3, body: Body, spec: BuildSpec<'_>) -> bool {
         let Shape::Box(boxed) = body.shape() else {
             panic!("a building's body is a box");
         };
@@ -58,10 +53,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             return false;
         }
         let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);
-        if self
-            .statics
-            .any_near(layer, pos.get(), boxed.bound(), overlaps)
-        {
+        if self.statics.any_near(layer, pos, boxed.bound(), overlaps) {
             return false;
         }
         let blocked = self
@@ -73,9 +65,9 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                 };
                 let inside = match other.shape() {
                     Shape::Circle(radius) => {
-                        boxed.nearest(pos, other_pos, radius.get()) == Ordering::Less
+                        boxed.nearest(pos, other_pos.get(), radius.get()) == Ordering::Less
                     }
-                    Shape::Box(other) => boxed.overlaps(pos, &other, other_pos),
+                    Shape::Box(other) => boxed.overlaps(pos, &other, other_pos.get()),
                 };
                 let friendly = self.relations.get().between(team, other_team) == Relation::Friendly;
                 let sees = S::sees(seen, team).unwrap_or(true);
@@ -94,7 +86,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
 
     /// Whether a living unit that `rule`'s filter selects for a builder of `team` comes within
     /// its distance of `body` at `pos`, by the reach rule.
-    fn meets(&self, team: Team, pos: Position, body: Body, rule: PlacementCheck) -> bool {
+    fn meets(&self, team: Team, pos: Vec3, body: Body, rule: PlacementCheck) -> bool {
         self.units
             .iter()
             .any(|(&other_pos, other, &other_team, tags, ..)| {
@@ -104,7 +96,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                     && self.map.metric.reaches(
                         Placed::new(pos, body.shape()),
                         rule.distance,
-                        Placed::new(other_pos, Body::shape_of(other)),
+                        Placed::new(other_pos.get(), Body::shape_of(other)),
                     )
             })
     }

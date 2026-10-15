@@ -107,7 +107,8 @@ impl HeldPass {
         let written = units
             .iter()
             .map(|(id, at, team, tags, _, (modifiers, _), ..)| (id, at, team, tags, modifiers));
-        for (&source, &at, &team, carrier, modifiers) in written.chain(&carriers) {
+        for (&source, at, &team, carrier, modifiers) in written.chain(&carriers) {
+            let at = at.get();
             let immune = carrier.map_or_else(TagSet::default, |tags| tags.immune);
             let takes_effect = TagEffect::new(granting, immune);
             for instance in modifiers.iter() {

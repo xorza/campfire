@@ -1,5 +1,4 @@
 use campfire_geometry::Shape;
-use campfire_sim::Position;
 use campfire_values::Tag;
 
 use crate::plain_script_arg;
@@ -9,6 +8,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_builder::ApiBuilder;
+use crate::scripts::script_position::ScriptPosition;
 use crate::scripts::script_radius::ScriptRadius;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::view::filter::Filter;
@@ -135,10 +135,10 @@ impl ViewApi {
         );
         api.call(
             find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: ScriptRadius, filter: Filter| {
+            |ctx: &mut Ctx, of: Unit, pos: ScriptPosition, radius: ScriptRadius, filter: Filter| {
                 Ok(ctx
                     .view()
-                    .find(&of, pos, radius.get(), &filter, |_, _| true))
+                    .find(&of, pos.get(), radius.get(), &filter, |_, _| true))
             },
         );
     }

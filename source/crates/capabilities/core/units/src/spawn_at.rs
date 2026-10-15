@@ -1,6 +1,6 @@
 use campfire_common::PlayerSlot;
-use campfire_math::Num;
-use campfire_sim::{Position, StableId};
+use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 use campfire_values::{Team, UnitType};
 
 use crate::owner::Owner;
@@ -14,7 +14,7 @@ pub struct SpawnAt {
     pub unit_type: UnitType,
     pub team: Team,
     pub owner: Option<PlayerSlot>,
-    pub pos: Position,
+    pub pos: Vec3,
     pub angle: Num,
 }
 

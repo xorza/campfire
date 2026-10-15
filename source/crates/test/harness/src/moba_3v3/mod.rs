@@ -328,7 +328,7 @@ impl Moba3v3 {
     pub fn crowd_creeps(world: &mut World) {
         let mut scene = KernelScene::new(13);
         for unit in 0..KernelScene::UNITS {
-            let pos = Position::new(scene.point(Density::Crowded.span())).unwrap();
+            let pos = scene.point(Density::Crowded.span());
             let team = Team::new(u8::from(unit % 4 >= 2));
             Mode::spawn_typed(world, CREEPS[unit % 2], pos, team, ());
         }
@@ -450,7 +450,7 @@ fn carried_at(units: MatchUnits<'_>, hero: StableId, item: ItemId) -> u8 {
 /// The living creep of `hero`'s enemies, a unit that walks a lane, of least life within
 /// `FARM_REACH` of it, by stable id on a tie.
 fn weakest_creep(units: MatchUnits<'_>, hero: StableId) -> Option<StableId> {
-    let at = units.position(hero).get();
+    let at = units.pos(hero);
     let team = *units.unit(hero).get::<Team>().expect("a hero has a team");
     units
         .all()

@@ -76,14 +76,14 @@ impl Walking {
         let still = bodies
             .iter()
             .filter(|(.., destination, tags)| !Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| IndexedBody::of(id, at, body));
+            .map(|(&id, &at, body, ..)| IndexedBody::of(id, at.get(), body));
         let walking = bodies
             .iter()
             .filter(|(.., destination, tags)| Self::walks(*destination, *tags, false))
             .map(|(&id, &at, body, ..)| Indexed {
                 id,
                 key: body.layer(),
-                body: Placed::new(at, body.shape()),
+                body: Placed::new(at.get(), body.shape()),
             });
         let gatherers = bodies
             .iter()
@@ -107,14 +107,14 @@ impl Walking {
                 walkers.get_mut(entity).expect("a walker in the order");
             let steered = Steered {
                 id,
-                pos: at,
+                pos: at.get(),
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
-                stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
+                stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
                 gathering: UnitTags::passes(tags),
             };
             if let Some(detour) = steering.steer(&mut planner, &grid, &statics, steered, &route) {
-                route.splice(at, steering.short(), detour.skipped, detour.reached);
+                route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
                 progress.reset();
             }
         }
@@ -209,18 +209,15 @@ impl Walking {
                     }
                     break;
                 };
-                let target = waypoint.get();
-                if !at.within(target, left) {
-                    at = at.step_toward(target, left);
+                if !at.within(waypoint, left) {
+                    at = at.step_toward(waypoint, left);
                     break;
                 }
-                left -= at.distance(target);
-                at = target;
+                left -= at.distance(waypoint);
+                at = waypoint;
                 route.advance();
             }
-            position.set_if_neq(
-                Position::new(at).expect("a step ends between two points within the bound"),
-            );
+            position.set_if_neq(Position::from(at));
         }
     }
 
@@ -303,8 +300,8 @@ impl Walking {
             let (_, _, _, mut position, ..) = units
                 .get_mut(collider.entity)
                 .expect("a body read this tick");
-            let parted = Position::new(collider.point).expect("a push stays near the bounds");
-            position.set_if_neq(parted);
+            let parted = collider.point;
+            position.set_if_neq(Position::from(parted));
         }
     }
 
@@ -321,7 +318,7 @@ impl Walking {
         mut units: Query<'_, '_, &mut Position, With<MoveStep>>,
     ) {
         for mut position in &mut units {
-            position.set_if_neq(map.bounds.clamp(*position));
+            position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
         }
     }
 }

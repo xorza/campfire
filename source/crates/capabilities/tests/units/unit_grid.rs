@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_capabilities::Match;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
@@ -13,10 +13,9 @@ use campfire_values::Team;
 fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
     game.run_system_once(|mut near: UnitsNear<'_, '_>| {
         let mut found = Vec::new();
-        near.current()
-            .visit_near(Position::ORIGIN, Num::int(2), |entry| {
-                found.push((entry.id, entry.body.shape.bound()));
-            });
+        near.current().visit_near(Vec3::ZERO, Num::int(2), |entry| {
+            found.push((entry.id, entry.body.shape.bound()));
+        });
         found.sort_unstable_by_key(|&(id, _)| id);
         (found, near.built_at().unwrap())
     })

@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::sync::Arc;
 
-use campfire_sim::Position;
+use campfire_math::Vec3;
 use campfire_values::{NameId, Names, PathId};
 
 use crate::path_walker::PathEnd;
@@ -11,14 +11,14 @@ use crate::path_walker::PathEnd;
 pub struct Paths {
     /// Shared with the script view, which names paths to scripts.
     names: Arc<Names<PathId>>,
-    points: Vec<Position>,
+    points: Vec<Vec3>,
     /// Each path's waypoints in `points`.
     ranges: Vec<Range<u32>>,
 }
 
 impl Paths {
     /// The paths named `names`, by id, of the waypoints `paths`, each of one at the least.
-    pub fn of(names: Names<PathId>, paths: &[Vec<Position>]) -> Paths {
+    pub fn of(names: Names<PathId>, paths: &[Vec<Vec3>]) -> Paths {
         assert_eq!(names.len(), paths.len(), "a path has a name");
         let mut points = Vec::with_capacity(paths.iter().map(Vec::len).sum());
         let mut ranges = Vec::with_capacity(paths.len());
@@ -55,13 +55,13 @@ impl Paths {
     }
 
     /// The waypoints of `path`, from its start.
-    pub fn points(&self, path: PathId) -> &[Position] {
+    pub fn points(&self, path: PathId) -> &[Vec3] {
         let range = &self.ranges[path.index()];
         &self.points[range.start as usize..range.end as usize]
     }
 
     /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.
-    pub fn waypoint(&self, path: PathId, index: u32, from: PathEnd) -> Option<Position> {
+    pub fn waypoint(&self, path: PathId, index: u32, from: PathEnd) -> Option<Vec3> {
         let range = self.ranges.get(path.index())?;
         let len = range.end - range.start;
         let at = match from {
@@ -74,14 +74,14 @@ impl Paths {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_sim::Position;
+    use campfire_math::Vec3;
     use campfire_values::Names;
 
     use crate::paths::Paths;
 
     impl Paths {
         /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
-        pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Position])>) -> Paths {
+        pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Vec3])>) -> Paths {
             let mut names = Names::default();
             let mut points = Vec::new();
             for (name, path) in paths {
@@ -101,11 +101,8 @@ mod tests {
     #[test]
     fn paths_count_waypoints_in_either_direction() {
         let paths = Paths::new([
-            (
-                "near",
-                &[Position::from((0, 0, 0)), Position::from((1, 0, 0))][..],
-            ),
-            ("far", &[Position::from((5, 0, 5))][..]),
+            ("near", &[Vec3::from((0, 0, 0)), Vec3::from((1, 0, 0))][..]),
+            ("far", &[Vec3::from((5, 0, 5))][..]),
         ]);
         assert_eq!(paths.count(), 2);
         assert_eq!(
@@ -124,22 +121,22 @@ mod tests {
         assert_eq!(
             walk(PathId::new(0), PathEnd::Start),
             [
-                Some(Position::from((0, 0, 0))),
-                Some(Position::from((1, 0, 0))),
+                Some(Vec3::from((0, 0, 0))),
+                Some(Vec3::from((1, 0, 0))),
                 None
             ]
         );
         assert_eq!(
             walk(PathId::new(0), PathEnd::End),
             [
-                Some(Position::from((1, 0, 0))),
-                Some(Position::from((0, 0, 0))),
+                Some(Vec3::from((1, 0, 0))),
+                Some(Vec3::from((0, 0, 0))),
                 None
             ]
         );
         assert_eq!(
             walk(PathId::new(1), PathEnd::End),
-            [Some(Position::from((5, 0, 5))), None, None]
+            [Some(Vec3::from((5, 0, 5))), None, None]
         );
         assert_eq!(walk(PathId::new(2), PathEnd::Start), [None, None, None]);
     }

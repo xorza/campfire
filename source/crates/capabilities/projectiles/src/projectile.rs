@@ -119,7 +119,8 @@ impl SimComponent for Projectile {
     type Host = DeliveryEntity;
 
     // A projectile of a type with no flight, of an action the book lacks or at a rank past its
-    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
+    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit; its
+    // action's start lies within the world's bound, as every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let specs = world.resource::<ByType<ProjectileSpec>>();
         let flies = world
@@ -132,7 +133,12 @@ impl SimComponent for Projectile {
             } => {
                 book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
             }
-            Payload::Action { action, rank, .. } => book.ranked(action, rank),
+            Payload::Action {
+                action,
+                rank,
+                start,
+                ..
+            } => book.ranked(action, rank) && start.is_none_or(ActionStart::within_bound),
         };
         flies && carries
     }

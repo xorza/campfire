@@ -299,6 +299,26 @@ fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
 }
 
 #[test]
+fn a_script_names_a_spawn_tag_no_marker_of_the_map_holds() {
+    // `camps`, a spawn tag of the mode's that no marker of the map holds, is a tag its script
+    // may name, as a mode names the markers it spawns at whatever map it plays.
+    let edits = [
+        (
+            "modes/3v3/scripts/mode.rhai",
+            Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
+        ),
+        (
+            MODE_DATA,
+            Edit::Replace(
+                r#"spawn_tags = ["camp", "spawn"]"#,
+                r#"spawn_tags = ["camp", "camps", "spawn"]"#,
+            ),
+        ),
+    ];
+    assert!(load(&edited(edits)).is_ok());
+}
+
+#[test]
 fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
     // The mode's tower, and Husk by its package's name, are in the mode's scope; the team is one
     // of the manifest's.

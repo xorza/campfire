@@ -5,6 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget, Targets};
 use campfire_declare::Scratch;
 use campfire_interaction::{UnitUse, Using};
+use campfire_math::Vec3;
 use campfire_navigation::{GroupBox, Party, PartyKey};
 use campfire_players::TickCommands;
 use campfire_production::BuildTarget;
@@ -35,7 +36,7 @@ type Commanded = (
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Mover {
     entity: Entity,
-    pos: Position,
+    pos: Vec3,
 }
 
 /// The orders of `orders` among the tick's inputs: each unit's checked, then applied.
@@ -74,11 +75,12 @@ impl OrderInputs {
                 .filter(|(_, (owner, ..))| order.controls(**owner));
             if let OrdersAction::Move { x, z } = order.action {
                 movers.clear();
-                movers.extend(
-                    controlled
-                        .filter(|(_, (.., walks, _))| *walks)
-                        .map(|(entity, (_, _, &at, ..))| Mover { entity, pos: at }),
-                );
+                movers.extend(controlled.filter(|(_, (.., walks, _))| *walks).map(
+                    |(entity, (_, _, &at, ..))| Mover {
+                        entity,
+                        pos: at.get(),
+                    },
+                ));
                 let Some(group) = GroupBox::of(movers.iter().map(|mover| mover.pos)) else {
                     return;
                 };

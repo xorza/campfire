@@ -28,7 +28,9 @@ use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
 use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni, PlacedAs};
-use crate::zero_hour::rules_package::{MODE_DATA, MODE_TEXT, RULES_FILES};
+use crate::zero_hour::player_template_ini::PlayerTemplateIni;
+use crate::zero_hour::rules_package::{MODE_TEXT, RULES_FILES};
+use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
 
@@ -57,9 +59,11 @@ pub(crate) mod model_import;
 pub(crate) mod model_parts;
 pub(crate) mod model_writer;
 pub(crate) mod object_ini;
+pub(crate) mod player_template_ini;
 pub(crate) mod pose;
 pub(crate) mod ref_pack;
 pub(crate) mod rules_package;
+pub(crate) mod skirmish_start;
 pub(crate) mod terrain;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
@@ -135,7 +139,6 @@ impl<'a> ZeroHour<'a> {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
             writer.write(path, bytes).map_err(ZeroHourError::Write)
         };
-        write("data/mode.toml", MODE_DATA.as_bytes())?;
         write("locale/en.ftl", MODE_TEXT.as_bytes())?;
         let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
@@ -208,6 +211,16 @@ impl<'a> ZeroHour<'a> {
             };
             write(path.texture_path().as_str(), &ktx2)?;
         }
+        let templates = self.read_inis(
+            "PlayerTemplate",
+            PlayerTemplateIni::default(),
+            PlayerTemplateIni::read,
+        )?;
+        let start = SkirmishStart::of(&templates, &ini, &locomotors, &mut object_names)?;
+        write(
+            "data/mode.toml",
+            rules_package::mode_data(&start).as_bytes(),
+        )?;
         let units = object_names.units_file();
         write("data/units.toml", units.text.as_bytes())?;
         // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.
@@ -385,6 +398,7 @@ mod tests {
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::{Converted, ModelImport};
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+    use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
 
     /// The fixture install's version, as its archives hold their bytes now.
     fn version_of(scratch: &Scratch) -> [GameVersion; 1] {
@@ -435,8 +449,8 @@ mod tests {
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
         // The package's own reader takes its units file: the tank, the wall and the rocks the
-        // map places. Its units drive, by stats, orders and navigation, no faster than the tank's
-        // 30.5 m a second.
+        // map places, and America's start objects. Its units drive, by stats, orders and
+        // navigation, no faster than the tank's 30.5 m a second.
         let mode = PackageDir::new(scratch.path("one/game"))
             .mode_packages(&named)
             .unwrap();
@@ -446,7 +460,26 @@ mod tests {
             .keys()
             .map(ToString::to_string)
             .collect();
-        assert_eq!(types, ["americatankcrusader", "fortresswall", "rocks1"]);
+        assert_eq!(
+            types,
+            [
+                "americacommandcenter",
+                "americatankcrusader",
+                "americavehicledozer",
+                "fortresswall",
+                "rocks1"
+            ]
+        );
+        // Its players start with America's command center and dozer, the dozer half the center's
+        // sphere of 25 m, 12.5 m, along +z where a map has no rally, at the markers tagged
+        // `start`, which the load checks a walker can stand on.
+        let data = scratch.read_text("one/game/data/mode.toml");
+        let start = data.split_once("[navigation]").unwrap().1;
+        assert_eq!(
+            start,
+            "\nspawn_tags = [\"start\"]\n\n[params]\nstart_building = \"americacommandcenter\"\n\
+             start_units = [\"americavehicledozer\"]\nstart_offset = \"12.5\"\n"
+        );
         let manifest = mode.manifest();
         assert_eq!(manifest.max_move_speed.get(), Num::int(61) / Num::int(2));
         let drives = [
@@ -515,6 +548,11 @@ mod tests {
             scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
             expected.objects
         );
+        // The units file holds the map's types and the start's, which the start's own reading
+        // of the templates adds, as the import adds them.
+        let mut templates = PlayerTemplateIni::default();
+        templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
+        SkirmishStart::of(&templates, &ini, &locomotors, &mut names).unwrap();
         let units = names.units_file();
         assert_eq!(scratch.read_text("one/game/data/units.toml"), units.text);
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));

@@ -8,7 +8,7 @@ use crate::zero_hour::object_ini::{GeometryShape, IniObject};
 
 /// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4): the
 /// speed and the turn rate of its first normal locomotor that drives on the ground, and its
-/// body: a circle of its bounding radius when it drives, or, when it is a structure that is not
+/// body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or, when it is a structure that is not
 /// small, a box of twice its radii for a box geometry, else a circle of its radius. Every other
 /// object has neither, and stands and blocks nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -43,6 +43,11 @@ enum TypeBody {
     Box([Num; 2]),
 }
 
+/// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
+/// cells of 10 m on each side of a centre cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
+/// one body for collision and pathfinding takes (design 17, D4).
+const MAX_WALKER: f32 = 25.0;
+
 impl ImportedType {
     /// The unit type of `object`, its locomotors found in `locomotors`; an error for a locomotor
     /// no file defines, as the game refuses one, a number past what the engine holds, or a body
@@ -62,7 +67,9 @@ impl ImportedType {
         }
         let geometry = object.geometry();
         let collision = match drive {
-            Some(_) => Some(TypeBody::Circle(num(geometry.bounding_circle())?)),
+            Some(_) => Some(TypeBody::Circle(num(geometry
+                .bounding_circle()
+                .min(MAX_WALKER))?)),
             None if object.is_structure() && !geometry.small => Some(match geometry.shape {
                 GeometryShape::Box => {
                     TypeBody::Box([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
@@ -178,6 +185,12 @@ End
 Object Lost
   Locomotor = SET_NORMAL NoSuchTreads
 End
+Object Train
+  Locomotor = SET_NORMAL TankTreads
+  Geometry = BOX
+  GeometryMajorRadius = 112.0
+  GeometryMinorRadius = 10.0
+End
 Object Flat
   KindOf = STRUCTURE
   Geometry = BOX
@@ -222,6 +235,9 @@ End
         assert_eq!(of("Jet").unwrap(), stands(None));
         assert_eq!(of("Jet").unwrap().move_speed(), None);
         assert_eq!(of("Hover").unwrap(), drives(half(61), int(90), half(13)));
+        // A train's box bounds a circle of √(112² + 10²) ≈ 112.4 m, past the original's widest
+        // pathfinding footprint: its circle is that footprint's 25 m.
+        assert_eq!(of("Train").unwrap(), drives(half(61), int(90), int(25)));
         // A structure that is not small: a box of twice its radii, 120 × 140; a cylinder's
         // circle of its radius 8.5; one of no geometry the game's sphere of radius 1.
         assert_eq!(

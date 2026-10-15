@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::{SegmentSeed, Tick};
 use campfire_geometry::Bounds;
-use campfire_math::{Num, Rng, RngStream, Vec3};
+use campfire_math::{Num, Rng, RngStream};
 
 use super::*;
 
@@ -138,12 +138,11 @@ fn check(grid: &Grid, blocked: &[u64], regions: &Regions) {
         }
         let quarter =
             |value: usize| Num::from_bits(i64::try_from(value).unwrap() << (Num::FRAC_BITS - 2));
-        let goal = Position::new(Vec3::new(
+        let goal = Vec3::new(
             quarter(index * 37 % (4 * columns)),
             Num::ZERO,
             quarter(index * 53 % (4 * grid.rows())),
-        ))
-        .unwrap();
+        );
         let brute = (0..component.len())
             .filter(|&other| regions.set(other).is_some_and(|set| reach.contains(set)))
             .min_by_key(|&other| (grid.center_distance(other, goal), other));

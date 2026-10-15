@@ -1,8 +1,9 @@
 use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_geometry::Shape;
+use campfire_math::Vec3;
 use campfire_script::{AnyKeptRows, KeptRows, RowFill, ScriptValue, Unit, View, ViewColumn};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::{Body, Layer, MoveStep};
 use campfire_values::PathId;
 
@@ -66,7 +67,7 @@ impl NavigationColumn {
     /// within the bounds, clear of the walls of its layer, of the living units of its layer that
     /// stand, and of `spawning`, the boxes the call already spawns; with no navigation, of the
     /// bounds and `spawning` alone.
-    pub fn room_for(view: &View, pos: Position, body: Body, spawning: &[IndexedBody]) -> bool {
+    pub fn room_for(view: &View, pos: Vec3, body: Body, spawning: &[IndexedBody]) -> bool {
         let Shape::Box(boxed) = body.shape() else {
             return true;
         };

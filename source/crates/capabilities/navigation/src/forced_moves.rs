@@ -72,13 +72,13 @@ impl ForcedMoves {
                 (at, forced, body.copied())
             };
             let walker = Walker::walking(body.as_ref());
-            let ground = |point: Vec3| Vec3::new(point.x, at.get().y, point.z);
+            let ground = |point: Vec3| Vec3::new(point.x, at.y, point.z);
             let goal = match forced {
                 ForcedMove::Dash {
                     to: DashTo::Point(point),
                     ..
                 } => Some(Goal {
-                    point: ground(point.get()),
+                    point: ground(point),
                     reach: Num::ZERO,
                 }),
                 ForcedMove::Dash {
@@ -94,7 +94,7 @@ impl ForcedMoves {
                             reach: walker.radius + radius.get(),
                         },
                         Shape::Box(body) => Goal {
-                            point: ground(body.nearest_point(place, at).get()),
+                            point: ground(body.nearest_point(place.get(), at.get())),
                             reach: walker.radius,
                         },
                     })
@@ -107,16 +107,16 @@ impl ForcedMoves {
             let advanced = forced.advance(at.get(), goal);
             let to = map
                 .bounds
-                .ground_point([advanced.point.x, advanced.point.z], at);
-            let past = to.get() != advanced.point;
+                .ground_point([advanced.point.x, advanced.point.z], at.get());
+            let past = to != advanced.point;
             let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
-            let step = Segment::new(at, to);
+            let step = Segment::new(at.get(), to);
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });
             let walled =
                 knocked && clearance.is_some_and(|clearance| clearance.walls_block_step(step));
             let blocked = statics.blocks(step, walker) || walled;
             let ends = advanced.ends || past || blocked;
-            let stands = if blocked { at } else { to };
+            let stands = if blocked { at.get() } else { to };
             let place = match (clearance, planner.as_deref()) {
                 (Some(clearance), Some(planner)) if ends && !knocked => {
                     let walkable = Walkable::of(clearance, &statics);
@@ -127,20 +127,20 @@ impl ForcedMoves {
             let mut moving = units.p1();
             let (_, _, mut position, mut under_way, _) =
                 moving.get_mut(entity).expect("a unit in the order");
-            position.set_if_neq(place);
+            position.set_if_neq(Position::from(place));
             if let ForcedMove::Dash {
                 to: dash_to,
                 delivers: Some(delivery),
                 ..
             } = &mut forced
             {
-                delivery.went(at, stands);
+                delivery.went(at.get(), stands);
                 if ends {
                     let target = match *dash_to {
                         DashTo::Unit(target) => Some(target),
                         DashTo::Point(_) => None,
                     };
-                    let direction = at.ground_offset(stands).normalized();
+                    let direction = at.get().ground_offset(stands).normalized();
                     deliveries
                         .as_deref_mut()
                         .expect("a dash that delivers an action runs in a match with abilities")

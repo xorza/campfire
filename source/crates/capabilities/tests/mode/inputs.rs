@@ -73,8 +73,8 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(
         heroes,
         [
-            (5, Position::from((0, 0, -5)), 0, None),
-            (6, Position::from((0, 0, 5)), 1, None)
+            (5, Vec3::from((0, 0, -5)), 0, None),
+            (6, Vec3::from((0, 0, 5)), 1, None)
         ]
     );
     let hero = Mode::entity_by_id(&game, 5);
@@ -345,7 +345,7 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let hero = Mode::pick(&mut game, 0, "hero-x");
     let grunt = *game.get::<UnitType>(Mode::entity_by_id(&game, 1)).unwrap();
     let hero_type = *game.get::<UnitType>(hero).unwrap();
-    let pos = Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap();
+    let pos = Vec3::ZERO;
     let [_, grunt_1, second] = [(0, grunt), (1, grunt), (0, hero_type)].map(|(slot, unit_type)| {
         let owner = Owner::new(PlayerSlot::new(slot));
         Mode::spawn(&mut game, unit_type, pos, Team::new(0), owner)

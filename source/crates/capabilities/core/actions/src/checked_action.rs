@@ -1,6 +1,5 @@
 use campfire_geometry::{Placed, Shape};
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use campfire_values::{ActionId, Rank};
 
 use crate::action::{Action, Aim};
@@ -41,7 +40,7 @@ impl CheckedAction<'_> {
     /// Moves a point it aims at beyond its range in to the range, along the line from the unit
     /// at `from` with a body of `shape`, when its aim clamps, as `targets` measure reach: the
     /// farthest point along the line that it reaches.
-    pub fn clamp(&mut self, from: Position, shape: Shape, targets: &Targets<'_, '_>) {
+    pub fn clamp(&mut self, from: Vec3, shape: Shape, targets: &Targets<'_, '_>) {
         let (Aim::Point { clamp: true }, ActionRange::Meters(range), ActionTarget::Point(at)) =
             (self.action.aim, self.values.range, self.target)
         else {
@@ -91,7 +90,7 @@ impl CheckedAction<'_> {
 
     /// Where a unit walks to come in range of its target: the living unit's place, or the point;
     /// none for an action that aims at nothing or along a direction.
-    pub fn aimed_at(&self, targets: &Targets<'_, '_>) -> Option<Position> {
+    pub fn aimed_at(&self, targets: &Targets<'_, '_>) -> Option<Vec3> {
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => {
                 targets.living(target).map(|unit| unit.pos)
@@ -105,7 +104,7 @@ impl CheckedAction<'_> {
     /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
     /// reach, one that aims at a direction, or one with no target always is. The range counts
     /// only when an action starts.
-    pub fn in_range(&self, from: Position, shape: Shape, targets: &Targets<'_, '_>) -> bool {
+    pub fn in_range(&self, from: Vec3, shape: Shape, targets: &Targets<'_, '_>) -> bool {
         let ActionRange::Meters(range) = self.values.range else {
             return true;
         };

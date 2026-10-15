@@ -1,7 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_sim::{Position, SimComponent};
+use campfire_math::Vec3;
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::{Deserialize, Serialize};
 
@@ -12,14 +13,14 @@ use crate::unit_entity::UnitEntity;
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[serde(transparent)]
-pub struct SpawnPoint(Position);
+pub struct SpawnPoint(Vec3);
 
 impl SpawnPoint {
-    pub const fn new(pos: Position) -> SpawnPoint {
+    pub const fn new(pos: Vec3) -> SpawnPoint {
         SpawnPoint(pos)
     }
 
-    pub const fn get(self) -> Position {
+    pub const fn get(self) -> Vec3 {
         self.0
     }
 }

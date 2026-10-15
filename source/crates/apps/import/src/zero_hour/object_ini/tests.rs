@@ -75,7 +75,9 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     assert_eq!(
         names,
         [
+            "AmericaCommandCenter",
             "AmericaTankCrusader",
+            "AmericaVehicleDozer",
             "Bush",
             "FortressWall",
             "Oak",
@@ -279,4 +281,27 @@ fn a_file_the_game_cannot_read_is_refused_at_its_line() {
         Err(IniError::Unclosed)
     );
     assert_eq!(read("Object A\n ArmorSet // note\nEnd\n"), Ok(()));
+}
+
+#[test]
+fn a_geometry_bounds_its_object_as_the_game_computes() {
+    // A box of radii 12 and 9 and height 40: a circle of √(144 + 81) = 15, a sphere of
+    // √(144 + 81 + 400) = 25. A cylinder of radius 3 and height 10 reaches its half height, 5;
+    // one of radius 6 its radius. A sphere, and an object of no geometry, the game's sphere of
+    // radius 1, reach their radius.
+    let mut ini = ObjectIni::default();
+    let objects = "Object Box\n Geometry = BOX\n GeometryMajorRadius = 12\n GeometryMinorRadius = 9\n GeometryHeight = 40\nEnd\n\
+        Object Tall\n Geometry = CYLINDER\n GeometryMajorRadius = 3\n GeometryHeight = 10\nEnd\n\
+        Object Wide\n Geometry = CYLINDER\n GeometryMajorRadius = 6\n GeometryHeight = 10\nEnd\n\
+        Object Ball\n Geometry = SPHERE\n GeometryMajorRadius = 7\nEnd\nObject Plain\nEnd\n";
+    ini.read(objects.as_bytes()).unwrap();
+    let bounds = |name: &str| {
+        let geometry = ini.object(name.as_bytes()).unwrap().geometry();
+        [geometry.bounding_circle(), geometry.bounding_sphere()]
+    };
+    assert_eq!(bounds("Box"), [15.0, 25.0]);
+    assert_eq!(bounds("Tall"), [3.0, 5.0]);
+    assert_eq!(bounds("Wide"), [6.0, 6.0]);
+    assert_eq!(bounds("Ball"), [7.0, 7.0]);
+    assert_eq!(bounds("Plain"), [1.0, 1.0]);
 }

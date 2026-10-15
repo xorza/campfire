@@ -10,6 +10,5 @@ pub enum StateType {
     String,
     Entity,
     EntityList,
-    Pos,
     Vec,
 }

@@ -1,5 +1,5 @@
-use campfire_math::Num;
-use campfire_sim::{Position, StableId};
+use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 
 use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
@@ -101,7 +101,7 @@ impl<K: Copy> BodyGrid<K> {
         self.order.clear();
         self.order
             .extend(self.placed.iter().enumerate().map(|(placed, entry)| {
-                let at = entry.body.pos.get();
+                let at = entry.body.pos;
                 let level = levels.level(entry.body.shape.bound());
                 let (row, column) = (at.z.to_bits(), at.x.to_bits());
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
@@ -181,8 +181,7 @@ impl<K: Copy> BodyGrid<K> {
 
     /// Calls `visit` with each body whose bound's disc may come within `reach` of `pos` on the
     /// ground plane, as `visit` does.
-    pub fn visit_near(&self, pos: Position, reach: Num, visit: impl FnMut(&Indexed<K>)) {
-        let pos = pos.get();
+    pub fn visit_near(&self, pos: Vec3, reach: Num, visit: impl FnMut(&Indexed<K>)) {
         let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
         let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
         self.visit(low, high, visit);

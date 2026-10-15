@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use campfire_common::Tick;
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
 use campfire_net::{
     CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
@@ -51,9 +51,9 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
-    let east_tower = Position::from((8, 0, -3));
+    let east_tower = Vec3::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world().get::<Position>(entity) == Some(&east_tower)
+        app.world().get::<Position>(entity).map(|pos| pos.get()) == Some(east_tower)
     });
     let (_, hero) = unit(local.server(), |app, entity| {
         app.world().entity(entity).contains::<Owner>()
@@ -78,7 +78,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
             server.resize(ticks_run - 1, None);
             server.push(Some(Server {
                 seen: seen.contains(Team::new(0)),
-                hero_x: world.get::<Position>(hero).unwrap().get().x,
+                hero_x: world.get::<Position>(hero).unwrap().x,
             }));
         }
         let client = local.client(0).world();
@@ -162,9 +162,9 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     // A solo match: the west hero at (0, −2) sees 6 m, so the east tower at (8, −3) is hidden.
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
-    let east_tower = Position::from((8, 0, -3));
+    let east_tower = Vec3::from((8, 0, -3));
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
-        app.world().get::<Position>(entity) == Some(&east_tower)
+        app.world().get::<Position>(entity).map(|pos| pos.get()) == Some(east_tower)
     });
     let hero = local.avatar(0);
     let (west, east) = (Team::new(0), Team::new(1));

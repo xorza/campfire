@@ -2,6 +2,7 @@ use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_declare::ByType;
 use campfire_geometry::Placed;
+use campfire_math::Vec3;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook};
@@ -58,7 +59,7 @@ type Visitors<'w, 's> = Query<
 #[derive(Debug, Clone, Copy)]
 struct Visitor<'a> {
     team: Team,
-    pos: Position,
+    pos: Vec3,
     body: Option<&'a Body>,
     tags: TagSet,
     dead: bool,
@@ -91,7 +92,7 @@ impl Shopping<'_, '_> {
         let visitor = self.visitor(unit)?;
         let buyer = visitor.buyer(self.relations.get().between(team, visitor.team));
         spec.serves(buyer, |reach| {
-            let from = Placed::new(at, Body::shape_of(body));
+            let from = Placed::new(at.get(), Body::shape_of(body));
             let to = Placed::new(visitor.pos, Body::shape_of(visitor.body));
             self.map.metric.reaches(from, reach, to)
         })
@@ -111,7 +112,7 @@ impl Shopping<'_, '_> {
                 let spec = self.shops.get(unit_type)?;
                 let buyer = visitor.buyer(relations.between(team, visitor.team));
                 spec.selects(buyer).then(|| {
-                    let nearest = Body::shape_of(body).nearest_point(at, visitor.pos);
+                    let nearest = Body::shape_of(body).nearest_point(at.get(), visitor.pos);
                     let away = self.map.metric.offset(nearest, visitor.pos);
                     (away.length_squared_bits(), id)
                 })
@@ -125,7 +126,7 @@ impl Shopping<'_, '_> {
         let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
         Some(Visitor {
             team,
-            pos,
+            pos: pos.get(),
             body,
             tags: Dead::tagged(tags, dead),
             dead,

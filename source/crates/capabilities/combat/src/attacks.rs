@@ -139,7 +139,7 @@ impl Attacks {
                             relation,
                             living: |id| targets.living(id),
                         })
-                        .filter(|checked| checked.in_range(position, shape, &targets))
+                        .filter(|checked| checked.in_range(position.get(), shape, &targets))
                         .map(|checked| now.after(checked.values.windup));
                     if let Some(resolves_at) = started {
                         slots.start_attack(slot, resolves_at);
@@ -296,7 +296,7 @@ impl Attacks {
             match wielded.projectile {
                 Some(unit_type) => fired.0.push(Shot {
                     source,
-                    from,
+                    from: from.get(),
                     target,
                     unit_type,
                     action,

@@ -63,7 +63,7 @@ impl AreaLife {
             let hit = Hit {
                 delivery: Some(id),
                 target: area.aimed(),
-                pos,
+                pos: pos.get(),
                 distance: Num::ZERO,
                 direction: None,
             };
@@ -73,13 +73,13 @@ impl AreaLife {
                 let spec = specs.get(unit_type).expect("an area's type has a spec");
                 reached.clear();
                 let grid = grid.expect("a trigger finds the units near");
-                grid.visit_near(pos, spec.radius, |body| {
+                grid.visit_near(pos.get(), spec.radius, |body| {
                     let Some(unit) = targets.living_at(body.key) else {
                         return;
                     };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
-                        && targets.reaches(Placed::point(pos), spec.radius, &unit)
+                        && targets.reaches(Placed::point(pos.get()), spec.radius, &unit)
                     {
                         reached.push(unit.id);
                     }
