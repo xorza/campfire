@@ -17,8 +17,8 @@ pub struct StopSignals {
 }
 
 impl StopSignals {
-    /// The code a stopped process exits with: 130, `128 + SIGINT`, as a shell gives an
-    /// interrupted job.
+    /// The code a second signal ends the process with: 130, `128 + SIGINT`, as a shell gives an
+    /// interrupted job, and `common::ExitStatus::Interrupted`'s, as a test there checks.
     pub const EXIT_CODE: u8 = 130;
 
     /// Catches the stop's signals, once in a process; an error when the OS refuses a handler.

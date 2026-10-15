@@ -247,7 +247,7 @@ fn server_app(
         Update,
         (exit_when_due, move |world: &mut World| {
             if stop.received() {
-                world.write_message(AppExit::from_code(StopSignals::EXIT_CODE));
+                world.write_message(AppExit::from_code(ExitStatus::Interrupted.code()));
             }
         })
             .chain()

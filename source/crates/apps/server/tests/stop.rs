@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
+use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_net::Listening;
 use campfire_package_disk::internals::TestMode;
@@ -75,7 +76,10 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
     let end = until("the client's unlink", || client.update().end);
     assert_eq!(end, LinkEnd::PeerStopped);
     let status = until("the server's exit", || server.0.try_wait().unwrap());
-    assert_eq!(status.code(), Some(i32::from(StopSignals::EXIT_CODE)));
+    assert_eq!(
+        status.code(),
+        Some(i32::from(ExitStatus::Interrupted.code()))
+    );
 }
 
 /// The server's process, killed if the test fails before it exits.
