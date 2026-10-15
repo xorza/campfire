@@ -44,6 +44,19 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
             })
         ));
     }
+    // Renamed, it takes the new name with all it holds; one that is not there is not renamed.
+    let renamed = dir.path().join("renamed");
+    DurableDir::rename(&path, &renamed).unwrap();
+    assert!(!path.exists());
+    assert_eq!(fs::read(renamed.join("kept")).unwrap(), b"kept");
+    assert!(matches!(
+        DurableDir::rename(&path, &renamed),
+        Err(PathError {
+            error: DurableDirError::Rename(_),
+            ..
+        })
+    ));
+    DurableDir::rename(&renamed, &path).unwrap();
     // Removed, it goes with all it holds; a directory that is not there is not removed.
     DurableDir::remove(&path).unwrap();
     assert!(!path.exists());

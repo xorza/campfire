@@ -61,6 +61,17 @@ impl DurableDir {
         create().map_err(PathError::at(path))
     }
 
+    /// Gives the directory `from` the name `to`, in the same parent, where nothing holds `to`, so
+    /// a directory made under one name takes its place whole.
+    pub fn rename(from: &Path, to: &Path) -> Result<(), PathError<DurableDirError>> {
+        let rename = || {
+            let parent = to.parent().ok_or(DurableDirError::NoParent)?;
+            DurableName::rename(from, to).map_err(DurableDirError::Rename)?;
+            DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)
+        };
+        rename().map_err(PathError::at(to))
+    }
+
     /// Removes the directory `path` and all it holds.
     pub fn remove(path: &Path) -> Result<(), PathError<DurableDirError>> {
         let remove = || {

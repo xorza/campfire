@@ -90,7 +90,7 @@ Every check, test, doc build and bench runs through `source/drive.py` ([The driv
 | `./drive.py test [--bless] [nextest arguments]` | the suite, or a part of it: `-E 'package(campfire-net)'`, a test's name; `--bless` writes the pinned files again. It runs each time |
 | `./drive.py doc` | rustdoc with `-D warnings` |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
-| `./drive.py lan`, `./drive.py zero-hour [run root]` | the LAN check, and the Zero Hour check, on request |
+| `./drive.py lan`, `./drive.py zero-hour [out]` | the LAN check, and the Zero Hour check, on request |
 | `./drive.py gate` | every step CI runs, and the Windows lint on Linux |
 
 Each step prints one line with its result; a failed step names its log, `target/drive/log/<step>.log`, which holds its whole output. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`: what it prints is already filtered.

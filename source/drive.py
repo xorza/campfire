@@ -777,11 +777,16 @@ def lan(args: list[str]) -> int:
     return run_steps("lan", [lan_build_step(), lan_run_step()])
 
 
+# Where the Zero Hour check writes its packages, each run in place of the last.
+ZERO_HOUR_OUT = Path.home() / "zh-package"
+
+
 def zero_hour(args: list[str]) -> int:
+    out = args or [str(ZERO_HOUR_OUT)]
     return run_steps("zero-hour", [
         Step(
             "zero hour", Kind.PROGRAM,
-            cargo("run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *args),
+            cargo("run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *out),
             always_runs=True,
         )
     ])
@@ -808,7 +813,7 @@ COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
     "doc": (doc, "", "rustdoc with -D warnings"),
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
     "lan": (lan, "", "the LAN check"),
-    "zero-hour": (zero_hour, "[run root]", "the Zero Hour check, which needs GENERALSZH_DATA"),
+    "zero-hour": (zero_hour, "[out]", "the Zero Hour check, which needs GENERALSZH_DATA; writes ~/zh-package"),
     "gate": (gate, "", "every step CI runs"),
 }
 
