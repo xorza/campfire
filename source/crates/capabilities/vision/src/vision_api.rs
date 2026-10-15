@@ -1,7 +1,6 @@
-use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Filter, MemberSpec,
-    RoleSet, Status, Unit,
+    RoleSet, ScriptRadius, Status, Unit,
 };
 use campfire_sim::Position;
 use campfire_values::TagProperty;
@@ -26,14 +25,8 @@ impl VisionApi {
         .roles(RoleSet::ACTING);
         api.call(
             reveal,
-            |ctx: &mut Ctx, pos: Position, radius: Num, ms: i64| {
+            |ctx: &mut Ctx, pos: Position, radius: ScriptRadius, ms: i64| {
                 VisionApi::reveal(ctx, pos, radius, ms)
-            },
-        )
-        .call(
-            reveal,
-            |ctx: &mut Ctx, pos: Position, radius: i64, ms: i64| {
-                VisionApi::reveal(ctx, pos, ApiError::num(radius)?, ms)
             },
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
@@ -44,11 +37,11 @@ impl VisionApi {
 
     /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`
     /// rounded up to ticks.
-    fn reveal(ctx: &Ctx, pos: Position, radius: Num, ms: i64) -> Checked<()> {
+    fn reveal(ctx: &Ctx, pos: Position, radius: ScriptRadius, ms: i64) -> Checked<()> {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.row(id));
         let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;
-        let radius = ApiError::radius(radius)?;
+        let radius = radius.get();
         let ticks = view.lasting(ms).map_err(ApiError::fail)?;
         ctx.queue(VisionEffect {
             team,
@@ -76,8 +69,8 @@ impl VisionApi {
         );
         api.call(
             visible,
-            |_: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
-                VisionColumn::find(&of, pos, radius, &filter)
+            |_: &mut Ctx, of: Unit, pos: Position, radius: ScriptRadius, filter: Filter| {
+                Ok(VisionColumn::find(&of, pos, radius, &filter))
             },
         );
         let nearest = MemberSpec::call(
@@ -87,8 +80,8 @@ impl VisionApi {
         );
         api.call(
             nearest,
-            |_: &mut Ctx, of: Unit, radius: Num, filter: Filter| {
-                VisionColumn::nearest(&of, radius, &filter)
+            |_: &mut Ctx, of: Unit, radius: ScriptRadius, filter: Filter| {
+                Ok(VisionColumn::nearest(&of, radius, &filter))
             },
         );
     }

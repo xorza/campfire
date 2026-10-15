@@ -149,8 +149,9 @@ impl ScriptArg for Num {
         Ok(raw)
     }
 
+    /// A script's integer as a `Num`; one beyond a `Num` fails the call.
     fn take_int(raw: i64, _: &ArgCtx<'_>) -> Checked<Num> {
-        ApiError::num(raw)
+        Num::from_int(raw).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
     }
 }
 

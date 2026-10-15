@@ -50,32 +50,14 @@ impl NavigationApi {
         )
         .call(
             dash,
-            move |ctx: &mut Ctx, of: Unit, to: Position, speed: i64| {
-                NavigationApi::dash(ctx, &of, point(to), ApiError::num(speed)?)
-            },
-        )
-        .call(
-            dash,
             move |ctx: &mut Ctx, of: Unit, to: Unit, speed: Num| {
                 NavigationApi::dash(ctx, &of, unit(to), speed)
-            },
-        )
-        .call(
-            dash,
-            move |ctx: &mut Ctx, of: Unit, to: Unit, speed: i64| {
-                NavigationApi::dash(ctx, &of, unit(to), ApiError::num(speed)?)
             },
         )
         .call(
             knock_back,
             |ctx: &mut Ctx, of: Unit, from: Position, distance: Num, ms: i64| {
                 NavigationApi::knock_back(ctx, &of, from, distance, ms)
-            },
-        )
-        .call(
-            knock_back,
-            |ctx: &mut Ctx, of: Unit, from: Position, distance: i64, ms: i64| {
-                NavigationApi::knock_back(ctx, &of, from, ApiError::num(distance)?, ms)
             },
         )
         .call(teleport, |ctx: &mut Ctx, of: Unit, to: Position| {

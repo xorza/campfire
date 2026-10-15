@@ -9,7 +9,7 @@ use campfire_math::Num;
 use campfire_sim::{Position, StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
-use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::error::ApiError;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
@@ -246,8 +246,8 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<ScriptList> {
-        let radius = ApiError::radius(radius)?;
+    ) -> ScriptList {
+        debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
         let units = rows.units();
         let query = TargetQuery {
@@ -261,7 +261,7 @@ impl View {
         let found = targets.find(&rows, query, seen);
         let unit =
             |&index: &usize| ScriptValue::of(Unit::new(units[index].id, index, self.clone()));
-        Ok(found.iter().map(unit).collect())
+        found.iter().map(unit).collect()
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
@@ -274,8 +274,8 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> Checked<ScriptValue> {
-        let radius = ApiError::radius(radius)?;
+    ) -> ScriptValue {
+        debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
         let of = rows.units()[of.row_index()];
         let query = TargetQuery {
@@ -297,9 +297,9 @@ impl View {
                     nearest = Some(candidate);
                 }
             });
-        Ok(nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
+        nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
             ScriptValue::of(Unit::new(id, at, self.clone()))
-        }))
+        })
     }
 }
 

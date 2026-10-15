@@ -1,7 +1,8 @@
 use campfire_geometry::Placed;
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptValue, Unit,
+    ApiBuilder, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptRadius, ScriptValue,
+    Unit,
 };
 use campfire_sim::Position;
 
@@ -62,8 +63,8 @@ impl UnitsApi {
             )
             .method(
                 within,
-                |ctx: &Ctx, from: Position, to: Position, radius: Num| {
-                    UnitsApi::within(ctx, from, to, radius)
+                |ctx: &Ctx, from: Position, to: Position, radius: ScriptRadius| {
+                    Ok(UnitsApi::within(ctx, from, to, radius))
                 },
             )
             .method(
@@ -130,9 +131,8 @@ impl UnitsApi {
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule
     /// between two points, which have no bodies.
-    fn within(ctx: &Ctx, from: Position, to: Position, radius: Num) -> Checked<bool> {
-        let radius = ApiError::radius(radius)?;
+    fn within(ctx: &Ctx, from: Position, to: Position, radius: ScriptRadius) -> bool {
         let metric = ctx.view().metric();
-        Ok(metric.reaches(Placed::point(from), radius, Placed::point(to)))
+        metric.reaches(Placed::point(from), radius.get(), Placed::point(to))
     }
 }

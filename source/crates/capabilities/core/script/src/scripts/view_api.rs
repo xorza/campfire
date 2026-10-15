@@ -1,5 +1,5 @@
+use crate::scripts::script_radius::ScriptRadius;
 use campfire_geometry::Shape;
-use campfire_math::Num;
 use campfire_sim::Position;
 use campfire_values::Tag;
 
@@ -135,8 +135,10 @@ impl ViewApi {
         );
         api.call(
             find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
-                ctx.view().find(&of, pos, radius, &filter, |_, _| true)
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: ScriptRadius, filter: Filter| {
+                Ok(ctx
+                    .view()
+                    .find(&of, pos, radius.get(), &filter, |_, _| true))
             },
         );
     }

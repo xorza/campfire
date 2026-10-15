@@ -1,6 +1,5 @@
-use campfire_math::Num;
 use campfire_values::EngineEnum;
-use rhai::{EvalAltResult, INT};
+use rhai::EvalAltResult;
 use thiserror::Error;
 
 use crate::script_host::error::{Raised, ScriptError};
@@ -278,19 +277,6 @@ impl ApiError {
     /// The error that fails the call with this refusal.
     pub fn fail(self) -> EvalAltResult {
         Raised::error(self)
-    }
-
-    /// A radius a script gives; one below zero fails the call.
-    pub fn radius(radius: Num) -> Checked<Num> {
-        if radius < Num::ZERO {
-            return Err(ApiError::NegativeRadius.fail().into());
-        }
-        Ok(radius)
-    }
-
-    /// A script's integer as a `Num`; one beyond a `Num` fails the call.
-    pub fn num(value: INT) -> Checked<Num> {
-        Num::from_int(value).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
     }
 }
 
