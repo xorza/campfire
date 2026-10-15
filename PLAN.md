@@ -31,7 +31,3 @@ The open steps, in the order they are done, and the foundations. The rules are i
 ### U9. The Zero Hour check compares fingerprints and plays the parity suite
 
 (`checks/zero-hour-check`, the parity oracle; Zero Hour D5, D7, D8.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, and plays the parity suite against the oracle's frames, as design 12 D7 says. It waits for the oracle, the fork of GeneralsX that writes each logic frame. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint; the suite's replays meet the measure.
-
-## Foundations
-
-
