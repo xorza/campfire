@@ -25,6 +25,6 @@ pub use crate::player_resources::PlayerResources;
 pub use crate::player_rows::{PlayerRows, PlayerRowsMut};
 pub use crate::players::Players;
 pub use crate::players_call::PlayersCall;
-pub use crate::players_world::{PlayersWorld, PlayersWorldCrate};
+pub use crate::players_world::PlayersWorld;
 pub use crate::resource_amount::ResourceAmount;
 pub use crate::tick_commands::{TickCommand, TickCommands};

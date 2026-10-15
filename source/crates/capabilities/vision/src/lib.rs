@@ -118,7 +118,7 @@ pub mod internals {
     use campfire_script::{Budget, CallError, Ctx, ScriptHost};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
-    use campfire_units::UnitsWorldCrate;
+    use campfire_units::UnitsWorld;
     use campfire_values::{Team, TeamSet};
 
     use crate::Vision;

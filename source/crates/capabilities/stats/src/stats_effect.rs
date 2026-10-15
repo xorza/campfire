@@ -6,7 +6,7 @@ use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
 use crate::applier::Applier;
-use crate::stats_world::StatsWorldCrate;
+use crate::stats_world::StatsWorld;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

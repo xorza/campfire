@@ -117,7 +117,7 @@ pub use crate::unit_type_core::UnitTypeCore;
 pub use crate::units::Units;
 pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
-pub use crate::units_world::{UnitsWorld, UnitsWorldCrate};
+pub use crate::units_world::UnitsWorld;
 pub use crate::view_reader::ViewReader;
 
 #[cfg(feature = "internals")]

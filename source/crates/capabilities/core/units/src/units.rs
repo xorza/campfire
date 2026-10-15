@@ -300,7 +300,7 @@ pub(crate) mod internals {
     use crate::unit_type_book::UnitTypeBook;
     use crate::unit_type_core::UnitTypeCore;
     use crate::units::Units;
-    use crate::units_world::UnitsWorldCrate;
+    use crate::units_world::UnitsWorld;
 
     impl Units {
         /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.

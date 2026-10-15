@@ -4,7 +4,7 @@ use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionCall, ActionSlots, ChannelCall, ChannelStep, UseGroup};
 use campfire_common::{Tick, Ticks};
-use campfire_script::{CallStart, Hook, Pool, ScriptBatch, ScriptsWorldCrate};
+use campfire_script::{CallStart, Hook, Pool, ScriptBatch, ScriptsWorld};
 use campfire_sim::{Keyed, Ordered, SimTick, StableId};
 use campfire_units::{ForcedMove, Owner};
 use campfire_values::UnitTags;

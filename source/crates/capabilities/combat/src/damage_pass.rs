@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionSlots, ActionTarget, EffectListBook, ListsOf};
 use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorldCrate};
+use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, Life, ModifierBook, ModifierClocks, PoolId, StatId, StatsWorld, UnitPools,

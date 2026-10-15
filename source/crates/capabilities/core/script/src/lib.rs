@@ -58,7 +58,7 @@ pub use crate::scripts::script_text::ScriptText;
 pub use crate::scripts::script_value::script_list::ScriptList;
 pub use crate::scripts::script_value::script_map::ScriptMap;
 pub use crate::scripts::script_value::{ScriptType, ScriptValue};
-pub use crate::scripts::scripts_world::ScriptsWorldCrate;
+pub use crate::scripts::scripts_world::ScriptsWorld;
 pub use crate::scripts::state_decl::state_schema::{StateField, StatePlace, StateSchema};
 pub use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 pub use crate::scripts::state_decl::{StateDecl, StateDefault};

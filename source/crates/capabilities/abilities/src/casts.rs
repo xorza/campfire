@@ -10,10 +10,9 @@ use campfire_actions::{
 };
 use campfire_common::Tick;
 use campfire_deliveries::{Deliverers, Delivering};
-use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorldCrate};
+use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
-    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorldCrate,
-    Unit,
+    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
 };
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};

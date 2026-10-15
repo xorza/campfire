@@ -5,7 +5,7 @@ use campfire_script::{CallError, CallPart, CallStart, Commit};
 use campfire_units::Player;
 
 use crate::player_resources::PlayerResources;
-use crate::players_world::PlayersWorldCrate;
+use crate::players_world::PlayersWorld;
 
 /// The players' part of a call: their resources as the call sees them, by slot, none in a match
 /// with no mode, and whether the call changed them, which commit once its effects applied. It reads

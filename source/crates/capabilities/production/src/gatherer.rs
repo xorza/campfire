@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declare::PerType;
-use campfire_players::PlayersWorldCrate;
+use campfire_players::PlayersWorld;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;

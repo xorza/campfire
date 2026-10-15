@@ -119,6 +119,8 @@ Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client format
 
 ### Batch 11. Change-driven passes (RC4)
 
+Blocked: see `review-workspace_QUESTIONS.md`, Batch 11.
+
 Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `capabilities/stats/src/held_pass.rs`, `capabilities/core/actions/src/holds.rs`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/gather_loop/mod.rs`, `capabilities/projectiles/src/flying.rs`, `capabilities/abilities/src/toggles.rs`, `session/{runner,protocol}/src/**`, `network/quic/src/admission.rs`, `capabilities/core/geometry/src/body_box/mod.rs`. Goldens: none move. A pass visits fewer units with the same result.
 
 - [ ] `DueRun` in `sim`, a cache that each restore rebuilds. `orders/src/thinking.rs:74-93`, `actions/src/holds.rs:22-36` and `abilities/src/toggles.rs:20-64` use it.
@@ -137,8 +139,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 Needs Batch 7. Files: the `*_world.rs` of `players`, `script`, `units` and `stats`, `network/net/src/sim_server/{sim_server_world/mod,player_link}.rs`, `base/{codec,schedule,store,log}`, `session/{package,runner}/src/**`, `base/common/src/tests.rs`. Goldens: none move.
 
-- [ ] Guard: the world-trait rule test fails on a `*WorldCrate` import outside its crate.
-- [ ] `PlayersWorldCrate`, `ScriptsWorldCrate`, `UnitsWorldCrate`, `StatsWorldCrate`: their cross-crate methods move to `*World`.
 - [ ] `net/src/sim_server/sim_server_world/mod.rs:24-62`: `SimServerWorldInternals` and `SimServerWorldCrate`, and `PlayerLink` behind `internals`.
 - [ ] `codec` and `schedule` gain `internals`. `binary.rs:57-91`, `drop_option.rs`, `error.rs:37`, `strict_schedule.rs:24`, `append_file.rs:5` and the generic `start`s go behind it.
 - [ ] `log/Cargo.toml:18-25`: the `start`-only dependencies become optional. `log/src/log_line/mod.rs:17,41`: codec owns the decode, and `LogLine` publishes no `serde_json` type.

@@ -4,7 +4,7 @@ use bevy_ecs::system::{Commands, Local, Query};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
-use campfire_script::{CallError, Hook, Pool, ScriptError, ScriptId, ScriptsWorldCrate};
+use campfire_script::{CallError, Hook, Pool, ScriptError, ScriptId, ScriptsWorld};
 use campfire_sim::{SimTick, StableId};
 use campfire_stats::UnitPools;
 use campfire_units::{Dead, Destination};

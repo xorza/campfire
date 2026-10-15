@@ -122,7 +122,7 @@ pub use crate::stats_call::StatsCall;
 pub use crate::stats_column::{RowReads, StatsColumn};
 pub use crate::stats_data::{StatValue, StatsData};
 pub use crate::stats_effect::StatsEffect;
-pub use crate::stats_world::{StatsWorld, StatsWorldCrate};
+pub use crate::stats_world::StatsWorld;
 pub use crate::type_passive::TypePassive;
 pub use crate::unit_pools::{PoolMeters, PoolMetersMut, UnitPools, UnitPoolsReadOnly};
 pub use crate::unit_stats::UnitStats;

@@ -9,7 +9,7 @@ use bevy_ecs::world::World;
 use campfire_script::{RowFill, RowReads, UnitRow, ViewColumn, ViewColumns};
 
 use crate::row_marks::RowMarks;
-use crate::units_world::UnitsWorldCrate;
+use crate::units_world::UnitsWorld;
 
 /// How a capability above the core fills its column of a unit's row, and the fields of the core
 /// row it owns: from the parts `D` of the unit, through queries the view keeps from one read to

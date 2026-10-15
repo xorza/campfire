@@ -8,8 +8,8 @@ use campfire_actions::{
 };
 use campfire_common::Tick;
 use campfire_declare::RoleForm;
-use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorldCrate};
-use campfire_script::ScriptsWorldCrate;
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
+use campfire_script::ScriptsWorld;
 use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
 use campfire_units::{Body, Dead, ForcedMove, Owner};

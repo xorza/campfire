@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListsOf};
-use campfire_script::{CallStart, Pool, ScriptValue, ScriptsWorldCrate};
+use campfire_script::{CallStart, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
 

@@ -20,7 +20,7 @@ use campfire_declare::ServerForm;
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -31,9 +31,7 @@ use campfire_stats::{
     Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
     PoolBook, PoolCost, PoolId, Pools, StatBook, StatId, StatRule, Stats, StatsSet,
 };
-use campfire_units::{
-    BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorldCrate,
-};
+use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
     ActionId, Block, DeclaredName, FilterData, ModifierId, Names, Rank, Relation, RelationSet,
     ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,

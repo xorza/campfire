@@ -17,6 +17,12 @@ pub trait UnitsWorld {
     /// The avatar of `slot`, as `PlayerUnits::avatar` finds it, for code that holds the world
     /// shared, as a test does: its query is made for each read.
     fn avatar_of(&self, slot: PlayerSlot) -> Option<Commanded>;
+
+    /// The relations of the match, on its entity, which every match spawns as it starts.
+    fn relations(&self) -> &Relations;
+
+    /// The relations of the match, to change.
+    fn relations_mut(&mut self) -> Mut<'_, Relations>;
 }
 
 impl UnitsWorld for World {
@@ -32,19 +38,7 @@ impl UnitsWorld for World {
         let mut avatars = self.try_query_filtered::<AvatarData, AvatarFilter>()?;
         Commanded::avatar_among(avatars.iter(self), slot)
     }
-}
 
-/// What the units module gives a world, for its own crate.
-pub trait UnitsWorldCrate {
-    /// The relations of the match, on its entity, which every match spawns as it
-    /// starts.
-    fn relations(&self) -> &Relations;
-
-    /// The relations of the match, to change.
-    fn relations_mut(&mut self) -> Mut<'_, Relations>;
-}
-
-impl UnitsWorldCrate for World {
     fn relations(&self) -> &Relations {
         self.held_relations()
             .expect("a match that started holds its relations")

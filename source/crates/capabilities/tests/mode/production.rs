@@ -1,5 +1,4 @@
 use campfire_actions::TimedSlots;
-use campfire_players::PlayersWorldCrate;
 use campfire_production::{Gatherer, Load, ModeSupplyData, SupplyBook, SupplyCostBook, SupplyData};
 use campfire_sim::internals::SimWorldInternals;
 

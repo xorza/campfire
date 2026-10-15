@@ -17,7 +17,7 @@ use crate::row_marks::RowMarks;
 use crate::row_source::{FillRow, RowSource};
 use crate::source_reads::SourceReads;
 use crate::spawn_point::SpawnPoint;
-use crate::units_world::UnitsWorldCrate;
+use crate::units_world::UnitsWorld;
 
 /// What reads the units into the script view's rows before each phase that runs scripts: the
 /// core's parts of each unit and the source of each column, which fill the rows of units whose

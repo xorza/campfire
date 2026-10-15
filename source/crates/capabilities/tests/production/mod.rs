@@ -9,7 +9,7 @@ use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declare::{ByType, PerType};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_players::{Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId, Unpredicted};

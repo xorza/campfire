@@ -1678,6 +1678,105 @@ pub struct ScriptedMatch;
     );
 }
 
+/// Each use of a `<Module>WorldCrate` trait outside the crate that declares it, among `files`,
+/// each a source by its crate's name, its path and its text: by the path, the line and the trait.
+/// Such a trait is its own crate's alone (design 02's world rule): another crate takes the
+/// module's `<Module>World`, and a test or a bench its `<Module>WorldInternals`.
+fn foreign_crate_traits<'a>(
+    files: &[(&'a str, &'a str, &'a str)],
+) -> Vec<(&'a str, usize, &'a str)> {
+    let identifiers = |line: &'a str| {
+        line.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .filter(|word| !word.is_empty())
+    };
+    let crate_trait = |name: &str| name.len() > "WorldCrate".len() && name.ends_with("WorldCrate");
+    let mut declared = BTreeMap::new();
+    for &(owner, _, text) in files {
+        for line in text.lines() {
+            let mut words = identifiers(line);
+            while let Some(word) = words.next() {
+                if word == "trait"
+                    && let Some(name) = words.next()
+                    && crate_trait(name)
+                {
+                    declared.insert(name, owner);
+                }
+            }
+        }
+    }
+    let mut found = Vec::new();
+    for &(user, path, text) in files {
+        for (line, code) in text.lines().enumerate() {
+            for word in identifiers(code) {
+                if declared.get(word).is_some_and(|&owner| owner != user) {
+                    found.push((path, line + 1, word));
+                }
+            }
+        }
+    }
+    found
+}
+
+#[test]
+fn no_crate_names_another_crates_own_world_trait() {
+    let crates = crates();
+    let own = "crates/base/common/src/tests.rs";
+    let files: Vec<SourceFile> = sources()
+        .into_iter()
+        .filter(|file| file.path != own)
+        .collect();
+    let files: Vec<(&str, &str, &str)> = files
+        .iter()
+        .filter_map(|file| {
+            let holder = holder(&crates, &file.path)?;
+            Some((
+                crates[holder].name.as_str(),
+                file.path.as_str(),
+                file.text.as_str(),
+            ))
+        })
+        .collect();
+    let found: Vec<String> = foreign_crate_traits(&files)
+        .into_iter()
+        .map(|(path, line, name)| format!("{path}:{line} {name}"))
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+}
+
+#[test]
+fn the_crate_trait_rule_finds_each_use_outside_its_crate() {
+    // `a` declares `AWorldCrate` and uses it; `b` imports it and names it in a bound; `c` names
+    // `AWorldCrateInternals` and `AWorld`, other traits, and `XWorldCrate`, which no crate declares.
+    let files = [
+        (
+            "a",
+            "a.rs",
+            "pub(crate) trait AWorldCrate {}
+impl AWorldCrate for World {}
+",
+        ),
+        (
+            "b",
+            "b.rs",
+            "use a::{AWorld, AWorldCrate};
+fn f<W: AWorldCrate>() {}
+",
+        ),
+        (
+            "c",
+            "c.rs",
+            "use a::AWorldCrateInternals;
+use a::AWorld;
+use x::XWorldCrate;
+",
+        ),
+    ];
+    assert_eq!(
+        foreign_crate_traits(&files),
+        [("b.rs", 1, "AWorldCrate"), ("b.rs", 2, "AWorldCrate")]
+    );
+}
+
 #[test]
 fn the_world_rule_finds_each_function_that_takes_a_world_first() {
     // A free function and methods, of each form of a reference to a world, their visibility

@@ -15,7 +15,7 @@ use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
-use campfire_players::{OutOfPlay, Players, PlayersWorld, PlayersWorldCrate, ResourceAmount};
+use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};

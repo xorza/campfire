@@ -6,7 +6,7 @@ use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{
     ApiError, CallError, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptError, ScriptValue,
-    ScriptsWorldCrate,
+    ScriptsWorld,
 };
 use campfire_sim::{SimTick, StableId};
 

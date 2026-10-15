@@ -28,7 +28,7 @@ use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::{AiData, Orders, OrdersAction};
-use campfire_players::{Players, PlayersWorld, PlayersWorldCrate};
+use campfire_players::{Players, PlayersWorld};
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, Thresholds, TrackData, TrackSet,
 };
