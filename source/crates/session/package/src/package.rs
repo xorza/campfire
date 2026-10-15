@@ -11,12 +11,11 @@ use crate::package_files::SCRIPTS;
 use crate::package_reader::PackageReader;
 use crate::package_text::PackageText;
 
-/// A package as the load read it: its header, its fingerprint, each of its scripts, and its
-/// human text.
+/// A package as the load read it: its header, each of its scripts, its human text, and its files,
+/// whose index gives its fingerprint.
 #[derive(Debug)]
 pub struct Package {
     pub header: PackageHeader,
-    pub fingerprint: Fingerprint,
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
     pub text: PackageText,
@@ -69,11 +68,15 @@ impl Package {
         let text = PackageText::read(files, &header.language).map_err(fail)?;
         Ok(Package {
             header: header.clone(),
-            fingerprint: files.fingerprint(),
             scripts,
             text,
             files: files.reader().clone(),
         })
+    }
+
+    /// The fingerprint of its files' index.
+    pub const fn fingerprint(&self) -> Fingerprint {
+        self.files.fingerprint()
     }
 
     /// The script at `path`.

@@ -84,14 +84,14 @@ impl ModePackages {
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
-        self.mode.fingerprint
+        self.mode.fingerprint()
     }
 
     /// The fingerprints of its dependencies, in the order of their names in its manifest.
     pub fn dependency_fingerprints(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
         self.dependencies
             .iter()
-            .map(|dependent| dependent.package.fingerprint)
+            .map(|dependent| dependent.package.fingerprint())
     }
 
     pub const fn manifest(&self) -> &ModeManifest {
