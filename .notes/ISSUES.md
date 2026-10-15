@@ -8,7 +8,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Research
 
-- **Capabilities.** A predicting test world (`Match::predicting`) holds a `Spawner`, which its fixtures load as they place units, where a client holds none, as no client installs the mode: a system that spawns on a predicting client passes the tests and panics in the client.
 - **Navigation.** The levels by size of B2 make the Collide stage slower for walkers of ordinary sizes, with no wide body present, and the 3v3's ticks faster. On an i9-13980HX, with each walker's cell one `CellKey`, `integration/collision/spread` takes 95.5 µs against 59.8 µs with one level of cells twice the widest walker's radius, `crowded` 325.0 µs against 257.4 µs, `boxes` 681.4 µs against 613.8 µs, and `bridge`, with a 1,117 × 100 m box 2 m past the crowded scene, 715.4 µs against 650.9 µs; the scenes' walkers of 0.2 to 1.19 m spread over four levels, and each occupied cell searches the nine cells around its own at each coarser level. `integration/server_tick/mean_3v3` takes 479.2 ms, and 519.4 ms with one level.
 - **Net.** The LAN check fails at times in CI on Ubuntu: a bot's link logs `Received a ping that is not present` from `lightyear_sync::ping::manager`, the check counts it a failure, and a rerun of the same commit passes (run 38538783614, commit `0bc73b7c`).
 - **Quic.** `EndpointState::admit` (`quic/src/endpoint_state.rs`) counts an address's live connections by a walk of every peer, for each new connection past its Retry: a flood of handshakes from many addresses walks every peer for each, where `Admission` keeps the address's bucket by its key.
@@ -22,3 +21,5 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Stats.** A unit a predicting client predicts again, as its owner changes and `Unpredicted` goes (`net/src/sim_client/mod.rs`, `mark_unpredicted`), keeps the change ticks its parts had while hidden: a pass that visits what changed by those ticks, as `Holds::want_passives` and the stats refresh do, may pass over it until a part of it changes, where a pass over every unit takes it at once. Whether Lightyear's prediction writes the parts again as it starts is not known.
 
 ## Ready
+
+- **Capabilities.** **Plan: C1.** A predicting test world (`Match::predicting`) holds a `Spawner`, which its fixtures load as they place units, where a client holds none, as no client installs the mode: a system that spawns on a predicting client passes the tests and panics in the client.

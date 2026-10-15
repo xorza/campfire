@@ -25,6 +25,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus importer
         - `16-terrain.md` — the terrain: one generic format of quads over the height grid, drawn by the one rendering pipeline, which an importer converts its game's terrain to
         - `17-units-that-drive.md` — the first units that move: a skirmish's start, the turn rate, the client's selection, cliffs as walls, Zero Hour's movement on the generic backends
         - `18-zero-hour-production.md` — the first units that are made: a skirmish's money, every command set's trains and builds, a build placed as it is ordered, a producer's exit and rally, the client's command panel
+        - `19-zero-hour-combat.md` — the first units that fight: eight teams of one, life, weapons with their own damage, period and clip, armor by damage kind, and the skirmish's defeat and end
     - `research/` — what a system's design is taken from: measurements and the sources read, facts only; `zero-hour.md` for the import, `quic.md` for the transport, `spectating.md` for what spectators and players out of play see, `math-performance.md` for the measures of the math and geometry benches
 - `.notes/ISSUES.md` — the issue log: every open problem, under the step it waits for ([Issue log](#issue-log))
 - `source/` — engine and game code, and `drive.py`, the driver of every check ([Checks](#checks)); `source/packages/test/` holds the packages the tests play, the MOBA test content (heroes, spells, modes) in `test/moba/` among them; `source/packages/<game>/` holds an imported game's rules package
