@@ -7,8 +7,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::approach::Approach;
 use crate::body_bound::MAX_BOUND;
-use crate::body_box::closer::{Closer, HalfDirections, LineBounds, LinesOnDemand, Reach};
+use crate::body_box::closer::{Closer, HalfDirections, LinesOnDemand};
 use crate::body_box::edges::{Edges, Part};
+use crate::body_box::edges::{LineBounds, Reach};
 use crate::polygon::Polygon;
 
 #[cfg(feature = "internals")]

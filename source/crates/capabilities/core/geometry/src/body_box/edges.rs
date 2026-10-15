@@ -1,11 +1,40 @@
-//! What each point's measure against a box's edges shares, and a point's terms against them.
+//! What each point's measure against a box's edges shares, a point's terms against them, and
+//! what the measure takes of a reach and of each half edge's line.
 
 use std::cmp::Ordering;
 
-use campfire_math::{Direction, Flat, RoundedRoot};
+use campfire_math::{Direction, Flat, FloorRoot, RoundedRoot};
 
-use crate::body_box::closer::Lines;
 use crate::body_box::{Frame, cross, product};
+
+/// What a box's tests take of a reach and of each half edge's line: the reach, the line's
+/// bounds, and its direction, for a point between them.
+pub(super) trait Lines {
+    fn reach(&self) -> Reach;
+    fn bounds(&mut self, half: usize) -> LineBounds;
+    fn direction(&mut self, half: usize) -> Direction<2>;
+}
+
+/// The bounds past which a point's distance from a half edge's line, as the half edge's direction
+/// measures it, to the nearest unit and within 0.51 of the true one (design 09, D9), lies against
+/// a reach with no direction. The point's cross product with the half edge, `C`, over the half
+/// edge's length `|h|`, is the true distance: `|C| ≥ far`, at least `(reach + 2) |h|`, puts it
+/// at least two units past the reach, so its measure too; `|C| < near`, below `(reach − 1) |h|`,
+/// more than a unit short of it, so its measure short of it too.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct LineBounds {
+    pub(super) far: u128,
+    pub(super) near: u128,
+}
+
+/// A reach in units, and the largest squared distance of a point closer than it, −1 when none
+/// is: the nearest root of a square is below `r ≥ 1` exactly when the square is at most `r² − r`,
+/// as `nearest_root_cmp` orders it.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Reach {
+    pub(super) units: i128,
+    pub(super) square_limit: i128,
+}
 
 /// What each point's measure against a box's edges shares. With `a` and `b` the half edges, the
 /// corners are `−a − b`, `a − b`, `a + b` and `b − a`, and the edges from each to the next `2a`,
@@ -268,5 +297,37 @@ impl Probe {
             _ => self.along_b.wrapping_sub(self.along_a),
         };
         self.square.wrapping_sub(to_corner.wrapping_add(to_corner))
+    }
+}
+
+impl LineBounds {
+    /// The bounds of a half edge whose squared length is `square`, against `reach`: its length
+    /// lies from the floor root to the ceiling one, so `far` takes the ceiling and `near` the
+    /// floor. A reach and a half edge within the world's bound keep each below 2¹⁰², so the
+    /// wrapping steps skip the checks a release build makes.
+    pub(super) fn of(square: i128, reach: i128) -> LineBounds {
+        debug_assert!(square > 0 && reach >= 0);
+        let square = square.cast_unsigned();
+        let root = square.floor_root();
+        let ceiling = root.wrapping_add(u128::from(root.wrapping_mul(root) < square));
+        let reach = reach.cast_unsigned();
+        LineBounds {
+            far: reach.wrapping_add(2).wrapping_mul(ceiling),
+            near: if reach >= 1 {
+                (reach - 1).wrapping_mul(root)
+            } else {
+                0
+            },
+        }
+    }
+}
+
+impl Reach {
+    pub(super) const fn of(units: i128) -> Reach {
+        debug_assert!(units >= 0);
+        Reach {
+            units,
+            square_limit: if units > 0 { units * units - units } else { -1 },
+        }
     }
 }
