@@ -12,7 +12,7 @@ use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
     SlotPlan, SlotStart,
 };
-use campfire_runner::SessionRules;
+use campfire_runner::{HostChoices, SessionRules};
 use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::Connected;
 use tracing::info;
@@ -168,14 +168,14 @@ impl Lobby {
             .session(&host)
             .map_err(LobbyError::Visibility)?;
         let terms = session_rules
-            .terms(
-                server.key.x_only_public_key().0,
-                seed_chain.commitment(),
+            .terms(HostChoices {
+                server_key: server.key.x_only_public_key().0,
+                seed_commitment: seed_chain.commitment(),
                 tick_hz,
-                rules,
-                plan,
-                &visibility,
-            )
+                inputs: rules,
+                slots: plan,
+                visibility: &visibility,
+            })
             .map_err(LobbyError::Terms)?;
         Ok(Lobby {
             offering: Offering::new(terms, &server),

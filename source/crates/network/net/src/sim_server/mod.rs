@@ -21,7 +21,7 @@ use campfire_mode::{MatchEnd, ModeWorld};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, SessionRules, SessionWorld, StartError, TermsError};
+use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError, TermsError};
 use campfire_sim::{SimTick, SimWorld, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
@@ -345,7 +345,14 @@ impl SimServer {
         let terms = log.header().terms.clone();
         SimServer::take_terms(world, &terms, packages).map_err(StartError::Terms)?;
         let slots = log.slot_count();
-        Session::start(world, log, seeds, packages)?;
+        Session::start(
+            world,
+            SessionSource {
+                log,
+                seeds,
+                packages,
+            },
+        )?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
         let run = MatchRun {
             offering,

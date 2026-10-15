@@ -10,6 +10,19 @@ use crate::session_rules::error::TermsError;
 
 pub(crate) mod error;
 
+/// What a session's host chooses of its terms beside what its mode's rules fix: the server's
+/// key, the commitment to its seed chain, its tick rate, its input rules, how it opens each slot,
+/// and its visibility.
+#[derive(Debug, Clone)]
+pub struct HostChoices<'a> {
+    pub server_key: XOnlyPublicKey,
+    pub seed_commitment: SeedCommitment,
+    pub tick_hz: NonZeroU32,
+    pub inputs: InputRules,
+    pub slots: Vec<SlotPlan>,
+    pub visibility: &'a Visibility,
+}
+
 /// What a mode's packages fix of every session that plays them on this engine release: the mode
 /// and its dependencies by their fingerprints, the map it loaded, the tick rates the mode runs
 /// at, and its visibility, of which the host sets only what the mode leaves it. A server builds
@@ -43,30 +56,28 @@ impl SessionRules {
         &self.visibility
     }
 
-    /// The terms of a session by these rules on the server `server_key`, whose seed chain
-    /// `seed_commitment` commits to, at `tick_hz`, its inputs within `rules`, its slots opened
-    /// as `slots` plans them, of `visibility`; an error when the mode does not run at `tick_hz`,
-    /// when `slots` plans none or more than the mode's teams have, and for a visibility the mode
-    /// does not admit.
-    pub fn terms(
-        &self,
-        server_key: XOnlyPublicKey,
-        seed_commitment: SeedCommitment,
-        tick_hz: NonZeroU32,
-        rules: InputRules,
-        slots: impl IntoIterator<Item = SlotPlan>,
-        visibility: &Visibility,
-    ) -> Result<SessionTerms, TermsError> {
+    /// The terms of a session by these rules and the host's `choices`; an error when the mode
+    /// does not run at their tick rate, when they plan no slot or more than the mode's teams
+    /// have, and for a visibility the mode does not admit.
+    pub fn terms(&self, choices: HostChoices<'_>) -> Result<SessionTerms, TermsError> {
+        let HostChoices {
+            server_key,
+            seed_commitment,
+            tick_hz,
+            inputs,
+            slots,
+            visibility,
+        } = choices;
         let terms = SessionTerms {
             server_key,
             tick_hz,
-            inputs: rules,
+            inputs,
             seed_commitment,
             release: Version::ENGINE,
             mode: self.mode,
             map: self.map.clone(),
             dependencies: self.dependencies.to_vec(),
-            slots: slots.into_iter().collect(),
+            slots,
             visibility: visibility.encode(),
         };
         self.check(&terms)?;

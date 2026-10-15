@@ -8,7 +8,7 @@ use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
-use campfire_runner::{Session, SessionWorld};
+use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
 use campfire_sim::StateRegistry;
 use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
@@ -243,11 +243,23 @@ impl RestoredSession {
                 StateRegistry::MAX_SNAPSHOT_LEN,
             )
             .map_err(RestoreMatchError::ReadSnapshot)?;
-            Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
-                .map_err(RestoreMatchError::Resume)?;
+            let source = SessionSource {
+                log: log.rewound(),
+                seeds,
+                packages,
+            };
+            let at = ResumeAt {
+                segment,
+                snapshot: &snapshot,
+            };
+            Session::resume(world, source, at).map_err(RestoreMatchError::Resume)?;
         } else {
-            Session::start(world, log.rewound(), seeds, packages)
-                .map_err(RestoreMatchError::Start)?;
+            let source = SessionSource {
+                log: log.rewound(),
+                seeds,
+                packages,
+            };
+            Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
         world.insert_resource(JournalWatch(journal.watch()));
         world.session_mut().resume_journal(Box::new(journal));

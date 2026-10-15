@@ -5,7 +5,6 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
-use campfire_package::ModePackages;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerInput,
     RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult,
@@ -18,10 +17,12 @@ use crate::match_build::MatchBuild;
 use crate::session::error::{
     CheckpointBeginError, ResumeError, ServerInputRefused, SnapshotCheckError, StartError,
 };
+use crate::session::session_source::{ResumeAt, SessionSource};
 use crate::session_rules::SessionRules;
 use crate::slot_rules::SlotRules;
 
 pub(crate) mod error;
+pub(crate) mod session_source;
 pub(crate) mod session_world;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
@@ -45,16 +46,19 @@ pub struct Session {
 }
 
 impl Session {
-    /// Builds the match of `log`'s header in `world`, of the mode `packages` holds, at the
-    /// header's tick rate and with the randomness of `segment`'s seed; the session of `log`,
-    /// drawing from `segment`. An error as `start` gives one, but for the mode's start.
+    /// Builds the match of `source`'s log's header in `world`, of the mode its packages hold, at
+    /// the header's tick rate and with the randomness of `segment`'s seed; the session of the
+    /// log, drawing from `segment`. An error as `start` gives one, but for the mode's start.
     fn build(
         world: &mut World,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
+        source: SessionSource<'_>,
         segment: u32,
     ) -> Result<Session, StartError> {
+        let SessionSource {
+            log,
+            seeds,
+            packages,
+        } = source;
         let header = log.header();
         let visibility = SessionRules::of(packages)
             .check(&header.terms)
@@ -78,7 +82,7 @@ impl Session {
         let rate = TickRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out_view(visibility.out());
         Release::build(world, spec);
-        MatchBuild::install_mode(packages, world, players);
+        MatchBuild::install_mode(world, packages, players);
         let saves = packages.data().saves;
         let autosave = saves.autosave_ms.map(|ms| {
             rate.ticks(NonZeroU64::from(ms).get())
@@ -252,89 +256,71 @@ impl Session {
         &self.log
     }
 
-    /// Prepares the world, a new one, for the match of `log`'s header, of the mode `packages`
-    /// holds, at the header's tick rate and with the randomness of the first segment's seed of
-    /// `seeds` and the players' contributions; starts the match; and inserts the session, which
-    /// records into `log` from its first tick. An error when the terms name another release,
-    /// mode or dependencies than this release and `packages`, a tick rate outside the mode's
-    /// range, or more slots than the mode's teams have, when `seeds` are not the seeds of the
-    /// chain the header commits to or do not reach the last segment of `log`, when a change of
-    /// a slot's controller the log holds, as a published log replayed does, breaks the mode's
-    /// `[players]`, or when the packages do not load into the match.
-    pub fn start(
-        world: &mut World,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-    ) -> Result<(), StartError> {
+    /// Prepares the world, a new one, for the match of `source`'s log's header, of the mode its
+    /// packages hold, at the header's tick rate and with the randomness of the first segment's
+    /// seed of its seeds and the players' contributions; starts the match; and inserts the
+    /// session, which records into the log from its first tick. An error when the terms name
+    /// another release, mode or dependencies than this release and the packages, a tick rate
+    /// outside the mode's range, or more slots than the mode's teams have, when the seeds are not
+    /// those of the chain the header commits to or do not reach the log's last segment, when a
+    /// change of a slot's controller the log holds, as a published log replayed does, breaks the
+    /// mode's `[players]`, or when the packages do not load into the match.
+    pub fn start(world: &mut World, source: SessionSource<'_>) -> Result<(), StartError> {
         assert_eq!(
-            log.next_tick(),
+            source.log.next_tick(),
             Tick::new(0),
             "a session starts before its first tick"
         );
-        let session = Session::build(world, log, seeds, packages, 0)?;
+        let session = Session::build(world, source, 0)?;
         Mode::start(world).map_err(StartError::MatchStart)?;
         world.insert_resource(session);
         Ok(())
     }
 
-    /// Prepares the world, a new one, for the match of `log`, rewound to replay its ticks, from
-    /// the checkpoint of it that starts `segment`, as a restore does: builds the match as
-    /// `Session::start` does, but starts no mode, as the state is the checkpoint's `snapshot`;
-    /// and seals the log's ticks before the checkpoint without running them, so the next tick
-    /// the session runs is the checkpoint's. An error as `Session::start` gives one, and when the
-    /// log holds no such checkpoint, when `snapshot` is not the one the checkpoint
-    /// fingerprints, when it does not restore, or restores to another state hash than the
-    /// checkpoint's.
+    /// Prepares the world, a new one, for the match of `source`, its log rewound to replay its
+    /// ticks, from the checkpoint `at`, as a restore does: builds the match as `Session::start`
+    /// does, but starts no mode, as the state is the checkpoint's snapshot; and seals the log's
+    /// ticks before the checkpoint without running them, so the next tick the session runs is
+    /// the checkpoint's. An error as `Session::start` gives one, and when the log holds no such
+    /// checkpoint, when the snapshot is not the one the checkpoint fingerprints, when it does not
+    /// restore, or restores to another state hash than the checkpoint's.
     pub fn resume(
         world: &mut World,
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-        segment: u32,
-        snapshot: &[u8],
+        source: SessionSource<'_>,
+        at: ResumeAt<'_>,
     ) -> Result<(), ResumeError> {
         assert_eq!(
-            log.next_tick(),
+            source.log.next_tick(),
             Tick::new(0),
             "a resumed log replays from its first tick"
         );
-        let record = log
+        let record = source
+            .log
             .checkpoints()
-            .find(|record| record.segment == segment)
+            .find(|record| record.segment == at.segment)
             .ok_or(ResumeError::NoCheckpoint)?
             .clone();
-        let mut session =
-            Session::build(world, log, seeds, packages, segment).map_err(ResumeError::Start)?;
-        Session::restore_checked(world, &record, snapshot).map_err(ResumeError::Snapshot)?;
+        let mut session = Session::build(world, source, at.segment).map_err(ResumeError::Start)?;
+        Session::restore_checked(world, &record, at.snapshot).map_err(ResumeError::Snapshot)?;
         session.log.seal_until(record.tick);
         world.insert_resource(session);
         Ok(())
     }
 
-    /// The match of `log` in a world of its own, as a verifier replays a log in: no network layer,
-    /// and nothing but the session drives its ticks; started as `Session::start` starts it.
-    pub fn start_match(
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-    ) -> Result<Match, StartError> {
+    /// The match of `source` in a world of its own, as a verifier replays a log in: no network
+    /// layer, and nothing but the session drives its ticks; started as `Session::start` starts
+    /// it.
+    pub fn start_match(source: SessionSource<'_>) -> Result<Match, StartError> {
         let mut world = World::new();
-        Session::start(&mut world, log, seeds, packages)?;
+        Session::start(&mut world, source)?;
         Ok(Match::from_built(world))
     }
 
-    /// The match of `log` in a world of its own, resumed from the checkpoint that starts
-    /// `segment`, as `Session::resume` resumes it.
-    pub fn resume_match(
-        log: SessionLog,
-        seeds: ServerSeeds,
-        packages: &ModePackages,
-        segment: u32,
-        snapshot: &[u8],
-    ) -> Result<Match, ResumeError> {
+    /// The match of `source` in a world of its own, resumed from the checkpoint `at`, as
+    /// `Session::resume` resumes it.
+    pub fn resume_match(source: SessionSource<'_>, at: ResumeAt<'_>) -> Result<Match, ResumeError> {
         let mut world = World::new();
-        Session::resume(&mut world, log, seeds, packages, segment, snapshot)?;
+        Session::resume(&mut world, source, at)?;
         Ok(Match::from_built(world))
     }
 }
@@ -346,23 +332,28 @@ pub(crate) mod internals {
 
     use crate::session::Session;
     use crate::session::error::ResumeError;
+    use crate::session::session_source::{ResumeAt, SessionSource};
 
     impl Session {
-        /// Loads into `game`, a session's match, the save that starts segment `segment`, whose
-        /// snapshot is `snapshot`: the log goes back to it, as `SessionLog::load` says, and the
-        /// match of the mode `packages` holds resumes from it, as `resume_match` does.
+        /// Loads into `game`, a session's match of the mode `packages` holds, the save `at`: the
+        /// log goes back to it, as `SessionLog::load` says, and the match resumes from it, as
+        /// `resume_match` does.
         pub fn load_save(
             mut game: Match,
-            segment: u32,
-            snapshot: &[u8],
             packages: &ModePackages,
+            at: ResumeAt<'_>,
         ) -> Result<Match, ResumeError> {
             let session = game
                 .remove_resource::<Session>()
                 .expect("a session's match holds its session");
             let (mut log, seeds) = (session.log, session.seeds);
-            log.load(segment).map_err(ResumeError::Load)?;
-            Session::resume_match(log.rewound(), seeds, packages, segment, snapshot)
+            log.load(at.segment).map_err(ResumeError::Load)?;
+            let source = SessionSource {
+                log: log.rewound(),
+                seeds,
+                packages,
+            };
+            Session::resume_match(source, at)
         }
     }
 }

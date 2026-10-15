@@ -13,8 +13,8 @@ use campfire_protocol::{
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 
 use crate::fixed_session::fixed_match::FixedMatch;
-use campfire_runner::Session;
 use campfire_runner::SessionRules;
+use campfire_runner::{HostChoices, Session, SessionSource};
 
 pub(crate) mod fixed_match;
 
@@ -68,14 +68,14 @@ impl FixedSession {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
         let terms = session_rules
-            .terms(
-                server_key(),
-                SEED_CHAIN.commitment(),
+            .terms(HostChoices {
+                server_key: server_key(),
+                seed_commitment: SEED_CHAIN.commitment(),
                 tick_hz,
-                rules,
-                plan,
+                inputs: rules,
+                slots: plan.into_iter().collect(),
                 visibility,
-            )
+            })
             .unwrap();
         FixedSession { packages, terms }
     }
@@ -133,7 +133,12 @@ impl FixedSession {
             .iter()
             .map(|keys| keys.session)
             .collect();
-        let game = Session::start_match(self.log(), FixedSession::seeds(), &self.packages).unwrap();
+        let source = SessionSource {
+            log: self.log(),
+            seeds: FixedSession::seeds(),
+            packages: &self.packages,
+        };
+        let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, session_keys, self.terms.clone(), log)
     }
 

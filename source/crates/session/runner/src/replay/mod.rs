@@ -9,6 +9,7 @@ use crate::match_build::MatchBuild;
 use crate::replay::error::ReplayError;
 use crate::session::Session;
 use crate::session::error::{SnapshotCheckError, StartError};
+use crate::session::session_source::SessionSource;
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -36,7 +37,11 @@ impl<'p> Replay<'p> {
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Session::start_match(published.rewound(), seeds, packages)?,
+            game: Session::start_match(SessionSource {
+                log: published.rewound(),
+                seeds,
+                packages,
+            })?,
             packages,
             ticks,
         })

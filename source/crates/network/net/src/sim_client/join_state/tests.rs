@@ -4,7 +4,7 @@ use campfire_common::{Fingerprint, TlsKey, Version};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{ConnectChallenge, InputHash, MainKey, Receipt, SeedChain, SlotPlan};
-use campfire_runner::TermsError;
+use campfire_runner::{HostChoices, TermsError};
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
@@ -55,14 +55,14 @@ fn signer() -> Signer {
 fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
     let rules = lane_rules();
     let mut terms = rules
-        .terms(
-            x_only(8),
-            SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
-            TICK_HZ,
-            InputRules::LAN,
-            [SlotPlan::Player; 2],
-            rules.visibility().settings(),
-        )
+        .terms(HostChoices {
+            server_key: x_only(8),
+            seed_commitment: SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
+            tick_hz: TICK_HZ,
+            inputs: InputRules::LAN,
+            slots: vec![SlotPlan::Player; 2],
+            visibility: rules.visibility().settings(),
+        })
         .unwrap();
     change(&mut terms);
     Offer {
