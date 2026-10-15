@@ -1,3 +1,7 @@
+use std::error::Error;
+use std::fmt;
+
+use campfire_math::Num;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 
@@ -22,3 +26,16 @@ impl CapabilityRefusal for ProductionRefusal {
         }
     }
 }
+
+/// A producer's point, `[x, z]`, with a coordinate past `Position::BOUND`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PointPastBound(pub [Num; 2]);
+
+impl fmt::Display for PointPastBound {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let [x, z] = self.0;
+        write!(f, "[{x}, {z}] lies past 2²⁰ m of its producer")
+    }
+}
+
+impl Error for PointPastBound {}

@@ -66,6 +66,30 @@ pub(super) const fn pi_bits(frac_bits: u32) -> i64 {
     Num::from_wide_bits(rounded.cast_signed()).to_bits()
 }
 
+impl SinCos {
+    /// The sine and the cosine of `angle` degrees: exact at each multiple of 90°, and else those
+    /// `Num::sin_cos` gives of its radians, the angle taken modulo 360° first, so a turn by any
+    /// whole number of turns more turns alike.
+    pub fn of_degrees(angle: Num) -> SinCos {
+        const FULL: i64 = 360 << Num::FRAC_BITS;
+        const QUARTER: i64 = 90 << Num::FRAC_BITS;
+        let degrees = angle.to_bits().rem_euclid(FULL);
+        if degrees % QUARTER == 0 {
+            let [sin, cos] = match degrees / QUARTER {
+                0 => [Num::ZERO, Num::ONE],
+                1 => [Num::ONE, Num::ZERO],
+                2 => [Num::ZERO, -Num::ONE],
+                _ => [-Num::ONE, Num::ZERO],
+            };
+            return SinCos { sin, cos };
+        }
+        let radians = Num::from_bits(degrees)
+            .checked_mul_div_int(Num::PI, 180)
+            .expect("an angle below 360° fits in radians");
+        radians.sin_cos()
+    }
+}
+
 pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let x = angle.to_bits();
     // The nearest quadrant count. Off by one near a quadrant boundary, it only moves the

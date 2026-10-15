@@ -21,7 +21,7 @@ pub struct ProductionApi;
 impl ProductionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.action_fields(ActionDataField::of(Some(Capability::Production)))
-            .data::<ProductionData>(&["queue"], &[])
+            .data::<ProductionData>(&["queue", "exit", "rally"], &[])
             .data::<SupplyData>(&["cost", "provides"], &[])
             .shared_data(DataTable::Mode, &["supply"], &[])
             .shared_data(

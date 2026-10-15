@@ -1,3 +1,4 @@
+use campfire_actions::BuildStart;
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker, Wall};
@@ -41,9 +42,10 @@ fn share(text: &str) -> Share {
         .share
 }
 
-/// How a yard's build grows and where it places.
+/// How a yard's build starts, how it grows and where it places.
 #[derive(Debug, Clone)]
 struct Rules<'a> {
+    start: BuildStart,
     style: Style<'a>,
     near: Vec<PlacementCheck>,
     away: Vec<PlacementCheck>,
@@ -53,6 +55,7 @@ struct Rules<'a> {
 impl<'a> Rules<'a> {
     const fn of(style: Style<'a>) -> Rules<'a> {
         Rules {
+            start: BuildStart::Arrival,
             style,
             near: Vec::new(),
             away: Vec::new(),
@@ -102,6 +105,7 @@ impl Yard {
         let mut builds = BuildBook::default();
         let new = NewBuild {
             form,
+            start: rules.start,
             style: rules.style,
             start_life: Some(share("0.1")),
             refund: share("0.5"),
@@ -182,6 +186,59 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
     assert_eq!(shop.gold(&game), 85);
     assert_eq!(Production::order_of(&game, builder), None);
     assert_eq!(game.part::<Position>(builder).get(), halves(-6, 0));
+}
+
+#[test]
+fn an_order_build_pays_and_places_its_site_as_it_applies_and_its_builder_walks_to_build_it() {
+    // A builder at (−10, 0) builds at the origin as the order applies, in tick 0: it pays 15 gold
+    // and the site spawns at 10 of its 100 life, 6.5 m from its range, and its order turns to the
+    // site. It stands that tick, then walks a meter a tick round the site's box, which now
+    // blocks its cells, and comes in range in tick 7, so the Mode stage adds a tick of progress;
+    // with three more the site completes in tick 10, and the builder's order ends.
+    let mut game = ordering_match();
+    let shop = Shop::place(&mut game);
+    let rules = Rules {
+        start: BuildStart::Order,
+        ..Rules::of(Style::Builder)
+    };
+    let yard = Yard::place(&mut game, shop, rules);
+    let builder = yard.builder(&mut game, halves(-20, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
+    assert_eq!(shop.gold(&game), 85);
+    assert_eq!(
+        Production::site(&game, depot),
+        (Num::int(10), Some(Num::ZERO))
+    );
+    assert_eq!(
+        Production::order_of(&game, builder),
+        Some(BuildTarget::Site(depot))
+    );
+    assert_eq!(game.part::<Position>(builder).get(), halves(-20, 0));
+    for tick in 1..10 {
+        game.step();
+        let progress = (tick >= 7).then(|| Num::int(tick - 6));
+        assert_eq!(
+            Production::site(&game, depot).1,
+            progress.or(Some(Num::ZERO)),
+            "tick {tick}"
+        );
+    }
+    game.step();
+    assert_eq!(
+        Production::site(&game, depot),
+        (Num::int(100), None),
+        "tick 10"
+    );
+    assert_eq!(Production::order_of(&game, builder), None);
+    assert_eq!(shop.gold(&game), 85);
+
+    // A build whose box runs past the bounds is refused as its order applies: it ends, pays
+    // nothing and places nothing.
+    let builder = yard.builder(&mut game, halves(-20, 10), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 19, 5);
+    assert_eq!(Production::order_of(&game, builder), None);
+    assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
 }
 
 #[test]

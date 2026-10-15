@@ -81,7 +81,7 @@ impl BodyBox {
         if square(width) + square(height) > square(BodyBox::MAX_DIAGONAL) {
             return None;
         }
-        let SinCos { sin, cos } = BodyBox::turn(angle);
+        let SinCos { sin, cos } = SinCos::of_degrees(angle);
         let half = |size: Num, by: Num| {
             size.checked_mul_div_int(by, 2)
                 .expect("half a size within 4,094 m times at most 1 fits")
@@ -113,37 +113,6 @@ impl BodyBox {
         let farthest = (a + b).length_squared().max((a - b).length_squared());
         let bound = Num::from_bits(i64::try_from(farthest.ceil_root()).ok()?);
         (bound <= MAX_BOUND).then_some(BodyBox { half, bound })
-    }
-
-    /// The sine and the cosine of `angle` degrees, exact at each multiple of 90°.
-    fn turn(angle: Num) -> SinCos {
-        const FULL: i64 = 360 << Num::FRAC_BITS;
-        const QUARTER: i64 = 90 << Num::FRAC_BITS;
-        let degrees = angle.to_bits().rem_euclid(FULL);
-        if degrees % QUARTER == 0 {
-            return match degrees / QUARTER {
-                0 => SinCos {
-                    sin: Num::ZERO,
-                    cos: Num::ONE,
-                },
-                1 => SinCos {
-                    sin: Num::ONE,
-                    cos: Num::ZERO,
-                },
-                2 => SinCos {
-                    sin: Num::ZERO,
-                    cos: -Num::ONE,
-                },
-                _ => SinCos {
-                    sin: -Num::ONE,
-                    cos: Num::ZERO,
-                },
-            };
-        }
-        let radians = Num::from_bits(degrees)
-            .checked_mul_div_int(Num::PI, 180)
-            .expect("an angle below 360° fits in radians");
-        radians.sin_cos()
     }
 
     pub const fn half_edges(&self) -> [[Num; 2]; 2] {

@@ -20,21 +20,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.
 
-## 2. Production's start and exit
+## 2. Zero Hour's trains and builds
 
-`production`; `docs/design/04-capabilities/production.md`. It stands before batch 3, as the import writes what it adds.
-
-### P1. A build may start as it is ordered
-
-(`production`: `construction`, `build_book`, `builder`; design 18, D1.) A `build` action gains `start`, `"arrival"` by default or `"order"`. An order build starts in Act of the tick its order applies, wherever its builder stands: it passes its checks, pays, goes on cooldown, spawns its site, and turns its order to the site, which its builder walks to and builds. A start that fails ends the order and pays nothing. [Construction](docs/design/04-capabilities/production.md#construction) and its Data gain the rule. Check: an order build far from its builder pays and spawns its site in the tick it applies, and its builder walks to it and completes it; one whose placement fails ends and pays nothing; an arrival build is unchanged, and the goldens do not move.
-
-### P2. A producer names its exit and its default rally point
-
-(`production`: `production_data`, `trains`; design 18, D2.) `production` gains `exit` and `rally`, `[x, z]` in the producer's frame, turned with it. A trained unit spawns at the free cell nearest the exit point; with no rally point set it walks to the default one. [Train queues](docs/design/04-capabilities/production.md#train-queues) and its Data gain the rule. Check: a producer turned 90° spawns its unit at the cell nearest its turned exit, computed by hand, which walks to the turned default rally point, and to the player's rally point once one is set; a producer of neither is unchanged.
-
-## 3. Zero Hour's trains and builds
-
-`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`; `actions`'s load. It needs P1 and P2.
+`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`; `actions`'s load. It writes the build start and the exit points production now takes.
 
 ### P3. The load names every train and build
 
@@ -48,7 +36,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`checks/zero-hour-check`; design 18's checks.) The check pins the counts of trains, builds and dropped buttons by cause, and plays on Tournament Desert the command center's dozer, the dozer's barracks and the barracks' ranger, each paid from 10,000 and done in its ticks. Check: `./drive.py zero-hour` passes.
 
-## 4. The command panel
+## 3. The command panel
 
 `client`: a new `command_panel`, `orders`, `pointer`, `view`. It needs P4 to be played.
 

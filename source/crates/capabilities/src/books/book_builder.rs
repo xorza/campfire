@@ -636,6 +636,7 @@ impl<'a> BookBuilder<'a> {
         }
         let build = NewBuild {
             form,
+            start: data.start.unwrap_or_default(),
             style,
             start_life,
             refund: data.cancel_refund.unwrap_or(Share::ALL),

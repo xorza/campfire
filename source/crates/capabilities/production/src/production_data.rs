@@ -5,11 +5,17 @@ use campfire_script::{DataSection, DataTable};
 use campfire_sim::Capability;
 use serde::Deserialize;
 
-/// A unit type's `production` section: the most entries its train queue holds.
+use crate::frame_point::FramePoint;
+
+/// A unit type's `production` section: the most entries its train queue holds; where its
+/// trained units come out, and where they go with no rally point set, each in its own frame
+/// (design 18, D2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProductionData {
     pub queue: NonZeroU8,
+    pub exit: Option<FramePoint>,
+    pub rally: Option<FramePoint>,
 }
 
 impl PerType for ProductionData {

@@ -2,7 +2,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, KindSpec, Purse, SlotAim, SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, KindSpec, Purse, SlotAim,
+    SlotTimes,
 };
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
@@ -237,10 +238,12 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         })
     }
 
-    /// What the builder of `entity` does with its order this tick: out of range of its target's
-    /// box, it walks to the box's point nearest it, unless it arrived short of that point,
-    /// which ends the order; in range, a point's build starts when it passes its checks, by
-    /// `held`, and ends else; a builder of a site builds when the site takes it.
+    /// What the builder of `entity` does with its order this tick: a point's build that starts
+    /// as it is ordered starts, wherever its builder stands, when it passes its checks, by
+    /// `held`, and ends else; out of range of its target's box, the builder walks to the box's
+    /// point nearest it, unless it arrived short of that point, which ends the order; in range,
+    /// a point's build starts when it passes its checks, and ends else; a builder of a site
+    /// builds when the site takes it.
     pub(crate) fn step(&self, entity: Entity, held: &[Held]) -> Step {
         let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, arrived, _)) =
             self.builders.get(entity)
@@ -253,6 +256,14 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let Some(building) = self.building(slots, order.slot) else {
             return Step::End;
         };
+        // An order build starts as its order applies, wherever its builder stands, and its
+        // builder then walks to the site.
+        if let (BuildTarget::Point { .. }, BuildStart::Order) = (order.target, building.spec.start)
+        {
+            return self
+                .start(entity, order, held)
+                .map_or(Step::End, Step::Start);
+        }
         let Some(placed) = self.placed(building, from.get(), owner, order.target) else {
             return Step::End;
         };
