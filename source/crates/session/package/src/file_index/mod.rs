@@ -72,10 +72,8 @@ impl FileIndex {
     /// rows in strict order of their paths' bytes, each a package path, none the index's own, of
     /// a file no larger than `MAX_FILE_LEN`, and no two that differ only in case.
     pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
-        let list = bytes
-            .strip_prefix(INDEX_TAG)
-            .ok_or(ContentError::IndexTag)?;
-        let wire: Vec<WireRow<'_>> = Binary::decode(list).map_err(ContentError::IndexDecode)?;
+        let wire: Vec<WireRow<'_>> =
+            Binary::decode_tagged(INDEX_TAG, bytes).map_err(ContentError::Index)?;
         let mut rows = BTreeMap::new();
         let mut previous: Option<&str> = None;
         for row in &wire {
@@ -127,8 +125,8 @@ impl FileIndex {
                 sha256: row.sha256,
             })
             .collect();
-        let mut bytes = INDEX_TAG.to_vec();
-        Binary::encode_into(&wire, &mut bytes);
+        let mut bytes = Vec::new();
+        Binary::encode_tagged(INDEX_TAG, &wire, &mut bytes);
         bytes
     }
 

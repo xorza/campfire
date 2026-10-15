@@ -71,6 +71,13 @@ pos = [3, "-2.5"]
 height = 1
 angle = 90
 "#;
+    let looks = Toml::parse::<ClientUnits>(
+        r#"[units.lamp]
+models = [{ model = "client/models/lamp.glb" }]
+variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb" }] }]
+"#,
+    )
+    .unwrap();
     let map = MapName::new("desert").unwrap();
     let mode = package(
         &scratch,
@@ -78,19 +85,30 @@ angle = 90
         &[
             ("client/maps/desert/lights.toml", lights),
             ("client/maps/desert/objects.toml", objects),
+            (
+                "client/maps/desert/conditions.toml",
+                b"conditions = [\"night\"]",
+            ),
         ],
     );
-    let mut data = ClientData::default();
+    let mut data = ClientData {
+        units: vec![looks.clone()],
+        ..ClientData::default()
+    };
     data.read_map(&mode, &map);
-    // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°.
+    // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°. A night map: the lamp
+    // draws its night models, and keeps no variant.
     assert_eq!(data.lights.unwrap().lights.len(), 1);
+    let lamp = &data.units[0].units["lamp"];
+    assert_eq!(lamp.models[0].model.as_str(), "client/models/lit.glb");
+    assert!(lamp.variants.is_empty());
     let oak = &data.objects.objects[0];
     assert_eq!(data.objects.objects.len(), 1);
     assert_eq!(oak.look.as_str(), "oak");
     assert_eq!(oak.pos, [Num::int(3), Num::int(-5) / Num::int(2)]);
     assert_eq!((oak.height, oak.angle), (Num::ONE, Num::int(90)));
     // A map of no objects file has none, as one whose file does not read; no heights or
-    // camera file gives none either.
+    // camera file gives none either. No conditions file: the lamp draws its own models.
     let broken = package(
         &scratch,
         "broken",
@@ -100,8 +118,13 @@ angle = 90
         )],
     );
     for files in [package(&scratch, "bare", &[]), broken] {
-        let mut data = ClientData::default();
+        let mut data = ClientData {
+            units: vec![looks.clone()],
+            ..ClientData::default()
+        };
         data.read_map(&files, &map);
+        let lamp = &data.units[0].units["lamp"];
+        assert_eq!(lamp.models[0].model.as_str(), "client/models/lamp.glb");
         assert!(data.objects.objects.is_empty());
         assert!(data.lights.is_none() && data.camera.is_none() && data.heights.is_none());
     }

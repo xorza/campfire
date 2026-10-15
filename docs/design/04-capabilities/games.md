@@ -35,5 +35,5 @@ A battle royale's shrinking zone is an area unit that damages, through a modifie
 
 - **Unit counts:** a large Zero Hour battle, eight armies at 30 Hz, must fit the tick budget and the bandwidth; the kernel benches measure 1,000 units ([Benches](../02-engine-core.md#benches)). The server sends only what each group sees.
 - **Rhai's speed:** the modules only Zero Hour has run as Rhai; their cost at a battle's scale is measured before the rules package grows.
-- **Parity:** a difference a player notices, in the pathfinder, a locomotor or a formula, shows only where the oracle's replays reach it.
+- **Parity:** a difference a player notices, in the pathfinder, a locomotor or a formula, shows only where a player meets it, as no test plays the original ([Zero Hour](../12-zero-hour.md#decisions), D5).
 - **No copy in CI:** an imported package exists only on a machine that holds the game.

@@ -11,6 +11,7 @@ campfire-capabilities.workspace = true
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-interaction.workspace = true
 campfire-items.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true

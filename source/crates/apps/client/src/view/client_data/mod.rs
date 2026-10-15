@@ -5,7 +5,8 @@ use std::sync::Arc;
 use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, HeightGrid, MapLights, MaterialFile, TerrainFile,
+    CameraFile, ClientObjects, ClientUnits, HeightGrid, MapConditions, MapLights, MaterialFile,
+    TerrainFile,
 };
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
@@ -69,7 +70,8 @@ impl ClientData {
     }
 
     /// Reads the mode's own package's files of `map`: its heights and its terrain over them, the
-    /// camera, the map's lights and its client objects.
+    /// camera, the map's lights and its client objects; and its conditions, by which each look
+    /// takes its variant.
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         let heights = format!("map/{map}/heights.bin");
         let heights = PackagePath::parse(&heights).expect("a map's name is a package path's");
@@ -92,6 +94,16 @@ impl ClientData {
         self.lights = ClientData::toml(mode, &MapLights::path(map.as_str()), Toml::parse);
         let objects = ClientObjects::path(map.as_str());
         self.objects = ClientData::toml(mode, &objects, Toml::parse).unwrap_or_default();
+        // The map's conditions are fixed for the match, so each look takes its variant once.
+        let conditions = MapConditions::path(map.as_str());
+        let conditions = ClientData::toml::<MapConditions>(mode, &conditions, Toml::parse)
+            .unwrap_or_default()
+            .conditions;
+        for units in &mut self.units {
+            for look in units.units.values_mut().chain(units.objects.values_mut()) {
+                look.settle(&conditions);
+            }
+        }
     }
 
     fn read_package(&mut self, place: PackageIndex, files: &PackageReader) {

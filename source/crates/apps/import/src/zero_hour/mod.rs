@@ -3,8 +3,8 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
-    TerrainFile,
+    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, LookVariant, MapConditions,
+    MapLights, ModelScale, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
@@ -23,11 +23,12 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
 use crate::zero_hour::locomotor_ini::LocomotorIni;
+use crate::zero_hour::look_conditions::LookConditions;
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
-use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni, PlacedAs};
+use crate::zero_hour::object_ini::{DrawKind, DrawnState, ObjectIni, PlacedAs, StateLook};
 use crate::zero_hour::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::rules_package::{MODE_TEXT, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
@@ -51,6 +52,8 @@ pub(crate) mod imported_type;
 pub(crate) mod ini_text;
 pub(crate) mod install;
 pub(crate) mod locomotor_ini;
+pub(crate) mod look_conditions;
+pub(crate) mod map_dict;
 pub(crate) mod map_file;
 pub(crate) mod map_import;
 pub(crate) mod map_object;
@@ -193,6 +196,10 @@ impl<'a> ZeroHour<'a> {
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
             write(&format!("map/{name}/heights.bin"), &imported.heights)?;
             write(&TerrainFile::path(name.as_str()), &imported.terrain)?;
+            write(
+                &MapConditions::path(name.as_str()),
+                imported.conditions.as_bytes(),
+            )?;
             write(&MapLights::path(name.as_str()), imported.lights.as_bytes())?;
             write(
                 &ClientObjects::path(name.as_str()),
@@ -249,54 +256,87 @@ impl<'a> ZeroHour<'a> {
         names: &mut ImportNames,
     ) -> Result<ClientUnits, ZeroHourError> {
         let mut units = ClientUnits::default();
-        let unhidden = DefaultLook::default();
+        let shown = StateLook::default();
         for object in ini.objects() {
             let scale = object.scale();
             let draws = object.draws();
-            let entries =
-                ZeroHour::models(draws.iter().map(|draw| (draw, &draw.look)), scale, models)?;
-            if entries.is_empty() {
+            // A unit draws each module's best state, as its drawable does.
+            let unit = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
+            let unit_look = ZeroHour::look(unit, scale, models)?;
+            if unit_look.models.is_empty() {
                 continue;
             }
             let unit_type = names.take(object)?;
-            let drawn: Vec<&DrawModule> = match object.placed_as() {
+            // A tree draws its module's model whatever the map; a prop the model of its first
+            // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
+            let unhidden = |model| DrawnState {
+                model,
+                look: &shown,
+            };
+            let drawn = |conditions| match object.placed_as() {
                 PlacedAs::Bridge | PlacedAs::Unit => Vec::new(),
                 PlacedAs::Tree => draws
                     .iter()
                     .filter(|draw| draw.kind == DrawKind::Tree)
+                    .map(|draw| unhidden(draw.model.as_deref()))
                     .collect(),
                 PlacedAs::Prop => draws
                     .first()
                     .filter(|draw| draw.kind == DrawKind::Family)
+                    .map(|draw| unhidden(draw.drawn(conditions).model))
                     .into_iter()
                     .collect(),
             };
-            let drawn = drawn.into_iter().map(|draw| (draw, &unhidden));
-            let look = ZeroHour::models(drawn, scale, models)?;
-            if !look.is_empty() {
-                units
-                    .objects
-                    .insert(unit_type.declared(), ClientUnit { models: look });
+            let object_look = ZeroHour::look(drawn, scale, models)?;
+            if !object_look.models.is_empty() {
+                units.objects.insert(unit_type.declared(), object_look);
             }
-            units
-                .units
-                .insert(unit_type.declared(), ClientUnit { models: entries });
+            units.units.insert(unit_type.declared(), unit_look);
         }
         let text = Toml::write(&units);
         models.write("client/units.toml", text.as_bytes())?;
         Ok(units)
     }
 
-    /// The models of `draws`, each with the look whose hidden nodes it hides, at `scale`, of those
+    /// The look of what `drawn` draws on a map of each conditions, at `scale`: its models on a
+    /// map of none, and, when a night map, a snowy map or both draw other models, a variant for
+    /// each of the three, so the client's best match finds each one's own.
+    fn look<'d, I, W>(
+        drawn: impl Fn(LookConditions) -> I,
+        scale: ModelScale,
+        models: &mut ModelWriter<'_, W>,
+    ) -> Result<ClientUnit, ZeroHourError>
+    where
+        I: IntoIterator<Item = DrawnState<'d>>,
+        W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
+    {
+        let own = ZeroHour::models(drawn(LookConditions::default()), scale, models)?;
+        let mut variants = Vec::new();
+        for conditions in LookConditions::VARIANTS {
+            variants.push(LookVariant {
+                conditions: conditions.names(),
+                models: ZeroHour::models(drawn(conditions), scale, models)?,
+            });
+        }
+        if variants.iter().all(|variant| variant.models == own) {
+            variants.clear();
+        }
+        Ok(ClientUnit {
+            models: own,
+            variants,
+        })
+    }
+
+    /// The models of `drawn`, each with the look whose hidden nodes it hides, at `scale`, of those
     /// that draw one the package holds.
     fn models<'d, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
-        draws: impl IntoIterator<Item = (&'d DrawModule, &'d DefaultLook)>,
+        drawn: impl IntoIterator<Item = DrawnState<'d>>,
         scale: ModelScale,
         models: &mut ModelWriter<'_, W>,
     ) -> Result<Vec<ClientModel>, ZeroHourError> {
         let mut entries = Vec::new();
-        for (draw, look) in draws {
-            let Some(model) = &draw.model else {
+        for DrawnState { model, look } in drawn {
+            let Some(model) = model else {
                 continue;
             };
             let name = model.to_ascii_lowercase();
@@ -499,7 +539,12 @@ mod tests {
         );
         assert_eq!(
             scratch.names("one/game/client/maps/fixture_map"),
-            ["lights.toml", "objects.toml", "terrain.bin"]
+            [
+                "conditions.toml",
+                "lights.toml",
+                "objects.toml",
+                "terrain.bin"
+            ]
         );
         // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
         // texels; the other names none.
@@ -547,6 +592,10 @@ mod tests {
         assert_eq!(
             scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
             expected.objects
+        );
+        assert_eq!(
+            scratch.read_text("one/game/client/maps/fixture_map/conditions.toml"),
+            expected.conditions
         );
         // The units file holds the map's types and the start's, which the start's own reading
         // of the templates adds, as the import adds them.
@@ -685,14 +734,32 @@ mod tests {
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
         };
         let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
-        let unit = |models| ClientUnit { models };
+        let unit = ClientUnit::new;
         let looks = |looks: Vec<(&str, ClientUnit)>| {
             looks
                 .into_iter()
                 .map(|(name, unit)| (DeclaredName::new(name).unwrap(), unit))
                 .collect()
         };
-        let tank = || unit(vec![model("tank", &["tank.turret", "tank.flash"])]);
+        // The tank's night state shows its turret, and with it the flash below: a night map, and a
+        // night of snow, draw it whole; a snowy map its default, which the variant names too, so
+        // the client's best match finds each.
+        let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
+        let variant = |conditions: &[&str], models| LookVariant {
+            conditions: conditions
+                .iter()
+                .map(|condition| DeclaredName::new(condition).unwrap())
+                .collect(),
+            models,
+        };
+        let tank = || ClientUnit {
+            models: hidden(),
+            variants: vec![
+                variant(&["night"], vec![model("tank", &[])]),
+                variant(&["snow"], hidden()),
+                variant(&["night", "snow"], vec![model("tank", &[])]),
+            ],
+        };
         // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
         // look as a unit of both its models, and as the client's of its tree draw module's; the
         // fluff's as a unit of its hidden turret, with the flash below it, and as the client's of
@@ -700,7 +767,7 @@ mod tests {
         let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
         let expected = ClientUnits {
             units: looks(vec![
-                ("bush", tank()),
+                ("bush", unit(hidden())),
                 ("oak", unit(vec![model("tank", &[]), model("rock01", &[])])),
                 ("rock", rock()),
                 ("rockred", rock()),

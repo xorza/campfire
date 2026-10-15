@@ -62,8 +62,14 @@ Object Crossing
 End
 ";
 
+/// The draw modules of the object `name`, each of its default state alone.
 fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
-    ini.objects[name].draws().to_vec()
+    let default = |draw: &DrawModule| DrawModule {
+        model: draw.model.clone(),
+        look: draw.look.clone(),
+        ..DrawModule::new(draw.kind)
+    };
+    ini.objects[name].draws().iter().map(default).collect()
 }
 
 #[test]
@@ -95,15 +101,15 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     // changing the first in its place; its weapon bones, a bone `None` none; `Turret =
     // TurretBone` is a field, and the debris draw module names no model.
     let model = |model: &str, look| DrawModule {
-        kind: DrawKind::Family,
         model: Some(model.to_owned()),
         look,
+        ..DrawModule::new(DrawKind::Family)
     };
     let change = |name: &str, hide| HideShow {
         name: name.to_owned(),
         hide,
     };
-    let tank_look = DefaultLook {
+    let tank_look = StateLook {
         hide_show: vec![
             change("Turret", true),
             change("Barrel", true),
@@ -121,36 +127,28 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
             WeaponBones::default(),
         ],
     };
-    let tank = [
-        model("TANK", tank_look),
-        DrawModule {
-            kind: DrawKind::Other,
-            model: None,
-            look: DefaultLook::default(),
-        },
-    ];
+    let tank = [model("TANK", tank_look), DrawModule::new(DrawKind::Other)];
     assert_eq!(draws_of(&ini, "Tank"), tank);
     // A reskin of no draw module keeps its base's; one of its own keeps none of them, and its
     // `ShowSubObject = None` empties the list before `Hatch`.
     assert_eq!(draws_of(&ini, "TankCamo"), tank);
-    let red = DefaultLook {
+    let red = StateLook {
         hide_show: vec![change("Hatch", false)],
-        ..DefaultLook::default()
+        ..StateLook::default()
     };
     assert_eq!(draws_of(&ini, "TankRed"), [model("TANK", red)]);
     // The tree names its model by `ModelName`; the stump's `NONE` is no model; a first state
     // of no flag is the default.
     let tree = DrawModule {
-        kind: DrawKind::Tree,
         model: Some("PTOak01".to_owned()),
-        look: DefaultLook::default(),
+        ..DrawModule::new(DrawKind::Tree)
     };
     assert_eq!(draws_of(&ini, "Tree"), [tree]);
     let stump = draws_of(&ini, "Stump");
     assert_eq!((stump[0].kind, &stump[0].model), (DrawKind::Prop, &None));
     assert_eq!(
         draws_of(&ini, "Rock"),
-        [model("Rock01", DefaultLook::default())]
+        [model("Rock01", StateLook::default())]
     );
     // A template finds its object of its case alone, as `findTemplate` does.
     assert_eq!(
@@ -304,4 +302,80 @@ fn a_geometry_bounds_its_object_as_the_game_computes() {
     assert_eq!(bounds("Wide"), [6.0, 6.0]);
     assert_eq!(bounds("Ball"), [7.0, 7.0]);
     assert_eq!(bounds("Plain"), [1.0, 1.0]);
+}
+
+#[test]
+fn a_model_draws_the_state_that_best_matches_its_maps_conditions() {
+    let mut ini = ObjectIni::default();
+    let objects = "Object Barracks
+  Draw = W3DModelDraw ModuleTag_01
+    DefaultConditionState
+      Model = DAY
+      HideSubObject = Flag
+    End
+    ConditionState = NIGHT
+      Model = NIGHT
+    End
+    AliasConditionState = NIGHT DAMAGED
+    ConditionState = SNOW
+      Model = SNOW
+    End
+    ConditionState = NIGHT SNOW
+      Model = NIGHTSNOW
+    End
+    ConditionState = DAMAGED
+      Model = HURT
+    End
+  End
+End
+Object Lamp
+  Draw = W3DModelDraw ModuleTag_01
+    ConditionState = NONE
+      Model = LAMP
+    End
+    AliasConditionState = SNOW
+    ConditionState = NIGHT
+      Model = LAMPLIT
+    End
+    IgnoreConditionStates = NIGHT
+  End
+End
+";
+    ini.read(objects.as_bytes()).unwrap();
+    let at = |night, snow| LookConditions { night, snow };
+    let drawn = |name: &str, conditions| {
+        let draw = &ini.object(name.as_bytes()).unwrap().draws()[0];
+        let state = draw.drawn(conditions);
+        (state.model.map(str::to_owned), state.look.clone())
+    };
+    // A day map draws the default. At night the night state, of one flag in common and none the
+    // map lacks, before its alias with damage, of one and one; it starts as the default's copy,
+    // so it hides the flag too. Snow the snow state; both the state of both, of two in common.
+    let flag = StateLook {
+        hide_show: vec![HideShow {
+            name: "Flag".to_owned(),
+            hide: true,
+        }],
+        ..StateLook::default()
+    };
+    let barracks = |model: &str| (Some(model.to_owned()), flag.clone());
+    assert_eq!(drawn("Barracks", at(false, false)), barracks("DAY"));
+    assert_eq!(drawn("Barracks", at(true, false)), barracks("NIGHT"));
+    assert_eq!(drawn("Barracks", at(false, true)), barracks("SNOW"));
+    assert_eq!(drawn("Barracks", at(true, true)), barracks("NIGHTSNOW"));
+    // A lamp ignores the night, so it draws its default at night; its default's alias holds
+    // snow, so it draws its default in snow too.
+    let lamp = (Some("LAMP".to_owned()), StateLook::default());
+    for conditions in [at(true, false), at(false, true), at(true, true)] {
+        assert_eq!(drawn("Lamp", conditions), lamp, "{conditions:?}");
+    }
+
+    // A later state of a module with no `DefaultConditionState` copies nothing, so it must name
+    // its model; an alias needs a state before it.
+    let fails = |text: &str| ObjectIni::default().read(text.as_bytes()).unwrap_err();
+    let unnamed = "Object A\n Draw = W3DModelDraw M\n  ConditionState = NONE\n   Model = A\n  End\n  \
+                   ConditionState = NIGHT\n  End\n End\nEnd\n";
+    assert_eq!(fails(unnamed), IniError::NoModel { line: 7 });
+    let first = "Object A\n Draw = W3DModelDraw M\n  AliasConditionState = NIGHT\n End\nEnd\n";
+    assert_eq!(fails(first), IniError::FirstAlias { line: 3 });
 }

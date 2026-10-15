@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
-use campfire_sim::Position;
-
 use campfire_math::Num;
+use campfire_sim::Position;
 
 use crate::zero_hour::chunk_reader::ChunkReader;
 use crate::zero_hour::error::MapError;
+use crate::zero_hour::map_dict::{self, DictValue};
 
 /// An object of a map's `ObjectsList`, as `WorldHeightMap::ParseObjectData` reads it: its
 /// position, `z` above the ground, its angle in radians, its flags, its template's name, as
@@ -26,14 +26,6 @@ pub(crate) struct MapObject {
 pub(crate) struct Waypoint {
     pub(crate) id: i32,
     pub(crate) name: Vec<u8>,
-}
-
-/// A dictionary value the import reads, or one it skips.
-#[derive(Debug)]
-enum DictValue<'a> {
-    Int(i32),
-    Text(&'a [u8]),
-    Other,
 }
 
 /// An object placed on the ground plane: its `[x, z]`, its height above the ground, and its angle
@@ -86,29 +78,13 @@ impl MapObject {
         // a waypoint when its `waypointID` is an integer.
         let mut id = None;
         let mut name = None;
-        for _ in 0..body.u16()? {
-            let key_and_type = body.i32()?;
-            let key_id = (key_and_type >> 8).cast_unsigned();
-            let key = *names.get(&key_id).ok_or(MapError::UnknownName(key_id))?;
-            let value = match key_and_type.to_le_bytes()[0] {
-                0 => body.take(1).map(|_| DictValue::Other)?,
-                1 => DictValue::Int(body.i32()?),
-                2 => body.take(4).map(|_| DictValue::Other)?,
-                3 => DictValue::Text(body.text()?),
-                4 => {
-                    let len = body.u16()?;
-                    body.take(usize::from(len) * 2).map(|_| DictValue::Other)?
-                }
-                other => return Err(MapError::DictType(other)),
-            };
-            match (key, value) {
-                (b"waypointID", DictValue::Int(value)) => id = Some(value),
-                (b"waypointID", _) => id = None,
-                (b"waypointName", DictValue::Text(value)) => name = Some(value),
-                (b"waypointName", _) => name = None,
-                _ => {}
-            }
-        }
+        map_dict::read(body, names, |key, value| match (key, value) {
+            (b"waypointID", DictValue::Int(value)) => id = Some(value),
+            (b"waypointID", _) => id = None,
+            (b"waypointName", DictValue::Text(value)) => name = Some(value),
+            (b"waypointName", _) => name = None,
+            _ => {}
+        })?;
         Ok(MapObject {
             pos,
             angle,

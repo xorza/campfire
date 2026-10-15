@@ -1,4 +1,4 @@
-use campfire_codec::BinaryError;
+use campfire_codec::{BinaryError, TaggedError};
 
 use super::*;
 use crate::package_walk::PackageWalk;
@@ -85,7 +85,7 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     for bytes in [vec![0], [&b"campfire/package-index/v2"[..], &[0]].concat()] {
         assert!(matches!(
             FileIndex::decode(&bytes),
-            Err(ContentError::IndexTag)
+            Err(ContentError::Index(TaggedError::OtherTag))
         ));
     }
 
@@ -102,7 +102,7 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     for bytes in [vec![1], [&[1][..], &a[..5]].concat()].map(|list| tagged(&list)) {
         assert!(matches!(
             FileIndex::decode(&bytes),
-            Err(ContentError::IndexDecode(_))
+            Err(ContentError::Index(TaggedError::Value(_)))
         ));
     }
     // The count 0 as an overlong varint, and bytes past the list: not the one encoding, so one
@@ -110,7 +110,9 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     for bytes in [vec![0x80, 0x00], vec![0, 0]].map(|list| tagged(&list)) {
         assert!(matches!(
             FileIndex::decode(&bytes),
-            Err(ContentError::IndexDecode(BinaryError::NotCanonical))
+            Err(ContentError::Index(TaggedError::Value(
+                BinaryError::NotCanonical
+            )))
         ));
     }
     // A path no package names, the index's own path, and two that differ only in case.

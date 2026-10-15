@@ -5,6 +5,7 @@ use campfire_client_files::ModelScale;
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::ini_text::{FlagList, IniLine, IniText};
+use crate::zero_hour::look_conditions::LookConditions;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -79,17 +80,47 @@ pub(crate) enum PlacedAs {
 }
 
 /// A draw module: how it names its model, the model of its default state, if it draws one, and
-/// that state's look.
+/// that state's look; the sets of flags its default state is drawn for, none and its aliases';
+/// its other condition states, in order; and the map conditions it ignores
+/// (`IgnoreConditionStates`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
     pub(crate) model: Option<String>,
-    pub(crate) look: DefaultLook,
+    pub(crate) look: StateLook,
+    sets: Vec<ConditionSet>,
+    states: Vec<DrawState>,
+    ignored: LookConditions,
+}
+
+/// A condition state of a `W3DModelDraw` past its default: the sets of flags it is drawn for, its
+/// own and its aliases', and its model and look, which start as the default state's when the
+/// module has a `DefaultConditionState`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct DrawState {
+    sets: Vec<ConditionSet>,
+    model: Option<String>,
+    look: StateLook,
+}
+
+/// A set of a state's condition flags as the import counts them: whether it holds `NIGHT` and
+/// `SNOW`, and how many other flags.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct ConditionSet {
+    conditions: LookConditions,
+    others: usize,
+}
+
+/// The model and the look a draw module draws on a map of some conditions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DrawnState<'a> {
+    pub(crate) model: Option<&'a str>,
+    pub(crate) look: &'a StateLook,
 }
 
 /// What a default state hides and shows, and the bones of its weapons, by slot.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub(crate) struct DefaultLook {
+pub(crate) struct StateLook {
     pub(crate) hide_show: Vec<HideShow>,
     pub(crate) weapons: [WeaponBones; 3],
 }
@@ -186,13 +217,19 @@ const SLOTS: [&str; 3] = ["primary", "secondary", "tertiary"];
 #[derive(Debug)]
 enum Block {
     Object,
-    /// A draw module, with the count of its states begun.
+    /// A draw module, with the count of its states begun, and whether its first was a
+    /// `DefaultConditionState`, which every later state starts as a copy of.
     Draw {
         kind: DrawKind,
         states: u32,
+        copied: bool,
     },
     /// The first state of such a module, its default, and whether it named its model.
     DefaultState {
+        named: bool,
+    },
+    /// A later state of such a module, and whether it holds a model, its own or its copy's.
+    State {
         named: bool,
     },
     Other,
@@ -402,37 +439,131 @@ impl Geometry {
 }
 
 impl DrawModule {
-    /// A field of a default state that the look reads.
-    fn default_field(&mut self, word: &str, tokens: &[&str], line: usize) -> Result<(), IniError> {
-        match word {
-            "model" => self.model = ObjectIni::model(tokens),
-            "hidesubobject" | "showsubobject" => {
-                self.look.hide_show(&tokens[1..], word == "hidesubobject");
-            }
-            "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone" => {
-                let (Some(slot), Some(bone)) = (tokens.get(1), tokens.get(2)) else {
-                    return Err(IniError::WeaponSlot { line });
-                };
-                let slot = SLOTS
-                    .iter()
-                    .position(|known| slot.eq_ignore_ascii_case(known))
-                    .ok_or(IniError::WeaponSlot { line })?;
-                let bones = &mut self.look.weapons[slot];
-                let field = match word {
-                    "weaponfirefxbone" => &mut bones.fire_fx,
-                    "weaponrecoilbone" => &mut bones.recoil,
-                    "weaponmuzzleflash" => &mut bones.muzzle_flash,
-                    _ => &mut bones.launch,
-                };
-                *field = Some((*bone).to_owned()).filter(|bone| !bone.eq_ignore_ascii_case("none"));
-            }
-            _ => {}
+    /// A module of `kind`, of no state yet.
+    fn new(kind: DrawKind) -> DrawModule {
+        DrawModule {
+            kind,
+            model: None,
+            look: StateLook::default(),
+            sets: vec![ConditionSet::default()],
+            states: Vec::new(),
+            ignored: LookConditions::default(),
         }
-        Ok(())
+    }
+
+    /// The model and the look it draws on a map of `conditions`, those it ignores dropped: of
+    /// its state whose set of flags best matches them, as `SparseMatchFinder::findBestInfoSlow`
+    /// finds it: the set of the most flags in common, of a tie the one of the fewest the map
+    /// lacks, of a tie the first, the states in order, the default first.
+    pub(crate) fn drawn(&self, conditions: LookConditions) -> DrawnState<'_> {
+        let map = LookConditions {
+            night: conditions.night && !self.ignored.night,
+            snow: conditions.snow && !self.ignored.snow,
+        };
+        let default = DrawnState {
+            model: self.model.as_deref(),
+            look: &self.look,
+        };
+        let mut best = default;
+        let (mut most, mut fewest) = (0, usize::MAX);
+        let states = self.states.iter().map(|state| {
+            let drawn = DrawnState {
+                model: state.model.as_deref(),
+                look: &state.look,
+            };
+            (&state.sets, drawn)
+        });
+        for (sets, drawn) in std::iter::once((&self.sets, default)).chain(states) {
+            for set in sets {
+                let [night, snow] = [set.conditions.night, set.conditions.snow];
+                let common = usize::from(night && map.night) + usize::from(snow && map.snow);
+                let lacked =
+                    usize::from(night && !map.night) + usize::from(snow && !map.snow) + set.others;
+                if common > most || (common >= most && lacked < fewest) {
+                    (best, most, fewest) = (drawn, common, lacked);
+                }
+            }
+        }
+        best
+    }
+
+    /// A field of its default state that the look reads.
+    fn default_field(&mut self, word: &str, tokens: &[&str], line: usize) -> Result<(), IniError> {
+        state_field(&mut self.model, &mut self.look, word, tokens, line)
+    }
+
+    /// The state the reader is in past the default, its last.
+    fn last_state(&mut self) -> &mut DrawState {
+        self.states
+            .last_mut()
+            .expect("a state's block is in its module")
     }
 }
 
-impl DefaultLook {
+impl ConditionSet {
+    /// The set of flags of a state's line `at`, from its second token, as `ModelConditionFlags`
+    /// reads them: `NONE` none, a name of either case once however often it is named.
+    fn of(at: &IniLine<'_>) -> Result<ConditionSet, IniError> {
+        let names: Vec<&str> = match at.flags()? {
+            FlagList::Clear => Vec::new(),
+            FlagList::Only(names) => names,
+            FlagList::Change(changes) => changes
+                .into_iter()
+                .filter(|change| change.set)
+                .map(|change| change.name)
+                .collect(),
+        };
+        let mut flags: Vec<String> = names.iter().map(|name| name.to_ascii_lowercase()).collect();
+        flags.sort_unstable();
+        flags.dedup();
+        let mut set = ConditionSet::default();
+        for flag in &flags {
+            match flag.as_str() {
+                "night" => set.conditions.night = true,
+                "snow" => set.conditions.snow = true,
+                _ => set.others += 1,
+            }
+        }
+        Ok(set)
+    }
+}
+
+/// A field of a condition state that the look reads, into its `model` and `look`.
+fn state_field(
+    model: &mut Option<String>,
+    look: &mut StateLook,
+    word: &str,
+    tokens: &[&str],
+    line: usize,
+) -> Result<(), IniError> {
+    match word {
+        "model" => *model = ObjectIni::model(tokens),
+        "hidesubobject" | "showsubobject" => {
+            look.hide_show(&tokens[1..], word == "hidesubobject");
+        }
+        "weaponfirefxbone" | "weaponrecoilbone" | "weaponmuzzleflash" | "weaponlaunchbone" => {
+            let (Some(slot), Some(bone)) = (tokens.get(1), tokens.get(2)) else {
+                return Err(IniError::WeaponSlot { line });
+            };
+            let slot = SLOTS
+                .iter()
+                .position(|known| slot.eq_ignore_ascii_case(known))
+                .ok_or(IniError::WeaponSlot { line })?;
+            let bones = &mut look.weapons[slot];
+            let field = match word {
+                "weaponfirefxbone" => &mut bones.fire_fx,
+                "weaponrecoilbone" => &mut bones.recoil,
+                "weaponmuzzleflash" => &mut bones.muzzle_flash,
+                _ => &mut bones.launch,
+            };
+            *field = Some((*bone).to_owned()).filter(|bone| !bone.eq_ignore_ascii_case("none"));
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+impl StateLook {
     /// Hides or shows `names`, as `parseShowHideSubObject` does: `NONE` first empties the list,
     /// and a name the list holds keeps its place and takes the new change.
     fn hide_show(&mut self, names: &[&str], hide: bool) {
@@ -539,8 +670,12 @@ impl Reading {
                 Ok(None)
             }
             // `parseConditionState` requires each state to name its model, `NONE` or one.
-            Block::DefaultState { named: false } => Err(IniError::NoModel { line }),
-            Block::DefaultState { named: true } | Block::Other => Ok(None),
+            Block::DefaultState { named: false } | Block::State { named: false } => {
+                Err(IniError::NoModel { line })
+            }
+            Block::DefaultState { named: true } | Block::State { named: true } | Block::Other => {
+                Ok(None)
+            }
         }
     }
 
@@ -552,7 +687,11 @@ impl Reading {
             .last_mut()
             .expect("a line below the top level is in a block");
         match top {
-            Block::Draw { kind, states } => {
+            Block::Draw {
+                kind,
+                states,
+                copied,
+            } => {
                 let module = self.draw.as_mut().expect("a draw block holds a module");
                 match word {
                     "defaultconditionstate" | "conditionstate" if *kind == DrawKind::Family => {
@@ -569,17 +708,51 @@ impl Reading {
                         if default && word == "conditionstate" && !no_condition {
                             return Err(IniError::NoDefaultState { line });
                         }
-                        self.stack.push(if default {
-                            Block::DefaultState { named: false }
+                        if default {
+                            *copied = word == "defaultconditionstate";
+                            self.stack.push(Block::DefaultState { named: false });
                         } else {
-                            Block::Other
-                        });
+                            // A later state starts as the default's copy, of its own flags.
+                            let mut state = DrawState {
+                                sets: vec![ConditionSet::of(at)?],
+                                model: None,
+                                look: StateLook::default(),
+                            };
+                            if *copied {
+                                state.model.clone_from(&module.model);
+                                state.look.clone_from(&module.look);
+                            }
+                            let named = state.model.is_some();
+                            module.states.push(state);
+                            self.stack.push(Block::State { named });
+                        }
+                    }
+                    "aliasconditionstate" if *kind == DrawKind::Family => {
+                        // An alias draws the state before it for one more set of flags.
+                        let set = ConditionSet::of(at)?;
+                        match (module.states.last_mut(), *states) {
+                            (Some(state), _) => state.sets.push(set),
+                            (None, 1..) => module.sets.push(set),
+                            (None, 0) => return Err(IniError::FirstAlias { line }),
+                        }
+                    }
+                    "ignoreconditionstates" if *kind == DrawKind::Family => {
+                        module.ignored = ConditionSet::of(at)?.conditions;
                     }
                     "modelname" if matches!(*kind, DrawKind::Tree | DrawKind::Prop) => {
                         module.model = ObjectIni::model(tokens);
                     }
                     _ if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
                     _ => {}
+                }
+            }
+            Block::State { named } => {
+                let module = self.draw.as_mut().expect("a state is in a draw");
+                *named |= word == "model";
+                let state = module.last_state();
+                state_field(&mut state.model, &mut state.look, word, tokens, line)?;
+                if ObjectIni::opens(word, tokens) {
+                    self.stack.push(Block::Other);
                 }
             }
             Block::DefaultState { named } => {
@@ -601,12 +774,12 @@ impl Reading {
                     "w3dpropdraw" => DrawKind::Prop,
                     _ => DrawKind::Other,
                 };
-                self.draw = Some(DrawModule {
+                self.draw = Some(DrawModule::new(kind));
+                self.stack.push(Block::Draw {
                     kind,
-                    model: None,
-                    look: DefaultLook::default(),
+                    states: 0,
+                    copied: false,
                 });
-                self.stack.push(Block::Draw { kind, states: 0 });
             }
             Block::Object
                 if matches!(
@@ -673,6 +846,9 @@ Object Tank\r
     End\r
     ConditionState = REALLYDAMAGED\r
       Model = TANK_D\r
+    End\r
+    ConditionState = NIGHT\r
+      ShowSubObject = Turret\r
     End\r
   End\r
   Draw = W3DDebrisDraw ModuleTag_02\r

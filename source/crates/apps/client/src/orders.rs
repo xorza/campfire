@@ -11,6 +11,7 @@ use bevy::input::mouse::MouseButton;
 use bevy::math::Vec3;
 use campfire_actions::{ActionBook, ActionSlots, ActionTarget, Aim, UseGroup};
 use campfire_capabilities::{Action, Order};
+use campfire_interaction::Using;
 use campfire_math::{Num, Vec3 as SimVec3};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
@@ -22,12 +23,13 @@ use crate::own_player::OwnPlayer;
 use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
 
-/// Turns the player's clicks and keys into orders: a right click orders the selection, as one
-/// group order, to attack an enemy under the cursor, and anywhere else but the UI to walk there,
-/// and S stops it (design 17, D7); Q, W, E and R cast the avatar's abilities of slots 0 to 3, and
-/// with Ctrl held learn their next rank; 1 to 6 cast the actions of its inventory's slots. A key
-/// aims as its slot's action takes: at the unit under the cursor, at the ground point under it,
-/// or at nothing (design 13, D11).
+/// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may
+/// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else it
+/// orders the selection, as one group order, to attack an enemy under the cursor, and anywhere
+/// else but the UI to walk there, and S stops it (design 17, D7); Q, W, E and R cast the
+/// avatar's abilities of slots 0 to 3, and with Ctrl held learn their next rank; 1 to 6 cast the
+/// actions of its inventory's slots. A key aims as its slot's action takes: at the unit under
+/// the cursor, at the ground point under it, or at nothing (design 13, D11).
 #[derive(Debug)]
 pub(crate) struct Orders;
 
@@ -69,7 +71,7 @@ impl Orders {
     fn click(
         pointer: Pointer<'_, '_>,
         own: OwnPlayer<'_, '_>,
-        selection: Res<'_, Selection>,
+        (selection, using): (Res<'_, Selection>, Using<'_, '_>),
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         if pointer.over_ui() {
@@ -79,8 +81,16 @@ impl Orders {
             return;
         };
         let under = pointer.unit_at(point, selection.get());
-        let order = Orders::click_action(under, own.team(), point)
-            .and_then(|action| selection.order(action));
+        let avatar = own
+            .avatar()
+            .filter(|avatar| selection.get().contains(&avatar.id));
+        let uses = |object| avatar.is_some_and(|avatar| using.of(avatar.entity, object).is_some());
+        let order = match Orders::click_action(under, own.team(), point, uses) {
+            Some(action @ OrdersAction::Use { .. }) => {
+                avatar.map(|avatar| Order::one(avatar.id, action))
+            }
+            action => action.and_then(|action| selection.order(action)),
+        };
         if let Some(order) = order {
             orders.push(order);
         }
@@ -152,8 +162,10 @@ impl Orders {
         under: Option<Pointed>,
         team: Option<Team>,
         point: Vec3,
+        uses: impl Fn(StableId) -> bool,
     ) -> Option<OrdersAction> {
         match under {
+            Some(unit) if uses(unit.id) => Some(OrdersAction::Use { target: unit.id }),
             Some(unit) if team.is_some_and(|team| unit.team != team) => {
                 Some(OrdersAction::Attack { target: unit.id })
             }
@@ -283,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn a_right_click_attacks_an_enemy_under_the_cursor_and_else_walks_to_the_ground_point() {
+    fn a_right_click_uses_what_the_avatar_may_use_attacks_an_enemy_and_else_walks() {
         let mut ids = IdAllocator::default();
         let (north, south) = (Team::new(0), Team::new(1));
         let mut unit = |team| Pointed {
@@ -298,7 +310,9 @@ mod tests {
             x: Num::int(3),
             z: Num::int(-5) / Num::int(2),
         });
-        let click = |under, team| Orders::click_action(under, team, point);
+        let shrine = unit(south);
+        let usable = |id| id == shrine.id;
+        let click = |under, team| Orders::click_action(under, team, point, usable);
         assert_eq!(
             click(Some(enemy), Some(north)),
             Some(OrdersAction::Attack { target: enemy.id })
@@ -307,8 +321,13 @@ mod tests {
         assert_eq!(click(None, Some(north)), walk);
         // A client of no team has no enemy.
         assert_eq!(click(Some(enemy), None), walk);
+        // A unit the avatar may use is used, before an attack of an enemy or a walk: the
+        // hostile shrine by either team's client.
+        let used = Some(OrdersAction::Use { target: shrine.id });
+        assert_eq!(click(Some(shrine), Some(north)), used);
+        assert_eq!(click(Some(shrine), Some(south)), used);
         // A ground point far off any map orders nothing.
         let far = Vec3::new(1e15, 0.0, 0.0);
-        assert_eq!(Orders::click_action(None, Some(north), far), None);
+        assert_eq!(Orders::click_action(None, Some(north), far, usable), None);
     }
 }
