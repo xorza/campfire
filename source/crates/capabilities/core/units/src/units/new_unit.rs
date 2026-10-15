@@ -22,7 +22,7 @@ impl NewUnit {
                 "state",
                 "its script state, by name, at its type's defaults but what the call wrote, which applies as it spawns",
             ),
-            |unit: &mut NewUnit| UnitStateAccess::of_new(*unit),
+            |unit: &mut NewUnit| UnitStateAccess::of_new(unit.id, unit.unit_type),
         );
     }
 }

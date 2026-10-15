@@ -2,8 +2,8 @@ use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptValue, StateValu
 use campfire_sim::StableId;
 use campfire_values::UnitType;
 
-use crate::units::new_unit::NewUnit;
-use crate::units::units_call::{StateWrite, UnitsCall};
+use crate::units::state_write::StateWrite;
+use crate::units::units_call::UnitsCall;
 use crate::units::units_column::UnitsColumn;
 
 /// `unit.state`, `UnitState` in scripts: the script state fields of a unit a script holds, by
@@ -27,11 +27,11 @@ impl UnitStateAccess {
         }
     }
 
-    /// The state of `unit`, which the call creates.
-    pub(crate) const fn of_new(unit: NewUnit) -> UnitStateAccess {
+    /// The state of the unit `id` of `unit_type`, which the call creates.
+    pub(crate) const fn of_new(id: StableId, unit_type: UnitType) -> UnitStateAccess {
         UnitStateAccess {
-            id: unit.id,
-            unit_type: unit.unit_type,
+            id,
+            unit_type,
             row: None,
         }
     }

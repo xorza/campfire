@@ -1,10 +1,11 @@
 use bevy_ecs::world::World;
 use campfire_script::{
-    CallError, CallPart, CallStart, Commit, Frame, StateField, StatePlace, StateValue, View,
+    CallError, CallPart, CallStart, Commit, Frame, StateField, StateValue, View,
 };
 use campfire_sim::{SimWorld, StableId};
 
 use crate::units::new_unit_states::NewUnitStates;
+use crate::units::state_write::StateWrite;
 use crate::units::unit_states::UnitStates;
 use crate::units::units_column::UnitsColumn;
 
@@ -13,15 +14,6 @@ use crate::units::units_column::UnitsColumn;
 #[derive(Debug, Default)]
 pub struct UnitsCall {
     writes: Vec<StateWrite>,
-}
-
-/// A call's write of `value` to `field` of unit `id`, held at `place`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StateWrite {
-    pub id: StableId,
-    pub(crate) field: StateField,
-    pub(crate) place: StatePlace,
-    pub(crate) value: StateValue,
 }
 
 impl CallPart for UnitsCall {

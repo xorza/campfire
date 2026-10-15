@@ -10,7 +10,9 @@ use campfire_values::{Tag, TagProperties, TagSet, UnitTags, UnitType};
 
 use crate::units::Units;
 use crate::units::avatar::Avatar;
-use crate::units::tag_effect::TagEffect;
+use crate::units::tag_book::tag_effect::TagEffect;
+
+pub(crate) mod tag_effect;
 
 /// What each tag of a match does, and each unit type's own tags. Package data, not state.
 #[derive(Resource, Debug, Default)]
