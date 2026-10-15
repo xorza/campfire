@@ -286,7 +286,7 @@ impl SimServer {
         );
         let terms = log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
-        SimServer::set_visibility(world, &terms).map_err(StartError::Terms)?;
+        SimServer::set_visibility(world, &terms, packages).map_err(StartError::Terms)?;
         let slots = log.slot_count();
         Session::start(world, log, seeds, packages)?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
@@ -343,9 +343,14 @@ impl SimServer {
     }
 
     /// Keeps the visibility `terms` carry, which each data filter takes its audience from as
-    /// the match's entities spawn; an error for terms whose visibility does not read.
-    fn set_visibility(world: &mut World, terms: &SessionTerms) -> Result<(), TermsError> {
-        let visibility = SessionRules::visibility_of(terms)?;
+    /// the match's entities spawn; an error for terms the rules of `packages` do not admit, which
+    /// the session's start refuses as well, after the match's entities spawned.
+    fn set_visibility(
+        world: &mut World,
+        terms: &SessionTerms,
+        packages: &ModePackages,
+    ) -> Result<(), TermsError> {
+        let visibility = SessionRules::of(packages).check(terms)?;
         world
             .resource_mut::<TeamRooms>()
             .set_spectators(&visibility);
@@ -398,7 +403,7 @@ impl SimServer {
         } = restored;
         let terms = log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
-        SimServer::set_visibility(world, &terms)
+        SimServer::set_visibility(world, &terms, packages)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         let ticks = log.next_tick();
         let slots = log.slot_count();

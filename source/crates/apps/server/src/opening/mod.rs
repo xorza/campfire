@@ -17,11 +17,19 @@ use crate::opening::error::OpeningError;
 
 pub(crate) mod error;
 
-/// What a server starts with: a new session, open to its players, or the session a stop ended,
-/// to restore. A session past the restore window, or one that ended, has its log published
+/// What a server starts with: its session, whose terms the mode's rules admit, and the seats
+/// of that session.
+#[derive(Debug)]
+pub(crate) struct Opening {
+    pub(crate) session: Opened,
+    seats: NonZeroU32,
+}
+
+/// The session a server starts: a new one, open to its players, or the one a stop ended, to
+/// restore. A session past the restore window, or one that ended, has its log published
 /// instead, and a new one opens.
 #[derive(Debug)]
-pub(crate) enum Opening {
+pub(crate) enum Opened {
     New(Box<Lobby>),
     Restored(Box<PendingRestore>),
 }
@@ -41,40 +49,41 @@ pub(crate) struct OpeningSetup<'a> {
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
-    /// made.
+    /// made, and for a restored session whose terms the mode's rules do not admit, as a journal
+    /// another release wrote holds.
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
     ) -> Result<Opening, OpeningError> {
-        if let Some(session) = found {
-            return Ok(Opening::Restored(Box::new(PendingRestore {
+        let rules = SessionRules::of(&setup.packages);
+        let session = match found {
+            Some(session) => Opened::Restored(Box::new(PendingRestore {
                 session,
                 packages: Arc::new(setup.packages),
                 server: setup.server,
                 bots: setup.bots,
-            })));
-        }
-        Opening::open(setup).map(|lobby| Opening::New(Box::new(lobby)))
-    }
-
-    /// The terms of the session it starts.
-    pub(crate) fn terms(&self) -> &SessionTerms {
-        match self {
-            Opening::New(lobby) => lobby.terms(),
-            Opening::Restored(restore) => &restore.session.log.header().terms,
-        }
-    }
-
-    /// The seats of the session it starts: its slots and the most spectators it admits, which no
-    /// address of honest players passes in live connections (design 15, D13).
-    pub(crate) fn seats(&self) -> NonZeroU32 {
-        let terms = self.terms();
-        let visibility = SessionRules::visibility_of(terms).expect("the server's own terms read");
+            })),
+            None => Opened::New(Box::new(Opening::open(setup)?)),
+        };
+        let terms = session.terms();
+        let visibility = rules.check(terms).map_err(OpeningError::Terms)?;
         let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
         let seats = slots
             .checked_add(visibility.max_spectators())
             .expect("a session's seats fit u32");
-        NonZeroU32::new(seats).expect("a session has a slot")
+        let seats = NonZeroU32::new(seats).expect("the rules admit a session of a slot at least");
+        Ok(Opening { session, seats })
+    }
+
+    /// The terms of the session it starts.
+    pub(crate) fn terms(&self) -> &SessionTerms {
+        self.session.terms()
+    }
+
+    /// The seats of the session it starts: its slots and the most spectators it admits, which no
+    /// address of honest players passes in live connections (design 15, D13).
+    pub(crate) const fn seats(&self) -> NonZeroU32 {
+        self.seats
     }
 
     /// The session a stop ended, under the data directory `data`: none when the directory holds
@@ -154,6 +163,16 @@ impl Opening {
             .keep_files(setup.data)
             .map_err(OpeningError::KeepFiles)?;
         Ok(lobby)
+    }
+}
+
+impl Opened {
+    /// The session's terms.
+    fn terms(&self) -> &SessionTerms {
+        match self {
+            Opened::New(lobby) => lobby.terms(),
+            Opened::Restored(restore) => &restore.session.log.header().terms,
+        }
     }
 }
 

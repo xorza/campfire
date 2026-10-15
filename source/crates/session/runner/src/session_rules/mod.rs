@@ -79,8 +79,9 @@ impl SessionRules {
 
     /// Whether `terms` name a session by these rules: of this release, of the mode, its map and
     /// the dependencies, in their order, at a rate the mode runs at, of a slot at least and no
-    /// more than the mode's teams have, and of a visibility the mode admits.
-    pub fn check(&self, terms: &SessionTerms) -> Result<(), TermsError> {
+    /// more than the mode's teams have, and of a visibility the mode admits, which it gives. The
+    /// check is the one way to the terms' visibility, so no reader takes it from terms unchecked.
+    pub fn check(&self, terms: &SessionTerms) -> Result<Visibility, TermsError> {
         SessionRules::check_release(terms)?;
         if terms.mode != self.mode {
             return Err(TermsError::OtherMode);
@@ -99,16 +100,11 @@ impl SessionRules {
             });
         }
         self.runs_at(terms.tick_hz)?;
-        let visibility = SessionRules::visibility_of(terms)?;
+        let visibility = Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)?;
         if !self.visibility.admits(&visibility) {
             return Err(TermsError::OtherVisibility);
         }
-        Ok(())
-    }
-
-    /// The visibility `terms` carry; an error for bytes that do not read as one.
-    pub fn visibility_of(terms: &SessionTerms) -> Result<Visibility, TermsError> {
-        Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)
+        Ok(visibility)
     }
 
     /// An error when the mode does not run at `tick_hz`.

@@ -9,6 +9,7 @@ use campfire_protocol::{
 };
 use campfire_runner::SessionRules;
 use campfire_values::Team;
+use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 use secp256k1::{Keypair, Secp256k1, VerifyOnly};
 
@@ -104,6 +105,8 @@ pub(crate) struct Joining {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JoinedSession {
     pub(crate) id: SessionId,
+    /// The visibility of its terms, which the client's check of them gave.
+    pub(crate) visibility: Visibility,
     pub(crate) max_inputs: u32,
     pub(crate) max_payload_len: u32,
     pub(crate) max_input_lead: Ticks,
@@ -228,6 +231,20 @@ impl JoinState {
         }
     }
 
+    /// The visibility of the session the client answered, as its check of the terms gave it;
+    /// `None` before it answered, and once it left or stopped.
+    pub(crate) const fn visibility(&self) -> Option<&Visibility> {
+        let member = match &self.step {
+            Step::Answered(Answered { member, .. })
+            | Step::Playing(Playing { member, .. })
+            | Step::Watching(Watching { member, .. })
+            | Step::Leaving(Leaving { member, .. })
+            | Step::Rejoining(Rejoining { member, .. }) => member,
+            Step::Waiting | Step::Refused(_) | Step::Left | Step::Lost(_) => return None,
+        };
+        Some(&member.session.visibility)
+    }
+
     /// The slot the player plays; `None` while they play none.
     pub const fn slot(&self) -> Option<PlayerSlot> {
         match &self.step {
@@ -308,14 +325,18 @@ impl JoinState {
         let now = self.player.clock.unix_now();
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
-                if let Err(mismatch) = self.player.fits(&offer.terms) {
-                    self.step = Step::Refused(mismatch.clone());
-                    return Some(Err(mismatch));
-                }
+                let visibility = match self.player.fits(&offer.terms) {
+                    Ok(visibility) => visibility,
+                    Err(mismatch) => {
+                        self.step = Step::Refused(mismatch.clone());
+                        return Some(Err(mismatch));
+                    }
+                };
                 Answered {
                     member: Member {
                         session: JoinedSession {
                             id: offer.terms.session_id(),
+                            visibility,
                             max_inputs: offer.terms.max_inputs_per_tick,
                             max_payload_len: offer.terms.max_payload_len,
                             max_input_lead: offer.terms.max_input_lead,
@@ -601,16 +622,16 @@ impl Playing {
 
 impl Joining {
     /// Whether `terms` name the server and rate the player means to reach, and a session of the
-    /// client's mode.
-    fn fits(&self, terms: &SessionTerms) -> Result<(), TermsMismatch> {
+    /// client's mode: the visibility its rules admit of them.
+    fn fits(&self, terms: &SessionTerms) -> Result<Visibility, TermsMismatch> {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        self.rules.check(terms).map_err(TermsMismatch::Terms)?;
+        let visibility = self.rules.check(terms).map_err(TermsMismatch::Terms)?;
         if terms.tick_hz != self.server.tick_hz {
             return Err(TermsMismatch::OtherTickRate);
         }
-        Ok(())
+        Ok(visibility)
     }
 
     /// A delegation of `signer`'s session key in the session of `terms`, made at `now`, with a

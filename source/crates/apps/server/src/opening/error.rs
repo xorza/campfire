@@ -1,5 +1,6 @@
 use campfire_common::MapName;
 use campfire_net::{AbortError, KeepFilesError, LobbyError, WaitingError};
+use campfire_runner::TermsError;
 use thiserror::Error;
 
 /// Why a server did not start a session from its data directory.
@@ -17,4 +18,7 @@ pub(crate) enum OpeningError {
     Lobby(#[source] LobbyError),
     #[error("could not make the session")]
     KeepFiles(#[source] KeepFilesError),
+    /// The session's terms are not of the mode's rules, as a journal of another release holds.
+    #[error("the session's terms are not the mode's")]
+    Terms(#[source] TermsError),
 }

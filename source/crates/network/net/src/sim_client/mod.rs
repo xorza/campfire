@@ -302,8 +302,9 @@ fn answer_offer(
             match state.answer(&offer, binding, &mut signer) {
                 None => {}
                 Some(Ok(join)) => {
-                    let visibility = SessionRules::visibility_of(&offer.terms)
-                        .expect("terms the client answers carry a visibility that reads");
+                    let visibility = state
+                        .visibility()
+                        .expect("a client that answered holds its session's visibility");
                     commands.insert_resource(visibility.out());
                     sender.send::<JoinChannel>(join);
                     info!(%session, "joined the offered session");

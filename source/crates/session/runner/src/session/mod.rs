@@ -61,11 +61,9 @@ impl Session {
         segment: u32,
     ) -> Result<Session, StartError> {
         let header = log.header();
-        SessionRules::of(packages)
+        let visibility = SessionRules::of(packages)
             .check(&header.terms)
             .map_err(StartError::Terms)?;
-        let visibility = SessionRules::visibility_of(&header.terms)
-            .expect("terms the rules admit carry a visibility that reads");
         if seeds.last() < log.segment() {
             return Err(StartError::Seed(SeedError::NotRevealed));
         }

@@ -47,7 +47,7 @@ use zeroize::Zeroizing;
 
 use crate::args::Args;
 use crate::opening::error::OpeningError;
-use crate::opening::{Opening, OpeningSetup};
+use crate::opening::{Opened, Opening, OpeningSetup};
 
 mod args;
 mod opening;
@@ -246,9 +246,9 @@ fn server_app(
         },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    match opening {
-        Opening::New(lobby) => app.insert_resource(*lobby),
-        Opening::Restored(restore) => app.insert_resource(*restore),
+    match opening.session {
+        Opened::New(lobby) => app.insert_resource(*lobby),
+        Opened::Restored(restore) => app.insert_resource(*restore),
     };
     app.insert_resource(data);
     app.add_observer(
@@ -282,7 +282,7 @@ fn announce(
     key: &Keypair,
 ) -> Listening {
     let terms = opening.terms();
-    if let Opening::New(_) = opening {
+    if let Opened::New(_) = opening.session {
         info!(
             session = %terms.session_id(),
             %address,

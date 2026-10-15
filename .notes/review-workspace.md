@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry/{mod,internals}.rs`, `capabilities/core/declare/src/**`, `capabilities/core/units/src/units/{forced_move,spawn_point}.rs`, `capabilities/core/actions/src/action_slots/{mod,slot_times}.rs`, `capabilities/mode/src/choices.rs`, `capabilities/items/src/inventory.rs`, `capabilities/navigation/src/{static_bodies,walking}.rs`, `session/runner/src/session_rules/mod.rs`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/sim_{server,client}/mod.rs`. Goldens: none move, as the wide-domain arithmetic rounds once, as the `Num` arithmetic did.
 
-- [ ] `CheckedTerms`: `runner/src/session_rules/mod.rs:102,110` returns the decoded visibility and the input rules. `apps/server/src/opening/mod.rs:72`, `session/mod.rs:64-68`, `net/src/sim_server/mod.rs:348` and `sim_client/mod.rs:305` take it, and no `visibility_of(…).expect` remains.
 
 ### Batch 2. Order and roles (RC9, RC8)
 

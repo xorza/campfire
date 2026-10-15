@@ -99,7 +99,6 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     // after the 14 kinds' bytes, the fog to `teams`, what a player out of play sees to
     // `spectators`, and 3 spectators.
     fixed.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
-    assert_eq!(rules.check(&fixed), Ok(()));
-    let visibility = SessionRules::visibility_of(&fixed).unwrap();
+    let visibility = rules.check(&fixed).unwrap();
     assert_eq!(visibility.max_spectators(), 3);
 }
