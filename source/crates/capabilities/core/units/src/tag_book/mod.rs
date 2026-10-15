@@ -86,13 +86,13 @@ impl TagBook {
         book
     }
 
-    /// The own tags of `unit_type`, those of its data and of its sections; none for a type the
-    /// book was not given.
     /// How many of the first tags are the engine's.
     pub(crate) const fn engine_count(&self) -> usize {
         self.engine_count
     }
 
+    /// The own tags of `unit_type`, those of its data and of its sections; none for a type the
+    /// book was not given.
     pub fn own(&self, unit_type: UnitType) -> TagSet {
         self.type_tags
             .get(unit_type.index())

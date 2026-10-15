@@ -205,9 +205,8 @@ impl Units {
         v.kind::<DeliveryEntity>();
     }
 
-    /// Whether every unit stands within the match's bounds, as every system keeps it, and as
-    /// vision and navigation index the map's cells by it; the first that does not.
-    /// A team the mode lacks has no place in the vision groups and the mode's tables.
+    /// Whether every unit's team is one the mode has, as a team the mode lacks has no place in
+    /// the vision groups and the mode's tables; the first that is not.
     fn teams_known(world: &World) -> Result<(), Breach> {
         let names = world.non_send::<View>().names();
         Breach::first(world, |entity| {
@@ -245,6 +244,8 @@ impl Units {
         })
     }
 
+    /// Whether every unit stands within the match's bounds, as every system keeps it, and as
+    /// vision and navigation index the map's cells by it; the first that does not.
     fn within_bounds(world: &World) -> Result<(), Breach> {
         let bounds = world.resource::<MapBook>().bounds;
         Breach::first(world, |entity| {
