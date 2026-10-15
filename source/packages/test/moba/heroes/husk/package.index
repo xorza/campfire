@@ -1,3 +1,9 @@
-campfire/package-index/v1data/avatar.tomlÏiù9–ŞÖÁ_Şw¬5Ø8ıL×ÿæH²1:8^ğlocale/en.ftlœÑš…B”—»K‚ét
-w|ºŞMX¡„'sÉ¬manifest.tomlQuW&?¢“ù2üÃşgØxN;páÙ&¾åg7~s‚ä9Dscripts/dread.rhai¹Ùïyî²1anƒ6RŒªÀ*bàríÿs†wËÀdscripts/grasping_wraps.rhai¼5n©<‡+•àCfÍ©¬å%6_—À
-NRåœfscripts/lash_out.rhai¬î¿˜‘{#¯éªV£è´¡Ÿ×¿@ŒúµÜ`mëscripts/tomb_bind.rhaiÒî¥wv)Ÿ³ÆÒÖ–‰`À aDÈE£giÚPq·…sscripts/withering_touch.rhaiLÃTşJ•ÇNãŒNğCÓÒ,û²R,’º^¡›ˆ³tâ
+campfire/package-index/v2
+69f93996ded605c15fde77ac3503900105d838fd4cd7ff1be648b2313a385ef0 2767 data/avatar.toml
+d1039a13854219948d97bb4b900d8201e9740a777cbade4d58a184270173c9ac 156 locale/en.ftl
+7557263fa293f9320c1ffcc3fe67d8784e3b70e1d926bee567377e7382e43944 81 manifest.toml
+d9ef79181ceeb23104616e8336521a8caac00d2a62e072edff738677cbc06490 185 scripts/dread.rhai
+356ea93c872b95e043660ccd118fa9ace50e2508360e5f97c00a4e8152e59c66 188 scripts/grasping_wraps.rhai
+eebf9891141b7b0c23afe9aa907f56a3e808b4a19fd7bf0c408cfab5dc606deb 300 scripts/lash_out.rhai
+eea51d7776299fb3c6d2d6968960c08e20614414c845a36769da5071b7851f73 210 scripts/tomb_bind.rhai
+c354fe084a95c74e1be38c4e07f043d3d22cfbb2522c92ba5ea19b88b3749de2 76 scripts/withering_touch.rhai

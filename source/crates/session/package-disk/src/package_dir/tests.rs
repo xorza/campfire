@@ -1,5 +1,5 @@
 use campfire_codec::Toml;
-use campfire_common::Fingerprint;
+use campfire_common::{Bytes32, Fingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
 
 use sha2::{Digest, Sha256};
@@ -19,21 +19,16 @@ fn a_package_is_its_index_and_reads_through_it() {
     let package = scratch.path("one");
     scratch.write("one/manifest.toml", "m");
     scratch.write("one/data/a.toml", "ab");
-    // The tag, then rows sorted by path bytes: "data/a.toml" before "manifest.toml". Postcard
-    // writes the count 2, then each row as its path's length and bytes, its size as a varint, and the 32
-    // bytes of its SHA-256; the fingerprint is the SHA-256 of those bytes.
-    let list = [
-        &b"campfire/package-index/v1"[..],
-        &[2, 11],
-        b"data/a.toml",
-        &[2],
-        &Sha256::digest(b"ab"),
-        &[13],
-        b"manifest.toml",
-        &[1],
-        &Sha256::digest(b"m"),
-    ]
-    .concat();
+    // The tag's line, then a line for each row sorted by path bytes, "data/a.toml" before
+    // "manifest.toml": its SHA-256 in hex, its size and its path; the fingerprint is the SHA-256
+    // of those bytes.
+    let hex = |bytes: &[u8]| Bytes32::new(Sha256::digest(bytes).into());
+    let list = format!(
+        "campfire/package-index/v2\n{} 2 data/a.toml\n{} 1 manifest.toml\n",
+        hex(b"ab"),
+        hex(b"m")
+    )
+    .into_bytes();
     let expected = Fingerprint::new(Sha256::digest(&list).into());
     let dir = PackageDir::new(&package);
     // With no index, no package.
@@ -252,8 +247,8 @@ fn a_package_reads_its_own_files_only() {
 
 #[test]
 fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
-    // An asset of 100 000 zeros passes in two chunks of the walk; its row holds its size, the
-    // varint 0xA0 0x8D 0x06 (100 000 = 6 × 2¹⁴ + 13 × 2⁷ + 32), and its hash.
+    // An asset of 100 000 zeros passes in two chunks of the walk; its row holds its size and its
+    // hash.
     let asset = vec![0_u8; 100_000];
     let tree: BTreeMap<PathBuf, Vec<u8>> = [
         ("one/manifest.toml", b"m".to_vec()),
@@ -263,22 +258,15 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     .into_iter()
     .map(|(path, bytes)| (PathBuf::from(path), bytes))
     .collect();
-    let list = [
-        &b"campfire/package-index/v1"[..],
-        &[3, 11],
-        b"data/a.toml",
-        &[2],
-        &Sha256::digest(b"ab"),
-        &[13],
-        b"manifest.toml",
-        &[1],
-        &Sha256::digest(b"m"),
-        &[14],
-        b"textures/x.png",
-        &[0xA0, 0x8D, 0x06],
-        &Sha256::digest(&asset),
-    ]
-    .concat();
+    let hex = |bytes: &[u8]| Bytes32::new(Sha256::digest(bytes).into());
+    let list = format!(
+        "campfire/package-index/v2\n{} 2 data/a.toml\n{} 1 manifest.toml\n{} 100000 \
+         textures/x.png\n",
+        hex(b"ab"),
+        hex(b"m"),
+        hex(&asset)
+    )
+    .into_bytes();
     let expected = Fingerprint::new(Sha256::digest(&list).into());
     let tree = Arc::new(PackageDir::reindexed(tree));
     let read = PackageDir::in_memory(Arc::clone(&tree), "one")

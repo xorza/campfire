@@ -51,6 +51,7 @@ impl PackageWriter {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::Bytes32;
     use campfire_store::internals::Scratch;
     use sha2::{Digest, Sha256};
 
@@ -74,19 +75,14 @@ mod tests {
         let fingerprint = write("one", [("data/b.toml", b"b"), ("a.txt", b"aa")]);
         assert_eq!(scratch.read("one/data/b.toml"), b"b");
         assert_eq!(scratch.read("one/a.txt"), b"aa");
-        // The tag, then the rows in path order: `a.txt` before `data/b.toml`.
-        let index = [
-            &b"campfire/package-index/v1"[..],
-            &[2, 5],
-            b"a.txt",
-            &[2],
-            &Sha256::digest(b"aa"),
-            &[11],
-            b"data/b.toml",
-            &[1],
-            &Sha256::digest(b"b"),
-        ]
-        .concat();
+        // The tag's line, then the rows in path order: `a.txt` before `data/b.toml`.
+        let hex = |bytes: &[u8]| Bytes32::new(Sha256::digest(bytes).into());
+        let index = format!(
+            "campfire/package-index/v2\n{} 2 a.txt\n{} 1 data/b.toml\n",
+            hex(b"aa"),
+            hex(b"b")
+        )
+        .into_bytes();
         assert_eq!(scratch.read("one/package.index"), index);
         assert_eq!(fingerprint, Fingerprint::new(Sha256::digest(&index).into()));
         assert_eq!(

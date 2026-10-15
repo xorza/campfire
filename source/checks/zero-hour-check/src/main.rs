@@ -64,8 +64,8 @@ const MAP: &str = "tournament_desert";
 /// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
 /// again.
 const FINGERPRINTS: Fingerprints = Fingerprints {
-    game: Fingerprint::of_hex("dce2b57aa348136ff5c8fb31780db7f4aa7e587799e14876e90d9d925ea29f45"),
-    rules: Fingerprint::of_hex("087b796ee35e5a9a0385483ee8dd439a9c77bb838c643efdac3e8194f04b7501"),
+    game: Fingerprint::of_hex("f5c57357cb7ec525f8b2bdbe62620f4e24792303956bd38e224541565e4c376b"),
+    rules: Fingerprint::of_hex("d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874"),
 };
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row

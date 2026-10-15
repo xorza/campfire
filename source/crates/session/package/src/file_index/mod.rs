@@ -1,19 +1,20 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::fmt::Write as _;
 
-use campfire_codec::Binary;
-use campfire_common::Fingerprint;
+use campfire_common::{Bytes32, Fingerprint};
 use campfire_values::PackagePath;
-use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 
 /// A package's index: each file's size and SHA-256 by its path, every file of the package but
-/// the index itself, as `package.index` holds them after its tag, in postcard, in the order of
-/// their paths' bytes. The SHA-256 of those bytes, the tag included, is the package's
-/// fingerprint: it names every byte of the package, as git's tree names its blobs, and no two
-/// versions of the format share one. A read checks each file against its row.
+/// the index itself, as `package.index` holds them: the line of its tag, then a line for each
+/// file in the order of their paths' bytes, `<SHA-256> <size> <path>`, the SHA-256 in 64
+/// lowercase hex digits, the size in decimal digits with no leading zero, each line ending in
+/// LF. The SHA-256 of those bytes, the tag included, is the package's fingerprint: it names every
+/// byte of the package, as git's tree names its blobs, and no two versions of the format share
+/// one. A read checks each file against its row.
 #[derive(Debug, Clone)]
 pub struct FileIndex {
     rows: BTreeMap<PackagePath, FileRow>,
@@ -29,23 +30,15 @@ pub(crate) struct FileRow {
     pub(crate) sha256: [u8; 32],
 }
 
-/// One row as postcard holds it.
-#[derive(Debug, Serialize, Deserialize)]
-struct WireRow<'a> {
-    path: &'a str,
-    size: u64,
-    sha256: [u8; 32],
-}
-
-/// The bytes an index starts with, which name its format and its version.
-const INDEX_TAG: &[u8] = b"campfire/package-index/v1";
+/// The first line of an index, which names its format and its version.
+const INDEX_TAG: &str = "campfire/package-index/v2";
 
 impl FileIndex {
     /// The index's own path in its package.
     pub const PATH: &str = "package.index";
 
     /// The most bytes an index holds, which its read takes at most: 64 MiB, the rows of about
-    /// 270 000 files whose paths are 200 bytes long.
+    /// 240 000 files whose paths are 200 bytes long.
     pub const MAX_LEN: u64 = 1 << 26;
 
     /// The most bytes a file of a package holds, which its read allocates: 2 GiB, past any
@@ -72,29 +65,52 @@ impl FileIndex {
     /// rows in strict order of their paths' bytes, each a package path, none the index's own, of
     /// a file no larger than `MAX_FILE_LEN`, and no two that differ only in case.
     pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
-        let wire: Vec<WireRow<'_>> =
-            Binary::decode_tagged(INDEX_TAG, bytes).map_err(ContentError::Index)?;
+        let body = bytes
+            .strip_prefix(INDEX_TAG.as_bytes())
+            .and_then(|rest| rest.strip_prefix(b"\n"))
+            .ok_or(ContentError::IndexTag)?;
+        let body = str::from_utf8(body).map_err(|error| {
+            let before = str::from_utf8(&body[..error.valid_up_to()]).expect("text up to there");
+            let line = before.matches('\n').count() + 2;
+            ContentError::IndexLine { line }
+        })?;
         let mut rows = BTreeMap::new();
         let mut previous: Option<&str> = None;
-        for row in &wire {
-            let path = PackagePath::parse(row.path)
-                .ok_or_else(|| ContentError::IndexPath(row.path.to_owned()))?;
-            if previous.is_some_and(|previous| previous.as_bytes() >= row.path.as_bytes()) {
-                return Err(ContentError::IndexOrder(path));
+        for (line, number) in body.split_inclusive('\n').zip(2_usize..) {
+            let flawed = || ContentError::IndexLine { line: number };
+            let line = line.strip_suffix('\n').ok_or_else(flawed)?;
+            let (sha256, rest) = line.split_once(' ').ok_or_else(flawed)?;
+            let (size, path) = rest.split_once(' ').ok_or_else(flawed)?;
+            let sha256 = sha256.parse::<Bytes32>().map_err(|_| flawed())?.get();
+            let size = FileIndex::size(size).ok_or_else(flawed)?;
+            let parsed =
+                PackagePath::parse(path).ok_or_else(|| ContentError::IndexPath(path.to_owned()))?;
+            if previous.is_some_and(|previous| previous.as_bytes() >= path.as_bytes()) {
+                return Err(ContentError::IndexOrder(parsed));
             }
-            previous = Some(row.path);
-            if row.size > FileIndex::MAX_FILE_LEN {
-                return Err(ContentError::IndexFileLen(path));
+            previous = Some(path);
+            if size > FileIndex::MAX_FILE_LEN {
+                return Err(ContentError::IndexFileLen(parsed));
             }
-            rows.insert(
-                path,
-                FileRow {
-                    size: row.size,
-                    sha256: row.sha256,
-                },
-            );
+            rows.insert(parsed, FileRow { size, sha256 });
         }
-        FileIndex::new(rows)
+        let index = FileIndex::new(rows)?;
+        debug_assert_eq!(
+            index.bytes, bytes,
+            "an index reads from its one encoding alone"
+        );
+        Ok(index)
+    }
+
+    /// The size `digits` write in decimal, with no sign and no leading zero; none for any other
+    /// text, or one past a `u64`.
+    fn size(digits: &str) -> Option<u64> {
+        let decimal = !digits.is_empty() && digits.bytes().all(|byte| byte.is_ascii_digit());
+        let leading = digits.len() > 1 && digits.starts_with('0');
+        if !decimal || leading {
+            return None;
+        }
+        digits.parse().ok()
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -117,17 +133,13 @@ impl FileIndex {
     }
 
     fn encode_rows(rows: &BTreeMap<PackagePath, FileRow>) -> Vec<u8> {
-        let wire: Vec<WireRow<'_>> = rows
-            .iter()
-            .map(|(path, row)| WireRow {
-                path: path.as_str(),
-                size: row.size,
-                sha256: row.sha256,
-            })
-            .collect();
-        let mut bytes = Vec::new();
-        Binary::encode_tagged(INDEX_TAG, &wire, &mut bytes);
-        bytes
+        let mut text = String::new();
+        writeln!(text, "{INDEX_TAG}").expect("text writes into a string");
+        for (path, row) in rows {
+            let sha256 = Bytes32::new(row.sha256);
+            writeln!(text, "{sha256} {} {path}", row.size).expect("text writes into a string");
+        }
+        text.into_bytes()
     }
 
     /// Refuses two of `paths`, or two directories on their way, that differ only in case: a
