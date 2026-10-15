@@ -329,18 +329,21 @@ impl StatsColumn {
         handle
     }
 
-    /// The handle of the instance `of`, as a call sees it: its stacks, and `state`, filling
-    /// `spare` again when given.
+    /// The handle of the instance `of` that the running call gives a script, as the call sees
+    /// it: its stacks, and `state`. The call keeps it, as `applied_handle`'s, so an application
+    /// of the instance in the call finds it.
     pub fn held_handle(
         view: &View,
-        spare: Option<ModifierHandle>,
+        call: &mut StatsCall,
         of: HandleOf,
         state: &[StateValue],
     ) -> ModifierHandle {
         let schema = view
             .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.state))
             .expect("a match with modifiers has stats");
-        ModifierHandle::new(spare, of, state, schema, view.clone())
+        let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
+        call.hand_out(handle.clone());
+        handle
     }
 
     /// Applies `id` again through `handle`, which the running call took: a removed instance is

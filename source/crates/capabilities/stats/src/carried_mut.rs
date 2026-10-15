@@ -206,7 +206,7 @@ mod tests {
                 source: None,
                 action: None,
                 rank: Rank::FIRST,
-                lifetime: Lifetime::new(None, Ends::Never),
+                lifetime: Lifetime::applied(Ends::Never),
                 aura_radius: None,
                 stacks: 1,
                 stack_life: None,

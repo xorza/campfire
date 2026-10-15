@@ -9,7 +9,7 @@ use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
 use campfire_units::UnitTypeBook;
 use campfire_values::{DeclaredName, FilterData, Number, Param, ParamRef, Ranked, Scalar, Stat};
-use campfire_values::{ModifierId, Names};
+use campfire_values::{ModifierId, NameId, Names};
 
 fn name(text: &str) -> DeclaredName {
     DeclaredName::new(text).unwrap()
@@ -62,7 +62,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let stats = ["armor", "move_speed"].map(|stat| Stat::named(stat).unwrap());
     let stat = |stat: &Stat| {
         let at = stats.iter().position(|at| at == stat);
-        at.map(StatId::new)
+        at.map(StatId::at)
             .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
     };
     let names = SpecNames {

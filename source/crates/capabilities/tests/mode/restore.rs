@@ -421,7 +421,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let timed = |ends: Tick, life: Ticks, stack_end: Tick| Application {
         instance: NewInstance {
             stats: vec![one],
-            lifetime: Lifetime::new(None, Ends::At(ends)),
+            lifetime: Lifetime::applied(Ends::At(ends)),
             stack_life: Some(life),
             stack_ends: vec![StackEnd {
                 until: stack_end,

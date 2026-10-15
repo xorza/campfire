@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 pub struct StatId(u16);
 
 impl StatId {
-    /// The stat at `index` among the mode's, within the most stats a mode declares.
-    pub fn new(index: usize) -> StatId {
-        StatId(u16::try_from(index).expect("stats fit u16"))
+    /// The stat at `index` among the mode's.
+    pub const fn new(index: u16) -> StatId {
+        StatId(index)
     }
 }
 
@@ -20,7 +20,7 @@ impl NameId for StatId {
     const LIMIT: usize = 1 << u16::BITS;
 
     fn at(index: usize) -> StatId {
-        StatId::new(index)
+        StatId(u16::try_from(index).expect("stats fit u16"))
     }
 
     fn index(self) -> usize {

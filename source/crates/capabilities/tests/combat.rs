@@ -908,10 +908,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut life = game.get_mut::<Life>(entity).unwrap();
     life.take(Num::int(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| NewInstance {
-        lifetime: Lifetime::new(
-            None,
-            until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
-        ),
+        lifetime: Lifetime::applied(until.map_or(Ends::Never, |until| Ends::At(Tick::new(until)))),
         shield: Some(Num::int(amount)),
         ..NewInstance::bare(ModifierId::new(id), None)
     };

@@ -28,8 +28,7 @@ fn applied(
     });
     Application {
         instance: NewInstance {
-            lifetime: Lifetime::new(
-                None,
+            lifetime: Lifetime::applied(
                 until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
             ),
             stack_life,
@@ -65,7 +64,7 @@ fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
     let id = ModifierId::new(0);
     let held = || {
         let mut held = applied(0, a, Reapply::Refresh, None, 1, None, None);
-        held.instance.lifetime = Lifetime::new(Some(Hold::Held), Ends::Never);
+        held.instance.lifetime = Lifetime::held(Hold::Held);
         held
     };
     let timed = || applied(0, a, Reapply::Refresh, None, 1, Some(6), None);

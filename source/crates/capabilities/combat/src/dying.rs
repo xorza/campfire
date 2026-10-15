@@ -43,7 +43,7 @@ impl Dying {
         deaths.index_killed();
         let dying = units
             .iter()
-            .filter(|(_, _, life, ..)| !life.above_zero())
+            .filter(|(_, _, life, ..)| life.is_empty())
             .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(dying) {
             let (_, _, _, slots, team, owner) =

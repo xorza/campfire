@@ -295,10 +295,12 @@ impl ModifierBook {
             source: from.source,
             action: from.action,
             rank: from.rank,
-            lifetime: Lifetime::new(
-                from.hold,
-                duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
-            ),
+            lifetime: match from.hold {
+                Some(hold) => Lifetime::held(hold),
+                None => Lifetime::applied(
+                    duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
+                ),
+            },
             aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius)),
             stacks: u32::from(!counts),
             stack_life,

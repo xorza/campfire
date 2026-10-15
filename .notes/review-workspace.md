@@ -145,7 +145,6 @@ Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mod
 
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
 
-- [ ] Stats: one shape for the meters and the ids, `held_handle` registers itself as `applied_handle` does, and `Lifetime` gets two constructors.
 - [ ] One field name, `unit`, for the unit an effect acts on (`combat_effect.rs`, `abilities_effect.rs`, `combat_event.rs`).
 - [ ] `PlayerRowsMut` gains `of_slot`. `PlayerResources::affords` replaces `Purse`'s copy, and the `Payer` doc is corrected.
 - [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal type. The validators move to the argument code.

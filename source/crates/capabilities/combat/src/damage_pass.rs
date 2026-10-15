@@ -163,7 +163,7 @@ impl DamagePass {
     /// none of a unit it holds as the server sent it, which `Unpredicted` hides.
     pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
         let entity = world.queried_entity_of(id)?;
-        world.get::<Life>(entity)?.above_zero().then_some(entity)
+        (!world.get::<Life>(entity)?.is_empty()).then_some(entity)
     }
 
     /// The entity of `id`, when it is living and its tags let damage reach it.
@@ -282,7 +282,7 @@ impl DamagePass {
         }
         let living = |world: &World| {
             let life = world.get::<Life>(entity);
-            life.expect("a unit that takes damage").above_zero()
+            !life.expect("a unit that takes damage").is_empty()
         };
         // A write marks the life changed, so damage that takes nothing writes nothing.
         let taken = if left > Num::ZERO && living(world) {

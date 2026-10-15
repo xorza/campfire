@@ -191,7 +191,7 @@ mod tests {
             let name = DeclaredName::new("p").unwrap();
             let params = BTreeMap::from([(name, Param::Scaling(scaling))]);
             let mut table = ParamTable::default();
-            let at = |stat: &Stat| Ok::<_, Infallible>(StatId::new(usize::from(*stat == armor)));
+            let at = |stat: &Stat| Ok::<_, Infallible>(StatId::new(u16::from(*stat == armor)));
             assert_eq!(table.push(&params, at), Ok(0));
             table
         };

@@ -198,10 +198,7 @@ impl ModifierHooks {
                     source: heard.source,
                     stacks: instance.stacks,
                 };
-                let handle =
-                    StatsColumn::held_handle(ctx.view(), call.spare(), of, clocks.state(at));
-                call.hand_out(handle.clone());
-                handle
+                StatsColumn::held_handle(ctx.view(), call, of, clocks.state(at))
             };
             match arg {
                 Some(arg) => batch.call_hook(pool, script, hook, (ctx.clone(), handle, arg)),
