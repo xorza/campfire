@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_common::{Fingerprint, TlsKey, Version};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{ConnectChallenge, InputHash, Receipt, SeedChain, SlotPlan};
+use campfire_protocol::{ConnectChallenge, InputHash, MainKey, Receipt, SeedChain, SlotPlan};
 use campfire_runner::TermsError;
 use secp256k1::XOnlyPublicKey;
 
@@ -154,7 +154,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     assert_eq!(granted.session_key, TestKey::of(2).x_only_public_key().0);
     assert_eq!(
         delegation.main_key(),
-        &TestKey::of(1).x_only_public_key().0.serialize()
+        &MainKey::new(TestKey::of(1).x_only_public_key().0.serialize())
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),

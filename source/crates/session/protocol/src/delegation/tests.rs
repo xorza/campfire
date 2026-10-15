@@ -74,7 +74,7 @@ fn a_signed_delegation_reads_back_its_terms() {
     assert_eq!(delegation.terms(), &terms());
     assert_eq!(
         delegation.main_key(),
-        &main_key().x_only_public_key().0.serialize()
+        &MainKey::new(main_key().x_only_public_key().0.serialize())
     );
 
     // The event is of the delegation kind, with one tag per term in hex or decimal ([41; 32] is

@@ -8,6 +8,7 @@ use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
+use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
@@ -43,7 +44,7 @@ fn record() -> Checkpoint {
         chain,
     };
     let reserved = CarriedSlot {
-        leaver: Some([12; 32]),
+        leaver: Some(MainKey::new([12; 32])),
         ..slot(CarriedControl::Reserved)
     };
     Checkpoint {

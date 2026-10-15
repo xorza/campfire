@@ -11,6 +11,7 @@ use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::{DelegationError, EventError, ScopeError};
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::input_hash::InputHash;
+use crate::main_key::MainKey;
 use crate::session_id::SessionId;
 
 pub(crate) mod delegation_id;
@@ -40,7 +41,7 @@ pub struct DelegationTerms {
 pub struct Delegation {
     json: String,
     id: DelegationId,
-    main_key: [u8; 32],
+    main_key: MainKey,
     terms: DelegationTerms,
 }
 
@@ -126,7 +127,7 @@ impl Delegation {
         Ok(Delegation {
             json: json.to_owned(),
             id: DelegationId::new(event.id.to_bytes()),
-            main_key: event.pubkey.to_bytes(),
+            main_key: MainKey::new(event.pubkey.to_bytes()),
             terms: DelegationTerms {
                 session_key,
                 server_key,
@@ -153,7 +154,7 @@ impl Delegation {
     }
 
     /// The x-only public key of the player's Nostr identity.
-    pub const fn main_key(&self) -> &[u8; 32] {
+    pub const fn main_key(&self) -> &MainKey {
         &self.main_key
     }
 

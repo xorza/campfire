@@ -16,6 +16,7 @@ use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
 use crate::journal::journal_frames::MAX_RECORD;
+use crate::main_key::MainKey;
 use crate::player_input::PlayerInput;
 use crate::server_input::{InputPlace, LeaveReason, ServerInput};
 use crate::server_seed::ServerSeed;
@@ -121,7 +122,7 @@ pub struct SessionLog {
 #[derive(Debug, Clone, Copy)]
 struct Slot {
     control: Control,
-    leaver: Option<[u8; 32]>,
+    leaver: Option<MainKey>,
     stamps: StampCount,
     spill: Spill,
     /// The delegation whose key signed the head of its player's chain, by index; none before
@@ -448,7 +449,7 @@ impl SessionLog {
     }
 
     /// The main key of the player who left `slot` last, while no player took it since.
-    pub fn leaver(&self, slot: PlayerSlot) -> Option<[u8; 32]> {
+    pub fn leaver(&self, slot: PlayerSlot) -> Option<MainKey> {
         self.slots.get(slot.index())?.leaver
     }
 

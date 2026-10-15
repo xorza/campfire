@@ -18,6 +18,7 @@ use crate::session_log::error::{HeaderError, LogError};
 use crate::session_log::session_header::SessionHeader;
 use crate::session_log::{Entry, LoggedResult, POSITION_BOUND, SessionLog, offset, put, take};
 use crate::session_terms::SessionTerms;
+use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
@@ -280,8 +281,13 @@ pub(super) fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
     let count: u32 = take(rest)?;
     let mut slots = Vec::new();
     for slot in 0..count {
-        let start = match take::<u8>(rest)? {
-            0 => {
+        let plan = SlotPlan::try_from(take::<u8>(rest)?).map_err(|_| {
+            LogError::Header(HeaderError::UnknownStart {
+                slot: PlayerSlot::new(slot),
+            })
+        })?;
+        let start = match plan {
+            SlotPlan::Player => {
                 let json = take(rest)?;
                 let delegation = Delegation::parse(json).map_err(|error| {
                     LogError::Header(HeaderError::Delegation {
@@ -291,13 +297,8 @@ pub(super) fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
                 })?;
                 SlotStart::player(delegation)
             }
-            1 => SlotStart::Bot,
-            2 => SlotStart::Open,
-            _ => {
-                return Err(LogError::Header(HeaderError::UnknownStart {
-                    slot: PlayerSlot::new(slot),
-                }));
-            }
+            SlotPlan::Bot => SlotStart::Bot,
+            SlotPlan::Open => SlotStart::Open,
         };
         slots.push(start);
     }
