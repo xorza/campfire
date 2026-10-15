@@ -446,7 +446,7 @@ pub(crate) mod internals {
             };
             let mut types = world.resource_mut::<UnitTypeBook>();
             let unit_type = types.load(scope, package, name, data).unwrap();
-            let states = types.state_book();
+            let states = types.state_book_so_far();
             UnitTypeBook::share_in(world);
             states.load_into(world);
             unit_type

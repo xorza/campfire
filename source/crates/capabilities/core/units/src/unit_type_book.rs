@@ -33,13 +33,14 @@ pub struct UnitTypeBook {
     staged_tags: Option<Vec<TagSet>>,
     /// The name of each type in its scope, by type; shared with the script view.
     types: Arc<Names<UnitType>>,
-    /// Each type's package and its name there, by type.
-    origins: TypeOriginBook,
+    /// Each type's package and its name there, by type, until the origin book takes them.
+    origins: Option<TypeOriginBook>,
     /// Each type's params, one run per type, in the order of the types; shared with the script
     /// view.
     params: Arc<NameTable<Scalar>>,
-    /// Each type's script state, a schema per type, in the order of the types.
-    states: Vec<StateSchema>,
+    /// Each type's script state, a schema per type, in the order of the types, until the state
+    /// book takes them.
+    states: Option<Vec<StateSchema>>,
 }
 
 /// No tag and no type, as a match's declaration puts the book in before the release gives it
@@ -59,9 +60,9 @@ impl UnitTypeBook {
             engine,
             staged_tags: Some(Vec::new()),
             types: Arc::default(),
-            origins: TypeOriginBook::default(),
+            origins: Some(TypeOriginBook::default()),
             params: Arc::default(),
-            states: Vec::new(),
+            states: Some(Vec::new()),
         }
     }
 
@@ -92,17 +93,20 @@ impl UnitTypeBook {
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
         let fields = data.state.iter();
         let fields = fields.map(|(name, field)| (name.as_str(), field.sync, &field.decl));
-        self.states.push(StateSchema::new(fields));
-        debug_assert_eq!(
-            self.states.len(),
-            unit_type.index() + 1,
-            "one schema per type"
-        );
+        let states = self
+            .states
+            .as_mut()
+            .expect("a type loads only before the state book takes the schemas");
+        states.push(StateSchema::new(fields));
+        debug_assert_eq!(states.len(), unit_type.index() + 1, "one schema per type");
         self.staged_mut().push(tags);
-        self.origins.push(TypeOrigin {
-            package,
-            name: name.into(),
-        });
+        self.origins
+            .as_mut()
+            .expect("a type loads only before the origin book takes the origins")
+            .push(TypeOrigin {
+                package,
+                name: name.into(),
+            });
         Ok(unit_type)
     }
 
@@ -149,9 +153,12 @@ impl UnitTypeBook {
         &self.tags
     }
 
-    /// Each type's package and its name there, as the client finds its look.
-    pub fn origins(&self) -> TypeOriginBook {
-        self.origins.clone()
+    /// The book of each type's package and its name there, as the client finds its look, which
+    /// takes them, once.
+    pub const fn origin_book(&mut self) -> TypeOriginBook {
+        self.origins
+            .take()
+            .expect("the origin book takes the origins once")
     }
 
     /// Tags each unit type of `bodies`, each by the body it has, if any, with the name of the
@@ -206,9 +213,13 @@ impl UnitTypeBook {
         TagBook::new(self.engine.len(), effects, types)
     }
 
-    /// The state fields of every type, for the match's book of them.
-    pub fn state_book(&self) -> UnitStateBook {
-        self.states.iter().cloned().collect()
+    /// The book of every type's state fields, which takes them, once.
+    pub fn state_book(&mut self) -> UnitStateBook {
+        self.states
+            .take()
+            .expect("the state book takes the schemas once")
+            .into_iter()
+            .collect()
     }
 }
 
@@ -232,6 +243,13 @@ pub(crate) mod internals {
         /// How many unit types the match loaded, for a test to name the next one.
         pub fn count(&self) -> usize {
             self.types.len()
+        }
+
+        /// The book of the state fields of the types loaded so far, as a test that loads a type
+        /// at a time puts it in again after each.
+        pub fn state_book_so_far(&self) -> UnitStateBook {
+            let states = self.states.as_ref().expect("the state book took no schema");
+            states.iter().cloned().collect()
         }
 
         /// Whether the tag book took the types' tags, after which no type loads.

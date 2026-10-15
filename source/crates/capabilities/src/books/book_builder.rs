@@ -241,7 +241,7 @@ impl<'a> BookBuilder<'a> {
         let assist_window = data.combat.assist_window_ms.map(|ms| input.rate.window(ms));
         let mut built = BuiltBooks::default();
         built.add(parts.types.state_book());
-        built.add(parts.types.origins());
+        built.add(parts.types.origin_book());
         built.add(parts.types.tag_book(&data.tags));
         built.add(input.scripts.clone());
         built.add(ground);
