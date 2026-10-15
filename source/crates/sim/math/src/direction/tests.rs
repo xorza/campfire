@@ -1,7 +1,6 @@
 use proptest::prelude::*;
 
 use super::*;
-use crate::rounding::Rounding;
 
 const CASES: u32 = 10_000;
 

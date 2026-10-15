@@ -109,7 +109,6 @@ Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/
 Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
 
 - [ ] Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes. Blocked: see `review-workspace_QUESTIONS.md`, Batch 9.
-- [ ] `sim/math/src/num/mod.rs:171`, `direction/mod.rs:69,133`: `Rounding::shift_right`.
 - [ ] `store/src/platform/stop_signals.rs:22`: `ExitStatus::Interrupted`, pinned to `StopSignals::EXIT_CODE` by a check.
 
 ### Batch 10. One home for each format (RC3)

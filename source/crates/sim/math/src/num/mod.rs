@@ -145,7 +145,7 @@ impl Num {
     #[must_use]
     pub const fn saturating_mul(self, rhs: Num) -> Num {
         let product = (self.0 as i128).wrapping_mul(rhs.0 as i128);
-        Num::saturating_from_bits(Num::rounded_products(product))
+        Num::saturating_from_bits(Rounding::NearestEven.shift_right(product, Num::FRAC_BITS))
     }
 
     pub const fn checked_mul(self, rhs: Num) -> Option<Num> {
@@ -160,18 +160,7 @@ impl Num {
     /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
     /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
-        narrow(Num::rounded_products(sum))
-    }
-
-    /// `sum / 2²⁴`, rounded to nearest, ties to even. Adding `2²³ − 1` and the floor's last bit
-    /// before the shift rounds a rest past half up, a rest of half up from an odd floor only, and
-    /// a smaller rest down. The addition wraps only for a sum within 2²⁴ of `i128::MAX`, whose
-    /// quotient, wrapped or not, fits no `i64`, so narrowed it is refused, and saturated it is
-    /// never taken, as a product of two `i64`s is at most 2¹²⁶.
-    const fn rounded_products(sum: i128) -> i128 {
-        const HALF_LESS_ONE: i128 = (1 << (Num::FRAC_BITS - 1)) - 1;
-        let odd = (sum >> Num::FRAC_BITS) & 1;
-        sum.wrapping_add(HALF_LESS_ONE + odd) >> Num::FRAC_BITS
+        narrow(Rounding::NearestEven.shift_right(sum, Num::FRAC_BITS))
     }
 
     /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
