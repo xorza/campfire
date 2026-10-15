@@ -534,6 +534,27 @@ fn a_loss_the_frame_has_not_taken_ends_no_later_connection() {
 }
 
 #[test]
+fn a_close_of_a_link_gone_before_or_after_its_observer_closes_nothing() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    let code = AppCode::new(17);
+    // Despawned first, the link has no entity the close's observer finds; despawned after the
+    // observer ran, none its commands find.
+    let world = loopback.server.world_mut();
+    let mut commands = world.commands();
+    commands.trigger(CloseLink { entity: link, code });
+    commands.entity(link).despawn();
+    world.flush();
+    assert!(world.get_entity(link).is_err());
+    let mut commands = world.commands();
+    commands.entity(link).despawn();
+    commands.trigger(CloseLink { entity: link, code });
+    world.flush();
+    loopback.server.update();
+}
+
+#[test]
 fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let wrong = ServerKey::from_seed(&Zeroizing::new([8; 32])).public();

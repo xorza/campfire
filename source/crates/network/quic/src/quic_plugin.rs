@@ -49,9 +49,12 @@ impl QuicPlugin {
         let CloseLink { entity, code } = *close;
         if let Ok(link) = links.get(entity) {
             link.close(code);
-            commands.entity(entity).remove::<QuicLink>();
         }
-        commands.entity(entity).insert(LinkEnd::Closed(code));
+        let Ok(mut closed) = commands.get_entity(entity) else {
+            return;
+        };
+        closed.try_remove::<QuicLink>();
+        closed.try_insert(LinkEnd::Closed(code));
         commands.trigger(Unlink {
             entity,
             reason: UnlinkReason::UserRequested(Some(format!("closed with code {}", code.get()))),
