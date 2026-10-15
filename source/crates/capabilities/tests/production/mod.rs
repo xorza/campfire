@@ -333,8 +333,9 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
 
-    // A predicting client trains as the server does, but pays nothing: its player's resources
-    // are the server's, whose word comes back. Its player keeps all 5 gold.
+    // A predicting client queues the train as the server does, but pays nothing and spawns
+    // nothing: its player's resources and the unit trained are the server's, whose word comes
+    // back. Its player keeps all 5 gold, and its queue the train, done.
     let mut client = Match::predicting(&[Capability::Production]);
     let shop = Shop::place(&mut client);
     Players::spawn(&mut client, 1, 1);
@@ -357,12 +358,18 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     );
     Production::order_train(&mut client, owned);
     client.step();
-    assert_eq!(
-        shop.spawns(&mut client),
-        [(Team::new(1), Vec3::from((10, 0, 0)), Some(player))]
-    );
+    assert_eq!(shop.spawns(&mut client), []);
     let held = client.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 5);
+    let queue = client.part::<TrainQueue>(owned);
+    assert_eq!(
+        queue
+            .entries()
+            .iter()
+            .map(|queued| queued.action)
+            .collect::<Vec<_>>(),
+        [train]
+    );
 }
 
 #[test]

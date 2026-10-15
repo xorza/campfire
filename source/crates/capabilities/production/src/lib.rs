@@ -179,8 +179,9 @@ impl Module for Production {
     /// construction and gathering too: in Inputs, the build and gather orders that changed are
     /// checked; in Act, after the trains, builds start and workers run their loops; in Mode,
     /// before the trains finish, sites grow; as the tick ends, the nodes that ran out despawn. A
-    /// player's supply and a node's end are the server's: a predicting client derives neither,
-    /// as it holds only the units its team sees. A build's placement tests the units the server's
+    /// player's supply, a node's end, and the units trains and builds spawn are the server's: a
+    /// predicting client derives none, as it holds only the units its team sees, and its unit
+    /// comes back by replication. A build's placement tests the units the server's
     /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
@@ -199,16 +200,17 @@ impl Module for Production {
                 Trains::start_trains::<ServerForm>.in_set(ProductionSet::Start),
                 Trains::start_trains::<ClientForm>.in_set(ProductionSet::Start),
             );
-            cx.systems(Trains::finish_trains.in_set(ProductionSet::Finish));
+            cx.server(Trains::finish_trains.in_set(ProductionSet::Finish));
             return;
         }
         cx.by_role(
             Production::builds::<ByVision>(),
             Production::builds::<ByHolding>(),
         );
-        cx.systems(
-            (Construction::progress_sites, Trains::finish_trains)
-                .chain()
+        cx.systems(Construction::progress_sites.in_set(ProductionSet::Finish));
+        cx.server(
+            Trains::finish_trains
+                .after(Construction::progress_sites)
                 .in_set(ProductionSet::Finish),
         );
         cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));

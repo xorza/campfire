@@ -65,14 +65,13 @@ fn server_only(world: &World) -> Vec<String> {
 /// so the check cannot read what each reads, and `Release::sync_held` checks them by what they
 /// do. The test fails on one this list lacks, and on one it names that is gone, so no new one
 /// joins them unchecked.
-const EXCLUSIVE: [&str; 7] = [
+const EXCLUSIVE: [&str; 6] = [
     "campfire_combat::attacks::Attacks::attack_events",
     "campfire_combat::damage_pass::DamagePass::run",
     "campfire_combat::modifier_intervals::ModifierIntervals::run_intervals",
     "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
     "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
     "campfire_production::gather_loop::GatherLoop::run<campfire_vision::team_sight::ByHolding>",
-    "campfire_production::trains::Trains::finish_trains",
 ];
 
 #[test]
@@ -143,8 +142,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     assert_eq!(exclusive, EXCLUSIVE);
     // The server builds each system that computes its own state, and the client none: the pay of
     // ability and attack toggles, the forgetting of attackers, the despawns of the dead and of
-    // empty nodes, the trades, the supply's count, the sight, the areas' triggers and the
-    // projectiles' flight.
+    // empty nodes, the trades, the supply's count, the trains' finish, the sight, the areas'
+    // triggers and the projectiles' flight.
     let mut server = World::new();
     Release::build(&mut server, spec);
     let (client, server) = (system_names(&mut world), server_only(&server));
@@ -157,6 +156,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_items::trade_orders::TradeOrders::trade_items",
         "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
         "campfire_production::player_supply::PlayerSupply::refresh",
+        "campfire_production::trains::Trains::finish_trains",
         "campfire_projectiles::flying::Flying::fly",
         "campfire_vision::seeing::Seeing::see",
     ];

@@ -93,7 +93,8 @@ impl Construction {
     /// mode's spawner, which moves each walker its box overlaps out to the nearest cell it may
     /// stand in; its life starts at `start_life` of its maximum, rounded down, at least the least
     /// amount above 0. Each build sees the sites the builds before it placed. An `alone` build's
-    /// order then ends; another's builds its site.
+    /// order then ends; another's builds its site. On a predicting client, a build that starts
+    /// spawns nothing, and its order ends until the server's comes back.
     pub(crate) fn start_builds<S: TeamSight>(
         world: &mut World,
         builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
@@ -143,8 +144,8 @@ impl Construction {
 
     /// Starts the build `start` of the builder of `entity`: pays, goes on cooldown, and spawns
     /// the site, whose build's paid player resources `paid` holds for its cancel. A predicting
-    /// client's form `F` pays nothing, as the builder's pools and its player's resources are the
-    /// server's.
+    /// client's form `F` goes on cooldown and ends the order alone, as the builder's pools, its
+    /// player's resources and the site are the server's.
     fn spawn_site<F: RoleForm>(
         world: &mut World,
         entity: Entity,
@@ -191,6 +192,15 @@ impl Construction {
             .get_mut::<SlotTimes>(entity)
             .expect("a builder has slot times");
         times.cool_down(order.slot, now.after(start.cooldown));
+        // The site is the server's, which a client predicts no spawn of: the order ends, so the
+        // build starts once, and the server's, turned to the site, comes back by replication.
+        if F::PREDICTS {
+            world
+                .get_mut::<Builder>(entity)
+                .expect("a builder")
+                .set(None);
+            return;
+        }
         let id = world.resource_mut::<IdAllocator>().allocate();
         let at = SpawnAt {
             id,

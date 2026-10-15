@@ -570,6 +570,17 @@ fn walkers_in_the_box_move_out_to_the_nearest_open_cell_and_a_hidden_enemy_does_
     assert_eq!((shop.depots(&mut game), shop.gold(&game)), (vec![], 100));
     assert_eq!(Production::order_of(&game, builder), None);
 
+    // With no enemy in its box, the client's build starts, as the server's above places its
+    // depot, and pays and spawns nothing, though the test's world holds a spawner: the site and
+    // the gold are the server's. Its order ends, so it starts once; the server's comes back.
+    let mut game = Match::predicting(&ORDERING);
+    let shop = Shop::place(&mut game);
+    let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+    let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+    Production::build_at(&mut game, builder, 0, 0);
+    assert_eq!((shop.depots(&mut game), shop.gold(&game)), (vec![], 100));
+    assert_eq!(Production::order_of(&game, builder), None);
+
     // A wall over x −1 to 1 from z 1.25 to 3 holds the centers (±0.5, 1.5) and (±0.5, 2.5): a
     // walker in the box at (0.5, 0.75) goes past it to the nearest cell clear of both, (1.5, 1.5),
     // √1.0625 m off, its center 0.5 m from the wall's edge and √0.5 m from the box's corner.
