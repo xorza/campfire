@@ -390,7 +390,7 @@ impl ModeApi {
                     &[&["tag"]],
                     "the markers with `tag`, in the map's order",
                 ),
-                |map: GameMap, tag: MarkerTag| Ok(map.markers(&tag.0)),
+                |map: GameMap, tag: MarkerTag| Ok(map.markers(tag)),
             );
         api.ty::<Marker>("Marker")
             .bind(field("name", "its name"), |marker: &mut Marker| {

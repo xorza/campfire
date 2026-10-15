@@ -427,13 +427,14 @@ fn no_module_names_another_modules_sets() {
 /// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
 /// types take them, or in the load, which resolves the packages' names once. The test fails when a
 /// lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 35] = [
+const LOOKUPS: [(&str, &str); 37] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "named"),
     ("books/unit_start/mod.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
+    ("mode/game_map.rs", "named"),
     ("mode/map_data.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
@@ -454,6 +455,7 @@ const LOOKUPS: [(&str, &str); 35] = [
     // players' inputs.
     ("actions/slot_kind.rs", "named"),
     ("mode/choice_id.rs", "named"),
+    ("mode/marker_tag.rs", "named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
     ("script/scripts/id_args.rs", "named"),

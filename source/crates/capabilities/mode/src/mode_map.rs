@@ -190,7 +190,7 @@ impl ModeMap {
             });
             let region = region.transpose()?;
             markers.push(MarkerSpec {
-                name: marker.name.as_str().into(),
+                name: marker.name.clone(),
                 tags: marker.tags.iter().cloned().collect(),
                 pos: marker.pos.as_ref().map(point).transpose()?,
                 region,
@@ -225,7 +225,7 @@ impl ModeMap {
             .filter(|marker| marker.tags.iter().any(|tag| spawn_tags.contains(tag)));
         let points = spawns.filter_map(|marker| {
             Some(MarkerPoint {
-                name: DeclaredName::new(&marker.name).expect("the map's names are declared"),
+                name: marker.name.clone(),
                 pos: marker.pos?,
             })
         });

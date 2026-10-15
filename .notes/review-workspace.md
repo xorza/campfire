@@ -139,7 +139,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mode/src/{game_map,marker,marker_tag,marker_spec,mode_map}.rs`, `capabilities/core/{script,actions,values}/src/**`, `session/protocol/src/**`, `network/net/src/events/*`, `network/quic/src/{port_mapper/mod,error}.rs`. Goldens: none move.
 
-- [ ] `mode/src/{game_map.rs:48-55,marker.rs:32,marker_tag.rs:118,marker_spec.rs:6}`: interned marker tags, and `DeclaredName` names.
 - [ ] A `PackageId` with `MODE` replaces the raw `u16` in `call_start.rs:20`, `frame.rs:64`, `action.rs:14`, `ActionBook::load` and `ActionNames`.
 - [ ] A typed main key replaces `[u8; 32]` in `protocol` (`delegation`, `controller`, `session_log`, `log_carry`). `SlotPlan` converts from its byte.
 - [ ] `net/src/events/{save,receipt,join}_refused`: typed fields, as `LinkLost` has. `quic/src/error.rs:22`: its own variant for a gateway with no IPv4 address.

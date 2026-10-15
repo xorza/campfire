@@ -119,11 +119,13 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
             (1, input("rich", "gems")),
             (1, input("rich", "gems")),
             (1, input("gold", "silver")),
+            (1, input("markers", "spawns")),
             (0, input("probe", "")),
         ],
     );
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
-    // not declare fails, as a sum past what an integer holds does.
+    // not declare fails, as a sum past what an integer holds does, and a marker tag no marker
+    // holds.
     let amount = |slot, name| {
         let resources = game.player_resources(PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
@@ -137,7 +139,8 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         Mode::failures(&game),
         [
             FailureKind::Api(ApiError::ResourceOverflow),
-            FailureKind::Api(ApiError::Unknown(NameKind::Resource))
+            FailureKind::Api(ApiError::Unknown(NameKind::Resource)),
+            FailureKind::Api(ApiError::Unknown(NameKind::MarkerTag)),
         ]
     );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3

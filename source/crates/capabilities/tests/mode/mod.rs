@@ -119,6 +119,8 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.set_out(player, value == "on");
     } else if name == "phase" {
         ctx.state.phase = 5;
+    } else if name == "markers" {
+        ctx.map.markers(value);
     } else if name == "probe" {
         let grunts = ctx.units_tagged("grunt");
         ctx.state.enemy = ctx.enemy_team("a");
@@ -563,6 +565,7 @@ fn mode_files() -> ModeFiles {
                 ("phase", InputType::String),
                 ("probe", InputType::String),
                 ("out", InputType::String),
+                ("markers", InputType::String),
             ]
             .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),

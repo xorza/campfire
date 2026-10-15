@@ -259,6 +259,7 @@ impl Mode {
             relations,
             map: GameMap::new(path_names.map(ScriptText::from), &markers),
         };
+        view.names_mut().set_table(Arc::clone(start.map.tags()));
         Mode::load_units(world, &setup.units);
         let book = ModeSpec::new(
             setup,
