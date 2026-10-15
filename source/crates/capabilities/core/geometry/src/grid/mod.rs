@@ -154,18 +154,11 @@ impl Grid {
         let centre = Halves::ground(pos);
         let point = centre.to_array();
         let extent = body.extent();
-        let min = self.bounds.min();
-        let cell = i128::from(self.cell.to_bits());
-        let last = |axis: usize| i128::from(self.size[axis]) - 1;
-        // The cells whose centres lie within the rectangle, along `axis`: a centre at
-        // `2 min + cell (2 i + 1)` halves.
+        // The cells whose centres lie within the rectangle grown by the reach.
         let span = |axis: usize| {
             let grow = Halves::of(extent[axis]) + Halves::of(reach);
-            let from = point[axis] - grow - Halves::of(min[axis]) - cell;
-            let to = point[axis] + grow - Halves::of(min[axis]) - cell;
-            let first = Rounding::Ceiling.divide(from, 2 * cell).max(0);
-            let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
-            first..=end
+            let (low, high) = (point[axis] - grow, point[axis] + grow);
+            self.cells_along(axis, low, high, CellPart::Centre)
         };
         let closer = body.closer_twice(reach);
         self.runs(
@@ -207,18 +200,13 @@ impl Grid {
         let centre = Halves::ground(pos);
         let point = centre.to_array();
         let extent = body.extent();
-        let min = self.bounds.min();
-        let cell = i128::from(self.cell.to_bits());
-        let last = |axis: usize| i128::from(self.size[axis]) - 1;
-        // The cells whose squares, from `2 min + 2 cell i` to the next, the rectangle meets.
+        // The cells whose squares the rectangle meets.
         let span = |axis: usize| {
-            let from = point[axis] - Halves::of(extent[axis]) - Halves::of(min[axis]);
-            let to = point[axis] + Halves::of(extent[axis]) - Halves::of(min[axis]);
-            let first = Grid::floor_halves(from, 2 * cell).max(0);
-            let end = Grid::floor_halves(to, 2 * cell).min(last(axis));
-            first..=end
+            let half = Halves::of(extent[axis]);
+            let (low, high) = (point[axis] - half, point[axis] + half);
+            self.cells_along(axis, low, high, CellPart::Square)
         };
-        let covers = body.overlaps_square_twice(cell);
+        let covers = body.overlaps_square_twice(i128::from(self.cell.to_bits()));
         let hits = |&z: &i64, x: i64| covers(Flat::new(i128::from(x), i128::from(z)));
         self.runs(span(1), span(0), centre, |z| z, hits, &mut mark);
     }
@@ -480,6 +468,32 @@ impl Grid {
         false
     }
 
+    /// The cells along `axis`, 0 for x and 1 for z, whose `part` lies within the span from `low`
+    /// to `high`, or for a square meets it, both ends in halves of a bit, within the grid's. A
+    /// centre lies at `2 min + cell (2 i + 1)` halves, and a square from `2 min + 2 cell i` to
+    /// the next.
+    fn cells_along(
+        &self,
+        axis: usize,
+        low: i128,
+        high: i128,
+        part: CellPart,
+    ) -> RangeInclusive<i128> {
+        let min = Halves::of(self.bounds.min()[axis]);
+        let cell = i128::from(self.cell.to_bits());
+        let (first, end) = match part {
+            CellPart::Centre => (
+                Rounding::Ceiling.divide(low - min - cell, 2 * cell),
+                Grid::floor_halves(high - min - cell, 2 * cell),
+            ),
+            CellPart::Square => (
+                Grid::floor_halves(low - min, 2 * cell),
+                Grid::floor_halves(high - min, 2 * cell),
+            ),
+        };
+        first.max(0)..=end.min(i128::from(self.size[axis]) - 1)
+    }
+
     /// `value / by` rounded down, for halves of a bit within twice the world's bound, which fit
     /// `i64`, whose division is one instruction, where `i128`'s is a library call.
     fn floor_halves(value: i128, by: i128) -> i128 {
@@ -497,6 +511,13 @@ impl Grid {
 
 /// The rows a disc may reach on a grid, in halves of a bit: its center from the grid's min, its
 /// reach, whether a center at the reach is out, and the first and last row.
+/// The part of a cell that a span along an axis must hold, or meet, for the cell to count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CellPart {
+    Centre,
+    Square,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct Rows {
     from: [i64; 2],
