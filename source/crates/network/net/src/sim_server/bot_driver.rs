@@ -1,15 +1,15 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::Order;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
-use campfire_units::HeldPlayerUnits;
+use campfire_sim::StableId;
+use campfire_units::{HeldPlayerUnits, UnitTypeBook};
 
 use crate::bot_script::BotScript;
-use crate::events::avatar_missing::AvatarMissing;
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
+use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::order_script::OrderScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 
@@ -29,6 +29,8 @@ pub(crate) struct BotDriver {
     body: Vec<u8>,
     /// Who each slot commands, kept so no tick builds its query again.
     players: HeldPlayerUnits,
+    /// The units of an order of a unit type, kept so no order allocates their list.
+    scratch: Vec<StableId>,
 }
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
@@ -51,6 +53,7 @@ impl BotDriver {
             payload: Vec::new(),
             body: Vec::new(),
             players: HeldPlayerUnits::new(world),
+            scratch: Vec::new(),
         }
     }
 
@@ -104,13 +107,14 @@ impl BotDriver {
     }
 
     /// Logs what each bot's script has due by `tick` into `session`: its mode inputs, then its
-    /// orders, for the slot's avatar.
+    /// orders, each for the slot's units it names.
     fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
         let BotDriver {
             bots,
             payload,
             body,
             players,
+            scratch,
             ..
         } = self;
         for driven in bots {
@@ -123,18 +127,23 @@ impl BotDriver {
                 input.write_payload(body, payload);
                 BotDriver::log(session, driven.slot, payload);
             }
-            let avatar = players.avatar(world, driven.slot).map(|avatar| avatar.id);
+            let types = world.resource::<UnitTypeBook>().types();
+            let units = players.get(world);
             for scripted in driven.script.due_orders(script_tick) {
-                let Some(unit) = avatar else {
-                    AvatarMissing {
-                        slot: driven.slot,
-                        action: scripted.action,
+                let order = match scripted.order(driven.slot, &units, types, scratch) {
+                    Ok(order) => order,
+                    Err(cause) => {
+                        BotUnitsMissing {
+                            slot: driven.slot,
+                            cause,
+                            action: scripted.action,
+                        }
+                        .log();
+                        continue;
                     }
-                    .log();
-                    continue;
                 };
                 payload.clear();
-                Order::one(unit, scripted.action).write_payload(body, payload);
+                order.write_payload(body, payload);
                 BotDriver::log(session, driven.slot, payload);
             }
         }

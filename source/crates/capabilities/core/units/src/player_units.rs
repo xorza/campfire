@@ -1,24 +1,33 @@
 use std::fmt;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Allow, With};
+use bevy_ecs::query::{Allow, With, Without};
 use bevy_ecs::system::{Query, SystemParam, SystemState};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_sim::{StableId, Unpredicted};
+use campfire_values::UnitType;
 
 use crate::avatar::Avatar;
+use crate::dead::Dead;
 use crate::owner::Owner;
 
 /// Who a player commands, the one rule the server's bots, a client and its view read: a player's
 /// avatar, in a mode with avatars, is the unit its slot owns of a type the book tags `avatar`,
 /// alive or dead, whichever capabilities the mode declares and however many units the player
-/// owns, as its type marks it an `Avatar`. A world with no match, and so no tag book, has no
-/// avatar.
+/// owns, as its type marks it an `Avatar`; and its living units of a type, which a bot's order
+/// may name. A world with no match, and so no tag book, has no avatar.
 #[derive(SystemParam)]
 pub struct PlayerUnits<'w, 's> {
     avatars: Query<'w, 's, AvatarData, AvatarFilter>,
+    living: Query<'w, 's, LivingData, LivingFilter>,
 }
+
+/// What a lookup of units by type reads of each: its stable id, its owner and its type.
+pub(crate) type LivingData = (&'static StableId, &'static Owner, &'static UnitType);
+
+/// The units a lookup by type visits: the living, the ones the client only receives too.
+pub(crate) type LivingFilter = (Without<Dead>, Allow<Unpredicted>);
 
 /// What a lookup of an avatar reads of each: its entity, its stable id and its owner.
 pub(crate) type AvatarData = (Entity, &'static StableId, &'static Owner);
@@ -43,6 +52,19 @@ impl PlayerUnits<'_, '_> {
     pub fn avatar(&self, slot: PlayerSlot) -> Option<Commanded> {
         Commanded::avatar_among(self.avatars.iter(), slot)
     }
+
+    /// Puts into `out`, cleared first, the living units `slot` owns of `unit_type`, by stable id,
+    /// rising.
+    pub fn typed(&self, slot: PlayerSlot, unit_type: UnitType, out: &mut Vec<StableId>) {
+        out.clear();
+        out.extend(
+            self.living
+                .iter()
+                .filter(|&(_, owner, &typed)| owner.slot() == slot && typed == unit_type)
+                .map(|(&id, ..)| id),
+        );
+        out.sort_unstable();
+    }
 }
 
 impl Commanded {
@@ -59,10 +81,9 @@ impl Commanded {
 }
 
 impl HeldPlayerUnits {
-    /// See `PlayerUnits::avatar`, of `world`, the world it was made of.
-    pub fn avatar(&mut self, world: &World, slot: PlayerSlot) -> Option<Commanded> {
-        let units = self.0.get(world).expect("its params are always valid");
-        units.avatar(slot)
+    /// The param, of `world`, the world it was made of.
+    pub fn get<'w, 's>(&'s mut self, world: &'w World) -> PlayerUnits<'w, 's> {
+        self.0.get(world).expect("its params are always valid")
     }
 
     pub fn new(world: &mut World) -> HeldPlayerUnits {

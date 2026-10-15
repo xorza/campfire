@@ -34,8 +34,8 @@ mod wire_codec;
 
 pub use crate::bot_script::BotScript;
 pub use crate::close_code::CloseCode;
-pub use crate::events::avatar_missing::AvatarMissing;
 pub use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
+pub use crate::events::bot_units_missing::{BotUnitsMissing, UnitsMissing};
 pub use crate::events::checkpoint_failed::CheckpointFailed;
 pub use crate::events::checkpoint_taken::CheckpointTaken;
 pub use crate::events::client_frame::ClientFrame;
@@ -77,7 +77,9 @@ pub use crate::local::local_server::{LocalLink, LocalServer, LocalServerSetup, R
 pub use crate::match_clock::MatchClock;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
-pub use crate::order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
+pub use crate::order_script::{
+    OrderScript, ScriptedInput, ScriptedOrder, ScriptedUnits, ScriptedValue,
+};
 pub use crate::os::{Clock, Os};
 pub use crate::pace::{Pace, PaceSpeed};
 pub use crate::process_exit::ProcessExit;

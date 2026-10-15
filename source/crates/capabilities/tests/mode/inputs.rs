@@ -357,7 +357,8 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     let mut players = HeldPlayerUnits::new(&mut game);
     let avatar = |players: &mut HeldPlayerUnits, slot| {
         players
-            .avatar(&game, PlayerSlot::new(slot))
+            .get(&game)
+            .avatar(PlayerSlot::new(slot))
             .map(|avatar| avatar.entity)
     };
     assert_eq!(avatar(&mut players, 0), Some(hero));

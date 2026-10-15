@@ -22,7 +22,7 @@ use campfire_protocol::{PlayerInput, SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
-use campfire_units::{Dead, Owner, PlayerUnits, UnitsWorld};
+use campfire_units::{Dead, Owner, PlayerUnits, UnitTypeBook, UnitsWorld};
 use campfire_values::{Team, TeamSet};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
@@ -38,6 +38,7 @@ use tracing::info;
 use crate::bot_script::BotScript;
 use crate::close_code::CloseCode;
 use crate::dismissed::Dismissed;
+use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
@@ -58,7 +59,7 @@ use crate::leave_match::LeaveMatch;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
 use crate::offer::Offer;
-use crate::order_script::ScriptedInput;
+use crate::order_script::{ScriptedInput, ScriptedOrder, ScriptedUnits};
 use crate::os::Os;
 use crate::save_command::SaveCommand;
 use crate::sim_client::client_dir::ClientDir;
@@ -579,9 +580,10 @@ fn report_deaths(
     }
 }
 
-/// Adds the bot script's mode inputs due by the tick about to run, and its orders for the
-/// player's own avatar once the client predicts it, as a link that came back replicates it a
-/// little later: an order due before waits, and goes out late. Then stamps the pending orders
+/// Adds the bot script's mode inputs due by the tick about to run, and its orders, each for the
+/// player's units it names: one for the player's own avatar once the client predicts it, as a
+/// link that came back replicates it a little later, so an order due before waits with those
+/// after it, and goes out late; one whose units the player lacks is dropped. Then stamps the pending orders
 /// with that tick, up to the session's max inputs per tick, chains each and keeps it, and sends
 /// them in one message signed over the chain head after the last. The orders past the max wait
 /// for the next tick, so the log never refuses the message; an order whose payload passes the
@@ -597,6 +599,8 @@ fn send_orders(
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
     players: PlayerUnits<'_, '_>,
+    types: Option<Res<'_, UnitTypeBook>>,
+    mut scratch: Local<'_, Vec<StableId>>,
     signer: Res<'_, PlayerSigner>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
@@ -630,9 +634,20 @@ fn send_orders(
         for input in bot.due_inputs(stamp) {
             pending.push_input(input.clone());
         }
-        if let Some(avatar) = players.avatar(playing.chain.slot()) {
-            for scripted in bot.due_orders(stamp) {
-                pending.push(Order::one(avatar.id, scripted.action));
+        let slot = playing.chain.slot();
+        let avatar = players.avatar(slot).is_some();
+        let ready = |order: &ScriptedOrder| avatar || order.units != ScriptedUnits::Avatar;
+        if let Some(types) = &types {
+            for scripted in bot.due_orders_while(stamp, ready) {
+                match scripted.order(slot, &players, types.types(), &mut scratch) {
+                    Ok(order) => pending.push(order),
+                    Err(cause) => BotUnitsMissing {
+                        slot,
+                        cause,
+                        action: scripted.action,
+                    }
+                    .log(),
+                }
             }
         }
     }

@@ -1,28 +1,36 @@
 use std::path::Path;
 
 use campfire_actions::ActionTarget;
-use campfire_capabilities::Action;
+use campfire_capabilities::{Action, Order};
 use campfire_codec::Toml;
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::Num;
 use campfire_mode::{InputValue, ModeInput};
 use campfire_orders::OrdersAction;
+use campfire_players::OrderUnits;
+use campfire_production::BuildTarget;
 use campfire_progression::ProgressionAction;
 use campfire_sim::StableId;
 use campfire_store::InputFile;
+use campfire_units::PlayerUnits;
+use campfire_values::{DeclaredName, Names, TypeScope, UnitType};
 use serde::Deserialize;
 
+use crate::events::bot_units_missing::UnitsMissing;
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;
 
-/// A player's orders for their avatar and their mode inputs, each at a sim tick, in tick order,
+/// A player's orders for their units and their mode inputs, each at a sim tick, in tick order,
 /// and optionally the tick the player leaves after: what a bot plays. It reads from TOML: an
-/// optional `end`; one `[[order]]` table each, with its `tick` and one action: `move = [x, z]` in
-/// meters, `attack = <unit>`, `cast = <slot>`, with `target = <unit>` when the ability takes one,
-/// or `learn = <slot>`; and one `[[input]]` table each, with its `tick`, the mode input's `name`
-/// and its `value`, a string or a list of strings, as the mode declares the input. A unit is its
-/// stable id, which a mode that spawns in a fixed order gives each match alike.
+/// optional `end`; one `[[order]]` table each, with its `tick`, optionally `units = "<type>"`,
+/// the player's living units of that unit type as the order is due, its avatar without, and one
+/// action: `move = [x, z]` in meters, `attack = <unit>`, `cast = <slot>`, with `target = <unit>`
+/// when the action takes one, `build = { slot, x, z, angle }`, a building placed at `x`, `z` in
+/// meters and `angle` degrees, or `learn = <slot>`; and one `[[input]]` table each, with its
+/// `tick`, the mode input's `name` and its `value`, a string or a list of strings, as the mode
+/// declares the input. A unit is its stable id, which a mode that spawns in a fixed order gives
+/// each match alike.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderScript {
     orders: Vec<ScriptedOrder>,
@@ -47,11 +55,21 @@ pub enum ScriptedValue {
     List(Vec<String>),
 }
 
-/// One order of a script: the sim tick it is sent in, and what the avatar does.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// One order of a script: the sim tick it is sent in, the units it commands, and what they do.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptedOrder {
     pub tick: Tick,
+    pub units: ScriptedUnits,
     pub action: Action,
+}
+
+/// The units of its player an order commands.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ScriptedUnits {
+    /// The player's avatar.
+    Avatar,
+    /// The player's living units of the unit type of this name, as the order is due.
+    Typed(DeclaredName),
 }
 
 impl ScriptedInput {
@@ -69,6 +87,36 @@ impl ScriptedInput {
             value,
         };
         input.write_payload(body, out);
+    }
+}
+
+impl ScriptedOrder {
+    /// The order it gives for the player of `slot`: its action for its units as `players` holds
+    /// them now, a type's by its name in `types`, gathered in `scratch`; why it has none.
+    pub(crate) fn order(
+        &self,
+        slot: PlayerSlot,
+        players: &PlayerUnits<'_, '_>,
+        types: &Names<UnitType>,
+        scratch: &mut Vec<StableId>,
+    ) -> Result<Order, UnitsMissing> {
+        let units = match &self.units {
+            ScriptedUnits::Avatar => {
+                let avatar = players.avatar(slot).ok_or(UnitsMissing::NoAvatar)?;
+                OrderUnits::one(avatar.id)
+            }
+            ScriptedUnits::Typed(name) => {
+                let unit_type = types
+                    .named((TypeScope::Mode, name.as_str()))
+                    .ok_or(UnitsMissing::UnknownType)?;
+                players.typed(slot, unit_type, scratch);
+                OrderUnits::new(scratch).ok_or(UnitsMissing::NoUnit)?
+            }
+        };
+        Ok(Order {
+            units,
+            action: self.action,
+        })
     }
 }
 
@@ -114,21 +162,33 @@ impl OrderScript {
         #[serde(deny_unknown_fields)]
         struct Entry {
             tick: u64,
+            units: Option<DeclaredName>,
             #[serde(rename = "move")]
             to: Option<[Num; 2]>,
             attack: Option<StableId>,
             cast: Option<u8>,
             target: Option<StableId>,
+            build: Option<BuildEntry>,
             learn: Option<u8>,
+        }
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct BuildEntry {
+            slot: u8,
+            x: Num,
+            z: Num,
+            angle: Num,
         }
         let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
         let mut orders = Vec::with_capacity(file.order.len());
         for Entry {
             tick,
+            units,
             to,
             attack,
             cast,
             target,
+            build,
             learn,
         } in file.order
         {
@@ -136,6 +196,7 @@ impl OrderScript {
                 to.is_some(),
                 attack.is_some(),
                 cast.is_some(),
+                build.is_some(),
                 learn.is_some(),
             ];
             match named.into_iter().filter(|&named| named).count() {
@@ -143,23 +204,28 @@ impl OrderScript {
                 1 => {}
                 _ => return Err(OrderScriptError::ManyActions { tick }),
             }
-            let action = match (to, attack, cast, target, learn) {
-                (Some(to), None, None, None, None) => {
-                    let [x, z] = to;
-                    Action::Orders(OrdersAction::Move { x, z })
-                }
-                (None, Some(target), None, None, None) => {
-                    Action::Orders(OrdersAction::Attack { target })
-                }
-                (None, None, Some(slot), target, None) => Action::Orders(OrdersAction::Slot {
+            if target.is_some() && cast.is_none() {
+                return Err(OrderScriptError::StrayTarget { tick });
+            }
+            let action = if let Some([x, z]) = to {
+                Action::Orders(OrdersAction::Move { x, z })
+            } else if let Some(target) = attack {
+                Action::Orders(OrdersAction::Attack { target })
+            } else if let Some(slot) = cast {
+                Action::Orders(OrdersAction::Slot {
                     slot,
                     target: target.map_or(ActionTarget::None, ActionTarget::Unit),
-                }),
-                (None, None, None, None, Some(slot)) => {
-                    Action::Progression(ProgressionAction::Learn { slot })
-                }
-                _ => return Err(OrderScriptError::StrayTarget { tick }),
+                })
+            } else if let Some(BuildEntry { slot, x, z, angle }) = build {
+                Action::Orders(OrdersAction::Build {
+                    slot,
+                    target: BuildTarget::Point { x, z, angle },
+                })
+            } else {
+                let slot = learn.expect("an order names one action");
+                Action::Progression(ProgressionAction::Learn { slot })
             };
+            let units = units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed);
             let tick = Tick::new(tick);
             if orders
                 .last()
@@ -167,7 +233,11 @@ impl OrderScript {
             {
                 return Err(OrderScriptError::Unordered { tick: tick.get() });
             }
-            orders.push(ScriptedOrder { tick, action });
+            orders.push(ScriptedOrder {
+                tick,
+                units,
+                action,
+            });
         }
         let mut inputs: Vec<ScriptedInput> = Vec::with_capacity(file.input.len());
         for InputEntry { tick, name, value } in file.input {
