@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry/{mod,internals}.rs`, `capabilities/core/declare/src/**`, `capabilities/core/units/src/units/{forced_move,spawn_point}.rs`, `capabilities/core/actions/src/action_slots/{mod,slot_times}.rs`, `capabilities/mode/src/choices.rs`, `capabilities/items/src/inventory.rs`, `capabilities/navigation/src/{static_bodies,walking}.rs`, `session/runner/src/session_rules/mod.rs`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/sim_{server,client}/mod.rs`. Goldens: none move, as the wide-domain arithmetic rounds once, as the `Num` arithmetic did.
 
-- [ ] Declared part rule: `EntityParts::check` (`declare/src/declare/entity_parts.rs:108`) also refuses a declared part that an entity holds where its kind's spawn would not give it, so the restore refuses a part its kind does not declare. Then `navigation/src/static_bodies.rs:30` and `walking.rs:268` read one predicate of "static".
 - [ ] `actions/src/action_slots/slot_times.rs:341-348`, `action_slots/mod.rs:346-366`: the cooldown cut and the charge release scale ticks in `u128`, with no `Num::from_int(…).expect`.
 - [ ] `actions/src/action_slots/slot_times.rs:249`: `saturating_add` in `add_charge`.
 - [ ] `units/src/units/spawn_point.rs:30-33`: checked against `MapBook.bounds`.
