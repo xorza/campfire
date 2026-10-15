@@ -82,14 +82,7 @@ impl Module for Progression {
         d.book::<ByType<TrackSet>>();
         d.part::<BodyUnit, Experience>(|at| {
             let tracks = *at.of_type::<TrackSet>()?;
-            (!tracks.is_empty()).then(|| {
-                Experience::new(
-                    tracks,
-                    at.world()
-                        .get_resource::<TrackBook>()
-                        .and_then(TrackBook::level_track),
-                )
-            })
+            (!tracks.is_empty()).then(|| Experience::new(tracks))
         });
         d.part::<BodyUnit, Points>(|at| {
             Points::at_spawn(

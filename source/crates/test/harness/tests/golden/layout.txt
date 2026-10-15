@@ -1,4 +1,4 @@
-data_version 16
+data_version 17
 actions.slot_times 776040a47152d129
 actions.slots 6986814051c8249c
 actions.use_group dbfe58d458cf8fc1
@@ -33,7 +33,7 @@ production.node 7f992cd38c58e8ec
 production.rally a481e95daaa336a5
 production.site 50651407cc57540e
 production.train_queue c3fc23c8a1a1bff0
-progression.experience 9f97267ca4ebe1e8
+progression.experience f994c655dafc7639
 progression.level_ups 832035801ffaa69f
 progression.points 15fb8f345c37c1c2
 projectiles.flight_state e424d4aaefae6056

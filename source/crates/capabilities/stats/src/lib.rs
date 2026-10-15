@@ -233,6 +233,7 @@ impl Module for Stats {
         d.book::<ByType<TypePassive>>();
         d.callback::<SpawnHooks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
+        d.observer(Level::raise);
         d.part::<BodyUnit, Modifiers>(|_| Some(Modifiers::default()));
         d.part::<BodyUnit, ModifierClocks>(|_| Some(ModifierClocks::default()));
         d.part::<BodyUnit, Pools>(|at| at.of_type::<Pools>().copied());

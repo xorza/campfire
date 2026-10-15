@@ -2209,7 +2209,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
         &mut game,
         (1, 0, 0),
         Team::new(1),
-        Experience::new(TrackSet::from([valor]), None),
+        Experience::new(TrackSet::from([valor])),
     );
     let untracked = Abilities::spawn_combatant(&mut game, (-1, 0, 0), Team::new(1), ());
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
@@ -2272,7 +2272,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     let action = Actions::load(&mut game, 0, "bolt", &data, None, 1).unwrap();
     Actions::load_effect_lists(&mut game, action, 0, &data);
     let caster = Abilities::caster(&mut game, action, 1);
-    game.insert_parts(caster, Experience::new(TrackSet::from([valor]), None));
+    game.insert_parts(caster, Experience::new(TrackSet::from([valor])));
     let enemy = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
     Abilities::cast(
         &mut game,

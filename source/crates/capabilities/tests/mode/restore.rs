@@ -133,15 +133,15 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::from([TrackId::new(track)]), None);
+    let on_tracks = |track| Experience::new(TrackSet::from([TrackId::new(track)]));
     assert!(on_tracks(1).check(&game, grunt) && !on_tracks(2).check(&game, grunt));
-    // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
-    // refused, one that holds none passes.
-    let level_track = |own: bool| {
-        let track = TrackId::new(0);
-        Experience::new(TrackSet::from([track]), (!own).then_some(track))
-    };
-    assert!(level_track(false).check(&game, grunt) && !level_track(true).check(&game, grunt));
+    // Track 0 is the `level` track, whose level is the unit's, 1 for the grunt: the level 1 there
+    // passes, a level 2 is refused.
+    assert_eq!(game.get::<Level>(grunt).unwrap().get(), 1);
+    let mut ahead = on_tracks(0);
+    assert!(ahead.check(&game, grunt));
+    ahead.tracks_mut()[0].level = Level::new(2).unwrap();
+    assert!(!ahead.check(&game, grunt));
     let id = *game.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         id,

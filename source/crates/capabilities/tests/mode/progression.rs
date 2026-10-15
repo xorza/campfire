@@ -104,21 +104,16 @@ fn on_level_up(ctx, unit, track, level) {
 "#;
     let mut game = picking_match(leveler, ScriptLimits::ROOMY);
     let hero = Mode::pick(&mut game, 0, "hero-x");
-    // The `level` track's level is the unit's own; valor keeps its own. A point comes with each
-    // level of the `level` track, the first at the spawn, and none with valor's.
+    // Each track holds its level, and the `level` track's raises the unit's, which stats owns.
+    // A point comes with each level of the `level` track, the first at the spawn, and none with
+    // valor's.
     let progress = |game: &Match| {
         let experience = game.get::<Experience>(hero).unwrap();
         let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at)).unwrap());
-        assert_eq!(level.level, None);
         let unit_level = game.get::<Level>(hero).unwrap().get();
+        assert_eq!(level.level.get(), unit_level);
         let points = game.get::<Points>(hero).unwrap().get();
-        (
-            level.xp,
-            unit_level,
-            valor.xp,
-            valor.level.map(Level::get),
-            points,
-        )
+        (level.xp, unit_level, valor.xp, valor.level.get(), points)
     };
 
     let kind = |game: &Match| Mode::field(game, "kind");
@@ -127,15 +122,15 @@ fn on_level_up(ctx, unit, track, level) {
     // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
     // and its `on_level_up` runs in the same tick.
     let steps = [
-        ("99", (Num::int(99), 1, Num::ZERO, Some(1), 1), ""),
+        ("99", (Num::int(99), 1, Num::ZERO, 1, 1), ""),
         (
             "1.5",
-            (Num::int(100) + half, 2, Num::ZERO, Some(1), 2),
+            (Num::int(100) + half, 2, Num::ZERO, 1, 2),
             "level 2;",
         ),
         (
             "500",
-            (Num::int(600) + half, 3, Num::int(50), Some(2), 3),
+            (Num::int(600) + half, 3, Num::int(50), 2, 3),
             "level 2;level 3;valor 2;",
         ),
     ];
@@ -157,7 +152,7 @@ fn on_level_up(ctx, unit, track, level) {
         assert_eq!(Mode::failures(&game), [FailureKind::Api(error)], "{value}");
         assert_eq!(
             progress(&game),
-            (Num::int(600) + half, 3, Num::int(50), Some(2), 3),
+            (Num::int(600) + half, 3, Num::int(50), 2, 3),
             "{value}"
         );
     }

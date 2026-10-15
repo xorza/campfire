@@ -467,6 +467,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "UnitTracker<GridUnits>::aged",
             "UnitTracker<GridUnits>::lost_body",
             "Units::refill_view",
+            "Level::raise",
             "UnitTracker<StaticBodies>::aged",
             "StaticBodies::part_removed",
             "StaticBodies::state_inserted",
