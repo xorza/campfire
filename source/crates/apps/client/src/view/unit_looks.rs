@@ -6,18 +6,26 @@ use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
 use campfire_client_files::ClientUnit;
+use campfire_math::Num;
 use campfire_units::TypeOriginBook;
 use campfire_values::{NameId, PackageIndex, UnitType};
 
 use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;
 
-/// Each unit type's models, as its package's client data lists them, by type: none for a type
-/// of no look, drawn as the engine's own shapes are, and an empty list for a look of no models,
-/// drawn as nothing.
+/// Each unit type's look, as its package's client data gives it, by type: none for a type of no
+/// look, drawn as the engine's own shapes are.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct UnitLooks {
-    looks: Vec<Option<Vec<LookModel>>>,
+    looks: Vec<Option<TypeLook>>,
+}
+
+/// A type's look: its models, none for a look drawn as nothing, and the angle in degrees a build
+/// preview places it at.
+#[derive(Debug)]
+struct TypeLook {
+    models: Vec<LookModel>,
+    placement_angle: Num,
 }
 
 /// A model a look is drawn with: its glTF's first scene, its parts, and the factor it is drawn
@@ -51,7 +59,10 @@ impl UnitLooks {
                 data.units_of(package)
                     .units
                     .get(&*origin.name)
-                    .map(|unit| LookModel::all(package, unit, assets))
+                    .map(|unit| TypeLook {
+                        models: LookModel::all(package, unit, assets),
+                        placement_angle: unit.placement_angle.unwrap_or(Num::ZERO),
+                    })
             })
             .collect();
         UnitLooks { looks }
@@ -59,7 +70,15 @@ impl UnitLooks {
 
     /// The models of `unit_type`'s look; `None` for a type of no look in the client data.
     pub(crate) fn look(&self, unit_type: UnitType) -> Option<&[LookModel]> {
-        self.looks.get(unit_type.index())?.as_deref()
+        let look = self.looks.get(unit_type.index())?.as_ref()?;
+        Some(&look.models)
+    }
+
+    /// The angle in degrees a build preview places `unit_type` at: its look's, 0 for a look that
+    /// gives none or a type of no look.
+    pub(crate) fn placement_angle(&self, unit_type: UnitType) -> Num {
+        let look = self.looks.get(unit_type.index()).and_then(Option::as_ref);
+        look.map_or(Num::ZERO, |look| look.placement_angle)
     }
 }
 
@@ -93,7 +112,7 @@ mod tests {
     use bevy::asset::{AssetApp, AssetPlugin};
     use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
     use campfire_units::TypeOrigin;
-    use campfire_values::PackagePath;
+    use campfire_values::{DeclaredName, PackagePath};
 
     use super::*;
 
@@ -110,16 +129,11 @@ mod tests {
         let units = |entries: Vec<(&str, Vec<ClientModel>)>| ClientUnits {
             units: entries
                 .into_iter()
-                .map(|(name, models)| {
-                    (
-                        campfire_values::DeclaredName::new(name).unwrap(),
-                        ClientUnit::new(models),
-                    )
-                })
+                .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::new(models)))
                 .collect(),
             ..ClientUnits::default()
         };
-        let data = ClientData {
+        let mut data = ClientData {
             units: vec![
                 units(vec![
                     (
@@ -135,6 +149,9 @@ mod tests {
             ],
             ..ClientData::default()
         };
+        // The mode's tank is placed turned −135°.
+        let tank = DeclaredName::new("tank").unwrap();
+        data.units[0].units.get_mut(&tank).unwrap().placement_angle = Some(Num::int(-135));
         // The mode's tank, package 1's tank, a type no package's units name, and the mode's
         // sound, of a look of no models.
         let origin = |package, name: &str| TypeOrigin {
@@ -160,7 +177,12 @@ mod tests {
                     .collect(),
             )
         };
-        let types: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
+        let types: [UnitType; 4] = origins
+            .iter()
+            .map(|(unit_type, _)| unit_type)
+            .collect::<Vec<_>>()
+            .try_into()
+            .unwrap();
         let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
             package,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
@@ -187,5 +209,8 @@ mod tests {
         );
         assert_eq!(paths(types[2]), None);
         assert_eq!(paths(types[3]), Some(Vec::new()));
+        // The tank's angle; 0 for package 1's tank, which gives none, and for the type of no look.
+        let angles = types.map(|unit_type| looks.placement_angle(unit_type));
+        assert_eq!(angles, [-135, 0, 0, 0].map(Num::int));
     }
 }

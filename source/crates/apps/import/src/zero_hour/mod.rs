@@ -301,9 +301,14 @@ impl<'a> ZeroHour<'a> {
             let draws = object.draws();
             // A unit draws each module's best state, as its drawable does.
             let unit = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
-            let Some(unit_look) = ZeroHour::look(unit, scale, models)? else {
+            let Some(mut unit_look) = ZeroHour::look(unit, scale, models)? else {
                 continue;
             };
+            // A preview of its build stands at the angle the original's cursor shows it at.
+            unit_look.placement_angle = object
+                .build()
+                .placement_angle
+                .and_then(|angle| Num::try_from(angle).ok());
             let unit_type = names.take(object)?;
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
@@ -371,6 +376,7 @@ impl<'a> ZeroHour<'a> {
         Ok(Some(ClientUnit {
             models: own.models,
             variants,
+            placement_angle: None,
         }))
     }
 

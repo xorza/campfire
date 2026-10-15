@@ -473,18 +473,26 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             variant(&["snow"], hidden()),
             variant(&["night", "snow"], vec![model("tank", &[])]),
         ],
+        placement_angle: None,
     };
     // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
     // look as a unit of both its models, and as the client's of its tree draw module's; the
     // fluff's as a unit of its hidden turret, with the flash below it, and as the client's of
     // none. An object of no draw module, of a model of `NONE`, of `NULL` or of a box draws
-    // nothing, so its look is empty; one of a model the package lacks has none.
+    // nothing, so its look is empty; one of a model the package lacks has none. The command
+    // center's look keeps the angle its build's preview places it at.
     let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
     let empty = || unit(Vec::new());
     let expected = ClientUnits {
         units: looks(vec![
             ("americabarracks", empty()),
-            ("americacommandcenter", empty()),
+            (
+                "americacommandcenter",
+                ClientUnit {
+                    placement_angle: Some(Num::int(-135)),
+                    ..empty()
+                },
+            ),
             ("americafirebase", empty()),
             ("americainfantrypathfinder", empty()),
             ("americainfantryranger", empty()),

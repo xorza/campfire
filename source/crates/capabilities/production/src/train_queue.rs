@@ -44,6 +44,11 @@ impl TrainQueue {
         self.entries.len() < usize::from(capacity.get())
     }
 
+    /// The tick its head's time ends; none for an empty queue.
+    pub const fn head_done(&self) -> Option<Tick> {
+        self.head_done
+    }
+
     pub fn entries(&self) -> &[Queued] {
         &self.entries
     }
