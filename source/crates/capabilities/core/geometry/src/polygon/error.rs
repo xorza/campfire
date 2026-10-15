@@ -5,6 +5,9 @@ use thiserror::Error;
 pub enum PolygonError {
     #[error("a polygon needs at least three points")]
     TooFewPoints,
+    /// Point `point` lies past the world's bound, where no position stands.
+    #[error("point {point} of the polygon lies past the world's bound")]
+    PastBound { point: usize },
     /// Edges `first` and `second` meet where a simple polygon's do not.
     #[error("edges {first} and {second} of the polygon cross")]
     EdgesMeet { first: usize, second: usize },
