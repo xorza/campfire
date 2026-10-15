@@ -18,9 +18,9 @@ use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     BotScript, ClientDir, Clock, Entropy, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
-    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, PlayerLink, ServerBots,
-    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
-    SimServerWorld, SlotBot, TickHashes,
+    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir,
+    ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld,
+    SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
@@ -725,9 +725,8 @@ impl InProcessMatch {
     fn spawned_avatar(&self, client: usize) -> Option<StableId> {
         let world = self.server.world();
         let slot = world
-            .get::<PlayerLink>(self.links[client])
-            .expect("the match started, with the client's slot")
-            .slot();
+            .link_slot(self.links[client])
+            .expect("the match started, with the client's slot");
         world.avatar_of(slot).map(|avatar| avatar.id)
     }
 

@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     AbortError, CheckpointFailed, Entropy, RestoreMatchError, SeedsRanOut, ServerDir, SessionDir,
     SimServerWorld, TickHashes,

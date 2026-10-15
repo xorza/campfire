@@ -7,7 +7,7 @@ use campfire_values::Team;
 /// only while it has one, as `Viewer` follows it. Immutable: a change inserts a new one.
 #[derive(Component, Debug, Clone, Copy)]
 #[component(immutable)]
-pub struct PlayerLink {
+pub(crate) struct PlayerLink {
     slot: PlayerSlot,
     team: Team,
     refused: bool,
@@ -22,13 +22,13 @@ impl PlayerLink {
         }
     }
 
-    pub const fn slot(self) -> PlayerSlot {
+    pub(crate) const fn slot(self) -> PlayerSlot {
         self.slot
     }
 
     /// Whether the log refused one of its messages: a broken chain or signature, or a limit
     /// passed. A client that follows the rules sends none, so the first one ends the link.
-    pub const fn refused(self) -> bool {
+    pub(crate) const fn refused(self) -> bool {
         self.refused
     }
 

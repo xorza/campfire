@@ -10,6 +10,7 @@ use bevy_time::{Time, Virtual};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_mode::{SaveBy, SavesData};
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,
     SessionDir, SimServerWorld,

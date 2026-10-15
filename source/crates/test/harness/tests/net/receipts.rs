@@ -8,9 +8,9 @@ use std::time::Duration;
 
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    JoinState, JournalWatch, LeaveRequest, PlayerLink, ReceiptRefused, ReceiptUnsaved, ServerDir,
-    SessionDir,
+    JoinState, JournalWatch, LeaveRequest, ReceiptRefused, ReceiptUnsaved, ServerDir, SessionDir,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
@@ -51,7 +51,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     let secp = Secp256k1::verification_only();
     let mut kept = Vec::new();
     for client in 0..2 {
-        let slot = world.get::<PlayerLink>(local.link(client)).unwrap().slot();
+        let slot = world.link_slot(local.link(client)).unwrap();
         let state = local.client(client).world().resource::<JoinState>();
         let receipt = *state.receipt().expect("a receipt of the synced inputs");
         assert_eq!(
@@ -172,12 +172,7 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
         },
     );
     settle(&mut local);
-    let slot = local
-        .server()
-        .world()
-        .get::<PlayerLink>(local.link(0))
-        .unwrap()
-        .slot();
+    let slot = local.server().world().link_slot(local.link(0)).unwrap();
     let session = local.server().world().resource::<Session>();
     let Some(Controller::Player { chain, .. }) = session.log().controller(slot) else {
         panic!("slot {} has no player", slot.get());

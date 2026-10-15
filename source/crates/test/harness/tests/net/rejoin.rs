@@ -8,9 +8,10 @@ use campfire_common::{AfterLeave, PlayerSlot};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
 use campfire_mode::PlayersData;
+use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
-    PlayerLink, SessionTimes, TickHashes,
+    SessionTimes, TickHashes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
@@ -65,8 +66,11 @@ fn units(local: &mut InProcessMatch, client: usize) -> Vec<u64> {
 
 /// The slot the server seated `client`'s link in.
 fn slot_of(local: &InProcessMatch, client: usize) -> PlayerSlot {
-    let world = local.server().world();
-    world.get::<PlayerLink>(local.link(client)).unwrap().slot()
+    local
+        .server()
+        .world()
+        .link_slot(local.link(client))
+        .unwrap()
 }
 
 /// Who controls `slot` on the server.
@@ -168,13 +172,7 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
         }]
     );
     assert!(local.server_inputs().is_empty());
-    assert!(
-        local
-            .server()
-            .world()
-            .get::<PlayerLink>(local.link(0))
-            .is_none()
-    );
+    assert!(local.server().world().link_slot(local.link(0)).is_none());
 }
 
 #[test]

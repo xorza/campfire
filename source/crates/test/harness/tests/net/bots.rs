@@ -10,7 +10,7 @@ use campfire_harness::{
 };
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{OrderScript, PlayerLink, SessionTimes, SlotBot, TickHashes};
+use campfire_net::{OrderScript, SessionTimes, SlotBot, TickHashes};
 use campfire_progression::Experience;
 use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
 use campfire_runner::{Replay, Session, SessionWorld};
@@ -108,7 +108,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
-    let slot = world.get::<PlayerLink>(local.link(1)).unwrap().slot();
+    let slot = world.link_slot(local.link(1)).unwrap();
     local.cut_link(1);
     let left = |local: &InProcessMatch| {
         local.server_inputs().iter().any(|input| {

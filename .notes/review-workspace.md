@@ -139,7 +139,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 Needs Batch 7. Files: the `*_world.rs` of `players`, `script`, `units` and `stats`, `network/net/src/sim_server/{sim_server_world/mod,player_link}.rs`, `base/{codec,schedule,store,log}`, `session/{package,runner}/src/**`, `base/common/src/tests.rs`. Goldens: none move.
 
-- [ ] `net/src/sim_server/sim_server_world/mod.rs:24-62`: `SimServerWorldInternals` and `SimServerWorldCrate`, and `PlayerLink` behind `internals`.
 - [ ] `codec` and `schedule` gain `internals`. `binary.rs:57-91`, `drop_option.rs`, `error.rs:37`, `strict_schedule.rs:24`, `append_file.rs:5` and the generic `start`s go behind it.
 - [ ] `log/Cargo.toml:18-25`: the `start`-only dependencies become optional. `log/src/log_line/mod.rs:17,41`: codec owns the decode, and `LogLine` publishes no `serde_json` type.
 - [ ] Dead shipped code in `package` and `runner` goes behind `internals`. `ModePackages::script_book()` and `Backends` are deleted.

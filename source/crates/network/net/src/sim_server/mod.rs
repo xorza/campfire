@@ -69,7 +69,7 @@ use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
-use crate::sim_server::sim_server_world::SimServerWorld;
+use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;

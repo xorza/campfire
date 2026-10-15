@@ -1,6 +1,5 @@
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::Outcome;
 use campfire_runner::{Session, SessionWorld};
@@ -22,10 +21,6 @@ use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
-    /// Whether every slot a player controlled has left, and no player holds a link: a session
-    /// that started then ends.
-    fn players_gone(&self) -> bool;
-
     /// Ends the session before the next tick as `outcome`: logs the record of the
     /// checkpoint on its thread first; then the result, which the server key signs; reveals the
     /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
@@ -33,24 +28,9 @@ pub trait SimServerWorld {
     /// was not written, as the log can then not be published: the session ends with no result.
     fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>>;
 
-    /// Loads the save that starts segment `segment` in the session: logs the record of
-    /// the checkpoint on its thread first, then goes back in the log, as `SessionLog::load`
-    /// says, which the journal logs. The match then runs no tick and logs nothing: its server
-    /// starts again on its data, which restores the match from the save, once `reload_wanted`
-    /// says so. An error when the checkpoint's snapshot was not written.
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>>;
-
     /// Whether the session went back to a save, and its server is to start again on
     /// its data, which restores the match from it.
     fn reload_wanted(&self) -> bool;
-
-    /// Waits for the checkpoint on its thread in the session, whose server keeps its
-    /// files, and logs its record; reports the fault when its snapshot was not written.
-    fn settle_checkpoint(&mut self);
-
-    /// Makes a checkpoint due at the boundary before `tick` in the session, whose
-    /// server keeps its files.
-    fn request_checkpoint(&mut self, tick: Tick);
 
     /// How the server of the session exits in this frame, when it does: as `Faults`
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
@@ -61,11 +41,17 @@ pub trait SimServerWorld {
     fn exit_due(&mut self, stop: bool) -> Option<AppExit>;
 }
 
-impl SimServerWorld for World {
-    fn players_gone(&self) -> bool {
-        Door::empty(self)
-    }
+/// What the sim server module gives a world, for its own crate.
+pub(crate) trait SimServerWorldCrate {
+    /// Loads the save that starts segment `segment` in the session: logs the record of
+    /// the checkpoint on its thread first, then goes back in the log, as `SessionLog::load`
+    /// says, which the journal logs. The match then runs no tick and logs nothing: its server
+    /// starts again on its data, which restores the match from the save, once `reload_wanted`
+    /// says so. An error when the checkpoint's snapshot was not written.
+    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>>;
+}
 
+impl SimServerWorld for World {
     fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>> {
         if self.contains_resource::<Checkpoints>() {
             Checkpoints::settle(self)?;
@@ -82,27 +68,8 @@ impl SimServerWorld for World {
         Ok(())
     }
 
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>> {
-        Checkpoints::settle(self)?;
-        self.resource_mut::<Session>()
-            .load(segment)
-            .expect("a save of the session's log");
-        self.insert_resource(Reload);
-        Ok(())
-    }
-
     fn reload_wanted(&self) -> bool {
         self.contains_resource::<Reload>()
-    }
-
-    fn settle_checkpoint(&mut self) {
-        if let Err(error) = Checkpoints::settle(self) {
-            self.resource_mut::<Faults>().report(Fault::Snapshot(error));
-        }
-    }
-
-    fn request_checkpoint(&mut self, tick: Tick) {
-        self.resource_mut::<Checkpoints>().request(tick);
     }
 
     fn exit_due(&mut self, stop: bool) -> Option<AppExit> {
@@ -114,7 +81,8 @@ impl SimServerWorld for World {
             return stop.then_some(AppExit::Success);
         }
         if self.resource::<Session>().log().result().is_none() {
-            if !stop && !self.players_gone() {
+            // Every slot a player controlled left, and no player holds a link.
+            if !stop && !Door::empty(self) {
                 return None;
             }
             let outcome = self.outcome();
@@ -145,14 +113,30 @@ impl SimServerWorld for World {
     }
 }
 
+impl SimServerWorldCrate for World {
+    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>> {
+        Checkpoints::settle(self)?;
+        self.resource_mut::<Session>()
+            .load(segment)
+            .expect("a save of the session's log");
+        self.insert_resource(Reload);
+        Ok(())
+    }
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
 
+    use crate::faults::Faults;
+    use crate::faults::fault::Fault;
     use crate::sim_server::bot_driver::BotDriver;
+    use crate::sim_server::checkpoints::Checkpoints;
     use crate::sim_server::local_session::LocalSession;
+    use crate::sim_server::player_link::PlayerLink;
     use crate::sim_server::receipts::Receipts;
     use crate::sim_server::server_bots::SlotBot;
 
@@ -172,6 +156,22 @@ pub(crate) mod internals {
         /// The slots of the plan's bots of `slots` that play their script from tick `next` of
         /// the world's session on, as a server that starts or restores builds its driver.
         fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot>;
+
+        /// Waits for the checkpoint on its thread in the session, whose server keeps its
+        /// files, and logs its record; reports the fault when its snapshot was not written.
+        fn settle_checkpoint(&mut self);
+
+        /// Makes a checkpoint due at the boundary before `tick` in the session, whose
+        /// server keeps its files.
+        fn request_checkpoint(&mut self, tick: Tick);
+
+        /// The slot of the player the client link `link` carries the inputs of; none for a link
+        /// of no player.
+        fn link_slot(&self, link: Entity) -> Option<PlayerSlot>;
+
+        /// Whether the log refused one of the messages of the client link `link`; none for a
+        /// link of no player.
+        fn link_refused(&self, link: Entity) -> Option<bool>;
     }
 
     impl SimServerWorldInternals for World {
@@ -190,6 +190,24 @@ pub(crate) mod internals {
         fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
             let planned = BotDriver::planned(slots, self.session().log(), next);
             planned.iter().map(|driven| driven.slot).collect()
+        }
+
+        fn settle_checkpoint(&mut self) {
+            if let Err(error) = Checkpoints::settle(self) {
+                self.resource_mut::<Faults>().report(Fault::Snapshot(error));
+            }
+        }
+
+        fn request_checkpoint(&mut self, tick: Tick) {
+            self.resource_mut::<Checkpoints>().request(tick);
+        }
+
+        fn link_slot(&self, link: Entity) -> Option<PlayerSlot> {
+            self.get::<PlayerLink>(link).map(|link| link.slot())
+        }
+
+        fn link_refused(&self, link: Entity) -> Option<bool> {
+            self.get::<PlayerLink>(link).map(|link| link.refused())
         }
     }
 }
