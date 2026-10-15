@@ -8,10 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H6. Client and harness
-
-(`client`, `harness`, `lan-check`; review RC8.) The client and the harness ask `PlayerUnits` who a player commands; the HUD rebuilds its rows when the slots change. Before Zero Hour's batch, whose units the client otherwise draws as avatars. Goldens: none move.
-
 ### H7. The module graph
 
 (`common`'s tests, `units`, `declare`, `players`, `script`, `net`, `orders`; review RC7.) Guard first: the cycle test checks the siblings under every parent. Then the wrapper modules go and each cycle is cut at its edge against the layering. Goldens: none move.
