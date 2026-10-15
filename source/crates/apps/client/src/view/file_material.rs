@@ -13,7 +13,7 @@ use bevy::render::render_resource::{
     RenderPipelineDescriptor, SpecializedMeshPipelineError,
 };
 use bevy::shader::ShaderRef;
-use campfire_package::{Blend, MaterialFile};
+use campfire_client_files::{Blend, MaterialFile};
 
 /// A material file's material: the standard material of its colors and texture, drawn with the
 /// file's blend, depth write and alpha test, which the standard material alone cannot all say.

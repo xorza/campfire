@@ -1,5 +1,5 @@
 use bevy_math::Vec2;
-use campfire_package::{CameraFile, CameraHeight};
+use campfire_client_files::{CameraFile, CameraHeight};
 
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::game_data::GameData;

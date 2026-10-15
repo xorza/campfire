@@ -1,12 +1,12 @@
 use std::collections::BTreeSet;
 
 use bevy_math::Vec3;
-use campfire_codec::{Binary, Toml};
-use campfire_math::Num;
-use campfire_mode::HeightGrid;
-use campfire_package::{
+use campfire_client_files::HeightGrid;
+use campfire_client_files::{
     ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, TerrainFile, TerrainSurface,
 };
+use campfire_codec::{Binary, Toml};
+use campfire_math::Num;
 use serde::Serialize;
 
 use crate::zero_hour::error::MapError;
@@ -278,8 +278,8 @@ impl MapImport {
 
 #[cfg(test)]
 mod tests {
+    use campfire_client_files::ClientUnit;
     use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
-    use campfire_package::ClientUnit;
     use campfire_values::DeclaredName;
 
     use super::*;

@@ -33,7 +33,6 @@ mod choice_specs;
 mod choices;
 mod error;
 mod game_map;
-mod height_grid;
 mod loadout_setup;
 mod map_data;
 mod map_point;
@@ -79,7 +78,6 @@ pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
 pub use crate::error::{ModeError, ModeList, ModeNamesError};
 pub use crate::game_map::GameMap;
-pub use crate::height_grid::HeightGrid;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{
     BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,

@@ -1,5 +1,5 @@
 use bevy_math::UVec2;
-use campfire_package::{BorderWrap, TerrainTexture, TextureCopy};
+use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy};
 
 use crate::zero_hour::terrain::{ClassTexture, TerrainParts};
 

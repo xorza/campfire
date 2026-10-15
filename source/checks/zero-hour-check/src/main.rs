@@ -18,13 +18,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use campfire_client_files::HeightGrid;
+use campfire_client_files::{ClientObjects, TerrainFile};
 use campfire_codec::{Binary, Toml};
 use campfire_common::{ExitStatus, MapName};
 use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
-use campfire_mode::HeightGrid;
-use campfire_package::{ClientObjects, ContentError, PackageReader, TerrainFile};
+use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
 use campfire_store::DurableFile;

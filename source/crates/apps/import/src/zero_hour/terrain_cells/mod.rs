@@ -1,5 +1,5 @@
 use bevy_math::{UVec2, Vec2};
-use campfire_package::{GroundQuad, Overlay, TerrainQuads};
+use campfire_client_files::{GroundQuad, Overlay, TerrainQuads};
 
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};

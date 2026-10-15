@@ -1,6 +1,6 @@
 use bevy::math::{UVec2, Vec2};
+use campfire_client_files::{Blend, GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
 use campfire_math::Num;
-use campfire_package::{Blend, GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
 use campfire_store::internals::Scratch;
 
 use super::*;

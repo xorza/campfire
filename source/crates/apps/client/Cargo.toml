@@ -8,6 +8,7 @@ license.workspace = true
 campfire-actions.workspace = true
 campfire-areas.workspace = true
 campfire-capabilities.workspace = true
+campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-items.workspace = true

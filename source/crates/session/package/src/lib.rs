@@ -5,7 +5,6 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod avatar_unit;
-mod client_data;
 mod dependent;
 mod error;
 mod file_index;
@@ -26,17 +25,6 @@ mod package_walk;
 mod texts;
 
 pub use crate::avatar_unit::AvatarUnit;
-pub use crate::client_data::camera_file::{CameraFile, CameraHeight};
-pub use crate::client_data::client_objects::{ClientObject, ClientObjects};
-pub use crate::client_data::client_units::{ClientModel, ClientUnit, ClientUnits, ModelScale};
-pub use crate::client_data::error::{TerrainFileError, TextureLevelsError};
-pub use crate::client_data::map_lights::{MapLight, MapLights};
-pub use crate::client_data::material_file::{Blend, MaterialFile, MaterialTexture};
-pub use crate::client_data::terrain_file::{
-    BorderWrap, GroundQuad, Overlay, TerrainFile, TerrainQuads, TerrainSurface, TerrainTexture,
-    TextureCopy,
-};
-pub use crate::client_data::texture_levels::TextureLevels;
 pub use crate::dependent::{Dependent, DependentKind};
 pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;

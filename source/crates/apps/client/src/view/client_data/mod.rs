@@ -2,14 +2,14 @@ use std::collections::BTreeMap;
 use std::error::Error;
 
 use bevy::ecs::resource::Resource;
+use campfire_client_files::HeightGrid;
+use campfire_client_files::{
+    CameraFile, ClientObjects, ClientUnits, MapLights, MaterialFile, TerrainFile,
+};
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
-use campfire_mode::HeightGrid;
-use campfire_package::{
-    CameraFile, ClientObjects, ClientUnits, ContentError, MapLights, MaterialFile, ModePackages,
-    PackageReader, TerrainFile,
-};
+use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_values::PackagePath;
 use tracing::error;
 

@@ -1,8 +1,8 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::math::{UVec2, Vec2, Vec3, Vec4};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use campfire_mode::HeightGrid;
-use campfire_package::TerrainQuads;
+use campfire_client_files::HeightGrid;
+use campfire_client_files::TerrainQuads;
 
 use crate::view::float_num::FloatNum;
 
@@ -142,8 +142,8 @@ impl Samples {
 
 #[cfg(test)]
 mod tests {
+    use campfire_client_files::{GroundQuad, Overlay};
     use campfire_math::Num;
-    use campfire_package::{GroundQuad, Overlay};
 
     use super::*;
 

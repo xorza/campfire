@@ -6,12 +6,12 @@ license.workspace = true
 publish = false
 
 [dependencies]
+campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-harness.workspace = true
 campfire-import.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
-campfire-mode.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-runner.workspace = true

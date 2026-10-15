@@ -1,6 +1,6 @@
 use bevy_math::UVec2;
 
-use crate::client_data::error::TextureLevelsError;
+use crate::error::TextureLevelsError;
 
 /// A texture of the package, decoded, as a texture composed of package textures takes it, a
 /// terrain's among them (design 16, D2): `size` texels of sRGB red, green, blue and alpha, rows
@@ -117,9 +117,7 @@ impl TextureLevels {
 pub(crate) mod internals {
     use bevy_math::UVec2;
 
-    use crate::client_data::texture_levels::{
-        IDENTIFIER, LEVEL_ENTRY, LEVEL_INDEX, RGBA8_SRGB, TextureLevels,
-    };
+    use crate::texture_levels::{IDENTIFIER, LEVEL_ENTRY, LEVEL_INDEX, RGBA8_SRGB, TextureLevels};
 
     impl TextureLevels {
         /// A KTX2 file of `size` RGBA8 sRGB texels and `levels` levels, each of `texel` of its

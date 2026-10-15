@@ -111,7 +111,6 @@ Files: `sim/sim/src/{sim_world,state_registry/mod}.rs`, `test/harness/tests/runn
 
 Goes before the batches that edit `package`, so each fix lands in its final crate. Files: `session/package/**`, `session/runner/src/**`, `session/verifier/src/**`, `capabilities/mode/src/height_grid.rs`, the `Cargo.toml` of every crate that depends on `package`, `docs/design/02-engine-core.md`. Goldens: none move. The packages' fingerprints stay byte-equal.
 
-- [ ] D4: a new crate at the session layer holds the client's formats (`package/src/client_data/*`, with `bevy_math`) and `HeightGrid` (`mode/src/height_grid.rs`). Only the import and the client depend on it, and the load check of client files moves with it. Design 02's module table names it.
 
 ### Batch 4. Untrusted files (RC2)
 

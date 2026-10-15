@@ -5,7 +5,7 @@ use bevy::color::{Color, LinearRgba, Srgba};
 use bevy::light::{DirectionalLight, GlobalAmbientLight};
 use bevy::math::Vec3;
 use bevy::transform::components::Transform;
-use campfire_package::MapLights;
+use campfire_client_files::MapLights;
 
 /// A map's lights as Bevy draws them, so that a light of 1 gives a surface its full color, as a
 /// fixed-function renderer's does: the camera's exposure divides every light, and a directional
@@ -68,7 +68,7 @@ impl SceneLights {
 
 #[cfg(test)]
 mod tests {
-    use campfire_package::MapLight;
+    use campfire_client_files::MapLight;
 
     use super::*;
 

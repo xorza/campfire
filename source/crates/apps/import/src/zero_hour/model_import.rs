@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
-use campfire_package::{Blend, MaterialFile, MaterialTexture};
+use campfire_client_files::{Blend, MaterialFile, MaterialTexture};
 
 use crate::gltf::glb_builder::{CLAMP_TO_EDGE, GlbBuilder, REPEAT};
 use crate::gltf::gltf_document::{

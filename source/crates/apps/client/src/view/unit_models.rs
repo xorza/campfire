@@ -21,7 +21,8 @@ use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use bevy::world_serialization::WorldInstanceReady;
-use campfire_package::{ClientObject, MaterialFile, ModePackages};
+use campfire_client_files::{ClientObject, MaterialFile};
+use campfire_package::ModePackages;
 use campfire_units::TypeOriginBook;
 
 use tracing::error;
@@ -253,11 +254,11 @@ mod tests {
     use bevy::mesh::MeshPlugin;
     use bevy::world_serialization::WorldAsset;
     use bevy::world_serialization::WorldSerializationPlugin;
-    use campfire_math::Num;
-    use campfire_mode::HeightGrid;
-    use campfire_package::{
+    use campfire_client_files::HeightGrid;
+    use campfire_client_files::{
         Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
     };
+    use campfire_math::Num;
     use campfire_values::{DeclaredName, PackagePath};
 
     use super::*;

@@ -6,11 +6,11 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-client-files/internals",
     "campfire-common/internals",
     "campfire-log/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
-    "campfire-package/internals",
     "campfire-package-disk/internals",
     "campfire-sim/internals",
     "campfire-store/internals",
@@ -18,12 +18,13 @@ internals = [
 ]
 
 [dependencies]
+campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
-campfire-mode.workspace = true
-campfire-package.workspace = true
+# Its tests read the maps it writes as the mode reads them.
+campfire-mode = { workspace = true, optional = true }
 campfire-package-disk.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true

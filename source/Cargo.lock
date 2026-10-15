@@ -2295,6 +2295,7 @@ dependencies = [
  "campfire-actions",
  "campfire-areas",
  "campfire-capabilities",
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
  "campfire-items",
@@ -2320,6 +2321,20 @@ dependencies = [
  "secp256k1",
  "thiserror 2.0.21",
  "tracing",
+]
+
+[[package]]
+name = "campfire-client-files"
+version = "0.1.0"
+dependencies = [
+ "bevy_math",
+ "campfire-client-files",
+ "campfire-codec",
+ "campfire-math",
+ "campfire-sim",
+ "campfire-values",
+ "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2466,13 +2481,13 @@ name = "campfire-import"
 version = "0.1.0"
 dependencies = [
  "bevy_math",
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
  "campfire-import",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
- "campfire-package",
  "campfire-package-disk",
  "campfire-sim",
  "campfire-store",
@@ -2701,7 +2716,6 @@ dependencies = [
 name = "campfire-package"
 version = "0.1.0"
 dependencies = [
- "bevy_math",
  "campfire-actions",
  "campfire-capabilities",
  "campfire-codec",
@@ -3111,12 +3125,12 @@ dependencies = [
 name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-client-files",
  "campfire-codec",
  "campfire-common",
  "campfire-harness",
  "campfire-import",
  "campfire-log",
- "campfire-mode",
  "campfire-package",
  "campfire-package-disk",
  "campfire-runner",

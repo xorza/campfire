@@ -3,7 +3,7 @@ use std::f32::consts::PI;
 use bevy::ecs::resource::Resource;
 use bevy::math::{Quat, Vec2, Vec3};
 use bevy::transform::components::Transform;
-use campfire_package::{CameraFile, CameraHeight};
+use campfire_client_files::{CameraFile, CameraHeight};
 
 /// The player's camera: it looks down at a pitch at a point of the ground, its pivot, from a
 /// height above it, turned about it by a yaw. Keys and the screen's edges scroll the pivot across

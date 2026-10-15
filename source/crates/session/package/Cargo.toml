@@ -45,7 +45,6 @@ campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
-bevy_math.workspace = true
 derive_more.workspace = true
 fluent-bundle.workspace = true
 fluent-syntax.workspace = true

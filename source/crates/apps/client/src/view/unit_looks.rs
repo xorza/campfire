@@ -3,7 +3,7 @@ use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
-use campfire_package::ClientUnit;
+use campfire_client_files::ClientUnit;
 use campfire_units::TypeOriginBook;
 use campfire_values::UnitType;
 
@@ -86,7 +86,7 @@ impl LookModel {
 mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
-    use campfire_package::{ClientModel, ClientUnits, ModelScale};
+    use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
     use campfire_units::TypeOrigin;
     use campfire_values::PackagePath;
 

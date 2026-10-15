@@ -1,4 +1,4 @@
-use campfire_package::Blend;
+use campfire_client_files::Blend;
 
 use crate::zero_hour::error::W3dError;
 use crate::zero_hour::w3d_chunks::W3dChunks;

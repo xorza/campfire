@@ -4,7 +4,8 @@ use bevy::asset::RenderAssetUsages;
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
 use bevy::math::{USizeVec2, UVec2};
 use bevy::render::render_resource::{Extent3d, TextureDataOrder, TextureDimension, TextureFormat};
-use campfire_package::{BorderWrap, PackageReader, TerrainTexture, TextureCopy, TextureLevels};
+use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy, TextureLevels};
+use campfire_package::PackageReader;
 use campfire_values::PackagePath;
 use tracing::error;
 

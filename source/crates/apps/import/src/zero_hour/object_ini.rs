@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_package::ModelScale;
+use campfire_client_files::ModelScale;
 
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::import_name::ImportName;

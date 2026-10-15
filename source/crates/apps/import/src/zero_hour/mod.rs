@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bevy_math::UVec2;
-use campfire_codec::Toml;
-use campfire_common::{Fingerprint, MapName};
-use campfire_package::{
+use campfire_client_files::{
     CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
     TerrainFile,
 };
+use campfire_codec::Toml;
+use campfire_common::{Fingerprint, MapName};
 use campfire_package_disk::{PackageWriter, WriteError};
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
