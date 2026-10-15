@@ -3,7 +3,6 @@ name = "campfire-package"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-autotests = false
 
 [features]
 internals = [
@@ -22,7 +21,6 @@ internals = [
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-stats/internals",
-    "campfire-store/internals",
     "campfire-units/internals",
     "campfire-values/internals",
 ]
@@ -44,7 +42,6 @@ campfire-projectiles.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-stats.workspace = true
-campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 
@@ -57,14 +54,9 @@ sha2.workspace = true
 thiserror.workspace = true
 toml.workspace = true
 unic-langid.workspace = true
-# The integration tests find the MOBA packages through `internals`.
 
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true
-
-[[test]]
-name = "tests"
-path = "tests/mod.rs"

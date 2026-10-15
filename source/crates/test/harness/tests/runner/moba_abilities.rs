@@ -20,8 +20,9 @@ use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{AvatarFile, PackageDir, PackageFiles};
+use campfire_package::{AvatarFile, PackageFiles};
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_projectiles::Projectile;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Life, PoolMeters, Pools, Stats};
@@ -39,7 +40,7 @@ const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
 fn hero(name: &str) -> PackageFiles {
     let dir = PackageDir::new(PackageDir::workspace(&format!("test/moba/heroes/{name}")));
-    PackageFiles::read(&dir).unwrap()
+    dir.files().unwrap()
 }
 
 /// The hero `name`, as its data file declares it.

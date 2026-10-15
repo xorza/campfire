@@ -14,19 +14,20 @@ use campfire_geometry::Metric;
 use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
 use campfire_orders::AiError;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{
     BoxProblem, BuildProblem, ChoiceProblem, ContentError, DeliveryProblem, EffectProblem,
     GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName,
     PackageRef, Place, ScriptProblem, Way,
 };
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, Hook, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
 use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
 
-use crate::moba::{edited, load, moba, two_lanes};
+use crate::package::moba::{edited, load, moba, two_lanes};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 #[derive(Debug)]
@@ -259,7 +260,9 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
 
 /// The 3v3 as its packages hold it.
 fn three_v_three() -> ModePackages {
-    ModePackages::from_dir(&moba().join(MODE_DIR), &two_lanes()).unwrap()
+    PackageDir::new(moba().join(MODE_DIR))
+        .mode_packages(&two_lanes())
+        .unwrap()
 }
 
 #[test]
@@ -3065,7 +3068,9 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
     );
 
     // A hero is no mode.
-    let husk = ModePackages::from_dir(&moba().join("heroes/husk"), &two_lanes()).unwrap_err();
+    let husk = PackageDir::new(moba().join("heroes/husk"))
+        .mode_packages(&two_lanes())
+        .unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
 }
 
@@ -3152,23 +3157,17 @@ fn a_mode_loads_the_map_its_session_names() {
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric, Metric::Planar);
-    let spatial = ModePackages::from_package_dir(&two, &second).unwrap();
+    let spatial = two.mode_packages(&second).unwrap();
     assert_eq!(spatial.map_name(), &second);
     assert_eq!(spatial.map().metric, Metric::Spatial);
     let third = MapName::new("third").unwrap();
-    let error = ModePackages::from_package_dir(&two, &third).unwrap_err();
+    let error = two.mode_packages(&third).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
 
     // With no map named, the only map; of two, neither, and the error names both in order.
-    assert_eq!(
-        ModePackages::choose_map(&edited([]), None).unwrap(),
-        two_lanes()
-    );
-    assert_eq!(
-        ModePackages::choose_map(&two, Some(third.clone())).unwrap(),
-        third
-    );
-    let error = ModePackages::choose_map(&two, None).unwrap_err();
+    assert_eq!(edited([]).choose_map(None).unwrap(), two_lanes());
+    assert_eq!(two.choose_map(Some(third.clone())).unwrap(), third);
+    let error = two.choose_map(None).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::MapNeeded(maps) if *maps == [second, two_lanes()]),
         "{error:?}"

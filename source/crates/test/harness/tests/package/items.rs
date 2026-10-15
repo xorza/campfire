@@ -6,15 +6,15 @@ use std::num::{NonZeroU8, NonZeroU32};
 use campfire_capabilities::UnitTypeData;
 use campfire_codec::Toml;
 use campfire_math::Num;
-use campfire_package::internals::Edit;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
 };
+use campfire_package_disk::internals::Edit;
 use campfire_script::NameKind;
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;
 
-use crate::moba::{edited, load};
+use crate::package::moba::{edited, load};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";

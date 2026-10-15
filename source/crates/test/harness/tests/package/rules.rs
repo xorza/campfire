@@ -1,9 +1,9 @@
 //! A mode that runs a rules package's script as its own.
 
-use campfire_package::internals::{Edit, PackageTree, TestMode};
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, ScriptProblem,
 };
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_script::ScriptId;
 
 const MODE_DATA: &str = "modes/ruled/data/mode.toml";

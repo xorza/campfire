@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use campfire_common::MapName;
 
-use crate::mode_packages::ModePackages;
+use campfire_package::ModePackages;
+
 use crate::package_dir::PackageDir;
 
 /// The modes of the workspace's test packages, each in its tree, at its root, on its map.
@@ -56,6 +57,8 @@ impl TestMode {
 
     /// The mode's packages on its map, as the workspace holds them.
     pub fn packages(self) -> ModePackages {
-        ModePackages::from_dir(&self.dir(), &self.map()).expect("a test mode loads")
+        PackageDir::new(self.dir())
+            .mode_packages(&self.map())
+            .expect("a test mode loads")
     }
 }

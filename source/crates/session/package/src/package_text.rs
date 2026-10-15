@@ -4,7 +4,7 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::language::Language;
 use crate::locale_file::LocaleFile;
-use crate::package_dir::LOCALE;
+use crate::package_files::LOCALE;
 use crate::package_files::PackageFiles;
 
 /// A package's human text: its own language, and its `locale/<language>.ftl` files by language.

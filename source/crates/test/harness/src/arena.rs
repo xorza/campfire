@@ -5,7 +5,7 @@ use campfire_capabilities::{Match, Order};
 use campfire_common::PlayerSlot;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
-use campfire_package::internals::PackageTree;
+use campfire_package_disk::internals::PackageTree;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};

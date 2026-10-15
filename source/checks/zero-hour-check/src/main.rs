@@ -24,7 +24,8 @@ use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_mode::HeightGrid;
-use campfire_package::{ClientObjects, ContentError, ModePackages, PackageReader, TerrainFile};
+use campfire_package::{ClientObjects, ContentError, PackageReader, TerrainFile};
+use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
@@ -104,8 +105,9 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         "imported"
     );
     let map = MapName::new(MAP).expect("a map's name");
-    let packages =
-        ModePackages::from_dir(&out.join(ZeroHour::GAME), &map).map_err(CheckError::Load)?;
+    let packages = PackageDir::new(out.join(ZeroHour::GAME))
+        .mode_packages(&map)
+        .map_err(CheckError::Load)?;
     let files = &packages
         .packages()
         .next()

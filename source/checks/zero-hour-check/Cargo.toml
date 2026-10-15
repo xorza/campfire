@@ -13,6 +13,7 @@ campfire-import.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-mode.workspace = true
 campfire-package.workspace = true
+campfire-package-disk.workspace = true
 campfire-runner.workspace = true
 campfire-store.workspace = true
 campfire-values.workspace = true

@@ -2304,6 +2304,7 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-progression",
  "campfire-projectiles",
@@ -2423,6 +2424,7 @@ dependencies = [
  "campfire-actions",
  "campfire-areas",
  "campfire-capabilities",
+ "campfire-codec",
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
@@ -2435,6 +2437,7 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-production",
  "campfire-progression",
@@ -2455,6 +2458,7 @@ dependencies = [
  "criterion 0.8.2",
  "lightyear",
  "secp256k1",
+ "toml",
 ]
 
 [[package]]
@@ -2469,6 +2473,7 @@ dependencies = [
  "campfire-math",
  "campfire-mode",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-sim",
  "campfire-store",
  "campfire-values",
@@ -2642,6 +2647,7 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-production",
  "campfire-progression",
@@ -2713,7 +2719,6 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "campfire-stats",
- "campfire-store",
  "campfire-units",
  "campfire-values",
  "derive_more",
@@ -2724,6 +2729,22 @@ dependencies = [
  "thiserror 2.0.21",
  "toml",
  "unic-langid",
+]
+
+[[package]]
+name = "campfire-package-disk"
+version = "0.1.0"
+dependencies = [
+ "campfire-codec",
+ "campfire-common",
+ "campfire-package",
+ "campfire-package-disk",
+ "campfire-store",
+ "campfire-values",
+ "serde",
+ "sha2 0.11.0",
+ "thiserror 2.0.21",
+ "toml",
 ]
 
 [[package]]
@@ -2870,6 +2891,7 @@ dependencies = [
  "campfire-log",
  "campfire-mode",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-players",
  "campfire-protocol",
  "campfire-runner",
@@ -2922,6 +2944,7 @@ dependencies = [
  "campfire-log",
  "campfire-net",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
@@ -3040,6 +3063,7 @@ dependencies = [
  "campfire-common",
  "campfire-log",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
@@ -3094,6 +3118,7 @@ dependencies = [
  "campfire-log",
  "campfire-mode",
  "campfire-package",
+ "campfire-package-disk",
  "campfire-runner",
  "campfire-store",
  "campfire-values",

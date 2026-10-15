@@ -19,7 +19,7 @@ use campfire_net::{
     PlayerLink, TickHashes,
 };
 use campfire_orders::OrdersAction;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_players::{PlayerResources, PlayersWorld};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};

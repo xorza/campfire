@@ -8,7 +8,7 @@ use campfire_harness::{End, InProcessMatch, MatchSetup};
 use campfire_math::Num;
 use campfire_net::OrderScript;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::Edit;
+use campfire_package_disk::internals::Edit;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::Modifiers;
 use campfire_units::MoveStep;

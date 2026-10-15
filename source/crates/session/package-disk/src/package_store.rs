@@ -1,11 +1,11 @@
 use std::path::{Path, PathBuf};
 
-use campfire_common::Fingerprint;
+use campfire_common::{Fingerprint, MapName};
+use campfire_package::{ContentError, ModePackages, PackageFiles, PackageRef};
 use campfire_store::{DirEntries, EntryKind};
 
-use crate::error::ContentError;
+use crate::error::StoreError;
 use crate::package_dir::PackageDir;
-use crate::package_files::PackageFiles;
 
 /// Packages by fingerprint: what a verifier holds, so a log's terms find the packages they name;
 /// and each package under its root that does not read, with why, so one bad package costs only
@@ -41,6 +41,36 @@ impl PackageStore {
         Some(&self.packages[at])
     }
 
+    /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
+    /// fingerprint of the same place in `dependencies`, with its map `map`, as a verifier holds
+    /// them.
+    pub fn mode_packages(
+        &self,
+        mode: Fingerprint,
+        map: &MapName,
+        dependencies: &[Fingerprint],
+    ) -> Result<ModePackages, StoreError> {
+        let files = self.get(mode).ok_or(StoreError::UnknownMode)?;
+        let manifest = files
+            .mode_manifest(&PackageRef::Fingerprint(mode))
+            .map_err(StoreError::Load)?;
+        if manifest.dependencies.len() != dependencies.len() {
+            return Err(StoreError::DependencyCount);
+        }
+        let dependencies = manifest
+            .dependencies
+            .keys()
+            .zip(dependencies)
+            .map(|(name, &fingerprint)| {
+                let files = self
+                    .get(fingerprint)
+                    .ok_or_else(|| StoreError::MissingDependency(name.clone()))?;
+                Ok((name.clone(), files))
+            })
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        ModePackages::new(files, manifest, map, &dependencies).map_err(StoreError::Load)
+    }
+
     /// The packages under the root that do not read, in the order of their directories.
     pub fn failures(&self) -> &[StoreFailure] {
         &self.failures
@@ -48,7 +78,7 @@ impl PackageStore {
 
     /// Adds the package in `dir`, by its fingerprint, or why it does not read.
     fn insert(&mut self, dir: &Path) {
-        let files = match PackageFiles::read(&PackageDir::new(dir)) {
+        let files = match PackageDir::new(dir).files() {
             Ok(files) => files,
             Err(error) => {
                 self.failures.push(StoreFailure {
@@ -70,10 +100,10 @@ impl PackageStore {
     /// same result on every OS.
     fn scan_dir(&mut self, dir: &Path) -> Result<(), ContentError> {
         let mut subdirs = Vec::new();
-        for entry in DirEntries::read(dir).map_err(ContentError::Read)? {
+        for entry in DirEntries::read(dir).map_err(|error| ContentError::Read(Box::new(error)))? {
             // By its exact name, which a file system that ignores case would also find as
             // `Manifest.toml`.
-            if entry.kind == EntryKind::File && entry.name == PackageDir::MANIFEST {
+            if entry.kind == EntryKind::File && entry.name == PackageFiles::MANIFEST {
                 self.insert(dir);
                 return Ok(());
             }

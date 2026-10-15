@@ -6,8 +6,9 @@ use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{
     CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, MapLights, ModelScale,
-    PackageWriter, TerrainFile, WriteError,
+    TerrainFile,
 };
+use campfire_package_disk::{PackageWriter, WriteError};
 use campfire_store::DurableFile;
 use campfire_values::PackagePath;
 
@@ -356,7 +357,7 @@ impl ZeroHour<'_> {
 
 #[cfg(test)]
 mod tests {
-    use campfire_package::{ModePackages, PackageDir, PackageFiles};
+    use campfire_package_disk::PackageDir;
     use campfire_store::internals::Scratch;
     use campfire_values::DeclaredName;
     use sha2::{Digest, Sha256};
@@ -419,7 +420,7 @@ mod tests {
             scratch.read("one/zero-hour/package.index"),
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
-        let mode = ModePackages::from_dir(&scratch.path("one/game"), &named);
+        let mode = PackageDir::new(scratch.path("one/game")).mode_packages(&named);
         assert!(mode.is_ok(), "{mode:?}");
         assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
         assert_eq!(
@@ -505,7 +506,8 @@ mod tests {
             scratch.read("one/game/package.index")
         );
         assert_eq!(
-            PackageFiles::read(&PackageDir::new(scratch.path("one/game")))
+            PackageDir::new(scratch.path("one/game"))
+                .files()
                 .unwrap()
                 .fingerprint(),
             fingerprint

@@ -1,12 +1,11 @@
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use campfire_common::Fingerprint;
+use campfire_package::{FileIndex, PackageWalk};
 use campfire_store::{DurableFile, OutputFile};
 use campfire_values::PackagePath;
 
 use crate::error::WriteError;
-use crate::file_index::{FileIndex, FileRow};
 
 /// A new package as its builder writes it, an importer or a packer: each file into a new directory, written once with no sync
 /// and its row kept, then the index of the rows, synced, so every file is checked against what
@@ -14,7 +13,7 @@ use crate::file_index::{FileIndex, FileRow};
 #[derive(Debug)]
 pub struct PackageWriter {
     root: PathBuf,
-    rows: BTreeMap<PackagePath, FileRow>,
+    rows: PackageWalk,
 }
 
 impl PackageWriter {
@@ -23,7 +22,7 @@ impl PackageWriter {
         DurableFile::create_new_dir(root).map_err(WriteError::CreateDir)?;
         Ok(PackageWriter {
             root: root.to_owned(),
-            rows: BTreeMap::new(),
+            rows: PackageWalk::new(),
         })
     }
 
@@ -38,13 +37,12 @@ impl PackageWriter {
             DurableFile::create_dir_all(dir).map_err(WriteError::Directory)?;
         }
         OutputFile::write_new(&at, bytes).map_err(WriteError::File)?;
-        self.rows.insert(path, FileRow::of(bytes));
-        Ok(())
+        self.rows.add(path, bytes).map_err(WriteError::Package)
     }
 
     /// Writes the package's index; its fingerprint.
     pub fn finish(self) -> Result<Fingerprint, WriteError> {
-        let index = FileIndex::new(self.rows).map_err(WriteError::Package)?;
+        let index = self.rows.finish().map_err(WriteError::Package)?;
         DurableFile::write(&self.root.join(FileIndex::PATH), index.bytes())
             .map_err(WriteError::Index)?;
         Ok(index.fingerprint())
@@ -58,7 +56,6 @@ mod tests {
 
     use super::*;
     use crate::package_dir::PackageDir;
-    use crate::package_files::PackageFiles;
 
     fn path(text: &str) -> PackagePath {
         PackagePath::parse(text).unwrap()
@@ -93,7 +90,8 @@ mod tests {
         assert_eq!(scratch.read("one/package.index"), index);
         assert_eq!(fingerprint, Fingerprint::new(Sha256::digest(&index).into()));
         assert_eq!(
-            PackageFiles::read(&PackageDir::new(scratch.path("one")))
+            PackageDir::new(scratch.path("one"))
+                .files()
                 .unwrap()
                 .fingerprint(),
             fingerprint

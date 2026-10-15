@@ -3,7 +3,7 @@
 use std::num::NonZeroU32;
 
 use campfire_harness::FixedSession;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::Outcome;
 use campfire_runner::{MatchBuild, SessionWorld};
 use campfire_sim::SimWorld;

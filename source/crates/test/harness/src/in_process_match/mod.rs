@@ -23,7 +23,7 @@ use campfire_net::{
     SimServerWorld, SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{SeedChain, ServerInput};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
@@ -961,7 +961,7 @@ pub(crate) mod bench {
 
     use campfire_math::{Num, Vec3};
     use campfire_orders::OrdersAction;
-    use campfire_package::internals::TestMode;
+    use campfire_package_disk::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableFile;
     use lightyear::prelude::RollbackMode;

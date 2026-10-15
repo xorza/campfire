@@ -2,15 +2,15 @@
 //! flaw of a use, an object or a user, which fails the load with its own problem.
 
 use campfire_actions::ActionDataField;
-use campfire_package::internals::Edit;
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place, UseProblem,
 };
+use campfire_package_disk::internals::Edit;
 use campfire_script::NameKind;
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;
 
-use crate::moba::{edited, load};
+use crate::package::moba::{edited, load};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";

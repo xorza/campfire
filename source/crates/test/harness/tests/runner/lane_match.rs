@@ -11,7 +11,7 @@ use campfire_harness::{FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::{Hook, ScriptFailures};

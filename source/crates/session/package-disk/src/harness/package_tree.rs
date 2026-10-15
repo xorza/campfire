@@ -7,9 +7,9 @@ use campfire_codec::Toml;
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use toml::{Table, Value};
 
-use crate::error::LoadError;
+use campfire_package::{LoadError, ModePackages};
+
 use crate::harness::test_mode::TestMode;
-use crate::mode_packages::ModePackages;
 use crate::package_dir::PackageDir;
 
 /// The most bytes a test reads of a workspace package's file: far past any the test packages
@@ -109,7 +109,7 @@ impl PackageTree {
 
     /// The tree's mode on its map, or why it does not load.
     pub fn load(&self) -> Result<ModePackages, LoadError> {
-        ModePackages::from_package_dir(&self.dir(self.mode.root()), &self.mode.map())
+        self.dir(self.mode.root()).mode_packages(&self.mode.map())
     }
 
     /// The tree's mode on its map.
@@ -190,7 +190,7 @@ mod tests {
 
     /// The packages of `dir`, as two loads compare them.
     fn seen(dir: &PackageDir) -> String {
-        let packages = ModePackages::from_package_dir(dir, &TestMode::Moba3v3.map()).unwrap();
+        let packages = dir.mode_packages(&TestMode::Moba3v3.map()).unwrap();
         let views: Vec<_> = packages
             .packages()
             .map(|view| format!("{:?}", view.content))

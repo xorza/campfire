@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::SeedChain;
 use campfire_visibility::VisibilityDecodeError;
 

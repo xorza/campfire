@@ -2,8 +2,9 @@ use campfire_codec::Toml;
 use campfire_common::Fingerprint;
 use campfire_store::internals::{PinnedFile, Scratch};
 
+use sha2::{Digest, Sha256};
+
 use super::*;
-use crate::package_files::PackageFiles;
 use crate::package_store::PackageStore;
 
 /// Writes the index of the package at `dir`, under `scratch`, from its files.
@@ -37,12 +38,12 @@ fn a_package_is_its_index_and_reads_through_it() {
     let dir = PackageDir::new(&package);
     // With no index, no package.
     assert!(matches!(
-        PackageFiles::read(&dir),
+        dir.files(),
         Err(ContentError::Missing { path }) if path.as_str() == FileIndex::PATH
     ));
     pack(&scratch, "one");
     assert_eq!(dir.index_files().unwrap().bytes(), list);
-    let read = PackageFiles::read(&dir).unwrap();
+    let read = dir.files().unwrap();
     assert_eq!(read.fingerprint(), expected);
     // The same files in memory, in a tree whose other files are outside the package, reached
     // through a path that leaves a sibling first, read and fingerprint the same.
@@ -55,7 +56,7 @@ fn a_package_is_its_index_and_reads_through_it() {
     .map(|(path, text)| (PathBuf::from(path), text.as_bytes().to_vec()))
     .collect();
     let other = PackageDir::in_memory(Arc::new(PackageDir::reindexed(tree)), "pack/other");
-    let memory = PackageFiles::read(&other.join(Path::new("../one"))).unwrap();
+    let memory = other.join(Path::new("../one")).files().unwrap();
     assert_eq!(memory.fingerprint(), expected);
     let listed: Vec<_> = memory.files_under("data").collect();
     assert_eq!(listed, [&PackagePath::parse("data/a.toml").unwrap()]);
@@ -70,16 +71,11 @@ fn a_package_is_its_index_and_reads_through_it() {
     // A file the index does not list is no part of the package, until the package is packed
     // again; what was read stays as it was read.
     scratch.write("one/data/b/c.toml", "");
-    assert_eq!(
-        PackageFiles::read(&dir)
-            .unwrap()
-            .files_under("data")
-            .count(),
-        1
-    );
-    assert_eq!(PackageFiles::read(&dir).unwrap().fingerprint(), expected);
+    assert_eq!(dir.files().unwrap().files_under("data").count(), 1);
+    assert_eq!(dir.files().unwrap().fingerprint(), expected);
     pack(&scratch, "one");
-    let files: Vec<_> = PackageFiles::read(&dir)
+    let files: Vec<_> = dir
+        .files()
         .unwrap()
         .files_under("data")
         .map(PackagePath::to_string)
@@ -95,14 +91,12 @@ fn a_package_is_its_index_and_reads_through_it() {
     let data = PackagePath::parse("data/a.toml").unwrap();
     for bytes in ["ac", "abc"] {
         scratch.write("one/data/a.toml", bytes);
-        assert!(
-            matches!(PackageFiles::read(&dir), Err(ContentError::Changed { path }) if path == data)
-        );
+        assert!(matches!(dir.files(), Err(ContentError::Changed { path }) if path == data));
     }
     assert_eq!(read.read_text(&data).unwrap(), "ab");
     scratch.write("one/data/a.toml", "ac");
     pack(&scratch, "one");
-    let changed = PackageFiles::read(&dir).unwrap().fingerprint();
+    let changed = dir.files().unwrap().fingerprint();
     assert_ne!(changed, expected);
     // A file or a directory whose name on disk differs from its row's only in case fails the
     // open as missing on every OS, as Linux holds it, though a file system that ignores case
@@ -112,18 +106,14 @@ fn a_package_is_its_index_and_reads_through_it() {
         ("one/data", "one/Data"),
     ] {
         scratch.rename(from, to);
-        assert!(
-            matches!(PackageFiles::read(&dir), Err(ContentError::Missing { path }) if path == data)
-        );
+        assert!(matches!(dir.files(), Err(ContentError::Missing { path }) if path == data));
         scratch.rename(to, from);
     }
-    assert_eq!(PackageFiles::read(&dir).unwrap().fingerprint(), changed);
+    assert_eq!(dir.files().unwrap().fingerprint(), changed);
     scratch.rename("one/data", "one/date");
-    assert!(
-        matches!(PackageFiles::read(&dir), Err(ContentError::Missing { path }) if path == data)
-    );
+    assert!(matches!(dir.files(), Err(ContentError::Missing { path }) if path == data));
     pack(&scratch, "one");
-    assert_ne!(PackageFiles::read(&dir).unwrap().fingerprint(), changed);
+    assert_ne!(dir.files().unwrap().fingerprint(), changed);
 }
 
 #[test]
@@ -144,10 +134,11 @@ fn a_store_finds_each_package_by_fingerprint() {
     scratch.write("upper/Manifest.toml", "u");
     pack(&scratch, "upper");
     let store = PackageStore::scan(root).unwrap();
-    let upper = PackageFiles::read(&PackageDir::new(root.join("upper"))).unwrap();
+    let upper = PackageDir::new(root.join("upper")).files().unwrap();
     assert!(store.get(upper.fingerprint()).is_none());
-    let one = PackageFiles::read(&dir).unwrap().fingerprint();
-    let two = PackageFiles::read(&PackageDir::new(root.join("nested/two")))
+    let one = dir.files().unwrap().fingerprint();
+    let two = PackageDir::new(root.join("nested/two"))
+        .files()
         .unwrap()
         .fingerprint();
     for fingerprint in [one, two] {
@@ -156,7 +147,8 @@ fn a_store_finds_each_package_by_fingerprint() {
             Some(fingerprint)
         );
     }
-    let inner = PackageFiles::read(&PackageDir::new(root.join("one/inner")))
+    let inner = PackageDir::new(root.join("one/inner"))
+        .files()
         .unwrap()
         .fingerprint();
     assert!(store.get(inner).is_none());
@@ -180,13 +172,13 @@ fn a_package_refuses_what_an_os_would_hold_another_way() {
     // whatever order the OS lists them in.
     scratch.link("one/manifest.toml", "one/link");
     assert!(
-        matches!(dir.index_files(), Err(ContentError::NotAFile(path)) if path == package.join("link"))
+        matches!(dir.index_files(), Err(IndexError::NotAFile(path)) if path == package.join("link"))
     );
     let euro = package.join("a\u{20ac}.toml");
     scratch.write("one/a\u{20ac}.toml", "");
-    assert!(matches!(dir.index_files(), Err(ContentError::NotPath(path)) if path == euro));
+    assert!(matches!(dir.index_files(), Err(IndexError::NotPath(path)) if path == euro));
     scratch.remove("one/link");
-    assert!(matches!(dir.index_files(), Err(ContentError::NotPath(path)) if path == euro));
+    assert!(matches!(dir.index_files(), Err(IndexError::NotPath(path)) if path == euro));
     scratch.remove("one/a\u{20ac}.toml");
     assert!(dir.index_files().is_ok());
 
@@ -204,7 +196,7 @@ fn a_package_refuses_what_an_os_would_hold_another_way() {
         assert!(
             matches!(
                 PackageDir::in_memory(Arc::new(tree), "p").index_files(),
-                Err(ContentError::CaseClash { path, other: first })
+                Err(IndexError::Package(ContentError::CaseClash { path, other: first }))
                     if path.as_str() == "data/a.toml" && first.as_str() == other
             ),
             "{one} {two}"
@@ -230,7 +222,7 @@ fn a_package_reads_its_own_files_only() {
         script: PackagePath,
     }
     let path = |text| PackagePath::parse(text).unwrap();
-    let walker = PackageFiles::read(&walker()).unwrap();
+    let walker = walker().files().unwrap();
     let hero: Hero = walker.read_data(&path("data/avatar.toml")).unwrap();
     assert_eq!(hero.name, "hero-name");
     assert_eq!(hero.slots["basic"][2], "third");
@@ -289,7 +281,9 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     .concat();
     let expected = Fingerprint::new(Sha256::digest(&list).into());
     let tree = Arc::new(PackageDir::reindexed(tree));
-    let read = PackageFiles::read(&PackageDir::in_memory(Arc::clone(&tree), "one")).unwrap();
+    let read = PackageDir::in_memory(Arc::clone(&tree), "one")
+        .files()
+        .unwrap();
     assert_eq!(read.fingerprint(), expected);
     // Only the files a load reads stay; an asset reads on demand, checked against its row.
     assert_eq!(read.files_under("textures").count(), 0);
@@ -314,11 +308,9 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     // name, or not there at all: a package is whole.
     let one = PackageDir::new(scratch.path("one"));
     scratch.rename("one/textures/x.png", "one/textures/X.png");
-    assert!(
-        matches!(PackageFiles::read(&one), Err(ContentError::Missing { path }) if path == texture)
-    );
+    assert!(matches!(one.files(), Err(ContentError::Missing { path }) if path == texture));
     scratch.rename("one/textures/X.png", "one/textures/x.png");
-    let disk = PackageFiles::read(&one).unwrap();
+    let disk = one.files().unwrap();
     assert_eq!(disk.fingerprint(), expected);
     assert_eq!(disk.read_file(&texture).unwrap(), asset);
     scratch.write("one/textures/x.png", [1]);
@@ -331,9 +323,7 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         disk.read_file(&texture),
         Err(ContentError::Missing { path }) if path == texture
     ));
-    assert!(
-        matches!(PackageFiles::read(&one), Err(ContentError::Missing { path }) if path == texture)
-    );
+    assert!(matches!(one.files(), Err(ContentError::Missing { path }) if path == texture));
 
     // A file a load reads that is not UTF-8 reads, but not as text.
     let bad = BTreeMap::from([(PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a'])]);
@@ -344,7 +334,9 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         (PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a']),
         (PathBuf::from("two/package.index"), bad.bytes().to_vec()),
     ]);
-    let two = PackageFiles::read(&PackageDir::in_memory(Arc::new(tree), "two")).unwrap();
+    let two = PackageDir::in_memory(Arc::new(tree), "two")
+        .files()
+        .unwrap();
     let path = PackagePath::parse("data/bad.toml").unwrap();
     assert!(matches!(
         two.read_text(&path),
@@ -361,7 +353,7 @@ fn every_workspace_package_holds_the_index_of_its_files() {
         let entries = DirEntries::read(dir).unwrap();
         if entries
             .iter()
-            .any(|entry| entry.name == PackageDir::MANIFEST)
+            .any(|entry| entry.name == PackageFiles::MANIFEST)
         {
             found.push(dir.to_owned());
             return;

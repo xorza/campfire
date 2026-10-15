@@ -1,5 +1,4 @@
 use campfire_common::StateHash;
-use campfire_package::StoreError;
 use campfire_protocol::{
     CheckpointError, LogLoadError, Outcome, SeedError, ServerInputError, SlotChange,
 };
@@ -19,9 +18,6 @@ pub enum StartError {
     Seed(SeedError),
     #[error(transparent)]
     Terms(TermsError),
-    /// The store does not give the packages the terms name.
-    #[error(transparent)]
-    Packages(StoreError),
     /// A change of a slot's controller the mode's `[players]` does not allow.
     #[error("slot {} in tick {}", .change.slot.get(), .change.tick)]
     SlotRule {

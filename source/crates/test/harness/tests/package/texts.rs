@@ -1,14 +1,13 @@
 //! A package's human text, found in a language: the player's from the package or a locale
 //! package, else the package's own.
 
-use campfire_package::internals::Edit;
 use campfire_package::{
-    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageFiles, PackageName,
-    PackageRef, Texts,
+    Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageName, PackageRef, Texts,
 };
+use campfire_package_disk::internals::Edit;
 use campfire_values::MessageId;
 
-use crate::moba::{edited, edited_at, load};
+use crate::package::moba::{edited, edited_at, load};
 
 fn language(text: &str) -> Language {
     Language::parse(text).unwrap()
@@ -18,7 +17,7 @@ fn language(text: &str) -> Language {
 fn german<'a>(
     edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> Result<LocalePackage, LoadError> {
-    LocalePackage::read(&PackageFiles::read(&edited_at("locales/de", edits)).unwrap())
+    LocalePackage::read(&edited_at("locales/de", edits).files().unwrap())
 }
 
 #[test]
@@ -109,6 +108,6 @@ fn a_locale_package_translates_only_the_messages_of_the_packages_it_depends_on()
     );
 
     // A mode is no locale package.
-    let mode = LocalePackage::read(&PackageFiles::read(&edited([])).unwrap()).unwrap_err();
+    let mode = LocalePackage::read(&edited([]).files().unwrap()).unwrap_err();
     assert!(matches!(*mode.problem, LoadProblem::WrongKind), "{mode}");
 }

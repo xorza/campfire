@@ -37,7 +37,8 @@ use campfire_net::{
     ClientDir, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
     WatchRequest,
 };
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package_disk::PackageDir;
 use campfire_protocol::RandomKey;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
@@ -245,8 +246,8 @@ fn add_ends(
 /// The packages of the mode the arguments name; the exit code when they do not load.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let mode = PackageDir::new(&args.mode);
-    let packages = ModePackages::choose_map(&mode, args.map.clone())
-        .and_then(|map| ModePackages::from_package_dir(&mode, &map))
+    let packages = mode.choose_map(args.map.clone())
+        .and_then(|map| mode.mode_packages(&map))
         .map_err(|error| {
         error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)

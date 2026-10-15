@@ -63,6 +63,7 @@ campfire-log = { path = "crates/base/log" }
 campfire-math = { path = "crates/sim/math" }
 campfire-net = { path = "crates/network/net" }
 campfire-package = { path = "crates/session/package" }
+campfire-package-disk = { path = "crates/session/package-disk" }
 campfire-protocol = { path = "crates/session/protocol" }
 campfire-quic = { path = "crates/network/quic" }
 campfire-runner = { path = "crates/session/runner" }

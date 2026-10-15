@@ -178,7 +178,8 @@ impl fmt::Debug for HeldReader {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_package::{PackageDir, PackageFiles, PackageReader, PackageWriter};
+    use campfire_package::PackageReader;
+    use campfire_package_disk::{PackageDir, PackageWriter};
     use campfire_store::internals::Scratch;
     use campfire_values::PackagePath;
 
@@ -191,7 +192,8 @@ pub(crate) mod internals {
                 .unwrap();
         }
         writer.finish().unwrap();
-        PackageFiles::read(&PackageDir::new(scratch.path(dir)))
+        PackageDir::new(scratch.path(dir))
+            .files()
             .unwrap()
             .reader()
             .clone()

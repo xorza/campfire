@@ -2,7 +2,8 @@ use std::fmt;
 use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
-use campfire_package::{TerrainFileError, WriteError};
+use campfire_package::TerrainFileError;
+use campfire_package_disk::WriteError;
 use campfire_store::{PathError, ReadError};
 use derive_more::Display;
 use miniz_oxide::inflate::TINFLStatus;

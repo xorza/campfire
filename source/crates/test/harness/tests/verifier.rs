@@ -15,8 +15,9 @@ use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
+use campfire_package::ModePackages;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
+use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
     AfterLeave, Applied, EngineRelease, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
@@ -87,15 +88,19 @@ fn store() -> PackageStore {
 
 /// The packages `log`'s terms name, from the store, as the verifier's binary finds them.
 fn from_store(log: &SessionLog) -> ModePackages {
-    Session::packages(&store(), &log.header().terms).unwrap()
+    Verification::packages(&store(), &log.header().terms).unwrap()
 }
 
 /// What refuses the replay of `log` on the packages its terms name in `store`, as the verifier's
 /// binary starts one; none when it starts.
-fn refusal(log: SessionLog, store: &PackageStore) -> Option<StartError> {
-    let packages = Session::packages(store, &log.header().terms);
+fn refusal(log: SessionLog, store: &PackageStore) -> Option<VerifyError> {
+    let packages = Verification::packages(store, &log.header().terms);
     packages
-        .and_then(|packages| Replay::of(log, &packages).map(drop))
+        .and_then(|packages| {
+            Replay::of(log, &packages)
+                .map(drop)
+                .map_err(VerifyError::Start)
+        })
         .err()
 }
 
@@ -490,10 +495,10 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     assert!(
         matches!(
             refused,
-            Some(StartError::SlotRule {
+            Some(VerifyError::Start(StartError::SlotRule {
                 change: SlotChange { tick, .. },
                 error: SlotRuleError::Leaver { becomes: AfterLeave::Bot },
-            }) if tick == Tick::new(0)
+            })) if tick == Tick::new(0)
         ),
         "{refused:?}"
     );
@@ -683,7 +688,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let session = session();
     assert!(matches!(
         refusal(session.log(), &store),
-        Some(StartError::Seed(SeedError::NotRevealed))
+        Some(VerifyError::Start(StartError::Seed(SeedError::NotRevealed)))
     ));
     assert!(matches!(
         Session::start_match(
@@ -718,12 +723,12 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         matches!(
             &refused,
             [
-                Some(StartError::Terms(TermsError::OtherRelease(release))),
-                Some(StartError::Terms(TermsError::OtherRelease(_))),
-                Some(StartError::Packages(StoreError::UnknownMode)),
-                Some(StartError::Packages(StoreError::MissingDependency(dependency))),
-                Some(StartError::Packages(StoreError::DependencyCount)),
-                Some(StartError::Terms(TermsError::TickRate(hz))),
+                Some(VerifyError::Release(TermsError::OtherRelease(release))),
+                Some(VerifyError::Release(TermsError::OtherRelease(_))),
+                Some(VerifyError::Packages(StoreError::UnknownMode)),
+                Some(VerifyError::Packages(StoreError::MissingDependency(dependency))),
+                Some(VerifyError::Packages(StoreError::DependencyCount)),
+                Some(VerifyError::Start(StartError::Terms(TermsError::TickRate(hz)))),
             ] if *release == EngineRelease::new(0, 0, 9) && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"
@@ -738,7 +743,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     assert!(
         matches!(
             refused,
-            Some(StartError::Terms(TermsError::Slots { slots: 3, most: 2 }))
+            Some(VerifyError::Start(StartError::Terms(TermsError::Slots {
+                slots: 3,
+                most: 2
+            })))
         ),
         "{refused:?}"
     );
@@ -786,7 +794,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     scratch.create_dir("empty");
     assert!(matches!(
         verify(&scratch.path("empty"), "match.log", None),
-        Err(VerifyError::Start(_))
+        Err(VerifyError::Packages(_))
     ));
     // A log that is not there, and bytes that are no log.
     assert!(matches!(

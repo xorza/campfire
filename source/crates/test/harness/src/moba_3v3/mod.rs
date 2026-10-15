@@ -10,7 +10,7 @@ use campfire_math::Num;
 use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersAction;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_progression::ProgressionAction;
 use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};

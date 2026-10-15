@@ -18,6 +18,7 @@ internals = [
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-package/internals",
+    "campfire-package-disk/internals",
     "campfire-players/internals",
     "campfire-production/internals",
     "campfire-progression/internals",
@@ -48,6 +49,8 @@ campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
+# Its tests read the workspace's test packages from disk.
+campfire-package-disk = { workspace = true, optional = true }
 campfire-players.workspace = true
 campfire-production.workspace = true
 campfire-progression.workspace = true

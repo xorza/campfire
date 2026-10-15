@@ -9,7 +9,7 @@ use campfire_common::{StateHash, Tick};
 use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
 use campfire_runner::{Replay, ResumeError, Session, SessionWorld};
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};

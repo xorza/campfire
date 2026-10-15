@@ -2,7 +2,7 @@ use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_production::TrainQueue;
 use campfire_protocol::SlotPlan;
 use campfire_sim::{Position, StableId};

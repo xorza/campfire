@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_common::ChannelBinding;
-use campfire_package::internals::TestMode;
+use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,

@@ -5,11 +5,11 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_common::{StateHash, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
-use campfire_package::{ModePackages, PackageStore};
+use campfire_package::ModePackages;
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
     PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader,
-    SessionLog, SessionResult, SessionTerms, Signature, SnapshotFingerprint,
+    SessionLog, SessionResult, Signature, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, SnapshotError, TickRate};
 use secp256k1::{Keypair, Secp256k1, Signing};
@@ -112,17 +112,6 @@ impl Session {
         let mut game = MatchBuild::restore_target(packages, rate, slots);
         game.restore(snapshot)?;
         Ok(game.state_hash())
-    }
-
-    /// The mode and the dependencies `terms` name, from `store`, as a verifier holds them; an
-    /// error for terms of another release first, as its packages may not read in this one.
-    pub fn packages(
-        store: &PackageStore,
-        terms: &SessionTerms,
-    ) -> Result<ModePackages, StartError> {
-        SessionRules::check_release(terms).map_err(StartError::Terms)?;
-        ModePackages::from_store(store, terms.mode, &terms.map, &terms.dependencies)
-            .map_err(StartError::Packages)
     }
 
     /// Logs a player's packet before the next tick; see `SessionLog::record`.

@@ -2,33 +2,26 @@ use std::collections::BTreeMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
+use campfire_common::MapName;
+use campfire_package::{
+    ContentError, FileIndex, LoadError, LoadProblem, ModePackages, PackageFiles, PackageRef,
+    PackageSource, PackageWalk,
+};
 use campfire_store::{DirEntries, EntryKind, InputFile, ReadError};
 use campfire_values::PackagePath;
-use sha2::{Digest, Sha256};
 
-use crate::error::ContentError;
-use crate::file_index::{FileIndex, FileRow};
+use crate::error::IndexError;
 use crate::package_dir::listings::Listings;
-use crate::package_walk::PackageWalk;
 
 mod listings;
 
-/// Where a package's files are: on disk, or in memory, as a test builds them. Both read through
-/// the package's index into the same `PackageFiles`.
+/// Where a package's files are: on disk, or in memory, as a test builds them. Both are the
+/// source the core reads the package's files from, through its index.
 #[derive(Debug, Clone)]
 pub struct PackageDir {
     root: PathBuf,
     source: Source,
 }
-
-/// The directory of a package's scripts.
-pub(crate) const SCRIPTS: &str = "scripts";
-
-/// The directory of a package's locales.
-pub(crate) const LOCALE: &str = "locale";
-
-/// The directories whose files a load reads, beside the manifest.
-const READ_DIRS: [&str; 3] = ["data", SCRIPTS, LOCALE];
 
 /// Where a package's files are.
 #[derive(Debug, Clone)]
@@ -39,14 +32,6 @@ enum Source {
 }
 
 impl PackageDir {
-    /// The file every package has at its root.
-    pub const MANIFEST: &str = "manifest.toml";
-
-    /// One of the engine's paths in a package, as `PackageFiles` reads it.
-    pub(crate) fn engine_path(path: &str) -> PackagePath {
-        PackagePath::parse(path).expect("the engine's paths are in the package")
-    }
-
     /// The package on disk at `root`.
     pub fn new(root: impl Into<PathBuf>) -> PackageDir {
         PackageDir {
@@ -68,7 +53,7 @@ impl PackageDir {
 
     /// The package at `relative` from this one's root, as a manifest names a dependency.
     #[must_use]
-    pub(crate) fn join(&self, relative: &Path) -> PackageDir {
+    fn join(&self, relative: &Path) -> PackageDir {
         let root = self.root.join(relative);
         let root = match self.source {
             Source::Disk => root,
@@ -80,26 +65,59 @@ impl PackageDir {
         }
     }
 
-    pub(crate) fn root(&self) -> &Path {
+    pub fn root(&self) -> &Path {
         &self.root
     }
 
-    /// The package's index, once every file it lists is on disk by its exact name: see
-    /// `PackageFiles::read`.
-    pub(crate) fn checked_index(&self) -> Result<FileIndex, ContentError> {
-        let mut listings = Listings::default();
-        let index = FileIndex::decode(&self.read_index(&mut listings)?)?;
-        for (path, _) in index.rows() {
-            self.check_name(path, &mut listings)?;
+    /// The package's files, as the core reads and checks them: see `PackageFiles::read`.
+    pub fn files(&self) -> Result<PackageFiles, ContentError> {
+        PackageFiles::read(Arc::new(self.clone()))
+    }
+
+    /// The map of the mode in this directory that a session plays, as
+    /// `ModePackages::choose_map` chooses it from the mode's index.
+    pub fn choose_map(&self, map: Option<MapName>) -> Result<MapName, LoadError> {
+        let package = PackageRef::Dir(self.root.clone());
+        if let Some(map) = map {
+            return Ok(map);
         }
-        Ok(index)
+        let index = self
+            .read_index()
+            .and_then(|bytes| FileIndex::decode(&bytes))
+            .map_err(|error| LoadError::new(package.clone(), LoadProblem::Content(error)))?;
+        ModePackages::choose_map(&index, &package, None)
+    }
+
+    /// The mode in this directory with its map `map`, and its dependencies at the paths its
+    /// manifest gives from it, each read once.
+    pub fn mode_packages(&self, map: &MapName) -> Result<ModePackages, LoadError> {
+        let read = |dir: &PackageDir, package: PackageRef| {
+            dir.files()
+                .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
+        };
+        let at = PackageRef::Dir(self.root.clone());
+        let files = read(self, at.clone())?;
+        let manifest = files.mode_manifest(&at)?;
+        let dependencies = manifest
+            .dependencies
+            .iter()
+            .map(|(name, dependency)| {
+                let dir = self.join(Path::new(&dependency.path));
+                Ok((name.clone(), read(&dir, PackageRef::Name(name.clone()))?))
+            })
+            .collect::<Result<Vec<_>, LoadError>>()?;
+        let dependencies: Vec<_> = dependencies
+            .iter()
+            .map(|(name, files)| (name.clone(), files))
+            .collect();
+        ModePackages::new(&files, manifest, map, &dependencies)
     }
 
     /// The index of the files under the package's root but its index, as its builder writes it:
     /// each hashed as it streams past. A link or any other entry that is neither a file nor a
     /// directory fails, as does a path that is not UTF-8 or that a package path does not spell,
     /// the first by name in each directory, so the first flaw of a tree is the same on every OS.
-    pub fn index_files(&self) -> Result<FileIndex, ContentError> {
+    pub fn index_files(&self) -> Result<FileIndex, IndexError> {
         let mut walk = PackageWalk::new();
         match &self.source {
             Source::Disk => self.walk_disk(&self.root, &mut walk)?,
@@ -107,40 +125,13 @@ impl PackageDir {
                 for (path, bytes) in tree.iter().filter(|(path, _)| path.starts_with(&self.root)) {
                     let path = self.package_path(path)?;
                     if path.as_str() != FileIndex::PATH {
-                        walk.add(path, bytes.as_slice())?;
+                        walk.add(path, bytes.as_slice())
+                            .map_err(IndexError::Package)?;
                     }
                 }
             }
         }
-        walk.finish()
-    }
-
-    /// The bytes of the file at `path`, whose row is `row`, read no further than its row's size
-    /// and refused when they differ from it.
-    pub(crate) fn read_row(
-        &self,
-        path: &PackagePath,
-        row: FileRow,
-    ) -> Result<Vec<u8>, ContentError> {
-        let bytes = self.read_bytes(path, Some(row.size))?;
-        let size = u64::try_from(bytes.len()).expect("a file length fits u64");
-        if size != row.size || <[u8; 32]>::from(Sha256::digest(&bytes)) != row.sha256 {
-            return Err(ContentError::Changed { path: path.clone() });
-        }
-        Ok(bytes)
-    }
-
-    /// The package's index alone, as a caller reads it to learn what the package holds, such as
-    /// its maps, before it loads any file.
-    pub(crate) fn index(&self) -> Result<FileIndex, ContentError> {
-        FileIndex::decode(&self.read_index(&mut Listings::default())?)
-    }
-
-    /// The bytes of the package's index, whose own size is its bound.
-    fn read_index(&self, listings: &mut Listings) -> Result<Vec<u8>, ContentError> {
-        let path = PackageDir::engine_path(FileIndex::PATH);
-        self.check_name(&path, listings)?;
-        self.read_bytes(&path, None)
+        walk.finish().map_err(IndexError::Package)
     }
 
     /// Missing, unless the file at `path` is on disk by its exact name, by the names `listings`
@@ -150,7 +141,7 @@ impl PackageDir {
         let held = match self.source {
             Source::Disk => listings
                 .hold(&self.root, path)
-                .map_err(ContentError::Read)?,
+                .map_err(|error| ContentError::Read(Box::new(error)))?,
             Source::Memory(_) => true,
         };
         if held {
@@ -170,7 +161,7 @@ impl PackageDir {
                 let mut ranges = InputFile::ranges(&self.file_path(path)).map_err(|error| {
                     match error.error {
                         ReadError::Missing => missing(),
-                        _ => ContentError::Read(error),
+                        _ => ContentError::Read(Box::new(error)),
                     }
                 })?;
                 let len = size.unwrap_or(ranges.len());
@@ -180,17 +171,11 @@ impl PackageDir {
                 let len = usize::try_from(len).expect("a file's length fits usize");
                 ranges.read_at(0, len).map_err(|error| match error.error {
                     ReadError::Short { .. } => changed(),
-                    _ => ContentError::Read(error),
+                    _ => ContentError::Read(Box::new(error)),
                 })
             }
             Source::Memory(tree) => tree.get(&self.file_path(path)).cloned().ok_or_else(missing),
         }
-    }
-
-    /// Whether a load reads the file at `path`: the manifest, and the files of its data, its
-    /// scripts and its locales.
-    pub(crate) fn reads(path: &PackagePath) -> bool {
-        path.as_str() == PackageDir::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
     /// Where the file at `path` of the package is, its names joined as the OS joins them.
@@ -202,35 +187,60 @@ impl PackageDir {
 
     /// Takes every file under `dir` on disk into `walk`, in the order of their names, but the
     /// index at the root.
-    fn walk_disk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), ContentError> {
-        for entry in DirEntries::read(dir).map_err(ContentError::Read)? {
+    fn walk_disk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), IndexError> {
+        for entry in DirEntries::read(dir).map_err(IndexError::Read)? {
             let path = dir.join(&entry.name);
             match entry.kind {
                 EntryKind::Dir => self.walk_disk(&path, walk)?,
                 EntryKind::File => {
                     let package_path = self.package_path(&path)?;
                     if package_path.as_str() != FileIndex::PATH {
-                        let file = InputFile::stream(&path).map_err(ContentError::Read)?;
-                        walk.add(package_path, file)?;
+                        let file = InputFile::stream(&path).map_err(IndexError::Read)?;
+                        walk.add(package_path, file).map_err(IndexError::Package)?;
                     }
                 }
-                EntryKind::Link | EntryKind::Other => return Err(ContentError::NotAFile(path)),
+                EntryKind::Link | EntryKind::Other => return Err(IndexError::NotAFile(path)),
             }
         }
         Ok(())
     }
 
     /// The package path of the file at `path`, under the root.
-    fn package_path(&self, path: &Path) -> Result<PackagePath, ContentError> {
+    fn package_path(&self, path: &Path) -> Result<PackagePath, IndexError> {
         let relative = path
             .strip_prefix(&self.root)
             .expect("a read path is under the root");
         let mut names = Vec::new();
         for component in relative.components() {
             let name = component.as_os_str().to_str();
-            names.push(name.ok_or_else(|| ContentError::NotUtf8(path.to_owned()))?);
+            names.push(name.ok_or_else(|| IndexError::NotUtf8(path.to_owned()))?);
         }
-        PackagePath::parse(&names.join("/")).ok_or_else(|| ContentError::NotPath(path.to_owned()))
+        PackagePath::parse(&names.join("/")).ok_or_else(|| IndexError::NotPath(path.to_owned()))
+    }
+}
+
+impl PackageSource for PackageDir {
+    /// The bytes of the package's index, by its exact name, whose own size is its bound.
+    fn read_index(&self) -> Result<Vec<u8>, ContentError> {
+        let path = PackagePath::parse(FileIndex::PATH).expect("the index's path is a package's");
+        self.check_name(&path, &mut Listings::default())?;
+        self.read_bytes(&path, None)
+    }
+
+    /// Each directory on the paths' way listed once.
+    fn check_names(
+        &self,
+        paths: &mut dyn Iterator<Item = &PackagePath>,
+    ) -> Result<(), ContentError> {
+        let mut listings = Listings::default();
+        for path in paths {
+            self.check_name(path, &mut listings)?;
+        }
+        Ok(())
+    }
+
+    fn read(&self, path: &PackagePath, size: u64) -> Result<Vec<u8>, ContentError> {
+        self.read_bytes(path, Some(size))
     }
 }
 
@@ -256,7 +266,8 @@ pub(crate) mod internals {
     use std::path::{Path, PathBuf};
     use std::sync::Arc;
 
-    use crate::file_index::FileIndex;
+    use campfire_package::{FileIndex, PackageFiles};
+
     use crate::package_dir::PackageDir;
 
     impl PackageDir {
@@ -272,7 +283,7 @@ pub(crate) mod internals {
             let tree = Arc::new(files);
             let indexes: Vec<(PathBuf, Vec<u8>)> = tree
                 .keys()
-                .filter(|path| path.file_name() == Some(PackageDir::MANIFEST.as_ref()))
+                .filter(|path| path.file_name() == Some(PackageFiles::MANIFEST.as_ref()))
                 .map(|path| {
                     let root = path.parent().expect("a manifest is in a directory");
                     let index = PackageDir::in_memory(Arc::clone(&tree), root)

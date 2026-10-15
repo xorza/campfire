@@ -1,6 +1,7 @@
 use campfire_codec::BinaryError;
 
 use super::*;
+use crate::package_walk::PackageWalk;
 
 /// An index's bytes: its tag, then `list`.
 fn tagged(list: &[u8]) -> Vec<u8> {
@@ -40,8 +41,11 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
         })
     );
     assert_eq!(index.row(&PackagePath::parse("data/b.toml").unwrap()), None);
-    // A row of a file of "abc": its 3 bytes, and SHA-256's own test vector.
-    let abc = FileRow::of(b"abc");
+    // A row of a file of "abc", as a walk takes it: its 3 bytes, and SHA-256's own test vector.
+    let path = PackagePath::parse("abc.txt").unwrap();
+    let mut walk = PackageWalk::default();
+    walk.add(path.clone(), &b"abc"[..]).unwrap();
+    let abc = walk.finish().unwrap().row(&path).unwrap();
     assert_eq!(abc.size, 3);
     assert_eq!(
         abc.sha256[..4],

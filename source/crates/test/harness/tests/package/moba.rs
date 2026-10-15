@@ -4,8 +4,9 @@
 use std::path::PathBuf;
 
 use campfire_common::MapName;
-use campfire_package::internals::{Edit, PackageTree, TestMode};
-use campfire_package::{LoadError, ModePackages, PackageDir};
+use campfire_package::{LoadError, ModePackages};
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 
 /// The map of the MOBA's 3v3.
 pub(crate) fn two_lanes() -> MapName {
@@ -14,7 +15,7 @@ pub(crate) fn two_lanes() -> MapName {
 
 /// The MOBA's 3v3 in `dir` on its map.
 pub(crate) fn load(dir: &PackageDir) -> Result<ModePackages, LoadError> {
-    ModePackages::from_package_dir(dir, &two_lanes())
+    dir.mode_packages(&two_lanes())
 }
 
 pub(crate) fn moba() -> PathBuf {

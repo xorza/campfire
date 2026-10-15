@@ -35,7 +35,8 @@ use campfire_net::{
     ProcessExit, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
     SimServerPlugins, SimServerWorld,
 };
-use campfire_package::{ModePackages, PackageDir};
+use campfire_package::ModePackages;
+use campfire_package_disk::PackageDir;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, QuicEndpoint};
 use campfire_store::StopSignals;
 use campfire_visibility::HostVisibility;
@@ -137,8 +138,9 @@ fn main() -> ExitCode {
         }
     };
     let mode_dir = PackageDir::new(&mode);
-    let packages = ModePackages::choose_map(&mode_dir, map)
-        .and_then(|map| ModePackages::from_package_dir(&mode_dir, &map));
+    let packages = mode_dir
+        .choose_map(map)
+        .and_then(|map| mode_dir.mode_packages(&map));
     let packages = match packages {
         Ok(packages) => packages,
         Err(error) => {

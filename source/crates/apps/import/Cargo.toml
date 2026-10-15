@@ -11,6 +11,7 @@ internals = [
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-package/internals",
+    "campfire-package-disk/internals",
     "campfire-sim/internals",
     "campfire-store/internals",
     "campfire-values/internals",
@@ -23,6 +24,7 @@ campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-package.workspace = true
+campfire-package-disk.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
 campfire-values.workspace = true

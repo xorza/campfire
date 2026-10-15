@@ -18,7 +18,7 @@ use campfire_common::PlayerSlot;
 use campfire_harness::{End, InProcessMatch, MatchSetup};
 use campfire_net::{JoinState, OrderScript, TickHashes, WatchRequest};
 use campfire_package::ModePackages;
-use campfire_package::internals::Edit;
+use campfire_package_disk::internals::Edit;
 use campfire_players::{HeldOut, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};

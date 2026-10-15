@@ -40,16 +40,6 @@ struct WireRow<'a> {
 /// The bytes an index starts with, which name its format and its version.
 const INDEX_TAG: &[u8] = b"campfire/package-index/v1";
 
-impl FileRow {
-    /// The row of a file of `bytes`.
-    pub(crate) fn of(bytes: &[u8]) -> FileRow {
-        FileRow {
-            size: u64::try_from(bytes.len()).expect("a file length fits u64"),
-            sha256: Sha256::digest(bytes).into(),
-        }
-    }
-}
-
 impl FileIndex {
     /// The index's own path in its package.
     pub const PATH: &str = "package.index";
@@ -73,7 +63,7 @@ impl FileIndex {
     /// The index `bytes` hold, refused unless they are this version's tag and the one encoding of
     /// rows in strict order of their paths' bytes, each a package path, none the index's own, and
     /// no two that differ only in case.
-    pub(crate) fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
+    pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
         let list = bytes
             .strip_prefix(INDEX_TAG)
             .ok_or(ContentError::IndexTag)?;
