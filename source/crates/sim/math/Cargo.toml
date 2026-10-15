@@ -19,7 +19,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 proptest.workspace = true
 

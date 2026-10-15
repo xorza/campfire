@@ -17,16 +17,25 @@ impl StrictSchedule {
         });
         schedule
     }
+}
 
-    /// Turns off `schedule`'s automatic sync points, its other build settings kept: a sync point
-    /// orders the systems it lies between, so an ambiguity check then sees every pair that only
-    /// a sync point keeps in order.
-    pub fn without_sync_points(schedule: &mut Schedule) {
-        let settings = ScheduleBuildSettings {
-            auto_insert_apply_deferred: false,
-            ..schedule.get_build_settings()
-        };
-        schedule.set_build_settings(settings);
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::schedule::{Schedule, ScheduleBuildSettings};
+
+    use crate::strict_schedule::StrictSchedule;
+
+    impl StrictSchedule {
+        /// Turns off `schedule`'s automatic sync points, its other build settings kept: a sync
+        /// point orders the systems it lies between, so an ambiguity check then sees every pair
+        /// that only a sync point keeps in order.
+        pub fn without_sync_points(schedule: &mut Schedule) {
+            let settings = ScheduleBuildSettings {
+                auto_insert_apply_deferred: false,
+                ..schedule.get_build_settings()
+            };
+            schedule.set_build_settings(settings);
+        }
     }
 }
 

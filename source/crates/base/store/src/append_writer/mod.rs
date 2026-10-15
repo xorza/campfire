@@ -107,7 +107,7 @@ impl AppendWriter {
     }
 
     /// A writer that appends to `file` on the worker `name`.
-    pub fn start<F: AppendFile>(name: &str, file: F) -> AppendWriter {
+    fn start<F: AppendFile>(name: &str, file: F) -> AppendWriter {
         AppendWriter::start_slow_after(name, file, AppendWriter::SLOW_SYNC)
     }
 
@@ -202,6 +202,35 @@ impl Drop for AppendWriter {
         pending.closing = true;
         drop(pending);
         self.shared.wake.notify_one();
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::io;
+
+    use crate::append_writer::AppendWriter;
+    use crate::append_writer::append_file::AppendFile;
+
+    /// A file whose appends take and whose every sync fails.
+    #[derive(Debug)]
+    struct FailingSync;
+
+    impl AppendFile for FailingSync {
+        fn append(&mut self, _: &[u8]) -> io::Result<()> {
+            Ok(())
+        }
+
+        fn sync(&mut self) -> io::Result<()> {
+            Err(io::Error::other("sync failed"))
+        }
+    }
+
+    impl AppendWriter {
+        /// A writer on the worker `name` whose every sync fails, as a full or a failing disk's.
+        pub fn failing_sync(name: &str) -> AppendWriter {
+            AppendWriter::start(name, FailingSync)
+        }
     }
 }
 

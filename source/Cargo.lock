@@ -2342,6 +2342,7 @@ name = "campfire-codec"
 version = "0.1.0"
 dependencies = [
  "arrayvec",
+ "campfire-codec",
  "postcard",
  "serde",
  "serde_json",
@@ -2923,6 +2924,7 @@ name = "campfire-schedule"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-schedule",
 ]
 
 [[package]]

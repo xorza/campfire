@@ -24,7 +24,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
 
 [lints]

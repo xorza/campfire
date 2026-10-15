@@ -6,13 +6,13 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![expect(
     clippy::disallowed_methods,
-    clippy::disallowed_types,
-    reason = "the one crate that calls the formats and holds their types, which clippy.toml denies the others"
+    reason = "the one crate that calls the formats, which clippy.toml denies the others"
 )]
 
 mod batch;
 mod binary;
 mod compare;
+#[cfg(feature = "internals")]
 mod drop_option;
 mod error;
 mod json;

@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-codec/internals",
     "campfire-common/internals",
     "dep:criterion",
 ]

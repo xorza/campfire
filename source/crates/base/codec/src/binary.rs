@@ -1,11 +1,10 @@
 use std::mem;
 
-use postcard::ser_flavors::{AllocVec, Flavor};
+use postcard::ser_flavors::Flavor;
 use serde::{Deserialize, Serialize};
 
 use crate::batch::Batch;
 use crate::compare::Compare;
-use crate::drop_option::{DropOption, OptionCount};
 use crate::error::{BinaryError, TaggedError};
 use crate::sink::Sink;
 
@@ -54,42 +53,6 @@ impl Binary {
             .expect("a batch into a sink cannot fail");
     }
 
-    /// How many `Some`s `value` holds, each nested one that its outer one holds among them.
-    pub fn options<T: Serialize + ?Sized>(value: &T) -> usize {
-        Binary::without_option(value, usize::MAX).seen
-    }
-
-    /// The bytes of `value` with its `Some` at `at`, in the order it encodes them, written as
-    /// `None`, and the options it held left out; none when it holds `at` or fewer.
-    pub fn encode_without_option<T: Serialize + ?Sized>(value: &T, at: usize) -> Option<Vec<u8>> {
-        let dropped = Binary::without_option(value, at);
-        (dropped.seen > at).then_some(dropped.bytes)
-    }
-
-    fn without_option<T: Serialize + ?Sized>(value: &T, at: usize) -> Dropped {
-        let mut serializer = postcard::Serializer {
-            output: AllocVec::new(),
-        };
-        let mut count = OptionCount {
-            seen: 0,
-            dropped: at,
-        };
-        value
-            .serialize(DropOption {
-                inner: &mut serializer,
-                count: &mut count,
-            })
-            .expect("a value encodes in postcard");
-        let bytes = serializer
-            .output
-            .finalize()
-            .expect("an encode into a vec cannot fail");
-        Dropped {
-            bytes,
-            seen: count.seen,
-        }
-    }
-
     /// The value `bytes` hold, all of them.
     pub fn decode<'a, T: Deserialize<'a> + Serialize>(bytes: &'a [u8]) -> Result<T, BinaryError> {
         let taken = Binary::take(bytes)?;
@@ -130,11 +93,61 @@ impl Binary {
     }
 }
 
-/// An encode with one `Some` written as `None`: its bytes, and how many `Some`s it met.
-#[derive(Debug)]
-struct Dropped {
-    bytes: Vec<u8>,
-    seen: usize,
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use postcard::ser_flavors::{AllocVec, Flavor};
+    use serde::Serialize;
+
+    use crate::binary::Binary;
+    use crate::drop_option::{DropOption, OptionCount};
+
+    /// An encode with one `Some` written as `None`: its bytes, and how many `Some`s it met.
+    #[derive(Debug)]
+    struct Dropped {
+        bytes: Vec<u8>,
+        seen: usize,
+    }
+
+    impl Binary {
+        /// How many `Some`s `value` holds, each nested one that its outer one holds among them.
+        pub fn options<T: Serialize + ?Sized>(value: &T) -> usize {
+            Binary::without_option(value, usize::MAX).seen
+        }
+
+        /// The bytes of `value` with its `Some` at `at`, in the order it encodes them, written as
+        /// `None`, and the options it held left out; none when it holds `at` or fewer.
+        pub fn encode_without_option<T: Serialize + ?Sized>(
+            value: &T,
+            at: usize,
+        ) -> Option<Vec<u8>> {
+            let dropped = Binary::without_option(value, at);
+            (dropped.seen > at).then_some(dropped.bytes)
+        }
+
+        fn without_option<T: Serialize + ?Sized>(value: &T, at: usize) -> Dropped {
+            let mut serializer = postcard::Serializer {
+                output: AllocVec::new(),
+            };
+            let mut count = OptionCount {
+                seen: 0,
+                dropped: at,
+            };
+            value
+                .serialize(DropOption {
+                    inner: &mut serializer,
+                    count: &mut count,
+                })
+                .expect("a value encodes in postcard");
+            let bytes = serializer
+                .output
+                .finalize()
+                .expect("an encode into a vec cannot fail");
+            Dropped {
+                bytes,
+                seen: count.seen,
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -1,4 +1,3 @@
-use std::io;
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::ExitStatus;
@@ -6,24 +5,10 @@ use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{InputRules, SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
 use campfire_runner::SessionRules;
-use campfire_store::{AppendFile, AppendWriter};
+use campfire_store::AppendWriter;
 
 use super::*;
 use crate::sim_server::session_journal::SessionJournal;
-
-/// A journal's file whose every sync fails.
-#[derive(Debug)]
-struct FailingFile;
-
-impl AppendFile for FailingFile {
-    fn append(&mut self, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn sync(&mut self) -> io::Result<()> {
-        Err(io::Error::other("sync failed"))
-    }
-}
 
 #[test]
 fn a_failed_journal_ends_the_server_with_its_exit_code() {
@@ -47,7 +32,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
         slots: vec![SlotStart::Open],
     };
     let mut log = SessionLog::new(header).unwrap();
-    let journal = SessionJournal(AppendWriter::start("journal", FailingFile));
+    let journal = SessionJournal(AppendWriter::failing_sync("journal"));
     let mut world = World::new();
     world.init_resource::<Faults>();
     world.insert_resource(JournalWatch(journal.watch()));

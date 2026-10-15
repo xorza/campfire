@@ -42,15 +42,20 @@ pub enum TaggedError {
 #[error(transparent)]
 pub struct TomlError(#[from] de::Error);
 
-impl TomlError {
-    /// What is wrong, without the place.
-    pub fn message(&self) -> &str {
-        self.0.message()
-    }
-}
-
 /// Why a text is no JSON of the type asked for, as `Json::parse` gives it: JSON's own error,
 /// which names the line and column.
 #[derive(Debug, Error)]
 #[error(transparent)]
 pub struct JsonError(#[from] serde_json::Error);
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::error::TomlError;
+
+    impl TomlError {
+        /// What is wrong, without the place.
+        pub fn message(&self) -> &str {
+            self.0.message()
+        }
+    }
+}

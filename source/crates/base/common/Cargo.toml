@@ -13,7 +13,7 @@ derive_more.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-common = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 

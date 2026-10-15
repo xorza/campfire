@@ -1,6 +1,5 @@
 use std::fmt;
 
-use postcard::ser_flavors::Flavor;
 use serde::ser::{
     self, Serialize, SerializeMap, SerializeSeq, SerializeStruct, SerializeStructVariant,
     SerializeTuple, SerializeTupleStruct, SerializeTupleVariant,
@@ -18,12 +17,12 @@ pub(crate) struct OptionCount {
 /// 1, then a `Some`'s value, and a compound value as its prefix alone, its length or its variant,
 /// then its parts: so each value writes through the inner serializer, and each part through this
 /// one again.
-pub(crate) struct DropOption<'a, F: Flavor> {
-    pub(crate) inner: &'a mut postcard::Serializer<F>,
+pub(crate) struct DropOption<'a, S> {
+    pub(crate) inner: &'a mut S,
     pub(crate) count: &'a mut OptionCount,
 }
 
-impl<F: Flavor> fmt::Debug for DropOption<'_, F> {
+impl<S> fmt::Debug for DropOption<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DropOption")
             .field("count", &self.count)
@@ -31,7 +30,10 @@ impl<F: Flavor> fmt::Debug for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> DropOption<'_, F> {
+impl<S> DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     fn part<T: Serialize + ?Sized>(&mut self, value: &T) -> postcard::Result<()> {
         value.serialize(DropOption {
             inner: &mut *self.inner,
@@ -49,7 +51,10 @@ macro_rules! forward {
     };
 }
 
-impl<F: Flavor> ser::Serializer for DropOption<'_, F> {
+impl<S> ser::Serializer for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
     type SerializeSeq = Self;
@@ -164,7 +169,10 @@ impl<F: Flavor> ser::Serializer for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeSeq for DropOption<'_, F> {
+impl<S> SerializeSeq for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -177,7 +185,10 @@ impl<F: Flavor> SerializeSeq for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeTuple for DropOption<'_, F> {
+impl<S> SerializeTuple for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -190,7 +201,10 @@ impl<F: Flavor> SerializeTuple for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeTupleStruct for DropOption<'_, F> {
+impl<S> SerializeTupleStruct for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -203,7 +217,10 @@ impl<F: Flavor> SerializeTupleStruct for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeTupleVariant for DropOption<'_, F> {
+impl<S> SerializeTupleVariant for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -216,7 +233,10 @@ impl<F: Flavor> SerializeTupleVariant for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeMap for DropOption<'_, F> {
+impl<S> SerializeMap for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -233,7 +253,10 @@ impl<F: Flavor> SerializeMap for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeStruct for DropOption<'_, F> {
+impl<S> SerializeStruct for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 
@@ -250,7 +273,10 @@ impl<F: Flavor> SerializeStruct for DropOption<'_, F> {
     }
 }
 
-impl<F: Flavor> SerializeStructVariant for DropOption<'_, F> {
+impl<S> SerializeStructVariant for DropOption<'_, S>
+where
+    for<'b> &'b mut S: ser::Serializer<Ok = (), Error = postcard::Error>,
+{
     type Ok = ();
     type Error = postcard::Error;
 

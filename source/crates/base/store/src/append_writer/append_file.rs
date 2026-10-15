@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{self, Write};
 
 /// What an append writer's thread appends to and syncs: a file, or a stand-in under test.
-pub trait AppendFile: Send + 'static {
+pub(crate) trait AppendFile: Send + 'static {
     fn append(&mut self, bytes: &[u8]) -> io::Result<()>;
 
     /// Makes what was appended durable.

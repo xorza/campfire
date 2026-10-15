@@ -34,7 +34,6 @@ mod stream_writer;
 mod worker;
 
 pub use crate::append_writer::AppendWriter;
-pub use crate::append_writer::append_file::AppendFile;
 pub use crate::append_writer::append_watch::AppendWatch;
 pub use crate::append_writer::error::{AppendError, AppendOpenError};
 pub use crate::append_writer::slow_sync::SlowSync;

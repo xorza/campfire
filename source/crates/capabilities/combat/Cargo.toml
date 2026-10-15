@@ -36,7 +36,7 @@ bevy_ecs.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 
 [lints]

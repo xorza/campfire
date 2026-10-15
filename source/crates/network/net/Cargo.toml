@@ -8,6 +8,7 @@ license.workspace = true
 internals = [
     "campfire-actions/internals",
     "campfire-capabilities/internals",
+    "campfire-codec/internals",
     "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
@@ -15,8 +16,8 @@ internals = [
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-orders/internals",
-    "campfire-package/internals",
     "campfire-package-disk/internals",
+    "campfire-package/internals",
     "campfire-players/internals",
     "campfire-progression/internals",
     "campfire-protocol/internals",

@@ -6,12 +6,13 @@ license.workspace = true
 
 [features]
 internals = [
-    "dep:campfire-codec",
-    "dep:toml",
+    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-package/internals",
     "campfire-store/internals",
     "campfire-values/internals",
+    "dep:campfire-codec",
+    "dep:toml",
 ]
 
 [dependencies]
