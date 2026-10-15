@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.
 
-- [ ] `combat/src/lib.rs:170-178`, `mode/src/lib.rs:281,285`: `Deaths` is declared, and the damage and heal weighers are a declared callback registry that mode fills.
 - [ ] `stats/src/lib.rs:278-302`, `mode/src/mode_units.rs:22-44`, `unit_type_setup.rs:10`: a stats `ByType` passive book and a `SpawnHooks` callback. Delete `Stats::grant`, `ModeUnits::apply_passive` and `UnitTypeSetup.passive`.
 - [ ] `mode/src/mode_map.rs:227-309`: navigation owns the map walk check, and its eight types go back to `pub(crate)`.
 - [ ] `production/src/construction/mod.rs:193,215`, `gather_loop/mod.rs:366`: `Site` and `StatusTags` come with the spawn.

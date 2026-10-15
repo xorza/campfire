@@ -14,7 +14,7 @@ use bevy_ecs::schedule::common_conditions::not;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_combat::{CombatHooks, DamageWeigher, HealWeigher};
+use campfire_combat::{Weigh, Weighers};
 use campfire_common::PlayerSlot;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
@@ -162,6 +162,13 @@ impl Module for Mode {
     ];
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.callback::<Weighers>(
+            (),
+            Weigh {
+                damage: Calls::weigh_damage,
+                heal: Calls::weigh_heal,
+            },
+        );
         d.sets::<ModeSet>();
         d.component::<MatchEnd>();
         d.component::<ModeState<SyncNone>>();
@@ -267,21 +274,11 @@ impl Mode {
         view.names_mut().set_table(Arc::clone(book.choices.names()));
         let players = book.teams.players() as usize;
         world.insert_resource(Choices::empty(&book.choices, players));
-        let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
         ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
         ctx.set_mode(Rc::<ModeSpec>::clone(&book));
         world.insert_non_send(MatchMode(Rc::clone(&book)));
-        // A mode that defines either hook declares combat, as the load checks.
-        if hooks.contains(Hook::CalcDamage) {
-            let weigher = DamageWeigher::new(Calls::weigh_damage);
-            world.non_send_mut::<CombatHooks>().weigher = Some(weigher);
-        }
-        if hooks.contains(Hook::CalcHeal) {
-            let healer = HealWeigher::new(Calls::weigh_heal);
-            world.non_send_mut::<CombatHooks>().healer = Some(healer);
-        }
     }
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no

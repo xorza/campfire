@@ -77,20 +77,43 @@ impl Calls<'_, '_> {
     }
 
     /// `calc_damage` of `damage` in `batch`, its `ctx` pure: the number it returns, an integer
-    /// as a number.
+    /// as a number; none when the mode's script defines no `calc_damage`.
     pub(crate) fn weigh_damage(
         batch: &mut ScriptBatch<'_>,
         damage: Damage,
-    ) -> Result<Num, CallError> {
+    ) -> Option<Result<Num, CallError>> {
+        if !Calls::defines(batch, Hook::CalcDamage) {
+            return None;
+        }
         let handle = DamageHandle::new(damage, batch.ctx().view().clone());
-        Calls::amount(batch, Hook::CalcDamage, ScriptValue::of(handle))
+        Some(Calls::amount(
+            batch,
+            Hook::CalcDamage,
+            ScriptValue::of(handle),
+        ))
     }
 
     /// The amount of `heal` before the heal scale: what the mode's `calc_heal` returns for it,
-    /// a pure call in `batch`; an error when the call fails or returns no number.
-    pub(crate) fn weigh_heal(batch: &mut ScriptBatch<'_>, heal: Heal) -> Result<Num, CallError> {
+    /// a pure call in `batch`; an error when the call fails or returns no number, and none when
+    /// the mode's script defines no `calc_heal`.
+    pub(crate) fn weigh_heal(
+        batch: &mut ScriptBatch<'_>,
+        heal: Heal,
+    ) -> Option<Result<Num, CallError>> {
+        if !Calls::defines(batch, Hook::CalcHeal) {
+            return None;
+        }
         let handle = HealHandle::new(heal, batch.ctx().view().clone());
-        Calls::amount(batch, Hook::CalcHeal, ScriptValue::of(handle))
+        Some(Calls::amount(
+            batch,
+            Hook::CalcHeal,
+            ScriptValue::of(handle),
+        ))
+    }
+
+    /// Whether the mode's script defines `hook`, as its load found it.
+    fn defines(batch: &ScriptBatch<'_>, hook: Hook) -> bool {
+        ModeSpec::of_match(batch.ctx()).schema.hooks.contains(hook)
     }
 
     /// The number the mode's pure `hook` returns for `handle`, in `batch`.

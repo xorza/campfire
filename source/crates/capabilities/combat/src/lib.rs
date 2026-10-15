@@ -45,6 +45,7 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod weighers;
 mod wielded;
 
 pub use crate::attacks::Attacks;
@@ -56,12 +57,12 @@ pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
 pub use crate::combat_event::{CombatEvent, CombatEvents};
 pub use crate::combat_hooks::CombatHooks;
-pub use crate::damage::{Damage, DamageCause, DamageWeigher};
+pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
 pub use crate::deaths::{DeathView, Deaths, Fallen};
 pub use crate::dying::Dying;
-pub use crate::heal::{Heal, HealCause, HealWeigher};
+pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData};
@@ -72,6 +73,7 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
@@ -144,6 +146,7 @@ impl Module for Combat {
         d.scratch::<PassQueue>();
         d.report::<Deaths>();
         d.non_send::<CombatHooks>(CombatHooks::install);
+        d.calls::<Weighers>();
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();

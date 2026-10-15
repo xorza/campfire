@@ -22,6 +22,7 @@ use crate::heal::{Heal, HealCause};
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
+use crate::weighers::{Weigh, Weighers};
 
 /// The tick's damage pass: the queue of damage and heals, dealt in order, with the combat events
 /// they cause.
@@ -81,20 +82,26 @@ impl DamagePass {
         world.resource_mut::<Deaths>().clear(now);
         world.resource_mut::<PassQueue>().begin();
         let hooks = world.non_send::<CombatHooks>().clone();
-        if !hooks.scripted() {
-            DamagePass::drain(&mut PassRun::Plain(world), &hooks, &mut scratch);
+        let weigh = world.resource::<Weighers>().get();
+        if weigh.is_none() && hooks.events.is_none() {
+            DamagePass::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                DamagePass::drain(run, &hooks, &mut scratch);
+                DamagePass::drain(run, &hooks, weigh, &mut scratch);
             });
         }
         world.resource_mut::<PassQueue>().end();
     }
 
-    /// Deals the queue's entries in order, with the pass's `hooks` when `run` runs them, and its
-    /// buffers, `scratch`.
-    fn drain(run: &mut PassRun<'_, '_>, hooks: &CombatHooks, scratch: &mut PassScratch) {
+    /// Deals the queue's entries in order, with the pass's `hooks` and the mode's `weigh` when
+    /// `run` runs them, and its buffers, `scratch`.
+    fn drain(
+        run: &mut PassRun<'_, '_>,
+        hooks: &CombatHooks,
+        weigh: Option<Weigh>,
+        scratch: &mut PassScratch,
+    ) {
         let now = run.world().resource::<SimTick>().start();
         while let Some(entry) = run.world().resource_mut::<PassQueue>().next() {
             let damage = match entry {
@@ -103,13 +110,15 @@ impl DamagePass {
                     let Some(entity) = DamagePass::living(run.world(), heal.target) else {
                         continue;
                     };
-                    let amount = match (&hooks.healer, run.batch()) {
-                        (Some(healer), Some(batch)) => {
-                            healer.call(batch, heal).unwrap_or_else(|error| {
+                    let amount = match (weigh, run.batch()) {
+                        (Some(weigh), Some(batch)) => match (weigh.heal)(batch, heal) {
+                            Some(Ok(amount)) => amount,
+                            Some(Err(error)) => {
                                 batch.record(Some(heal.target), Hook::CalcHeal, error);
                                 heal.amount
-                            })
-                        }
+                            }
+                            None => heal.amount,
+                        },
                         _ => heal.amount,
                     };
                     DamagePass::heal(run.world(), entity, amount);
@@ -119,13 +128,15 @@ impl DamagePass {
             if DamagePass::damageable(run.world(), damage.target).is_none() {
                 continue;
             }
-            let amount = match (&hooks.weigher, run.batch()) {
-                (Some(weigher), Some(batch)) => {
-                    weigher.call(batch, damage).unwrap_or_else(|error| {
+            let amount = match (weigh, run.batch()) {
+                (Some(weigh), Some(batch)) => match (weigh.damage)(batch, damage) {
+                    Some(Ok(amount)) => amount,
+                    Some(Err(error)) => {
                         batch.record(Some(damage.target), Hook::CalcDamage, error);
                         damage.amount
-                    })
-                }
+                    }
+                    None => damage.amount,
+                },
                 _ => damage.amount,
             };
             let weighed = Damage { amount, ..damage };
