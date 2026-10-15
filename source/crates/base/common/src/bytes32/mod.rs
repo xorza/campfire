@@ -27,6 +27,44 @@ impl Bytes32 {
     pub const fn get(self) -> [u8; 32] {
         self.0
     }
+
+    /// The value the 64 lowercase hex digits `hex` write, as a literal in the code gives it; a
+    /// text from outside reads by `FromStr`, which refuses a flawed one.
+    pub const fn of_hex(hex: &str) -> Bytes32 {
+        match Bytes32::parse(hex.as_bytes()) {
+            Some(bytes) => bytes,
+            None => panic!("32 bytes are 64 lowercase hex digits"),
+        }
+    }
+
+    /// The value the 64 lowercase hex digits `digits` write; none for any other text.
+    const fn parse(digits: &[u8]) -> Option<Bytes32> {
+        if digits.len() != 64 {
+            return None;
+        }
+        let mut bytes = [0; 32];
+        let mut at = 0;
+        while at < 32 {
+            let (Some(high), Some(low)) = (
+                Bytes32::digit(digits[2 * at]),
+                Bytes32::digit(digits[2 * at + 1]),
+            ) else {
+                return None;
+            };
+            bytes[at] = (high << 4) | low;
+            at += 1;
+        }
+        Some(Bytes32(bytes))
+    }
+
+    /// The value of the lowercase hex digit `byte`; none for any other byte.
+    const fn digit(byte: u8) -> Option<u8> {
+        match byte {
+            b'0'..=b'9' => Some(byte - b'0'),
+            b'a'..=b'f' => Some(byte - b'a' + 10),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Bytes32 {
@@ -42,21 +80,7 @@ impl FromStr for Bytes32 {
     type Err = NotHex;
 
     fn from_str(hex: &str) -> Result<Bytes32, NotHex> {
-        let digits = hex.as_bytes();
-        if digits.len() != 64 {
-            return Err(NotHex);
-        }
-        let digit = |d: u8| match d {
-            b'0'..=b'9' => Some(d - b'0'),
-            b'a'..=b'f' => Some(d - b'a' + 10),
-            _ => None,
-        };
-        let mut bytes = [0; 32];
-        let (pairs, _) = digits.as_chunks::<2>();
-        for (byte, &[high, low]) in bytes.iter_mut().zip(pairs) {
-            *byte = (digit(high).ok_or(NotHex)? << 4) | digit(low).ok_or(NotHex)?;
-        }
-        Ok(Bytes32(bytes))
+        Bytes32::parse(hex.as_bytes()).ok_or(NotHex)
     }
 }
 
@@ -75,6 +99,7 @@ mod tests {
         assert_eq!(&written[..8], "01091119");
         assert_eq!(written.len(), 64);
         assert_eq!(written.parse(), Ok(bytes));
+        assert_eq!(Bytes32::of_hex(&written), bytes);
         for flawed in [
             "",
             "0",

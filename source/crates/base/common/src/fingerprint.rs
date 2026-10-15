@@ -20,6 +20,11 @@ impl Fingerprint {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
     }
+
+    /// The fingerprint the 64 lowercase hex digits `hex` write, as `Bytes32::of_hex` reads them.
+    pub const fn of_hex(hex: &str) -> Fingerprint {
+        Fingerprint(Bytes32::of_hex(hex))
+    }
 }
 
 #[cfg(test)]
@@ -34,7 +39,9 @@ mod tests {
         bytes[0] = 0xAB;
         bytes[31] = 0x05;
         let fingerprint = Fingerprint::new(bytes);
-        assert_eq!(fingerprint.to_string(), format!("ab{}05", "00".repeat(30)));
+        let written = format!("ab{}05", "00".repeat(30));
+        assert_eq!(fingerprint.to_string(), written);
+        assert_eq!(Fingerprint::of_hex(&written), fingerprint);
         let encoded = Binary::encode(&fingerprint);
         assert_eq!(encoded, Binary::encode(&bytes));
     }

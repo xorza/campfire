@@ -9,11 +9,3 @@ The open steps, in the order they are done, and the foundations. The rules are i
 **Before slice 7, the issue log's fixes.** The user opens Tournament Desert and sees no capsule where the original draws nothing, and its untextured triangles as the original draws them; the engine spells `center` one way.
 
 **Slice 7, Zero Hour production.** The user starts Tournament Desert in the client with the skirmish's starting money, the command center trains a dozer, the dozer builds a barracks at a point the user chooses, and the barracks trains a ranger; each pays its cost and takes its build time. The design is [Zero Hour production](docs/design/18-zero-hour-production.md); the facts are [Zero Hour research](docs/research/zero-hour.md#production). The Zero Hour check plays the three, and the client's panel orders them.
-
-## 1. Zero Hour's units drive
-
-`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. It needs the turn rate, the load's rules and the selection to play.
-
-### U9. The Zero Hour check compares fingerprints
-
-(`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.

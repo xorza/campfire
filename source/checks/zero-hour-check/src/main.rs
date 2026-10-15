@@ -1,8 +1,8 @@
 //! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into the
 //! directory its command line names, in place of the packages an earlier run wrote there once
-//! the new ones are whole, and logs the fingerprints of the imported package and the rules
-//! package, which a run on another OS must match. Then it checks that Tournament Desert
-//! imports as a multiplayer game of the original spawns it: 270 × 340 height samples; of its 580
+//! the new ones are whole, and checks the fingerprints of the imported package and the rules
+//! package against those it pins, which a run on Linux and a run on macOS gave. Then it checks
+//! that Tournament Desert imports as a multiplayer game of the original spawns it: 270 × 340 height samples; of its 580
 //! objects, once its 176 road ends are dropped, 142 placed units of 41 types and 438 client
 //! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks its
 //! terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and border
@@ -30,7 +30,7 @@ use std::process::ExitCode;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
 use campfire_codec::{Binary, Toml, TomlError};
-use campfire_common::{ExitStatus, MapName};
+use campfire_common::{ExitStatus, Fingerprint, MapName};
 use campfire_import::{DropCause, DroppedButton, GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_math::Num;
@@ -42,7 +42,9 @@ use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
-use crate::failure::{Failure, LookCounts, ProducedCounts, ProductionSteps, TerrainDrawn};
+use crate::failure::{
+    Failure, Fingerprints, LookCounts, ProducedCounts, ProductionSteps, TerrainDrawn,
+};
 use crate::production_play::ProductionPlay;
 use crate::start_drive::StartDrive;
 
@@ -54,6 +56,15 @@ mod start_drive;
 
 /// The map the check plays.
 const MAP: &str = "tournament_desert";
+
+/// The fingerprints of the imported package and of the rules package that the known version and
+/// this importer give on every OS: those a run on Linux and a run on macOS gave (design 12, D4,
+/// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
+/// again.
+const FINGERPRINTS: Fingerprints = Fingerprints {
+    game: Fingerprint::of_hex("840ce16c6864e210e979996ccfbc3bbb61332ffe188a6f7e1d13c1eca42079e5"),
+    rules: Fingerprint::of_hex("ea1d92566e4908a51db28a09b3a2d2af61530a75f654cf48b0b7b6d07dccc109"),
+};
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
 /// (design 17, D3).
@@ -159,12 +170,19 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         packages = %out.display(),
         "imported"
     );
+    let mut failures = Vec::new();
+    let given = Fingerprints {
+        game: imported.fingerprint,
+        rules: imported.rules,
+    };
+    if given != FINGERPRINTS {
+        failures.push(Failure::Fingerprints(given));
+    }
     let map = MapName::new(MAP).expect("a map's name");
     let packages = PackageDir::new(out.join(ZeroHour::GAME))
         .mode_packages(&map)
         .map_err(CheckError::Load)?;
     let files = &packages.mode().package.files;
-    let mut failures = Vec::new();
     let heights = read(files, &format!("map/{MAP}/heights.bin"))?;
     let grid = Binary::decode::<HeightGrid>(&heights).map_err(CheckError::Decode)?;
     if (grid.columns(), grid.rows()) != (270, 340) {

@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use campfire_common::Bytes32;
+
 use crate::zero_hour::error::{VersionDifference, ZeroHourError};
 use crate::zero_hour::install::HashedArchive;
 
@@ -29,24 +31,8 @@ pub struct ArchiveHash {
 impl ArchiveHash {
     /// The archive at `path` whose SHA-256 is the 64 lowercase hex digits `hex`.
     pub const fn new(path: &'static str, hex: &str) -> ArchiveHash {
-        let hex = hex.as_bytes();
-        assert!(hex.len() == 64, "a SHA-256 is 64 hex digits");
-        let mut sha256 = [0; 32];
-        let mut at = 0;
-        while at < 32 {
-            sha256[at] = (digit(hex[2 * at]) << 4) | digit(hex[2 * at + 1]);
-            at += 1;
-        }
+        let sha256 = Bytes32::of_hex(hex).get();
         ArchiveHash { path, sha256 }
-    }
-}
-
-/// The value of the lowercase hex digit `byte`.
-const fn digit(byte: u8) -> u8 {
-    match byte {
-        b'0'..=b'9' => byte - b'0',
-        b'a'..=b'f' => byte - b'a' + 10,
-        _ => panic!("a lowercase hex digit"),
     }
 }
 

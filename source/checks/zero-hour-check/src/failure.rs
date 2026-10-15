@@ -1,4 +1,4 @@
-use campfire_common::MapName;
+use campfire_common::{Fingerprint, MapName};
 use campfire_import::DropCause;
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
@@ -6,12 +6,15 @@ use campfire_orders::OrdersAction;
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{DRIVE_TICKS, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS};
+use crate::{DRIVE_TICKS, FINGERPRINTS, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS};
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
 #[derive(Debug, Display)]
 pub(crate) enum Failure {
+    /// The import's fingerprints differ from those the runs on Linux and on macOS gave.
+    #[display("it gave {_0}, not {FINGERPRINTS}")]
+    Fingerprints(Fingerprints),
     /// Its heights are not 270 × 340 samples.
     #[display("its heights are {columns} × {rows} samples, not 270 × 340")]
     Heights { columns: u32, rows: u32 },
@@ -125,4 +128,12 @@ pub(crate) struct TerrainDrawn {
     pub(crate) overlays: usize,
     pub(crate) copies: usize,
     pub(crate) wraps: usize,
+}
+
+/// The fingerprints of an import: the imported package's and the rules package's.
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display("the fingerprints {game} and rules {rules}")]
+pub(crate) struct Fingerprints {
+    pub(crate) game: Fingerprint,
+    pub(crate) rules: Fingerprint,
 }
