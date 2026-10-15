@@ -31,8 +31,6 @@ pub(crate) mod script_facts;
 pub(crate) mod script_failures;
 pub(crate) mod script_fn;
 pub(crate) mod script_limits;
-pub(crate) mod script_list;
-pub(crate) mod script_map;
 pub(crate) mod script_names;
 pub(crate) mod script_role;
 pub(crate) mod script_text;

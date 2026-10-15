@@ -7,12 +7,12 @@ use crate::scripts::script_value::ScriptValue;
 pub struct ScriptMap(Map);
 
 impl ScriptMap {
-    pub(super) const fn of_engine(map: Map) -> ScriptMap {
+    pub(crate) const fn of_engine(map: Map) -> ScriptMap {
         ScriptMap(map)
     }
 
     /// The table in the engine's form.
-    pub(super) fn into_engine(self) -> Dynamic {
+    pub(crate) fn into_engine(self) -> Dynamic {
         Dynamic::from_map(self.0)
     }
 }

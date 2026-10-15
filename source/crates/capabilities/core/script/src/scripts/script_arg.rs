@@ -6,9 +6,9 @@ use rhai::{Array, Dynamic, ImmutableString, Variant};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_list::ScriptList;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::script_value::script_list::ScriptList;
 
 /// An argument of a call or a method of the script API: what Rhai passes, and what the member
 /// takes of it. A name resolves to its id, its kind of name recorded in the member's spec, and a

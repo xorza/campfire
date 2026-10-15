@@ -4,9 +4,9 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::scripts::script_list::ScriptList;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::state_type::StateType;
 use crate::scripts::view::View;
 use crate::scripts::view::unit::Unit;

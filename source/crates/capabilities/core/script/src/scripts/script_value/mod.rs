@@ -3,9 +3,12 @@ use std::any::{Any, TypeId};
 use campfire_values::Scalar;
 use rhai::{Dynamic, Variant};
 
-use crate::scripts::script_list::ScriptList;
-use crate::scripts::script_map::ScriptMap;
 use crate::scripts::script_text::ScriptText;
+use crate::scripts::script_value::script_list::ScriptList;
+use crate::scripts::script_value::script_map::ScriptMap;
+
+pub(crate) mod script_list;
+pub(crate) mod script_map;
 
 /// A value a script reads or gives, of any type a script holds, so no module but `scripts` names
 /// the script engine's. A list, a table or a text in it is in the engine's form, as a script

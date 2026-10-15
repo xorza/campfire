@@ -10,8 +10,8 @@ use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_call::ScriptCall;
-use crate::scripts::script_list::ScriptList;
 use crate::scripts::script_value::ScriptValue;
+use crate::scripts::script_value::script_list::ScriptList;
 
 /// The script API of the core: `ctx` itself, `ctx.p`, and the core's and the movement calls
 /// design 08 plans.

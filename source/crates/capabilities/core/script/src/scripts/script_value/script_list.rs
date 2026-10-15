@@ -12,12 +12,12 @@ pub struct ScriptList(Vec<ScriptValue>);
 impl ScriptList {
     /// The list of the engine's `array`. A value has the layout of the engine's, so `collect`
     /// reuses the buffer, as std's in-place iteration does.
-    pub(super) fn of_engine(array: Array) -> ScriptList {
+    pub(crate) fn of_engine(array: Array) -> ScriptList {
         ScriptList(array.into_iter().map(ScriptValue::of_engine).collect())
     }
 
     /// The list in the engine's form, its buffer reused as `of_engine`'s is.
-    pub(super) fn into_engine(self) -> Dynamic {
+    pub(crate) fn into_engine(self) -> Dynamic {
         let array: Array = self.0.into_iter().map(ScriptValue::into_engine).collect();
         Dynamic::from_array(array)
     }
