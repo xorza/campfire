@@ -122,9 +122,3 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 - [ ] `protocol/src/server_seeds.rs:24-33`, `runner/src/session/mod.rs:107-117,217-224`: test `segment <= last` and derive the seed once, and one restore target for each replay.
 - [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue.
 - [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
-
-### Batch 15. Design and code that disagree
-
-D5 shapes it. Files: `docs/design/02-engine-core.md`, `docs/design/12-zero-hour.md`, `capabilities/src/{lib.rs,release/tests/mod.rs}`, `capabilities/areas/src/lib.rs`, `base/common/src/tests.rs`, `source/checks/*`.
-
-- [ ] `checks/zero-hour-check/src/main.rs`, `lan-check/src/run_dir.rs`: one run-root helper, in a home the design names.

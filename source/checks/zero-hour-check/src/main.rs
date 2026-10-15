@@ -16,7 +16,7 @@ use std::env;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 
 use campfire_client_files::HeightGrid;
 use campfire_client_files::{ClientObjects, TerrainFile};
@@ -28,7 +28,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
-use campfire_store::DurableDir;
+use campfire_store::RunDir;
 use campfire_values::PackagePath;
 use tracing::{error, info};
 
@@ -89,13 +89,8 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         .filter(|install| !install.is_empty())
         .map(PathBuf::from)
         .ok_or(CheckError::NoInstall)?;
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("the clock is after 1970");
-    DurableDir::create_all(root).map_err(CheckError::RunRoot)?;
-    let dir = root.join(format!("run-{}", since.as_millis()));
-    DurableDir::create_new(&dir).map_err(CheckError::RunDir)?;
-    let out = dir.join("packages");
+    let run = RunDir::create(root, SystemTime::now())?;
+    let out = run.path().join("packages");
     let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
     let imported = zero_hour.write(&out).map_err(CheckError::Import)?;
     info!(

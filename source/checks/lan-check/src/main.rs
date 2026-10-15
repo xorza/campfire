@@ -32,7 +32,7 @@ use campfire_net::{
     ClientLayout, LinkLost, Listening, OrderScript, ServerLayout, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
-use campfire_store::{DurableFile, InputFile};
+use campfire_store::{DurableFile, InputFile, RunDir};
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -43,7 +43,6 @@ use crate::mode::Mode;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
-use crate::run_dir::RunDir;
 use crate::session_kind::SessionKind;
 use crate::verdict::{BotEvents, LoggedInput, Verdict};
 
@@ -56,7 +55,6 @@ mod process;
 mod process_group;
 mod process_log;
 mod process_outcome;
-mod run_dir;
 mod session_kind;
 mod target_name;
 mod verdict;

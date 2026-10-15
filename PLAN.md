@@ -12,10 +12,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. It waits for the user's next optimization session (D11), where each item's bench decides it. Goldens: none move.
 
-### H15. Design and code that disagree
-
-(design 02 and 12, the release's tests, `common`'s tests, the checks; review D5.) Guard: every crate has a layer, and the test checks "one above the highest dependency". Design 12 D7 stays, and the fingerprint comparison and the parity suite join this plan as open steps. Goldens: none move.
-
 ## 2. Zero Hour's units drive
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. It needs the turn rate, the load's rules and the selection to play, and goes after the hardening.

@@ -1,28 +1,27 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use campfire_store::DurableDir;
+use crate::durable_dir::DurableDir;
+use crate::run_dir::error::RunDirError;
 
-use crate::error::CheckError;
-
-/// The directory of one run, below the run root, named for the run's start in UTC, to the
-/// millisecond: `2026-09-30T17-45-12.123Z`. A run never touches another run's directory.
+/// The directory of one run of a check, below its run root, named for the run's start in UTC, to
+/// the millisecond: `2026-09-30T17-45-12.123Z`. A run never touches another run's directory.
 #[derive(Debug)]
-pub(crate) struct RunDir {
+pub struct RunDir {
     path: PathBuf,
 }
 
 impl RunDir {
     /// Creates the directory of a run that started at `start` below `root`, and `root` if it
     /// does not exist; an error if the directory exists.
-    pub(crate) fn create(root: &Path, start: SystemTime) -> Result<RunDir, CheckError> {
+    pub fn create(root: &Path, start: SystemTime) -> Result<RunDir, RunDirError> {
         let path = root.join(RunDir::name(start));
-        DurableDir::create_all(root).map_err(CheckError::RunRoot)?;
-        DurableDir::create_new(&path).map_err(CheckError::RunDir)?;
+        DurableDir::create_all(root).map_err(RunDirError::Root)?;
+        DurableDir::create_new(&path).map_err(RunDirError::Dir)?;
         Ok(RunDir { path })
     }
 
-    pub(crate) fn path(&self) -> &Path {
+    pub fn path(&self) -> &Path {
         &self.path
     }
 
@@ -63,14 +62,16 @@ impl RunDir {
     }
 }
 
+pub(crate) mod error;
+
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
-    use campfire_store::internals::Scratch;
-    use campfire_store::{DurableDirCreateError, PathError};
-
     use super::*;
+    use crate::durable_dir::error::DurableDirCreateError;
+    use crate::path_error::PathError;
+    use crate::scratch::Scratch;
 
     fn at(millis: u64) -> SystemTime {
         UNIX_EPOCH + Duration::from_millis(millis)
@@ -104,7 +105,7 @@ mod tests {
         assert_eq!(scratch.read_text(&kept), "kept");
         assert!(matches!(
             RunDir::create(&root, at(1_000)),
-            Err(CheckError::RunDir(PathError {
+            Err(RunDirError::Dir(PathError {
                 error: DurableDirCreateError::Exists,
                 ..
             }))

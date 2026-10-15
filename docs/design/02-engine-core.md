@@ -108,7 +108,7 @@ Dashed: planned. `log` is left out: the binaries, `net`, `runner` and `verifier`
 | `net` | built | Lightyear over `quic`: handshake, replication; and the session host the dedicated server, the client's local server on a thread and the test harness share: lifecycle, lobby, saves, journal and checkpoints; internal ([Networking](#networking)) |
 | `quic` | built | QUIC alone under Lightyear's link: an endpoint on a thread of its own, the server's raw TLS key and the client's pin, and the server's port mapping; no game ([QUIC transport](15-quic-transport.md)) |
 | `log` | built | Log output: text on standard error and JSON lines into a file; the events a tool reads back; the end of a command line |
-| `store` | built | Durable and secret files, data directories and their locks, and worker threads, a proxy crate ([Storage](#storage)); the platform layer, which also catches the stop's signals ([Platform](#platform)) |
+| `store` | built | Durable and secret files, data directories and their locks, the run directories of the checks, and worker threads, a proxy crate ([Storage](#storage)); the platform layer, which also catches the stop's signals ([Platform](#platform)) |
 | `launcher` | planned | Fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | built | Bevy app: rendering, input, UI, audio, prediction, presentation systems ([Zero Hour](12-zero-hour.md#the-client)) |
 | `import` | built | Reads a game's install through `store` and writes one reproducible package, a module for each game ([Zero Hour](12-zero-hour.md#the-importer)) |

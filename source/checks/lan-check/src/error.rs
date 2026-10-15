@@ -4,7 +4,7 @@ use std::str::Utf8Error;
 use campfire_codec::JsonError;
 use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
-use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
+use campfire_store::{DurableError, PathError, ReadError};
 use thiserror::Error;
 
 use crate::process::Process;
@@ -32,12 +32,6 @@ pub(crate) enum CheckError {
     Read(#[source] PathError<ReadError>),
     #[error("a file of the run is not written")]
     Write(#[source] PathError<DurableError>),
-    /// The run root, or a directory above it, is not made.
-    #[error("the run root is not made")]
-    RunRoot(#[source] PathError<DurableDirError>),
-    /// The run's directory is not made, or another run's holds its name.
-    #[error("the run's directory is not made")]
-    RunDir(#[source] PathError<DurableDirCreateError>),
     /// The file a process writes its text log to is not made.
     #[error("a process's text log is not made")]
     TextLog(#[source] PathError<io::Error>),

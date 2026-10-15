@@ -1,7 +1,7 @@
 use campfire_codec::BinaryError;
 use campfire_import::ZeroHourError;
 use campfire_package::{ContentError, LoadError};
-use campfire_store::{DurableDirCreateError, DurableDirError, PathError};
+use campfire_store::RunDirError;
 use thiserror::Error;
 
 /// Why the check did not run to its verdict.
@@ -10,11 +10,8 @@ pub(crate) enum CheckError {
     /// `GENERALSZH_DATA` names no install, so no run checks one.
     #[error("GENERALSZH_DATA names no Zero Hour install")]
     NoInstall,
-    /// The run's directory, or its root, does not make.
-    #[error("the run's directory does not make")]
-    RunRoot(#[source] PathError<DurableDirError>),
-    #[error("the run's directory does not make")]
-    RunDir(#[source] PathError<DurableDirCreateError>),
+    #[error(transparent)]
+    RunDir(#[from] RunDirError),
     #[error("the install does not import")]
     Import(#[source] ZeroHourError),
     #[error("the imported mode does not load")]

@@ -25,6 +25,7 @@ mod pinned_file;
 mod platform;
 #[cfg(feature = "internals")]
 mod race;
+mod run_dir;
 #[cfg(feature = "internals")]
 mod scratch;
 mod secret_file;
@@ -53,6 +54,8 @@ pub use crate::path_error::PathError;
 pub use crate::platform::owner_only::Exposure;
 pub use crate::platform::shared_port::SharedPort;
 pub use crate::platform::stop_signals::StopSignals;
+pub use crate::run_dir::RunDir;
+pub use crate::run_dir::error::RunDirError;
 pub use crate::secret_file::SecretFile;
 pub use crate::stream_writer::StreamWriter;
 pub use crate::stream_writer::error::StreamError;
