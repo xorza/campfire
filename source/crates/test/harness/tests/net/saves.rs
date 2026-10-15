@@ -14,8 +14,9 @@ use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,
     SessionDir, SimServerWorld,
 };
+use campfire_protocol::InputRules;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
-use campfire_runner::{InputRules, Replay, Session};
+use campfire_runner::{Replay, Session};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
 use campfire_store::internals::Scratch;
@@ -119,7 +120,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     // At speed 2 a tick lasts half the session's, and a frame runs the LAN's max input delay of
     // 10 ticks less one at most.
     let tick = TickRate::new(local.packages().manifest().tick_hz.default()).length();
-    assert_eq!(InputRules::LAN.max_input_delay.get(), 10);
+    assert_eq!(InputRules::LAN.max_delay.get(), 10);
     assert_eq!(world.resource::<TickDuration>().0, tick / 2);
     assert_eq!(world.resource::<Time<Virtual>>().max_delta(), tick / 2 * 9);
     assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);

@@ -4,7 +4,6 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod events;
-mod input_rules;
 mod match_build;
 mod replay;
 mod session;
@@ -12,7 +11,6 @@ mod session_rules;
 mod slot_rules;
 
 pub use crate::events::script_call_failed::ScriptCallFailed;
-pub use crate::input_rules::InputRules;
 pub use crate::match_build::MatchBuild;
 pub use crate::replay::Replay;
 pub use crate::replay::error::{ReplayError, SnapshotCheckError};

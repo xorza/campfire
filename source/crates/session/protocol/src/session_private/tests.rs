@@ -5,6 +5,7 @@ use campfire_common::{Fingerprint, MapName, Ticks};
 use super::*;
 use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
+use crate::input_rules::InputRules;
 use crate::slot_plan::SlotPlan;
 
 #[test]
@@ -16,10 +17,12 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
         terms: SessionTerms {
             server_key: key.x_only_public_key().0,
             tick_hz: NonZeroU32::new(30).unwrap(),
-            max_input_delay: Ticks::new(3),
-            max_input_lead: Ticks::new(3),
-            max_payload_len: 64,
-            max_inputs_per_tick: 4,
+            inputs: InputRules {
+                max_delay: Ticks::new(3),
+                max_lead: Ticks::new(3),
+                max_payload_len: 64,
+                max_per_tick: 4,
+            },
             seed_commitment: seed_chain.commitment(),
             release: EngineRelease::new(0, 1, 0),
             mode: Fingerprint::new([1; 32]),

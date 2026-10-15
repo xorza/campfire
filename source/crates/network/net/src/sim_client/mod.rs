@@ -635,7 +635,7 @@ fn send_orders(
     let server = remote
         .last_received_tick()
         .and_then(|tick| playing.clock.sim_tick(tick));
-    let lead = playing.member.session.max_input_lead;
+    let lead = playing.member.session.inputs.max_lead;
     if server.is_some_and(|server| stamp.since(server).is_some_and(|ahead| ahead > lead)) {
         return;
     }
@@ -655,13 +655,13 @@ fn send_orders(
     }
     let session = playing.member.session;
     let first = sent.len();
-    let stamped = pending.0.len().min(session.max_inputs as usize);
+    let stamped = pending.0.len().min(session.inputs.max_per_tick as usize);
     for pending in pending.0.drain(..stamped) {
         let seq =
             playing.chain.next_seq() + u64::try_from(sent.len() - first).expect("a count fits");
         match pending {
             Pending::Order(order) => {
-                let kept = sent.push(seq, stamp, session.max_payload_len, |body, out| {
+                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
                     order.write_payload(body, out);
                 });
                 if !kept {
@@ -675,7 +675,7 @@ fn send_orders(
                 }
             }
             Pending::Input(input) => {
-                let kept = sent.push(seq, stamp, session.max_payload_len, |_, out| {
+                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |_, out| {
                     input.write_payload(out);
                 });
                 if !kept {

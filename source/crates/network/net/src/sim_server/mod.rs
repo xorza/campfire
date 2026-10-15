@@ -416,7 +416,7 @@ impl SimServer {
                 .any(|speed| speed.tick(session) == tick),
             "the server ticks at the session's rate at a speed, not every {tick:?}"
         );
-        let burst = terms.max_input_delay.get().saturating_sub(1).max(1);
+        let burst = terms.inputs.max_delay.get().saturating_sub(1).max(1);
         let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
         world
             .resource_mut::<Time<Virtual>>()

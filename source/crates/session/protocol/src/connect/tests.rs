@@ -9,6 +9,7 @@ use crate::delegation::error::ScopeError;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
+use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
@@ -19,10 +20,12 @@ fn terms() -> SessionTerms {
     SessionTerms {
         server_key: XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap(),
         tick_hz: NonZeroU32::new(30).unwrap(),
-        max_input_delay: Ticks::new(10),
-        max_input_lead: Ticks::new(30),
-        max_payload_len: 64,
-        max_inputs_per_tick: 4,
+        inputs: InputRules {
+            max_delay: Ticks::new(10),
+            max_lead: Ticks::new(30),
+            max_payload_len: 64,
+            max_per_tick: 4,
+        },
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         release: EngineRelease::new(0, 1, 0),
         mode: Fingerprint::new([5; 32]),

@@ -108,7 +108,6 @@ Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/
 
 Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
 
-- [ ] `runner/src/input_rules.rs:6`: `InputRules` moves to protocol, nested in `SessionTerms`.
 - [ ] `apps/server/src/opening/mod.rs:110-158`, `main.rs:171-228`, `net/src/local/local_server/mod.rs:51,134-169`: one net constructor opens a lobby for both servers, from `ServerSetup` and its clock. `Started` goes.
 - [ ] `runner/src/session/mod.rs:306-336`, `replay/mod.rs:96-114`: one snapshot check that returns `SnapshotCheckError`.
 - [ ] `net/src/sim_server/lobby/mod.rs:168-239`, `door.rs:59-115`: one `Offering`.

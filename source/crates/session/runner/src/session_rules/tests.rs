@@ -15,10 +15,10 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
     let key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
     let commitment = SeedChain::new([7; 32], NonZeroU32::MIN).commitment();
     let inputs = InputRules {
-        max_input_delay: Ticks::new(3),
-        max_input_lead: Ticks::new(5),
+        max_delay: Ticks::new(3),
+        max_lead: Ticks::new(5),
         max_payload_len: 7,
-        max_inputs_per_tick: 2,
+        max_per_tick: 2,
     };
     let plan = [SlotPlan::Player, SlotPlan::Bot, SlotPlan::Open];
     let terms = |hz| {
@@ -40,10 +40,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         SessionTerms {
             server_key: key,
             tick_hz: NonZeroU32::new(60).unwrap(),
-            max_input_delay: Ticks::new(3),
-            max_input_lead: Ticks::new(5),
-            max_payload_len: 7,
-            max_inputs_per_tick: 2,
+            inputs,
             seed_commitment: commitment,
             release: EngineRelease::CURRENT,
             mode: packages.fingerprint(),

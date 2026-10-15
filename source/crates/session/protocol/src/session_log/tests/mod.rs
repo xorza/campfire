@@ -11,6 +11,7 @@ use crate::delegation::seed_contribution::SeedContribution;
 use crate::engine_release::EngineRelease;
 use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
+use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_log::error::SeedError;
 use crate::session_result::{Outcome, SessionResult};
@@ -67,10 +68,12 @@ fn terms() -> SessionTerms {
     SessionTerms {
         server_key: server_key(),
         tick_hz: TICK_HZ,
-        max_input_delay: Ticks::new(MAX_DELAY),
-        max_input_lead: Ticks::new(MAX_LEAD),
-        max_payload_len: MAX_PAYLOAD_LEN,
-        max_inputs_per_tick: MAX_INPUTS_PER_TICK,
+        inputs: InputRules {
+            max_delay: Ticks::new(MAX_DELAY),
+            max_lead: Ticks::new(MAX_LEAD),
+            max_payload_len: MAX_PAYLOAD_LEN,
+            max_per_tick: MAX_INPUTS_PER_TICK,
+        },
         seed_commitment: SEED_CHAIN.commitment(),
         release: RELEASE,
         mode: MODE,
@@ -615,13 +618,13 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     // A lead of 2¹⁸ ticks lets each slot hold 2 × (2¹⁸ + 3) inputs of 34 bytes, past 16 MiB in
     // all.
     let mut far = header();
-    far.terms.max_input_lead = Ticks::new(1 << 18);
+    far.terms.inputs.max_lead = Ticks::new(1 << 18);
     assert_eq!(
         SessionLog::new(far).err(),
         Some(HeaderError::RecordTooLarge)
     );
     let mut endless = header();
-    endless.terms.max_input_delay = Ticks::new(u64::MAX);
+    endless.terms.inputs.max_delay = Ticks::new(u64::MAX);
     assert_eq!(endless.terms.largest_record(), None);
     assert_eq!(
         SessionLog::new(endless).err(),
@@ -633,10 +636,10 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     let changes: [fn(&mut SessionTerms); 15] = [
         |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
-        |terms| terms.max_input_delay = Ticks::new(terms.max_input_delay.get() + 1),
-        |terms| terms.max_input_lead = Ticks::new(terms.max_input_lead.get() + 1),
-        |terms| terms.max_payload_len += 1,
-        |terms| terms.max_inputs_per_tick += 1,
+        |terms| terms.inputs.max_delay = Ticks::new(terms.inputs.max_delay.get() + 1),
+        |terms| terms.inputs.max_lead = Ticks::new(terms.inputs.max_lead.get() + 1),
+        |terms| terms.inputs.max_payload_len += 1,
+        |terms| terms.inputs.max_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         |terms| terms.release = EngineRelease::new(0, 1, 1),
         |terms| terms.mode = Fingerprint::new([50; 32]),
@@ -779,10 +782,10 @@ fn frame(
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
-    put(&mut bytes, &terms.max_input_delay);
-    put(&mut bytes, &terms.max_input_lead);
-    put(&mut bytes, &terms.max_payload_len);
-    put(&mut bytes, &terms.max_inputs_per_tick);
+    put(&mut bytes, &terms.inputs.max_delay);
+    put(&mut bytes, &terms.inputs.max_lead);
+    put(&mut bytes, &terms.inputs.max_payload_len);
+    put(&mut bytes, &terms.inputs.max_per_tick);
     put(&mut bytes, &terms.seed_commitment);
     put(&mut bytes, &terms.release.to_string());
     put(&mut bytes, &terms.mode);

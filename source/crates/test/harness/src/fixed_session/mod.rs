@@ -13,7 +13,7 @@ use campfire_protocol::{
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 
 use crate::fixed_session::fixed_match::FixedMatch;
-use campfire_runner::InputRules;
+use campfire_protocol::InputRules;
 use campfire_runner::Session;
 use campfire_runner::SessionRules;
 

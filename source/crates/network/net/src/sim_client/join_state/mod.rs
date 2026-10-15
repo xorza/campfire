@@ -2,9 +2,9 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{ChannelBinding, PlayerSlot, Tick, Ticks};
+use campfire_common::{ChannelBinding, PlayerSlot, Tick};
 use campfire_protocol::{
-    Delegation, DelegationId, DelegationTerms, InputChain, SeedContribution, SessionId,
+    Delegation, DelegationId, DelegationTerms, InputChain, InputRules, SeedContribution, SessionId,
     SessionTerms, SignedReceipt,
 };
 use campfire_runner::SessionRules;
@@ -100,16 +100,14 @@ pub(crate) struct Joining {
     pub(crate) clock: Clock,
 }
 
-/// What the player's join fixed: the session its signatures name, and the terms' limits on what
-/// one stamp may carry.
+/// What the player's join fixed: the session its signatures name, and the terms' limits on its
+/// inputs.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct JoinedSession {
     pub(crate) id: SessionId,
     /// The visibility of its terms, which the client's check of them gave.
     pub(crate) visibility: Visibility,
-    pub(crate) max_inputs: u32,
-    pub(crate) max_payload_len: u32,
-    pub(crate) max_input_lead: Ticks,
+    pub(crate) inputs: InputRules,
 }
 
 /// What a player holds from their first answer on, through each link: the session, their
@@ -337,9 +335,7 @@ impl JoinState {
                         session: JoinedSession {
                             id: offer.terms.session_id(),
                             visibility,
-                            max_inputs: offer.terms.max_inputs_per_tick,
-                            max_payload_len: offer.terms.max_payload_len,
-                            max_input_lead: offer.terms.max_input_lead,
+                            inputs: offer.terms.inputs,
                         },
                         delegation: self.player.delegate(&offer.terms, signer, now),
                         renewed: None,

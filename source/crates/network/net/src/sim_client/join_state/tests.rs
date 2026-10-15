@@ -4,7 +4,7 @@ use campfire_common::{Fingerprint, TlsKey};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{ConnectChallenge, EngineRelease, InputHash, Receipt, SeedChain, SlotPlan};
-use campfire_runner::{InputRules, TermsError};
+use campfire_runner::TermsError;
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
@@ -308,7 +308,7 @@ fn a_client_renews_an_expiring_delegation_and_gives_up_past_the_servers_times() 
     // An offer of another session ends it.
     let (mut state, mut signer, _, _) = played(&[]);
     state.lose(Duration::ZERO, [0; 32]);
-    let other = offer(|terms| terms.max_payload_len += 1);
+    let other = offer(|terms| terms.inputs.max_payload_len += 1);
     assert_eq!(
         state.answer(&other, &BINDING, &mut signer),
         Some(Err(TermsMismatch::OtherSession))

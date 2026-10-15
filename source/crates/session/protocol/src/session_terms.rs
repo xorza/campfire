@@ -1,12 +1,13 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, MapName, Ticks};
+use campfire_common::{Fingerprint, MapName};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::Delegation;
 use crate::engine_release::EngineRelease;
+use crate::input_rules::InputRules;
 use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
@@ -32,18 +33,8 @@ pub struct SessionTerms {
     pub server_key: XOnlyPublicKey,
     /// Ticks a second, fixed for the whole session.
     pub tick_hz: NonZeroU32,
-    /// The most ticks an input may land after its stamp; a later one is logged as late.
-    pub max_input_delay: Ticks,
-    /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
-    /// early. The server holds each input until its tick, so this bounds what a client can make
-    /// it hold.
-    pub max_input_lead: Ticks,
-    /// The most bytes an input's payload may hold.
-    pub max_payload_len: u32,
-    /// The most inputs of one stamp, and of one packet, a player may send, and the most of its
-    /// inputs that apply in one tick, the rest waiting for the next. With the max payload length
-    /// and the max input lead, it bounds how fast a player can grow the log.
-    pub max_inputs_per_tick: u32,
+    /// The limits on its inputs.
+    pub inputs: InputRules,
     /// The server's commitment to its seed chain. It is fresh for every session, so no two
     /// sessions share an id.
     pub seed_commitment: SeedCommitment,
@@ -75,10 +66,10 @@ impl SessionTerms {
             .update(SESSION_ID_DOMAIN)
             .update(&self.server_key.serialize())
             .update(&self.tick_hz.get().to_le_bytes())
-            .update(&self.max_input_delay.get().to_le_bytes())
-            .update(&self.max_input_lead.get().to_le_bytes())
-            .update(&self.max_payload_len.to_le_bytes())
-            .update(&self.max_inputs_per_tick.to_le_bytes())
+            .update(&self.inputs.max_delay.get().to_le_bytes())
+            .update(&self.inputs.max_lead.get().to_le_bytes())
+            .update(&self.inputs.max_payload_len.to_le_bytes())
+            .update(&self.inputs.max_per_tick.to_le_bytes())
             .update(self.seed_commitment.as_bytes())
             .update(&len(release.len()).to_le_bytes())
             .update(release.as_bytes())
@@ -103,21 +94,22 @@ impl SessionTerms {
     /// `u64`. Each record is bounded by them: a packet by its inputs and their payloads; a server
     /// input by a bot's payload or a delegation, whose JSON `Delegation::MAX_JSON` bounds; a
     /// checkpoint by its carry, each slot's delegation and its inputs still to apply, which the
-    /// stamps' window bounds, as a slot logs at most `max_inputs_per_tick` of a stamp and none
-    /// stamped past `max_input_lead` nor before `max_input_delay`; the header by the terms and
+    /// stamps' window bounds, as a slot logs at most `max_per_tick` of a stamp and none stamped
+    /// past `max_lead` nor before `max_delay`; the header by the terms and
     /// a delegation a slot.
     pub(crate) fn largest_record(&self) -> Option<u64> {
-        let payload = u64::from(self.max_payload_len);
-        let inputs = u64::from(self.max_inputs_per_tick);
+        let payload = u64::from(self.inputs.max_payload_len);
+        let inputs = u64::from(self.inputs.max_per_tick);
         let slots = len(self.slots.len());
         let delegation = len(Delegation::MAX_JSON) + VARINT_32;
         let input = VARINT_64 + VARINT_32 + payload;
         let packet = inputs.checked_mul(input)?.checked_add(SIGNATURE + SLACK)?;
         let server = payload.max(delegation) + SIGNATURE + SLACK;
         let window = self
-            .max_input_delay
+            .inputs
+            .max_delay
             .get()
-            .checked_add(self.max_input_lead.get())?
+            .checked_add(self.inputs.max_lead.get())?
             .checked_add(1)?;
         // Each carried input holds its tick and its slot beside what its packet held.
         let carried = input + VARINT_64 + VARINT_32;

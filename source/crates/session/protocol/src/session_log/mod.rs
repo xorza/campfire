@@ -586,22 +586,22 @@ impl SessionLog {
         let mut bytes = 0;
         for input in inputs.clone() {
             debug_assert_eq!(input.slot, slot, "a packet holds one player's inputs");
-            if input.payload.len() > terms.max_payload_len as usize {
+            if input.payload.len() > terms.inputs.max_payload_len as usize {
                 return Err(InputError::PayloadTooLarge);
             }
             count += 1;
-            if count > terms.max_inputs_per_tick {
+            if count > terms.inputs.max_per_tick {
                 return Err(InputError::TooManyInputs);
             }
-            stamps.add(input.stamp, terms.max_inputs_per_tick)?;
+            stamps.add(input.stamp, terms.inputs.max_per_tick)?;
             bytes += input.payload.len();
         }
         let ticks = self
             .next_tick()
             .get()
-            .saturating_add(terms.max_input_lead.get())
+            .saturating_add(terms.inputs.max_lead.get())
             .saturating_add(1);
-        if stamps.total > ticks.saturating_mul(u64::from(terms.max_inputs_per_tick)) {
+        if stamps.total > ticks.saturating_mul(u64::from(terms.inputs.max_per_tick)) {
             return Err(InputError::AheadOfTime);
         }
         let count = count as usize;
@@ -685,14 +685,14 @@ impl SessionLog {
                 if !matches!(state.control, Control::Bot) {
                     return Err(ServerInputError::NotBot);
                 }
-                if payload.len() > terms.max_payload_len as usize {
+                if payload.len() > terms.inputs.max_payload_len as usize {
                     return Err(ServerInputError::PayloadTooLarge);
                 }
                 let next = self.next_tick();
-                let place = state.spill.place(next, terms.max_inputs_per_tick);
+                let place = state.spill.place(next, terms.inputs.max_per_tick);
                 if place
                     .since(next)
-                    .is_some_and(|lead| lead > terms.max_input_lead)
+                    .is_some_and(|lead| lead > terms.inputs.max_lead)
                 {
                     return Err(ServerInputError::AheadOfTime);
                 }
@@ -1690,7 +1690,7 @@ impl SessionLog {
         let Applied::At(earliest) = outcome else {
             return outcome;
         };
-        let max = self.header.terms.max_inputs_per_tick;
+        let max = self.header.terms.inputs.max_per_tick;
         let tick = self.slots[slot.index()].spill.take(earliest, max);
         self.pending.push(Reverse(Due { tick, slot, index }));
         Applied::At(tick)
@@ -1701,13 +1701,13 @@ impl SessionLog {
         let next = self.next_tick();
         if next
             .since(stamp)
-            .is_some_and(|delay| delay > self.header.terms.max_input_delay)
+            .is_some_and(|delay| delay > self.header.terms.inputs.max_delay)
         {
             return Applied::Late;
         }
         if stamp
             .since(next)
-            .is_some_and(|lead| lead > self.header.terms.max_input_lead)
+            .is_some_and(|lead| lead > self.header.terms.inputs.max_lead)
         {
             return Applied::Early;
         }

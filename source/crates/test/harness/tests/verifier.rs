@@ -20,13 +20,13 @@ use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
-    AfterLeave, Applied, EngineRelease, JournalFrames, LeaveReason, Outcome, RecordSink, SeedError,
-    ServerInput, ServerSeed, ServerSeeds, SessionLog, SessionResult, SessionTerms, SlotChange,
-    SlotChangeKind, SlotPlan, SnapshotFingerprint, Taken,
+    AfterLeave, Applied, EngineRelease, InputRules, JournalFrames, LeaveReason, Outcome,
+    RecordSink, SeedError, ServerInput, ServerSeed, ServerSeeds, SessionLog, SessionResult,
+    SessionTerms, SlotChange, SlotChangeKind, SlotPlan, SnapshotFingerprint, Taken,
 };
 use campfire_runner::{
-    InputRules, Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionWorld,
-    SlotRuleError, SnapshotCheckError, StartError, TermsError,
+    Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionWorld, SlotRuleError,
+    SnapshotCheckError, StartError, TermsError,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
 use campfire_stats::Life;
@@ -108,10 +108,10 @@ fn refusal(log: SessionLog, store: &PackageStore) -> Option<VerifyError> {
 /// may come 3 ticks late or early.
 fn session() -> FixedSession {
     let rules = InputRules {
-        max_input_delay: Ticks::new(3),
-        max_input_lead: Ticks::new(3),
+        max_delay: Ticks::new(3),
+        max_lead: Ticks::new(3),
         max_payload_len: 64,
-        max_inputs_per_tick: 4,
+        max_per_tick: 4,
     };
     FixedSession::with_rules(packages(), NonZeroU32::new(30).unwrap(), 1, rules)
 }

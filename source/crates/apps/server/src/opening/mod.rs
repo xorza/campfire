@@ -8,8 +8,9 @@ use campfire_net::{
     ServerSetup, SessionDir,
 };
 use campfire_package::ModePackages;
+use campfire_protocol::InputRules;
 use campfire_protocol::{SeedChain, SessionTerms};
-use campfire_runner::{InputRules, SessionRules};
+use campfire_runner::SessionRules;
 use campfire_visibility::HostVisibility;
 use secp256k1::Keypair;
 

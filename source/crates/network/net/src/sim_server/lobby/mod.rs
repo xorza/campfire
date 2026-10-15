@@ -10,11 +10,12 @@ use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
+use campfire_protocol::InputRules;
 use campfire_protocol::{
     Delegation, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms, SlotPlan,
     SlotStart,
 };
-use campfire_runner::{InputRules, SessionRules};
+use campfire_runner::SessionRules;
 use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::{Connected, LocalTimeline};
 use tracing::info;

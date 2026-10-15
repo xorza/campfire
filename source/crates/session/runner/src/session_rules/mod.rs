@@ -2,11 +2,10 @@ use std::num::NonZeroU32;
 
 use campfire_common::{Fingerprint, MapName};
 use campfire_package::{ModePackages, TickRange};
-use campfire_protocol::{EngineRelease, SeedCommitment, SessionTerms, SlotPlan};
+use campfire_protocol::{EngineRelease, InputRules, SeedCommitment, SessionTerms, SlotPlan};
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 
-use crate::input_rules::InputRules;
 use crate::session_rules::error::TermsError;
 
 pub(crate) mod error;
@@ -61,10 +60,7 @@ impl SessionRules {
         let terms = SessionTerms {
             server_key,
             tick_hz,
-            max_input_delay: rules.max_input_delay,
-            max_input_lead: rules.max_input_lead,
-            max_payload_len: rules.max_payload_len,
-            max_inputs_per_tick: rules.max_inputs_per_tick,
+            inputs: rules,
             seed_commitment,
             release: EngineRelease::CURRENT,
             mode: self.mode,

@@ -304,7 +304,7 @@ mod tests {
 
     use campfire_common::{Fingerprint, MapName, Ticks};
     use campfire_protocol::internals::TestKey;
-    use campfire_protocol::{EngineRelease, SeedChain, SessionTerms, SlotPlan};
+    use campfire_protocol::{EngineRelease, InputRules, SeedChain, SessionTerms, SlotPlan};
     use campfire_store::internals::Scratch;
     use campfire_visibility::Visibility;
 
@@ -322,10 +322,12 @@ mod tests {
             terms: SessionTerms {
                 server_key: key.x_only_public_key().0,
                 tick_hz: NonZeroU32::new(30).unwrap(),
-                max_input_delay: Ticks::new(3),
-                max_input_lead: Ticks::new(3),
-                max_payload_len: 64,
-                max_inputs_per_tick: 4,
+                inputs: InputRules {
+                    max_delay: Ticks::new(3),
+                    max_lead: Ticks::new(3),
+                    max_payload_len: 64,
+                    max_per_tick: 4,
+                },
                 seed_commitment: seed_chain.commitment(),
                 release: EngineRelease::CURRENT,
                 mode: Fingerprint::new([1; 32]),

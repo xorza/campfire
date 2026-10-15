@@ -13,7 +13,7 @@ use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
 use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
-use campfire_runner::InputRules;
+use campfire_protocol::InputRules;
 
 /// The camps team, which holds the neutral boulder.
 const CAMPS: Team = Team::new(2);
