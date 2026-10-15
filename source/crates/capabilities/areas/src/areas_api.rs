@@ -1,5 +1,5 @@
 use campfire_actions::{DeliveryData, DeliveryShape};
-use campfire_deliveries::Delivering;
+use campfire_deliveries::Launcher;
 use campfire_script::{ApiBuilder, Checked, Ctx, DataTable, MemberSpec, RoleSet};
 use campfire_sim::Position;
 use campfire_units::NewUnit;
@@ -34,7 +34,7 @@ impl AreasApi {
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new
     /// area, with the id the call takes for it.
     fn land(ctx: &Ctx, pos: Position) -> Checked<NewUnit> {
-        let launcher = Delivering::of(ctx, |shape| shape == DeliveryShape::Area)?;
+        let launcher = Launcher::of(ctx, |shape| shape == DeliveryShape::Area)?;
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();

@@ -9,7 +9,7 @@ use campfire_actions::{
     InProgress, ListsOf, OrderPhase, Purse, ResolvedCast, SlotTimes, Targets, UseGroup,
 };
 use campfire_common::Tick;
-use campfire_deliveries::{Deliverers, Delivering};
+use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
     CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
@@ -367,7 +367,7 @@ impl Casts {
         let book = world.resource::<ActionBook>();
         if let Some(delivery) = book.get(by.action).and_then(|action| action.delivery) {
             let deliver = world.resource::<Deliverers>().of(delivery.shape);
-            deliver(world, by, from, delivery, aim.target);
+            deliver(world, Launcher { by, delivery }, from, aim.target);
         }
         ctx.apply(world);
         // The player's resources were paid in the call's frame, before its script ran, so a failed

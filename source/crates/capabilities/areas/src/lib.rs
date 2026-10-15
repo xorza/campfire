@@ -10,9 +10,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, Delivery, EffectQueues};
+use campfire_actions::{ActionTarget, EffectQueues};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
+use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_sim::{Capability, Position, StableId};
 use campfire_units::DeliveryEntity;
 use campfire_values::{EngineTag, TagProperties, UnitType};
@@ -116,16 +116,11 @@ impl Areas {
     /// The engine tag of area types: a filter selects their units only when it names it.
     pub const TAG: EngineTag = EngineTag::new(3, "area", TagProperties::NONE.with_named_only());
 
-    /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
-    /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
-    /// nothing; nothing for a unit that is gone.
-    fn deliver(
-        world: &mut World,
-        by: Delivering,
-        from: Position,
-        delivery: Delivery,
-        target: ActionTarget,
-    ) {
+    /// Lands the area of `launcher`, which aimed at `target` from `from`: on the point it aimed
+    /// at, where the unit it aimed at stands, or at `from` for an action that aims at nothing;
+    /// nothing for a unit that is gone.
+    fn deliver(world: &mut World, launcher: Launcher, from: Position, target: ActionTarget) {
+        let Launcher { by, delivery } = launcher;
         let unit_type = delivery.unit_type;
         let at = match target.point(world) {
             Some(at) => at,

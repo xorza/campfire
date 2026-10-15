@@ -1,14 +1,14 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, Delivery, DeliveryShape};
+use campfire_actions::{ActionTarget, DeliveryShape};
 use campfire_declare::{CallbackTable, Callbacks};
 use campfire_sim::{Capability, Position};
 
-use crate::delivering::Delivering;
+use crate::delivering::Launcher;
 
-/// How a delivery of a shape sets out: the delivery of `by`, which aimed at the target from the
-/// point, as `Delivery` gives it.
-pub(crate) type Deliver = fn(&mut World, Delivering, Position, Delivery, ActionTarget);
+/// How a delivery of a shape sets out: the launcher's delivery, which aimed at the target from the
+/// point.
+pub(crate) type Deliver = fn(&mut World, Launcher, Position, ActionTarget);
 
 campfire_common::enum_all! {
     /// A kind of delivery that sets out: a key of `Deliverers`.

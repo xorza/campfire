@@ -1,5 +1,5 @@
 use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
-use campfire_deliveries::Delivering;
+use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit};
 use campfire_sim::{Capability, Position};
@@ -50,7 +50,7 @@ impl ProjectilesApi {
     /// unit: the new projectile, with the id the call takes for it; an error for a form its type
     /// does not fly in.
     fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<NewUnit> {
-        let launcher = Delivering::of(ctx, |shape| {
+        let launcher = Launcher::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;
         let homes = matches!(
