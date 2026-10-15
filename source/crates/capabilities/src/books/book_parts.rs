@@ -1,6 +1,6 @@
 use campfire_actions::{ActionBook, ActionSlots, EffectListBook, UseGroup};
 use campfire_areas::AreaSpec;
-use campfire_combat::OnDeath;
+use campfire_combat::{Armor, OnDeath};
 use campfire_declare::ByType;
 use campfire_interaction::{UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, Shop};
@@ -39,6 +39,7 @@ pub(crate) struct BookParts {
     pub(super) pools: ByType<Pools>,
     pub(super) passives: ByType<TypePassive>,
     pub(super) deaths: ByType<OnDeath>,
+    pub(super) armors: ByType<Armor>,
     pub(super) steps: ByType<MoveStep>,
     pub(super) turns: ByType<TurnStep>,
     pub(super) bodies: ByType<BodyForm>,

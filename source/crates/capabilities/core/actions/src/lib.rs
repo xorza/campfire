@@ -81,7 +81,9 @@ pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::{ActionField, EffectRule};
-pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
+pub use crate::action_data::{
+    ActionData, ChannelData, ChargeUpData, ChargesData, ClipData, Toggle,
+};
 pub use crate::action_data_field::ActionDataField;
 pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
@@ -114,7 +116,7 @@ pub use crate::error::{ActionError, ActionProblem, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
-pub use crate::kind_data::KindData;
+pub use crate::kind_data::{FromData, KindData};
 pub use crate::kind_spec::KindSpec;
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
@@ -123,8 +125,10 @@ pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
-pub use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
-pub use crate::rank_values::{ChannelRule, ChargeRule, LoadedRanks, RankValues};
+pub use crate::rank_fields::{
+    RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer,
+};
+pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
 pub use crate::requires_data::RequiresData;
 pub use crate::shot_hits::{ShotHit, ShotHits};
 pub use crate::shots::{Shot, Shots};
@@ -136,7 +140,7 @@ pub use crate::slot_kinds::SlotKinds;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::use_group::UseGroup;
-pub use crate::weapon::Weapon;
+pub use crate::weapon::{Source, Weapon};
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
 #[derive(Debug)]
@@ -266,8 +270,8 @@ pub mod internals {
     use crate::fan::Fan;
     use crate::gather_spec::GatherSpec;
     use crate::kind_spec::KindSpec;
-    use crate::rank_values::RankValues;
-    use crate::weapon::Weapon;
+    use crate::rank_values::{ClipRule, RankValues};
+    use crate::weapon::{Source, Weapon};
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -305,6 +309,9 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        amount: None,
+                        period: None,
+                        clip: None,
                     }],
                     resource_costs: Box::default(),
                     script: None,
@@ -325,16 +332,19 @@ pub mod internals {
     }
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
-    /// homing projectile it fires, if it fires one, the places among its unit's stats of its
-    /// rate and its damage, and its cost in pools and in a player resource.
+    /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
+    /// own period, amount and clip, and its cost in pools and in a player resource.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
         pub range: ActionRange,
         pub windup: Ticks,
         pub projectile: Option<UnitType>,
-        pub rate: StatId,
-        pub damage: StatId,
+        pub rate: Source,
+        pub damage: Source,
+        pub period: Option<Ticks>,
+        pub amount: Option<Num>,
+        pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
     }
@@ -358,8 +368,11 @@ pub mod internals {
                 range,
                 windup,
                 projectile: None,
-                rate: StatId::new(0),
-                damage: StatId::new(1),
+                rate: Source::Stat(StatId::new(0)),
+                damage: Source::Stat(StatId::new(1)),
+                period: None,
+                amount: None,
+                clip: None,
                 cost: PoolCost::default(),
                 resource_cost: None,
             }
@@ -401,6 +414,9 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        amount: weapon.amount,
+                        period: weapon.period,
+                        clip: weapon.clip,
                     }],
                     resource_costs: weapon.resource_cost.into_iter().collect(),
                     script: None,
@@ -454,6 +470,9 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        amount: None,
+                        period: None,
+                        clip: None,
                     }],
                     resource_costs: resource_cost.into_iter().collect(),
                     script: None,
@@ -491,6 +510,9 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        amount: None,
+                        period: None,
+                        clip: None,
                     }],
                     resource_costs: resource_cost.into_iter().collect(),
                     script: None,

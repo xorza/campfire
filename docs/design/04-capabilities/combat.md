@@ -15,9 +15,10 @@ assist_window_ms = 10000
 life = "health"                                        # the pool that is life
 leech = { attack = "life_steal", other = "spell_vamp" } # optional: stats that heal the source
 heal_scale = "healing_received_pct"                    # optional: heals scale by one plus this stat
+armors = { plate = { physical = "0.5", magic = "2" } } # optional: a share of each kind's damage
 ```
 
-A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its slots. A type has `combat` exactly when it has the life pool, so every unit that can reach zero life can die. A weapon:
+A unit type: `pools` that hold the life pool, `combat = { on_death = "stay", armor = "plate" }` (`stay` or `despawn`, the default; an armor of the mode's, none taking every damage whole), and its weapons in its slots. A type has `combat` exactly when it has the life pool, so every unit that can reach zero life can die. A weapon:
 
 ```toml
 [actions.tank_cannon]
@@ -31,22 +32,24 @@ damage_kind = "physical"
 delivery = { projectile = "cannon_shell" }   # a unit type with a homing `projectile` section
 ```
 
+A weapon may give its own damage and period, in place of the stats, `amount = "5"` for `damage` and `period_ms = 100` for `rate`, one of each pair, and a clip, `clip = { shots = 3, reload_ms = 700 }`, each one value or one per rank ([Zero Hour combat](../19-zero-hour-combat.md), D2, D3).
+
 ## Rules
 
 ### Weapons
 
 - **Attack order.** An attack names its target by stable id. The unit attacks with the first weapon whose filter selects the target; an order on a unit no weapon selects is ignored.
 - **Range** follows the reach rule, from edge to edge ([Reach](00-overview.md#space-and-map)). A unit that can move walks to its target while out of range and stops in range.
-- **Windup and period.** An attack starts once the weapon is ready and delivers when its windup ends; the next may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing; after the delivery, moving is free. Range counts only at the start: a delivery happens unless its target died, despawned or became blocked as a target.
+- **Windup and period.** An attack starts once the weapon is ready and delivers when its windup ends; the next may start one period after this one started, its own period or the tick rate over its rate stat, either longer than its windup. A weapon of a clip counts its shots: the shot that empties its clip makes it ready its reload after the attack's start in place of its period, its clip full again; a stop, a move or a new target keeps the count. A move, or an attack on another target, cancels a windup and spends nothing; after the delivery, moving is free. Range counts only at the start: a delivery happens unless its target died, despawned or became blocked as a target.
 - **Delivery.** At once, by a homing projectile, a ray or a sweep ([Deliveries](actions.md#deliveries)); never by an area. One attack hits one unit, so its roll, leech and `on_attack_hit` count once; a splash is a `launch = { area }` in the weapon's `on_hit`, as StarCraft II's Siege Tank splashes by a search effect beside its damage.
-- **Its damage** is the attacker's `damage` stat, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects, which run in the damage pass after the damage and before `on_attack_hit`, whenever the damage reaches a unit above zero life, shields absorbing all of it or not, as League of Legends applies on-hit effects: in one call, to the target, from the attacker, at the weapon's rank, with the attack's hit, at the attack's depth plus one, so its damage joins the end of the pass. `ctx.attack_hit` runs it too. A weapon takes `[params]` for its effects and the modifiers it applies, and no script, `on_resolve` or `on_end`.
+- **Its damage** is the attacker's `damage` stat, or the weapon's own `amount`, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects, which run in the damage pass after the damage and before `on_attack_hit`, whenever the damage reaches a unit above zero life, shields absorbing all of it or not, as League of Legends applies on-hit effects: in one call, to the target, from the attacker, at the weapon's rank, with the attack's hit, at the attack's depth plus one, so its damage joins the end of the pass. `ctx.attack_hit` runs it too. A weapon takes `[params]` for its effects and the modifiers it applies, and no script, `on_resolve` or `on_end`.
 - **The roll.** An attack draws one number in [0, 1), `d.roll`, when its windup ends, on the secret stream for the attacker in that tick; a projectile carries it, and no client learns it before the server applies it. `calc_damage` gives it its meaning: the MOBA test content crits below the attacker's `crit_chance`.
 
 ### Damage and heals
 
 - **Damage** has a source, or none for an effect the mode applied; a target; an amount; a kind; its hit (`d.hit`, `()` when no delivery dealt it); whether an attack dealt it; its roll (`()` with no windup); and the action whose resolve, delivery or modifier dealt it, `()` for none.
 - **One pass a tick.** Every damage and heal of a tick applies in Resolve, in one queue: the tick's effects, those with no source first, then by source's stable id, then queue order; then those the pass's events queue, first in, first out. A heal a hook or leech gives is dealt next, once the entry that caused it and its events are done, as Dota 2 and League of Legends apply a reaction's heal and life steal at once. Every effect reads the units as the pass began, so two units can kill each other in one tick, and a modifier an event adds takes effect from the next stage.
-- **Each damage, in order:** nothing happens to a target at zero life or whose tags block `damage`; the mode's `calc_damage(ctx, d)` turns the raw `d.amount` into the final amount, a negative result counting as 0, and with no `calc_damage`, or a failed call, the amount stays and the failure is recorded; it counts against no pool ([Scripting](../02-engine-core.md#scripting)). Shields absorb it next, the one that ends soonest first, one with no end last, ties in the carrier's modifier order; the rest comes off the life. The source, when it exists, is recorded as the target's attacker.
+- **Each damage, in order:** nothing happens to a target at zero life or whose tags block `damage`; the armor of the target's type takes its share of the damage's kind, the amount times the share exactly, rounded down; the mode's `calc_damage(ctx, d)` turns that `d.amount` into the final amount, a negative result counting as 0, and with no `calc_damage`, or a failed call, the amount stays and the failure is recorded; it counts against no pool ([Scripting](../02-engine-core.md#scripting)). Shields absorb it next, the one that ends soonest first, one with no end last, ties in the carrier's modifier order; the rest comes off the life. The source, when it exists, is recorded as the target's attacker.
 - **Each heal** passes the mode's `calc_heal(ctx, h)` the same way, is multiplied by one plus the healed unit's `heal_scale`, and adds to its life. A restore adds to a pool, unscaled. Neither reaches a unit at zero life.
 - **Leech.** The source heals by its `attack` stat times the life an attack took, or its `other` stat times the life any other damage took, after mitigation and not what shields absorbed, as League of Legends' life steal counts; the heal passes `calc_heal` and the scale.
 - **A source that is gone**, as a projectile's source that despawned: `d.source` is `()`, and there is no killer.
@@ -79,7 +82,7 @@ After one damage, its events run in the table's order, for every damage that rea
 
 ## State and derived
 
-- **State:** each unit's life, attack target, recent attackers, death and respawn tick, spawn place; the tick's deaths. A weapon's windup and ready tick are its slots' ([Actions](actions.md#state-and-derived)).
+- **State:** each unit's life, attack target, recent attackers, the shots each of its weapons with a clip fired, death and respawn tick, spawn place; the tick's deaths. A weapon's windup and ready tick are its slots' ([Actions](actions.md#state-and-derived)).
 - **Derived:** each weapon's period and damage, from the stats. An attack's damage, and its projectile, name its weapon slot's rank, at which `on_hit` reads the weapon's params.
 
 ## Script API

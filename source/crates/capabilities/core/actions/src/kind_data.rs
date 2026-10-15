@@ -8,15 +8,15 @@ use crate::action_data_field::ActionDataField;
 use crate::action_kind::ActionKind;
 
 /// What an action of a kind the release runs needs, as its data gives it: a cast and a use
-/// nothing; an attack its weapon's stats of attacks a second and of damage, and its damage kind; a
-/// train and a build their unit type; a gather its resource, the most a trip carries, and its bounce, none
-/// when absent.
+/// nothing; an attack its weapon's rate and damage, each a stat or its own, and its damage kind;
+/// a train and a build their unit type; a gather its resource, the most a trip carries, and its
+/// bounce, none when absent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum KindData<'a> {
     Cast,
     Attack {
-        rate: &'a Stat,
-        damage: &'a Stat,
+        rate: FromData<'a>,
+        damage: FromData<'a>,
         damage_kind: &'a DeclaredName,
     },
     Use,
@@ -33,6 +33,14 @@ pub enum KindData<'a> {
     },
 }
 
+/// Where a weapon's value comes from, as its data gives it: a stat of its attacker, or a field of
+/// its own at each rank, `period_ms` for its rate and `amount` for its damage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FromData<'a> {
+    Stat(&'a Stat),
+    Own,
+}
+
 impl<'a> KindData<'a> {
     /// What the kind of `data`, one the release runs, needs, as `data` gives it; an error names the
     /// first field the kind refuses, or needs and `data` does not give, as the table of action
@@ -45,8 +53,8 @@ impl<'a> KindData<'a> {
         Ok(match data.kind {
             ActionKind::Cast => KindData::Cast,
             ActionKind::Attack => KindData::Attack {
-                rate: data.rate.as_ref().expect(needs),
-                damage: data.damage.as_ref().expect(needs),
+                rate: data.rate.as_ref().map_or(FromData::Own, FromData::Stat),
+                damage: data.damage.as_ref().map_or(FromData::Own, FromData::Stat),
                 damage_kind: data.damage_kind.as_ref().expect(needs),
             },
             ActionKind::Use => KindData::Use,

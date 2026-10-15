@@ -30,6 +30,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `grant` | `(unit, kind, ids)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
 | `heal` | `(unit, amount)` | every role | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
+| `held` | `(player)` | mode | core | since 1.0 | whether a player or a bot held `player`'s slot as the match started |
+| `kill` | `(unit)` | mode | combat | since 1.0 | takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; nothing for a unit that does not live |
 | `knock_back` | `(unit, from, distance, ms)` | every role | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
@@ -63,6 +65,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
 | `teleport` | `(unit, pos)` | every role | navigation | since 1.0 | puts `unit` at `pos` at once, or at the nearest place it may stand |
 | `timer` | `(name, ms, repeat, data)` | mode | core | since 1.0 | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
+| `units_of` | `(player)` | mode | core | since 1.0 | the living units `player` owns, by stable id |
 | `units_tagged` | `(tag)`, `tag` a tag | every role | core | since 1.0 | the units of a tag, living or dead, by stable id |
 
 ## Unit
@@ -294,6 +297,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `life` | combat | since 1.0 |
 | `leech` | combat | since 1.0 |
 | `heal_scale` | combat | since 1.0 |
+| `armors` | combat | since 1.0 |
 
 ### The mode's `[navigation]`
 
@@ -375,6 +379,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `rate` | combat | since 1.0 |
 | `damage` | combat | since 1.0 |
 | `damage_kind` | combat | since 1.0 |
+| `amount` | combat | since 1.0 |
+| `period_ms` | combat | since 1.0 |
+| `clip` | combat | since 1.0 |
 | `delivery` | projectiles | since 1.0 |
 | `script` | abilities | since 1.0 |
 | `cooldown_ms` | abilities | since 1.0 |
@@ -490,6 +497,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `on_death` | combat | since 1.0 |
+| `armor` | combat | since 1.0 |
 
 ### A unit type's `production`
 

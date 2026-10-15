@@ -764,13 +764,26 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     }
 }
 
-/// The match `start` gives, its setup changed by `adjust` before the mode installs.
+/// The match `start` gives, its setup changed by `adjust` before the mode installs, every slot
+/// held.
 fn start_match_setup(
     script: &str,
     limits: ScriptLimits,
     files: &ModeFiles,
     adjust: impl FnOnce(&mut [TestType]),
 ) -> Result<Match, CallError> {
+    let mut game = installed_match(script, limits, files, adjust);
+    Mode::start_held(&mut game)?;
+    Ok(game)
+}
+
+/// The match `start_match_setup` gives, before its start.
+fn installed_match(
+    script: &str,
+    limits: ScriptLimits,
+    files: &ModeFiles,
+    adjust: impl FnOnce(&mut [TestType]),
+) -> Match {
     let scripts = ScriptBudgets::new(limits, 3);
     let declared = [
         Capability::Stats,
@@ -830,8 +843,7 @@ fn start_match_setup(
     Release::install_mode(&mut game, setup, load);
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
-    Mode::start(&mut game)?;
-    Ok(game)
+    game
 }
 
 const fn input<'a>(name: &'a str, value: &'a str) -> ModeInput<'a> {

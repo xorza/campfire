@@ -12,11 +12,11 @@ use crate::delivery_data::DeliveryData;
 use crate::error::{ActionError, ActionProblem};
 use crate::fan::Fan;
 use crate::gather_spec::GatherSpec;
-use crate::kind_data::KindData;
+use crate::kind_data::{FromData, KindData};
 use crate::kind_spec::KindSpec;
 use crate::rank_values::{LoadedRanks, RankValues};
 use crate::targeting::Targeting;
-use crate::weapon::Weapon;
+use crate::weapon::{Source, Weapon};
 
 /// What an action's data gives, resolved against the match: its kind with what the kind needs,
 /// its passive and its hold, its aim, its fields at each rank, and how it delivers.
@@ -64,11 +64,17 @@ impl ActionParts {
                 rate,
                 damage,
                 damage_kind,
-            } => KindSpec::Attack(Weapon {
-                rate: names.stat(rate)?,
-                damage: names.stat(damage)?,
-                kind: names.damage_kind(damage_kind)?,
-            }),
+            } => {
+                let source = |from| match from {
+                    FromData::Stat(stat) => Ok::<_, UnknownName>(Source::Stat(names.stat(stat)?)),
+                    FromData::Own => Ok(Source::Own),
+                };
+                KindSpec::Attack(Weapon {
+                    rate: source(rate)?,
+                    damage: source(damage)?,
+                    kind: names.damage_kind(damage_kind)?,
+                })
+            }
             KindData::Train { unit_type } => KindSpec::Train(names.unit_type(package, unit_type)?),
             KindData::Build { unit_type } => KindSpec::Build(names.unit_type(package, unit_type)?),
             KindData::Gather {

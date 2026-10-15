@@ -19,6 +19,12 @@ pub enum ActionField {
     Channel,
     /// Its charge's most: whole milliseconds, not 0.
     Charge,
+    /// A weapon's own damage: a number at least 0 that a sim number holds.
+    Amount,
+    /// A weapon's own period: whole milliseconds, not 0.
+    Period,
+    /// A weapon's clip: shots of 1 to 65,535, and a reload of whole milliseconds.
+    Clip,
 }
 
 /// A rule a listed effect breaks: a rule of its numbers, or the release's.

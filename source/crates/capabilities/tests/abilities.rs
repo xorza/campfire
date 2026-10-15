@@ -9,10 +9,10 @@ use campfire_abilities::*;
 use campfire_actions::{
     ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
     ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData, ChargesData,
-    CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo, InProgress, KindData,
-    LaunchFields, ModifierFields, MoveData, OrderPhase, PurgeFields, RangeField, RestoreFields,
-    SlotAim, SlotKind, SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, Started,
-    Targeting, TimedSlots, Toggle, XpFields,
+    ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo, FromData,
+    InProgress, KindData, LaunchFields, ModifierFields, MoveData, OrderPhase, PurgeFields,
+    RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData, SlotKinds, SlotRanks,
+    SlotTimes, Started, Targeting, TimedSlots, Toggle, XpFields,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas};
 use campfire_capabilities::internals::*;
@@ -191,11 +191,59 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
     assert_eq!(
         KindData::of(&attack),
         Ok(KindData::Attack {
-            rate: &Stat::named("armor").unwrap(),
-            damage: &Stat::named("attack_damage").unwrap(),
+            rate: FromData::Stat(&Stat::named("armor").unwrap()),
+            damage: FromData::Stat(&Stat::named("attack_damage").unwrap()),
             damage_kind: &DeclaredName::new("physical").unwrap(),
         })
     );
+    // An attack takes its own amount in place of its damage stat, and its own period in place of
+    // its rate stat, one of each pair: both of a pair, or neither, is the pair's first field's
+    // misuse, as the table orders them. A clip is an attack's alone.
+    let five = Ranked::One(Number::Value(Scalar::Int(5)));
+    let own = ActionData {
+        rate: None,
+        damage: None,
+        amount: Some(five.clone()),
+        period_ms: Some(five.clone()),
+        clip: Some(ClipData {
+            shots: five.clone(),
+            reload_ms: five.clone(),
+        }),
+        ..attack.clone()
+    };
+    assert_eq!(
+        KindData::of(&own),
+        Ok(KindData::Attack {
+            rate: FromData::Own,
+            damage: FromData::Own,
+            damage_kind: &DeclaredName::new("physical").unwrap(),
+        })
+    );
+    let both = ActionData {
+        amount: Some(five),
+        ..attack.clone()
+    };
+    assert_eq!(KindData::of(&both), Err(ActionDataField::Damage));
+    let neither = ActionData {
+        damage: None,
+        ..attack.clone()
+    };
+    assert_eq!(KindData::of(&neither), Err(ActionDataField::Damage));
+    let unrated = ActionData {
+        rate: None,
+        ..attack.clone()
+    };
+    assert_eq!(KindData::of(&unrated), Err(ActionDataField::Rate));
+    let clipped_cast = ActionData {
+        kind: ActionKind::Cast,
+        rate: None,
+        damage: None,
+        damage_kind: None,
+        on_hit: Vec::new(),
+        clip: own.clip,
+        ..attack
+    };
+    assert_eq!(KindData::of(&clipped_cast), Err(ActionDataField::Clip));
     let cast = ActionData {
         kind: ActionKind::Cast,
         ..action.clone()
@@ -224,6 +272,9 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         rate: None,
         damage: None,
         damage_kind: None,
+        amount: None,
+        period_ms: None,
+        clip: None,
         ..action
     };
     assert_eq!(
@@ -2684,6 +2735,9 @@ fn sapper(ranged: bool) -> ActionData {
         rate: Some(Stat::named("armor").unwrap()),
         damage: Some(Stat::named("attack_damage").unwrap()),
         damage_kind: Some(DeclaredName::new("physical").unwrap()),
+        amount: None,
+        period_ms: None,
+        clip: None,
         delivery,
         params: BTreeMap::from([
             (

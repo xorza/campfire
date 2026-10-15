@@ -3,7 +3,7 @@ use campfire_sim::Capability;
 use campfire_sim::Capability::{Abilities, Combat, Production, Projectiles};
 
 use crate::action_data::ActionData;
-use crate::action_data_field::FieldUse::{Needs, Refuses, Takes};
+use crate::action_data_field::FieldUse::{Needs, OneOf, Refuses, Takes};
 use crate::action_kind::ActionKind;
 
 campfire_common::enum_all! {
@@ -32,6 +32,9 @@ campfire_common::enum_all! {
         Rate,
         Damage,
         DamageKind,
+        Amount,
+        PeriodMs,
+        Clip,
         UnitType,
         Requires,
         Construct,
@@ -51,12 +54,14 @@ campfire_common::enum_all! {
     pub const ALL;
 }
 
-/// What a kind of action does with a field: takes it or not, needs it, or refuses it.
+/// What a kind of action does with a field: takes it or not, needs it, refuses it, or needs it
+/// or the other field, not both.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FieldUse {
     Takes,
     Needs,
     Refuses,
+    OneOf(ActionDataField),
 }
 
 /// The kinds the release runs, in the order of `FieldRule::uses`.
@@ -206,14 +211,28 @@ const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
         field: ActionDataField::Rate,
         name: "rate",
         capability: Some(Combat),
-        uses: [Refuses, Needs, Refuses, Refuses, Refuses, Refuses],
+        uses: [
+            Refuses,
+            OneOf(ActionDataField::PeriodMs),
+            Refuses,
+            Refuses,
+            Refuses,
+            Refuses,
+        ],
         given: |data| data.rate.is_some(),
     },
     FieldRule {
         field: ActionDataField::Damage,
         name: "damage",
         capability: Some(Combat),
-        uses: [Refuses, Needs, Refuses, Refuses, Refuses, Refuses],
+        uses: [
+            Refuses,
+            OneOf(ActionDataField::Amount),
+            Refuses,
+            Refuses,
+            Refuses,
+            Refuses,
+        ],
         given: |data| data.damage.is_some(),
     },
     FieldRule {
@@ -222,6 +241,41 @@ const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
         capability: Some(Combat),
         uses: [Refuses, Needs, Refuses, Refuses, Refuses, Refuses],
         given: |data| data.damage_kind.is_some(),
+    },
+    FieldRule {
+        field: ActionDataField::Amount,
+        name: "amount",
+        capability: Some(Combat),
+        uses: [
+            Refuses,
+            OneOf(ActionDataField::Damage),
+            Refuses,
+            Refuses,
+            Refuses,
+            Refuses,
+        ],
+        given: |data| data.amount.is_some(),
+    },
+    FieldRule {
+        field: ActionDataField::PeriodMs,
+        name: "period_ms",
+        capability: Some(Combat),
+        uses: [
+            Refuses,
+            OneOf(ActionDataField::Rate),
+            Refuses,
+            Refuses,
+            Refuses,
+            Refuses,
+        ],
+        given: |data| data.period_ms.is_some(),
+    },
+    FieldRule {
+        field: ActionDataField::Clip,
+        name: "clip",
+        capability: Some(Combat),
+        uses: [Refuses, Takes, Refuses, Refuses, Refuses, Refuses],
+        given: |data| data.clip.is_some(),
     },
     FieldRule {
         field: ActionDataField::UnitType,
@@ -373,8 +427,8 @@ impl ActionDataField {
         (self.rule().given)(data)
     }
 
-    /// The first field `data` of kind `kind` gives that its kind refuses, or does not give that
-    /// its kind needs.
+    /// The first field `data` of kind `kind` gives that its kind refuses, does not give that its
+    /// kind needs, or gives with its other field of a pair its kind needs one of, or without it.
     pub fn misused(data: &ActionData, kind: ActionKind) -> Option<ActionDataField> {
         ActionDataField::ALL
             .into_iter()
@@ -382,6 +436,7 @@ impl ActionDataField {
                 Takes => false,
                 Needs => !field.given(data),
                 Refuses => field.given(data),
+                OneOf(other) => field.given(data) == other.given(data),
             })
     }
 }

@@ -5,6 +5,7 @@ use campfire_actions::{
     ActionBook, ActionSlots, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
 };
 use campfire_common::Tick;
+use campfire_declare::ByType;
 use campfire_math::Num;
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
@@ -13,8 +14,9 @@ use campfire_stats::{
     UnitStats,
 };
 use campfire_units::TagEffect;
-use campfire_values::{Block, NameId, UnitTags};
+use campfire_values::{Block, NameId, UnitTags, UnitType};
 
+use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_event::{CombatEvent, CombatEvents};
 use crate::combat_hooks::CombatHooks;
@@ -127,9 +129,13 @@ impl DamagePass {
                     continue;
                 }
             };
-            if DamagePass::damageable(run.world(), damage.target).is_none() {
+            let Some(target) = DamagePass::damageable(run.world(), damage.target) else {
                 continue;
-            }
+            };
+            let damage = Damage {
+                amount: DamagePass::armored(run.world(), target, damage),
+                ..damage
+            };
             let amount = match (weigh, run.batch()) {
                 (Some(weigh), Some(batch)) => match (weigh.damage)(batch, damage) {
                     Some(Ok(amount)) => amount,
@@ -166,6 +172,18 @@ impl DamagePass {
     pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
         let entity = world.queried_entity_of(id)?;
         (!world.get::<Life>(entity)?.is_empty()).then_some(entity)
+    }
+
+    /// What `damage` deals to `target` through the armor of its type, before the mode weighs it:
+    /// the whole for a type of none.
+    fn armored(world: &World, target: Entity, damage: Damage) -> Num {
+        let armor = world.get::<UnitType>(target).and_then(|&unit_type| {
+            let armors = world.get_resource::<ByType<Armor>>()?;
+            armors.get(unit_type)
+        });
+        armor.map_or(damage.amount, |armor| {
+            armor.take(damage.kind, damage.amount)
+        })
     }
 
     /// The entity of `id`, when it is living and its tags let damage reach it.

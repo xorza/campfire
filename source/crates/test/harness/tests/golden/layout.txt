@@ -1,9 +1,10 @@
-data_version 20
+data_version 21
 actions.slot_times 776040a47152d129
 actions.slots 7f1b07638f8a86da
 actions.use_group dbfe58d458cf8fc1
 areas.area cb0d38ac66390e3a
 areas.area_trigger 5b5d033e67c80f93
+combat.clip_shots c91c8d3b66b290fa
 combat.kept 6f07fc05a6a4e4ce
 combat.on_death a4f4b17fec8c8db4
 combat.recent_attackers 58e017c445524785
@@ -27,6 +28,7 @@ players.match 6f07fc05a6a4e4ce
 players.out_of_play 6f07fc05a6a4e4ce
 players.player b09ddbaa41487f03
 players.resources 9ace0a18bed4a033
+players.seated 6f07fc05a6a4e4ce
 production.builder 59667e81fbdf0753
 production.gatherer 4137b7d13733a667
 production.node 7f992cd38c58e8ec

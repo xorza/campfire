@@ -2,7 +2,7 @@ use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
-use campfire_players::PlayersCall;
+use campfire_players::{PlayersCall, Seating};
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx, DataTable,
     Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptPosition, ScriptText, ScriptValue,
@@ -184,6 +184,22 @@ impl ModeApi {
                 "the units of a tag, living or dead, by stable id",
             ),
             |ctx: &mut Ctx, tag: Tag| Ok(ctx.view().units_tagged(tag)),
+        )
+        .call(
+            MemberSpec::mode_call(
+                "held",
+                &[&["player"]],
+                "whether a player or a bot held `player`'s slot as the match started",
+            ),
+            |ctx: &mut Ctx, player: i64| ModeApi::held(ctx, player),
+        )
+        .call(
+            MemberSpec::mode_call(
+                "units_of",
+                &[&["player"]],
+                "the living units `player` owns, by stable id",
+            ),
+            |ctx: &mut Ctx, player: i64| ModeApi::units_of(ctx, player),
         );
         api.ty::<StateAccess>("ModeState")
             .index(|_, state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
@@ -715,6 +731,27 @@ impl ModeApi {
     }
 
     /// Queues `player` held out of play, or no more.
+    /// Whether a player or a bot held the slot of `player`, a slot of the session, as the match
+    /// started.
+    fn held(ctx: &Ctx, player: i64) -> Checked<bool> {
+        let book = ModeSpec::of_or_fail(ctx)?;
+        let slot = book.teams.player(player)?;
+        let frame = ctx.frame();
+        let players = frame
+            .part::<PlayersCall>()
+            .expect("every call holds the players'");
+        Ok(players.seating(slot) == Some(Seating::Held))
+    }
+
+    /// The living units of `player`, a slot of the session, by stable id.
+    fn units_of(ctx: &Ctx, player: i64) -> Checked<ScriptList> {
+        let book = ModeSpec::of_or_fail(ctx)?;
+        let slot = book.teams.player(player)?;
+        Ok(ctx
+            .view()
+            .units_where(|row| row.alive && row.owner == Some(slot)))
+    }
+
     fn set_out(ctx: &Ctx, player: i64, out: bool) -> Checked<()> {
         let book = ModeSpec::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;

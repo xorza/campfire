@@ -1,3 +1,4 @@
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryState;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
@@ -6,16 +7,19 @@ use campfire_units::Player;
 
 use crate::player_resources::PlayerResources;
 use crate::players_world::PlayersWorld;
+use crate::seated::{Seated, Seating};
 
 /// The players' part of a call: their resources as the call sees them, by slot, none in a match
-/// with no mode, and whether the call changed them, which commit once its effects applied. It reads
-/// them as each call begins, through one query of the players, each in the place it held at the
-/// last call, so a call allocates none.
+/// with no mode, and whether the call changed them, which commit once its effects applied; and
+/// whether each slot was held as the match started. It reads them as each call begins, through
+/// one query of the players, each in the place it held at the last call, so a call allocates
+/// none.
 #[derive(Debug, Default)]
 pub struct PlayersCall {
     /// The players and their resources, once the match registers the resources.
-    players: Option<QueryState<(&'static Player, &'static PlayerResources)>>,
+    players: Option<QueryState<(Entity, &'static Player, &'static PlayerResources)>>,
     resources: Vec<PlayerResources>,
+    seatings: Vec<Seating>,
     written: bool,
 }
 
@@ -25,6 +29,12 @@ impl PlayersCall {
     pub fn resources_mut(&mut self, slot: PlayerSlot) -> Option<&mut PlayerResources> {
         self.written = true;
         self.resources.get_mut(slot.index())
+    }
+
+    /// Whether a player or a bot held `slot` as the match started; `None` for a player the
+    /// session lacks, or in a match with no mode.
+    pub fn seating(&self, slot: PlayerSlot) -> Option<Seating> {
+        self.seatings.get(slot.index()).copied()
     }
 }
 
@@ -36,6 +46,7 @@ impl CallPart for PlayersCall {
         if self.players.is_none() {
             let Some(players) = QueryState::try_new(world) else {
                 self.resources.clear();
+                self.seatings.clear();
                 return Ok(());
             };
             self.players = Some(players);
@@ -43,18 +54,28 @@ impl CallPart for PlayersCall {
         let players = self.players.as_mut().expect("the players' query was built");
         players.update_archetypes(world);
         let (mut count, mut slots) = (0, 0);
-        for (player, held) in players.iter_manual(world) {
+        for (entity, player, held) in players.iter_manual(world) {
             let at = player.slot().index();
             if at >= self.resources.len() {
                 self.resources
                     .resize_with(at + 1, || PlayerResources::new(0));
             }
+            if at >= self.seatings.len() {
+                self.seatings.resize(at + 1, Seating::Open);
+            }
             self.resources[at].clone_from(held);
+            // A match registers the mark only as a held slot's player spawns with it.
+            self.seatings[at] = if world.entity(entity).contains::<Seated>() {
+                Seating::Held
+            } else {
+                Seating::Open
+            };
             count += 1;
             slots = slots.max(at + 1);
         }
         debug_assert_eq!(count, slots, "the players hold the slots from the first on");
         self.resources.truncate(count);
+        self.seatings.truncate(count);
         Ok(())
     }
 

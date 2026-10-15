@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU16;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
@@ -7,8 +9,8 @@ use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
-    ActionRange, ActionSlot, ActionSlots, Actions, ChannelCall, InProgress, SlotKind, SlotTimes,
-    Targets,
+    ActionRange, ActionSlot, ActionSlots, Actions, ChannelCall, ClipRule, InProgress, SlotKind,
+    SlotTimes, Source, Targets,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
@@ -150,6 +152,113 @@ fn an_attack_winds_up_and_strikes_each_period() {
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 8)]);
 }
 
+/// Spawns a unit of a rifle of 5 damage every 3 ticks, 100 ms at 30 ticks a second, in a clip of
+/// 3 shots that reloads in 21 ticks, 700 ms, at (4, 0), and a dummy of team 1 with `held` at
+/// (6, 0), which the rifle attacks; the two.
+fn rifle_fight(game: &mut Match, held: impl Bundle) -> [StableId; 2] {
+    let [dummy] = arm(game, [dummy()]);
+    let weapon = TestWeapon {
+        rate: Source::Own,
+        damage: Source::Own,
+        period: Some(Ticks::new(3)),
+        amount: Some(Num::int(5)),
+        clip: Some(ClipRule {
+            shots: NonZeroU16::new(3).unwrap(),
+            reload: Ticks::new(21),
+        }),
+        ..TestWeapon::new(
+            Filter::of_match_relations(game, RelationSet::Enemies),
+            ActionRange::Meters(Num::int(2)),
+            Ticks::ZERO,
+        )
+    };
+    let rifle = Actions::add_weapon(game, weapon);
+    let slots = ActionSlots::new([(rifle, SlotKind::new(0), Rank::new(1))]);
+    let shooter = wielder(game, slots, &[]);
+    let shooter = Mode::spawn(game, shooter, (4, 0, 0), Team::new(0), ());
+    let dummy = Mode::spawn(game, dummy, (6, 0, 0), Team::new(1), held);
+    Combat::attack(game, shooter, dummy);
+    [shooter, dummy]
+}
+
+/// The ticks the attack of `shooter` is ready again from, each as it changes, over ticks 0 to 55;
+/// and, of a world that deals damage, the ticks `dummy` lost life in.
+fn rifle_ticks(game: &mut Match, [shooter, dummy]: [StableId; 2]) -> [Vec<u64>; 2] {
+    let (mut readies, mut hits) = (Vec::new(), Vec::new());
+    let mut health = Stats::health(game, dummy);
+    for tick in 0..56 {
+        game.run_until(tick + 1);
+        let ready = Attack::of(game, shooter).ready_at().get();
+        if readies.last() != Some(&ready) {
+            readies.push(ready);
+        }
+        let now = Stats::health(game, dummy);
+        if now != health {
+            hits.push(tick);
+            health = now;
+        }
+    }
+    [readies, hits]
+}
+
+#[test]
+fn a_weapon_of_its_own_amount_and_period_fires_its_clip_then_reloads() {
+    // With no windup, the rifle strikes in ticks 0, 3 and 6, each ready 3 ticks after; the third
+    // empties its clip, so it is ready again 21 ticks after it, in 27; then 30, 33, and 54 after
+    // the second clip. Each strike takes 5 of the dummy's 100, its own amount, as the shooter
+    // holds no stat: 7 strikes leave 65.
+    let readies = [3, 6, 27, 30, 33, 54, 57];
+    let mut game = fight_match();
+    let fight = rifle_fight(&mut game, ());
+    let [ready, hits] = rifle_ticks(&mut game, fight);
+    assert_eq!(ready, readies);
+    assert_eq!(hits, [0, 3, 6, 27, 30, 33, 54]);
+    assert_eq!(Stats::health(&game, fight[1]), 65);
+    // A predicting client, which holds the dummy as the server sent it and deals no damage,
+    // counts the clip as the server does: its rifle is ready again in the same ticks.
+    let mut client = Match::predicting(&[Capability::Stats, Capability::Combat]);
+    Combat::load_weapon_stats(&mut client);
+    let fight = rifle_fight(&mut client, Unpredicted);
+    let [ready, hits] = rifle_ticks(&mut client, fight);
+    assert_eq!(ready, readies);
+    assert_eq!(hits, Vec::<u64>::new());
+}
+
+#[test]
+fn a_unit_counts_its_clip_once_a_weapon_with_one_is_in_its_slots() {
+    // The shooter spawns with its count, its rifle's clip; the dummy, of a weapon of no clip, with
+    // none. Given the rifle, as a grant gives it, the dummy holds a count, and a second hold
+    // keeps the one it holds.
+    let mut game = fight_match();
+    let [shooter, dummy] = rifle_fight(&mut game, ());
+    assert!(game.try_part::<ClipShots>(shooter).is_some());
+    assert!(game.try_part::<ClipShots>(dummy).is_none());
+    let rifle = game
+        .part::<ActionSlots>(shooter)
+        .slot(0)
+        .unwrap()
+        .action
+        .unwrap();
+    let entity = game.unit_entity(dummy);
+    ClipShots::hold(&mut game, entity);
+    assert!(game.try_part::<ClipShots>(dummy).is_none());
+    let mut times = game.part::<SlotTimes>(dummy).clone();
+    let mut slots = game.part::<ActionSlots>(dummy).clone();
+    slots.grant(&mut times, SlotKind::new(0), &[rifle], Rank::new(1));
+    game.entity_mut(entity).insert((slots, times));
+    ClipShots::hold(&mut game, entity);
+    assert_eq!(
+        game.try_part::<ClipShots>(dummy),
+        Some(&ClipShots::default())
+    );
+    game.run_until(4);
+    let counted = game.part::<ClipShots>(shooter).clone();
+    assert_ne!(counted, ClipShots::default());
+    let shooter_entity = game.unit_entity(shooter);
+    ClipShots::hold(&mut game, shooter_entity);
+    assert_eq!(game.part::<ClipShots>(shooter), &counted);
+}
+
 #[test]
 fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
     // A fighter of range 2 at x = 0, and a dummy 3 m off: out of range from center to center, in
@@ -217,8 +326,14 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         };
         Actions::add_weapon(game, weapon)
     };
-    let ground = weapon(&mut game, "enemies:ground", 1, 0, StatId::new(1));
-    let air = weapon(&mut game, "enemies:air", 5, 1, StatId::new(2));
+    let ground = weapon(
+        &mut game,
+        "enemies:ground",
+        1,
+        0,
+        Source::Stat(StatId::new(1)),
+    );
+    let air = weapon(&mut game, "enemies:air", 5, 1, Source::Stat(StatId::new(2)));
     // Two units of the RTS weapons: the first with both learned, the second with its ground
     // weapon at rank 0.
     let kind = SlotKind::new(0);

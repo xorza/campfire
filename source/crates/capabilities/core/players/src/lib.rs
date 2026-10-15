@@ -14,6 +14,7 @@ mod players;
 mod players_call;
 mod players_world;
 mod resource_amount;
+mod seated;
 mod tick_commands;
 
 pub use crate::capability_action::CapabilityAction;
@@ -27,4 +28,5 @@ pub use crate::players::Players;
 pub use crate::players_call::PlayersCall;
 pub use crate::players_world::PlayersWorld;
 pub use crate::resource_amount::ResourceAmount;
+pub use crate::seated::{Seated, Seating, SlotStart};
 pub use crate::tick_commands::{TickCommand, TickCommands};

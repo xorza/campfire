@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, SlotTimes, TimedSlots};
-use campfire_combat::Respawn;
+use campfire_combat::{ClipShots, Respawn};
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_script::{Effect, Frame, StateValue};
@@ -100,6 +100,7 @@ impl Effect for ModeEffect {
                     let slots = abilities.iter().map(|&action| (action, kind, rank));
                     unit.insert(TimedSlots::new(ActionSlots::new(slots)));
                 }
+                ClipShots::hold(world, entity);
             }
             ModeEffect::Respawn { id, ticks } => {
                 let entity = world.entity_of(id);

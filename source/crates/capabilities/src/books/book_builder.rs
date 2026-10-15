@@ -7,7 +7,7 @@ use campfire_actions::{
     CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, SlotKindBook, UseGroup,
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
-use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
+use campfire_combat::{Armor, CombatBindings, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
@@ -59,6 +59,8 @@ pub(crate) struct BookBuilder<'a> {
     names: ModeNames,
     /// The life pool, none when the mode names none.
     life: Option<PoolId>,
+    /// The mode's armors by name, each resolved once.
+    armors: BTreeMap<DeclaredName, Armor>,
     /// The ranks of every loadout entry.
     loadout_ranks: u8,
     /// Where each package's scripts start among the match's.
@@ -149,6 +151,13 @@ impl<'a> BookBuilder<'a> {
         let life = data.combat.life_pool(&names.pools);
         let life =
             life.map_err(|name| BookError::unknown(PackageIndex::MODE, BookPlace::Combat, name))?;
+        let armors = data
+            .combat
+            .armors
+            .iter()
+            .map(|(name, shares)| Ok((name.clone(), Armor::of(shares, &names.damage_kinds)?)))
+            .collect::<Result<_, UnknownName>>()
+            .map_err(|name| BookError::unknown(PackageIndex::MODE, BookPlace::Combat, name))?;
         let stats = BookBuilder::stat_book(input, &books.types)?;
         let pools = PoolBook::new(&data.pools, Arc::clone(&names.pools), life, |pool, stat| {
             let at = BookPlace::Pool(pool.clone());
@@ -160,6 +169,7 @@ impl<'a> BookBuilder<'a> {
             pools,
             books,
             life,
+            armors,
             names,
             loadout_ranks: data.loadout_ranks(),
             script_starts,
@@ -270,6 +280,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.pools);
         built.add(parts.passives);
         built.add(parts.deaths);
+        built.add(parts.armors);
         built.add(parts.steps);
         built.add(parts.turns);
         built.add(parts.bodies);
@@ -847,6 +858,11 @@ impl<'a> BookBuilder<'a> {
         } = self.start(at, combat)?;
         let unknown = |name| at.unknown(name);
         let (file, input, unit_type) = (at.unit.file, self.input, at.unit_type);
+        let armor = combat.and_then(|combat| combat.armor.as_ref()).map(|name| {
+            let armor = self.armors.get(name).cloned();
+            armor.ok_or_else(|| UnknownName::new(NameKind::Armor, name))
+        });
+        let armor = armor.transpose().map_err(unknown)?;
         let body = self.names.form(file.collision.as_ref()).map_err(unknown)?;
         let names = self.names(at.package, None);
         let tracks: TrackSet = file
@@ -889,6 +905,7 @@ impl<'a> BookBuilder<'a> {
         books.lives.set_some(unit_type, life);
         books.pools.set_some(unit_type, pools);
         books.deaths.set_some(unit_type, on_death);
+        books.armors.set_some(unit_type, armor);
         books.steps.set_some(unit_type, step);
         books.turns.set_some(unit_type, turn);
         books.bodies.set_some(unit_type, body);

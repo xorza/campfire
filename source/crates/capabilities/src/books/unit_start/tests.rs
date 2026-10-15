@@ -79,7 +79,10 @@ fn start<'a>(
 }
 
 fn combat(on_death: OnDeath) -> CombatData {
-    CombatData { on_death }
+    CombatData {
+        on_death,
+        armor: None,
+    }
 }
 
 #[test]

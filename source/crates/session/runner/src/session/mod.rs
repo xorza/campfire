@@ -5,10 +5,11 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
+use campfire_players::Seating;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerInput,
     Receipt, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
-    SessionResult, Signature, Signer, SnapshotFingerprint,
+    SessionResult, Signature, Signer, SlotStart, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
@@ -252,6 +253,19 @@ impl Session {
         &self.log
     }
 
+    /// Whether a player or a bot held each slot of the session, in order, as the match started:
+    /// as its log's header gives it, whatever a later change made of the slot, so a replay of a
+    /// published log starts as the run did.
+    fn seatings(&self) -> Vec<Seating> {
+        let starts = self.log.header().slots.iter();
+        starts
+            .map(|start| match start {
+                SlotStart::Player(_) | SlotStart::Bot => Seating::Held,
+                SlotStart::Open => Seating::Open,
+            })
+            .collect()
+    }
+
     /// Prepares the world, a new one, for the match of `source`'s log's header, of the mode its
     /// packages hold, at the header's tick rate and with the randomness of the first segment's
     /// seed of its seeds and the players' contributions; starts the match; and inserts the
@@ -268,7 +282,7 @@ impl Session {
             "a session starts before its first tick"
         );
         let session = Session::build(world, source, 0)?;
-        Mode::start(world).map_err(StartError::MatchStart)?;
+        Mode::start(world, &session.seatings()).map_err(StartError::MatchStart)?;
         world.insert_resource(session);
         Ok(())
     }

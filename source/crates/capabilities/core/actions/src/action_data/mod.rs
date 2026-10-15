@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 use std::slice;
 
 use campfire_math::Num;
@@ -23,7 +23,7 @@ use crate::effect_data::EffectData;
 use crate::list_hook::ListHook;
 use crate::placement_data::PlacementData;
 use crate::range_field::RangeField;
-use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
+use crate::rank_fields::{RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer};
 use crate::requires_data::RequiresData;
 use crate::targeting::Targeting;
 
@@ -71,6 +71,13 @@ pub struct ActionData {
     pub damage: Option<Stat>,
     /// The kind of damage a weapon deals, an `attack`'s alone.
     pub damage_kind: Option<DeclaredName>,
+    /// A weapon's own damage, in place of its stat `damage`, an `attack`'s alone.
+    pub amount: Option<Ranked<Number>>,
+    /// A weapon's own time from one attack's start to the next, in place of its stat `rate`, an
+    /// `attack`'s alone.
+    pub period_ms: Option<Ranked<Number>>,
+    /// A weapon's clip, an `attack`'s alone.
+    pub clip: Option<ClipData>,
     /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
     /// What its player must hold for a `train` to join a queue, or a `build` to start.
@@ -134,6 +141,15 @@ pub struct ChargesData {
     pub recharge_ms: Ranked<Number>,
 }
 
+/// A weapon's `clip`: the shots it fires before it reloads, and the time it reloads for, from
+/// the shot that empties it, in place of its period.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ClipData {
+    pub shots: Ranked<Number>,
+    pub reload_ms: Ranked<Number>,
+}
+
 /// An action's `charge`: a cast that charges from its start, in place of its windup, and
 /// resolves when its order is given again or at `max_ms`, whichever is first.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -152,11 +168,15 @@ impl ActionData {
     }
 
     /// Each of its capability fields that is a number at each rank, which may read a param:
-    /// its cooldown, windup, channel, charges and charge.
+    /// its cooldown, windup, channel, charges, charge, and a weapon's amount, period and clip.
     fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
             self.cooldown_ms.as_ref(),
             self.windup_ms.as_ref(),
+            self.amount.as_ref(),
+            self.period_ms.as_ref(),
+            self.clip.as_ref().map(|clip| &clip.shots),
+            self.clip.as_ref().map(|clip| &clip.reload_ms),
             self.channel.as_ref().map(|channel| &channel.duration_ms),
             self.channel.as_ref().map(|channel| &channel.tick_ms),
             self.charges.as_ref().map(|charges| &charges.max),
@@ -275,7 +295,56 @@ impl ActionData {
             toggle: self.toggle_at(rank, &target)?,
             channel: self.channel_at(rank)?,
             charge_ms: self.charge_at(rank)?,
+            amount: self.amount_at(rank)?,
+            period_ms: self.period_at(rank)?,
+            clip: self.clip_at(rank)?,
         })
+    }
+
+    /// A weapon's own damage at `rank`: a number at least 0.
+    fn amount_at(&self, rank: Rank) -> Result<Option<Num>, ActionField> {
+        let field = ActionField::Amount;
+        self.amount
+            .as_ref()
+            .map(|ranked| {
+                let value = match ranked.get(rank).ok_or(field)? {
+                    Number::Value(value) => *value,
+                    Number::Param(reference) => {
+                        self.param_at(rank, reference.param.as_str(), field)?
+                    }
+                };
+                let amount = value.to_num().filter(|amount| *amount >= Num::ZERO);
+                amount.ok_or(field)
+            })
+            .transpose()
+    }
+
+    /// A weapon's own period at `rank`: whole milliseconds, not 0.
+    fn period_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
+        let field = ActionField::Period;
+        self.period_ms
+            .as_ref()
+            .map(|ranked| {
+                let period = self.whole_at(rank, field, Some(ranked))?;
+                (period > 0).then_some(period).ok_or(field)
+            })
+            .transpose()
+    }
+
+    /// A weapon's clip at `rank`: shots of 1 to 65,535, and a reload.
+    fn clip_at(&self, rank: Rank) -> Result<Option<RankClip>, ActionField> {
+        let field = ActionField::Clip;
+        self.clip
+            .as_ref()
+            .map(|clip| {
+                let shots = self.whole_at(rank, field, Some(&clip.shots))?;
+                let shots = u16::try_from(shots).ok().and_then(NonZeroU16::new);
+                Ok(RankClip {
+                    shots: shots.ok_or(field)?,
+                    reload_ms: self.whole_at(rank, field, Some(&clip.reload_ms))?,
+                })
+            })
+            .transpose()
     }
 
     /// Its param `name` at `rank`, a ranked one; `field` for one it does not declare, or a
@@ -492,6 +561,9 @@ pub(crate) mod internals {
                 rate: None,
                 damage: None,
                 damage_kind: None,
+                amount: None,
+                period_ms: None,
+                clip: None,
                 unit_type: None,
                 requires: None,
                 construct: None,

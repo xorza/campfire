@@ -840,6 +840,7 @@ impl<'a> LoadCheck<'a> {
             }
             NameKind::Choice => declares(data.choices.keys(), name),
             NameKind::Item => packages.content.items.contains_key(name),
+            NameKind::Armor => data.combat.armors.contains_key(name),
             NameKind::Cost => self.names.cost_target(name).is_some(),
             NameKind::MarkerTag => {
                 let spawns = declares(data.navigation.spawn_tags.iter(), name);

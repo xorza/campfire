@@ -1,6 +1,7 @@
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroU16};
 
 use campfire_common::Ticks;
+use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_sim::TickRate;
 use campfire_stats::PoolCost;
@@ -32,6 +33,20 @@ pub struct RankValues {
     pub channel: Option<ChannelRule>,
     /// A charged action's most, a tick at least.
     pub(crate) charge: Option<Ticks>,
+    /// A weapon's own damage, which an attack of no stat of damage deals.
+    pub amount: Option<Num>,
+    /// A weapon's own time from one attack's start to the next, a tick at least, which an
+    /// attack of no stat of rate waits.
+    pub period: Option<Ticks>,
+    pub clip: Option<ClipRule>,
+}
+
+/// A weapon's clip: the shots it fires before it reloads, and the ticks from the shot that
+/// empties it to the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClipRule {
+    pub shots: NonZeroU16,
+    pub reload: Ticks,
 }
 
 /// How long a channel runs, and the time between its ticks, in ticks, both at least one, and
@@ -105,6 +120,17 @@ impl RankValues {
                     })
                     .transpose()?,
                 charge: fields.charge_ms.map(ticks).transpose()?,
+                amount: fields.amount,
+                period: fields.period_ms.map(ticks).transpose()?,
+                clip: fields
+                    .clip
+                    .map(|clip| {
+                        Ok::<_, TimeTooLarge>(ClipRule {
+                            shots: clip.shots,
+                            reload: ticks(clip.reload_ms)?,
+                        })
+                    })
+                    .transpose()?,
             });
             loaded.resource_costs.extend(fields.resource_cost);
         }

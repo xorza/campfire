@@ -26,6 +26,9 @@ pub enum NameKind {
     Filter,
     #[display("damage kind")]
     DamageKind,
+    /// An armor of the mode's `[combat]` section.
+    #[display("armor")]
+    Armor,
     #[display("track")]
     Track,
     #[display("unit type")]

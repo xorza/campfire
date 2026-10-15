@@ -152,7 +152,7 @@ impl Shop {
             owner,
             angle: Num::ZERO,
         };
-        let spawner = game.non_send::<Spawner>().clone();
+        let spawner = Mode::test_spawner(game).expect("the shop loaded its spawner");
         spawner.spawn(game, at, (slots, queue));
     }
 
@@ -361,6 +361,9 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     assert_eq!(shop.spawns(&mut client), []);
     let held = client.player_resources(player).unwrap().amount(gold);
     assert_eq!(held, 5);
+    // The client's world holds no spawner, as a client's holds none: its fixtures' is their own,
+    // so a system that spawned here would have failed this test.
+    assert!(client.get_non_send::<Spawner>().is_none());
     let queue = client.part::<TrainQueue>(owned);
     assert_eq!(
         queue

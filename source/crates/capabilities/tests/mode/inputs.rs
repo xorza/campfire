@@ -1,3 +1,7 @@
+use campfire_combat::Deaths;
+use campfire_players::Seating;
+use campfire_sim::internals::SimWorldInternals;
+
 use super::*;
 use campfire_script::CapabilityRefusal;
 use campfire_values::NameId;
@@ -395,4 +399,60 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     assert_eq!(out(&game), [false, true, false]);
     Mode::tick_inputs(&mut game, &[(1, input("out", "off"))]);
     assert_eq!(out(&game), [false, false, false]);
+}
+
+#[test]
+fn a_script_reads_the_held_slots_and_a_players_units_and_kills_them() {
+    // Slot 1 is open as the match starts, and every other held: `on_match_start` reads it so.
+    // Player 0 owns two grunts and player 1 one: `units_of(0)` gives player 0's two, by stable
+    // id, and `kill` takes each one's life whole, so both die in the tick of the call, which
+    // runs before the tick's deaths, with no killer; player 1's lives.
+    let script = r#"
+fn on_match_start(ctx) {
+    let seats = "";
+    for player in 0..ctx.players {
+        seats += if ctx.held(player) { "h" } else { "o" };
+    }
+    ctx.state.kind = seats;
+}
+
+fn on_input(ctx, player, name, value) {
+    if value == "count" {
+        ctx.state.seen = ctx.units_of(0).len();
+    } else if value == "kill" {
+        for unit in ctx.units_of(0) {
+            ctx.kill(unit);
+        }
+    }
+}
+"#;
+    let script = format!("{script}{PICKING}");
+    let mut game = installed_match(&script, ScriptLimits::ROOMY, &mode_files(), |_| {});
+    let players = Mode::slots(&game);
+    let mut seatings = vec![Seating::Held; players];
+    seatings[1] = Seating::Open;
+    Mode::start(&mut game, &seatings).unwrap();
+    let seats: String = (0..players)
+        .map(|at| if at == 1 { 'o' } else { 'h' })
+        .collect();
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text(seats.into()));
+    let grunt = |game: &mut Match, slot| {
+        let owner = Owner::new(PlayerSlot::new(slot));
+        Mode::spawn_named(game, "grunt", Vec3::ZERO, Team::new(0), owner)
+    };
+    let [first, second, others] = [0, 0, 1].map(|slot| grunt(&mut game, slot));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "count"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(2));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "kill"))]);
+    assert_eq!(Mode::failures(&game), []);
+    let died: Vec<_> = game
+        .resource::<Deaths>()
+        .iter()
+        .map(|death| (death.fallen.id, death.killer))
+        .collect();
+    assert_eq!(died, [(first, None), (second, None)]);
+    assert!(game.try_part::<Dead>(others).is_none());
+    // A unit no longer living is killed by nothing: a second kill of the dead changes nothing.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "count"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(0));
 }

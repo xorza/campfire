@@ -1,10 +1,14 @@
+use std::collections::BTreeMap;
+
 use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
 use campfire_stats::PoolId;
 use campfire_values::{DamageKind, DeclaredName, NameId, Names, Stat};
 use serde::Deserialize;
 
+use crate::armor::ArmorShare;
+
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
-/// and the stats its damage rules read.
+/// the stats its damage rules read, and its armors.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeCombatData {
@@ -18,6 +22,9 @@ pub struct ModeCombatData {
     pub leech: Option<LeechData>,
     /// The stat that scales the heals its unit receives, by one plus its value.
     pub heal_scale: Option<Stat>,
+    /// Its armors by name, each a share of damage by damage kind, which a unit type names.
+    #[serde(default)]
+    pub armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, ArmorShare>>,
 }
 
 /// The stats by which a source heals from the life its damage took: `attack` from an attack's,

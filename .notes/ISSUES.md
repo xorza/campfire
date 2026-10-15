@@ -21,5 +21,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Stats.** A unit a predicting client predicts again, as its owner changes and `Unpredicted` goes (`net/src/sim_client/mod.rs`, `mark_unpredicted`), keeps the change ticks its parts had while hidden: a pass that visits what changed by those ticks, as `Holds::want_passives` and the stats refresh do, may pass over it until a part of it changes, where a pass over every unit takes it at once. Whether Lightyear's prediction writes the parts again as it starts is not known.
 
 ## Ready
-
-- **Capabilities.** **Plan: C1.** A predicting test world (`Match::predicting`) holds a `Spawner`, which its fixtures load as they place units, where a client holds none, as no client installs the mode: a system that spawns on a predicting client passes the tests and panics in the client.

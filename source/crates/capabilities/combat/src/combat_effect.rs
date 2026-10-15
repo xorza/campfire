@@ -3,7 +3,7 @@ use campfire_actions::{ActionBook, ActionSlots, CapabilityDoesSpec};
 use campfire_math::Num;
 use campfire_script::{CallError, Effect, Frame, View};
 use campfire_sim::{EntityIndex, StableId};
-use campfire_stats::{PoolId, UnitStats};
+use campfire_stats::{Life, PoolId, UnitStats};
 use campfire_values::DamageKind;
 
 use crate::damage::{Damage, DamageCause};
@@ -30,6 +30,8 @@ pub enum CombatEffect {
     },
     /// An extra attack of the acting unit on `unit`.
     AttackHit { unit: StableId },
+    /// `unit`'s life taken whole, so it dies as the next Die stage finds it, with no killer.
+    Kill { unit: StableId },
 }
 
 impl CombatEffect {
@@ -103,6 +105,13 @@ impl Effect for CombatEffect {
             CombatEffect::Restore { unit, pool, amount } => {
                 DamagePass::restore(world, unit, pool, amount);
             }
+            CombatEffect::Kill { unit } => {
+                if let Some(entity) = DamagePass::living(world, unit) {
+                    let mut life = world.get_mut::<Life>(entity).expect("a living unit's life");
+                    let all = life.current();
+                    life.take(all);
+                }
+            }
             CombatEffect::AttackHit { unit: target } => {
                 let index = world.resource::<EntityIndex>();
                 let Some(unit) = source.and_then(|source| index.get(source)) else {
@@ -113,9 +122,10 @@ impl Effect for CombatEffect {
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(slots.weapon_in(book, None)?)?;
                     let weapon = book.get(slot.action?)?.kind.weapon()?;
-                    Some((slot, slot.rank?, weapon))
+                    let rank = slot.rank?;
+                    Some((slot, rank, weapon, *book.get(slot.action?)?.values(rank)))
                 });
-                let Some((slot, rank, weapon)) = first else {
+                let Some((slot, rank, weapon, values)) = first else {
                     return;
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
@@ -123,7 +133,7 @@ impl Effect for CombatEffect {
                     action: slot.action,
                     ..damage(
                         target,
-                        weapon.damage(stats),
+                        weapon.damage(stats, &values),
                         weapon.kind,
                         DamageCause::ExtraAttack { rank },
                     )

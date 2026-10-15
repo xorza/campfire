@@ -42,6 +42,13 @@ impl CombatApi {
             &[&["unit", "pool", "amount"]],
             "gives `unit` back `amount` of its `pool`, unscaled",
         );
+        let kill = call(
+            "kill",
+            &[&["unit"]],
+            "takes `unit`'s life whole: it dies as the next tick's deaths find it, with no killer; \
+             nothing for a unit that does not live",
+        )
+        .roles(RoleSet::MODE);
         let attack_hit = call(
             "attack_hit",
             &[&["target"]],
@@ -73,6 +80,9 @@ impl CombatApi {
         .call(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
+        .call(kill, |ctx: &mut Ctx, unit: Unit| {
+            ctx.queue(CombatEffect::Kill { unit: unit.id })
+        })
         .tag_property(
             TagProperty::Blocks(Block::Attack),
             Status::Runs(ApiVersion::FIRST),
@@ -92,11 +102,12 @@ impl CombatApi {
                 "life",
                 "leech",
                 "heal_scale",
+                "armors",
             ],
             &[],
         )
         .data::<LeechData>(&["attack", "other"], &[])
-        .data::<CombatData>(&["on_death"], &[])
+        .data::<CombatData>(&["on_death", "armor"], &[])
         .shared_data(DataTable::Mode, &["combat"], &[])
         .shared_data(DataTable::UnitType, &["combat"], &[])
         .action_fields(ActionDataField::of(Some(Capability::Combat)))

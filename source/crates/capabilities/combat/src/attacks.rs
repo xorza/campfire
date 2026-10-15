@@ -16,6 +16,7 @@ use campfire_units::{Body, Dead, ForcedMove, Owner};
 use campfire_values::{Block, Team, UnitTags};
 
 use crate::ROLL_STREAM;
+use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::{Damage, DamageCause};
@@ -216,14 +217,16 @@ impl Attacks {
     }
 
     /// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id:
-    /// it queues the damage of its weapon's damage stat, of its kind, or a shot when the weapon
-    /// fires a projectile, which `projectiles` launches, as the load gives such a weapon only to a
-    /// match with projectiles. Each draws its roll now, at least 0 and less than 1, which
-    /// `calc_damage` reads. The weapon's cost is paid, in pools and its player's resources, and it
-    /// is ready again a period from the attack's start, the tick rate over its rate stat. A windup
-    /// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops
-    /// instead, and spends nothing. A client that predicts the attack only makes the weapon ready
-    /// again, as the damage, the launch and the cost come from the server.
+    /// it queues the damage of its weapon, its damage stat or its own amount, of its kind, or a
+    /// shot when the weapon fires a projectile, which `projectiles` launches, as the load gives
+    /// such a weapon only to a match with projectiles. Each draws its roll now, at least 0 and
+    /// less than 1, which `calc_damage` reads. The weapon's cost is paid, in pools and its
+    /// player's resources, and it is ready again a period from the attack's start, its own or the
+    /// tick rate over its rate stat; a shot that empties its clip makes it ready its reload from
+    /// the attack's start instead, its clip full again. A windup whose attacker's tags keep it
+    /// from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
+    /// client that predicts the attack only makes the weapon ready again and counts its clip, as
+    /// the damage, the launch and the cost come from the server.
     pub fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
@@ -250,6 +253,7 @@ impl Attacks {
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&Owner>,
+                Option<&mut ClipShots>,
             ),
             Without<Dead>,
         >,
@@ -261,7 +265,7 @@ impl Attacks {
             Self::going_off(slots, now).map(|_| Keyed { id, entity })
         });
         for &Keyed { entity, .. } in order.sort(going) {
-            let (_, &source, &from, mut slots, mut times, stats, pools, tags, forced, owner) =
+            let (_, &source, &from, mut slots, mut times, stats, pools, tags, forced, owner, clips) =
                 attackers.get_mut(entity).expect("an attacker in the order");
             let target = Self::going_off(&slots, now).expect("an attack going off");
             let pools = pools.of(life);
@@ -285,13 +289,22 @@ impl Attacks {
                 .and_then(InProgress::resolves_at)
                 .expect("an attack going off started");
             let started = Tick::new(resolves_at.get() - values.windup.get());
-            let period = weapon.period(stats, clock.rate().hz().get(), values.windup);
-            times.cool_down(wielded.slot, started.after(period));
+            let period = weapon.period(stats, &values, clock.rate().hz().get());
+            let reloads = values.clip.is_some_and(|clip| {
+                let mut clips =
+                    clips.expect("a unit whose slots hold a weapon with a clip counts its shots");
+                clips.shoot(action, clip)
+            });
+            let ready = match values.clip {
+                Some(clip) if reloads => clip.reload,
+                _ => period,
+            };
+            times.cool_down(wielded.slot, started.after(ready));
             slots.stop();
             if F::PREDICTS {
                 continue;
             }
-            let amount = weapon.damage(stats);
+            let amount = weapon.damage(stats, &values);
             let roll = rng.open(ROLL_STREAM, source).fraction();
             match wielded.projectile {
                 Some(unit_type) => fired.0.push(Shot {

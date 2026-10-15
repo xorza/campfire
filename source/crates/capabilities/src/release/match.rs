@@ -78,6 +78,7 @@ pub(crate) mod internals {
     use campfire_common::SegmentSeed;
     use campfire_declare::{Book, Role};
     use campfire_log::internals::LogCheck;
+    use campfire_mode::Mode;
     use campfire_players::Players;
     use campfire_script::ScriptBudgets;
     use campfire_sim::{Capability, TickRate};
@@ -173,6 +174,7 @@ pub(crate) mod internals {
                 .capabilities(set)
                 .role(Role::Client);
             let mut started = Match::test_of(spec);
+            Mode::keep_no_spawner(&mut started);
             Players::start_without_mode(&mut started, [], 0);
             started
         }

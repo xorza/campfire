@@ -18,7 +18,7 @@ use campfire_combat::{Weigh, Weighers};
 use campfire_common::PlayerSlot;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
-use campfire_players::{OutOfPlay, Players, PlayersWorld};
+use campfire_players::{OutOfPlay, Players, PlayersWorld, Seating, SlotStart};
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
 use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
 use campfire_units::{
@@ -176,7 +176,7 @@ impl Module for Mode {
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
-        d.check::<Player>(Mode::players_seated);
+        d.check::<Player>(Mode::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
             Some(at.world().non_send::<MatchMode>().relations.clone())
         });
@@ -286,7 +286,7 @@ impl Mode {
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
-    fn players_seated(world: &World) -> Result<(), Breach> {
+    fn players_spawned(world: &World) -> Result<(), Breach> {
         let players = world.non_send::<MatchMode>().teams.players();
         let seated = (0..players)
             .map(PlayerSlot::new)
@@ -300,17 +300,26 @@ impl Mode {
         world.insert_non_send(units.spawner());
     }
 
-    /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
-    /// walking them as they name, then `on_match_start` runs. A timer it sets counts from the
-    /// start. An error when the call fails: a match its mode cannot start would run without its
-    /// rules.
-    pub fn start(world: &mut World) -> Result<(), CallError> {
+    /// Starts the match, before its first tick: the players spawn, each slot held or open as
+    /// `seatings` gives it, one for each slot in order; the map's placed units spawn, on their
+    /// paths and walking them as they name; then `on_match_start` runs. A timer it sets counts
+    /// from the start. An error when the call fails: a match its mode cannot start would run
+    /// without its rules.
+    pub fn start(world: &mut World, seatings: &[Seating]) -> Result<(), CallError> {
         let book = world.non_send::<MatchMode>().clone();
         let teams = &book.teams;
-        let slots = (0..teams.players()).map(PlayerSlot::new);
+        assert_eq!(
+            seatings.len(),
+            usize::try_from(teams.players()).expect("slots fit usize"),
+            "a start gives each slot of the session its seating"
+        );
+        let slots = (0..teams.players()).map(PlayerSlot::new).zip(seatings);
         Players::spawn_match(
             world,
-            slots.map(|slot| teams.of(slot).expect("every player has a team")),
+            slots.map(|(slot, &seating)| SlotStart {
+                team: teams.of(slot).expect("every player has a team"),
+                seating,
+            }),
         );
         let spawner = world.non_send::<Spawner>().clone();
         for placed in &book.placed {
@@ -357,6 +366,7 @@ pub mod internals {
     use campfire_common::PlayerSlot;
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
+    use campfire_players::Seating;
     use campfire_script::internals::FailureKind;
     use campfire_script::{
         CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue, View,
@@ -373,6 +383,7 @@ pub mod internals {
     use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
+    use crate::match_mode::MatchMode;
     use crate::mode_input::{InputValue, ModeInput};
     use crate::mode_spec::ModeSpec;
     use crate::mode_units::ModeUnits;
@@ -413,14 +424,22 @@ pub mod internals {
                 pos,
                 angle,
             };
-            let spawner = world
-                .get_non_send::<Spawner>()
-                .expect("the mode loaded its unit types before a unit spawns")
-                .clone();
+            let spawner = Mode::test_spawner(world)
+                .expect("the mode loaded its unit types before a unit spawns");
             spawner.spawn(world, at, parts);
             id
         }
     }
+
+    /// The spawner the fixtures of a world built as a client's place units through, apart from
+    /// the world's `Spawner`: a client holds none, as no client installs the mode, so a system
+    /// that spawns on a client fails its test as it fails the client.
+    #[derive(Debug)]
+    struct FixtureSpawner(Spawner);
+
+    /// On a world built as a client's, whose fixtures keep their spawner apart.
+    #[derive(Debug)]
+    struct ClientFixtures;
 
     impl Mode {
         /// Spawns a unit of the mode's type `unit_type` at `pos` on `team`, of the next stable
@@ -448,14 +467,26 @@ pub mod internals {
             parts: impl Bundle,
         ) -> StableId {
             Units::seal_once(world);
-            if world.get_non_send::<Spawner>().is_none() {
+            if Mode::test_spawner(world).is_none() {
                 Mode::load_test_units(world);
             }
             Mode::spawn_at(world, unit_type, pos.into(), angle, team, parts)
         }
 
+        /// Starts the match as `start` does, every slot held.
+        pub fn start_held(world: &mut World) -> Result<(), CallError> {
+            Mode::start(world, &vec![Seating::Held; Mode::slots(world)])
+        }
+
+        /// How many slots the session of the installed mode has.
+        pub fn slots(world: &World) -> usize {
+            let players = world.non_send::<MatchMode>().teams.players();
+            usize::try_from(players).expect("slots fit usize")
+        }
+
         /// Loads the spawner of every unit type the match loaded so far, which applies no
-        /// passive, as a mode's load gives its own: a fixture that loads types loads it again.
+        /// passive, as a mode's load gives its own: a fixture that loads types loads it again. A
+        /// world built as a client's keeps it apart, as its fixtures' alone.
         pub fn load_test_units(world: &mut World) {
             let count = world.resource::<UnitTypeBook>().count();
             let types = (0..count)
@@ -464,7 +495,26 @@ pub mod internals {
                 unit_types: types.collect(),
                 ..ModeUnits::default()
             };
-            Mode::load_units(world, &units);
+            if world.get_non_send::<ClientFixtures>().is_some() {
+                world.insert_non_send(FixtureSpawner(units.spawner()));
+            } else {
+                Mode::load_units(world, &units);
+            }
+        }
+
+        /// Marks `world`, built as a client's, so its fixtures keep their spawner apart and the
+        /// world holds no `Spawner`, as a client's holds none.
+        pub fn keep_no_spawner(world: &mut World) {
+            world.insert_non_send(ClientFixtures);
+        }
+
+        /// The spawner the fixtures place units through: the world's, or, on a world built as a
+        /// client's, their own; none before a test loads one.
+        pub fn test_spawner(world: &World) -> Option<Spawner> {
+            match world.get_non_send::<FixtureSpawner>() {
+                Some(FixtureSpawner(spawner)) => Some(spawner.clone()),
+                None => world.get_non_send::<Spawner>().cloned(),
+            }
         }
 
         /// Spawns a unit of the mode's type `name`, as `spawn` does.

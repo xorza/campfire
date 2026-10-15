@@ -31,8 +31,7 @@ campfire-mode.workspace = true
 campfire-package.workspace = true
 # Its tests read the workspace's test packages from disk.
 campfire-package-disk = { workspace = true, optional = true }
-# The arena of `internals` starts its match's players and clears its vision grid.
-campfire-players = { workspace = true, optional = true }
+campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true

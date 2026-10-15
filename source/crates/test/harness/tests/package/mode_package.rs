@@ -2316,6 +2316,20 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE,
         |problem| read_fails(problem, "data/mode.toml", "a stat's min passes its max"),
     ),
+    // An armor of a damage kind the mode does not declare, or a unit type of an armor the mode
+    // does not declare, fails.
+    flaw(
+        MODE_DATA,
+        Edit::Set("combat.armors.plate", r#"{ cold = "0.5" }"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name, .. } if name == "cold"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Set("units.inhibitor.combat.armor", r#""plate""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Armor, name, .. } if name == "plate"),
+    ),
     flaw(
         "heroes/veil/scripts/whirling_blades.rhai",
         Edit::Replace(r#""physical""#, r#""fire""#),

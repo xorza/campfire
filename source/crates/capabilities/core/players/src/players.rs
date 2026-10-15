@@ -11,6 +11,7 @@ use crate::held_out::HeldOut;
 use crate::out_of_play::OutOfPlay;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
+use crate::seated::{Seated, Seating, SlotStart};
 
 /// The players and the match as entities: what spawns them, under every capability.
 #[derive(Debug)]
@@ -26,6 +27,7 @@ impl Module for Players {
         d.component::<MatchEntity>();
         d.component::<Player>();
         d.component::<HeldOut>();
+        d.component::<Seated>();
         d.component::<OutOfPlay>();
         d.component::<PlayerResources>();
         d.call_part::<PlayersCall>();
@@ -55,12 +57,16 @@ impl Players {
         Breach::of_match(world.match_entity().is_some())
     }
 
-    /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
-    /// team, each with its named id and the parts the installed modules declare for its kind.
-    pub fn spawn_match(world: &mut World, teams: impl IntoIterator<Item = Team>) {
+    /// Spawns the match's entity, then each player's, in slot order, `slots` giving each slot's
+    /// team and whether it is held, each with its named id and the parts the installed modules
+    /// declare for its kind, and a held slot's marked `Seated`.
+    pub fn spawn_match(world: &mut World, slots: impl IntoIterator<Item = SlotStart>) {
         EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
-        for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
-            Players::spawn_player(world, slot, team);
+        for (slot, start) in (0..).map(PlayerSlot::new).zip(slots) {
+            let player = Players::spawn_player(world, slot, start.team);
+            if start.seating == Seating::Held {
+                world.entity_mut(player).insert(Seated);
+            }
         }
     }
 
@@ -88,6 +94,7 @@ pub(crate) mod internals {
     use crate::player_resources::PlayerResources;
     use crate::players::Players;
     use crate::players_world::PlayersWorld;
+    use crate::seated::{Seating, SlotStart};
 
     impl Players {
         /// Starts the match, as a mode's start does: the match's entity spawns, of teams that
@@ -99,7 +106,11 @@ pub(crate) mod internals {
             resources: usize,
         ) {
             let teams: Vec<Team> = teams.into_iter().collect();
-            Players::spawn_match(world, teams.iter().copied());
+            let held = |team| SlotStart {
+                team,
+                seating: Seating::Held,
+            };
+            Players::spawn_match(world, teams.iter().copied().map(held));
             let entity = world.match_entity().expect("the match's entity spawned");
             world.entity_mut(entity).insert(Relations::default());
             for slot in (0..).map(PlayerSlot::new).take(teams.len()) {
