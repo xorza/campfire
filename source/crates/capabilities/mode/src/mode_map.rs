@@ -1,11 +1,8 @@
 use bevy_ecs::world::World;
-use campfire_geometry::{Grid, Shape};
-use campfire_math::Num;
+use campfire_geometry::Grid;
 use campfire_navigation::{
-    BodyIndex, IndexedBody, MapProblem, Navigation, NavigationBook, PathingGrid, Paths, Segment,
-    Terrain, Walkable, Walker, Walls,
+    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, Walker, Walls,
 };
-use campfire_sim::{IdAllocator, Position};
 use campfire_units::{BodyForm, Layer, MapBook};
 use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
@@ -39,16 +36,6 @@ pub struct ResolvedMap {
     pub ground: MapBook,
     pub navigation: NavigationBook,
     pub vision: VisionBook,
-}
-
-/// What a map's walk check reads beside the map: its ground, with the bounds; its paths and
-/// walls; each kind of unit that walks; and the tags of the markers its mode's units spawn at.
-#[derive(Debug, Clone, Copy)]
-pub struct WalkCheck<'a> {
-    pub ground: &'a MapBook,
-    pub navigation: &'a NavigationBook,
-    pub walkers: &'a [Walker],
-    pub spawn_tags: &'a [DeclaredName],
 }
 
 impl ModeMap {
@@ -214,97 +201,34 @@ impl ModeMap {
         Ok(markers)
     }
 
-    /// Checks that each placed box lies within the bounds, and that the map can be walked by
-    /// every kind of unit that walks, of `check`'s walkers, for the widest of each layer, among
-    /// the map's placed units that cannot walk, whose bodies `body_of` gives by unit type, and
-    /// none for a type that walks; `name_of` names a type in a problem. Placed bodies may overlap
-    /// the walls and each other, as they block alike; a placement in a match refuses an overlap
-    /// (design 17, D5). Every point of a marker of a spawn tag, and every waypoint, is a place
-    /// that walker may stand, and every waypoint is in a reachable set of the one before it, by
-    /// the regions a match plans its routes with. A narrower walker of the layer has every cell
-    /// the widest has open. A map with no `[navigation]` cells, or a mode with no walker, has
-    /// nothing more to check.
-    pub fn check_walkable(
-        &self,
-        check: WalkCheck<'_>,
-        body_of: impl Fn(UnitType) -> Option<BodyForm>,
-        name_of: impl Fn(UnitType) -> DeclaredName,
-    ) -> Result<(), MapProblem> {
-        let WalkCheck {
-            ground,
-            navigation,
-            walkers,
-            spawn_tags,
-        } = check;
-        let bounds = &ground.bounds;
-        let NavigationBook {
-            paths,
-            walls: placed_walls,
-        } = navigation;
-        let mut ids = IdAllocator::default();
-        let structures: Vec<(usize, IndexedBody)> = self
-            .placed
-            .iter()
-            .enumerate()
-            .filter_map(|(at, unit)| {
-                let body = body_of(unit.unit_type)?.at(unit.angle);
-                Some((at, IndexedBody::of(ids.allocate(), unit.pos, &body)))
+    /// The bodies of its placed units that do not walk, whose bodies `body_of` gives by unit
+    /// type, and none for a type that walks: what a walk check takes of them.
+    pub fn placed_bodies(&self, body_of: impl Fn(UnitType) -> Option<BodyForm>) -> Vec<PlacedBody> {
+        let placed = self.placed.iter().enumerate();
+        let bodies = placed.filter_map(|(unit, placed)| {
+            Some(PlacedBody {
+                unit,
+                unit_type: placed.unit_type,
+                pos: placed.pos,
+                body: body_of(placed.unit_type)?.at(placed.angle),
             })
-            .collect();
-        for &(at, body) in &structures {
-            let Shape::Box(boxed) = body.shape else {
-                continue;
-            };
-            if !Walls::room_for(None, *bounds, body.pos, &boxed, body.layer) {
-                return Err(MapProblem::BoxBlocked {
-                    unit: at,
-                    unit_type: name_of(self.placed[at].unit_type),
-                });
-            }
-        }
-        let structures: Vec<IndexedBody> = structures.into_iter().map(|(_, body)| body).collect();
-        let Some(cells) = self.pathing else {
-            return Ok(());
-        };
-        let terrain = Terrain::new(&cells, placed_walls.walls());
-        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
-        let widest = walkers
-            .chunk_by(|a, b| a.layer == b.layer)
-            .map(|layer| *layer.last().expect("a chunk is never empty"));
-        let widest_radius = walkers.iter().map(|walker| walker.radius).max();
-        let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
-        statics.update(&structures);
-        let mut grid = PathingGrid::new(cells, widest.clone(), &terrain);
-        grid.update(&statics);
-        let declared = |name: &str| DeclaredName::new(name).expect("the map's names are declared");
-        for walker in widest {
-            let clearance = grid.clearance(walker);
-            let walkable = Walkable::of(clearance, &statics);
-            let stands = |pos: Position| !walkable.blocks(Segment::new(pos, pos));
-            let spawns =
-                |marker: &&MarkerSpec| marker.tags.iter().any(|tag| spawn_tags.contains(tag));
-            for marker in self.markers.iter().filter(spawns) {
-                if marker.pos.is_some_and(|pos| !stands(pos)) {
-                    let marker = declared(&marker.name);
-                    return Err(MapProblem::MarkerBlocked { marker });
-                }
-            }
-            let reach = |pos: Position| clearance.regions().reach(cells.nearest_cell(pos));
-            for (path, name) in paths.names().iter() {
-                let points = paths.points(path);
-                if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {
-                    let path = declared(name);
-                    return Err(MapProblem::WaypointBlocked { path, waypoint });
-                }
-                let closed = points
-                    .windows(2)
-                    .position(|pair| !reach(pair[0]).meets(reach(pair[1])));
-                if let Some(before) = closed {
-                    let (path, waypoint) = (declared(name), before + 1);
-                    return Err(MapProblem::WaypointUnreachable { path, waypoint });
-                }
-            }
-        }
-        Ok(())
+        });
+        bodies.collect()
+    }
+
+    /// The points of its markers of a tag of `spawn_tags`, where its mode's units spawn: what a
+    /// walk check takes of them.
+    pub fn spawn_points(&self, spawn_tags: &[DeclaredName]) -> Vec<MarkerPoint> {
+        let spawns = self
+            .markers
+            .iter()
+            .filter(|marker| marker.tags.iter().any(|tag| spawn_tags.contains(tag)));
+        let points = spawns.filter_map(|marker| {
+            Some(MarkerPoint {
+                name: DeclaredName::new(&marker.name).expect("the map's names are declared"),
+                pos: marker.pos?,
+            })
+        });
+        points.collect()
     }
 }

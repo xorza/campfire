@@ -5,8 +5,8 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_declare::ByType;
-use campfire_mode::{ModeInputs, WalkCheck};
-use campfire_navigation::{MapProblem, Walker};
+use campfire_mode::ModeInputs;
+use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
 use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
 use campfire_values::{DamageKind, DeclaredName, Names, ResourceId, UnitType};
@@ -102,10 +102,12 @@ impl Books {
         let check = WalkCheck {
             ground,
             navigation,
+            cells: load.map.pathing,
             walkers: &load.walkers,
-            spawn_tags: &self.spawn_tags,
+            placed: &load.map.placed_bodies(body_of),
+            spawns: &load.map.spawn_points(&self.spawn_tags),
         };
-        load.map.check_walkable(check, body_of, name_of)
+        check.run(name_of)
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are

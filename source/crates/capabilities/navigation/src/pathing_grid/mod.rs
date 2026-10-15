@@ -22,7 +22,7 @@ use crate::walker::Walker;
 /// Derived from the map and the static bodies, not state: a change of the bodies marks again only
 /// the cells of the bodies it touched.
 #[derive(Resource, Debug)]
-pub struct PathingGrid {
+pub(crate) struct PathingGrid {
     grid: Grid,
     /// The kinds of walker, in order, each once: one clearance each.
     walkers: Vec<Walker>,
@@ -47,7 +47,7 @@ pub struct PathingGrid {
 impl PathingGrid {
     /// The grid over `grid`'s cells for `walkers`, with the cells `terrain`'s walls block and no
     /// static body yet.
-    pub fn new(
+    pub(crate) fn new(
         grid: Grid,
         walkers: impl IntoIterator<Item = Walker>,
         terrain: &Terrain,
@@ -93,7 +93,7 @@ impl PathingGrid {
     /// from: in each clearance, the cells of each body of its layer that the update took away
     /// open, then the bodies still near mark them again, and each body it put in marks its own;
     /// each clearance's regions are labeled again in the chunks those cells lie in.
-    pub fn update(&mut self, statics: &BodyIndex) {
+    pub(crate) fn update(&mut self, statics: &BodyIndex) {
         let PathingGrid {
             grid,
             walkers,
@@ -151,7 +151,7 @@ impl PathingGrid {
     }
 
     /// The side of a cell.
-    pub const fn cell(&self) -> Num {
+    pub(crate) const fn cell(&self) -> Num {
         self.grid.cell()
     }
 
@@ -162,7 +162,7 @@ impl PathingGrid {
     }
 
     /// The cells `walker`, one of the mode's kinds of walker, may stand in.
-    pub fn clearance(&self, walker: Walker) -> Clearance<'_> {
+    pub(crate) fn clearance(&self, walker: Walker) -> Clearance<'_> {
         self.serving(walker).expect("a kind of walker the mode has")
     }
 
@@ -242,7 +242,7 @@ impl PathingGrid {
 
 /// The cells of the pathing grid one kind of walker may stand in.
 #[derive(Debug, Clone, Copy)]
-pub struct Clearance<'a> {
+pub(crate) struct Clearance<'a> {
     grid: &'a Grid,
     walker: Walker,
     regions: &'a Regions,
@@ -253,7 +253,7 @@ pub struct Clearance<'a> {
 }
 
 impl Clearance<'_> {
-    pub const fn grid(&self) -> &Grid {
+    pub(crate) const fn grid(&self) -> &Grid {
         self.grid
     }
 
@@ -261,7 +261,7 @@ impl Clearance<'_> {
         self.walker
     }
 
-    pub const fn regions(&self) -> &Regions {
+    pub(crate) const fn regions(&self) -> &Regions {
         self.regions
     }
 
@@ -311,7 +311,7 @@ impl Clearance<'_> {
     }
 
     /// Whether a walker may stand in `cell`.
-    pub const fn open(&self, cell: usize) -> bool {
+    pub(crate) const fn open(&self, cell: usize) -> bool {
         self.words[cell / 64] & (1 << (cell % 64)) == 0
     }
 }

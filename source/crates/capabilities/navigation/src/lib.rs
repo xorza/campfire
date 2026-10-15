@@ -51,10 +51,15 @@ mod static_changes;
 mod static_tracking;
 mod steering;
 mod terrain;
+mod walk_check;
 mod walker;
 mod walking;
 mod wall;
 mod walls;
+
+use crate::pathing_grid::PathingGrid;
+use crate::route_planner::Walkable;
+use crate::terrain::Terrain;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
@@ -69,19 +74,17 @@ pub use crate::navigation_effect::NavigationEffect;
 pub use crate::on_path::OnPath;
 pub use crate::party::{Party, PartyKey, PartyOrder};
 pub use crate::path_walker::{PathEnd, PathWalker};
-pub use crate::pathing_grid::{Clearance, PathingGrid};
 pub use crate::paths::Paths;
 pub use crate::progress::Progress;
-pub use crate::regions::{Reach, Regions};
 pub use crate::room_making::{RoomMaking, RoomMakingRun};
 pub use crate::route::Route;
-pub use crate::route_planner::{RoutePlanner, Walkable, Window};
+pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
 pub use crate::static_bodies::StaticBodies;
 pub use crate::static_changes::StaticChanges;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
-pub use crate::terrain::Terrain;
+pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
 pub use crate::walking::Walking;
 pub use crate::wall::Wall;
@@ -294,12 +297,18 @@ pub mod internals {
     use crate::Navigation;
     pub use crate::broadphase::internals::scene;
     use crate::navigation_book::NavigationBook;
+    use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
     use crate::walker::Walker;
     use crate::wall::Wall;
     use crate::walls::Walls;
 
     impl Navigation {
+        /// Whether the pathing grid of `world` holds the cell at `cell` open to `walker`.
+        pub fn cell_open(world: &World, walker: Walker, cell: usize) -> bool {
+            world.resource::<PathingGrid>().clearance(walker).open(cell)
+        }
+
         /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
         pub fn load_open_pathing(
             world: &mut World,

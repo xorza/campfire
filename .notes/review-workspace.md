@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.
 
-- [ ] `mode/src/mode_map.rs:227-309`: navigation owns the map walk check, and its eight types go back to `pub(crate)`.
 - [ ] `production/src/construction/mod.rs:193,215`, `gather_loop/mod.rs:366`: `Site` and `StatusTags` come with the spawn.
 - [ ] `deliveries/src/delivery_spawner.rs:54-59`: a delivery spawns through the one core spawn of `units::Spawner`.
 - [ ] `progression/src/progression_effect.rs:60-75`, `experience.rs:20-30,83`: progression asks stats for a level change through a contract below both, as design 04 says (stats owns the level, progression decides when it changes). `TrackXp.level: Option<Level>` goes.

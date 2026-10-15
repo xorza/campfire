@@ -50,7 +50,7 @@ pub struct RoutePlanner {
 /// Where a route may go: the clearance of its walker with the static bodies it was marked from,
 /// and on a short route, its window and blockers, all of the walker's layer.
 #[derive(Debug, Clone, Copy)]
-pub struct Walkable<'a> {
+pub(crate) struct Walkable<'a> {
     pub(crate) clearance: Clearance<'a>,
     pub(crate) statics: &'a BodyIndex,
     pub(crate) short: Option<Short<'a>>,
@@ -65,7 +65,7 @@ pub(crate) struct Short<'a> {
 
 /// A square of cells, columns and rows from `low` to `high`, both in, `[column, row]` each.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Window {
+pub(crate) struct Window {
     low: [usize; 2],
     high: [usize; 2],
 }
@@ -106,7 +106,7 @@ impl Window {
         }
     }
 
-    pub const fn contains(&self, column: usize, row: usize) -> bool {
+    pub(crate) const fn contains(&self, column: usize, row: usize) -> bool {
         self.low[0] <= column && column <= self.high[0] && self.low[1] <= row && row <= self.high[1]
     }
 
@@ -123,7 +123,7 @@ impl Window {
 impl<'a> Walkable<'a> {
     /// What a route may cross, for any route: the cells of `clearance`, past the bodies of
     /// `statics`.
-    pub const fn of(clearance: Clearance<'a>, statics: &'a BodyIndex) -> Walkable<'a> {
+    pub(crate) const fn of(clearance: Clearance<'a>, statics: &'a BodyIndex) -> Walkable<'a> {
         Walkable {
             clearance,
             statics,
@@ -133,7 +133,7 @@ impl<'a> Walkable<'a> {
 
     /// Whether something blocks a walker along `segment`: a static body, a cell the walls block it
     /// from, or a short route's blocker.
-    pub fn blocks(&self, segment: Segment) -> bool {
+    pub(crate) fn blocks(&self, segment: Segment) -> bool {
         self.blocks_counting(segment, &mut 0)
     }
 
