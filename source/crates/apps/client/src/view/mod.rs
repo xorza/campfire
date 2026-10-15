@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::f32::consts::FRAC_PI_2;
 
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
-use bevy::asset::{Assets, Handle};
+use bevy::asset::{AssetServer, Assets, Handle};
 use bevy::camera::ClearColor;
 use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::Visibility;
@@ -45,7 +45,8 @@ use crate::view::glide::{Follows, Glide, Spot, TickClock};
 use crate::view::ground_heights::GroundHeights;
 use crate::view::look::{Condition, Look, Pose, Shape, ShapeKind};
 use crate::view::scene_lights::{SceneLights, Sun};
-use crate::view::unit_looks::UnitLooks;
+use crate::view::unit_looks::{ModelParts, UnitLooks};
+use crate::view::unit_models::Dressed;
 
 pub(crate) mod camera_rig;
 pub(crate) mod client_data;
@@ -108,7 +109,7 @@ struct Ringed {
 struct FitsModel;
 
 /// What the walk of a model drawing's tree reads of each node: its place in its parent, its
-/// children, the bounds of its mesh, and whether its look hides it.
+/// children, the bounds of its mesh, whether its look hides it, and whether it holds a mesh.
 type ModelNodes<'w, 's> = Query<
     'w,
     's,
@@ -117,8 +118,22 @@ type ModelNodes<'w, 's> = Query<
         Option<&'static Children>,
         Option<&'static Aabb>,
         Option<&'static Visibility>,
+        Has<Mesh3d>,
     ),
 >;
+
+/// What the fit of a model drawing reads of each model under its root: whether its scene is
+/// dressed, and its scene, whose load may fail.
+type DrawnModels<'w, 's> = Query<'w, 's, (Has<Dressed>, &'static WorldAssetRoot), With<ModelParts>>;
+
+/// What the fit of a model drawing finds: a model or a mesh still to come, the top of what it
+/// shows, or nothing shown, as of a model whose look hides it all or whose file does not load.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Fit {
+    Waits,
+    Top(f32),
+    Nothing,
+}
 
 /// On a drawing's root that turns as its unit faces: one of models, which turn whole; a figure
 /// leans by its own rotation, and turns none.
@@ -327,35 +342,50 @@ impl View {
             &units
         {
             let at = ground(pos, heights);
-            let models = looks
-                .as_deref()
-                .map_or(&[][..], |looks| looks.models(unit_type));
-            if !models.is_empty() {
-                let spot = Spot {
-                    point: at,
-                    yaw: yaw(facing),
-                };
-                let root = commands
-                    .spawn((
+            match looks.as_deref().and_then(|looks| looks.look(unit_type)) {
+                // A look of no models draws nothing: its drawing has no shape to point at, ring
+                // or gauge, only the place its unit stands.
+                Some([]) => {
+                    let spot = Spot {
+                        point: at,
+                        yaw: 0.0,
+                    };
+                    commands.spawn((
                         DrawingOf(unit),
-                        Turns,
-                        Transform::from_translation(at)
-                            .with_rotation(Quat::from_rotation_y(spot.yaw)),
+                        Transform::from_translation(at),
                         Visibility::default(),
                         Glide::rest(spot, Follows::of(received), time.elapsed()),
-                        Shape::of(ShapeKind::of(avatar, walks), body),
-                        FitsModel,
-                    ))
-                    .id();
-                for model in models {
-                    commands.spawn((
-                        WorldAssetRoot(model.scene.clone()),
-                        model.parts.clone(),
-                        Transform::from_scale(Vec3::splat(model.scale)),
-                        ChildOf(root),
                     ));
+                    continue;
                 }
-                continue;
+                Some(models) => {
+                    let spot = Spot {
+                        point: at,
+                        yaw: yaw(facing),
+                    };
+                    let root = commands
+                        .spawn((
+                            DrawingOf(unit),
+                            Turns,
+                            Transform::from_translation(at)
+                                .with_rotation(Quat::from_rotation_y(spot.yaw)),
+                            Visibility::default(),
+                            Glide::rest(spot, Follows::of(received), time.elapsed()),
+                            Shape::of(ShapeKind::of(avatar, walks), body),
+                            FitsModel,
+                        ))
+                        .id();
+                    for model in models {
+                        commands.spawn((
+                            WorldAssetRoot(model.scene.clone()),
+                            model.parts.clone(),
+                            Transform::from_scale(Vec3::splat(model.scale)),
+                            ChildOf(root),
+                        ));
+                    }
+                    continue;
+                }
+                None => {}
             }
             let shape = Shape::of(ShapeKind::of(avatar, walks), body);
             let mesh = match shape.footing {
@@ -487,42 +517,70 @@ impl View {
         }
     }
 
-    /// Gives each model drawing's shape the height of its models' top over its root, once their
-    /// meshes have their bounds: a model is as tall as it is drawn, whatever its unit's kind. A
-    /// node its look hides counts for nothing, nor do the nodes under it.
+    /// Gives each model drawing's shape the height of its models' top over its root, once each
+    /// of its models is dressed or failed to load, and each mesh it shows has its bounds: a model
+    /// is as tall as it is drawn, whatever its unit's kind. A drawing that shows nothing keeps its
+    /// shape's height, and its fit ends all the same, so no drawing is walked again.
     fn fit_models(
         mut roots: Query<'_, '_, (Entity, &mut Shape), With<FitsModel>>,
-        nodes: ModelNodes<'_, '_>,
+        (models, nodes): (DrawnModels<'_, '_>, ModelNodes<'_, '_>),
+        assets: Res<'_, AssetServer>,
         mut walk: Local<'_, Vec<(Entity, Affine3A)>>,
         mut commands: Commands<'_, '_>,
     ) {
         for (root, mut shape) in &mut roots {
-            walk.clear();
-            if let Ok((_, Some(children), ..)) = nodes.get(root) {
-                walk.extend(children.iter().map(|&child| (child, Affine3A::IDENTITY)));
+            match View::fit(root, (&models, &nodes), &assets, &mut walk) {
+                Fit::Waits => continue,
+                Fit::Top(top) => shape.height = top.max(0.0),
+                Fit::Nothing => {}
             }
-            let mut top = None::<f32>;
-            while let Some((node, parent)) = walk.pop() {
-                let Ok((transform, children, bounds, visibility)) = nodes.get(node) else {
+            commands.entity(root).remove::<FitsModel>();
+        }
+    }
+
+    /// The fit of the drawing at `root`, its models' trees walked through `walk`: a node its look
+    /// hides counts for nothing, nor do the nodes under it.
+    fn fit(
+        root: Entity,
+        (models, nodes): (&DrawnModels<'_, '_>, &ModelNodes<'_, '_>),
+        assets: &AssetServer,
+        walk: &mut Vec<(Entity, Affine3A)>,
+    ) -> Fit {
+        walk.clear();
+        if let Ok((_, Some(children), ..)) = nodes.get(root) {
+            for &child in children {
+                let Ok((dressed, scene)) = models.get(child) else {
                     continue;
                 };
-                if visibility == Some(&Visibility::Hidden) {
-                    continue;
+                if dressed {
+                    walk.push((child, Affine3A::IDENTITY));
+                } else if !assets.load_state(&scene.0).is_failed() {
+                    return Fit::Waits;
                 }
-                let at = parent * transform.compute_affine();
-                if let Some(bounds) = bounds {
+            }
+        }
+        let mut top = None::<f32>;
+        while let Some((node, parent)) = walk.pop() {
+            let Ok((transform, children, bounds, visibility, mesh)) = nodes.get(node) else {
+                continue;
+            };
+            if visibility == Some(&Visibility::Hidden) {
+                continue;
+            }
+            let at = parent * transform.compute_affine();
+            match bounds {
+                Some(bounds) => {
                     let reach = View::bounds_top(at, bounds);
                     top = Some(top.map_or(reach, |top| top.max(reach)));
                 }
-                if let Some(children) = children {
-                    walk.extend(children.iter().map(|&child| (child, at)));
-                }
+                None if mesh => return Fit::Waits,
+                None => {}
             }
-            if let Some(top) = top {
-                shape.height = top.max(0.0);
-                commands.entity(root).remove::<FitsModel>();
+            if let Some(children) = children {
+                walk.extend(children.iter().map(|&child| (child, at)));
             }
         }
+        top.map_or(Fit::Nothing, Fit::Top)
     }
 
     /// The highest point of `bounds` placed by `at`, exactly: the height of its center, and each

@@ -42,6 +42,10 @@ pub(crate) struct UnitModels;
 #[derive(Component, Debug)]
 pub(crate) struct StillObject;
 
+/// On a model whose scene spawned and was dressed, so its nodes show as its look says.
+#[derive(Component, Debug)]
+pub(crate) struct Dressed;
+
 /// The material of each material file once a primitive takes it, by its name, each by its
 /// package's place.
 #[derive(Resource, Debug, Default)]
@@ -117,7 +121,7 @@ impl UnitModels {
         Transform::from_xyz(x, y, z).with_rotation(turn)
     }
 
-    /// Dresses the model whose scene spawned, as its dressing says.
+    /// Dresses the model whose scene spawned, as its dressing says, and marks it dressed.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -149,6 +153,7 @@ impl UnitModels {
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
+        commands.entity(ready.entity).insert(Dressed);
         let made = made.made.entry(parts.package).or_default();
         for (node, name) in filed {
             let handle = if let Some(handle) = made.get(name) {

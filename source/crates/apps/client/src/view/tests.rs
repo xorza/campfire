@@ -1,6 +1,7 @@
+use std::sync::Arc;
 use std::time::Duration;
 
-use bevy::asset::{AssetApp, AssetPlugin, AssetServer};
+use bevy::asset::{AssetApp, AssetPlugin};
 use bevy::ecs::system::RunSystemOnce;
 use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
@@ -15,7 +16,6 @@ use campfire_units::{TypeOrigin, TypeOriginBook};
 use campfire_values::{DeclaredName, PackageIndex, PackagePath};
 
 use super::*;
-use crate::view::unit_looks::ModelParts;
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
 /// units take the figure of their team.
@@ -249,30 +249,38 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     }]);
     let data = ClientData {
         units: vec![ClientUnits {
-            units: [(DeclaredName::new("tank").unwrap(), tank)]
-                .into_iter()
-                .collect(),
+            units: [
+                (DeclaredName::new("tank").unwrap(), tank),
+                (
+                    DeclaredName::new("sound").unwrap(),
+                    ClientUnit::new(Vec::new()),
+                ),
+            ]
+            .into_iter()
+            .collect(),
             ..ClientUnits::default()
         }],
         heights: Some(GroundHeights::of(grid, None)),
         ..ClientData::default()
     };
-    let origins: TypeOriginBook = [TypeOrigin {
-        package: PackageIndex::MODE,
-        name: "tank".into(),
-    }]
-    .into_iter()
-    .collect();
+    let origins: TypeOriginBook = ["tank", "sound"]
+        .map(|name| TypeOrigin {
+            package: PackageIndex::MODE,
+            name: name.into(),
+        })
+        .into_iter()
+        .collect();
     let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
     app.insert_resource(looks);
     app.insert_resource(data);
-    let (unit_type, _) = origins.iter().next().unwrap();
-    // The tank stands 2 m above the ground at (3, 0), turned 90°.
+    let [(unit_type, _), (sound_type, _)] = [0, 1].map(|at| origins.iter().nth(at).unwrap());
+    // The tank stands 2 m above the ground at (3, 0), turned 90°; a sound beside it.
     let pos = Position::from((3, 2, 0));
+    let mut ids = IdAllocator::default();
     let unit = app
         .world_mut()
         .spawn((
-            IdAllocator::default().allocate(),
+            ids.allocate(),
             BodyUnit,
             pos,
             Team::new(0),
@@ -280,8 +288,24 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             Facing::of(Num::int(90)),
         ))
         .id();
+    let sound = app
+        .world_mut()
+        .spawn((
+            ids.allocate(),
+            BodyUnit,
+            Position::from((5, 0, 0)),
+            Team::new(0),
+            sound_type,
+        ))
+        .id();
     app.update();
     let world = app.world();
+    // The sound's look has no models: its drawing stands where it does, of no shape, figure or
+    // model, so nothing draws it and nothing points at it.
+    let (quiet, _, at) = root(world, sound);
+    assert_eq!(at, Vec3::new(5.0, 4.0, 0.0));
+    assert!(world.get::<Shape>(quiet).is_none() && world.get::<Look>(quiet).is_none());
+    assert!(world.get::<Children>(quiet).is_none());
     // Its root stands at the ground's 4 m and its own 2 m, turned a quarter about y, with its
     // shape and no figure, and turns as its unit faces; its one child is its model, at its scale
     // of 1.25, with the node its look hides.
@@ -307,39 +331,20 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     assert_eq!(transform.rotation, Quat::IDENTITY);
     assert_eq!(transform.scale, Vec3::splat(1.25));
 
-    // Until its meshes have their bounds, it is as tall as a structure, of no walk and no avatar.
-    let model = children[0];
-    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.8);
-    // Its scene spawns: a hull 1 m up whose bounds reach 0.5 + 1.5 m over their center, 3 m in
-    // the model's space; on the hull, a barrel turned a quarter about z, whose 4 m along x then
-    // rise, 1 + 4 = 5 m; and a flash its look hides, higher still. At its scale of 1.25, the tank
-    // stands 6.25 m tall.
-    let bounds = |center: [f32; 3], half: [f32; 3]| Aabb {
-        center: Vec3A::from_array(center),
-        half_extents: Vec3A::from_array(half),
-    };
-    let world = app.world_mut();
-    let hull = world
-        .spawn((
-            Transform::from_xyz(0.0, 1.0, 0.0),
-            bounds([0.0, 0.5, 0.0], [1.0, 1.5, 1.0]),
-            ChildOf(model),
-        ))
-        .id();
-    world.spawn((
-        Transform::from_rotation(Quat::from_rotation_z(FRAC_PI_2)),
-        bounds([0.0; 3], [4.0, 0.1, 0.1]),
-        ChildOf(hull),
-    ));
-    world.spawn((
-        Transform::from_xyz(0.0, 10.0, 0.0),
-        bounds([0.0; 3], [1.0; 3]),
-        Visibility::Hidden,
-        ChildOf(model),
-    ));
+    // Its file is in no package this view holds, so its scene's load fails: the drawing keeps
+    // the height of a structure, of no walk and no avatar, and is fitted no more.
+    let scene = model.get::<WorldAssetRoot>().unwrap().0.clone();
+    let server = world.resource::<AssetServer>().clone();
+    for _ in 0..10_000 {
+        if server.load_state(&scene).is_failed() {
+            break;
+        }
+        app.update();
+    }
     app.update();
-    let shape = app.world().get::<Shape>(root).unwrap();
-    assert!((shape.height - 6.25).abs() < 1e-5, "{}", shape.height);
+    let world = app.world();
+    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.8);
+    assert!(!world.entity(root).contains::<FitsModel>());
 }
 
 #[test]
@@ -448,44 +453,102 @@ fn a_model_drawing_stands_as_tall_as_the_top_of_its_shown_bounds() {
     let wide = bounds(Vec3::new(2.0, 5.0, 0.0), Vec3::new(3.0, 1.0, 1.0));
     assert_eq!(View::bounds_top(turned, &wide), 6.0);
 
-    // A root 2 m tall, its model 1 m up and twice as tall: its mesh, of y from 0 to 1, reaches
-    // 1 + 2 · 1 = 3 m; its child 1 m above it in its frame, 1 + 2 · 1 = 3 m, of half extent
-    // 0.25, reaches 3 + 2 · 0.25 = 3.5 m. A hidden node 10 m tall counts for nothing, nor does
-    // its child.
-    let mut world = World::new();
+    // A model whose file does not load: its scene's load fails.
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut app = view();
+    app.init_asset::<WorldAsset>();
+    let server = app.world().resource::<AssetServer>().clone();
+    let lost: Handle<WorldAsset> = server.load("lost.glb#Scene0");
+    for _ in 0..10_000 {
+        if server.load_state(&lost).is_failed() {
+            break;
+        }
+        app.update();
+    }
+    assert!(server.load_state(&lost).is_failed());
+    let world = app.world_mut();
     let shape = Shape {
         radius: 0.5,
         height: 2.0,
         footing: Footing::Circle(0.5),
     };
-    let root = world.spawn((shape, FitsModel, Transform::default())).id();
+    let mut drawing = || world.spawn((shape, FitsModel, Transform::default())).id();
+    let [tall, waiting, unbounded, hidden, failed] = [(); 5].map(|()| drawing());
+    // A root 2 m tall, its model 1 m up and twice as tall: its mesh, of y from 0 to 1, reaches
+    // 1 + 2 · 1 = 3 m; its child 1 m above it in its frame, 1 + 2 · 1 = 3 m, of half extent
+    // 0.25, reaches 3 + 2 · 0.25 = 3.5 m. A hidden node 10 m tall counts for nothing, nor does
+    // its child, nor a node of the root that is no model, as a selection's ring.
     let doubled = Transform::from_xyz(0.0, 1.0, 0.0).with_scale(Vec3::new(1.0, 2.0, 1.0));
-    let model = world
-        .spawn((
-            doubled,
-            bounds(Vec3::Y * 0.5, Vec3::splat(0.5)),
-            ChildOf(root),
-        ))
-        .id();
+    let model = drawn_model(world, tall, Handle::default(), true, doubled);
+    world
+        .entity_mut(model)
+        .insert(bounds(Vec3::Y * 0.5, Vec3::splat(0.5)));
     let small = bounds(Vec3::ZERO, Vec3::splat(0.25));
     world.spawn((Transform::from_xyz(0.0, 1.0, 0.0), small, ChildOf(model)));
-    let tall = bounds(Vec3::ZERO, Vec3::splat(10.0));
-    let hidden = world
+    let ten = bounds(Vec3::ZERO, Vec3::splat(10.0));
+    let shut = world
         .spawn((
             Transform::default(),
-            tall,
+            ten,
             Visibility::Hidden,
-            ChildOf(root),
+            ChildOf(model),
         ))
         .id();
-    world.spawn((Transform::default(), tall, ChildOf(hidden)));
-    // A root whose models have no bounds yet keeps its height, and waits.
-    let waiting = world.spawn((shape, FitsModel, Transform::default())).id();
-    world.spawn((Transform::default(), ChildOf(waiting)));
+    world.spawn((Transform::default(), ten, ChildOf(shut)));
+    world.spawn((Transform::default(), ten, ChildOf(tall)));
+    // A model whose scene has not spawned waits; so does one whose shown mesh has no bounds yet.
+    drawn_model(
+        world,
+        waiting,
+        Handle::default(),
+        false,
+        Transform::default(),
+    );
+    let model = drawn_model(
+        world,
+        unbounded,
+        Handle::default(),
+        true,
+        Transform::default(),
+    );
+    world.spawn((Transform::default(), Mesh3d::default(), ChildOf(model)));
+    // A model whose look hides its every mesh, and one whose file does not load, show nothing:
+    // their drawings keep their heights, and are walked no more.
+    let model = drawn_model(world, hidden, Handle::default(), true, Transform::default());
+    let shut_mesh = (Transform::default(), Mesh3d::default(), Visibility::Hidden);
+    world.spawn((shut_mesh, ChildOf(model)));
+    drawn_model(world, failed, lost, false, Transform::default());
     world.run_system_once(View::fit_models).unwrap();
     world.flush();
-    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.5);
-    assert!(!world.entity(root).contains::<FitsModel>());
-    assert_eq!(world.get::<Shape>(waiting).unwrap().height, 2.0);
-    assert!(world.entity(waiting).contains::<FitsModel>());
+    let fitted = |root: Entity| {
+        let at = world.entity(root);
+        (
+            at.get::<Shape>().unwrap().height,
+            at.contains::<FitsModel>(),
+        )
+    };
+    assert_eq!(fitted(tall), (3.5, false));
+    assert_eq!(fitted(waiting), (2.0, true));
+    assert_eq!(fitted(unbounded), (2.0, true));
+    assert_eq!(fitted(hidden), (2.0, false));
+    assert_eq!(fitted(failed), (2.0, false));
+}
+
+/// A model of `scene` under the drawing `root`, placed by `transform`, dressed or not.
+fn drawn_model(
+    world: &mut World,
+    root: Entity,
+    scene: Handle<WorldAsset>,
+    dressed: bool,
+    transform: Transform,
+) -> Entity {
+    let parts = ModelParts {
+        package: PackageIndex::MODE,
+        hide: Arc::<[String]>::from([]),
+    };
+    let mut model = world.spawn((WorldAssetRoot(scene), parts, transform, ChildOf(root)));
+    if dressed {
+        model.insert(Dressed);
+    }
+    model.id()
 }

@@ -6,7 +6,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 **Slice 6, the issue log's ready items.** The user right-clicks the shrine with a hero and the hero uses it, and opens a night map and a snowy map of Zero Hour and sees their night and snow models; the file index reads through the codec.
 
-**Before slice 7, the issue log's fixes.** The user opens Tournament Desert and sees no capsule where the original draws nothing, and its untextured triangles as the original draws them; a model with nothing to fit stops being walked each frame; a blessing run writes each golden once; the engine spells `center` one way.
+**Before slice 7, the issue log's fixes.** The user opens Tournament Desert and sees no capsule where the original draws nothing, and its untextured triangles as the original draws them; the engine spells `center` one way.
 
 **Slice 7, Zero Hour production.** The user starts Tournament Desert in the client with the skirmish's starting money, the command center trains a dozer, the dozer builds a barracks at a point the user chooses, and the barracks trains a ranger; each pays its cost and takes its build time. The design is [Zero Hour production](docs/design/18-zero-hour-production.md); the facts are [Zero Hour research](docs/research/zero-hour.md#production). The Zero Hour check plays the three, and the client's panel orders them.
 
@@ -20,27 +20,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.
 
-## 2. The issue log's fixes
-
-`client`: `view`; `harness`: `golden`, `match_record`; `import`: `zero_hour`. It stands before production, which the user plays in the same client.
-
-### I1. A model drawing stops fitting a model that gives no bounds
-
-(`client`: `view`; the issue log's Client item.) `View::fit_models` keeps `FitsModel` while a model's meshes wait for their bounds, and ends the fit, keeping the shape's height, once the model's scene has spawned and no node it leaves shown holds a mesh, or once the model's file fails to load. Check: a fixture model whose look hides every node, and one whose file does not load, lose `FitsModel` at the first run past their load; one whose meshes wait for bounds keeps it.
-
-### I2. One test writes each golden
-
-(`harness`: `golden`, `match_record`; `runner/proving_match.rs`; the issue log's Harness item.) `MatchRecord` gains a comparison with a golden that never writes it, and the reverse query order test compares with `golden/proving.txt` by it, so under `--bless` only the proving match writes the file. Check: under `CAMPFIRE_BLESS=1`, the comparison leaves a fixture golden as it was, and fails when it differs.
-
-### I3. An untextured triangle samples the null vector
-
-(`import`: `zero_hour::model_import`; design 12's Models; the issue log's Zero Hour item of no texture.) A triangle of no texture, under a shader that textures, takes its texture's color and alpha as 0, as native Direct3D samples a stage of no texture, so its material is what its shader makes of the null vector: a lit shader's modulation black, of alpha 0, which an opaque shader draws black, an alpha test discards, and a blend by alpha draws as nothing. Design 12 and the research name the rule. Check: a fixture mesh's untextured triangle under an opaque lit shader, an alpha test and a blend gives the material computed by hand for each.
-
-### I4. An object that draws nothing has an empty look
-
-(`import`: `zero_hour`; `client`: `view`; design 12's Units; the issue log's Zero Hour item of objects that draw nothing.) An object whose draw modules name no model, as a `W3DDefaultDraw` of none, gets a look of no models in `client/units.toml`; one whose model the package lacks keeps none, so it shows as the engine's shape and the import reports the model. The client draws nothing for a unit of a look of no models, and the engine's shape for a type of no look. Check: the fixture's sound object has an empty look; the client spawns no drawing for a unit of an empty look and a capsule for one of no look; the Zero Hour check pins the count of empty looks.
-
-## 3. One spelling of `center`
+## 2. One spelling of `center`
 
 Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the fixes.
 
@@ -48,9 +28,9 @@ Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the f
 
 (Every crate's names and comments, and the documents; the issue log's Geometry item.) Each `centre` of the engine's names, comments and documents becomes `center`, Bevy's spelling, so one word has one spelling. Check: no `centre` is left outside quoted sources, and the goldens do not move.
 
-## 4. Production's start and exit
+## 3. Production's start and exit
 
-`production`; `docs/design/04-capabilities/production.md`. It stands before batch 5, as the import writes what it adds.
+`production`; `docs/design/04-capabilities/production.md`. It stands before batch 4, as the import writes what it adds.
 
 ### P1. A build may start as it is ordered
 
@@ -60,7 +40,7 @@ Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the f
 
 (`production`: `production_data`, `trains`; design 18, D2.) `production` gains `exit` and `rally`, `[x, z]` in the producer's frame, turned with it. A trained unit spawns at the free cell nearest the exit point; with no rally point set it walks to the default one. [Train queues](docs/design/04-capabilities/production.md#train-queues) and its Data gain the rule. Check: a producer turned 90° spawns its unit at the cell nearest its turned exit, computed by hand, which walks to the turned default rally point, and to the player's rally point once one is set; a producer of neither is unchanged.
 
-## 5. Zero Hour's trains and builds
+## 4. Zero Hour's trains and builds
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`; `actions`'s load. It needs P1 and P2.
 
@@ -76,7 +56,7 @@ Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the f
 
 (`checks/zero-hour-check`; design 18's checks.) The check pins the counts of trains, builds and dropped buttons by cause, and plays on Tournament Desert the command center's dozer, the dozer's barracks and the barracks' ranger, each paid from 10,000 and done in its ticks. Check: `./drive.py zero-hour` passes.
 
-## 6. The command panel
+## 5. The command panel
 
 `client`: a new `command_panel`, `orders`, `pointer`, `view`. It needs P4 to be played.
 

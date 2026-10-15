@@ -38,7 +38,8 @@ pub(crate) enum Failure {
     /// A map of the import does not load in the imported mode.
     #[display("map {map} does not load: {}", ErrorReport::of(error))]
     MapLoad { map: MapName, error: LoadError },
-    /// The import's looks of night and snow, and its maps of each, differ from the pinned.
+    /// The import's looks of night and snow, its empty looks, and its maps of night and snow differ
+    /// from the pinned.
     #[display("it has {_0}, not {LOOKS}")]
     Looks(LookCounts),
     /// Tournament Desert lacks a start of player 1 or 2.
@@ -69,11 +70,13 @@ pub(crate) enum Failure {
     DriveTicks(u64),
 }
 
-/// How many looks have night or snow variants, and how many maps are night maps and snowy maps.
+/// How many looks have night or snow variants, how many have no models, and how many maps are
+/// night maps and snowy maps.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[display("{varied} varied looks, {night} night maps and {snowy} snowy maps")]
+#[display("{varied} varied looks, {empty} empty looks, {night} night maps and {snowy} snowy maps")]
 pub(crate) struct LookCounts {
     pub(crate) varied: usize,
+    pub(crate) empty: usize,
     pub(crate) night: usize,
     pub(crate) snowy: usize,
 }

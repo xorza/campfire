@@ -42,6 +42,12 @@ impl<'p> MatchRecord<'p> {
         self.golden.check(name);
     }
 
+    /// Compares the golden record of the ticks recorded with the one pinned as `name`, which
+    /// another test of the same match writes; it never writes the file.
+    pub fn compare(&self, name: &str) {
+        self.golden.compare(name);
+    }
+
     /// Asserts that `log`, the match's published log, replays from its file, checkpoints and
     /// result included, to the hash of every tick recorded, and ends where the match ended.
     pub fn assert_replays(&self, log: &SessionLog) {

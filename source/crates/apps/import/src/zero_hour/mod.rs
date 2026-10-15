@@ -27,7 +27,7 @@ use crate::zero_hour::look_conditions::LookConditions;
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
-use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
+use crate::zero_hour::model_writer::{ModelReport, ModelWriter, WrittenModel};
 use crate::zero_hour::object_ini::{DrawKind, DrawnState, ObjectIni, PlacedAs, StateLook};
 use crate::zero_hour::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::rules_package::{MODE_TEXT, RULES_FILES};
@@ -246,7 +246,9 @@ impl<'a> ZeroHour<'a> {
 
     /// Writes `client/units.toml` of `ini`'s objects, through `models`, and gives it: each
     /// object's look, its models, each at its object's asset scale, with the nodes its default
-    /// look hides; and the look of each object that maps place as client objects, as the client's
+    /// look hides, a look of no models for an object whose draw modules name none, as it draws
+    /// nothing, and no look for one whose models the package lacks, which the client shows as
+    /// the engine's shape; and the look of each object that maps place as client objects, as the client's
     /// tree or prop buffer draws it (design 12, D14): a tree's models of its tree draw modules, a
     /// prop's of its first draw module, when the `W3DModelDraw` family's, each created by its
     /// name, so only the meshes hidden by their own flag are hidden.
@@ -262,10 +264,9 @@ impl<'a> ZeroHour<'a> {
             let draws = object.draws();
             // A unit draws each module's best state, as its drawable does.
             let unit = |conditions| draws.iter().map(move |draw| draw.drawn(conditions));
-            let unit_look = ZeroHour::look(unit, scale, models)?;
-            if unit_look.models.is_empty() {
+            let Some(unit_look) = ZeroHour::look(unit, scale, models)? else {
                 continue;
-            }
+            };
             let unit_type = names.take(object)?;
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
@@ -287,8 +288,9 @@ impl<'a> ZeroHour<'a> {
                     .into_iter()
                     .collect(),
             };
-            let object_look = ZeroHour::look(drawn, scale, models)?;
-            if !object_look.models.is_empty() {
+            if let Some(object_look) = ZeroHour::look(drawn, scale, models)?
+                && !object_look.models.is_empty()
+            {
                 units.objects.insert(unit_type.declared(), object_look);
             }
             units.units.insert(unit_type.declared(), unit_look);
@@ -300,56 +302,77 @@ impl<'a> ZeroHour<'a> {
 
     /// The look of what `drawn` draws on a map of each conditions, at `scale`: its models on a
     /// map of none, and, when a night map, a snowy map or both draw other models, a variant for
-    /// each of the three, so the client's best match finds each one's own.
+    /// each of the three, so the client's best match finds each one's own. A look that draws
+    /// nothing is empty when no model it names draws anything, and none when the package lacks
+    /// one, so the client shows its loss.
     fn look<'d, I, W>(
         drawn: impl Fn(LookConditions) -> I,
         scale: ModelScale,
         models: &mut ModelWriter<'_, W>,
-    ) -> Result<ClientUnit, ZeroHourError>
+    ) -> Result<Option<ClientUnit>, ZeroHourError>
     where
         I: IntoIterator<Item = DrawnState<'d>>,
         W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>,
     {
         let own = ZeroHour::models(drawn(LookConditions::default()), scale, models)?;
+        let mut skipped = own.skipped;
         let mut variants = Vec::new();
         for conditions in LookConditions::VARIANTS {
+            let looked = ZeroHour::models(drawn(conditions), scale, models)?;
+            skipped |= looked.skipped;
             variants.push(LookVariant {
                 conditions: conditions.names(),
-                models: ZeroHour::models(drawn(conditions), scale, models)?,
+                models: looked.models,
             });
         }
-        if variants.iter().all(|variant| variant.models == own) {
+        if variants.iter().all(|variant| variant.models == own.models) {
             variants.clear();
         }
-        Ok(ClientUnit {
-            models: own,
+        if skipped && own.models.is_empty() && variants.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(ClientUnit {
+            models: own.models,
             variants,
-        })
+        }))
     }
 
     /// The models of `drawn`, each with the look whose hidden nodes it hides, at `scale`, of those
-    /// that draw one the package holds.
+    /// that draw one the package holds, and whether the package lacks one it names.
     fn models<'d, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>>(
         drawn: impl IntoIterator<Item = DrawnState<'d>>,
         scale: ModelScale,
         models: &mut ModelWriter<'_, W>,
-    ) -> Result<Vec<ClientModel>, ZeroHourError> {
-        let mut entries = Vec::new();
+    ) -> Result<LookModels, ZeroHourError> {
+        let mut looked = LookModels {
+            models: Vec::new(),
+            skipped: false,
+        };
         for DrawnState { model, look } in drawn {
             let Some(model) = model else {
                 continue;
             };
             let name = model.to_ascii_lowercase();
-            if let Some(parts) = models.parts(&name)? {
-                entries.push(ClientModel {
+            match models.model(&name)? {
+                WrittenModel::Parts(parts) => looked.models.push(ClientModel {
                     model: model_writer::path(&name),
                     scale,
                     hide: parts.hidden(look),
-                });
+                }),
+                WrittenModel::Nothing => {}
+                WrittenModel::Skipped => looked.skipped = true,
             }
         }
-        Ok(entries)
+        Ok(looked)
     }
+}
+
+/// The models a look draws on a map of some conditions, and whether the package lacks a model
+/// it names.
+#[derive(Debug)]
+struct LookModels {
+    models: Vec<ClientModel>,
+    skipped: bool,
 }
 
 impl ZeroHour<'_> {
@@ -763,14 +786,24 @@ mod tests {
         // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
         // look as a unit of both its models, and as the client's of its tree draw module's; the
         // fluff's as a unit of its hidden turret, with the flash below it, and as the client's of
-        // none.
+        // none. An object of no draw module, of a model of `NONE`, of `NULL` or of a box draws
+        // nothing, so its look is empty; one of a model the package lacks has none.
         let rock = || unit(vec![scaled("rock01", 1.5, &[])]);
+        let empty = || unit(Vec::new());
         let expected = ClientUnits {
             units: looks(vec![
+                ("americacommandcenter", empty()),
+                ("americatankcrusader", empty()),
+                ("americavehicledozer", empty()),
                 ("bush", unit(hidden())),
+                ("crate", empty()),
+                ("fortresswall", empty()),
+                ("marker", empty()),
                 ("oak", unit(vec![model("tank", &[]), model("rock01", &[])])),
                 ("rock", rock()),
                 ("rockred", rock()),
+                ("rocks1", empty()),
+                ("stump", empty()),
                 ("tank", tank()),
                 ("tankcamo", tank()),
                 ("tankred", unit(vec![model("tank", &[])])),

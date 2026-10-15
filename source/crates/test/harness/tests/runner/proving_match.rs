@@ -371,7 +371,7 @@ fn the_proving_match_plays_alike_in_reverse_query_order_and_with_stage_probes() 
         proving.play_tick(&mut fixed, tick);
         record.tick(fixed.game_mut());
     }
-    record.check("proving");
+    record.compare("proving");
 }
 
 /// A snapshot of the proving match restores into a match built from its packages, to the same
