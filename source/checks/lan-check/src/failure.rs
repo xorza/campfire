@@ -1,8 +1,8 @@
+use campfire_codec::JsonValue;
 use campfire_common::{PlayerSlot, StateHash, Tick};
 use campfire_log::LogLevel;
 use campfire_net::LinkLossCause;
 use derive_more::Display;
-use serde_json::Value;
 
 use crate::process::Process;
 use crate::process_outcome::ProcessOutcome;
@@ -29,7 +29,7 @@ pub(crate) enum Failure {
         process: Process,
         level: LogLevel,
         target: String,
-        fields: Value,
+        fields: JsonValue,
     },
     /// The server never said it listens.
     #[display("the server never listened")]

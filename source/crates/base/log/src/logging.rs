@@ -168,8 +168,6 @@ impl ChosenFilter {
 mod tests {
     use std::env::VarError;
 
-    use serde_json::Value;
-
     use super::*;
     use crate::json_layer::internals::capture;
     use crate::log_line::{LogLevel, LogLine};
@@ -251,10 +249,10 @@ mod tests {
         let clap_error = Line::try_parse_from::<Vec<OsString>, _>(line(&["300"])).unwrap_err();
         assert_eq!(logged.level, LogLevel::Error);
         assert_eq!(
-            (&logged.fields["message"], &logged.fields["error"]),
+            (logged.fields.text("message"), logged.fields.text("error")),
             (
-                &Value::from("the command line is refused"),
-                &Value::from(clap_error.to_string())
+                Some("the command line is refused"),
+                Some(clap_error.to_string().as_str())
             )
         );
     }

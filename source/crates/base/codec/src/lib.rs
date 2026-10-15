@@ -16,11 +16,13 @@ mod compare;
 mod drop_option;
 mod error;
 mod json;
+mod json_value;
 mod sink;
 mod toml;
 
 pub use crate::binary::{Binary, Taken};
 pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
 pub use crate::json::Json;
+pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;

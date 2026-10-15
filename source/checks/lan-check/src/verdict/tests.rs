@@ -3,9 +3,9 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
+use campfire_codec::Json;
 use campfire_common::{StateHash, TlsKey};
 use campfire_protocol::SessionId;
-use serde_json::json;
 
 use super::*;
 
@@ -272,7 +272,7 @@ fn the_impostor_and_each_process_fail_by_their_own_flaws() {
                 process: Process::Server,
                 level: LogLevel::Warn,
                 target: "campfire_net::lobby".to_owned(),
-                fields: json!({"message": "refused a join"}),
+                fields: Json::parse(r#"{"message":"refused a join"}"#).unwrap(),
             },
         ]
     );

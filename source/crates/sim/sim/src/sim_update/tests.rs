@@ -530,7 +530,7 @@ fn a_warning_of_bevy_fails_the_log_check() {
         (
             line.level,
             line.target.as_str(),
-            line.fields["message"].as_str()
+            line.fields.text("message")
         ),
         (
             LogLevel::Warn,
