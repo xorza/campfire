@@ -1575,7 +1575,7 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(Abilities::failed_calls(&game), []);
     // The sequence of `script.draw` for each caster in this tick, opened as the world opens it.
     let opener = game.resource::<SimRng>().opener();
-    let sequence = |caster: StableId| opener.open(RngStream::new("script.draw"), caster.get());
+    let sequence = |caster: StableId| opener.open(RngStream::new("script.draw"), caster);
     let damage = |mut rng: Rng| {
         let tens = i64::try_from(rng.pick(9)).unwrap() + 1;
         let ones = i64::try_from(rng.pick(9)).unwrap() + 1;

@@ -106,7 +106,6 @@ Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry
 
 Files: `sim/sim/src/{sim_world,state_registry/mod}.rs`, `test/harness/tests/runner/resume.rs`, `capabilities/combat/src/{dying,attacks}.rs`, `capabilities/core/declare/src/declare/{install_cx,role}.rs`, every module's `install`, `capabilities/abilities/src/lib.rs`, `capabilities/items/src/lib.rs`, `capabilities/vision/src/lib.rs`, `sim/sim/src/{capability,sim_rng}.rs`, `capabilities/src/release/*`, `capabilities/core/script/src/scripts/script_call.rs`, `capabilities/production/src/{trains,lib,production_orders}.rs`, `docs/design/14-replication-audiences.md`. Goldens: they move for the RNG key, and maybe for the order of deaths.
 
-- [ ] `sim/sim/src/sim_rng.rs:89`: `RngOpener::open` takes a `StableId`, and mode draws are keyed by `StableId::MATCH` (`script_call.rs:64-65`).
 - [ ] D2: the costs, refunds and despawns of `production/src/trains.rs:170-174`, `production/src/lib.rs:206,216-222` and `production_orders.rs:113` install through `server`, and design 14 D12 names them.
 
 ### Batch 3. Package crates (D3, D4)

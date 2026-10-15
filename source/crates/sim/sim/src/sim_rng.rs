@@ -85,9 +85,9 @@ impl SimRng {
 }
 
 impl RngOpener {
-    /// The sequence of `stream` for `entity` in its tick.
-    pub fn open(&self, stream: RngStream, entity: u64) -> Rng {
-        Rng::new(&self.seed, stream, entity, self.tick)
+    /// The sequence of `stream` for `entity` in its tick, as `SimRng::open` opens it.
+    pub fn open(&self, stream: RngStream, entity: StableId) -> Rng {
+        Rng::new(&self.seed, stream, entity.get(), self.tick)
     }
 }
 
@@ -123,11 +123,21 @@ mod tests {
         // An opener opens the same sequences away from the match, and two starts of one tick give
         // two openers, so a holder knows to drop what the first opened.
         let opener = rng.opener();
-        assert_eq!(opener.open(RngStream::new("s"), 1).next_u64(), a);
+        assert_eq!(
+            opener
+                .open(RngStream::new("s"), StableId::new(1))
+                .next_u64(),
+            a
+        );
         assert_eq!(opener, rng.opener());
         rng.begin_tick(tick);
         assert_ne!(opener, rng.opener());
-        assert_eq!(rng.opener().open(RngStream::new("s"), 1).next_u64(), a);
+        assert_eq!(
+            rng.opener()
+                .open(RngStream::new("s"), StableId::new(1))
+                .next_u64(),
+            a
+        );
     }
 
     #[cfg(debug_assertions)]
