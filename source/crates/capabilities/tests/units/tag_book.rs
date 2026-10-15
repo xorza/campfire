@@ -3,7 +3,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use campfire_capabilities::Release;
 use campfire_units::*;
-use campfire_values::{Block, DeclaredName, Tag, TagSet, TypeScope};
+use campfire_values::{Block, DeclaredName, PackageIndex, Tag, TagSet, TypeScope};
 
 #[test]
 fn a_units_tags_take_their_properties_from_the_modes_data() {
@@ -32,7 +32,9 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
-    let tower = types.load(TypeScope::Mode, 0, "tower", &tower).unwrap();
+    let tower = types
+        .load(TypeScope::Mode, PackageIndex::MODE, "tower", &tower)
+        .unwrap();
     let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
         blocks: blocks.to_vec(),
         hidden: false,
@@ -82,7 +84,12 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
     };
     assert!(fails(&mut |types| {
         types
-            .load(TypeScope::Mode, 0, "late", &UnitTypeCore::default())
+            .load(
+                TypeScope::Mode,
+                PackageIndex::MODE,
+                "late",
+                &UnitTypeCore::default(),
+            )
             .unwrap();
     }));
     assert!(fails(&mut |types| types.give_tag(tower, stunned)));

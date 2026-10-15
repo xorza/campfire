@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::ModifierId;
+use campfire_values::{ModifierId, PackageIndex};
 
 use crate::action::{Aim, Passive};
 use crate::action_data::ActionData;
@@ -36,7 +36,7 @@ impl ActionParts {
     /// the match does not have.
     pub fn of(
         data: &ActionData,
-        package: u16,
+        package: PackageIndex,
         ranks: u8,
         rate: TickRate,
         names: &impl ActionNames,

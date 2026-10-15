@@ -14,7 +14,9 @@ use campfire_progression::Points;
 use campfire_sim::{Position, SimWorld, TickRate};
 use campfire_stats::{Level, PoolId, PoolMeters, Stats};
 use campfire_units::Lifespan;
-use campfire_values::{DeclaredName, ModifierId, Names, Number, Rank, Ranked, Scalar, Team};
+use campfire_values::{
+    DeclaredName, ModifierId, Names, Number, PackageIndex, Rank, Ranked, Scalar, Team,
+};
 
 use crate::runner::moba::gold;
 
@@ -410,7 +412,7 @@ pub(crate) fn assert_casts(
 /// Gale's wards 3 m and a little more from her, which spend her two slots: the sight ward lives
 /// 90 s, 1800 ticks, and the vision ward with no end.
 fn assert_consumables(moba: &ScriptedMode<Moba3v3>, showcase: &Showcase, world: &World) {
-    let modifier = |name| Stats::modifier(world, 0, name).unwrap();
+    let modifier = |name| Stats::modifier(world, PackageIndex::MODE, name).unwrap();
     let drinks = [
         (1, 4, 0, "health_potion"),
         (2, 5, 0, "health_potion"),

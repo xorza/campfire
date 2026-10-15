@@ -28,8 +28,8 @@ use crate::mode_packages::load_check::LoadCheck;
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_files::PackageFiles;
-use crate::package_index::PackageIndex;
 use crate::package_view::{PackageView, ViewKind};
+use campfire_values::PackageIndex;
 
 mod load_check;
 mod name_tables;

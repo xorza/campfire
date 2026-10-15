@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{IdAllocator, StableId};
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, Rank};
+use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank};
 
 use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
 use crate::scripts::call_start::CallStart;
@@ -63,7 +63,7 @@ impl Frame {
         self.running().depth
     }
 
-    pub const fn package(&self) -> u16 {
+    pub const fn package(&self) -> PackageIndex {
         self.running().package
     }
 

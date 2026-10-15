@@ -24,7 +24,7 @@ use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierData, ModifierProblem, StatId};
 use campfire_units::TypesError;
 use campfire_values::{
-    DeclaredName, EngineTag, FilterData, MessageId, Number, PackagePath, Param, Stat,
+    DeclaredName, EngineTag, FilterData, MessageId, Number, PackageIndex, PackagePath, Param, Stat,
 };
 
 use crate::dependent::{Dependent, DependentKind};
@@ -1761,7 +1761,7 @@ impl<'a> LoadCheck<'a> {
 /// The load error of what building `packages`' books refused, at the fastest rate the mode
 /// allows.
 fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
-    let at = |package: u16, unit_type: TypePlace| match unit_type {
+    let at = |package: PackageIndex, unit_type: TypePlace| match unit_type {
         TypePlace::Avatar => {
             let view = packages.packages().nth(usize::from(package));
             let package = &view.expect("the books name a package").package;
@@ -1809,9 +1809,9 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
             modifier,
             problem,
         } => (package, LoadProblem::Modifier { modifier, problem }),
-        BookError::Mode(error) => (0, LoadProblem::Mode(error)),
-        BookError::Names(error) => (0, names_problem(error)),
-        BookError::Types(error) => (0, types_problem(error)),
+        BookError::Mode(error) => (PackageIndex::MODE, LoadProblem::Mode(error)),
+        BookError::Names(error) => (PackageIndex::MODE, names_problem(error)),
+        BookError::Types(error) => (PackageIndex::MODE, types_problem(error)),
         BookError::Script { package, path } => (
             package,
             LoadProblem::Script {
@@ -1819,8 +1819,12 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
                 problem: ScriptProblem::Missing,
             },
         ),
-        BookError::Tracks(TrackError::TooMany) => (0, LoadProblem::TooMany(Limit::Tracks)),
-        BookError::Tracks(TrackError::LevelTracks) => (0, LoadProblem::LevelTracks),
+        BookError::Tracks(TrackError::TooMany) => {
+            (PackageIndex::MODE, LoadProblem::TooMany(Limit::Tracks))
+        }
+        BookError::Tracks(TrackError::LevelTracks) => {
+            (PackageIndex::MODE, LoadProblem::LevelTracks)
+        }
         BookError::Item {
             package,
             item,

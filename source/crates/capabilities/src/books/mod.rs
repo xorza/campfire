@@ -9,7 +9,7 @@ use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
 use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
-use campfire_values::{DamageKind, DeclaredName, Names, ResourceId, UnitType};
+use campfire_values::{DamageKind, DeclaredName, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;
@@ -63,7 +63,7 @@ impl Books {
         for name in tag_names {
             types.declare(name.as_str())?;
         }
-        for (index, package) in (0..).zip(packages) {
+        for (index, package) in (0..).map(PackageIndex::new).zip(packages) {
             BookBuilder::declare_types(&mut types, index, package)?;
         }
         Ok(types)

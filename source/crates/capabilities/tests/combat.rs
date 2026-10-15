@@ -33,8 +33,8 @@ use campfire_stats::{
 };
 use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
-    ActionId, Block, DeclaredName, FilterData, ModifierId, Names, Rank, Relation, RelationSet,
-    ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    ActionId, Block, DeclaredName, FilterData, ModifierId, Names, PackageIndex, Rank, Relation,
+    RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -916,7 +916,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         ..NewInstance::bare(ModifierId::new(id), None)
     };
     for name in ["first", "second", "third"] {
-        Stats::load_modifier(&mut game, 0, name, &shield_data(), None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &shield_data(), None);
     }
     let shields = [
         shield(0, None, 100),

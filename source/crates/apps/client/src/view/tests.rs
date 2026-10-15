@@ -10,9 +10,9 @@ use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::HeightGrid;
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 use campfire_math::Num;
-use campfire_package::PackageIndex;
 use campfire_sim::IdAllocator;
 use campfire_units::{TypeOrigin, TypeOriginBook};
+use campfire_values::PackageIndex;
 use campfire_values::{DeclaredName, PackagePath};
 
 use super::*;
@@ -261,7 +261,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         ..ClientData::default()
     };
     let origins: TypeOriginBook = [TypeOrigin {
-        package: 0,
+        package: PackageIndex::MODE,
         name: "tank".into(),
     }]
     .into_iter()
@@ -349,7 +349,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
 fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     let mut app = view();
     let origins: TypeOriginBook = [TypeOrigin {
-        package: 0,
+        package: PackageIndex::MODE,
         name: "fire_pool".into(),
     }]
     .into_iter()

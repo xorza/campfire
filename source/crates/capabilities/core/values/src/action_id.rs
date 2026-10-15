@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::names::NameId;
+use crate::package_index::PackageIndex;
 
 /// An action, by its place in the match's action book.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -19,7 +20,7 @@ impl ActionId {
 }
 
 impl NameId for ActionId {
-    type Scope = u16;
+    type Scope = PackageIndex;
     const LIMIT: usize = 1 << u32::BITS;
 
     fn at(index: usize) -> ActionId {

@@ -11,7 +11,8 @@ use campfire_client_files::{
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
-use campfire_package::{ContentError, ModePackages, PackageIndex, PackageReader};
+use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_values::PackageIndex;
 use campfire_values::PackagePath;
 use tracing::error;
 

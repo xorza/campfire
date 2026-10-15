@@ -8,7 +8,9 @@ use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time}
 use campfire_stats::*;
 use campfire_units::{ScriptBook, UnitTypeBook};
 use campfire_values::ActionId;
-use campfire_values::{DeclaredName, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat};
+use campfire_values::{
+    DeclaredName, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
+};
 
 fn name(text: &str) -> DeclaredName {
     DeclaredName::new(text).unwrap()
@@ -73,7 +75,7 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
         data,
         script: None,
     });
-    book.load(load, 0, &modifiers).unwrap();
+    book.load(load, PackageIndex::MODE, &modifiers).unwrap();
     let mut tables = ParamTables::default();
     let stat = |_: &Stat| Ok::<_, Infallible>(StatId::new(0));
     tables.push_action(&action, stat).unwrap();

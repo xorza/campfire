@@ -16,7 +16,7 @@ use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickR
 use campfire_units::{
     Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
 };
-use campfire_values::{Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
+use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
 
 use crate::release::Release;
@@ -59,7 +59,12 @@ fn two_fields() -> Match {
     let mut types = UnitTypeBook::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
         types
-            .load(TypeScope::Mode, 0, name, &UnitTypeCore::default())
+            .load(
+                TypeScope::Mode,
+                PackageIndex::MODE,
+                name,
+                &UnitTypeCore::default(),
+            )
             .unwrap()
     });
     world.insert_resource(types.tag_book(&BTreeMap::new()));

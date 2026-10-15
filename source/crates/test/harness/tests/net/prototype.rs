@@ -32,7 +32,7 @@ use campfire_units::{
     DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, SyncAll, SyncNone, Units,
     UnitsWorld,
 };
-use campfire_values::{DeclaredName, Names, Relation, Relations, ResourceId, Team};
+use campfire_values::{DeclaredName, Names, PackageIndex, Relation, Relations, ResourceId, Team};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
     Replicate, RollbackMode,
@@ -446,7 +446,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     let avatar = local.avatar(0);
     for name in ["slow", "stun"] {
         let world = local.server_mut().world_mut();
-        let modifier = Stats::modifier(world, 0, name).unwrap();
+        let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
         Stats::give_modifier(world, avatar, modifier, None, false);
         let mut frames = 0;
         while !carries(local.client(0)) {

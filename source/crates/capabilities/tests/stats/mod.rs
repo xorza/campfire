@@ -20,7 +20,8 @@ use campfire_units::{
     Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, TurnStep, UnitTypeCore, Units,
 };
 use campfire_values::{
-    Block, ModifierId, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags, UnitType,
+    Block, ModifierId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,
+    UnitType,
 };
 use campfire_values::{
     DeclaredName, EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
@@ -443,8 +444,8 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
         params: BTreeMap::from([(DeclaredName::new("slow").unwrap(), half)]),
         ..modifier_data(None)
     };
-    Stats::load_modifier(&mut game, 0, "slow", &data, None);
-    let slow = Stats::modifier(&game, 0, "slow").unwrap();
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "slow", &data, None);
+    let slow = Stats::modifier(&game, PackageIndex::MODE, "slow").unwrap();
     let target = *game.get::<StableId>(unit).unwrap();
     Stats::give_modifier(&mut game, target, slow, None, false);
     game.step();
@@ -476,7 +477,13 @@ fn warding_match() -> (Match, ModifierId) {
         "armored",
         &UnitTypeCore::default(),
     );
-    Stats::load_modifier(&mut game, 0, "heartened", &modifier_data(None), None);
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
+        "heartened",
+        &modifier_data(None),
+        None,
+    );
     let param = |name: &str| {
         Number::Param(ParamRef {
             param: DeclaredName::new(name).unwrap(),
@@ -503,8 +510,8 @@ fn warding_match() -> (Match, ModifierId) {
             modifier: DeclaredName::new("heartened").unwrap(),
         }))
     };
-    Stats::load_modifier(&mut game, 0, "warding", &data, None);
-    let warding = Stats::modifier(&game, 0, "warding").unwrap();
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "warding", &data, None);
+    let warding = Stats::modifier(&game, PackageIndex::MODE, "warding").unwrap();
     (game, warding)
 }
 
@@ -578,10 +585,16 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         affects: FilterData::parse("allies").unwrap(),
         modifier: DeclaredName::new("inspired").unwrap(),
     };
-    Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
     Stats::load_modifier(
         &mut game,
-        0,
+        PackageIndex::MODE,
+        "inspired",
+        &modifier_data(None),
+        None,
+    );
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
         "presence",
         &modifier_data(Some(presence)),
         None,
@@ -599,7 +612,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         tags: vec![warded],
         ..modifier_data(None)
     };
-    Stats::load_modifier(&mut game, 0, "ward", &ward, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn =
         |game: &mut Match, x: i64, team: u8| Mode::spawn(game, plain, at(x), Team::new(team), ());
@@ -612,7 +625,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let [inspired, presence] = ["inspired", "presence"].map(|name| {
         game.resource::<ModifierBook>()
             .names()
-            .named((0, name))
+            .named((PackageIndex::MODE, name))
             .unwrap()
     });
     let holder = entity(&game, carrier);
@@ -656,7 +669,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     assert!(holds(&game, far));
     let mut book = game.resource_mut::<ModifierBook>();
     book.grant_tags(presence, TagSet::from([Tag::new(0)]));
-    let ward = Stats::modifier(&game, 0, "ward").unwrap();
+    let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
     Stats::give_modifier(&mut game, carrier, ward, None, false);
     game.step();
     assert!(!holds(&game, far));
@@ -688,14 +701,20 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
-    Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
+        "inspired",
+        &modifier_data(None),
+        None,
+    );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
     let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
     let unit = game.unit_entity(id);
     let inspired = game
         .resource::<ModifierBook>()
         .names()
-        .named((0, "inspired"))
+        .named((PackageIndex::MODE, "inspired"))
         .unwrap();
     // A capability lists the hold for one tick, as an area does: the tick holds it, and takes
     // the list, so the next tick, with nothing listed, lets go of it.
@@ -725,7 +744,13 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
-    Stats::load_modifier(&mut game, 0, "inspired", &modifier_data(None), None);
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
+        "inspired",
+        &modifier_data(None),
+        None,
+    );
     let plain = Units::load_next_type(&mut game, &UnitTypeCore::default());
     let id = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
     let gone = Mode::spawn(&mut game, plain, Position::ORIGIN, Team::new(0), ());
@@ -733,7 +758,7 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let inspired = game
         .resource::<ModifierBook>()
         .names()
-        .named((0, "inspired"))
+        .named((PackageIndex::MODE, "inspired"))
         .unwrap();
     let second = Rank::new(2).unwrap();
     let grant = |rank| Grant {

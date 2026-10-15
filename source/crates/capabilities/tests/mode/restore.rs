@@ -17,7 +17,10 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let grunt = Mode::entity_by_id(&game, 2);
     // The grunt holds strike, as a unit holds the times of the slots it holds.
-    let strike = game.resource::<ActionBook>().names().named((0, "strike"));
+    let strike = game
+        .resource::<ActionBook>()
+        .names()
+        .named((PackageIndex::MODE, "strike"));
     let strike = ActionSlots::new([(strike.unwrap(), SlotKind::new(0), Rank::new(1))]);
     game.entity_mut(grunt).insert(TimedSlots::new(strike));
     // Teams a, b and neutral are 0 to 2, players 0 to 2: the grunt, which no player owns, may be
@@ -98,7 +101,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!UnitState::<SyncTeam>::new(int()).check(&game, grunt));
     // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
     let book = game.resource::<ActionBook>();
-    let strike = book.names().named((0, "strike")).unwrap();
+    let strike = book.names().named((PackageIndex::MODE, "strike")).unwrap();
     let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), Rank::new(rank))]);
     assert!(slots(strike, 0).check(&game, grunt) && slots(strike, 1).check(&game, grunt));
     assert!(!slots(strike, u8::MAX).check(&game, grunt));
@@ -313,7 +316,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
             let strike = world
                 .resource::<ActionBook>()
                 .names()
-                .named((0, "strike"))
+                .named((PackageIndex::MODE, "strike"))
                 .unwrap();
             let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
             let unit = first::<UnitType>(world);
@@ -406,7 +409,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(&game, fighter));
     // Rally reads its action's `ward`, which an instance of it from no action lacks; its next
     // application would fail.
-    let rally = Stats::modifier(&game, 0, "rally").unwrap();
+    let rally = Stats::modifier(&game, PackageIndex::MODE, "rally").unwrap();
     assert!(!modifiers_of(applied(rally, Vec::new(), Vec::new())).check(&game, fighter));
     assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(&game, fighter));
     let state = vec![StateValue::Bool(true)];

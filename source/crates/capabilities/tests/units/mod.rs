@@ -26,7 +26,9 @@ use campfire_sim::{
 };
 use campfire_stats::{Level, Life, StatRule, Stats};
 use campfire_units::*;
-use campfire_values::{Block, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType};
+use campfire_values::{
+    Block, PackageIndex, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType,
+};
 
 /// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
 /// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
@@ -533,11 +535,15 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let first = load(TypeScope::Mode, "grunt");
     let second = load(TypeScope::Mode, "tower");
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
-    let theirs = load(TypeScope::Package(1), "grunt");
+    let theirs = load(TypeScope::Package(PackageIndex::new(1)), "grunt");
     // A scope names a type once.
     assert_eq!(
-        game.resource_mut::<UnitTypeBook>()
-            .load(TypeScope::Package(1), 1, "grunt", &data),
+        game.resource_mut::<UnitTypeBook>().load(
+            TypeScope::Package(PackageIndex::new(1)),
+            PackageIndex::new(1),
+            "grunt",
+            &data
+        ),
         Err(TypesError::Repeated("grunt".to_owned()))
     );
     let view = game.non_send::<View>();
@@ -554,15 +560,21 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     );
     let names = view.names();
     let types = names.table::<UnitType>().unwrap();
-    assert_eq!(types.named((TypeScope::Package(1), "grunt")), Some(theirs));
-    assert_eq!(types.named((TypeScope::Package(2), "grunt")), None);
+    assert_eq!(
+        types.named((TypeScope::Package(PackageIndex::new(1)), "grunt")),
+        Some(theirs)
+    );
+    assert_eq!(
+        types.named((TypeScope::Package(PackageIndex::new(2)), "grunt")),
+        None
+    );
     assert_ne!(theirs, first);
     drop(names);
     // Each type's origin: its package and its name there.
     let origins = game.resource_mut::<UnitTypeBook>().origin_book();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
-        (origin.package, &*origin.name)
+        (origin.package.get(), &*origin.name)
     };
     assert_eq!(
         [first, second, theirs].map(origin),

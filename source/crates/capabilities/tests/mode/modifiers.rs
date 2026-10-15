@@ -119,7 +119,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    let drill = Stats::modifier(&game, 0, "drill").unwrap();
+    let drill = Stats::modifier(&game, PackageIndex::MODE, "drill").unwrap();
     // Units 1 to 3, after the map's tower: a grunt and a tower of player 1, and a grunt of
     // player 0.
     Mode::tick_inputs(&mut game, &[(1, input("probe", "units"))]);

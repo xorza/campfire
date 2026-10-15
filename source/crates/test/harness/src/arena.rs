@@ -10,7 +10,7 @@ use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{PoolId, Stats};
-use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Team};
+use campfire_values::{ActionId, DeclaredName, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::Vision;
 
 use campfire_runner::MatchBuild;
@@ -110,13 +110,13 @@ impl Arena {
     }
 
     /// The place among the arena's packages of the package `name`.
-    fn package(&self, name: &str) -> u16 {
+    fn package(&self, name: &str) -> PackageIndex {
         let at = self
             .packages
             .packages()
             .position(|view| view.package.header.name == name)
             .unwrap_or_else(|| panic!("no package {name}"));
-        u16::try_from(at).unwrap()
+        PackageIndex::new(u16::try_from(at).unwrap())
     }
 }
 

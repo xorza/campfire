@@ -14,7 +14,8 @@ use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::{ModifierData, Stats};
 use campfire_units::{UnitTypeBook, UnitTypeCore, Units};
 use campfire_values::{
-    DeclaredName, EngineTag, Number, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
+    DeclaredName, EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet,
+    Team, TypeScope,
 };
 
 #[test]
@@ -80,21 +81,21 @@ fn an_area_is_state_and_restores() {
             affects: None,
             inside: AreaInsideData::default(),
         };
-        Areas::load_type(game, field, 0, &area);
+        Areas::load_type(game, field, PackageIndex::MODE, &area);
         let action = Actions::add_train(game, field, Ticks::ZERO, None);
         let ward = DeclaredName::new("ward").unwrap();
         let rally = ModifierData {
             shield: Some(Number::Param(ParamRef { param: ward })),
             ..ModifierData::default()
         };
-        Stats::load_modifier(game, 0, "rally", &rally, None);
+        Stats::load_modifier(game, PackageIndex::MODE, "rally", &rally, None);
         let warding = Units::load_type(game, TypeScope::Mode, "warding", &data);
         let inside = AreaInsideData {
             allies: Some(DeclaredName::new("rally").unwrap()),
             ..AreaInsideData::default()
         };
         let area = AreaData { inside, ..area };
-        Areas::load_type(game, warding, 0, &area);
+        Areas::load_type(game, warding, PackageIndex::MODE, &area);
         let source = Units::load_type(game, TypeScope::Mode, "source", &data);
         (field, action, warding, source)
     };

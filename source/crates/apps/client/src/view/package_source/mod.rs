@@ -14,7 +14,8 @@ use bevy::asset::io::{
 use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
 use campfire_log::ErrorReport;
-use campfire_package::{ContentError, ModePackages, PackageIndex, PackageReader};
+use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_values::PackageIndex;
 use campfire_values::PackagePath;
 use tracing::error;
 

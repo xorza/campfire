@@ -11,7 +11,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Position, StableId};
 use campfire_stats::{Life, Pools};
 use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Rank, Team, TypeScope, UnitType};
+use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
 
 use crate::fixtures::actions::ActionsFixtures;
 
@@ -157,12 +157,12 @@ impl AbilitiesFixtures for Abilities {
 
     fn load(world: &mut World, name: &str, data: &ActionData, source: &str) -> ActionId {
         let script = Units::compile_hooked(world, source).unwrap();
-        Actions::load(world, 0, name, data, Some(script), 5).unwrap()
+        Actions::load(world, PackageIndex::MODE, name, data, Some(script), 5).unwrap()
     }
 
     fn load_weapon(world: &mut World, name: &str, data: &ActionData) -> ActionId {
-        let weapon = Actions::load(world, 0, name, data, None, 1).unwrap();
-        Actions::load_effect_lists(world, weapon, 0, data);
+        let weapon = Actions::load(world, PackageIndex::MODE, name, data, None, 1).unwrap();
+        Actions::load_effect_lists(world, weapon, PackageIndex::MODE, data);
         weapon
     }
 }

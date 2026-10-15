@@ -36,7 +36,7 @@ double_sided = true
     let none = package(&scratch, "bare", &[("data/units.toml", b"")]);
     let mut data = ClientData::default();
     data.read_package(PackageIndex::MODE, &files);
-    data.read_package(PackageIndex::from(1), &none);
+    data.read_package(PackageIndex::new(1), &none);
     // The tank's model, with the node it hides; a package with no units has none.
     let tank = &data.units[0].units["tank"].models[0];
     assert_eq!(

@@ -21,8 +21,8 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use bevy::world_serialization::WorldInstanceReady;
 use campfire_client_files::{ClientObject, MaterialFile};
-use campfire_package::PackageIndex;
 use campfire_units::TypeOriginBook;
+use campfire_values::PackageIndex;
 
 use tracing::error;
 
@@ -446,11 +446,11 @@ mod tests {
         };
         // Files for the tank's `tank_3` in package 1, and for `tank_0` in package 0 alone.
         let files = BTreeMap::from([
-            ((PackageIndex::from(1), "tank_3".to_owned()), file.clone()),
+            ((PackageIndex::new(1), "tank_3".to_owned()), file.clone()),
             ((PackageIndex::MODE, "tank_0".to_owned()), file),
         ]);
         let parts = ModelParts {
-            package: PackageIndex::from(1),
+            package: PackageIndex::new(1),
             hide: vec!["tank.turret".to_owned(), "tank.flash".to_owned()],
         };
         let nodes = [
@@ -480,8 +480,8 @@ mod tests {
             Dressing {
                 hidden: vec![turret, flash],
                 files: vec![
-                    (flash, (PackageIndex::from(1), "tank_3".to_owned())),
-                    (other, (PackageIndex::from(1), "tank_3".to_owned()))
+                    (flash, (PackageIndex::new(1), "tank_3".to_owned())),
+                    (other, (PackageIndex::new(1), "tank_3".to_owned()))
                 ],
             }
         );

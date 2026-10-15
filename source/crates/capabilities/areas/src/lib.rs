@@ -163,7 +163,7 @@ pub mod internals {
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
     use campfire_units::UnitTypeBook;
-    use campfire_values::{DeclaredName, UnitType};
+    use campfire_values::{DeclaredName, PackageIndex, UnitType};
 
     use crate::Areas;
     use crate::area_data::AreaData;
@@ -173,7 +173,12 @@ pub mod internals {
         /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in
         /// ticks at the match's rate, rounded up: its `affects` filter names tags of the match's,
         /// and its `inside` modifiers of the package.
-        pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
+        pub fn load_type(
+            world: &mut World,
+            unit_type: UnitType,
+            package: PackageIndex,
+            data: &AreaData,
+        ) {
             let rate = *world.resource::<TickRate>();
             let mut types = world.resource_mut::<UnitTypeBook>();
             types.give_tag(unit_type, Areas::TAG.tag());

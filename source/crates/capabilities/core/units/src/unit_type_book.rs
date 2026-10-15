@@ -6,8 +6,8 @@ use campfire_declare::Book;
 use campfire_script::{StateSchema, TagNames, View};
 use campfire_sim::Capability;
 use campfire_values::{
-    DeclaredName, EngineTag, NameTable, Names, NamesError, Scalar, Tag, TagProperties, TagSet,
-    TypeScope, UnitType,
+    DeclaredName, EngineTag, NameTable, Names, NamesError, PackageIndex, Scalar, Tag,
+    TagProperties, TagSet, TypeScope, UnitType,
 };
 
 use crate::body_form::BodyForm;
@@ -72,7 +72,7 @@ impl UnitTypeBook {
     pub fn load(
         &mut self,
         scope: TypeScope,
-        package: u16,
+        package: PackageIndex,
         name: &str,
         data: &UnitTypeCore,
     ) -> Result<UnitType, TypesError> {

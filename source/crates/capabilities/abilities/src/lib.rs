@@ -145,7 +145,7 @@ pub mod internals {
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
     use campfire_stats::{ModifierClocks, Modifiers, PoolId, Pools, StatRule, Stats};
-    use campfire_values::Stat;
+    use campfire_values::{PackageIndex, Stat};
 
     use crate::Abilities;
 
@@ -224,7 +224,7 @@ pub mod internals {
 
         /// Gives `id` the modifier `name` of package 0, from `source`.
         pub fn give_from(world: &mut World, id: StableId, source: StableId, name: &str) {
-            let modifier = Stats::modifier(world, 0, name).unwrap();
+            let modifier = Stats::modifier(world, PackageIndex::MODE, name).unwrap();
             let from = Some((source, None, 1));
             Stats::give_modifier(world, id, modifier, from, false);
         }
@@ -239,7 +239,7 @@ pub mod internals {
 
         /// The shield of `id`'s `mark` from `source`, if it carries one.
         pub fn mark(world: &World, id: StableId, source: StableId) -> Option<Num> {
-            let mark = Stats::modifier(world, 0, "mark").unwrap();
+            let mark = Stats::modifier(world, PackageIndex::MODE, "mark").unwrap();
             let entity = world.unit_entity(id);
             let modifiers = world.get::<Modifiers>(entity).unwrap();
             let clocks = world.get::<ModifierClocks>(entity).unwrap();

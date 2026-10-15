@@ -4,8 +4,8 @@ use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
 use campfire_client_files::ClientUnit;
-use campfire_package::PackageIndex;
 use campfire_units::TypeOriginBook;
+use campfire_values::PackageIndex;
 use campfire_values::UnitType;
 
 use crate::view::client_data::ClientData;
@@ -45,7 +45,7 @@ impl UnitLooks {
         let looks = origins
             .iter()
             .map(|(_, origin)| {
-                let package = PackageIndex::from(origin.package);
+                let package = origin.package;
                 data.units_of(package)
                     .units
                     .get(&*origin.name)
@@ -135,9 +135,13 @@ mod tests {
             package,
             name: name.into(),
         };
-        let origins: TypeOriginBook = [origin(0, "tank"), origin(1, "tank"), origin(0, "tower")]
-            .into_iter()
-            .collect();
+        let origins: TypeOriginBook = [
+            origin(PackageIndex::MODE, "tank"),
+            origin(PackageIndex::new(1), "tank"),
+            origin(PackageIndex::MODE, "tower"),
+        ]
+        .into_iter()
+        .collect();
         let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
         let paths = |unit_type: UnitType| -> Vec<(String, ModelParts)> {
             looks
@@ -147,8 +151,8 @@ mod tests {
                 .collect()
         };
         let types: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
-        let parts = |package: u16, hide: &[&str]| ModelParts {
-            package: PackageIndex::from(package),
+        let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
+            package,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
         };
         assert_eq!(
@@ -156,11 +160,11 @@ mod tests {
             [
                 (
                     "package://0/client/models/tank.glb#Scene0".to_owned(),
-                    parts(0, &["tank.flash"])
+                    parts(PackageIndex::MODE, &["tank.flash"])
                 ),
                 (
                     "package://0/client/models/tread.glb#Scene0".to_owned(),
-                    parts(0, &[])
+                    parts(PackageIndex::MODE, &[])
                 ),
             ]
         );
@@ -168,7 +172,7 @@ mod tests {
             paths(types[1]),
             [(
                 "package://1/client/models/other.glb#Scene0".to_owned(),
-                parts(1, &[])
+                parts(PackageIndex::new(1), &[])
             )]
         );
         assert!(paths(types[2]).is_empty());

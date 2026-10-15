@@ -52,9 +52,9 @@ use campfire_units::{
     UnitTypeCore, Units,
 };
 use campfire_values::{
-    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, Number, PackagePath, Param,
-    ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat, Team, TimeTooLarge, TrackId,
-    TypeScope, UnitTags, UnitType,
+    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, Number, PackageIndex,
+    PackagePath, Param, ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat, Team,
+    TimeTooLarge, TrackId, TypeScope, UnitTags, UnitType,
 };
 
 /// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep
@@ -276,7 +276,7 @@ fn abilities_match_with_modifiers(source: &str, modifiers: &[(&str, ModifierData
     let mut sorted = modifiers.to_vec();
     sorted.sort_by(|a, b| a.0.cmp(b.0));
     for (name, data) in &sorted {
-        Stats::load_modifier(&mut game, 0, name, data, Some(script));
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, data, Some(script));
     }
     game
 }
@@ -495,8 +495,16 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
         }
     "#;
     let script = Units::compile_hooked(&mut game, source).unwrap();
-    let id = Actions::load(&mut game, 0, "lunge", &lunge, Some(script), 1).unwrap();
-    Actions::load_effect_lists(&mut game, id, 0, &lunge);
+    let id = Actions::load(
+        &mut game,
+        PackageIndex::MODE,
+        "lunge",
+        &lunge,
+        Some(script),
+        1,
+    )
+    .unwrap();
+    Actions::load_effect_lists(&mut game, id, PackageIndex::MODE, &lunge);
     let lunge = id;
     let walker = || Navigation::walker(MoveStep::new(Num::ONE).unwrap());
     let caster = Abilities::caster(&mut game, lunge, 1);
@@ -1262,7 +1270,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     let caster = |game: &mut Match| {
         let actions = [("step", &step), ("aura", &aura), ("drain", &drain)];
         let slots = actions.map(|(name, data)| {
-            let action = Actions::load(game, 0, name, data, None, 1).unwrap();
+            let action = Actions::load(game, PackageIndex::MODE, name, data, None, 1).unwrap();
             (action, SlotKind::new(0), Rank::new(1))
         });
         let unit_type = Units::load_next_type(game, &UnitTypeCore::default());
@@ -1322,7 +1330,7 @@ fn on_interrupt(ctx, caster, target) {
         shield: Some(int(100)),
         ..ModifierData::default()
     };
-    Stats::load_modifier(&mut game, 0, "ward", &ward, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let drain = ActionData {
         script: Some(PackagePath::parse("drain.rhai").unwrap()),
         range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
@@ -1337,7 +1345,7 @@ fn on_interrupt(ctx, caster, target) {
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     };
     let drain = Abilities::load(&mut game, "drain", &drain, script);
-    let ward = Stats::modifier(&game, 0, "ward").unwrap();
+    let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
     // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
     let run = |game: &mut Match, x: i16, cut: &dyn Fn(&mut Match, StableId)| {
         let caster = Abilities::caster(game, drain, 1);
@@ -1665,7 +1673,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     // Each load under its own name, as a package names each action once.
     let load = |game: &mut Match, name: &str, data: &ActionData, source: &str| {
         let script = Units::compile_hooked(game, source).unwrap();
-        Actions::load(game, 0, name, data, Some(script), 5)
+        Actions::load(game, PackageIndex::MODE, name, data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = BTreeMap::from([(
@@ -1767,7 +1775,15 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     );
     let mut game = abilities_match();
     let strike = Units::compile_hooked(&mut game, STRIKE).unwrap();
-    let id = Actions::load(&mut game, 0, "strike", &data, Some(strike), 3).unwrap();
+    let id = Actions::load(
+        &mut game,
+        PackageIndex::MODE,
+        "strike",
+        &data,
+        Some(strike),
+        3,
+    )
+    .unwrap();
     let book = game.resource::<ActionBook>();
     let ranks: Vec<_> = book
         .get(id)
@@ -1820,14 +1836,14 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         shield: Some(param("damage")),
         ..ModifierData::default()
     };
-    Stats::load_modifier(&mut game, 0, "guard", &guard, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "guard", &guard, None);
     let mut data = lash_out();
     data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
     data.passive_while_ready = true;
     let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let caster = Abilities::caster(&mut game, action, 0);
     let entity = game.unit_entity(caster);
-    let id = Stats::modifier(&game, 0, "guard").unwrap();
+    let id = Stats::modifier(&game, PackageIndex::MODE, "guard").unwrap();
     let shield = |game: &Match| {
         let modifiers = game.get::<Modifiers>(entity).unwrap();
         let held = modifiers.get(id, Some(caster))?;
@@ -1869,7 +1885,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         shield: Some(int(40)),
         ..guard
     };
-    Stats::load_modifier(&mut game, 0, "ward", &ward, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let mut claws = lash_out();
     claws.kind = ActionKind::Attack;
     claws.script = None;
@@ -1884,12 +1900,12 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.damage = Some(Stat::named("attack_damage").unwrap());
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
-    let claws = Actions::load(&mut game, 0, "claws", &claws, None, 1).unwrap();
+    let claws = Actions::load(&mut game, PackageIndex::MODE, "claws", &claws, None, 1).unwrap();
     let slots = TimedSlots::new(ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]));
     let beast = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), slots);
     let entity = game.unit_entity(beast);
     game.step();
-    let ward = Stats::modifier(&game, 0, "ward").unwrap();
+    let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
     assert!(modifiers.get(ward, Some(beast)).is_some());
@@ -1909,13 +1925,13 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
         shield: Some(param("damage")),
         ..ModifierData::default()
     };
-    Stats::load_modifier(&mut game, 0, "mark", &mark, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "mark", &mark, None);
     // Package 1 names its own `mark`, of no shield.
     let other = ModifierData {
         shield: None,
         ..mark
     };
-    Stats::load_modifier(&mut game, 1, "mark", &other, None);
+    Stats::load_modifier(&mut game, PackageIndex::new(1), "mark", &other, None);
     let marker = r#"
 fn on_resolve(ctx, caster, target) {
     let m = ctx.add_modifier(caster, "mark");
@@ -1929,7 +1945,7 @@ fn on_resolve(ctx, caster, target) {
     Abilities::cast(&mut game, caster, ActionTarget::None);
     // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
     // ticks a second, 30 ticks, so it ends as tick t + 31 starts.
-    let id = Stats::modifier(&game, 0, "mark").unwrap();
+    let id = Stats::modifier(&game, PackageIndex::MODE, "mark").unwrap();
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let held = modifiers.get(id, Some(caster)).unwrap();
     assert_eq!(
@@ -1954,7 +1970,14 @@ fn on_resolve(ctx, caster, target) {
 }
 "#;
     let script = Units::compile_hooked(&mut game, own).unwrap();
-    let theirs = Actions::load(&mut game, 1, "lash_out", &lash_out(), Some(script), 5);
+    let theirs = Actions::load(
+        &mut game,
+        PackageIndex::new(1),
+        "lash_out",
+        &lash_out(),
+        Some(script),
+        5,
+    );
     let slots = TimedSlots::new(ActionSlots::new([(
         theirs.unwrap(),
         SlotKind::new(0),
@@ -1964,7 +1987,11 @@ fn on_resolve(ctx, caster, target) {
     Abilities::cast(&mut game, caster, ActionTarget::None);
     assert_eq!(Abilities::failed_calls(&game), []);
     let book = game.resource::<ModifierBook>();
-    let ids = [0, 1].map(|package| book.names().named((package, "mark")).unwrap());
+    let ids = [0, 1].map(|package| {
+        book.names()
+            .named((PackageIndex::new(package), "mark"))
+            .unwrap()
+    });
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
     let carried = ids.map(|id| modifiers.get(id, Some(caster)).is_some());
@@ -1986,7 +2013,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         tags: vec![DeclaredName::new("stunned").unwrap()],
         ..scripted(None, &[])
     };
-    Stats::load_modifier(&mut game, 0, "stun", &stun, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "stun", &stun, None);
     // Every type loads before the tag book takes their tags.
     let target_type = Units::load_type(
         &mut game,
@@ -2048,7 +2075,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
             tags: vec![DeclaredName::new(tag).unwrap()],
             ..ModifierData::default()
         };
-        Stats::load_modifier(&mut game, 0, name, &data, None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &data, None);
     }
     // Every type loads before the tag book takes their tags.
     let target = Units::load_type(
@@ -2072,8 +2099,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         on_resolve: vec![effect(purge, EffectTo::Reached)],
         ..strike()
     };
-    let action = Actions::load(&mut game, 0, "cleanse", &data, None, 1).unwrap();
-    Actions::load_effect_lists(&mut game, action, 0, &data);
+    let action = Actions::load(&mut game, PackageIndex::MODE, "cleanse", &data, None, 1).unwrap();
+    Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
     let [first, second] = [(); 2].map(|()| Abilities::caster(&mut game, action, 1));
     let freed = Mode::spawn(&mut game, target, (1, 0, 0), Team::new(1), ());
     let held = Mode::spawn(&mut game, target, (-1, 0, 0), Team::new(1), ());
@@ -2081,7 +2108,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
         Abilities::give_from(&mut game, freed, source, "stun");
     }
     Abilities::give_from(&mut game, freed, second, "slow");
-    let [stun, slow] = ["stun", "slow"].map(|name| Stats::modifier(&game, 0, name).unwrap());
+    let [stun, slow] =
+        ["stun", "slow"].map(|name| Stats::modifier(&game, PackageIndex::MODE, name).unwrap());
     Stats::give_modifier(&mut game, held, stun, Some((first, None, 1)), true);
     Abilities::give_from(&mut game, held, first, "stun");
     Abilities::give_from(&mut game, held, second, "stun");
@@ -2203,8 +2231,8 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
         ],
         ..strike()
     };
-    let action = Actions::load(&mut game, 0, "strike", &data, None, 1).unwrap();
-    Actions::load_effect_lists(&mut game, action, 0, &data);
+    let action = Actions::load(&mut game, PackageIndex::MODE, "strike", &data, None, 1).unwrap();
+    Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
     let tracked = Abilities::spawn_combatant(
         &mut game,
         (1, 0, 0),
@@ -2269,8 +2297,8 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
         ],
         ..strike()
     };
-    let action = Actions::load(&mut game, 0, "bolt", &data, None, 1).unwrap();
-    Actions::load_effect_lists(&mut game, action, 0, &data);
+    let action = Actions::load(&mut game, PackageIndex::MODE, "bolt", &data, None, 1).unwrap();
+    Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &data);
     let caster = Abilities::caster(&mut game, action, 1);
     game.insert_parts(caster, Experience::new(TrackSet::from([valor])));
     let enemy = Abilities::spawn_combatant(&mut game, (4, 0, 0), Team::new(1), ());
@@ -2486,7 +2514,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
         shield: Some(param("damage")),
         ..ModifierData::default()
     };
-    Stats::load_modifier(&mut game, 0, "guard", &guard, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "guard", &guard, None);
     let mut data = lash_out();
     data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
@@ -2505,7 +2533,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let step = MoveStep::new(Num::ONE).unwrap();
     game.insert_parts(caster, (points, Navigation::walker(step)));
     let entity = game.unit_entity(caster);
-    let id = Stats::modifier(&game, 0, "guard").unwrap();
+    let id = Stats::modifier(&game, PackageIndex::MODE, "guard").unwrap();
     let send = |game: &mut Match, slot: u32, actions: &[Action]| {
         let orders: Vec<_> = actions
             .iter()
@@ -2618,14 +2646,14 @@ fn weapon_match() -> (Match, UnitType) {
             affects: None,
             inside: AreaInsideData::default(),
         };
-        Areas::load_type(&mut game, area, 0, &data);
+        Areas::load_type(&mut game, area, PackageIndex::MODE, &data);
     }
     for (name, shield) in [("mark", param("sap")), ("ward", int(100))] {
         let data = ModifierData {
             shield: Some(shield),
             ..ModifierData::default()
         };
-        Stats::load_modifier(&mut game, 0, name, &data, None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &data, None);
     }
     (game, fighter)
 }
@@ -3015,12 +3043,12 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         &[],
         None,
     );
-    Stats::load_modifier(&mut game, 0, "boost", &boost, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "boost", &boost, None);
     let mark = ModifierData {
         shield: Some(param("power")),
         ..ModifierData::default()
     };
-    Stats::load_modifier(&mut game, 0, "mark", &mark, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "mark", &mark, None);
     // Power: 100 a rank, 10 a level, half the ability power and 1.5 times the bonus attack
     // damage.
     let half = Num::HALF;
@@ -3062,7 +3090,7 @@ fn on_resolve(ctx, caster, target) {
     // deals, 500 → 230, and the shield of the caster's mark holds.
     assert_eq!(Abilities::failed_calls(&game), []);
     assert_eq!(Stats::health(&game, target), 230);
-    let mark = Stats::modifier(&game, 0, "mark").unwrap();
+    let mark = Stats::modifier(&game, PackageIndex::MODE, "mark").unwrap();
     let entity = game.unit_entity(caster);
     let modifiers = game.get::<Modifiers>(entity).unwrap();
     let clocks = game.get::<ModifierClocks>(entity).unwrap();
@@ -3130,7 +3158,7 @@ impl Veil {
             ("dual_path", dual_path),
             ("fortify", fortify),
         ] {
-            Stats::load_modifier(game, 0, name, &data, None);
+            Stats::load_modifier(game, PackageIndex::MODE, name, &data, None);
         }
         let veil = Mode::spawn(game, veil_type, Position::ORIGIN, Team::new(0), ());
         Abilities::give(game, veil, "dual_path");
@@ -3210,7 +3238,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     assert_eq!(veil.values(&game, ward)[1], vamp);
     assert_eq!(game.resource::<LiveCarriers>().carried(), []);
     // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
-    let dual_path = Stats::modifier(&game, 0, "dual_path").unwrap();
+    let dual_path = Stats::modifier(&game, PackageIndex::MODE, "dual_path").unwrap();
     let mut modifiers = game.get_mut::<Modifiers>(ward_entity).unwrap();
     modifiers.set_stacks(dual_path, Some(source), 0, Tick::new(0));
     game.step();
@@ -3275,7 +3303,13 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
         }
     "#;
     let script = Units::compile_hooked(&mut game, watch).unwrap();
-    Stats::load_modifier(&mut game, 0, "watch", &scripted(None, &[]), Some(script));
+    Stats::load_modifier(
+        &mut game,
+        PackageIndex::MODE,
+        "watch",
+        &scripted(None, &[]),
+        Some(script),
+    );
     Abilities::give(&mut game, target, "watch");
 
     // The bolt launches in tick 0 and flies half a meter a tick from tick 1: it reaches the
@@ -3392,7 +3426,7 @@ fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it
                     affects: None,
                     inside: AreaInsideData::default(),
                 };
-                Areas::load_type(&mut game, bolt, 0, &data);
+                Areas::load_type(&mut game, bolt, PackageIndex::MODE, &data);
                 let unit_type = DeclaredName::new("bolt").unwrap();
                 (DeliveryData::Area { unit_type }, "ctx.area(target.pos)")
             } else {
@@ -3519,7 +3553,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         script: None,
         ..chilled
     };
-    Stats::load_modifier(&mut game, 0, "chilled", &chilled, None);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "chilled", &chilled, None);
     let arrow = Units::load_type(
         &mut game,
         TypeScope::Mode,
@@ -3533,8 +3567,9 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     };
     Projectiles::load_type(&mut game, arrow, &data);
     let fan = fan_of_frost();
-    let action = Actions::load(&mut game, 0, "fan_of_frost", &fan, None, 1).unwrap();
-    Actions::load_effect_lists(&mut game, action, 0, &fan);
+    let action =
+        Actions::load(&mut game, PackageIndex::MODE, "fan_of_frost", &fan, None, 1).unwrap();
+    Actions::load_effect_lists(&mut game, action, PackageIndex::MODE, &fan);
     let caster = Abilities::caster(&mut game, action, 1);
     // Bodiless units: on the middle arrow 4 m out; on the outer arrow 4 m out, at 15 degrees,
     // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,
@@ -3559,7 +3594,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         ActionTarget::Point(point(Num::int(10), Num::ZERO)),
     );
     game.run_until(16);
-    let chill = Stats::modifier(&game, 0, "chilled").unwrap();
+    let chill = Stats::modifier(&game, PackageIndex::MODE, "chilled").unwrap();
     let struck = |id: StableId| {
         let entity = game.unit_entity(id);
         let chilled = game
@@ -3612,7 +3647,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             affects: None,
             inside: AreaInsideData::default(),
         };
-        Areas::load_type(&mut game, blast, 0, &data);
+        Areas::load_type(&mut game, blast, PackageIndex::MODE, &data);
         let shot = ActionData {
             targeting: Targeting::Point,
             delivery: Some(DeliveryData::Area {
@@ -3720,8 +3755,14 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     );
     Abilities::load_stats(&mut game);
     let [cover, rally, slow] = ["cover", "rally", "slow"].map(|name| {
-        Stats::load_modifier(&mut game, 0, name, &changing(&[], &[], None), None);
-        Stats::modifier(&game, 0, name).unwrap()
+        Stats::load_modifier(
+            &mut game,
+            PackageIndex::MODE,
+            name,
+            &changing(&[], &[], None),
+            None,
+        );
+        Stats::modifier(&game, PackageIndex::MODE, name).unwrap()
     });
     // Radius 2 and 100 ms, 3 ticks at 30 a second; it hits only enemy grunts, and holds a
     // modifier of its own on its caster, its caster's allies and its enemies.
@@ -3736,7 +3777,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
             enemies: Some(DeclaredName::new("slow").unwrap()),
         },
     };
-    Areas::load_type(&mut game, field, 0, &data);
+    Areas::load_type(&mut game, field, PackageIndex::MODE, &data);
     // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
     Units::seal_tags(&mut game, &BTreeMap::new());
     let shot = ActionData {

@@ -21,7 +21,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::{Dead, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Block, ModifierId, ResourceId, Team, UnitType};
+use campfire_values::{ActionId, Block, ModifierId, PackageIndex, ResourceId, Team, UnitType};
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
@@ -72,8 +72,8 @@ impl Carrier {
             stats: BTreeMap::from([(attack_damage, change)]),
             ..ModifierData::default()
         };
-        Stats::load_modifier(game, 0, "might", &might, None);
-        let might = Stats::modifier(game, 0, "might").unwrap();
+        Stats::load_modifier(game, PackageIndex::MODE, "might", &might, None);
+        let might = Stats::modifier(game, PackageIndex::MODE, "might").unwrap();
         let heal = EffectData {
             does: DoesData::Heal(HealFields {
                 amount: Number::Value(Scalar::Int(50)),
@@ -89,8 +89,8 @@ impl Carrier {
             ..ActionData::cast(Targeting::None)
         };
         let mut load = |name: &str, data: &ActionData| {
-            let id = Actions::load(game, 0, name, data, None, 1).unwrap();
-            Actions::load_effect_lists(game, id, 0, data);
+            let id = Actions::load(game, PackageIndex::MODE, name, data, None, 1).unwrap();
+            Actions::load_effect_lists(game, id, PackageIndex::MODE, data);
             id
         };
         let (drink, flash) = (load("drink", &drink), load("flash", &flash));

@@ -51,8 +51,8 @@ use campfire_units::{
 };
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
-    Number, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat, Team,
-    TrackId, TypeScope, UnitTags, UnitType,
+    Number, PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar,
+    Stat, Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 
@@ -807,21 +807,22 @@ fn start_match_setup(
     Stats::load_rules(&mut game, &files.data.stats);
     let blink = blink_data();
     // A spell has one rank; hero X's ability, 2.
-    let strike = Actions::load(&mut game, 0, "strike", &blink, None, 2).unwrap();
-    let blink = Actions::load(&mut game, 0, "blink", &blink, None, 1).unwrap();
+    let strike = Actions::load(&mut game, PackageIndex::MODE, "strike", &blink, None, 2).unwrap();
+    let blink = Actions::load(&mut game, PackageIndex::MODE, "blink", &blink, None, 1).unwrap();
     // Loaded out of name order, each is found by its name, and only in its package.
-    let named = ["blink", "strike", "dash"].map(|name| Actions::named(&game, 0, name));
+    let named =
+        ["blink", "strike", "dash"].map(|name| Actions::named(&game, PackageIndex::MODE, name));
     assert_eq!(named, [Some(blink), Some(strike), None]);
-    assert_eq!(Actions::named(&game, 1, "blink"), None);
+    assert_eq!(Actions::named(&game, PackageIndex::new(1), "blink"), None);
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
     Progression::load_tracks(&mut game, &files.data.tracks);
     for (name, data) in &files.modifiers {
-        Stats::load_modifier(&mut game, 0, name, data, None);
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, data, None);
     }
     let script = Units::compile_hooked(&mut game, &format!("{script}{PICK}")).unwrap();
-    let blessing = Stats::modifier(&game, 0, "blessing").unwrap();
+    let blessing = Stats::modifier(&game, PackageIndex::MODE, "blessing").unwrap();
     let mut types = test_types(types, strike, blessing);
     adjust(&mut types);
     let setup = setup(files, script, &types, spell);

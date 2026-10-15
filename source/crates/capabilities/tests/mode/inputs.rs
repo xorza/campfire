@@ -3,7 +3,8 @@ use super::*;
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let mut game = mode_match(SCRIPT, ScriptLimits::ROOMY);
-    let [strike, blink] = ["strike", "blink"].map(|name| Actions::named(&game, 0, name).unwrap());
+    let [strike, blink] =
+        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -212,7 +213,8 @@ fn on_input(ctx, player, name, value) {
 }
 "#;
     let mut game = picking_match(script, ScriptLimits::ROOMY);
-    let [strike, blink] = ["strike", "blink"].map(|name| Actions::named(&game, 0, name).unwrap());
+    let [strike, blink] =
+        ["strike", "blink"].map(|name| Actions::named(&game, PackageIndex::MODE, name).unwrap());
     let probe = |value| input("probe", value);
     let read = |game: &Match| ["kind", "seen", "team"].map(|name| Mode::field(game, name));
     let text = |text: &str| StateValue::Text(text.into());
@@ -304,7 +306,7 @@ fn on_input(ctx, player, name, value) {
     };
     let script = format!("{script}{PICKING}");
     let mut game = start_match_setup(&script, ScriptLimits::ROOMY, &mode_files(), carry).unwrap();
-    let blink = Actions::named(&game, 0, "blink").unwrap();
+    let blink = Actions::named(&game, PackageIndex::MODE, "blink").unwrap();
     let owned = |game: &mut Match| {
         let mut owned = game.query::<(&Owner, &ActionSlots)>();
         let slots = owned.iter(game).map(|(_, slots)| slots.clone());

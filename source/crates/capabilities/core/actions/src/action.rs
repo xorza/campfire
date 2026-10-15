@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::{Filter, Hook, HookSet, ScriptId};
-use campfire_values::{ModifierId, Rank, Relation, TagSet};
+use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
 use crate::delivery::Delivery;
 use crate::kind_spec::KindSpec;
@@ -10,8 +10,8 @@ use crate::rank_values::RankValues;
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
 pub struct Action {
-    /// Its package: 0 the mode, then each package the mode depends on.
-    pub package: u16,
+    /// Its package: PackageIndex::MODE the mode, then each package the mode depends on.
+    pub package: PackageIndex,
     pub kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
     pub(crate) passive: Option<Passive>,

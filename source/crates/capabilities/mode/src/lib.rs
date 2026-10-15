@@ -368,7 +368,7 @@ pub mod internals {
         Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
     };
     use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
-    use campfire_values::{Rank, Stat, TagSet, Team, UnitType};
+    use campfire_values::{PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::mode_input::{InputValue, ModeInput};
@@ -633,15 +633,16 @@ pub mod internals {
                 ScriptRole::Mode => ctx.frame().begin_mode(world, false, now),
                 ScriptRole::Ai => ctx.frame().begin_think(world, actor, now),
                 ScriptRole::Action => {
-                    let strike = Actions::named(world, 0, "strike").unwrap();
-                    let start = CallStart::cast(strike, Rank::FIRST, actor, 0, now);
+                    let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
+                    let start =
+                        CallStart::cast(strike, Rank::FIRST, actor, PackageIndex::MODE, now);
                     ctx.frame().begin(world, start).unwrap();
                 }
                 ScriptRole::Modifier => {
-                    let blessing = Stats::modifier(world, 0, "blessing").unwrap();
+                    let blessing = Stats::modifier(world, PackageIndex::MODE, "blessing").unwrap();
                     let start = CallStart {
                         acting: Some(actor),
-                        ..CallStart::hook(blessing, 0, 1, now)
+                        ..CallStart::hook(blessing, PackageIndex::MODE, 1, now)
                     };
                     ctx.frame().begin(world, start).unwrap();
                 }

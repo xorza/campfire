@@ -247,7 +247,8 @@ pub mod internals {
     use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
-        ActionId, DamageKind, DeclaredName, ModifierId, Tag, TrackId, TypeScope, UnitType,
+        ActionId, DamageKind, DeclaredName, ModifierId, PackageIndex, Tag, TrackId, TypeScope,
+        UnitType,
     };
 
     use crate::Actions;
@@ -266,7 +267,7 @@ pub mod internals {
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
-        pub fn named(world: &World, package: u16, name: &str) -> Option<ActionId> {
+        pub fn named(world: &World, package: PackageIndex, name: &str) -> Option<ActionId> {
             world
                 .resource::<ActionBook>()
                 .names()
@@ -286,7 +287,7 @@ pub mod internals {
                 world,
                 "gather",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Gather(spec),
                     passive: None,
                     hold: None,
@@ -341,7 +342,7 @@ pub mod internals {
         world: &'w World,
         view: &'w View,
         action: ActionId,
-        package: u16,
+        package: PackageIndex,
     }
 
     impl TestWeapon {
@@ -378,7 +379,7 @@ pub mod internals {
                 world,
                 "weapon",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Attack(Weapon {
                         rate: weapon.rate,
                         damage: weapon.damage,
@@ -411,7 +412,7 @@ pub mod internals {
         pub fn load_effect_lists(
             world: &mut World,
             action: ActionId,
-            package: u16,
+            package: PackageIndex,
             data: &ActionData,
         ) {
             let view = world.non_send::<View>().clone();
@@ -435,7 +436,7 @@ pub mod internals {
                 world,
                 "train",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Train(unit_type),
                     passive: None,
                     hold: None,
@@ -472,7 +473,7 @@ pub mod internals {
                 world,
                 "build",
                 Action {
-                    package: 0,
+                    package: PackageIndex::MODE,
                     kind: KindSpec::Build(unit_type),
                     passive: None,
                     hold: None,
@@ -497,7 +498,12 @@ pub mod internals {
     }
 
     impl<'w> MatchEffectNames<'w> {
-        pub const fn new(world: &'w World, view: &'w View, action: ActionId, package: u16) -> Self {
+        pub const fn new(
+            world: &'w World,
+            view: &'w View,
+            action: ActionId,
+            package: PackageIndex,
+        ) -> Self {
             MatchEffectNames {
                 world,
                 view,

@@ -368,7 +368,8 @@ pub mod internals {
     use campfire_sim::{SimWorld, StableId, TickRate};
     use campfire_units::{ScriptBook, UnitTypeBook};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, Names, Param, Rank, Stat, TagSet, UnitType,
+        ActionId, DeclaredName, ModifierId, Names, PackageIndex, Param, Rank, Stat, TagSet,
+        UnitType,
     };
 
     use crate::Stats;
@@ -387,7 +388,7 @@ pub mod internals {
 
     impl Stats {
         /// The modifier `name` of `package`, as the match loaded it.
-        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+        pub fn modifier(world: &World, package: PackageIndex, name: &str) -> Option<ModifierId> {
             world
                 .resource::<ModifierBook>()
                 .names()
@@ -466,7 +467,7 @@ pub mod internals {
         /// names one. Modifiers load by package, then name.
         pub fn load_modifier(
             world: &mut World,
-            package: u16,
+            package: PackageIndex,
             name: &str,
             data: &ModifierData,
             script: Option<ScriptId>,

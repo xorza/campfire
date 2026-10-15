@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
 use campfire_sim::Capability;
-use campfire_values::UnitType;
+use campfire_values::{PackageIndex, UnitType};
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its
 /// place in the mode's packages, the mode's first, and its name there, as its client data names
@@ -16,7 +16,7 @@ pub struct TypeOriginBook {
 /// key in the package's unit types, or, for an avatar, the package's name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeOrigin {
-    pub package: u16,
+    pub package: PackageIndex,
     pub name: Box<str>,
 }
 

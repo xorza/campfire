@@ -292,7 +292,9 @@ pub(crate) mod internals {
     use campfire_declare::{Book, ByType};
     use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
     use campfire_sim::StableId;
-    use campfire_values::{Block, DeclaredName, Relation, Scalar, Team, TypeScope, UnitType};
+    use campfire_values::{
+        Block, DeclaredName, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType,
+    };
 
     use crate::script_book::ScriptBook;
     use crate::tag_book::TagBook;
@@ -322,7 +324,7 @@ pub(crate) mod internals {
 
     /// The package of the modifiers that grant the test tags, after every package a test
     /// loads its own from.
-    pub const TEST_PACKAGE: u16 = u16::MAX;
+    pub const TEST_PACKAGE: PackageIndex = PackageIndex::new(u16::MAX);
 
     /// How many test tags `Units::test_tags` declares.
     const TEST_TAGS: usize = Block::ALL.len() + 2;
@@ -441,7 +443,7 @@ pub(crate) mod internals {
         ) -> UnitType {
             // A package's own scope is that package's; the mode's, the mode package's.
             let package = match scope {
-                TypeScope::Mode => 0,
+                TypeScope::Mode => PackageIndex::MODE,
                 TypeScope::Package(package) => package,
             };
             let mut types = world.resource_mut::<UnitTypeBook>();

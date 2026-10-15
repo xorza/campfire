@@ -7,7 +7,9 @@ use campfire_math::Num;
 use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
-use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Rank, Stat, TagSet};
+use campfire_values::{
+    ActionId, DeclaredName, ModifierId, Names, PackageIndex, Rank, Stat, TagSet,
+};
 
 use crate::application::{Application, NewInstance};
 use crate::applier::Applier;
@@ -39,7 +41,7 @@ pub struct ModifierBook {
 /// hears.
 #[derive(Debug, Clone)]
 pub struct ModifierEntry {
-    pub package: u16,
+    pub package: PackageIndex,
     pub(crate) spec: ModifierSpec,
     pub script: Option<ScriptId>,
     pub hooks: HookSet,
@@ -73,7 +75,7 @@ impl ModifierBook {
     pub fn load<S: Fn(&Stat) -> Result<StatId, UnknownName>>(
         &mut self,
         load: ModifierLoad<'_, S>,
-        package: u16,
+        package: PackageIndex,
         modifiers: &[PackageModifier<'_>],
     ) -> Result<(), ModifierError> {
         let ModifierLoad {
@@ -333,7 +335,7 @@ pub(crate) mod internals {
 
     use campfire_math::Num;
     use campfire_script::HookSet;
-    use campfire_values::{ModifierId, TagSet};
+    use campfire_values::{ModifierId, PackageIndex, TagSet};
 
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;
@@ -352,14 +354,15 @@ pub(crate) mod internals {
             let book = Arc::make_mut(&mut self.entries);
             let at = book.len();
             let name = format!("{at:05}");
-            let id = Arc::make_mut(&mut self.names).add((u16::MAX, name.as_str()));
+            let none = PackageIndex::new(u16::MAX);
+            let id = Arc::make_mut(&mut self.names).add((none, name.as_str()));
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
                 op,
                 value: SpecNumber::Value(Num::ZERO),
             });
             book.push(ModifierEntry {
-                package: u16::MAX,
+                package: none,
                 spec: ModifierSpec {
                     duration: None,
                     interval: None,

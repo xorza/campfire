@@ -1,6 +1,6 @@
 use campfire_common::Tick;
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, Rank};
+use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, PackageIndex, Rank};
 
 use crate::scripts::script_role::ScriptRole;
 
@@ -17,7 +17,7 @@ pub struct CallStart {
     pub action: Option<ActionId>,
     pub rank: Rank,
     pub modifier: Option<ModifierId>,
-    pub package: u16,
+    pub package: PackageIndex,
     pub depth: u8,
     pub hit: Option<Hit>,
     pub start: Option<ActionStart>,
@@ -36,7 +36,7 @@ impl CallStart {
             action: None,
             rank: Rank::FIRST,
             modifier: None,
-            package: 0,
+            package: PackageIndex::MODE,
             depth: 0,
             hit: None,
             start: None,
@@ -50,7 +50,7 @@ impl CallStart {
         action: ActionId,
         rank: Rank,
         caster: StableId,
-        package: u16,
+        package: PackageIndex,
         now: Tick,
     ) -> CallStart {
         CallStart {
@@ -64,7 +64,12 @@ impl CallStart {
 
     /// A hook of `modifier` of `package` at chain depth `depth` in tick `now`, of an instance
     /// from no source, by no action, at rank 1.
-    pub const fn hook(modifier: ModifierId, package: u16, depth: u8, now: Tick) -> CallStart {
+    pub const fn hook(
+        modifier: ModifierId,
+        package: PackageIndex,
+        depth: u8,
+        now: Tick,
+    ) -> CallStart {
         CallStart {
             modifier: Some(modifier),
             package,

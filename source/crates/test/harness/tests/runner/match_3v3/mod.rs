@@ -27,7 +27,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Life, Stats};
 use campfire_units::{Dead, Owner};
-use campfire_values::{Rank, Scalar, Team, UnitType};
+use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
 
 use crate::runner::match_3v3::showcase::Showcase;
 use crate::runner::moba::{gold, level_xp};
@@ -238,7 +238,7 @@ impl Seen {
                 .packages()
                 .packages()
                 .position(|view| view.package.header.name == "player-spells");
-            let spells = u16::try_from(spells.unwrap()).unwrap();
+            let spells = PackageIndex::new(u16::try_from(spells.unwrap()).unwrap());
             let haste = Stats::modifier(world, spells, "haste").unwrap();
             let carried = Stats::carried_modifiers(world, husk);
             self.hasted.push(carried.iter().any(|&(id, _)| id == haste));

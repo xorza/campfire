@@ -1,6 +1,6 @@
 use campfire_capabilities::Release;
 use campfire_units::*;
-use campfire_values::{DeclaredName, Tag, TypeScope};
+use campfire_values::{DeclaredName, PackageIndex, Tag, TypeScope};
 
 #[test]
 fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
@@ -17,7 +17,7 @@ fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
         ..UnitTypeCore::default()
     };
     let load = |types: &mut UnitTypeBook, name: &str, data: &UnitTypeCore| {
-        types.load(TypeScope::Mode, 0, name, data)
+        types.load(TypeScope::Mode, PackageIndex::MODE, name, data)
     };
     assert_eq!(
         load(&mut types, "tower", &named("one_more")),
