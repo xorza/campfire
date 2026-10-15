@@ -2,12 +2,9 @@ use std::fmt;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
-use bevy_ecs::world::EntityWorldMut;
-use campfire_declare::EntityParts;
+use bevy_ecs::world::World;
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
-use campfire_units::{
-    NewUnitStates, Owner, UnitCore, UnitEntity, UnitFilter, UnitStateBook, UnitStates,
-};
+use campfire_units::{DeliveryEntity, Owner, UnitCore, UnitFilter};
 use campfire_values::{Team, UnitType};
 
 /// Spawns the units that actions deliver, projectiles and areas, each for its source.
@@ -16,8 +13,6 @@ pub struct DeliverySpawner<'w, 's> {
     commands: Commands<'w, 's>,
     ids: ResMut<'w, IdAllocator>,
     index: Res<'w, EntityIndex>,
-    states: Res<'w, UnitStateBook>,
-    new_states: ResMut<'w, NewUnitStates>,
     sources: Query<'w, 's, (&'static Team, Option<&'static Owner>), UnitFilter>,
 }
 
@@ -29,10 +24,10 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 }
 
 impl DeliverySpawner<'_, '_> {
-    /// Spawns a unit of `unit_type` at `pos` with what `make` gives for its stable id, `id`, which
-    /// a script took for it, or else a new one, of `source`'s team and player, with its type's
-    /// tags, the parts the modules declare for every unit, and its script state at their defaults
-    /// but what the script wrote, and gives its id; none, and no id taken, when `source` is gone.
+    /// Spawns a delivery of `unit_type` at `pos` with what `make` gives for its stable id, `id`,
+    /// which a script took for it, or else a new one, of `source`'s team and player, through the
+    /// one spawn of a unit, `UnitCore::spawn`, as the commands apply; gives its id; none, and
+    /// no id taken, when `source` is gone.
     pub fn spawn<B: Bundle>(
         &mut self,
         source: StableId,
@@ -53,14 +48,9 @@ impl DeliverySpawner<'_, '_> {
             team,
             owner: owner.copied(),
         };
-        let parts = core.made(
-            UnitStates::initial(&self.states, unit_type),
-            &mut self.new_states,
-        );
-        let mut unit = self.commands.spawn(make(id));
-        parts.insert_into(&mut unit);
-        unit.queue(|mut unit: EntityWorldMut<'_>| {
-            EntityParts::<UnitEntity>::give(&mut unit);
+        let parts = make(id);
+        self.commands.queue(move |world: &mut World| {
+            core.spawn(world, DeliveryEntity, parts);
         });
         Some(id)
     }

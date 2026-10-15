@@ -29,9 +29,7 @@ use campfire_script::{
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
 use campfire_stats::{Life, Stats};
-use campfire_units::{
-    BodyForm, Dead, DeliveryEntity, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units,
-};
+use campfire_units::{BodyForm, Dead, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{PackagePath, Rank, Scalar};
 use campfire_values::{PathId, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
@@ -885,7 +883,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert_eq!(game.part::<ActionSlots>(friendly).attack_target(), None);
     // A reset of another unit fails as the unit's own does not: of a delivery, which holds no
     // spawn place, as of any.
-    let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), DeliveryEntity);
+    let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), ());
     let reset = Units::read(&mut game, "ctx.order_reset(of)", delivery).unwrap_err();
     assert_eq!(reset.kind(), FailureKind::Api(ApiError::OtherUnit));
 }

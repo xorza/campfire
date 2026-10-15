@@ -3,13 +3,11 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::{EntityParts, SpawnParts};
 use campfire_values::UnitType;
 
 use crate::facing::Facing;
 use crate::spawn_at::SpawnAt;
 use crate::spawn_hooks::SpawnHooks;
-use crate::unit_entity::UnitEntity;
 use crate::unit_entity::body_unit::BodyUnit;
 
 /// How the match spawns a unit of a type the mode spawns, owned by a player or none: its core
@@ -50,12 +48,9 @@ impl Spawner {
     /// for a unit, but those of `parts`, then runs the capabilities' spawn hooks.
     pub fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
         debug_assert!(self.spawns(at.unit_type), "a unit type the mode spawns");
-        let mut unit = at.core().spawn(world, (Facing::of(at.angle), parts));
-        SpawnParts::give(&mut unit, |world, entity, writer| {
-            EntityParts::<UnitEntity>::push(world, entity, writer);
-            EntityParts::<BodyUnit>::push(world, entity, writer);
-        });
-        let entity = unit.id();
+        let entity = at
+            .core()
+            .spawn(world, BodyUnit, (Facing::of(at.angle), parts));
         SpawnHooks::run(world, entity);
         entity
     }

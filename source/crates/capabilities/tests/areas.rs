@@ -12,7 +12,7 @@ use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent};
 use campfire_stats::{ModifierData, Stats};
-use campfire_units::{DeliveryEntity, UnitTypeBook, UnitTypeCore, Units};
+use campfire_units::{UnitTypeBook, UnitTypeCore, Units};
 use campfire_values::{
     DeclaredName, EngineTag, Number, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
 };
@@ -138,7 +138,7 @@ fn an_area_is_state_and_restores() {
     assert!(!area.check(&game, entity));
     // A warding area: the train, which declares no `ward`, cannot have delivered it, as Rally
     // would fail as an ally takes it.
-    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, DeliveryEntity);
+    let warded = Deliveries::spawn_of(&mut game, source, warding, Position::ORIGIN, ());
     let area = Area::new(by, None, Tick::LIMIT);
     assert!(area.check(&game, entity));
     assert!(!area.check(&game, game.unit_entity(warded)));

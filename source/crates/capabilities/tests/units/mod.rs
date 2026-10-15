@@ -407,7 +407,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     };
     assert_eq!(spawn_pos(&mut game, of).cast::<Position>(), spawn.get());
     let unit_type = Units::type_named(&game, "unit").unwrap();
-    let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
     assert!(spawn_pos(&mut game, delivery).is_unit());
     assert_eq!(
         value(&mut game, "of.params.help_window_ms").as_int(),
@@ -474,7 +474,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     life.take(Num::int(4));
     let shell = spawn_named(&mut game, "unit", (2, 0, 0), Team::new(1));
     let unit_type = Units::type_named(&game, "unit").unwrap();
-    let bare = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), DeliveryEntity);
+    let bare = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
     // The refresh derives the stats.
     game.step();
 

@@ -13,7 +13,9 @@ use campfire_players::{Players, PlayersWorld};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StableId, TickRate};
-use campfire_units::{Body, BodyForm, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore};
+use campfire_units::{
+    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
+};
 use campfire_values::{Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
 
@@ -173,7 +175,7 @@ fn spawn(world: &mut World, core: Core, pos: Position, parts: impl Bundle) -> St
         team,
         owner,
     };
-    core.spawn(world, parts);
+    core.spawn(world, BodyUnit, parts);
     id
 }
 

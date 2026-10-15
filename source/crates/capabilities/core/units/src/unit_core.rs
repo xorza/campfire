@@ -1,20 +1,19 @@
 use bevy_ecs::bundle::Bundle;
-use bevy_ecs::world::{EntityWorldMut, World};
-use campfire_declare::EntityKind;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
+use campfire_declare::{EntityKind, EntityParts, SpawnParts};
 use campfire_sim::{Position, StableId};
 use campfire_values::{Team, UnitTags, UnitType};
 
 use crate::new_unit_states::NewUnitStates;
 use crate::owner::Owner;
-use crate::spawn_target::SpawnTarget;
-use crate::unit_entity::body_unit::BodyUnit;
+use crate::unit_entity::UnitEntity;
 use crate::unit_state_book::UnitStateBook;
 use crate::unit_states::UnitStates;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, and its script state; its type gives it its tags. Each spawn path spawns the unit with
-/// its own parts, puts the core on, then the parts the modules declare for its kind, made from its
-/// type's books, as the mode's spawner and the delivery spawn do.
+/// owner, and its script state; its type gives it its tags. Every spawn of a unit goes through
+/// `UnitCore::spawn`, the mode's spawner's and a delivery's alike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
@@ -24,42 +23,23 @@ pub struct UnitCore {
     pub owner: Option<Owner>,
 }
 
-/// A unit's core with what it derives from the books, made before the unit spawns, so a spawn
-/// that holds the world reads no book while it puts the parts on.
-#[derive(Debug)]
-pub struct MadeCore {
-    core: UnitCore,
-    states: UnitStates,
-}
-
 impl UnitCore {
-    /// The core's parts: its script state at `initial`, its type's defaults, but what a call
-    /// wrote to it, which `new_states` holds for a unit that spawns after the call that created
-    /// it.
-    pub fn made(self, mut initial: UnitStates, new_states: &mut NewUnitStates) -> MadeCore {
-        new_states.take(self.id, &mut initial);
-        MadeCore {
-            core: self,
-            states: initial,
-        }
-    }
-
-    /// Spawns the unit, a `BodyUnit`, in `world` with `parts`, which hold no part of the core,
-    /// then puts its core on, made from the world's books.
-    pub fn spawn(self, world: &mut World, parts: impl Bundle) -> EntityWorldMut<'_> {
-        self.spawn_as(world, BodyUnit, parts)
-    }
-
-    /// Spawns the unit, of the kind `kind` marks, as `spawn` does.
-    pub(crate) fn spawn_as<K: EntityKind>(
-        self,
-        world: &mut World,
-        kind: K,
-        parts: impl Bundle,
-    ) -> EntityWorldMut<'_> {
-        let owned = self.owner.is_some();
-        let initial = UnitStates::initial(world.resource::<UnitStateBook>(), self.unit_type);
-        let made = self.made(initial, &mut world.resource_mut::<NewUnitStates>());
+    /// Spawns the unit, of the kind `kind` marks, in `world` with `parts`, which hold no part of
+    /// the core: its core, then, in one move, the parts the modules declare for every unit and
+    /// for its kind, but those of `parts`. Its script state starts at its type's defaults, but
+    /// what a call wrote to it before it spawned, which `NewUnitStates` holds.
+    pub fn spawn<K: EntityKind>(self, world: &mut World, kind: K, parts: impl Bundle) -> Entity {
+        let mut states = UnitStates::initial(world.resource::<UnitStateBook>(), self.unit_type);
+        world
+            .resource_mut::<NewUnitStates>()
+            .take(self.id, &mut states);
+        let UnitCore {
+            id,
+            pos,
+            unit_type,
+            team,
+            owner,
+        } = self;
         let mut unit = world.spawn((kind, parts));
         debug_assert!(
             !(unit.contains::<StableId>()
@@ -67,28 +47,18 @@ impl UnitCore {
                 || unit.contains::<UnitType>()
                 || unit.contains::<Team>()
                 || unit.contains::<UnitTags>()
-                || owned && unit.contains::<Owner>()),
+                || owner.is_some() && unit.contains::<Owner>()),
             "a unit's parts hold none of its core, which would take their place"
         );
-        made.insert_into(&mut unit);
-        unit
-    }
-}
-
-impl MadeCore {
-    /// Puts the core on `unit`.
-    pub fn insert_into(self, unit: &mut impl SpawnTarget) {
-        let UnitCore {
-            id,
-            pos,
-            unit_type,
-            team,
-            owner,
-        } = self.core;
-        unit.insert_part((id, pos, unit_type, team));
+        unit.insert((id, pos, unit_type, team));
         if let Some(owner) = owner {
-            unit.insert_part(owner);
+            unit.insert(owner);
         }
-        self.states.insert_into(unit);
+        states.insert_into(&mut unit);
+        SpawnParts::give(&mut unit, |world, entity, writer| {
+            EntityParts::<UnitEntity>::push(world, entity, writer);
+            EntityParts::<K>::push(world, entity, writer);
+        });
+        unit.id()
     }
 }

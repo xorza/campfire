@@ -9,7 +9,7 @@ use campfire_script::{ApiError, ScriptBudgets, ScriptLimits, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_stats::Life;
-use campfire_units::{BodyForm, Dead, DeliveryEntity, UnitTypeCore, Units, UnitsWorldCrate};
+use campfire_units::{BodyForm, Dead, UnitTypeCore, Units, UnitsWorldCrate};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope};
 use campfire_vision::*;
 
@@ -50,7 +50,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     game.insert_parts(dead, Dead);
     // An enemy with no life pool, a projectile of team 1, is no target: no query finds it.
     let blind = Units::type_named(&game, "blind").unwrap();
-    let shell = Deliveries::spawn_of(&mut game, near, blind, (1, 0, 0), DeliveryEntity);
+    let shell = Deliveries::spawn_of(&mut game, near, blind, (1, 0, 0), ());
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its vision group: here its team alone.

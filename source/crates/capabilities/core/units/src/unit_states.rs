@@ -1,10 +1,8 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityWorldMut, World};
 use campfire_script::{StatePlace, StateValue, SyncTo};
-
 use campfire_values::UnitType;
 
-use crate::spawn_target::SpawnTarget;
 use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::unit_state_book::UnitStateBook;
 
@@ -52,7 +50,7 @@ impl UnitStates {
     }
 
     /// Inserts a component into `target` for each class it holds a field of.
-    pub fn insert_into(self, target: &mut impl SpawnTarget) {
+    pub fn insert_into(self, target: &mut EntityWorldMut<'_>) {
         let UnitStates {
             none,
             owner,
@@ -66,12 +64,12 @@ impl UnitStates {
     }
 
     fn insert_class<S: StateSync>(
-        target: &mut impl SpawnTarget,
+        target: &mut EntityWorldMut<'_>,
         values: impl IntoIterator<Item = StateValue>,
     ) {
         let values: Vec<StateValue> = values.into_iter().collect();
         if !values.is_empty() {
-            target.insert_part(UnitState::<S>::new(values));
+            target.insert(UnitState::<S>::new(values));
         }
     }
 
