@@ -72,6 +72,14 @@ pub struct TimedSlots {
     slots: ActionSlots,
 }
 
+impl SlotCharges {
+    /// One charge more, up to `max`: a slot that holds its most, even 255, holds it still, and
+    /// one that holds more, as a rank's rule may give fewer, holds the most.
+    fn gain(&mut self, max: u8) {
+        self.count = self.count.saturating_add(1).min(max);
+    }
+}
+
 impl SlotTime {
     /// Ready at once, with no charges and no toggle on.
     const READY: SlotTime = SlotTime {
@@ -246,7 +254,7 @@ impl SlotTimes {
             }
             let rule = held.rank.and_then(|rank| rules.values_at(rank)?.charges);
             if let (Some(charges), Some(rule)) = (&mut time.charges, rule) {
-                charges.count = (charges.count + 1).min(rule.max.get());
+                charges.gain(rule.max.get());
             }
         }
     }
@@ -433,5 +441,20 @@ mod tests {
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(3 << 60));
         times.cut_cooldowns(&slots, kind, Num::ONE, Tick::ZERO);
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::ZERO);
+    }
+
+    #[test]
+    fn a_charge_gained_stops_at_the_most_even_at_255() {
+        let mut charges = SlotCharges {
+            count: 254,
+            next: Tick::ZERO,
+        };
+        charges.gain(255);
+        assert_eq!(charges.count, 255);
+        charges.gain(255);
+        assert_eq!(charges.count, 255);
+        // A count past a most that fell comes down to it.
+        charges.gain(3);
+        assert_eq!(charges.count, 3);
     }
 }
