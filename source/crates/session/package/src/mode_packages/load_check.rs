@@ -169,6 +169,13 @@ impl<'a> LoadCheck<'a> {
         books
             .check_walkable()
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
+        // A name is the client's alone, so it is checked last: a train or a build whose other
+        // problems the checks above find shows those.
+        shown_named(&packages.content.actions).map_err(fail)?;
+        for dependent in &packages.dependencies {
+            shown_named(&dependent.content.actions)
+                .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
+        }
         Ok(stat_order)
     }
 
@@ -2037,6 +2044,19 @@ fn message(package: &Package, id: &MessageId, at: &Place) -> Result<(), LoadProb
 /// Whether each of `actions`, a player's, has a name.
 fn named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem> {
     match actions.iter().find(|(_, action)| action.name.is_none()) {
+        Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
+        None => Ok(()),
+    }
+}
+
+/// Whether each train and build of `actions` has a name, which a client shows on its
+/// producer's button.
+fn shown_named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem> {
+    let shown = |action: &ActionData| matches!(action.kind, ActionKind::Train | ActionKind::Build);
+    match actions
+        .iter()
+        .find(|(_, action)| shown(action) && action.name.is_none())
+    {
         Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
         None => Ok(()),
     }

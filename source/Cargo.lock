@@ -3125,6 +3125,7 @@ dependencies = [
 name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-actions",
  "campfire-capabilities",
  "campfire-client-files",
  "campfire-codec",
@@ -3138,6 +3139,8 @@ dependencies = [
  "campfire-orders",
  "campfire-package",
  "campfire-package-disk",
+ "campfire-players",
+ "campfire-production",
  "campfire-runner",
  "campfire-sim",
  "campfire-store",

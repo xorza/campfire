@@ -20,23 +20,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.
 
-## 2. Zero Hour's trains and builds
-
-`import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`; `actions`'s load. It writes the build start and the exit points production now takes.
-
-### P3. The load names every train and build
-
-(`actions`: the action load; design 18, D6.) The load refuses a `train` or `build` action with no `name`, as it refuses an avatar's action with none; the proving mode's `train_guard` gains its name. Check: a train of no name is refused, with its action named.
-
-### P4. The import converts the command sets, the money and the names
-
-(`import`: `zero_hour`; the rules package's mode script; design 18, D3 to D6.) The import reads `CommandSet.ini`, `CommandButton.ini`, `multiplayer.ini` and the string table; makes each `UNIT_BUILD` and `DOZER_CONSTRUCT` button an action, each object a converted button makes a unit type, with its slots, its queue, its exit and its rally; drops and reports the buttons D3 names; writes the mode's `production`, `money`, `command` slot kind, `start_money` and the actions' names. The mode script gives each player its money. `imported_type.rs`'s comment whose line runs past 100 characters is wrapped. Check: the fixtures of D3 to D6 as design 18's checks give them; the rules package's script gives a fixture match its money.
-
-### P5. The Zero Hour check plays production
-
-(`checks/zero-hour-check`; design 18's checks.) The check pins the counts of trains, builds and dropped buttons by cause, and plays on Tournament Desert the command center's dozer, the dozer's barracks and the barracks' ranger, each paid from 10,000 and done in its ticks. Check: `./drive.py zero-hour` passes.
-
-## 3. The command panel
+## 2. The command panel
 
 `client`: a new `command_panel`, `orders`, `pointer`, `view`. It needs P4 to be played.
 

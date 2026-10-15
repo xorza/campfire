@@ -89,6 +89,19 @@ pub enum ZeroHourError {
     /// names no starting building.
     #[error("player template {0} names no starting building")]
     NoStart(String),
+    /// No language folder holds art, so the import cannot tell which string table the game reads.
+    #[error("no language folder holds art, so no string table is the game's")]
+    NoLanguage,
+    /// The multiplayer settings mark no choice of starting money as the default, or several.
+    #[error("the multiplayer settings mark no single default starting money")]
+    DefaultMoney,
+    /// The string table is none the game reads, by its path.
+    #[error("{path} is no string table the game reads")]
+    StringTable {
+        path: String,
+        #[source]
+        error: CsfError,
+    },
     /// A start object of the player template, by its name, is no object of the INI files.
     #[error("start object {0} is no object of the INI files")]
     NoStartObject(String),
@@ -387,6 +400,9 @@ pub enum IniError {
     /// A field's number is past what the game holds.
     #[error("line {line}: a field's number is past what the game holds")]
     Range { line: usize },
+    /// A coordinate's field lacks a label, as `X:`, in its place, or the value after it.
+    #[error("line {line}: a coordinate lacks a label or a value")]
+    Coord { line: usize },
     /// A field of a whole number holds none.
     #[error("line {line}: a field holds no whole number")]
     Number {
@@ -425,6 +441,33 @@ pub enum IniError {
     /// An `ObjectReskin` of a base not read before it.
     #[error("line {line}: a reskin's base is not read before it")]
     NoBase { line: usize },
+}
+
+/// Why a string table's bytes are none the game reads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum CsfError {
+    /// It runs past its end.
+    #[error("it runs past its end")]
+    Short,
+    /// It does not start with the tag `CSF `, or gives a length below 0.
+    #[error("it is no string table")]
+    NotCsf,
+    /// A label, by its place from 0, does not start with the tag `LBL `.
+    #[error("label {index} has no label's tag")]
+    NotLabel { index: usize },
+    /// A string of a label, by the label's place, starts with neither `STR ` nor `STRW`, or gives
+    /// a length below 0.
+    #[error("a string of label {index} has no string's tag")]
+    NotString { index: usize },
+    /// A string of a label, by the label's place, is no UTF-16 text.
+    #[error("a string of label {index} is no text")]
+    NotText { index: usize },
+}
+
+impl From<Short> for CsfError {
+    fn from(_: Short) -> CsfError {
+        CsfError::Short
+    }
 }
 
 /// Why a W3D file's bytes are no model the importer converts.

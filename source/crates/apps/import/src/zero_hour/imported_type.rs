@@ -8,9 +8,9 @@ use crate::zero_hour::object_ini::{GeometryShape, IniObject};
 
 /// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4): the
 /// speed and the turn rate of its first normal locomotor that drives on the ground, and its
-/// body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or, when it is a structure that is not
-/// small, a box of twice its radii for a box geometry, else a circle of its radius. Every other
-/// object has neither, and stands and blocks nothing.
+/// body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or, when it is a
+/// structure that is not small, a box of twice its radii for a box geometry, else a circle of its
+/// radius. Every other object has neither, and stands and blocks nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -113,6 +113,16 @@ impl ImportedType {
                     .extent(),
             ),
         }
+    }
+
+    /// Whether its units walk: it drives, so it has a `move_speed`.
+    pub(crate) const fn walks(&self) -> bool {
+        self.stats.is_some()
+    }
+
+    /// Whether its body is a box, which a build places.
+    pub(crate) const fn is_box(&self) -> bool {
+        matches!(self.collision, Some(TypeBody::Box(_)))
     }
 
     /// Its speed in meters a second, when it drives.

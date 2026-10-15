@@ -10,8 +10,11 @@
 //! no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
 //! mode, where player 1 starts with America's command center at `Player_1_Start` and its dozer
 //! clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets there within
-//! `DRIVE_TICKS`, in no wall's cell in any tick. Every other map the game lists loads in the
-//! imported mode. It fails
+//! `DRIVE_TICKS`, in no wall's cell in any tick. It counts the trains and builds the import
+//! converts from the command sets and the buttons it drops by cause; and in a match of its own,
+//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains
+//! a ranger, each in its pinned ticks and paid from the starting money. Every other map the game
+//! lists loads in the imported mode. It fails
 //! when `GENERALSZH_DATA` names no install, so a machine with no copy never passes as one that
 //! checked.
 //!
@@ -24,13 +27,14 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::{ExitStatus, MapName};
-use campfire_import::{GameVersion, ZeroHour};
+use campfire_import::{DropCause, DroppedButton, GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_math::Num;
-use campfire_package::{ContentError, PackageReader};
+use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use campfire_values::{DeclaredName, PackagePath};
@@ -38,12 +42,14 @@ use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
-use crate::failure::{Failure, LookCounts, TerrainDrawn};
+use crate::failure::{Failure, LookCounts, ProducedCounts, ProductionSteps, TerrainDrawn};
+use crate::production_play::ProductionPlay;
 use crate::start_drive::StartDrive;
 
 mod command_line;
 mod error;
 mod failure;
+mod production_play;
 mod start_drive;
 
 /// The map the check plays.
@@ -65,6 +71,28 @@ const LOOKS: LookCounts = LookCounts {
     empty: 273,
     night: 15,
     snowy: 17,
+};
+
+/// The trains and builds the import converts from every command set, and the buttons it drops,
+/// by cause in the order of `DropCause::ALL`: no object, a science 22, an either-or 4, no walker 36,
+/// as the aircraft an airfield or a supply center trains, no box 24, no queue, no type, a bad
+/// time (design 18, D3).
+const PRODUCED: ProducedCounts = ProducedCounts {
+    trains: 187,
+    builds: 138,
+    dropped: [0, 22, 4, 36, 24, 0, 0, 0],
+};
+
+/// The production play's ticks and money on Tournament Desert: the dozer's 5 s, 150 ticks, the
+/// order's tick among them; the barracks' 706, the dozer's drive round the command center's box
+/// to the site, which the check pins as it measured it, then its 10 s of building, 300 ticks;
+/// the ranger's 5 s; and the money of 10,000 less the dozer's 1,000, the barracks' 600 and the
+/// ranger's 225.
+const PRODUCTION: ProductionSteps = ProductionSteps {
+    dozer_ticks: 150,
+    barracks_ticks: 706,
+    ranger_ticks: 150,
+    money: [9000, 8400, 8175],
 };
 
 /// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
@@ -266,7 +294,46 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
             "a map's waypoints past its bounds are dropped"
         );
     }
+    // The trains and builds of every command set, and the buttons dropped, by cause.
+    let produced = ProducedCounts {
+        trains: kind_count(&packages, ActionKind::Train),
+        builds: kind_count(&packages, ActionKind::Build),
+        dropped: dropped_by_cause(&imported.dropped_buttons),
+    };
+    if produced != PRODUCED {
+        failures.push(Failure::Produced(produced));
+    }
+    for dropped in &imported.dropped_buttons {
+        info!(
+            button = dropped.button,
+            cause = ?dropped.cause,
+            "a command button is not imported"
+        );
+    }
+    info!(
+        trains = produced.trains,
+        builds = produced.builds,
+        dropped = ?produced.dropped,
+        "the command sets' trains and builds"
+    );
     let rate = NonZeroU32::new(30).expect("a rate");
+    // The play takes a match of its own, of the packages loaded again.
+    let played = PackageDir::new(out.join(ZeroHour::GAME))
+        .mode_packages(&map)
+        .map_err(CheckError::Load)?;
+    let production = ProductionPlay::run(played, rate, &mut failures);
+    if let Some(play) = production {
+        if play != PRODUCTION {
+            failures.push(Failure::Production(play));
+        }
+        info!(
+            dozer = play.dozer_ticks,
+            barracks = play.barracks_ticks,
+            ranger = play.ranger_ticks,
+            money = ?play.money,
+            "player 1 trained a dozer, built a barracks and trained a ranger"
+        );
+    }
     if let Some(drive) = StartDrive::run(packages, rate, &mut failures) {
         if drive.ticks > DRIVE_TICKS {
             failures.push(Failure::DriveTicks(drive.ticks));
@@ -282,6 +349,22 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         );
     }
     Ok(failures)
+}
+
+/// How many actions of `kind` the mode of `packages` holds.
+fn kind_count(packages: &ModePackages, kind: ActionKind) -> usize {
+    let actions = packages.content().actions.values();
+    actions.filter(|action| action.kind == kind).count()
+}
+
+/// How many of `dropped` each cause drops, in the order of `DropCause::ALL`.
+fn dropped_by_cause(dropped: &[DroppedButton]) -> [usize; DropCause::ALL.len()] {
+    DropCause::ALL.map(|cause| {
+        dropped
+            .iter()
+            .filter(|button| button.cause == cause)
+            .count()
+    })
 }
 
 /// Removes the packages an earlier run wrote to `out`, so the import writes it anew; nothing for

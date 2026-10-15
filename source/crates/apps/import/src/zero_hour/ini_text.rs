@@ -84,14 +84,37 @@ impl IniLine<'_> {
     /// the game's `from_chars` read it, the rest of the token ignored, so a token of `40v.0` is
     /// 40; or the whole token, for one of infinity or of no number.
     pub(crate) fn real(&self) -> Result<f32, IniError> {
-        let value = self.value()?;
+        IniLine::real_of(self.value()?, self.number)
+    }
+
+    /// The value of a field of a coordinate, as `INI::parseCoord3D` reads it: each of `labels` in
+    /// order, of either case, then its real number, its tokens cut at every `:` as well, as
+    /// `INI::getNextSubToken` cuts them, so `X:-18.0` and `X: -18.0` are alike.
+    pub(crate) fn coord<const N: usize>(&self, labels: [&str; N]) -> Result<[f32; N], IniError> {
+        let mut parts = self.tokens[1..]
+            .iter()
+            .flat_map(|token| token.split(':'))
+            .filter(|part| !part.is_empty());
+        let mut coord = [0.0; N];
+        for (label, at) in labels.iter().zip(&mut coord) {
+            let labelled = parts
+                .next()
+                .is_some_and(|part| part.eq_ignore_ascii_case(label));
+            let value = parts.next().filter(|_| labelled);
+            *at = IniLine::real_of(
+                value.ok_or(IniError::Coord { line: self.number })?,
+                self.number,
+            )?;
+        }
+        Ok(coord)
+    }
+
+    /// `value` as a real number, as `real` reads a field's, of the line `line`.
+    fn real_of(value: &str, line: usize) -> Result<f32, IniError> {
         let real = value
             .parse()
             .or_else(|_| value[..IniLine::real_prefix(value)].parse());
-        real.map_err(|error| IniError::Real {
-            line: self.number,
-            error,
-        })
+        real.map_err(|error| IniError::Real { line, error })
     }
 
     /// The length of `text`'s longest prefix of a decimal real: a sign, digits with a point
@@ -202,6 +225,15 @@ mod tests {
         assert_eq!(int("12ab"), Some(12));
         assert_eq!(int("-7.5"), Some(-7));
         assert_eq!(int("x1"), None);
+        // A coordinate's labels and values, cut at `:` too, the labels of either case.
+        let coord = |text: &str| {
+            let text = IniText::of(format!("Point = {text}\n").as_bytes());
+            text.lines().next().unwrap().coord(["X", "Y", "Z"])
+        };
+        assert_eq!(coord("X:-18.0  Y:  35.0   Z:0.0"), Ok([-18.0, 35.0, 0.0]));
+        assert_eq!(coord("x: 60 y:35 z : 1.5"), Ok([60.0, 35.0, 1.5]));
+        assert_eq!(coord("X:1 Z:2 Y:3"), Err(IniError::Coord { line: 1 }));
+        assert_eq!(coord("X:1 Y:2"), Err(IniError::Coord { line: 1 }));
         // A byte past ASCII is one char of Latin-1.
         let latin = IniText::of(b"Name = \xe9t\xe9");
         assert_eq!(

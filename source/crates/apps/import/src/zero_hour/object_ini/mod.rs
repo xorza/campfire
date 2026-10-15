@@ -6,6 +6,9 @@ use crate::zero_hour::error::IniError;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::ini_text::{FlagList, IniLine, IniText};
 use crate::zero_hour::look_conditions::LookConditions;
+use crate::zero_hour::object_ini::build_data::{BuildData, ProductionModule};
+
+pub(crate) mod build_data;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -31,6 +34,7 @@ pub(crate) struct IniObject {
     geometry: Geometry,
     /// The locomotors of its `SET_NORMAL`, in the order its line names them.
     locomotors: Vec<String>,
+    build: BuildData,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its
@@ -232,6 +236,10 @@ enum Block {
     State {
         named: bool,
     },
+    /// An object's `Prerequisites`.
+    Prerequisites,
+    /// A behavior module whose fields production reads.
+    Production(ProductionModule),
     Other,
 }
 
@@ -313,6 +321,7 @@ impl ObjectIni {
                 is_bridge: false,
                 geometry: Geometry::DEFAULT,
                 locomotors: Vec::new(),
+                build: BuildData::default(),
             },
             Some(base) => IniObject {
                 name: name.to_owned(),
@@ -622,6 +631,11 @@ impl IniObject {
         &self.locomotors
     }
 
+    /// What it gives production: its cost, time, command set, prerequisites and modules.
+    pub(crate) const fn build(&self) -> &BuildData {
+        &self.build
+    }
+
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
         self.kinds.structure
@@ -673,9 +687,11 @@ impl Reading {
             Block::DefaultState { named: false } | Block::State { named: false } => {
                 Err(IniError::NoModel { line })
             }
-            Block::DefaultState { named: true } | Block::State { named: true } | Block::Other => {
-                Ok(None)
-            }
+            Block::DefaultState { named: true }
+            | Block::State { named: true }
+            | Block::Prerequisites
+            | Block::Production(_)
+            | Block::Other => Ok(None),
         }
     }
 
@@ -781,11 +797,59 @@ impl Reading {
                     copied: false,
                 });
             }
-            Block::Object
-                if matches!(
-                    word,
-                    "kindof" | "fencewidth" | "scale" | "isbridge" | "locomotor"
-                ) || word.starts_with("geometry") =>
+            Block::Prerequisites => {
+                let open = self.object.as_mut().expect("prerequisites are an object's");
+                open.object.build.prerequisite(word, at)?;
+            }
+            Block::Production(module) => {
+                let module = *module;
+                let open = self.object.as_mut().expect("a module is an object's");
+                open.object.build.module_field(module, word, at)?;
+                if ObjectIni::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
+            Block::Object if !self.object.as_ref().is_some_and(|open| open.reskin) => {
+                let open = self
+                    .object
+                    .as_mut()
+                    .expect("an object block holds an object");
+                let build = &mut open.object.build;
+                // A reskin's table sets none of these, so it keeps its base's.
+                if build.field(word, at)? {
+                    return Ok(());
+                }
+                if word == "prerequisites" && tokens.len() == 1 {
+                    // `parsePrerequisites` starts the list again.
+                    build.prerequisites.clear();
+                    self.stack.push(Block::Prerequisites);
+                    return Ok(());
+                }
+                let module = tokens.get(1).map(|module| module.to_ascii_lowercase());
+                if word == "behavior"
+                    && let Some(module) = module.and_then(|module| build.module(&module))
+                {
+                    self.stack.push(Block::Production(module));
+                    return Ok(());
+                }
+                self.object_field(word, at)?;
+            }
+            Block::Object => self.object_field(word, at)?,
+            Block::Other if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+            Block::Other => {}
+        }
+        Ok(())
+    }
+
+    /// A line of an object's own block: a field of its kinds, fence, scale, bridge, locomotors
+    /// or geometry, or a line that opens a block.
+    fn object_field(&mut self, word: &str, at: &IniLine<'_>) -> Result<(), IniError> {
+        let (tokens, line) = (&*at.tokens, at.number);
+        match word {
+            _ if matches!(
+                word,
+                "kindof" | "fencewidth" | "scale" | "isbridge" | "locomotor"
+            ) || word.starts_with("geometry") =>
             {
                 let open = self
                     .object
@@ -982,12 +1046,73 @@ Object AmericaCommandCenter\r
   GeometryMajorRadius = 12.0\r
   GeometryMinorRadius = 9.0\r
   GeometryHeight = 40.0\r
+  BuildCost = 2000\r
+  BuildTime = 45.0\r
+  CommandSet = AmericaCommandCenterCommandSet\r
+  Behavior = ProductionUpdate ModuleTag_11\r
+  End\r
+  Behavior = DefaultProductionExitUpdate ModuleTag_13\r
+    UnitCreatePoint = X:-18.0 Y:35.0 Z:0.0\r
+    NaturalRallyPoint = X:60.0 Y:35.0 Z:0.0\r
+  End\r
 End\r
 Object AmericaVehicleDozer\r
   KindOf = VEHICLE\r
   Locomotor = SET_NORMAL TankTreads\r
   Geometry = SPHERE\r
   GeometryMajorRadius = 2.0\r
+  BuildCost = 1000\r
+  BuildTime = 5.0\r
+  CommandSet = AmericaDozerCommandSet\r
+End\r
+Object AmericaBarracks\r
+  KindOf = STRUCTURE\r
+  Geometry = BOX\r
+  GeometryMajorRadius = 5.0\r
+  GeometryMinorRadius = 4.0\r
+  BuildCost = 600\r
+  BuildTime = 10.0\r
+  CommandSet = AmericaBarracksCommandSet\r
+  Prerequisites\r
+  End\r
+  Behavior = ProductionUpdate ModuleTag_11\r
+    MaxQueueEntries = 5\r
+  End\r
+  Behavior = QueueProductionExitUpdate ModuleTag_12\r
+    UnitCreatePoint = X:0.0 Y:0.0 Z:0.0\r
+    NaturalRallyPoint = X:55.0 Y:0.0 Z:0.0\r
+  End\r
+End\r
+Object AmericaInfantryRanger\r
+  KindOf = INFANTRY\r
+  Locomotor = SET_NORMAL TankTreads\r
+  Geometry = CYLINDER\r
+  GeometryMajorRadius = 1.0\r
+  BuildCost = 225\r
+  BuildTime = 5.0\r
+  Prerequisites\r
+    Object = AmericaBarracks\r
+  End\r
+End\r
+Object AmericaInfantryPathfinder\r
+  KindOf = INFANTRY\r
+  Locomotor = SET_NORMAL TankTreads\r
+  Prerequisites\r
+    Object = AmericaBarracks AmericaCommandCenter\r
+  End\r
+End\r
+Object AmericaPowerPlant\r
+  KindOf = STRUCTURE\r
+  Geometry = BOX\r
+  GeometryMajorRadius = 3.0\r
+  GeometryMinorRadius = 3.0\r
+  Prerequisites\r
+    Science = SCIENCE_AMERICA\r
+  End\r
+End\r
+Object AmericaFireBase\r
+  KindOf = STRUCTURE\r
+  GeometryIsSmall = Yes\r
 End\r
 ";
 }

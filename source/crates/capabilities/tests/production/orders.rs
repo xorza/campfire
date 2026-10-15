@@ -202,9 +202,9 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     }
 
     // A gate at (0, −6), turned a quarter: its box spans x −1 to 1 and z −8 to −4, and its
-    // frame's x lies along z, so its exit is (0, −3) and its default rally point (0, −9). The
-    // cells (±0.5, −3.5) and (±0.5, −2.5) are as near the exit, and the lowest, (−0.5, −3.5),
-    // is 0.5 m from the box, so open. With no rally point set the grunt walks to the default
+    // frame's x lies along −z, so its exit is (0, −9) and its default rally point (0, −3). The
+    // cells (±0.5, −9.5) and (±0.5, −8.5) are as near the exit, and the lowest, (−0.5, −9.5),
+    // is 1.5 m from the box, so open. With no rally point set the grunt walks to the default
     // one; with one set, there.
     let gate = Production::allocate_id(&mut game);
     let at = SpawnAt {
@@ -219,7 +219,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let spawner = game.non_send::<Spawner>().clone();
     spawner.spawn(&mut game, at, (slots, TrainQueue::default()));
     let cases = [
-        (None, Some(halves(0, -18))),
+        (None, Some(halves(0, -6))),
         (Some(point(8, 0)), Some(halves(16, 0))),
     ];
     for (at, (target, walks)) in cases.into_iter().enumerate() {
@@ -227,7 +227,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         Production::order_train(&mut game, gate);
         game.step();
         let spawned = Shop::spawned(&mut game, shop.grunt)[7 + at];
-        assert_eq!(spawned.pos, halves(-1, -7), "{target:?}");
+        assert_eq!(spawned.pos, halves(-1, -19), "{target:?}");
         let entity = game.entity_of(spawned.id).unwrap();
         let destination = game.get::<Destination>(entity).unwrap().get();
         assert_eq!(destination, walks, "{target:?}");

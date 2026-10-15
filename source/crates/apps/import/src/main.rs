@@ -43,6 +43,7 @@ fn main() -> ExitCode {
             missing_textures,
             untextured_cells,
             dropped_waypoints,
+            dropped_buttons,
         }) => {
             for skipped in &skipped_models {
                 let model = &skipped.name;
@@ -75,6 +76,13 @@ fn main() -> ExitCode {
                     "a map's waypoints past its bounds are dropped"
                 );
             }
+            for dropped in &dropped_buttons {
+                warn!(
+                    button = dropped.button,
+                    cause = ?dropped.cause,
+                    "a command button is not imported"
+                );
+            }
             info!(
                 packages = %args.out.display(),
                 %fingerprint,
@@ -82,6 +90,7 @@ fn main() -> ExitCode {
                 skipped_models = skipped_models.len(),
                 missing_textures = missing_textures.len(),
                 untextured_cells = untextured_cells.values().sum::<usize>(),
+                dropped_buttons = dropped_buttons.len(),
                 "imported"
             );
             ExitCode::from(ExitStatus::Success)

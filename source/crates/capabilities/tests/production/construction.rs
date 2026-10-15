@@ -233,12 +233,21 @@ fn an_order_build_pays_and_places_its_site_as_it_applies_and_its_builder_walks_t
     assert_eq!(Production::order_of(&game, builder), None);
     assert_eq!(shop.gold(&game), 85);
 
+    // A mode of no life pool, as one of no combat, holds no book of lives: its site spawns of no
+    // life, and grows as any other.
+    game.remove_resource::<ByType<Life>>();
+    let lifeless = yard.builder(&mut game, halves(0, 20), Team::new(0), 0);
+    Production::build_at(&mut game, lifeless, 0, 15);
+    let depots = shop.depots(&mut game);
+    assert_eq!((depots.len(), shop.gold(&game)), (2, 70));
+    assert!(game.try_part::<Life>(depots[1]).is_none());
+
     // A build whose box runs past the bounds is refused as its order applies: it ends, pays
     // nothing and places nothing.
     let builder = yard.builder(&mut game, halves(-20, 10), Team::new(0), 0);
     Production::build_at(&mut game, builder, 19, 5);
     assert_eq!(Production::order_of(&game, builder), None);
-    assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
+    assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (2, 70));
 }
 
 #[test]

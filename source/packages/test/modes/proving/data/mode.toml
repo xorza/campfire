@@ -106,6 +106,7 @@ on_resolve = [{ spawn = { unit_type = "ward", duration_ms = 2000 } }]
 
 # A barracks trains a guard for 100 gold in 1.5 s.
 [actions.train_guard]
+name = "action-train-guard"
 kind = "train"
 targeting = "none"
 unit_type = "guard"
