@@ -32,6 +32,7 @@ use crate::zero_hour::terrain_ini::TerrainIni;
 
 pub(crate) mod archive_path;
 pub(crate) mod big_archive;
+pub(crate) mod byte_cursor;
 pub(crate) mod chunk_reader;
 pub(crate) mod error;
 pub(crate) mod game_data;

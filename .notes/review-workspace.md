@@ -116,7 +116,6 @@ Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client format
 
 - [ ] Guard: a round-trip test of the units file the import writes; the map's and KTX2's are done. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
 - [ ] `import/src/zero_hour/unit_types.rs:20`: the units file type derives `Serialize`, and the import writes it. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
-- [ ] `import/src/zero_hour/{chunk_reader,w3d_fields}.rs`: one little-endian cursor. `w3d_file.rs:51` and `w3d_mesh.rs:185` return the iterator's error.
 - [ ] `import/src/zero_hour/map_object.rs:218`, `client/src/orders.rs:221`: one exact `Num::try_from(f32)` in `campfire-math`.
 - [ ] Client data: one plugin owns `ClientData`, `ModePackages::mode()` replaces the five `packages().next().expect` sites, and places are `PackageIndex`. `GroundHeights` owns the grid, with its extremes computed once.
 - [ ] `client/src/args/mod.rs:22,40`: `Server::Local { bots, data }`.

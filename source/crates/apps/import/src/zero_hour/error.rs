@@ -442,3 +442,20 @@ pub enum ModelError {
     #[error("a shader mixes its detail stage by function {0}")]
     DetailFunction(u8),
 }
+
+/// Bytes of the original that end inside a field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("it ends inside a field")]
+pub struct Short;
+
+impl From<Short> for MapError {
+    fn from(_: Short) -> MapError {
+        MapError::Short
+    }
+}
+
+impl From<Short> for W3dError {
+    fn from(_: Short) -> W3dError {
+        W3dError::Short
+    }
+}
