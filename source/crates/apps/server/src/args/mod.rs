@@ -65,9 +65,9 @@ pub(crate) struct CommandLine {
     address: SocketAddr,
 }
 
-impl Args {
-    /// What the command line clap read as `line` names.
-    pub(crate) fn of(line: CommandLine) -> Args {
+/// What the command line clap read as `line` names.
+impl From<CommandLine> for Args {
+    fn from(line: CommandLine) -> Args {
         Args {
             data: line.data,
             times: SessionTimes {
@@ -86,7 +86,9 @@ impl Args {
             port_map: !line.no_port_map,
         }
     }
+}
 
+impl Args {
     /// The server's bots, their scripts read from their files; an error naming a file that does
     /// not read.
     pub(crate) fn server_bots(&self) -> Result<ServerBots, OrderScriptReadError> {

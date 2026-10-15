@@ -15,7 +15,7 @@
 //! `CAMPFIRE_LOG_FILTER` (Campfire's `debug` by default) with the directives of
 //! `CAMPFIRE_LOG_FILTER_EXTRA` added.
 
-#![allow(
+#![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
@@ -48,7 +48,7 @@ use lightyear::prelude::Connect;
 use secp256k1::Keypair;
 use tracing::error;
 
-use crate::args::Args;
+use crate::args::{Args, CommandLine};
 use crate::bot::Bot;
 use crate::connection::Connection;
 use crate::hud::Hud;
@@ -98,8 +98,8 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
-    let args = match Logging::command_line(env::args_os()) {
-        Ok(line) => Args::of(line),
+    let args = match Logging::command_line::<CommandLine>(env::args_os()) {
+        Ok(line) => Args::from(line),
         Err(status) => return ExitCode::from(status),
     };
     let packages = match load_mode(&args) {

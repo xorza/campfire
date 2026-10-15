@@ -9,12 +9,8 @@
 //! to a path, they also go there as JSON lines, filtered by `CAMPFIRE_LOG_FILTER` (Campfire's
 //! `debug` by default) with the directives of `CAMPFIRE_LOG_FILTER_EXTRA` added.
 
-#![allow(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
-
 use std::env;
+use std::error::Error;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
@@ -45,7 +41,7 @@ use secp256k1::Keypair;
 use tracing::{error, info};
 use zeroize::Zeroizing;
 
-use crate::args::Args;
+use crate::args::{Args, CommandLine};
 use crate::opening::error::OpeningError;
 use crate::opening::{Opened, Opening, OpeningSetup};
 
@@ -65,25 +61,27 @@ fn main() -> ExitCode {
         file: FILE_FILTER,
     }
     .start();
+    match run() {
+        Ok(code) | Err(code) => code,
+    }
+}
+
+/// Starts the server and runs it: the exit code of its end, or of the refusal that ended its
+/// start, which it logged.
+fn run() -> Result<ExitCode, ExitCode> {
     // Caught first, so a signal during the start stops the server at its first frame.
-    let stop = match StopSignals::catch() {
-        Ok(stop) => stop,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the stop's signals are not caught");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
-    let args = match Logging::command_line(env::args_os()) {
-        Ok(line) => Args::of(line),
-        Err(status) => return ExitCode::from(status),
-    };
-    let bots = match args.server_bots() {
-        Ok(bots) => bots,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "a bot's orders do not read");
-            return ExitCode::from(ExitStatus::Usage);
-        }
-    };
+    let stop = StopSignals::catch().map_err(|error| {
+        refused(
+            ExitStatus::Failure,
+            &error,
+            "the stop's signals are not caught",
+        )
+    })?;
+    let line = Logging::command_line::<CommandLine>(env::args_os()).map_err(ExitCode::from)?;
+    let args = Args::from(line);
+    let bots = args
+        .server_bots()
+        .map_err(|error| refused(ExitStatus::Usage, &error, "a bot's orders do not read"))?;
     let Args {
         data,
         times,
@@ -94,77 +92,66 @@ fn main() -> ExitCode {
         port_map,
         ..
     } = args;
-    let data = match ServerDir::open(&data) {
-        Ok(data) => data,
-        Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the data directory does not open");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
-    let key = match KeyFile::read_or_create(&data.layout().key_file(), Os::SYSTEM.entropy) {
-        Ok(key) => key,
-        Err(error) => {
-            error!(key = %data.layout().key_file(), error = %ErrorReport::of(&error), "the server's key does not open");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
+    let data = ServerDir::open(&data).map_err(|error| {
+        refused(
+            ExitStatus::Failure,
+            &error,
+            "the data directory does not open",
+        )
+    })?;
+    let key_file = data.layout().key_file();
+    let key = KeyFile::read_or_create(&key_file, Os::SYSTEM.entropy).map_err(|error| {
+        error!(key = %key_file, error = %ErrorReport::of(&error), "the server's key does not open");
+        ExitCode::from(ExitStatus::Failure)
+    })?;
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
     let secret = Zeroizing::new(key.secret_bytes());
-    let endpoint = match QuicEndpoint::server(address, &secret, LinkTimes::CAMPFIRE) {
-        Ok(endpoint) => endpoint,
-        Err(error) => {
-            error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
+    let socket = QuicEndpoint::server(address, &secret, LinkTimes::CAMPFIRE).map_err(|error| {
+        error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
+        ExitCode::from(ExitStatus::Failure)
+    })?;
     drop(secret);
-    let tls_key = endpoint.tls_key();
+    let tls_key = socket.tls_key();
     // A waiting session names its own map, which its restore, or its end, replays.
     let waiting = Opening::waiting(&data).and_then(|waiting| {
         let journal = waiting.as_ref().map(|session| &session.private.terms.map);
         let map = Opening::map(journal, map)?;
         Ok((waiting, map))
     });
-    let (waiting, map) = match waiting {
-        Ok(found) => found,
-        Err(error) => {
-            error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
+    let (waiting, map) = waiting.map_err(|error| {
+        error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
+        ExitCode::from(ExitStatus::Failure)
+    })?;
     let mode_dir = PackageDir::new(&mode);
     let packages = mode_dir
         .choose_map(map)
-        .and_then(|map| mode_dir.mode_packages(&map));
-    let packages = match packages {
-        Ok(packages) => packages,
-        Err(error) => {
+        .and_then(|map| mode_dir.mode_packages(&map))
+        .map_err(|error| {
             error!(mode = %mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
-            return ExitCode::from(ExitStatus::Failure);
-        }
-    };
+            ExitCode::from(ExitStatus::Failure)
+        })?;
     let capabilities = packages.manifest().capabilities;
-    let opening = match open(&data, waiting, packages, key, times, bots, host) {
-        Ok(opening) => opening,
-        Err(code) => return code,
-    };
-    let local = endpoint.local_address();
+    let opening = open(&data, waiting, packages, key, times, bots, host)?;
+    let local = socket.local_address();
     let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
-    let server = app
-        .world_mut()
-        .spawn((RawServer, endpoint.serve(limit)))
-        .id();
+    let server = app.world_mut().spawn((RawServer, socket.serve(limit))).id();
     app.world_mut().trigger(Start { entity: server });
     let exit = app.run();
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
     // request's 10 s, which no client waits for (design 15, D12).
     drop(app);
     drop(port_map);
-    ProcessExit::code(exit)
+    Ok(ProcessExit::code(exit))
+}
+
+/// Logs `error` under `message`, one of the start's refusals, and gives `status`'s exit code.
+fn refused(status: ExitStatus, error: &(dyn Error + 'static), message: &str) -> ExitCode {
+    error!(error = %ErrorReport::of(error), "{message}");
+    ExitCode::from(status)
 }
 
 /// The session `waiting` in the data directory `data` to restore, or a new one of the mode

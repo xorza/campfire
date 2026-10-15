@@ -13,7 +13,7 @@ fn line(args: &[&str]) -> Result<CommandLine, clap::Error> {
 }
 
 fn read(args: &[&str]) -> Args {
-    Args::of(line(args).unwrap())
+    Args::from(line(args).unwrap())
 }
 
 /// The error clap gives for `args`, which it refuses.
@@ -181,7 +181,8 @@ fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
     let (key, tls_key) = (KEY, tls_key());
     let remote = ["mode", "10.0.0.2:4433", &tls_key, key, "30"];
     let watch = |flags: &[&str]| line(&[flags, &remote[..]].concat());
-    let spectator = Args::of(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap());
+    let spectator =
+        Args::from(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap());
     assert!(spectator.spectate);
     let names = |names: &[&str]| -> Vec<DeclaredName> {
         names

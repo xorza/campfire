@@ -106,9 +106,9 @@ struct Remote {
     tick_hz: NonZeroU32,
 }
 
-impl Args {
-    /// What the command line clap read as `line` names.
-    pub(crate) fn of(line: CommandLine) -> Args {
+/// What the command line clap read as `line` names.
+impl From<CommandLine> for Args {
+    fn from(line: CommandLine) -> Args {
         let server = match line.remote {
             Some(remote) => Server::Remote {
                 address: remote.address,
