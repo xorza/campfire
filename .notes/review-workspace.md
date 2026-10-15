@@ -116,9 +116,6 @@ Goes before the batches that edit `package`, so each fix lands in its final crat
 
 Files: `session/package/src/{package_dir/mod.rs,client_data/texture_levels.rs,mode_packages/{load_check,name_tables}.rs}`, `capabilities/src/books/*`, `capabilities/core/actions/src/{effect_list_book,slot_kinds}.rs`, `capabilities/items/src/{shop,inventory}.rs`, `capabilities/core/geometry/src/{polygon/mod,bounds}.rs`. Goldens: none move.
 
-- [ ] Guard: every truncation and every flip of the index, KTX2, terrain and heights files is refused and never panics.
-- [ ] `package_dir/mod.rs:140-143,165-185`: `read_bytes` takes a `ReadBound`, the index reads within `FileIndex::MAX_LEN`, and the index decode refuses a row past a ceiling.
-- [ ] `texture_levels.rs:82-83,112`: one checked level-size function serves `of_ktx2` and `level_bytes`.
 - [ ] Builder is the check: `book_builder.rs:597,867,965` look up through name tables that return `UnknownName`/`BookError`, `effect_list_book.rs:198` returns the `Planned` rule's case, and `slot_kinds.rs:90` becomes a fallible named constructor. Then `load_check.rs:133-155,340,1031,1079,1252` and `name_tables.rs:86,172-198` keep only the rules that span books and map the builder's cases, with no `unreachable!`.
 - [ ] `items/src/shop.rs` (`refund`), `inventory.rs:83-98`: the load bounds stack × cost and refuses an item that costs less than its components.
 - [ ] `geometry/src/polygon/mod.rs:115`: `Polygon::new` refuses a point past `Position::BOUND` with a `PolygonError` case.

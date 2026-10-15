@@ -368,8 +368,19 @@ mod tests {
             TerrainFileError::Surface
         );
         // A file read is checked as one made is.
+        let bytes = Binary::encode(&file);
         let mut bad = file;
         bad.quads.overlays[0].cell = 9;
         assert!(Binary::decode::<TerrainFile>(&Binary::encode(&bad)).is_err());
+        // A file is untrusted: each byte cut short is refused, and no flip of one panics.
+        for at in 0..bytes.len() {
+            let cut = Binary::decode::<TerrainFile>(&bytes[..at]);
+            assert!(cut.is_err(), "truncated to {at} bytes");
+            for flip in [0x01, 0x80, 0xFF] {
+                let mut flawed = bytes.clone();
+                flawed[at] ^= flip;
+                Binary::decode::<TerrainFile>(&flawed).ok();
+            }
+        }
     }
 }

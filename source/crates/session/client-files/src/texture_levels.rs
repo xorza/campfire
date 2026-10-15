@@ -32,11 +32,10 @@ impl TextureLevels {
             "a texel and a level"
         );
         let texture = TextureLevels { size, levels, data };
+        let bytes = (0..levels).map(|level| TextureLevels::level_len(size, level));
         assert_eq!(
-            texture.data.len(),
-            (0..levels)
-                .map(|level| texture.level_bytes(level))
-                .sum::<usize>(),
+            Some(texture.data.len()),
+            bytes.sum::<Option<usize>>(),
             "the bytes of its levels"
         );
         texture
@@ -79,8 +78,7 @@ impl TextureLevels {
         for level in 0..levels {
             let entry = LEVEL_INDEX + LEVEL_ENTRY * level as usize;
             let [at, len] = [wide(entry)?, wide(entry + 8)?];
-            let sides = (width >> level).max(1) as usize * (height >> level).max(1) as usize;
-            if len != sides * 4 {
+            if Some(len) != TextureLevels::level_len(UVec2::new(width, height), level) {
                 return Err(TextureLevelsError::LevelBytes(level));
             }
             let end = at.checked_add(len).ok_or(TextureLevelsError::Short)?;
@@ -109,7 +107,15 @@ impl TextureLevels {
     }
 
     fn level_bytes(&self, level: u32) -> usize {
-        (self.size >> level).max(UVec2::ONE).element_product() as usize * 4
+        TextureLevels::level_len(self.size, level).expect("a texture's levels fit memory")
+    }
+
+    /// The bytes of level `level` of a texture of `size` texels, four to a texel; none past what
+    /// a `usize` counts, as an untrusted file's size may name.
+    fn level_len(size: UVec2, level: u32) -> Option<usize> {
+        let sides = (size >> level).max(UVec2::ONE);
+        let texels = u64::from(sides.x).checked_mul(u64::from(sides.y))?;
+        usize::try_from(texels.checked_mul(4)?).ok()
     }
 }
 
@@ -195,5 +201,37 @@ mod tests {
             TextureLevels::of_ktx2(b"no", 3),
             Err(TextureLevelsError::NotKtx2)
         );
+    }
+
+    #[test]
+    fn every_truncation_of_a_ktx2_file_is_refused_and_no_flip_panics() {
+        // A file is untrusted: each byte cut short is refused, and each byte flipped, of its
+        // sizes, its index and its texels, is refused or reads levels that hold their bytes.
+        let numbered = |level: u32| [u8::try_from(level).unwrap(); 4];
+        let bytes = TextureLevels::ktx2(UVec2::new(8, 4), 4, numbered);
+        assert!(TextureLevels::of_ktx2(&bytes, 3).is_ok());
+        for at in 0..bytes.len() {
+            assert!(
+                TextureLevels::of_ktx2(&bytes[..at], 3).is_err(),
+                "truncated to {at} bytes"
+            );
+            for flip in [0x01, 0x80, 0xFF] {
+                let mut flawed = bytes.clone();
+                flawed[at] ^= flip;
+                if let Ok(texture) = TextureLevels::of_ktx2(&flawed, 3) {
+                    for level in 0..texture.levels() {
+                        assert_eq!(
+                            Some(texture.level(level).len()),
+                            TextureLevels::level_len(texture.size(), level),
+                            "byte {at} ^ {flip:#x}"
+                        );
+                    }
+                }
+            }
+        }
+        // The largest sides of a file give a level of 2⁶⁴ − 2³³ + 1 texels, four bytes each, past
+        // a `usize`: none, as the decode refuses.
+        assert_eq!(TextureLevels::level_len(UVec2::splat(u32::MAX), 0), None);
+        assert_eq!(TextureLevels::level_len(UVec2::new(8, 4), 1), Some(32));
     }
 }

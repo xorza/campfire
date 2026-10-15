@@ -186,5 +186,19 @@ mod tests {
             Binary::decode::<HeightGrid>(&trailing),
             Err(BinaryError::NotCanonical)
         );
+        // A file is untrusted: each byte cut short is refused, and each byte flipped is refused
+        // or reads a grid that holds what `new` takes.
+        for at in 0..bytes.len() {
+            let cut = Binary::decode::<HeightGrid>(&bytes[..at]);
+            assert!(cut.is_err(), "truncated to {at} bytes");
+            for flip in [0x01, 0x80, 0xFF] {
+                let mut flawed = bytes.clone();
+                flawed[at] ^= flip;
+                if let Ok(read) = Binary::decode::<HeightGrid>(&flawed) {
+                    assert!(read.rows() > 1, "byte {at} ^ {flip:#x}");
+                    let _ = read.far_corner();
+                }
+            }
+        }
     }
 }

@@ -7,7 +7,7 @@ use campfire_package::{
     ContentError, FileIndex, LoadError, LoadProblem, ModePackages, PackageFiles, PackageRef,
     PackageSource, PackageWalk,
 };
-use campfire_store::{DirEntries, EntryKind, InputFile, ReadError};
+use campfire_store::{DirEntries, EntryKind, InputFile, PathError, ReadError};
 use campfire_values::PackagePath;
 
 use crate::error::IndexError;
@@ -21,6 +21,14 @@ mod listings;
 pub struct PackageDir {
     root: PathBuf,
     source: Source,
+}
+
+/// How many bytes a read of a package's file takes: exactly a row's size, or no more than a
+/// bound, as the index's own read takes. No read takes a file whole, however long it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadBound {
+    Exact(u64),
+    AtMost(u64),
 }
 
 /// Where a package's files are.
@@ -151,30 +159,42 @@ impl PackageDir {
         }
     }
 
-    /// The bytes of the file at `path`: `size` of them, a file of another size `Changed`, or as
-    /// many as it holds as it opens; a file not there is missing.
-    fn read_bytes(&self, path: &PackagePath, size: Option<u64>) -> Result<Vec<u8>, ContentError> {
+    /// The bytes of the file at `path`, as many as `bound` takes: a file of another size than an
+    /// exact bound `Changed`, one past an upper bound too large; a file not there is missing.
+    fn read_bytes(&self, path: &PackagePath, bound: ReadBound) -> Result<Vec<u8>, ContentError> {
         let missing = || ContentError::Missing { path: path.clone() };
-        let changed = || ContentError::Changed { path: path.clone() };
+        let file = self.file_path(path);
+        let held = |len: u64| match bound {
+            ReadBound::Exact(size) if len != size => {
+                Err(ContentError::Changed { path: path.clone() })
+            }
+            ReadBound::AtMost(max) if len > max => {
+                let max = usize::try_from(max).expect("a bound fits usize");
+                let error = PathError {
+                    path: file.clone(),
+                    error: ReadError::TooLarge { max },
+                };
+                Err(ContentError::Read(Box::new(error)))
+            }
+            _ => Ok(usize::try_from(len).expect("a bounded length fits usize")),
+        };
         match &self.source {
             Source::Disk => {
-                let mut ranges = InputFile::ranges(&self.file_path(path)).map_err(|error| {
-                    match error.error {
-                        ReadError::Missing => missing(),
-                        _ => ContentError::Read(Box::new(error)),
-                    }
+                let mut ranges = InputFile::ranges(&file).map_err(|error| match error.error {
+                    ReadError::Missing => missing(),
+                    _ => ContentError::Read(Box::new(error)),
                 })?;
-                let len = size.unwrap_or(ranges.len());
-                if ranges.len() != len {
-                    return Err(changed());
-                }
-                let len = usize::try_from(len).expect("a file's length fits usize");
+                let len = held(ranges.len())?;
                 ranges.read_at(0, len).map_err(|error| match error.error {
-                    ReadError::Short { .. } => changed(),
+                    ReadError::Short { .. } => ContentError::Changed { path: path.clone() },
                     _ => ContentError::Read(Box::new(error)),
                 })
             }
-            Source::Memory(tree) => tree.get(&self.file_path(path)).cloned().ok_or_else(missing),
+            Source::Memory(tree) => {
+                let bytes = tree.get(&file).ok_or_else(missing)?;
+                held(u64::try_from(bytes.len()).expect("a length fits u64"))?;
+                Ok(bytes.clone())
+            }
         }
     }
 
@@ -220,11 +240,11 @@ impl PackageDir {
 }
 
 impl PackageSource for PackageDir {
-    /// The bytes of the package's index, by its exact name, whose own size is its bound.
+    /// The bytes of the package's index, by its exact name, no more than an index holds.
     fn read_index(&self) -> Result<Vec<u8>, ContentError> {
         let path = PackagePath::parse(FileIndex::PATH).expect("the index's path is a package's");
         self.check_name(&path, &mut Listings::default())?;
-        self.read_bytes(&path, None)
+        self.read_bytes(&path, ReadBound::AtMost(FileIndex::MAX_LEN))
     }
 
     /// Each directory on the paths' way listed once.
@@ -240,7 +260,7 @@ impl PackageSource for PackageDir {
     }
 
     fn read(&self, path: &PackagePath, size: u64) -> Result<Vec<u8>, ContentError> {
-        self.read_bytes(path, Some(size))
+        self.read_bytes(path, ReadBound::Exact(size))
     }
 }
 

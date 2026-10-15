@@ -298,6 +298,22 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         read.read_file(&unlisted),
         Err(ContentError::Missing { path }) if path == unlisted
     ));
+    // No read takes a file whole: an exact bound refuses another size, an upper bound a file
+    // past it, as the index's read takes at most `FileIndex::MAX_LEN`.
+    let one = PackageDir::in_memory(Arc::clone(&tree), "one");
+    let len = u64::try_from(asset.len()).unwrap();
+    assert_eq!(
+        one.read_bytes(&texture, ReadBound::AtMost(len)).unwrap(),
+        asset
+    );
+    assert!(matches!(
+        one.read_bytes(&texture, ReadBound::AtMost(len - 1)),
+        Err(ContentError::Read(_))
+    ));
+    assert!(matches!(
+        one.read_bytes(&texture, ReadBound::Exact(len + 1)),
+        Err(ContentError::Changed { path }) if path == texture
+    ));
     // The same files on disk read the same; an asset changed after the load fails only when it
     // is read, and one that goes is missing only then.
     let scratch = Scratch::new();

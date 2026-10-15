@@ -80,6 +80,10 @@ pub enum ContentError {
     /// A row of the package's index is not past the one before it in the order of paths' bytes.
     #[error("the package's index lists {0} out of order")]
     IndexOrder(PackagePath),
+    /// The package's index lists a file of more bytes than a package's file holds, whose read
+    /// would allocate them.
+    #[error("the package's index lists {0} of more than a package file's bytes")]
+    IndexFileLen(PackagePath),
     /// The package's index lists itself, which no list can hold the hash of.
     #[error("the package's index lists itself")]
     IndexListsItself,
