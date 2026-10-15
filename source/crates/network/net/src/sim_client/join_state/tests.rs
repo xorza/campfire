@@ -162,10 +162,13 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
         (SeedContribution::new([6; 32]), TestKey::NOW + 86_400)
     );
     let check = |binding| {
-        offer.challenge.check(
+        let answer = ConnectAnswer {
+            challenge: &offer.challenge,
+            binding: &binding,
+        };
+        answer.check(
             &Verifier::new(),
             &offer.terms,
-            &binding,
             &delegation,
             &join.answer,
             TestKey::NOW,

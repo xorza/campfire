@@ -54,21 +54,22 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
 fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     let challenge = ConnectChallenge::new([9; 32]);
     let binding = ChannelBinding::new([7; 32]);
-    let answer = challenge.answer(&TestKey::signer(TestKey::of(2)), &binding);
+    let answer = ConnectAnswer {
+        challenge: &challenge,
+        binding: &binding,
+    }
+    .sign(&TestKey::signer(TestKey::of(2)));
     let good = delegation(|_| {});
     let check = |challenge: ConnectChallenge,
                  binding: ChannelBinding,
                  delegation: &Delegation,
                  answer: &Signature,
                  now: u64| {
-        challenge.check(
-            &Verifier::new(),
-            &terms(),
-            &binding,
-            delegation,
-            answer,
-            now,
-        )
+        let to = ConnectAnswer {
+            challenge: &challenge,
+            binding: &binding,
+        };
+        to.check(&Verifier::new(), &terms(), delegation, answer, now)
     };
     assert_eq!(
         check(challenge, binding, &good, &answer, TestKey::NOW),
@@ -104,8 +105,11 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     }
     // An answer given to another challenge, or over another TLS session's binding, as a relay
     // between two sessions gives, is refused.
-    let relayed =
-        ConnectChallenge::new([10; 32]).answer(&TestKey::signer(TestKey::of(2)), &binding);
+    let relayed = ConnectAnswer {
+        challenge: &ConnectChallenge::new([10; 32]),
+        binding: &binding,
+    }
+    .sign(&TestKey::signer(TestKey::of(2)));
     let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
         check(challenge, binding, &good, &relayed, TestKey::NOW),
@@ -117,7 +121,11 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     );
 
     // The signed message is the domain, the challenge and the binding, end to end.
-    let message = challenge.answer_message(&binding);
+    let message = ConnectAnswer {
+        challenge: &challenge,
+        binding: &binding,
+    }
+    .message();
     assert_eq!(&message[..19], b"campfire/connect/v2");
     assert_eq!(
         (&message[19..51], &message[51..]),

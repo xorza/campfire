@@ -91,7 +91,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             .iter()
             .any(|(&other_pos, other, &other_team, tags, ..)| {
                 let relation = self.relations.get().between(team, other_team);
-                let tags = tags.map(|tags| tags.tags).unwrap_or_default();
+                let tags = tags.map_or_default(|tags| tags.tags);
                 rule.filter.selects(relation, tags)
                     && self.map.metric.reaches(
                         Placed::new(pos, body.shape()),

@@ -75,12 +75,13 @@ fn crate_dependencies(dir: &str) -> Vec<String> {
 
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
-    // `common` holds plain values, so it needs serde and its derives alone, and `backtrace` for
-    // the allocation audit, which only a test build turns on; a proxy reaches only its own
-    // group's crates, so its exemption covers no call of another group.
+    // `common` holds plain values, so it needs serde and its derives, the two hashes that make
+    // its 32-byte values, SHA-256 and BLAKE3, and `backtrace` for the allocation audit, which
+    // only a test build turns on; a proxy reaches only its own group's crates, so its exemption
+    // covers no call of another group.
     assert_eq!(
         crate_dependencies("base/common"),
-        ["backtrace", "derive_more", "serde"]
+        ["backtrace", "blake3", "derive_more", "serde", "sha2"]
     );
     let manifest = read(concat!(env!("CARGO_MANIFEST_DIR"), "/Cargo.toml"));
     assert!(
@@ -621,8 +622,7 @@ fn internals_on(manifests: &[(String, String)], name: &str) -> Vec<String> {
     let mut at = 0;
     while let Some(next) = on.get(at) {
         let passed: Vec<String> = manifest(next)
-            .map(internals_entries)
-            .unwrap_or_default()
+            .map_or_default(internals_entries)
             .into_iter()
             .filter_map(|entry| entry.strip_suffix("/internals"))
             .filter(|other| !other.ends_with('?') && !on.iter().any(|on| on == other))
@@ -909,7 +909,7 @@ fn production_by_crate(crates: &[Crate]) -> Vec<String> {
         };
         let krate = &crates[at];
         let production = if krate.name == TOP_TEST_CRATE {
-            Some(file.text.clone())
+            Some(file.text)
         } else {
             file.production()
         };

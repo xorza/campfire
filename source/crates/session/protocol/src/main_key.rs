@@ -1,17 +1,13 @@
-use campfire_common::Bytes32;
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
+use campfire_common::{Meaning, Value32};
 
 /// A player's main key: the x-only public key of their Nostr identity, which signs their
-/// delegations, as its 32 bytes. It writes as 64 lowercase hex digits.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct MainKey(Bytes32);
+/// delegations, as its 32 bytes.
+pub type MainKey = Value32<MainKeyMeaning>;
 
-impl MainKey {
-    pub const fn new(bytes: [u8; 32]) -> MainKey {
-        MainKey(Bytes32::new(bytes))
-    }
+/// The meaning of a `MainKey`.
+#[derive(Debug)]
+pub enum MainKeyMeaning {}
+
+impl Meaning for MainKeyMeaning {
+    const NAME: &'static str = "MainKey";
 }

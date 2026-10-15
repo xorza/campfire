@@ -116,16 +116,14 @@ impl ProductionColumn {
         (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowReads>,
         fill: &mut RowFill<'_, ProductionColumn>,
     ) {
-        let counted = unit_type
-            .map(|&unit_type| {
-                fill.column.costs().unit(SupplyUnit {
-                    unit_type,
-                    dead,
-                    complete: !site,
-                    queue,
-                })
+        let counted = unit_type.map_or_default(|&unit_type| {
+            fill.column.costs().unit(SupplyUnit {
+                unit_type,
+                dead,
+                complete: !site,
+                queue,
             })
-            .unwrap_or_default();
+        });
         let load = gatherer
             .and_then(|gatherer| gatherer.load())
             .map_or(0, |load| load.amount);

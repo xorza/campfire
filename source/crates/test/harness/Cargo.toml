@@ -42,7 +42,6 @@ campfire-stats = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values = { workspace = true, features = ["internals"] }
-campfire-verifier = { workspace = true, features = ["internals"] }
 campfire-visibility = { workspace = true, features = ["internals"] }
 campfire-vision = { workspace = true, features = ["internals"] }
 
@@ -54,6 +53,9 @@ criterion.workspace = true
 lightyear.workspace = true
 secp256k1.workspace = true
 toml.workspace = true
+
+[dev-dependencies]
+campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

@@ -1,6 +1,4 @@
-use campfire_common::{Bytes32, ChannelBinding};
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
+use campfire_common::{ChannelBinding, Meaning, Value32};
 
 use crate::connect::error::ConnectError;
 use crate::delegation::Delegation;
@@ -19,35 +17,38 @@ const ANSWER_MESSAGE_LEN: usize = ANSWER_DOMAIN.len() + 32 + 32;
 /// and its session key's signature over the challenge and its TLS session's channel binding,
 /// which binds the answer to this one connection: a party that relays it holds two sessions,
 /// whose bindings differ (design 15, D11).
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct ConnectChallenge(Bytes32);
+pub type ConnectChallenge = Value32<ConnectChallengeMeaning>;
 
-impl ConnectChallenge {
-    pub const fn new(bytes: [u8; 32]) -> ConnectChallenge {
-        ConnectChallenge(Bytes32::new(bytes))
-    }
+/// The meaning of a `ConnectChallenge`.
+#[derive(Debug)]
+pub enum ConnectChallengeMeaning {}
 
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
+impl Meaning for ConnectChallengeMeaning {
+    const NAME: &'static str = "ConnectChallenge";
+}
 
-    /// The session key's answer to the challenge, `session`'s, over `binding`, its TLS
-    /// session's.
-    pub fn answer(&self, session: &Signer, binding: &ChannelBinding) -> Signature {
-        session.sign(&self.answer_message(binding))
+/// What a connecting client's session key signs: the server's `challenge` over `binding`, its TLS
+/// session's channel binding.
+#[derive(Debug, Clone, Copy)]
+pub struct ConnectAnswer<'a> {
+    pub challenge: &'a ConnectChallenge,
+    pub binding: &'a ChannelBinding,
+}
+
+impl ConnectAnswer<'_> {
+    /// The answer as the session key, `session`'s, signs it.
+    pub fn sign(&self, session: &Signer) -> Signature {
+        session.sign(&self.message())
     }
 
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
     /// delegation names the server and the session of `terms` and has not expired, and its
-    /// session key signed the challenge over `binding`, the server's own end of the TLS session.
+    /// session key signed the challenge over the binding, the server's own end of the TLS
+    /// session.
     pub fn check(
         &self,
         verifier: &Verifier,
         terms: &SessionTerms,
-        binding: &ChannelBinding,
         delegation: &Delegation,
         answer: &Signature,
         now: u64,
@@ -59,20 +60,20 @@ impl ConnectChallenge {
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
-        if !verifier.verifies(*answer, &granted.session_key, &self.answer_message(binding)) {
+        if !verifier.verifies(*answer, &granted.session_key, &self.message()) {
             return Err(ConnectError::BadAnswer);
         }
         Ok(())
     }
 
     /// `domain ‖ challenge ‖ binding`.
-    const fn answer_message(&self, binding: &ChannelBinding) -> [u8; ANSWER_MESSAGE_LEN] {
+    const fn message(&self) -> [u8; ANSWER_MESSAGE_LEN] {
         let mut message = [0; ANSWER_MESSAGE_LEN];
         let (domain, rest) = message.split_at_mut(ANSWER_DOMAIN.len());
         let (challenge, bound) = rest.split_at_mut(32);
         domain.copy_from_slice(ANSWER_DOMAIN);
-        challenge.copy_from_slice(self.0.as_bytes());
-        bound.copy_from_slice(binding.as_bytes());
+        challenge.copy_from_slice(self.challenge.as_bytes());
+        bound.copy_from_slice(self.binding.as_bytes());
         message
     }
 }

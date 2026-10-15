@@ -122,7 +122,7 @@ impl GatherView<'_, '_> {
     fn found(&self, row: NodeRow<'_>, seeker: Seeker<'_>) -> Option<FoundNode> {
         let (entity, _, &at, body, &unit_type, held, &node_team, tags) = row;
         let relation = seeker.relations.between(seeker.team, node_team);
-        let tags = tags.map(|tags| tags.tags).unwrap_or_default();
+        let tags = tags.map_or_default(|tags| tags.tags);
         let ours = held.amount() > 0
             && self.nodes_book.resource(unit_type) == Some(seeker.gather.spec.resource)
             && seeker.gather.filter.selects(relation, tags);

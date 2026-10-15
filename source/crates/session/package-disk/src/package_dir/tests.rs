@@ -1,5 +1,5 @@
 use campfire_codec::Toml;
-use campfire_common::{Bytes32, Fingerprint};
+use campfire_common::{ContentHash, Fingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
 
 use sha2::{Digest, Sha256};
@@ -22,7 +22,7 @@ fn a_package_is_its_index_and_reads_through_it() {
     // The tag's line, then a line for each row sorted by path bytes, "data/a.toml" before
     // "manifest.toml": its SHA-256 in hex, its size and its path; the fingerprint is the SHA-256
     // of those bytes.
-    let hex = |bytes: &[u8]| Bytes32::new(Sha256::digest(bytes).into());
+    let hex = ContentHash::of;
     let list = format!(
         "campfire/package-index/v2\n{} 2 data/a.toml\n{} 1 manifest.toml\n",
         hex(b"ab"),
@@ -258,7 +258,7 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     .into_iter()
     .map(|(path, bytes)| (PathBuf::from(path), bytes))
     .collect();
-    let hex = |bytes: &[u8]| Bytes32::new(Sha256::digest(bytes).into());
+    let hex = ContentHash::of;
     let list = format!(
         "campfire/package-index/v2\n{} 2 data/a.toml\n{} 1 manifest.toml\n{} 100000 \
          textures/x.png\n",

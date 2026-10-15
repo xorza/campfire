@@ -1,40 +1,16 @@
-use campfire_common::Bytes32;
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use campfire_common::{ContentMeaning, Meaning, Value32};
 
 /// A snapshot's identity: the SHA-256 of its bytes, as a Blossom server addresses a blob, so a
 /// snapshot is shared as is. A checkpoint record names its snapshot by it, and the server names
 /// the snapshot's file by it in hex.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct SnapshotFingerprint(Bytes32);
+pub type SnapshotFingerprint = Value32<SnapshotFingerprintMeaning>;
 
-impl SnapshotFingerprint {
-    pub const fn new(bytes: [u8; 32]) -> SnapshotFingerprint {
-        SnapshotFingerprint(Bytes32::new(bytes))
-    }
+/// The meaning of a `SnapshotFingerprint`.
+#[derive(Debug)]
+pub enum SnapshotFingerprintMeaning {}
 
-    /// The fingerprint of the snapshot `bytes`.
-    pub fn of(bytes: &[u8]) -> SnapshotFingerprint {
-        SnapshotFingerprint::new(Sha256::digest(bytes).into())
-    }
-
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
+impl Meaning for SnapshotFingerprintMeaning {
+    const NAME: &'static str = "SnapshotFingerprint";
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_fingerprint_is_the_sha_256_of_the_bytes() {
-        // The SHA-256 of "abc", FIPS 180-2's first example.
-        let expected = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
-        assert_eq!(SnapshotFingerprint::of(b"abc").to_string(), expected);
-    }
-}
+impl ContentMeaning for SnapshotFingerprintMeaning {}

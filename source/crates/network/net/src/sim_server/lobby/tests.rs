@@ -6,7 +6,8 @@ use campfire_common::ChannelBinding;
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy, SeedContribution,
+    ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
+    SeedContribution,
 };
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
@@ -136,10 +137,11 @@ impl Joining {
     fn join(&self, json: &str, session: u8, binding: u8) -> Join {
         Join {
             delegation: json.to_owned(),
-            answer: self.offered.challenge.answer(
-                &TestKey::signer(TestKey::of(session)),
-                &ChannelBinding::new([binding; 32]),
-            ),
+            answer: ConnectAnswer {
+                challenge: &self.offered.challenge,
+                binding: &ChannelBinding::new([binding; 32]),
+            }
+            .sign(&TestKey::signer(TestKey::of(session))),
             role: JoinRole::Play,
         }
     }

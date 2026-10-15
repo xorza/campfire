@@ -1,48 +1,16 @@
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
-
-use crate::bytes32::Bytes32;
+use crate::value32::{ContentMeaning, Meaning, Value32};
 
 /// A package's identity: the SHA-256 of its index, `package.index`, which lists one `(path,
 /// size, SHA-256)` row per file, sorted by path bytes, after its format's tag. Any change to any
 /// file, or to the list, gives another fingerprint.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct Fingerprint(Bytes32);
+pub type Fingerprint = Value32<FingerprintMeaning>;
 
-impl Fingerprint {
-    pub const fn new(bytes: [u8; 32]) -> Fingerprint {
-        Fingerprint(Bytes32::new(bytes))
-    }
+/// The meaning of a `Fingerprint`.
+#[derive(Debug)]
+pub enum FingerprintMeaning {}
 
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-
-    /// The fingerprint the 64 lowercase hex digits `hex` write, as `Bytes32::of_hex` reads them.
-    pub const fn of_hex(hex: &str) -> Fingerprint {
-        Fingerprint(Bytes32::of_hex(hex))
-    }
+impl Meaning for FingerprintMeaning {
+    const NAME: &'static str = "Fingerprint";
 }
 
-#[cfg(test)]
-mod tests {
-    use campfire_codec::Binary;
-
-    use super::*;
-
-    #[test]
-    fn a_fingerprint_shows_as_lowercase_hex_and_encodes_as_its_bytes() {
-        let mut bytes = [0; 32];
-        bytes[0] = 0xAB;
-        bytes[31] = 0x05;
-        let fingerprint = Fingerprint::new(bytes);
-        let written = format!("ab{}05", "00".repeat(30));
-        assert_eq!(fingerprint.to_string(), written);
-        assert_eq!(Fingerprint::of_hex(&written), fingerprint);
-        let encoded = Binary::encode(&fingerprint);
-        assert_eq!(encoded, Binary::encode(&bytes));
-    }
-}
+impl ContentMeaning for FingerprintMeaning {}

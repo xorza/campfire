@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use campfire_common::Fingerprint;
+use campfire_common::{ContentHash, Fingerprint};
 use campfire_values::PackagePath;
-use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
@@ -57,7 +56,7 @@ impl PackageReader {
     ) -> Result<Vec<u8>, ContentError> {
         let bytes = self.source.read(path, row.size)?;
         let size = u64::try_from(bytes.len()).expect("a file length fits u64");
-        if size != row.size || <[u8; 32]>::from(Sha256::digest(&bytes)) != row.sha256 {
+        if size != row.size || ContentHash::of(&bytes) != row.sha256 {
             return Err(ContentError::Changed { path: path.clone() });
         }
         Ok(bytes)

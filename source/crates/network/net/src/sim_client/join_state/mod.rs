@@ -4,8 +4,8 @@ use std::time::Duration;
 use bevy_ecs::resource::Resource;
 use campfire_common::{ChannelBinding, PlayerSlot, Tick};
 use campfire_protocol::{
-    Delegation, DelegationId, DelegationTerms, InputChain, InputRules, SeedContribution, SessionId,
-    SessionTerms, SignedReceipt, Signer, Verifier,
+    ConnectAnswer, Delegation, DelegationId, DelegationTerms, InputChain, InputRules,
+    SeedContribution, SessionId, SessionTerms, SignedReceipt, Signer, Verifier,
 };
 use campfire_runner::SessionRules;
 use campfire_values::Team;
@@ -372,7 +372,11 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: offer.challenge.answer(signer, binding),
+            answer: ConnectAnswer {
+                challenge: &offer.challenge,
+                binding,
+            }
+            .sign(signer),
             role: self.player.role,
         };
         self.step = Step::Answered(answered);

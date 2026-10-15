@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::fmt::Write as _;
 
-use campfire_common::{Bytes32, Fingerprint};
+use campfire_common::{ContentHash, Fingerprint};
 use campfire_values::PackagePath;
-use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 
@@ -27,7 +26,7 @@ pub struct FileIndex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FileRow {
     pub(crate) size: u64,
-    pub(crate) sha256: [u8; 32],
+    pub(crate) sha256: ContentHash,
 }
 
 /// The first line of an index, which names its format and its version.
@@ -53,7 +52,7 @@ impl FileIndex {
             return Err(ContentError::IndexListsItself);
         }
         let bytes = FileIndex::encode_rows(&rows);
-        let fingerprint = Fingerprint::new(Sha256::digest(&bytes).into());
+        let fingerprint = Fingerprint::of(&bytes);
         Ok(FileIndex {
             rows,
             bytes,
@@ -81,7 +80,7 @@ impl FileIndex {
             let line = line.strip_suffix('\n').ok_or_else(flawed)?;
             let (sha256, rest) = line.split_once(' ').ok_or_else(flawed)?;
             let (size, path) = rest.split_once(' ').ok_or_else(flawed)?;
-            let sha256 = sha256.parse::<Bytes32>().map_err(|_| flawed())?.get();
+            let sha256 = sha256.parse::<ContentHash>().map_err(|_| flawed())?;
             let size = FileIndex::size(size).ok_or_else(flawed)?;
             let parsed =
                 PackagePath::parse(path).ok_or_else(|| ContentError::IndexPath(path.to_owned()))?;
@@ -136,8 +135,8 @@ impl FileIndex {
         let mut text = String::new();
         writeln!(text, "{INDEX_TAG}").expect("text writes into a string");
         for (path, row) in rows {
-            let sha256 = Bytes32::new(row.sha256);
-            writeln!(text, "{sha256} {} {path}", row.size).expect("text writes into a string");
+            writeln!(text, "{} {} {path}", row.sha256, row.size)
+                .expect("text writes into a string");
         }
         text.into_bytes()
     }

@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 
+use campfire_common::{ContentHash, ContentHasher};
 use campfire_values::PackagePath;
-use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
@@ -27,10 +27,14 @@ impl PackageWalk {
         }
     }
 
-    /// Takes the file at `path` whose bytes `file` gives, to its end.
-    pub fn add(&mut self, path: PackagePath, mut file: impl Read) -> Result<(), ContentError> {
+    /// Takes the file at `path` whose bytes `file` gives, to its end; their SHA-256.
+    pub fn add(
+        &mut self,
+        path: PackagePath,
+        mut file: impl Read,
+    ) -> Result<ContentHash, ContentError> {
         self.stream.resize(STREAM_CHUNK, 0);
-        let mut hasher = Sha256::new();
+        let mut hasher = ContentHasher::default();
         let mut size = 0_u64;
         loop {
             let count = match file.read(&mut self.stream) {
@@ -42,14 +46,9 @@ impl PackageWalk {
             hasher.update(&self.stream[..count]);
             size += u64::try_from(count).expect("a read count fits u64");
         }
-        self.rows.insert(
-            path,
-            FileRow {
-                size,
-                sha256: hasher.finalize().into(),
-            },
-        );
-        Ok(())
+        let sha256 = hasher.finish();
+        self.rows.insert(path, FileRow { size, sha256 });
+        Ok(sha256)
     }
 
     /// The index of every file taken.

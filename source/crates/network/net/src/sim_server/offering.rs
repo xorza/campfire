@@ -9,7 +9,9 @@ use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
 use campfire_log::LogEvent;
-use campfire_protocol::{ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier};
+use campfire_protocol::{
+    ConnectAnswer, ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier,
+};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
@@ -290,12 +292,14 @@ impl Offering {
     /// link's channel binding, and it grants this session, not expired by the server's clock.
     pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
         let delegation = Delegation::parse(&join.delegation).map_err(JoinError::Delegation)?;
-        offered
-            .challenge
+        let answer = ConnectAnswer {
+            challenge: &offered.challenge,
+            binding: &offered.binding,
+        };
+        answer
             .check(
                 &self.verifier,
                 &self.terms,
-                &offered.binding,
                 &delegation,
                 &join.answer,
                 self.clock.unix_now(),

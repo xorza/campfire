@@ -13,7 +13,7 @@ fn indexed(rows: &[&str]) -> Vec<u8> {
 
 /// One row's line: its SHA-256 of 32 bytes of `byte`, as 64 hex digits, its size and its path.
 fn row(byte: u8, size: u64, path: &str) -> String {
-    format!("{} {size} {path}", Bytes32::new([byte; 32]))
+    format!("{} {size} {path}", ContentHash::new([byte; 32]))
 }
 
 #[test]
@@ -26,16 +26,13 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     assert_eq!(&a[62..], "1a 2 data/a.toml");
     let index = FileIndex::decode(&bytes).unwrap();
     assert_eq!(index.bytes(), bytes);
-    assert_eq!(
-        index.fingerprint(),
-        Fingerprint::new(Sha256::digest(&bytes).into())
-    );
+    assert_eq!(index.fingerprint(), Fingerprint::of(&bytes));
     let data = PackagePath::parse("data/a.toml").unwrap();
     assert_eq!(
         index.row(&data),
         Some(FileRow {
             size: 2,
-            sha256: [0x1a; 32]
+            sha256: ContentHash::new([0x1a; 32])
         })
     );
     assert_eq!(index.row(&PackagePath::parse("data/b.toml").unwrap()), None);
@@ -105,7 +102,7 @@ fn an_index_refuses_every_other_spelling_of_its_rows() {
     // Each line but the tag's that spells a row another way is refused by its number: the hex
     // in uppercase, or one digit short; the size with a leading zero, a sign or none, or past a
     // `u64`; two spaces between fields; an empty line; and the last line with no LF.
-    let hex = Bytes32::new([0x1a; 32]).to_string();
+    let hex = ContentHash::new([0x1a; 32]).to_string();
     let flawed = [
         format!("{} 2 data/a.toml", hex.to_uppercase()),
         format!("{} 2 data/a.toml", &hex[1..]),

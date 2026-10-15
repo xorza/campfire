@@ -1,20 +1,12 @@
-use campfire_common::Bytes32;
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
+use campfire_common::{Meaning, Value32};
 
 /// The BLAKE3 hash that links a player's input to the one before it.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct InputHash(Bytes32);
+pub type InputHash = Value32<InputHashMeaning>;
 
-impl InputHash {
-    pub const fn new(bytes: [u8; 32]) -> InputHash {
-        InputHash(Bytes32::new(bytes))
-    }
+/// The meaning of a `InputHash`.
+#[derive(Debug)]
+pub enum InputHashMeaning {}
 
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
+impl Meaning for InputHashMeaning {
+    const NAME: &'static str = "InputHash";
 }

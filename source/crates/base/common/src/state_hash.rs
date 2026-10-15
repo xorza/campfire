@@ -1,54 +1,13 @@
-use std::str::FromStr;
-
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
-
-use crate::bytes32::Bytes32;
-use crate::bytes32::error::NotHex;
+use crate::value32::{Meaning, Value32};
 
 /// The hash of the whole simulated state, which the sim computes and the session log's
-/// checkpoints and result carry. It writes, and reads back, as 64 lowercase hex digits.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct StateHash(Bytes32);
+/// checkpoints and result carry.
+pub type StateHash = Value32<StateHashMeaning>;
 
-impl StateHash {
-    pub const fn new(bytes: [u8; 32]) -> StateHash {
-        StateHash(Bytes32::new(bytes))
-    }
+/// The meaning of a `StateHash`.
+#[derive(Debug)]
+pub enum StateHashMeaning {}
 
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-}
-
-impl FromStr for StateHash {
-    type Err = NotHex;
-
-    fn from_str(text: &str) -> Result<StateHash, NotHex> {
-        text.parse().map(StateHash)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use campfire_codec::Binary;
-
-    use super::*;
-
-    #[test]
-    fn a_hash_writes_as_lowercase_hex_and_reads_back_from_that_alone() {
-        // Its 32 bytes, two digits each, leading zeros kept.
-        let mut bytes = [0; 32];
-        bytes[0] = 0x0a;
-        bytes[31] = 0xff;
-        let written = StateHash::new(bytes).to_string();
-        assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
-        assert_eq!(written.parse(), Ok(StateHash::new(bytes)));
-        assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
-        let encoded = Binary::encode(&StateHash::new(bytes));
-        assert_eq!(encoded, Binary::encode(&bytes));
-    }
+impl Meaning for StateHashMeaning {
+    const NAME: &'static str = "StateHash";
 }

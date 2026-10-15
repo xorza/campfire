@@ -421,19 +421,24 @@ fn io_error(error: Error) -> io::Error {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::fs::File;
     use std::os::windows::fs::symlink_file;
+    use std::os::windows::io::AsRawHandle;
     use std::os::windows::process::CommandExt;
     use std::path::Path;
     use std::process::Command;
     use std::{io, ptr};
 
-    use windows::Win32::Foundation::HLOCAL;
+    use windows::Win32::Foundation::{HANDLE, HLOCAL};
     use windows::Win32::Security::Authorization::{
         GetNamedSecurityInfoW, SE_FILE_OBJECT, SetNamedSecurityInfoW,
     };
     use windows::Win32::Security::{
         DACL_SECURITY_INFORMATION, GetSecurityDescriptorDacl, OWNER_SECURITY_INFORMATION,
         PROTECTED_DACL_SECURITY_INFORMATION, PSECURITY_DESCRIPTOR, PSID,
+    };
+    use windows::Win32::Storage::FileSystem::{
+        BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
     };
     use windows::Win32::System::Console::{CTRL_BREAK_EVENT, GenerateConsoleCtrlEvent};
     use windows::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
@@ -487,6 +492,17 @@ pub(crate) mod internals {
 
         pub(crate) fn link_file(target: &Path, link: &Path) -> io::Result<()> {
             symlink_file(target, link)
+        }
+
+        pub(crate) fn file_id(path: &Path) -> io::Result<[u64; 2]> {
+            let file = File::open(path)?;
+            let mut info = BY_HANDLE_FILE_INFORMATION::default();
+            // SAFETY: an open file's handle, which lives through the call, and a valid out
+            // pointer.
+            unsafe { GetFileInformationByHandle(HANDLE(file.as_raw_handle()), &raw mut info) }
+                .map_err(io_error)?;
+            let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+            Ok([u64::from(info.dwVolumeSerialNumber), index])
         }
 
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {

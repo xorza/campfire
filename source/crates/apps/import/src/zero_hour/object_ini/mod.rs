@@ -804,8 +804,7 @@ impl Reading {
             Block::Object if word == "draw" => {
                 let module = tokens
                     .get(1)
-                    .map(|kind| kind.to_ascii_lowercase())
-                    .unwrap_or_default();
+                    .map_or_default(|kind| kind.to_ascii_lowercase());
                 let kind = match module.as_str() {
                     family if MODEL_DRAWS.contains(&family) => DrawKind::Family,
                     "w3dtreedraw" => DrawKind::Tree,

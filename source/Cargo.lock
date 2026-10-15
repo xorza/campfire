@@ -2379,11 +2379,13 @@ name = "campfire-common"
 version = "0.1.0"
 dependencies = [
  "backtrace",
+ "blake3",
  "campfire-codec",
  "campfire-common",
  "campfire-store",
  "derive_more",
  "serde",
+ "sha2 0.11.0",
 ]
 
 [[package]]
@@ -2739,7 +2741,6 @@ dependencies = [
  "fluent-bundle",
  "fluent-syntax",
  "serde",
- "sha2 0.11.0",
  "thiserror 2.0.21",
  "toml",
  "unic-langid",
@@ -2855,13 +2856,11 @@ dependencies = [
  "campfire-protocol",
  "campfire-store",
  "criterion 0.8.2",
- "derive_more",
  "getrandom 0.3.4",
  "nostr",
  "postcard",
  "secp256k1",
  "serde",
- "sha2 0.11.0",
  "thiserror 2.0.21",
  "zeroize",
 ]

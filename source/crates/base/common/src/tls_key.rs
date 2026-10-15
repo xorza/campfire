@@ -1,34 +1,13 @@
-use std::str::FromStr;
-
-use derive_more::Display;
-use serde::{Deserialize, Serialize};
-
-use crate::bytes32::Bytes32;
-use crate::bytes32::error::NotHex;
+use crate::value32::{Meaning, Value32};
 
 /// The Ed25519 public key a server presents to TLS with no certificate (design 15, D6): the
-/// client takes this key and no other. It reads and writes as 64 lowercase hex digits, as a
-/// listing gives it.
-#[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[serde(transparent)]
-pub struct TlsKey(Bytes32);
+/// client takes this key and no other, in hex as a listing gives it.
+pub type TlsKey = Value32<TlsKeyMeaning>;
 
-impl TlsKey {
-    pub const fn new(bytes: [u8; 32]) -> TlsKey {
-        TlsKey(Bytes32::new(bytes))
-    }
+/// The meaning of a `TlsKey`.
+#[derive(Debug)]
+pub enum TlsKeyMeaning {}
 
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-}
-
-impl FromStr for TlsKey {
-    type Err = NotHex;
-
-    fn from_str(text: &str) -> Result<TlsKey, NotHex> {
-        text.parse().map(TlsKey)
-    }
+impl Meaning for TlsKeyMeaning {
+    const NAME: &'static str = "TlsKey";
 }
