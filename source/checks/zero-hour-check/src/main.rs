@@ -6,8 +6,10 @@
 //! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks its
 //! terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and border
 //! wraps, each logged for review; that the import reports no cell of its terrain whose tile has
-//! no texture; and that it loads in a match of the imported mode, which plays a tick. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy never
-//! passes as one that checked.
+//! no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
+//! mode, which plays a tick. Every other map the game lists loads in the imported mode. It fails
+//! when `GENERALSZH_DATA` names no install, so a machine with no copy never passes as one that
+//! checked.
 //!
 //! Run it with `./drive.py zero-hour [run root]`, which builds it with the `release-dev` profile.
 
@@ -41,6 +43,10 @@ mod failure;
 
 /// The map the check plays.
 const MAP: &str = "tournament_desert";
+
+/// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
+/// (design 17, D3).
+const WALLS: usize = 286;
 
 /// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
 /// its overlays; a copy for each tile its classes' textures load; and a border wrap for each
@@ -151,6 +157,11 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     if untextured > 0 {
         failures.push(Failure::Untextured(untextured));
     }
+    let navigation = packages.map().navigation.as_ref();
+    let walls = navigation.map_or(0, |navigation| navigation.walls.len());
+    if walls != WALLS {
+        failures.push(Failure::Walls(walls));
+    }
     info!(
         samples = %format!("{} × {}", grid.columns(), grid.rows()),
         units,
@@ -163,8 +174,38 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
         copies = drawn.copies,
         wraps = drawn.wraps,
         untextured,
+        walls,
         "Tournament Desert loaded"
     );
+    // Every other map the game lists loads in the imported mode, its walls and its placed bodies
+    // checked as a match loads them.
+    let game = PackageDir::new(out.join(ZeroHour::GAME));
+    let mut loaded = 1;
+    for other in imported
+        .untextured_cells
+        .keys()
+        .filter(|&other| *other != map)
+    {
+        match game.mode_packages(other) {
+            Ok(_) => loaded += 1,
+            Err(error) => failures.push(Failure::MapLoad {
+                map: other.clone(),
+                error,
+            }),
+        }
+    }
+    info!(
+        loaded,
+        maps = imported.untextured_cells.len(),
+        "the imported maps loaded"
+    );
+    for (map, waypoints) in &imported.dropped_waypoints {
+        info!(
+            %map,
+            waypoints = %waypoints.join(", "),
+            "a map's waypoints past its bounds are dropped"
+        );
+    }
     let rate = NonZeroU32::new(30).expect("a rate");
     // A fixed match takes the log's events while it lives, as its harness checks them, so it
     // ends before the check logs again.

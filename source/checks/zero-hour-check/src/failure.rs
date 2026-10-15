@@ -1,9 +1,13 @@
+use campfire_common::MapName;
+use campfire_log::ErrorReport;
+use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::TERRAIN;
+use crate::{TERRAIN, WALLS};
 
-/// What the imported Tournament Desert holds other than the original gives it.
-#[derive(Debug, Display, Clone, PartialEq, Eq)]
+/// What the import holds other than the original gives it: what Tournament Desert holds, or a
+/// map that does not load in the imported mode.
+#[derive(Debug, Display)]
 pub(crate) enum Failure {
     /// Its heights are not 270 × 340 samples.
     #[display("its heights are {columns} × {rows} samples, not 270 × 340")]
@@ -27,6 +31,12 @@ pub(crate) enum Failure {
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),
+    /// Its grown cliffs merge into other than its pinned walls.
+    #[display("it has {_0} walls, not {WALLS}")]
+    Walls(usize),
+    /// A map of the import does not load in the imported mode.
+    #[display("map {map} does not load: {}", ErrorReport::of(error))]
+    MapLoad { map: MapName, error: LoadError },
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

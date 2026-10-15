@@ -8,12 +8,14 @@ use campfire_client_files::{
 use campfire_codec::{Binary, Toml};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
-use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
+use campfire_mode::{MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
 use campfire_values::DeclaredName;
 
+use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::locomotor_ini::LocomotorIni;
 use crate::zero_hour::map_file::{GameLight, MapFile, MapHeights};
 use crate::zero_hour::map_object::Placement;
 use crate::zero_hour::object_ini::{ObjectIni, PlacedAs};
@@ -23,8 +25,8 @@ use crate::zero_hour::terrain_cells::TerrainCells;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
-/// `client/maps/<name>/objects.toml`; and how many cells its terrain draws a tile of with no
-/// texture.
+/// `client/maps/<name>/objects.toml`; how many cells its terrain draws a tile of with no
+/// texture; and the names of the waypoints it dropped, past its bounds.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
@@ -33,15 +35,25 @@ pub(crate) struct MapImport {
     pub(crate) untextured: usize,
     pub(crate) lights: String,
     pub(crate) objects: String,
+    pub(crate) dropped_waypoints: Vec<String>,
 }
 
-/// What a map import reads and adds to beside its file: the object INI, the names the objects took
-/// so far, with the unit types of the maps, the looks of the package's `client/units.toml`, how
-/// many of the map's lights the game draws, and the settings of `GameData.ini` its terrain is drawn
-/// by.
+/// A waypoint of a map's objects: its id, its name and its ground point.
+#[derive(Debug)]
+struct Waypoint {
+    id: u32,
+    name: String,
+    pos: [Num; 2],
+}
+
+/// What a map import reads and adds to beside its file: the object INI and the locomotors its
+/// objects name, the names the objects took so far, with the unit types of the maps, the looks of
+/// the package's `client/units.toml`, how many of the map's lights the game draws, and the
+/// settings of `GameData.ini` its terrain is drawn by.
 #[derive(Debug)]
 pub(crate) struct MapSources<'a> {
     pub(crate) ini: &'a ObjectIni,
+    pub(crate) locomotors: &'a LocomotorIni,
     pub(crate) names: &'a mut ImportNames,
     pub(crate) looks: &'a ClientUnits,
     pub(crate) lights: usize,
@@ -58,6 +70,10 @@ const SURFACE: TerrainSurface = TerrainSurface {
 
 /// A cell of the heightmap, 10 units wide (`MAP_XY_FACTOR`).
 const CELL: i64 = 10;
+
+/// A cell of the pathfinder, 10 units wide (`PATHFIND_CELL_SIZE`), which the navigation's cells
+/// take (design 17, D3).
+const PATHFIND_CELL: i64 = 10;
 
 /// A step of height, 0.625 units (`MAP_HEIGHT_SCALE`): 5 · 2⁻³, exact in a `Num`.
 const STEP: Num = Num::from_bits(5 << (Num::FRAC_BITS - 3));
@@ -77,13 +93,15 @@ impl MapImport {
     /// multiplayer game spawns them (design 12, D14), none of a template no INI object names, an
     /// optimized tree, a prop and fluff as client objects, of a look of `looks`, or none when it
     /// has none, and every other as a unit of the type `names` gives it, the bridge-like ones
-    /// first, in the map's order; its waypoints as markers; bounds that hold its heights and every
-    /// point its sim places; and its first `lights` object lights, as the game draws
-    /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
-    /// first light's, as the game takes it.
+    /// first, in the map's order; bounds that hold its heights and each unit's body whole; its
+    /// waypoints within them as markers, and the names of those past them, which it drops; the
+    /// walls of its cliffs within them (design 17, D3); and its first `lights` object lights, as
+    /// the game draws `NumberGlobalLights` of each, which the terrain is lit by too; their ambient
+    /// color is the first light's, as the game takes it.
     pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<MapImport, MapError> {
         let MapSources {
             ini,
+            locomotors,
             names,
             looks,
             lights,
@@ -128,18 +146,18 @@ impl MapImport {
         let mut bridges = Vec::new();
         let mut units = Vec::new();
         let mut client = ClientObjects::default();
-        let mut markers = Vec::new();
-        let mut waypoints = BTreeSet::new();
+        let mut waypoints = Vec::new();
+        let mut ids = BTreeSet::new();
         for (at, object) in file.objects.iter().enumerate() {
             if object.road_or_bridge() {
                 continue;
             }
             if let Some(waypoint) = &object.waypoint {
-                let pos = take(object.ground().ok_or(MapError::Placement(at))?);
+                let pos = object.ground().ok_or(MapError::Placement(at))?;
                 let id = u32::try_from(waypoint.id)
                     .ok()
                     .ok_or(MapError::WaypointId(waypoint.id))?;
-                if !waypoints.insert(id) {
+                if !ids.insert(id) {
                     return Err(MapError::WaypointTwice(waypoint.id));
                 }
                 let name = String::from_utf8(waypoint.name.clone())
@@ -150,14 +168,7 @@ impl MapImport {
                 if name.parse::<Num>().is_ok() {
                     return Err(MapError::WaypointName(name));
                 }
-                markers.push(MarkerData {
-                    name: declared(&format!("w{id}")),
-                    tags: vec![waypoint_tag.clone()],
-                    pos: Some(MapPoint::Ground(pos)),
-                    region: None,
-                    team: None,
-                    params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
-                });
+                waypoints.push(Waypoint { id, name, pos });
             } else {
                 let Some(template) = ini.object(&object.template) else {
                     continue;
@@ -180,8 +191,21 @@ impl MapImport {
                     }
                     continue;
                 }
+                let placed_type =
+                    names
+                        .unit_type(template, locomotors)
+                        .map_err(|error| MapError::UnitType {
+                            object: template.name.clone(),
+                            error,
+                        })?;
+                // The bounds hold its whole body, as a placed box's load needs.
+                if let Some(reach) = placed_type.imported.reach(degrees) {
+                    for corner in [[-1, -1], [1, 1]] {
+                        take([0, 1].map(|axis| ground[axis] + reach[axis] * corner[axis]));
+                    }
+                }
                 let unit = PlacedUnitData {
-                    unit_type: names.unit_type(template)?,
+                    unit_type: placed_type.name,
                     team: neutral.clone(),
                     pos: MapPoint::Ground(take(ground)),
                     angle: degrees,
@@ -196,11 +220,40 @@ impl MapImport {
             }
         }
         bridges.append(&mut units);
+        let bounds = Bounds::new(low, high).ok_or(MapError::Bounds)?;
+        // A waypoint past the heights and the placed bodies marks no place of the map, as a
+        // camera's point far off does: it is dropped, and reported.
+        let mut markers = Vec::new();
+        let mut dropped_waypoints = Vec::new();
+        for Waypoint { id, name, pos } in waypoints {
+            if bounds.clamp_ground(pos) != pos {
+                dropped_waypoints.push(name);
+                continue;
+            }
+            markers.push(MarkerData {
+                name: declared(&format!("w{id}")),
+                tags: vec![waypoint_tag.clone()],
+                pos: Some(MapPoint::Ground(pos)),
+                region: None,
+                team: None,
+                params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
+            });
+        }
+        let cliffs: Vec<bool> = file.terrain.cells.iter().map(|cell| cell.cliff).collect();
+        let frame = CellFrame {
+            north_west: heights.origin(),
+            cell: Num::int(CELL),
+            rows: file.heights.depth,
+        };
+        let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
         let map = MapData {
             metric: Metric::Planar,
-            bounds: Bounds::new(low, high).ok_or(MapError::Bounds)?,
+            bounds,
             grid: None,
-            navigation: None,
+            navigation: Some(MapNavigationData {
+                cell: Num::int(PATHFIND_CELL),
+                walls,
+            }),
             paths: Vec::new(),
             units: bridges,
             markers,
@@ -212,6 +265,7 @@ impl MapImport {
             untextured,
             lights: Toml::write(&map_lights),
             objects: Toml::write(&client),
+            dropped_waypoints,
         })
     }
 
@@ -264,9 +318,35 @@ mod tests {
     use campfire_client_files::ClientUnit;
 
     use super::*;
+    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
     use crate::zero_hour::terrain::{BlendShape, BlendTile};
+
+    /// The fixture map's `data/units.toml`.
+    const UNITS_TOML: &str = r#"[units.americatankcrusader.stats.move_speed]
+base = "30.5"
+
+[units.americatankcrusader.stats.turn_rate]
+base = "90"
+
+[units.americatankcrusader.collision]
+radius = "5"
+
+[units.fortresswall.collision]
+box = ["20", "5"]
+
+[units.rocks1]
+"#;
+
+    /// The fixture install's objects.
+    fn objects() -> ObjectIni {
+        let mut ini = ObjectIni::default();
+        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
+            ini.read(objects.as_bytes()).unwrap();
+        }
+        ini
+    }
 
     /// The import of `file` of the fixture install's objects, with the looks of its client
     /// objects but the prop of no model's, drawn in `lights` lights.
@@ -275,10 +355,7 @@ mod tests {
         names: &mut ImportNames,
         lights: usize,
     ) -> Result<MapImport, MapError> {
-        let mut ini = ObjectIni::default();
-        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-            ini.read(objects.as_bytes()).unwrap();
-        }
+        let ini = objects();
         let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
             (
                 DeclaredName::new(look).unwrap(),
@@ -289,8 +366,11 @@ mod tests {
             objects: objects.into(),
             ..ClientUnits::default()
         };
+        let mut locomotors = LocomotorIni::default();
+        locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         let sources = MapSources {
             ini: &ini,
+            locomotors: &locomotors,
             names,
             looks: &looks,
             lights,
@@ -336,7 +416,7 @@ mod tests {
 
     #[test]
     fn a_map_imports_to_its_heights_units_and_markers_computed_by_hand() {
-        let file = MapFile::read(&map(8)).unwrap();
+        let mut file = MapFile::read(&map(8)).unwrap();
         let mut names = ImportNames::default();
         let imported = import(&file, &mut names, 3).unwrap();
 
@@ -446,9 +526,10 @@ mod tests {
                 .into(),
             }]
         );
-        // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15, and
-        // not the tree's x of 50, which the sim does not hold.
-        let bounds = Toml::parse("min = [-10, -15]\nmax = [30, 10]").unwrap();
+        // The bounds hold the heights, the rock's z of −15, and the tank's body, of radius 5 at
+        // x 30, to x 35; the wall's box, of reach 10 and 2.5 from (10, 0), lies within; not the
+        // tree's x of 50, which the sim does not hold.
+        let bounds = Toml::parse("min = [-10, -15]\nmax = [35, 10]").unwrap();
         assert_eq!(map.bounds, bounds);
         // The tree, the prop 1 above the ground, its reskin and the fluff are client objects, in
         // the map's order, of their templates' looks; the prop of no look, the template no object
@@ -470,10 +551,52 @@ mod tests {
                 ]
             }
         );
+        // Its navigation's cells are the pathfinder's, of 10 m. Its cliffs, the game's cells
+        // [0, 0] and [3, 2] of 4 × 3, grow over [0, 0] to [1, 1] and [2, 1] to [3, 2]: the runs 0
+        // to 1 of row 0, 0 to 3 of row 1 and 2 to 3 of row 2. The game's row `y` of its 3 rows of
+        // samples spans z from −10 + 20 − 10 (y + 1) = −10 y to 10 − 10 y, as the heights' north
+        // west is (−10, −10), and column `x` x from −10 + 10 x. In the bounds, the walls are x
+        // −10 to 10 by z 0 to 10, x −10 to 30 by z −10 to 0, and x 10 to 30 by z −20 to −10 cut
+        // at the bounds' z −15.
+        let navigation = map.navigation.unwrap();
+        assert_eq!(navigation.cell, Num::int(10));
+        let square = |[x0, z0, x1, z1]: [i64; 4]| {
+            [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
+                .map(|[x, z]| MapPoint::Ground([Num::int(x), Num::int(z)]))
+                .to_vec()
+        };
+        let walls: Vec<_> = navigation
+            .walls
+            .into_iter()
+            .map(|wall| wall.points)
+            .collect();
         assert_eq!(
-            names.units_toml(),
-            "[units.americatankcrusader]\n\n[units.fortresswall]\n\n[units.rocks1]\n"
+            walls,
+            [
+                square([-10, 0, 10, 10]),
+                square([-10, -10, 30, 0]),
+                square([10, -15, 30, -10]),
+            ]
         );
+        // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m;
+        // the wall is a structure, a box of 2 · 10 by 2 · 2.5 m; the fence is neither.
+        let units = names.units_file();
+        assert_eq!(units.text, UNITS_TOML);
+        assert_eq!(units.max_speed, Some(Num::int(61) / Num::int(2)));
+
+        // A waypoint takes no place in the bounds. Moved to the bounds' x of 35 it stays; past
+        // it, at 35.5, it is dropped by its name, and the bounds stay as they are.
+        assert!(imported.dropped_waypoints.is_empty());
+        let waypoint = 2;
+        for (x, kept) in [(35.0, true), (35.5, false)] {
+            file.objects[waypoint].pos[0] = x;
+            let moved = import(&file, &mut names, 3).unwrap();
+            let map = Toml::parse::<MapData>(&moved.map).unwrap();
+            assert_eq!(map.bounds, bounds);
+            assert_eq!(map.markers.len(), usize::from(kept));
+            let dropped: &[&str] = if kept { &[] } else { &["Player_1_Start"] };
+            assert_eq!(moved.dropped_waypoints, dropped);
+        }
     }
 
     #[test]

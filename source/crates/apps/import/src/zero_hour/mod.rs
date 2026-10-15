@@ -8,6 +8,7 @@ use campfire_client_files::{
 };
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
+use campfire_math::Num;
 use campfire_package_disk::{PackageWriter, WriteError};
 use campfire_store::DurableDir;
 use campfire_values::PackagePath;
@@ -21,12 +22,13 @@ use crate::zero_hour::game_version::GameVersion;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
+use crate::zero_hour::locomotor_ini::LocomotorIni;
 use crate::zero_hour::map_file::MapFile;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
 use crate::zero_hour::object_ini::{DefaultLook, DrawKind, DrawModule, ObjectIni, PlacedAs};
-use crate::zero_hour::rules_package::{MODE_DATA, MODE_MANIFEST, MODE_TEXT, RULES_FILES};
+use crate::zero_hour::rules_package::{MODE_DATA, MODE_TEXT, RULES_FILES};
 use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
 
@@ -34,6 +36,7 @@ pub(crate) mod archive_path;
 pub(crate) mod big_archive;
 pub(crate) mod byte_cursor;
 pub(crate) mod chunk_reader;
+pub(crate) mod cliff_walls;
 pub(crate) mod error;
 pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
@@ -42,8 +45,10 @@ pub(crate) mod hierarchy;
 pub(crate) mod hlod;
 pub(crate) mod import_name;
 pub(crate) mod import_names;
+pub(crate) mod imported_type;
 pub(crate) mod ini_text;
 pub(crate) mod install;
+pub(crate) mod locomotor_ini;
 pub(crate) mod map_file;
 pub(crate) mod map_import;
 pub(crate) mod map_object;
@@ -66,7 +71,8 @@ pub(crate) mod w3d_mesh;
 
 /// What an import wrote: the package's fingerprint, the models the objects name that the
 /// package lacks, the textures its models name that no archive holds, which they draw
-/// untextured, and each map's count of cells whose terrain draws a tile of no texture.
+/// untextured, each map's count of cells whose terrain draws a tile of no texture, and the
+/// waypoints each map dropped, past its bounds, by name, of the maps that dropped any.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The imported package's.
@@ -76,6 +82,7 @@ pub struct Imported {
     pub skipped_models: Vec<SkippedModel>,
     pub missing_textures: Vec<String>,
     pub untextured_cells: BTreeMap<MapName, usize>,
+    pub dropped_waypoints: BTreeMap<MapName, Vec<String>>,
 }
 
 /// A model the objects name that the package lacks, and why.
@@ -128,7 +135,6 @@ impl<'a> ZeroHour<'a> {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
             writer.write(path, bytes).map_err(ZeroHourError::Write)
         };
-        write("manifest.toml", MODE_MANIFEST.as_bytes())?;
         write("data/mode.toml", MODE_DATA.as_bytes())?;
         write("locale/en.ftl", MODE_TEXT.as_bytes())?;
         let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
@@ -137,6 +143,8 @@ impl<'a> ZeroHour<'a> {
         let text = Toml::write(&camera);
         write(CameraFile::PATH, text.as_bytes())?;
         let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
+        let locomotors =
+            self.read_inis("Locomotor", LocomotorIni::default(), LocomotorIni::read)?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut write);
         let mut object_names = ImportNames::default();
         let looks = ZeroHour::write_models(&ini, &mut models, &mut object_names)?;
@@ -146,6 +154,7 @@ impl<'a> ZeroHour<'a> {
         } = models.report();
         let mut names = BTreeMap::<MapName, String>::new();
         let mut untextured_cells = BTreeMap::new();
+        let mut dropped_waypoints = BTreeMap::new();
         let mut class_sizes = BTreeMap::new();
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
@@ -167,6 +176,7 @@ impl<'a> ZeroHour<'a> {
             }
             let sources = MapSources {
                 ini: &ini,
+                locomotors: &locomotors,
                 names: &mut object_names,
                 looks: &looks,
                 lights: game_data.global_lights(),
@@ -174,6 +184,9 @@ impl<'a> ZeroHour<'a> {
             };
             let imported = MapImport::new(&file, sources).map_err(in_map)?;
             untextured_cells.insert(name.clone(), imported.untextured);
+            if !imported.dropped_waypoints.is_empty() {
+                dropped_waypoints.insert(name.clone(), imported.dropped_waypoints);
+            }
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
             write(&format!("map/{name}/heights.bin"), &imported.heights)?;
             write(&TerrainFile::path(name.as_str()), &imported.terrain)?;
@@ -195,13 +208,19 @@ impl<'a> ZeroHour<'a> {
             };
             write(path.texture_path().as_str(), &ktx2)?;
         }
-        write("data/units.toml", object_names.units_toml().as_bytes())?;
+        let units = object_names.units_file();
+        write("data/units.toml", units.text.as_bytes())?;
+        // A mode whose types drive none caps no speed it moves at; 1 m a second is as good as any.
+        let max_move_speed = units.max_speed.filter(|speed| *speed > Num::ZERO);
+        let manifest = rules_package::mode_manifest(max_move_speed.unwrap_or(Num::ONE));
+        write("manifest.toml", manifest.as_bytes())?;
         Ok(Imported {
             fingerprint: writer.finish()?,
             rules,
             skipped_models: skipped,
             missing_textures,
             untextured_cells,
+            dropped_waypoints,
         })
     }
 
@@ -350,6 +369,7 @@ impl ZeroHour<'_> {
 #[cfg(test)]
 mod tests {
     use campfire_package_disk::PackageDir;
+    use campfire_sim::Capability;
     use campfire_store::internals::Scratch;
     use campfire_values::DeclaredName;
     use sha2::{Digest, Sha256};
@@ -361,6 +381,7 @@ mod tests {
     use crate::zero_hour::game_data::GameData;
     use crate::zero_hour::game_version::ArchiveHash;
     use crate::zero_hour::install::internals::{fixture, packed_map};
+    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::{Converted, ModelImport};
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
@@ -394,6 +415,7 @@ mod tests {
         // of the 3 × 2 cells the game draws is untextured.
         let named = MapName::new("fixture_map").unwrap();
         assert_eq!(imported.untextured_cells, [(named.clone(), 6)].into());
+        assert!(imported.dropped_waypoints.is_empty());
         // Beside it, the rules package as the workspace holds it, which the imported mode, of
         // its manifest and mode data, depends on and loads with.
         assert_eq!(scratch.names("one"), ["game", "zero-hour"]);
@@ -413,16 +435,30 @@ mod tests {
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
         // The package's own reader takes its units file: the tank, the wall and the rocks the
-        // map places.
-        let mode = PackageDir::new(scratch.path("one/game")).mode_packages(&named);
+        // map places. Its units drive, by stats, orders and navigation, no faster than the tank's
+        // 30.5 m a second.
+        let mode = PackageDir::new(scratch.path("one/game"))
+            .mode_packages(&named)
+            .unwrap();
         let types: Vec<String> = mode
-            .unwrap()
             .content()
             .units
             .keys()
             .map(ToString::to_string)
             .collect();
         assert_eq!(types, ["americatankcrusader", "fortresswall", "rocks1"]);
+        let manifest = mode.manifest();
+        assert_eq!(manifest.max_move_speed.get(), Num::int(61) / Num::int(2));
+        let drives = [
+            Capability::Stats,
+            Capability::Orders,
+            Capability::Navigation,
+        ];
+        assert!(
+            drives
+                .iter()
+                .all(|&capability| manifest.capabilities.contains(capability))
+        );
         assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
         assert_eq!(
             scratch.names("one/game/map/fixture_map"),
@@ -443,10 +479,13 @@ mod tests {
         for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
             ini.read(objects.as_bytes()).unwrap();
         }
+        let mut locomotors = LocomotorIni::default();
+        locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
         let mut names = ImportNames::default();
         let sources = MapSources {
             ini: &ini,
+            locomotors: &locomotors,
             names: &mut names,
             looks: &looks,
             lights: 3,
@@ -476,10 +515,8 @@ mod tests {
             scratch.read_text("one/game/client/maps/fixture_map/objects.toml"),
             expected.objects
         );
-        assert_eq!(
-            scratch.read_text("one/game/data/units.toml"),
-            names.units_toml()
-        );
+        let units = names.units_file();
+        assert_eq!(scratch.read_text("one/game/data/units.toml"), units.text);
         let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
         assert_eq!(camera.unwrap().field_of_view, 50.0);
         // Each texture once, at its path in the archives, as its conversion gives it.
