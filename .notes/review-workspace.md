@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `apps/client/src/{hud/mod.rs,hud/gauge.rs,view/look.rs,view/mod.rs,main.rs}`, `test/harness/src/{in_process_match,moba_3v3}/mod.rs`, `source/checks/lan-check/src/{main,error}.rs`. Goldens: none move.
 
-- [ ] `client/src/main.rs:9`, `lan-check/src/main.rs:17-20`, `error.rs:19`: the docs name the real keys and `./drive.py lan`.
 - [ ] `harness/src/moba_3v3/mod.rs:425-460`: the hero lookups go through `MatchUnits`, and the inventory's first slot comes from `first_of`.
 
 ### Batch 7. The module graph (RC7)

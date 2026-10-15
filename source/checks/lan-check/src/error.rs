@@ -13,11 +13,9 @@ use crate::target_name::TargetName;
 /// Why the check could not run to a verdict.
 #[derive(Debug, Error)]
 pub(crate) enum CheckError {
-    /// It runs only under `cargo run`, which names the cargo that builds the processes, unless
-    /// it verifies with a verifier it is given.
-    #[error(
-        "run the check with `cargo run -p campfire-lan-check`, or give `verify` a `--verifier`"
-    )]
+    /// It runs only with `CARGO`, the cargo that builds the processes, as `./drive.py lan` gives
+    /// it, unless it verifies with a verifier it is given.
+    #[error("run the check with `./drive.py lan`, or give `verify` a `--verifier`")]
     NotUnderCargo,
     #[error("cargo did not start")]
     CargoStart(#[source] io::Error),

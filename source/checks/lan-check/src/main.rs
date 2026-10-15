@@ -14,10 +14,11 @@
 //! bot started again sending each order of its script, late or not; each
 //! verifier gives its host's final hash; and the third bot exited with failure and logged why.
 //!
-//! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
-//! go into a new directory below the run root, named for the run's start. `cargo run -p
-//! campfire-lan-check -- verify <run directory>` verifies the session log of a run, perhaps from
-//! another machine, with this machine's verifier, and compares the server's final hash; with
+//! Run it with `./drive.py lan`, which builds it and the processes it starts, and gives it the
+//! run root `target/drive/lan-check`; each run's logs and session log go into a new directory
+//! below the run root, named for the run's start. `campfire-lan-check verify <run directory>`
+//! verifies the session log of a run, perhaps from another machine, with this machine's
+//! verifier, which the cargo in `CARGO` builds, and compares the server's final hash; with
 //! `--verifier <verifier>`, it runs that verifier and needs no cargo.
 
 use std::env;

@@ -3,11 +3,12 @@
 //! With `--bot <orders file>`, it opens no window and renders nothing, and plays the file's
 //! `OrderScript` instead. With `--key <file>`, the player's main key is the file's, made when
 //! missing; without it, the player is a new key each run. With `--data <directory>`, the client
-//! writes the newest receipt of its session there; without it, it writes none. With `--local`, it plays the mode alone on a
-//! local server, a thread of its own process, whose data goes in `server` under the data
-//! directory, `--data` then needed; each `--server-bot <slot>=<orders file>` gives the server a bot
-//! there, and every other slot but the player's is open. P pauses a local match, the keys 1 to 4
-//! set its speed to 0.5, 1, 2 or 4 times, F5 saves it, and F9 loads its latest save.
+//! writes the newest receipt of its session there; without it, it writes none. With `--local`, it
+//! plays the mode alone on a local server, a thread of its own process, whose data goes in
+//! `server` under the data directory, `--data` then needed; each `--server-bot <slot>=<orders
+//! file>` gives the server a bot there, and every other slot but the player's is open. Space
+//! pauses a local match and plays it on, minus and equals, or the keypad's minus and plus, step
+//! its speed through 0.5, 1, 2 and 4 times, F5 saves it, and F9 loads its latest save.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
