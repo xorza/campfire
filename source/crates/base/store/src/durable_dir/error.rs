@@ -13,6 +13,8 @@ pub enum DurableDirError {
     Create(#[source] io::Error),
     #[error("could not remove the directory")]
     Remove(#[source] io::Error),
+    #[error("could not rename the directory")]
+    Rename(#[source] io::Error),
     #[error("could not sync the parent directory")]
     SyncParent(#[source] io::Error),
 }

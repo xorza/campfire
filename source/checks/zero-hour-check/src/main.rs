@@ -1,6 +1,7 @@
-//! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into a
-//! new directory below the run root and logs the fingerprints of the imported package and the
-//! rules package, which a run on another OS must match. Then it checks that Tournament Desert
+//! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into the
+//! directory its command line names, in place of the packages an earlier run wrote there once
+//! the new ones are whole, and logs the fingerprints of the imported package and the rules
+//! package, which a run on another OS must match. Then it checks that Tournament Desert
 //! imports as a multiplayer game of the original spawns it: 270 × 340 height samples; of its 580
 //! objects, once its 176 road ends are dropped, 142 placed units of 41 types and 438 client
 //! objects of 22 looks, each kind's templates logged for review; and 28 markers. It checks its
@@ -11,14 +12,14 @@
 //! when `GENERALSZH_DATA` names no install, so a machine with no copy never passes as one that
 //! checked.
 //!
-//! Run it with `./drive.py zero-hour [run root]`, which builds it with the `release-dev` profile.
+//! Run it with `./drive.py zero-hour [out]`, which builds it with the `release-dev` profile and
+//! writes to `~/zh-package` unless `out` names another directory.
 
 use std::collections::BTreeMap;
 use std::env;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::SystemTime;
 
 use campfire_client_files::{ClientObjects, HeightGrid, TerrainFile};
 use campfire_codec::{Binary, Toml};
@@ -29,7 +30,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
-use campfire_store::RunDir;
+use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use campfire_values::PackagePath;
 use tracing::{error, info};
 
@@ -64,11 +65,11 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    let root = match Logging::command_line::<CommandLine>(env::args_os()) {
-        Ok(line) => line.root(),
+    let out = match Logging::command_line::<CommandLine>(env::args_os()) {
+        Ok(line) => line.out,
         Err(status) => return ExitCode::from(status),
     };
-    match run(&root) {
+    match run(&out) {
         Ok(failures) if failures.is_empty() => {
             info!("the Zero Hour check passed");
             ExitCode::from(ExitStatus::Success)
@@ -87,17 +88,24 @@ fn main() -> ExitCode {
     }
 }
 
-/// Imports the install into a new run directory below `root`, and checks Tournament Desert; the
-/// failures it found.
-fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
+/// Imports the install into `out`, in place of the packages an earlier run wrote there once the
+/// new ones are whole, and checks Tournament Desert; the failures it found.
+fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     let install = env::var_os("GENERALSZH_DATA")
         .filter(|install| !install.is_empty())
         .map(PathBuf::from)
         .ok_or(CheckError::NoInstall)?;
-    let run = RunDir::create(root, SystemTime::now())?;
-    let out = run.path().join("packages");
     let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
-    let imported = zero_hour.write(&out).map_err(CheckError::Import)?;
+    let name = out
+        .file_name()
+        .ok_or_else(|| CheckError::NoName(out.to_owned()))?;
+    let mut staged = name.to_owned();
+    staged.push(".new");
+    let stage = out.with_file_name(staged);
+    clear(&stage)?;
+    let imported = zero_hour.write(&stage).map_err(CheckError::Import)?;
+    clear(out)?;
+    DurableDir::rename(&stage, out).map_err(CheckError::Rename)?;
     info!(
         version = zero_hour.version().name,
         fingerprint = %imported.fingerprint,
@@ -216,6 +224,25 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     };
     info!(%tick, "Tournament Desert played a tick");
     Ok(failures)
+}
+
+/// Removes the packages an earlier run wrote to `out`, so the import writes it anew; nothing for
+/// no directory there, and an error for one that holds anything but the import's two packages,
+/// which no run removes.
+fn clear(out: &Path) -> Result<(), CheckError> {
+    let entries = match DirEntries::read(out) {
+        Ok(entries) => entries,
+        Err(error) if matches!(error.error, ReadError::Missing) => return Ok(()),
+        Err(error) => return Err(CheckError::List(error)),
+    };
+    let packages = entries.iter().all(|entry| {
+        entry.kind == EntryKind::Dir
+            && [ZeroHour::GAME, ZeroHour::RULES].contains(&entry.name.to_str().unwrap_or_default())
+    });
+    if !packages {
+        return Err(CheckError::NotPackages(out.to_owned()));
+    }
+    DurableDir::remove(out).map_err(CheckError::Remove)
 }
 
 /// How many of `names` there are of each name.
