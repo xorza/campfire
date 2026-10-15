@@ -6,7 +6,7 @@ use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
 use campfire_units::{Dead, MoveStep, StatusTags, TagEffect, TurnStep};
-use campfire_values::{UnitTags, UnitType};
+use campfire_values::{NameId, UnitTags, UnitType};
 
 use crate::level::Level;
 use crate::life::Life;

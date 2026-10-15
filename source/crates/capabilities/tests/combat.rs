@@ -33,8 +33,8 @@ use campfire_stats::{
 };
 use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
-    ActionId, Block, DeclaredName, FilterData, ModifierId, Names, PackageIndex, Rank, Relation,
-    RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    ActionId, Block, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
+    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -331,7 +331,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // A weapon of 2 m, a windup of 2 ticks, 6 attacks a second, a period of 5 ticks, and 10
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut game = fight_match();
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(PlayerSlot::new(0))
         .unwrap()

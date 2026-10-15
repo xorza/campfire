@@ -53,7 +53,7 @@ fn two_fields() -> Match {
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
     let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set));
 
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypeBook::new(Release::engine_tags());

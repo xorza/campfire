@@ -77,7 +77,7 @@ impl Shop {
         Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
         Mode::load_test_units(game);
-        let gold = ResourceId::nth(0);
+        let gold = ResourceId::new(0);
         Shop {
             grunt,
             barracks,
@@ -264,7 +264,7 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
 fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let player = PlayerSlot::new(0);
     Players::spawn(&mut game, 1, 1);
     game.player_resources_mut(player)
@@ -364,7 +364,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
         };
         Binary::decode::<TrainQueue>(&Binary::encode(&fields))
     };
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let five = ResourceAmount {
         resource: gold,
         amount: 5,

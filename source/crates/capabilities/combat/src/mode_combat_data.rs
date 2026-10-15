@@ -1,6 +1,6 @@
 use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
 use campfire_stats::PoolId;
-use campfire_values::{DamageKind, DeclaredName, Names, Stat};
+use campfire_values::{DamageKind, DeclaredName, NameId, Names, Stat};
 use serde::Deserialize;
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,

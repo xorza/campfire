@@ -368,7 +368,7 @@ pub mod internals {
         Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
     };
     use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
-    use campfire_values::{PackageIndex, Rank, Stat, TagSet, Team, UnitType};
+    use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::mode_input::{InputValue, ModeInput};
@@ -575,7 +575,7 @@ pub mod internals {
                     )
                 })
                 .collect();
-            let id = Stats::push_modifier_changes(world, &changes, TagSet::default());
+            let id = Stats::push_modifier_changes(world, &changes, TagSet::NONE);
             let shares = stats
                 .iter()
                 .map(|&(_, value)| StatShare { value, live: None });

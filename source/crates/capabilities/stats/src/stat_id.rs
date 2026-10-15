@@ -13,10 +13,6 @@ impl StatId {
     pub fn new(index: usize) -> StatId {
         StatId(u16::try_from(index).expect("stats fit u16"))
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for StatId {

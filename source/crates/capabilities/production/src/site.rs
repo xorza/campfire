@@ -7,7 +7,7 @@ use campfire_players::{PlayersWorld, ResourceAmount};
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::{ActionId, Rank};
+use campfire_values::{ActionId, NameId, Rank};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

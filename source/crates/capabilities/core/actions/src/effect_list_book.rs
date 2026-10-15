@@ -8,7 +8,7 @@ use campfire_script::{CallError, Frame, Hook, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::StatsEffect;
 use campfire_units::SpawnAt;
-use campfire_values::{ActionId, Number};
+use campfire_values::{ActionId, NameId, Number};
 
 use crate::action_data::ActionData;
 use crate::action_data::error::EffectRule;

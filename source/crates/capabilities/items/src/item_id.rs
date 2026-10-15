@@ -6,12 +6,6 @@ use serde::{Deserialize, Serialize};
 #[serde(transparent)]
 pub struct ItemId(u32);
 
-impl ItemId {
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
 impl NameId for ItemId {
     type Scope = ();
     const LIMIT: usize = 1 << u32::BITS;

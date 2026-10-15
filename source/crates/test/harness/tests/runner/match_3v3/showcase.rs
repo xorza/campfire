@@ -15,7 +15,7 @@ use campfire_sim::{Position, SimWorld, TickRate};
 use campfire_stats::{Level, PoolId, PoolMeters, Stats};
 use campfire_units::Lifespan;
 use campfire_values::{
-    DeclaredName, ModifierId, Names, Number, PackageIndex, Rank, Ranked, Scalar, Team,
+    DeclaredName, ModifierId, NameId, Names, Number, PackageIndex, Rank, Ranked, Scalar, Team,
 };
 
 use crate::runner::moba::gold;

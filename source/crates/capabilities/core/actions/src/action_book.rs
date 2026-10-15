@@ -5,7 +5,7 @@ use campfire_declare::Book;
 use campfire_script::{ScriptId, ScriptRole, View};
 use campfire_sim::Capability;
 use campfire_units::ScriptBook;
-use campfire_values::{ActionId, Names, PackageIndex, Rank};
+use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
 use crate::action::Action;
 use crate::action_data::ActionData;

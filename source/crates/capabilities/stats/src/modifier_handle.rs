@@ -7,7 +7,7 @@ use campfire_script::{
     StateValue, View, plain_script_arg,
 };
 use campfire_sim::StableId;
-use campfire_values::ModifierId;
+use campfire_values::{ModifierId, NameId};
 
 use crate::stats_effect::StatsEffect;
 

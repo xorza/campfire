@@ -1,4 +1,5 @@
 use super::*;
+use campfire_values::NameId;
 
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {

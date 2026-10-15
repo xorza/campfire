@@ -41,13 +41,6 @@ impl NameId for StateField {
     }
 }
 
-impl StateField {
-    /// Its place among the state's fields.
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
 impl StateSchema {
     /// The schema of `fields`, each name with the class it syncs to and its declaration, in the
     /// order of their names, as data's tables give them.

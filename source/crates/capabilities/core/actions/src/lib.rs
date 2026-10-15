@@ -247,8 +247,8 @@ pub mod internals {
     use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
-        ActionId, DamageKind, DeclaredName, ModifierId, PackageIndex, Tag, TrackId, TypeScope,
-        UnitType,
+        ActionId, DamageKind, DeclaredName, ModifierId, NameId, PackageIndex, Tag, TrackId,
+        TypeScope, UnitType,
     };
 
     use crate::Actions;

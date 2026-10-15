@@ -7,7 +7,7 @@ use campfire_players::PlayersWorld;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::ResourceId;
+use campfire_values::{NameId, ResourceId};
 use serde::{Deserialize, Serialize};
 
 /// A unit that gathers, as one whose slots hold a gather: its gather loop, none while it has

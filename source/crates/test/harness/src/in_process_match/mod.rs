@@ -30,7 +30,7 @@ use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{Body, MoveStep, Owner, UnitsWorld};
-use campfire_values::Team;
+use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::server::RawServer;

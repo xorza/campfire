@@ -13,10 +13,6 @@ impl ModifierId {
     pub const fn new(index: u16) -> ModifierId {
         ModifierId(index)
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for ModifierId {

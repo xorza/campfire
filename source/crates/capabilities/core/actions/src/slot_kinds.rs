@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, Names, NamesError, Rank};
+use campfire_values::{DeclaredName, NameId, Names, NamesError, Rank};
 use serde::Deserialize;
 
 use crate::error::SlotKindsError;

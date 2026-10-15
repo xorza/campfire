@@ -9,7 +9,7 @@ use campfire_script::{
     ViewColumn,
 };
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ModifierId, Rank};
+use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
 use crate::level::Level;
 use crate::life::Life;

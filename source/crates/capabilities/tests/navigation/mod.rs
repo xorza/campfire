@@ -14,7 +14,7 @@ use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units,
 };
-use campfire_values::{Block, PathId, Team, UnitType};
+use campfire_values::{Block, NameId, PathId, Team, UnitType};
 use campfire_values::{DeclaredName, Names};
 
 const ONE: i64 = 1 << 24;

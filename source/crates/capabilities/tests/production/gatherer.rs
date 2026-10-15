@@ -19,7 +19,7 @@ fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
         .set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
     world.insert_non_send(view);
     let entity = world.spawn_empty().id();
-    let [gold, wood] = [0, 1].map(ResourceId::nth);
+    let [gold, wood] = [0, 1].map(ResourceId::new);
     let mut ids = IdAllocator::default();
     let [first, second] = [0, 1].map(|z| NodeAt {
         node: ids.allocate(),

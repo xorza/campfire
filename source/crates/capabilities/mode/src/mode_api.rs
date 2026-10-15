@@ -10,7 +10,7 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, Position, StableId};
 use campfire_units::{NewUnit, SpawnAt, Units};
-use campfire_values::{PathId, Rank, Relation, ResourceId, Tag, Team, UnitType};
+use campfire_values::{NameId, PathId, Rank, Relation, ResourceId, Tag, Team, UnitType};
 
 use crate::choice_data::ChoiceData;
 use crate::choice_id::ChoiceId;

@@ -14,7 +14,7 @@ use campfire_stats::{PoolId, PoolMeters};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
 use campfire_units::{Dead, Owner};
-use campfire_values::{DeclaredName, Names, ResourceId, Team};
+use campfire_values::{DeclaredName, NameId, Names, ResourceId, Team};
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout

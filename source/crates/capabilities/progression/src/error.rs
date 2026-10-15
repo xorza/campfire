@@ -1,4 +1,4 @@
-use campfire_values::TrackId;
+use campfire_values::{NameId, TrackId};
 use thiserror::Error;
 
 /// Why the mode's tracks do not load. Packages are untrusted, so each is an expected failure.

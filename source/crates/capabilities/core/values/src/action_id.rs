@@ -13,10 +13,6 @@ impl ActionId {
     pub const fn new(index: u32) -> ActionId {
         ActionId(index)
     }
-
-    pub const fn index(self) -> usize {
-        self.0 as usize
-    }
 }
 
 impl NameId for ActionId {

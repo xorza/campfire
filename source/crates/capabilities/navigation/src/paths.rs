@@ -2,7 +2,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use campfire_sim::Position;
-use campfire_values::{Names, PathId};
+use campfire_values::{NameId, Names, PathId};
 
 use crate::path_walker::PathEnd;
 

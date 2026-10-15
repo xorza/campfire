@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_script::SyncedStateDecl;
-use campfire_values::{DeclaredName, Scalar, Tag};
+use campfire_values::{DeclaredName, Scalar};
 use serde::Deserialize;
 
 /// A unit type's core fields as its data file declares them: its tags, which filters select, the
@@ -15,13 +15,6 @@ pub struct UnitTypeCore {
     pub params: BTreeMap<DeclaredName, Scalar>,
     #[serde(default)]
     pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
-}
-
-impl UnitTypeCore {
-    /// The most tags the unit types of a match declare together.
-    pub const TAG_LIMIT: usize = Tag::LIMIT;
-    /// The most unit types a match loads.
-    pub const TYPE_LIMIT: usize = 1 << u16::BITS;
 }
 
 #[cfg(feature = "internals")]

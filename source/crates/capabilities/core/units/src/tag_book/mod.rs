@@ -6,7 +6,7 @@ use bevy_ecs::world::DeferredWorld;
 use campfire_declare::Book;
 use campfire_script::View;
 use campfire_sim::Capability;
-use campfire_values::{Tag, TagProperties, TagSet, UnitTags, UnitType};
+use campfire_values::{NameId, Tag, TagProperties, TagSet, UnitTags, UnitType};
 
 use crate::avatar::Avatar;
 use crate::tag_book::tag_effect::TagEffect;
@@ -68,7 +68,7 @@ impl TagBook {
             ..TagBook::default()
         };
         for (properties, immune) in tags {
-            if immune != TagSet::default() {
+            if immune != TagSet::NONE {
                 let at = book.properties.len();
                 let tag = Tag::new(u8::try_from(at).expect("tags fit u8"));
                 book.granting = book.granting.with(tag);
@@ -79,7 +79,7 @@ impl TagBook {
         for (unit_type, tags) in types {
             let at = unit_type.index();
             if book.type_tags.len() <= at {
-                book.type_tags.resize(at + 1, TagSet::default());
+                book.type_tags.resize(at + 1, TagSet::NONE);
             }
             book.type_tags[at] = tags;
         }
@@ -114,7 +114,7 @@ impl TagBook {
             .fold(own, TagSet::union)
             .iter()
             .filter_map(|tag| self.immune.get(tag.index()))
-            .fold(TagSet::default(), |immune, &of| immune.union(of));
+            .fold(TagSet::NONE, |immune, &of| immune.union(of));
         let takes_effect = TagEffect::new(self.granting, immune);
         let tags = granted
             .filter(|&tags| takes_effect.takes(tags))

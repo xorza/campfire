@@ -11,7 +11,7 @@ use campfire_stats::{
     UnitStats,
 };
 use campfire_units::TagEffect;
-use campfire_values::{Block, UnitTags};
+use campfire_values::{Block, NameId, UnitTags};
 
 use crate::combat_book::CombatBook;
 use crate::combat_event::{CombatEvent, CombatEvents};

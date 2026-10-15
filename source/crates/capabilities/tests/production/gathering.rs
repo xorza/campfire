@@ -395,7 +395,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     assert_eq!(game.part::<Gatherer>(worker).load(), None);
 
     // A load of another resource, sent to gather gold, is dropped.
-    let wood = ResourceId::nth(1);
+    let wood = ResourceId::new(1);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
     gatherer.set(None);
     gatherer.carry(Some(Load {

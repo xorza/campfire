@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_values::{EngineTag, TagSet};
+use campfire_values::{EngineTag, NameId, TagSet};
 use serde::{Deserialize, Serialize};
 
 use crate::tag_book::TagBook;

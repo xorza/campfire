@@ -3,7 +3,7 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_values::UnitType;
+use campfire_values::{NameId, UnitType};
 
 use crate::facing::Facing;
 use crate::spawn_at::SpawnAt;

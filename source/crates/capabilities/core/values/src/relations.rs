@@ -8,6 +8,7 @@ use campfire_state_types::{DataKind, Replication, SentOnChange};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::names::NameId;
 use crate::relation::Relation;
 use crate::team::Team;
 use crate::team_set::TeamSet;

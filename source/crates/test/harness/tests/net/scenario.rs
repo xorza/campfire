@@ -14,7 +14,7 @@ use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::{Life, PoolId, Pools};
 use campfire_units::{Body, Dead};
-use campfire_values::Team;
+use campfire_values::{NameId, Team};
 use campfire_vision::SeenBy;
 
 const MATCH_TICKS: u64 = 600;

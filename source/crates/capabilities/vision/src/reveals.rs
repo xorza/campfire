@@ -3,7 +3,7 @@ use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_sim::{Position, SimResource};
-use campfire_values::Team;
+use campfire_values::{NameId, Team};
 use serde::{Deserialize, Serialize};
 
 use crate::vision_book::VisionBook;

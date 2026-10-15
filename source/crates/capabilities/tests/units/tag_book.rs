@@ -3,7 +3,7 @@ use std::panic::{self, AssertUnwindSafe};
 
 use campfire_capabilities::Release;
 use campfire_units::*;
-use campfire_values::{Block, DeclaredName, PackageIndex, Tag, TagSet, TypeScope};
+use campfire_values::{Block, DeclaredName, NameId, PackageIndex, Tag, TagSet, TypeScope};
 
 #[test]
 fn a_units_tags_take_their_properties_from_the_modes_data() {
@@ -65,7 +65,7 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
         .filter(|&block| tags.properties.blocks(block))
         .collect();
     assert_eq!(blocked, stun);
-    assert_eq!(tags.immune, TagSet::default());
+    assert_eq!(tags.immune, TagSet::NONE);
 
     // Slow immunity holds a slow without its tag, in either order.
     for granted in [

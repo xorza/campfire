@@ -368,7 +368,7 @@ pub mod internals {
     use campfire_sim::{SimWorld, StableId, TickRate};
     use campfire_units::{ScriptBook, UnitTypeBook};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, Names, PackageIndex, Param, Rank, Stat, TagSet,
+        ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
         UnitType,
     };
 

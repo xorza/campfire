@@ -21,7 +21,9 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
 use campfire_units::{Dead, Owner, UnitTypeCore, Units};
-use campfire_values::{ActionId, Block, ModifierId, PackageIndex, ResourceId, Team, UnitType};
+use campfire_values::{
+    ActionId, Block, ModifierId, NameId, PackageIndex, ResourceId, Team, UnitType,
+};
 use campfire_values::{Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
@@ -168,7 +170,7 @@ fn carrier_match() -> Match {
 
 /// Gives `game` the item book and player 0's 1000 of `gold`; the shop's type.
 fn stock(game: &mut Match, [drink, flash]: [ActionId; 2], might: ModifierId) -> UnitType {
-    let resource = ResourceId::nth(0);
+    let resource = ResourceId::new(0);
     let item =
         |cost: i64, stack: u32, uses: Option<u32>, action, modifiers: Vec<ModifierId>| ItemSpec {
             cost: vec![ResourceAmount {
@@ -211,7 +213,7 @@ fn share(text: &str) -> Share {
 /// and gives `share` back on a sale.
 fn shop_type(game: &mut Match, sells: Vec<ItemId>, buyers: &str, share: Share) -> UnitType {
     let buyers = Filter::of_match(game, buyers);
-    let shop = Shop::new(sells, ResourceId::nth(0), Num::int(5), buyers, share);
+    let shop = Shop::new(sells, ResourceId::new(0), Num::int(5), buyers, share);
     let shop_type = Units::load_next_type(game, &UnitTypeCore::default());
     Units::give_type(game, shop_type, shop);
     shop_type
@@ -390,7 +392,7 @@ impl ShopRead {
 /// Player 0's gold.
 fn gold(game: &World) -> i64 {
     let resources = game.player_resources(PlayerSlot::new(0));
-    resources.unwrap().amount(ResourceId::nth(0))
+    resources.unwrap().amount(ResourceId::new(0))
 }
 
 /// Player 0's orders of `actions` to `id`.
@@ -418,7 +420,7 @@ struct ShopMatch {
 fn shop_match() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
     let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
             resource: gold,
@@ -569,7 +571,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (1005, vec![Some((0, 1)), Some((2, 1)), Some((0, 1))])
     );
     // An edge from the two blades costs 400 of 1005; one more edge past the gold left is dropped.
-    let resource = ResourceId::nth(0);
+    let resource = ResourceId::new(0);
     let resources = game.player_resources_mut(PlayerSlot::new(0));
     resources.unwrap().add(resource, -1000).unwrap();
     step(&mut game, &[buy(1, shop)]);

@@ -12,7 +12,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     // paid 10, 20 and 30 gold: the head is done at time 4.
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
     let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();

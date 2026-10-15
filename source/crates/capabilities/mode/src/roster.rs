@@ -1,4 +1,4 @@
-use campfire_values::{ActionId, Names};
+use campfire_values::{ActionId, NameId, Names};
 
 use crate::choice_data::Offers;
 use crate::loadout_setup::LoadoutSetup;
@@ -38,7 +38,7 @@ impl Roster {
     }
 
     /// Whether `offer` is one of `offers`.
-    pub(crate) const fn holds(&self, offers: Offers, offer: Offer) -> bool {
+    pub(crate) fn holds(&self, offers: Offers, offer: Offer) -> bool {
         offer.index() < self.count(offers)
     }
 

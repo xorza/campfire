@@ -6,7 +6,7 @@ use campfire_declare::Book;
 use campfire_script::{StateSchema, TagNames, View};
 use campfire_sim::Capability;
 use campfire_values::{
-    DeclaredName, EngineTag, NameTable, Names, NamesError, PackageIndex, Scalar, Tag,
+    DeclaredName, EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag,
     TagProperties, TagSet, TypeScope, UnitType,
 };
 
@@ -76,7 +76,7 @@ impl UnitTypeBook {
         name: &str,
         data: &UnitTypeCore,
     ) -> Result<UnitType, TypesError> {
-        let mut tags = TagSet::default();
+        let mut tags = TagSet::NONE;
         for name in &data.tags {
             tags = tags.with(self.declare(name.as_str())?);
         }
@@ -190,7 +190,7 @@ impl UnitTypeBook {
                 .get(tag.index())
                 .map_or(TagProperties::NONE, |tag| tag.properties());
             let Some(data) = data.get(name) else {
-                return (engine, TagSet::default());
+                return (engine, TagSet::NONE);
             };
             let immune = data.immune.iter().map(|name| {
                 self.tags

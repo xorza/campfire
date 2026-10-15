@@ -47,10 +47,10 @@ impl Filter {
 
     /// The filter of `relations` alone: every unit it selects, but those of a tag of `tags` that
     /// a filter selects only when it names it, as deliveries.
-    pub fn of_relations(relations: RelationSet, tags: &TagNames) -> Filter {
+    pub const fn of_relations(relations: RelationSet, tags: &TagNames) -> Filter {
         Filter {
             relations,
-            all: TagSet::default(),
+            all: TagSet::NONE,
             none: tags.named_only(),
         }
     }
@@ -64,8 +64,8 @@ impl Filter {
     ) -> Option<Filter> {
         let mut filter = Filter {
             relations,
-            all: TagSet::default(),
-            none: TagSet::default(),
+            all: TagSet::NONE,
+            none: TagSet::NONE,
         };
         for (name, negated) in terms {
             let tag = tags.named(name)?;

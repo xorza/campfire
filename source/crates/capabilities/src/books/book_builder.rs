@@ -27,8 +27,8 @@ use campfire_stats::{
 };
 use campfire_units::{Avatar, TypesError, UnitTypeBook};
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, Names, PackageIndex, PackagePath,
-    Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
+    PackagePath, Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
 };
 
 use crate::books::Books;

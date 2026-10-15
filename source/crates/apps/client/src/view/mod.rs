@@ -33,7 +33,7 @@ use campfire_net::JoinState;
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MoveStep};
-use campfire_values::{Team, UnitType};
+use campfire_values::{NameId, Team, UnitType};
 use lightyear::prelude::Predicted;
 
 use crate::selection::{Selection, SelectionSystems};

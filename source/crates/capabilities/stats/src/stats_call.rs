@@ -3,7 +3,7 @@ use campfire_script::{
     CallError, CallParams, CallPart, CallStart, Commit, Frame, ParamScope, ScriptValue,
 };
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ModifierId, Scalar};
+use campfire_values::{ActionId, ModifierId, NameId, Scalar};
 
 use crate::Stats;
 use crate::modifier_handle::ModifierHandle;

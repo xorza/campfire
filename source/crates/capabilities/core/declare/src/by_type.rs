@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_script::View;
 use campfire_sim::Capability;
-use campfire_values::UnitType;
+use campfire_values::{NameId, UnitType};
 
 use crate::book::Book;
 use crate::per_type::PerType;

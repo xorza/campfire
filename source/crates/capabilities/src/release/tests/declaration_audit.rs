@@ -25,7 +25,7 @@ use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColu
 use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
-use campfire_values::{EngineTag, TagProperties};
+use campfire_values::{EngineTag, NameId, TagProperties};
 use campfire_vision::{SeenBy, VisionColumn};
 use serde::{Deserialize, Serialize};
 

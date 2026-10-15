@@ -5,8 +5,8 @@ use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
 use campfire_client_files::ClientUnit;
 use campfire_units::TypeOriginBook;
-use campfire_values::PackageIndex;
 use campfire_values::UnitType;
+use campfire_values::{NameId, PackageIndex};
 
 use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;

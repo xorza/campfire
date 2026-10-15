@@ -7,7 +7,7 @@ use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{EngineStat, Names, Stat, UnitType};
+use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
 
 use crate::stat_id::StatId;
 use crate::stat_rule::StatRule;

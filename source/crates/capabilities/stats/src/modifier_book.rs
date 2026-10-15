@@ -8,7 +8,7 @@ use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, Unk
 use campfire_sim::{Capability, TickRate};
 use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, Names, PackageIndex, Rank, Stat, TagSet,
+    ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
 };
 
 use crate::application::{Application, NewInstance};
@@ -335,7 +335,7 @@ pub(crate) mod internals {
 
     use campfire_math::Num;
     use campfire_script::HookSet;
-    use campfire_values::{ModifierId, PackageIndex, TagSet};
+    use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
 
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;

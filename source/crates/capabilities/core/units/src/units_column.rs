@@ -6,7 +6,7 @@ use campfire_script::{
     AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptValue,
     StateField, StateSchema, StateValue, SyncTo, View, ViewColumn,
 };
-use campfire_values::UnitType;
+use campfire_values::{NameId, UnitType};
 
 use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::unit_state_book::UnitStateBook;

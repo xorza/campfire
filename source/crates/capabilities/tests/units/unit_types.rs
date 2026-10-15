@@ -1,6 +1,6 @@
 use campfire_capabilities::Release;
 use campfire_units::*;
-use campfire_values::{DeclaredName, PackageIndex, Tag, TypeScope};
+use campfire_values::{DeclaredName, NameId, PackageIndex, Tag, TypeScope, UnitType};
 
 #[test]
 fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
@@ -25,7 +25,7 @@ fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
     );
     // 65,536 types fill a match, and one more fails. The names sort in the order they load.
     let plain = UnitTypeCore::default();
-    for at in 0..UnitTypeCore::TYPE_LIMIT {
+    for at in 0..UnitType::LIMIT {
         load(&mut types, &format!("type{at:05}"), &plain).unwrap();
     }
     assert_eq!(

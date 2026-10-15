@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_math::{Num, Rounding};
 use campfire_stats::StatId;
-use campfire_values::DamageKind;
+use campfire_values::{DamageKind, NameId};
 
 /// What makes an action of kind `attack` a weapon: the places among its unit's stats of its rate,
 /// in attacks a second, and of its damage, and the kind of damage it deals.

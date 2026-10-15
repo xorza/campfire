@@ -68,14 +68,14 @@ impl Role {
         let Some(seen) = seen.and_then(|seen| seen.get()) else {
             return true;
         };
-        let any = seen.teams().next().is_some();
+        let any = seen.iter().next().is_some();
         match self {
             Role::Player { team, out, .. } => {
                 seen.contains(team)
                     || (out && (visibility.spectators() == SpectatorFog::All || any))
             }
             Role::Spectator { teams: None } => true,
-            Role::Spectator { teams: Some(teams) } => seen.teams().any(|team| teams.contains(team)),
+            Role::Spectator { teams: Some(teams) } => seen.iter().any(|team| teams.contains(team)),
         }
     }
 

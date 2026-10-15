@@ -4,6 +4,7 @@ use campfire_codec::Binary;
 use campfire_common::Ticks;
 use campfire_script::StateValue;
 use campfire_sim::IdAllocator;
+use campfire_values::NameId;
 
 use super::*;
 use crate::interval::Interval;

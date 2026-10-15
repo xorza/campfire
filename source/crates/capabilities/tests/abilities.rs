@@ -52,9 +52,9 @@ use campfire_units::{
     UnitTypeCore, Units,
 };
 use campfire_values::{
-    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, Number, PackageIndex,
-    PackagePath, Param, ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat, Team,
-    TimeTooLarge, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, NameId, Number,
+    PackageIndex, PackagePath, Param, ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat,
+    Team, TimeTooLarge, TrackId, TypeScope, UnitTags, UnitType,
 };
 
 /// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep
@@ -716,7 +716,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 #[test]
 fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let mut game = abilities_match();
-    let gold = ResourceId::nth(0);
+    let gold = ResourceId::new(0);
     let mut cost = cost("mana", int(10));
     cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
     let data = ActionData { cost, ..strike() };

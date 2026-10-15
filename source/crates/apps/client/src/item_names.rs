@@ -5,6 +5,7 @@ use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res};
 use campfire_items::{ItemBook, ItemId};
 use campfire_package::{ModePackages, Texts};
+use campfire_values::NameId;
 
 /// The name players see of each item type of the mode, in the mode's own language, which the
 /// shop panel and the inventory bar show.

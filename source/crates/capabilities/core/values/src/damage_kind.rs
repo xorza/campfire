@@ -9,14 +9,10 @@ use crate::names::NameId;
 #[serde(transparent)]
 pub struct DamageKind(u8);
 
-impl DamageKind {
-    /// The most damage kinds a mode declares: as many as a byte tells apart.
-    pub const LIMIT: usize = 1 << u8::BITS;
-}
-
 impl NameId for DamageKind {
     type Scope = ();
-    const LIMIT: usize = DamageKind::LIMIT;
+    /// The most damage kinds a mode declares: as many as a byte tells apart.
+    const LIMIT: usize = 1 << u8::BITS;
 
     fn at(index: usize) -> DamageKind {
         DamageKind(u8::try_from(index).expect("damage kinds fit u8"))

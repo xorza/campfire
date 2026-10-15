@@ -5,7 +5,7 @@ use campfire_script::View;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::Player;
-use campfire_values::ResourceId;
+use campfire_values::{NameId, ResourceId};
 use serde::{Deserialize, Serialize};
 
 use crate::resource_amount::ResourceAmount;

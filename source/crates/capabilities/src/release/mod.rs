@@ -25,7 +25,7 @@ use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
 use campfire_units::{UnitTypeBook, Units};
-use campfire_values::EngineTag;
+use campfire_values::{EngineTag, NameId};
 use campfire_vision::Vision;
 
 use crate::release::api_binder::ApiBinder;

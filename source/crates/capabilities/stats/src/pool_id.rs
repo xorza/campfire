@@ -8,25 +8,24 @@ pub struct PoolId(u8);
 impl PoolId {
     pub const FIRST: PoolId = PoolId(0);
 
-    /// The most pools a mode declares, and so a unit holds.
-    pub const LIMIT: usize = 8;
-
     /// `None` past `PoolId::LIMIT`.
     pub const fn new(index: u8) -> Option<PoolId> {
-        if index as usize >= PoolId::LIMIT {
+        if index as usize >= <PoolId as NameId>::LIMIT {
             return None;
         }
         Some(PoolId(index))
     }
 
-    pub const fn index(self) -> usize {
-        self.0 as usize
+    /// Its place among the mode's pools.
+    pub const fn get(self) -> u8 {
+        self.0
     }
 }
 
 impl NameId for PoolId {
     type Scope = ();
-    const LIMIT: usize = PoolId::LIMIT;
+    /// The most pools a mode declares, and so a unit holds.
+    const LIMIT: usize = 8;
 
     fn at(index: usize) -> PoolId {
         PoolId::new(u8::try_from(index).expect("pools fit u8")).expect("a pool below the limit")

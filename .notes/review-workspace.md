@@ -145,7 +145,6 @@ Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mod
 
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
 
-- [ ] Ids: `NameId` owns `at`, `index` and `LIMIT`, and every id in `values` has one shape. `unit_type_core.rs:21-24` reads the ids' limits. `TeamSet` and `TagSet` share one surface.
 - [ ] Geometry: a `Placed` body in `metric.rs:59-121`, `shape/mod.rs:59` and `body_box/mod.rs:274`. `comes_within` becomes `comes_closer`. A `Closure` enum serves `body_box/mod.rs:572-671`, one span helper serves `grid/mod.rs:147-224`, a checked `Radius` sits in `shape/mod.rs:16-19`, and `RowDirectory` moves into `geometry`.
 - [ ] One generic callback table: `deliverers.rs:39`, `effect_queues.rs:28`, `cast_spends.rs:25`, `spawn_hooks.rs:24`. `view_names.rs:22` uses `TypeSlots`.
 - [ ] `deliveries/src/deliverers.rs:11`: `Deliver` takes a `Launcher`, and `Launcher::of` builds it.

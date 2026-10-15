@@ -20,7 +20,7 @@ use campfire_units::{
     Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, TurnStep, UnitTypeCore, Units,
 };
 use campfire_values::{
-    Block, ModifierId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,
+    Block, ModifierId, NameId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,
     UnitType,
 };
 use campfire_values::{
@@ -280,7 +280,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         let armor = game.resource::<StatBook>().named(&armor_stat()).unwrap();
         let mut applications = Vec::new();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
-            Stats::push_modifier_changes(&mut game, &[(armor, op)], TagSet::default());
+            Stats::push_modifier_changes(&mut game, &[(armor, op)], TagSet::NONE);
             let id = u16::try_from(at).unwrap();
             for _ in 0..stacks {
                 applications.push(share(id, None, value, Reapply::Stack));
@@ -333,8 +333,8 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let mut game = stat_match(&[walker]);
     let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
     let effects = [
-        (TagProperties::default().with_detects(), TagSet::default()),
-        (TagProperties::default(), TagSet::default()),
+        (TagProperties::default().with_detects(), TagSet::NONE),
+        (TagProperties::default(), TagSet::NONE),
         (TagProperties::default(), TagSet::from([slowed])),
     ];
     let own = TagSet::from([sight]);
@@ -348,9 +348,9 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // cut that grants both `slowed` and the immunity to it.
     let modifiers = [
         (StatOp::Cut, TagSet::from([slowed])),
-        (StatOp::Add, TagSet::default()),
-        (StatOp::Pct, TagSet::default()),
-        (StatOp::Cut, TagSet::default()),
+        (StatOp::Add, TagSet::NONE),
+        (StatOp::Pct, TagSet::NONE),
+        (StatOp::Cut, TagSet::NONE),
         (StatOp::Add, TagSet::from([slow_immune])),
         (StatOp::Cut, TagSet::from([slowed, slow_immune])),
     ];
@@ -415,7 +415,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     carried.remove(ModifierId::new(5), second);
     game.step();
     assert_eq!(step(&game), Num::from_bits(1_747_627));
-    assert_eq!(tags(&game).immune, TagSet::default());
+    assert_eq!(tags(&game).immune, TagSet::NONE);
 
     // Removing every modifier: back to 4 m/s, and to the type's tag alone.
     *game.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
@@ -820,10 +820,10 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         let mut game = stat_match(slice::from_ref(&walker));
         let effects = [(
             TagProperties::default().with_block(Block::Move),
-            TagSet::default(),
+            TagSet::NONE,
         )];
         let own = [
-            (UnitType::new(0), TagSet::default()),
+            (UnitType::new(0), TagSet::NONE),
             (UnitType::new(1), TagSet::from([stunned])),
         ];
         let book = TagBook::new(0, effects, own);
@@ -833,7 +833,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
         let stunning = TagSet::from([stunned]);
         Stats::push_modifier_changes(&mut game, &[(speed, StatOp::Add)], stunning);
-        Stats::push_modifier_changes(&mut game, &[(speed, StatOp::Cut)], TagSet::default());
+        Stats::push_modifier_changes(&mut game, &[(speed, StatOp::Cut)], TagSet::NONE);
         game
     };
     let mut game = start();

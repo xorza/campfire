@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
 use campfire_sim::Capability;
-use campfire_values::{PackageIndex, UnitType};
+use campfire_values::{NameId, PackageIndex, UnitType};
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its
 /// place in the mode's packages, the mode's first, and its name there, as its client data names

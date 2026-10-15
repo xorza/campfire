@@ -1,5 +1,6 @@
 use campfire_geometry::Grid;
 use campfire_units::Layer;
+use campfire_values::NameId;
 
 use crate::wall::Wall;
 

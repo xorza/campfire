@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{StateSchema, StateValue, SyncTo, View};
 use campfire_sim::Capability;
-use campfire_values::UnitType;
+use campfire_values::{NameId, UnitType};
 
 /// The script state each unit type declares, a schema for each type in the order of the types:
 /// each field's name, type, first value and the clients it goes to. Package data, not state: a

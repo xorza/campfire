@@ -6,6 +6,7 @@ use campfire_math::Num;
 use campfire_sim::{Capability, SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
+use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
 use crate::meter::Meter;
@@ -42,20 +43,20 @@ impl Pools {
 
     /// The current amount of `pool`; `None` when it has no such pool.
     pub fn current(&self, pool: PoolId) -> Option<Num> {
-        self.0[pool.index()].map(Meter::current)
+        self.0[pool.get() as usize].map(Meter::current)
     }
 
     /// The maximum of `pool`; `None` when it has no such pool.
     pub fn max(&self, pool: PoolId) -> Option<Num> {
-        self.0[pool.index()].map(Meter::max)
+        self.0[pool.get() as usize].map(Meter::max)
     }
 
     pub(crate) const fn meter(&self, pool: PoolId) -> Option<Meter> {
-        self.0[pool.index()]
+        self.0[pool.get() as usize]
     }
 
     pub(crate) const fn meter_mut(&mut self, pool: PoolId) -> Option<&mut Meter> {
-        self.0[pool.index()].as_mut()
+        self.0[pool.get() as usize].as_mut()
     }
 
     /// Fills every pool it has.
