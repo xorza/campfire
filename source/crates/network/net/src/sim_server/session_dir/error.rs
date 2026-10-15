@@ -1,9 +1,10 @@
 use std::ffi::OsString;
 
 use campfire_protocol::{EngineRelease, JournalReplayError, NotJournal, SessionPrivateError};
-use campfire_runner::StartError;
 use campfire_store::{AppendOpenError, DurableError, PathError, ReadError};
 use thiserror::Error;
+
+use crate::sim_server::error::RestoreMatchError;
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug, Error)]
@@ -39,12 +40,9 @@ pub enum RestoreError {
 /// Why an aborted session's log was not published.
 #[derive(Debug, Error)]
 pub enum AbortError {
-    /// The log does not start a match of the server's mode.
-    #[error("the session's match does not start")]
-    Start(#[source] StartError),
-    /// A checkpoint taken again did not write its snapshot.
-    #[error("could not write a snapshot")]
-    Snapshot(#[source] PathError<DurableError>),
+    /// The session's match does not replay to where it stopped.
+    #[error("the session's match does not replay")]
+    Replay(#[source] RestoreMatchError),
     #[error("could not publish the log")]
     Publish(#[source] PathError<DurableError>),
 }

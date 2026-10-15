@@ -17,7 +17,7 @@ use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedChe
 use crate::sim_server::checkpoints::error::SaveRefusal;
 use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::server_signer::ServerSigner;
-use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
+use crate::sim_server::snapshot_dir::SnapshotDir;
 
 pub(crate) mod error;
 

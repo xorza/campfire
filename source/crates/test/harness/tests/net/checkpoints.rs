@@ -11,8 +11,10 @@ use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::{
-    CheckpointFailed, SeedsRanOut, ServerDir, SessionDir, SimServerWorld, TickHashes,
+    AbortError, CheckpointFailed, Entropy, RestoreMatchError, SeedsRanOut, ServerDir, SessionDir,
+    SimServerWorld, TickHashes,
 };
+use campfire_protocol::internals::TestKey;
 use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::StateRegistry;
@@ -105,6 +107,41 @@ fn a_restart_resumes_from_the_latest_checkpoint_and_its_log_verifies_with_its_sn
     }
     let snapshots = snapshots(&scratch, &local);
     verifies(&mut local, &snapshots);
+}
+
+#[test]
+fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
+    // Stopped after its checkpoint before tick 160: the abort builds the match from that
+    // snapshot, and its aborted result holds the state the server left.
+    let scratch = Scratch::new();
+    let (mut local, before) = checkpointed(&scratch);
+    let cut = local.next_tick(End::Server);
+    let snapshots = snapshots(&scratch, &local);
+    let latest = log(&local).checkpoints().last().unwrap().snapshot;
+    local.stop_server();
+    let data = ServerDir::open(&scratch.path("data")).unwrap();
+    let abort = |data: &ServerDir| {
+        let session = SessionDir::find(data).unwrap().unwrap();
+        let session = session.restore().unwrap().unwrap();
+        session.abort(data, local.packages(), TestKey::server(), Entropy::Fixed(6))
+    };
+    // With the latest snapshot gone, it reads that snapshot, and fails.
+    let latest = snapshots.join(latest.to_string());
+    let kept = scratch.read(&latest);
+    scratch.remove(&latest);
+    assert!(matches!(
+        abort(&data),
+        Err(AbortError::Replay(RestoreMatchError::ReadSnapshot(_)))
+    ));
+    scratch.write(&latest, kept);
+    let file = abort(&data).unwrap();
+    let published =
+        SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
+    let result = *published.result().unwrap();
+    assert_eq!(
+        (result.tick, result.outcome, result.state_hash),
+        (Tick::new(cut), Outcome::Aborted, *before.last().unwrap())
+    );
 }
 
 #[test]

@@ -100,13 +100,13 @@ pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
     AbortError, FindError, RestoreError, WaitingError,
 };
-pub use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
 pub use crate::sim_server::session_dir::{RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
 pub use crate::sim_server::sim_server_world::SimServerWorld;
 pub use crate::sim_server::slot_bot_file::SlotBotFile;
 pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
+pub use crate::sim_server::snapshot_dir::SnapshotDir;
 pub use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "internals")]

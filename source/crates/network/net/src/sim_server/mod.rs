@@ -22,8 +22,7 @@ use campfire_package::ModePackages;
 use campfire_protocol::{Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms};
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionWorld, StartError, TermsError};
-use campfire_sim::{SimTick, SimWorld, StateRegistry, TickRate};
-use campfire_store::InputFile;
+use campfire_sim::{SimTick, SimWorld, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
@@ -104,6 +103,7 @@ pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
 pub(crate) mod sim_server_world;
 pub(crate) mod slot_bot_file;
+pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
 pub(crate) mod tick_hashes;
@@ -440,46 +440,16 @@ impl SimServer {
         server: &ServerSetup,
         bots: ServerBots,
     ) -> Result<(), RestoreMatchError> {
-        let RestoredSession {
-            private,
-            log,
-            files: SessionFiles { journal, snapshots },
-            ..
-        } = restored;
-        let terms = log.header().terms.clone();
+        let terms = restored.log.header().terms.clone();
         SimServer::bound_frames(world, &terms);
         SimServer::set_visibility(world, &terms, packages)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
-        let ticks = log.next_tick();
-        let slots = log.slot_count();
-        let seeds = private.seed_chain.seeds();
-        let latest = log
-            .checkpoints()
-            .last()
-            .map(|record| (record.segment, record.snapshot));
-        if let Some((segment, fingerprint)) = latest {
-            let snapshot = InputFile::read(
-                &snapshots.file(fingerprint),
-                StateRegistry::MAX_SNAPSHOT_LEN,
-            )
-            .map_err(RestoreMatchError::ReadSnapshot)?;
-            Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
-                .map_err(RestoreMatchError::Resume)?;
-        } else {
-            Session::start(world, log.rewound(), seeds, packages)
-                .map_err(RestoreMatchError::Start)?;
-        }
-        world.insert_resource(JournalWatch(journal.watch()));
-        world.session_mut().resume_journal(Box::new(journal));
+        let slots = restored.log.slot_count();
         let signer = ServerSigner::new(server.key, server.os.entropy);
-        let resumed = world.session().log().next_tick();
-        world.replay_to(ticks, |world| {
-            let ran = world.session().log().next_tick() > resumed;
-            if ran && world.contains_resource::<TickHashes>() {
+        let snapshots = restored.replay(world, packages, &signer, |world| {
+            if world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }
-            Checkpoints::take_again(world, &snapshots, &signer)
-                .map_err(RestoreMatchError::WriteSnapshot)
         })?;
         SimServer::open_door(world, terms, server, None);
         Checkpoints::start(world, snapshots, signer);

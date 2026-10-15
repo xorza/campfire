@@ -6,7 +6,7 @@ use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
 use campfire_store::{DurableError, Exchange, PathError};
 
 use crate::sim_server::server_signer::ServerSigner;
-use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
+use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// The thread that takes a session's checkpoints off the main thread. It holds its own copy of
 /// the match's state, which starts as a full copy and which each delta the main thread sends

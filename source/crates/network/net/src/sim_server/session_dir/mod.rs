@@ -8,6 +8,7 @@ use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::{Session, SessionWorld};
+use campfire_sim::StateRegistry;
 use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
@@ -17,14 +18,15 @@ use secp256k1::Keypair;
 use crate::events::session_aborted::SessionAborted;
 use crate::os::Entropy;
 use crate::sim_server::checkpoints::Checkpoints;
+use crate::sim_server::error::RestoreMatchError;
+use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
-use crate::sim_server::session_dir::snapshot_dir::SnapshotDir;
 use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::snapshot_dir::SnapshotDir;
 
 pub(crate) mod error;
-pub(crate) mod snapshot_dir;
 
 /// A session's directory under a server's data directory, `sessions/<session id>`: its `private`
 /// record, written once before the first offer, its `journal`, and its checkpoints' `snapshots`.
@@ -209,10 +211,60 @@ impl SessionDir {
 }
 
 impl RestoredSession {
+    /// Builds the session's match in `world`, of the mode `packages` holds: from the snapshot of
+    /// the latest checkpoint whose record the log holds, or from tick 0 with none; resumes its
+    /// journal, which `JournalWatch` watches; and replays the log from there to the tick the
+    /// server stopped before, running `after_tick` after each tick the replay runs, and taking
+    /// again, signed by `signer`, a checkpoint begun with no record as the replay reaches its
+    /// boundary. Its snapshots.
+    pub(crate) fn replay(
+        self,
+        world: &mut World,
+        packages: &ModePackages,
+        signer: &ServerSigner,
+        mut after_tick: impl FnMut(&mut World),
+    ) -> Result<SnapshotDir, RestoreMatchError> {
+        let RestoredSession {
+            private,
+            log,
+            files: SessionFiles { journal, snapshots },
+            ..
+        } = self;
+        let ticks = log.next_tick();
+        let seeds = private.seed_chain.seeds();
+        let latest = log
+            .checkpoints()
+            .last()
+            .map(|record| (record.segment, record.snapshot));
+        if let Some((segment, fingerprint)) = latest {
+            let snapshot = InputFile::read(
+                &snapshots.file(fingerprint),
+                StateRegistry::MAX_SNAPSHOT_LEN,
+            )
+            .map_err(RestoreMatchError::ReadSnapshot)?;
+            Session::resume(world, log.rewound(), seeds, packages, segment, &snapshot)
+                .map_err(RestoreMatchError::Resume)?;
+        } else {
+            Session::start(world, log.rewound(), seeds, packages)
+                .map_err(RestoreMatchError::Start)?;
+        }
+        world.insert_resource(JournalWatch(journal.watch()));
+        world.session_mut().resume_journal(Box::new(journal));
+        let resumed = world.session().log().next_tick();
+        world.replay_to(ticks, |world| {
+            if world.session().log().next_tick() > resumed {
+                after_tick(world);
+            }
+            Checkpoints::take_again(world, &snapshots, signer)
+                .map_err(RestoreMatchError::WriteSnapshot)
+        })?;
+        Ok(snapshots)
+    }
+
     /// Ends the session aborted, as a server back past the restore window does, unless it
-    /// ended before the crash: replays the log, of the mode `packages` holds, to the state its
-    /// last tick left, taking again a checkpoint begun with no record as it reaches its
-    /// boundary; logs an aborted result there, into the journal too; and publishes the log under
+    /// ended before the crash: replays the log, of the mode `packages` holds, as `replay` does,
+    /// to the state its last tick left; logs an aborted result there, into the journal too; and
+    /// publishes the log under
     /// `data`, its seed revealed, and logs `SessionAborted`. `server_key` signs what it logs, with
     /// auxiliary randomness from `entropy`. The published file's path.
     pub fn abort(
@@ -222,19 +274,10 @@ impl RestoredSession {
         server_key: Keypair,
         entropy: Entropy,
     ) -> Result<PathBuf, AbortError> {
-        let ticks = self.log.next_tick();
-        let seeds = self.private.seed_chain.seeds();
         let mut world = World::new();
-        Session::start(&mut world, self.log.rewound(), seeds, packages)
-            .map_err(AbortError::Start)?;
-        world
-            .session_mut()
-            .resume_journal(Box::new(self.files.journal));
         let signer = ServerSigner::new(server_key, entropy);
-        world.replay_to(ticks, |world| {
-            Checkpoints::take_again(world, &self.files.snapshots, &signer)
-                .map_err(AbortError::Snapshot)
-        })?;
+        self.replay(&mut world, packages, &signer, |_| {})
+            .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
             let result = world.session_result_as(Outcome::Aborted);
             let mut session = world.session_mut();
