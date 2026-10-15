@@ -12,7 +12,7 @@ use campfire_navigation::PathWalker;
 use campfire_orders::OrdersAction;
 use campfire_package_disk::internals::TestMode;
 use campfire_progression::ProgressionAction;
-use campfire_protocol::{ServerInput, ServerSeeds, SlotPlan};
+use campfire_protocol::{InputRules, ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
 use campfire_units::Dead;
@@ -23,7 +23,6 @@ use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
 use crate::scripted::{Aim, Plan, Scripted, TICK_HZ};
 use crate::scripted_mode::ScriptedMode;
-use campfire_protocol::InputRules;
 
 pub(crate) mod bench;
 

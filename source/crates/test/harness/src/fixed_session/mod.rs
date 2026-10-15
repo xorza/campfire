@@ -6,14 +6,13 @@ use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, SeedChain, SeedContribution,
-    ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog, SessionResult,
-    SessionTerms, Signature, SlotPlan, SlotStart,
+    Checkpoint, Delegation, DelegationTerms, InputChain, InputPlace, InputRules, SeedChain,
+    SeedContribution, ServerInput, ServerSeed, ServerSeeds, SessionHeader, SessionId, SessionLog,
+    SessionResult, SessionTerms, Signature, SlotPlan, SlotStart,
 };
 use secp256k1::{Secp256k1, XOnlyPublicKey};
 
 use crate::fixed_session::fixed_match::FixedMatch;
-use campfire_protocol::InputRules;
 use campfire_runner::Session;
 use campfire_runner::SessionRules;
 

@@ -3,9 +3,8 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::ExitStatus;
 use campfire_package_disk::internals::TestMode;
-use campfire_protocol::InputRules;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
+use campfire_protocol::{InputRules, SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
 use campfire_runner::SessionRules;
 use campfire_store::{AppendFile, AppendWriter};
 

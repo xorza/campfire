@@ -14,8 +14,7 @@ use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,
     SessionDir, SimServerWorld,
 };
-use campfire_protocol::InputRules;
-use campfire_protocol::{JournalFrames, Outcome, SeedChain, SessionLog};
+use campfire_protocol::{InputRules, JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;

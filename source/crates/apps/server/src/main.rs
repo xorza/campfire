@@ -16,7 +16,6 @@
 
 use std::env;
 use std::net::SocketAddr;
-use std::num::NonZeroU32;
 use std::path::Path;
 use std::process::ExitCode;
 
@@ -31,7 +30,7 @@ use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeepFilesError, KeyFile, Listening, NetProtocol, Os, PendingRestore,
+    JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
     ProcessExit, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
     SimServerPlugins, SimServerWorld,
 };
@@ -52,9 +51,6 @@ use crate::opening::{Opened, Opening, OpeningSetup};
 
 mod args;
 mod opening;
-
-/// The segments of a session's seed chain: the most checkpoints it may take, less one.
-const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
 
 /// What the terminal shows when `RUST_LOG` does not say.
 const TERMINAL_FILTER: &str = "info";
@@ -149,14 +145,13 @@ fn main() -> ExitCode {
         }
     };
     let capabilities = packages.manifest().capabilities;
-    let Started { opening, server } =
-        match Started::open(&data, waiting, packages, key, times, bots, host) {
-            Ok(started) => started,
-            Err(code) => return code,
-        };
+    let opening = match open(&data, waiting, packages, key, times, bots, host) {
+        Ok(opening) => opening,
+        Err(code) => return code,
+    };
     let local = endpoint.local_address();
-    let limit = AddressLimit::new(opening.seats(), server.times.grace);
-    let listening = announce(&opening, &mode, local, tls_key, &server.key);
+    let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
+    let listening = announce(&opening, &mode, local, tls_key);
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
     let server = app.world_mut().spawn((RawServer, endpoint, limit)).id();
@@ -169,64 +164,52 @@ fn main() -> ExitCode {
     ProcessExit::code(exit)
 }
 
-/// What the server starts with: its session and its setup.
-#[derive(Debug)]
-struct Started {
-    opening: Opening,
-    server: ServerSetup,
-}
-
-impl Started {
-    /// The session `waiting` in the data directory `data` to restore, or a new one of the mode
-    /// `packages` holds, with `bots` and the visibility `host` sets; and the server's setup of
-    /// `key` and `times`. The exit code when one fails.
-    fn open(
-        data: &ServerDir,
-        waiting: Option<RestoredSession>,
-        packages: ModePackages,
-        key: Keypair,
-        times: SessionTimes,
-        bots: ServerBots,
-        host: HostVisibility,
-    ) -> Result<Started, ExitCode> {
-        let no_session = |error: OpeningError| {
-            error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
-            ExitCode::from(ExitStatus::Failure)
-        };
-        let found = Opening::find(
-            waiting,
-            data,
-            &packages,
-            times.restore_window,
-            key,
-            Os::SYSTEM.entropy,
-        )
-        .map_err(no_session)?;
-        let server = ServerSetup {
+/// The session `waiting` in the data directory `data` to restore, or a new one of the mode
+/// `packages` holds, with `bots` and the visibility `host` sets, on the server of `key` and
+/// `times`. The exit code when it fails.
+fn open(
+    data: &ServerDir,
+    waiting: Option<RestoredSession>,
+    packages: ModePackages,
+    key: Keypair,
+    times: SessionTimes,
+    bots: ServerBots,
+    host: HostVisibility,
+) -> Result<Opening, ExitCode> {
+    let no_session = |error: OpeningError| {
+        error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
+        ExitCode::from(ExitStatus::Failure)
+    };
+    let found = Opening::find(
+        waiting,
+        data,
+        &packages,
+        times.restore_window,
+        key,
+        Os::SYSTEM.entropy,
+    )
+    .map_err(no_session)?;
+    let setup = OpeningSetup {
+        data,
+        packages,
+        server: ServerSetup {
             key,
             times,
             os: Os::SYSTEM,
-        };
-        let setup = OpeningSetup {
-            data,
-            packages,
-            server: server.clone(),
-            bots,
-            host,
-            segments: SEGMENTS,
-        };
-        let opening = Opening::of(found, setup).map_err(|error| match error {
-            OpeningError::KeepFiles(KeepFilesError::Dir(_) | KeepFilesError::Journal(_)) => {
-                JournalFailed {
-                    error: ErrorReport::of(&error).to_string(),
-                }
-                .log();
-                ExitCode::from(ExitStatus::Storage)
+        },
+        bots,
+        host,
+    };
+    Opening::of(found, setup).map_err(|error| match error {
+        OpeningError::Open(LobbyOpenError::KeepFiles(_)) => {
+            JournalFailed {
+                error: ErrorReport::of(&error).to_string(),
             }
-            error => no_session(error),
-        })?;
-        Ok(Started { opening, server })
-    }
+            .log();
+            ExitCode::from(ExitStatus::Storage)
+        }
+        error => no_session(error),
+    })
 }
 
 /// The server's app: its plugins at the rate of the session of `opening`, that session, a
@@ -276,13 +259,7 @@ fn server_app(
 /// What the server logs once its transport listens for the session `opening` starts: how a
 /// player joins it, through its socket's address `address` and the TLS key `tls_key`; and logs
 /// now, for a new session, that it opened, of the mode `mode`.
-fn announce(
-    opening: &Opening,
-    mode: &Path,
-    address: SocketAddr,
-    tls_key: TlsKey,
-    key: &Keypair,
-) -> Listening {
+fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey) -> Listening {
     let terms = opening.terms();
     if let Opened::New(_) = opening.session {
         info!(
@@ -293,7 +270,7 @@ fn announce(
             "opened a session"
         );
     }
-    let key = key.x_only_public_key().0;
+    let key = terms.server_key;
     let tick_hz = terms.tick_hz;
     Listening {
         address,

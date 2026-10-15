@@ -12,8 +12,9 @@ use campfire_mode::{Leaver, ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{OrderScript, PlayerLink, SessionTimes, SlotBot, TickHashes};
 use campfire_progression::Experience;
-use campfire_protocol::InputRules;
-use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput, SessionLog, SlotPlan};
+use campfire_protocol::{
+    AfterLeave, Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan,
+};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_script::StateValue;
 use campfire_store::internals::Scratch;

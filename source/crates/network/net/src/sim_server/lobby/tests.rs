@@ -9,6 +9,7 @@ use campfire_protocol::{
     ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
 };
 use campfire_state_types::DataKind;
+use campfire_store::internals::Scratch;
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 use secp256k1::{All, Secp256k1};
@@ -259,4 +260,42 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
     assert_eq!(seated(&lobby), [links[1]]);
     assert_eq!(take(&mut lobby, links[3], &player(5)), Ok(None));
     assert_eq!(seated(&lobby), [links[1], links[3]]);
+}
+
+#[test]
+fn a_servers_new_session_opens_every_slot_by_the_lan_rules_and_keeps_its_files() {
+    let scratch = Scratch::new();
+    let data = ServerDir::open(&scratch.path("data")).unwrap();
+    let opening = |bots: &[u32]| {
+        let LobbySetup {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+            ..
+        } = setup(bots, &[]);
+        LobbyOpening {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+        }
+    };
+    // The lane mode's 2 slots, both players', at its default and only rate of 30 Hz; the seed
+    // chain of 1024 segments from the server's entropy, every byte 5.
+    let lobby = Lobby::open(opening(&[]), &data).unwrap();
+    let terms = lobby.terms();
+    assert_eq!(terms.slots, [SlotPlan::Player, SlotPlan::Player]);
+    assert_eq!(terms.tick_hz.get(), 30);
+    assert_eq!(terms.inputs, InputRules::LAN);
+    let seed_chain = SeedChain::new([5; 32], NonZeroU32::new(1024).unwrap());
+    assert_eq!(terms.seed_commitment, seed_chain.commitment());
+    assert!(lobby.files.is_some());
+    // A bot of a slot the mode does not have opens no session.
+    assert!(matches!(
+        Lobby::open(opening(&[2]), &data),
+        Err(LobbyOpenError::Lobby(LobbyError::NoSuchSlot(slot))) if slot.get() == 2
+    ));
 }

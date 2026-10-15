@@ -4,12 +4,11 @@ use std::time::{Duration, SystemTime};
 
 use campfire_common::MapName;
 use campfire_net::{
-    Entropy, Lobby, LobbySetup, PendingRestore, RestoredSession, ServerBots, ServerDir,
+    Entropy, Lobby, LobbyOpening, PendingRestore, RestoredSession, ServerBots, ServerDir,
     ServerSetup, SessionDir,
 };
 use campfire_package::ModePackages;
-use campfire_protocol::InputRules;
-use campfire_protocol::{SeedChain, SessionTerms};
+use campfire_protocol::SessionTerms;
 use campfire_runner::SessionRules;
 use campfire_visibility::HostVisibility;
 use secp256k1::Keypair;
@@ -44,7 +43,6 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) bots: ServerBots,
     /// What the host sets of a new session's visibility; a restored session keeps its own.
     pub(crate) host: HostVisibility,
-    pub(crate) segments: NonZeroU32,
 }
 
 impl Opening {
@@ -79,6 +77,14 @@ impl Opening {
     /// The terms of the session it starts.
     pub(crate) fn terms(&self) -> &SessionTerms {
         self.session.terms()
+    }
+
+    /// The setup of the server that starts it.
+    pub(crate) fn server(&self) -> &ServerSetup {
+        match &self.session {
+            Opened::New(lobby) => lobby.server(),
+            Opened::Restored(restore) => &restore.server,
+        }
     }
 
     /// The seats of the session it starts: its slots and the most spectators it admits, which no
@@ -140,30 +146,16 @@ impl Opening {
         Ok(None)
     }
 
-    /// A new session of `setup.packages`, its seed chain fresh, its directory, private record
-    /// and journal made.
+    /// A new session of `setup.packages`, its directory, private record and journal made.
     fn open(setup: OpeningSetup<'_>) -> Result<Lobby, OpeningError> {
-        let mut seed = [0; 32];
-        setup.server.os.entropy.fill(&mut seed);
-        let seed_chain = SeedChain::new(seed, setup.segments);
-        let slots = usize::try_from(setup.packages.manifest().slots()).expect("slots fit usize");
-        let tick_hz = setup.packages.manifest().tick_hz.default();
-        let mut lobby = Lobby::new(LobbySetup {
+        let opening = LobbyOpening {
             packages: Arc::new(setup.packages),
-            seed_chain,
-            tick_hz,
-            rules: InputRules::LAN,
-            slots,
             bots: setup.bots,
             open: Vec::new(),
             host: setup.host,
             server: setup.server,
-        })
-        .map_err(OpeningError::Lobby)?;
-        lobby
-            .keep_files(setup.data)
-            .map_err(OpeningError::KeepFiles)?;
-        Ok(lobby)
+        };
+        Lobby::open(opening, setup.data).map_err(OpeningError::Open)
     }
 }
 

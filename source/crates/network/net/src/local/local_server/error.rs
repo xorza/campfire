@@ -2,7 +2,7 @@ use campfire_store::{DataDirError, PathError};
 use thiserror::Error;
 
 use crate::sim_server::key_file::error::KeyFileError;
-use crate::sim_server::lobby::error::{KeepFilesError, LobbyError};
+use crate::sim_server::lobby::error::LobbyOpenError;
 use crate::sim_server::session_dir::error::{AbortError, WaitingError};
 
 /// Why a local server does not start.
@@ -19,9 +19,8 @@ pub enum LocalServerError {
     /// The session an earlier start left does not end.
     #[error("the session an earlier start left")]
     Abort(#[source] AbortError),
-    /// The session's slots do not open: a bot names slot 0, the client's, or none the mode has.
+    /// The session does not open, as a bot names slot 0, the client's, or none the mode has, or
+    /// it keeps no files.
     #[error(transparent)]
-    Lobby(LobbyError),
-    #[error(transparent)]
-    KeepFiles(KeepFilesError),
+    Open(LobbyOpenError),
 }

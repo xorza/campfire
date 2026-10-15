@@ -24,9 +24,8 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
-use campfire_protocol::InputRules;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{SeedChain, ServerInput};
+use campfire_protocol::{InputRules, SeedChain, ServerInput};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};

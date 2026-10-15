@@ -10,10 +10,9 @@ use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
-use campfire_protocol::InputRules;
 use campfire_protocol::{
-    Delegation, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms, SlotPlan,
-    SlotStart,
+    Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
+    SlotPlan, SlotStart,
 };
 use campfire_runner::SessionRules;
 use campfire_visibility::{HostVisibility, Visibility};
@@ -22,7 +21,7 @@ use tracing::info;
 
 use crate::events::join_refused::JoinRefused;
 use crate::sim_server::error::JoinError;
-use crate::sim_server::lobby::error::{KeepFilesError, LobbyError};
+use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLinks, Joined, OfferLinks, Offering,
 };
@@ -58,6 +57,20 @@ pub struct Lobby {
     files: Option<SessionFiles>,
 }
 
+/// What a server opens a new session of its own with, which `Lobby::open` makes the rest of.
+#[derive(Debug)]
+pub struct LobbyOpening {
+    pub packages: Arc<ModePackages>,
+    /// The bots the server plays: their slots are the bots'.
+    pub bots: ServerBots,
+    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
+    /// are the players'.
+    pub open: Vec<PlayerSlot>,
+    /// What the host sets of the session's visibility, within what the mode leaves it.
+    pub host: HostVisibility,
+    pub server: ServerSetup,
+}
+
 /// What a server opens a session with.
 #[derive(Debug)]
 pub struct LobbySetup {
@@ -79,6 +92,40 @@ pub struct LobbySetup {
 }
 
 impl Lobby {
+    /// The segments of a server's seed chain: the most checkpoints a session may take, less one.
+    const SEGMENTS: NonZeroU32 = NonZeroU32::new(1024).unwrap();
+
+    /// A new session of a server, as `new` opens it, its files kept under `data`: every slot
+    /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
+    /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
+    pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Lobby, LobbyOpenError> {
+        let LobbyOpening {
+            packages,
+            bots,
+            open,
+            host,
+            server,
+        } = opening;
+        let mut root = [0; 32];
+        server.os.entropy.fill(&mut root);
+        let manifest = packages.manifest();
+        let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
+        let tick_hz = manifest.tick_hz.default();
+        let mut lobby = Lobby::new(LobbySetup {
+            packages,
+            seed_chain: SeedChain::new(root, Lobby::SEGMENTS),
+            tick_hz,
+            rules: InputRules::LAN,
+            slots,
+            bots,
+            open,
+            host,
+            server,
+        })?;
+        lobby.keep_files(data)?;
+        Ok(lobby)
+    }
+
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
     /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
     /// names a slot the session does not have or one already named, when no slot is left to a
@@ -158,6 +205,11 @@ impl Lobby {
 
     pub const fn terms(&self) -> &SessionTerms {
         &self.offering.terms
+    }
+
+    /// The setup of the server that opened it.
+    pub const fn server(&self) -> &ServerSetup {
+        &self.server
     }
 
     /// How many players joined so far.
