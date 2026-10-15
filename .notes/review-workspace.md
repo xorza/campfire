@@ -97,12 +97,6 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
 
-### Batch 7. The module graph (RC7)
-
-Files: `base/common/src/tests.rs`, `capabilities/core/{units,declare,players}/src/**`, `capabilities/core/script/src/scripts/{view/*,core_api.rs}`, `network/net/src/sim_server/{session_dir,checkpoints,sim_server_world}/*`, `capabilities/orders/src/{lib,unit_order}.rs`. Goldens: none move.
-
-- [ ] `orders/src/lib.rs:137-149`: `apply_order` is inlined into `UnitOrder`'s `Effect` impl.
-
 ### Batch 8. Declarations own install and spawn (RC5)
 
 Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.

@@ -11,10 +11,10 @@ use campfire_production::{
 };
 use campfire_script::{Effect, Frame};
 use campfire_sim::{Position, SimWorld, StableId};
-use campfire_units::{Destination, SpawnPoint};
+use campfire_units::{Destination, MapBook, SpawnPoint};
 use campfire_values::ActionId;
 
-use crate::Orders;
+use crate::resetting::Resetting;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -71,7 +71,7 @@ pub struct OrderedUnit {
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
-/// began; no unit dies within Think.
+/// began; no unit dies within Think. A unit that resets takes none.
 impl Effect for UnitOrder {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
@@ -79,7 +79,17 @@ impl Effect for UnitOrder {
             .acting()
             .expect("an order comes from the unit that thinks");
         let entity = world.entity_of(id).expect("a unit that thinks lives");
-        Orders::apply_order(world, entity, self, now);
+        let bounds = world.resource::<MapBook>().bounds;
+        let mut unit = world.entity_mut(entity);
+        if unit.contains::<Resetting>() {
+            return;
+        }
+        let parts = unit
+            .get_components_mut::<OrderedUnit>()
+            .expect("an ordered unit stands");
+        if self.apply(parts, &bounds, now) {
+            unit.insert(Resetting);
+        }
     }
 }
 

@@ -8,10 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H7. The module graph
-
-(`common`'s tests, `units`, `declare`, `players`, `script`, `net`, `orders`; review RC7.) Guard first: the cycle test checks the siblings under every parent. Then the wrapper modules go and each cycle is cut at its edge against the layering. Goldens: none move.
-
 ### H8. Declarations own install and spawn
 
 (`declare`, the release's installer, `units`, `combat`, `navigation`, `stats`, `mode`, `orders`, `production`, `deliveries`, `progression`, the books; review RC5.) After H2 and H7. `InstallCx` keeps its world private, so resources, hooks and parts come from declarations; every part comes with its spawn; navigation owns the map walk check; stats owns passives; progression asks stats for a level change. Guard: a unit changes archetype after its spawn only by its kind's state markers. Goldens: they may move where a part now comes at the spawn.

@@ -8,14 +8,10 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::MapBook;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 mod ai;
@@ -128,22 +124,6 @@ impl Orders {
         )
             .chain()
             .in_set(OrdersSet::Orders)
-    }
-
-    /// Applies `order`, which its source checked, to the unit of `entity` in `now`, as every
-    /// order applies; a unit that resets takes none.
-    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder, now: Tick) {
-        let bounds = world.resource::<MapBook>().bounds;
-        let mut unit = world.entity_mut(entity);
-        if unit.contains::<Resetting>() {
-            return;
-        }
-        let parts = unit
-            .get_components_mut::<OrderedUnit>()
-            .expect("an ordered unit stands");
-        if order.apply(parts, &bounds, now) {
-            unit.insert(Resetting);
-        }
     }
 }
 
