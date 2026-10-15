@@ -97,11 +97,6 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
 
-### Batch 5. Store and network bugs
-
-Files: `base/store/src/{data_dir/mod.rs,platform/owner_only.rs,durable_file/*,stream_writer/mod.rs,exchange/mod.rs,append_writer/mod.rs}`, `network/quic/src/{link_end,quic_plugin,endpoint_state,port_mapper/mod}.rs`, `network/net/src/sim_server/data_filter.rs`. Goldens: none move.
-
-
 ### Batch 6. Client and harness
 
 Files: `apps/client/src/{hud/mod.rs,hud/gauge.rs,view/look.rs,view/mod.rs,main.rs}`, `test/harness/src/{in_process_match,moba_3v3}/mod.rs`, `source/checks/lan-check/src/{main,error}.rs`. Goldens: none move.

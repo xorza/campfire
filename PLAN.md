@@ -8,10 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H5. Store and network bugs
-
-(`store`, `quic`, `net`; review RC10.) One failure and lock-poison helper for the store's workers, a `DurableDir`, a `LinkEnd` case for an app close the handshake hid, and the small QUIC and filter fixes. Goldens: none move.
-
 ### H6. Client and harness
 
 (`client`, `harness`, `lan-check`; review RC8.) The client and the harness ask `PlayerUnits` who a player commands; the HUD rebuilds its rows when the slots change. Before Zero Hour's batch, whose units the client otherwise draws as avatars. Goldens: none move.
