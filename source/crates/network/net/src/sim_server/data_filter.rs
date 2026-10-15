@@ -228,33 +228,34 @@ impl<K: FilteredKind> DataFilter<K> {
     }
 
     /// Inserts the filter of `K` again as its entity's owner or team changes, or as the entity
-    /// loses either, on an entity that holds a filter, as it spawns too, beside the hook. Each insert of a filter keeps to an entity
-    /// that still lives: it applies at the next flush, after a despawn queued before it, and a
-    /// despawn removes the owner and team too.
+    /// loses either, on an entity that holds a filter, as it spawns too, beside the hook. Each
+    /// insert of a filter keeps to an entity that still lives: it applies at the next flush,
+    /// after a despawn queued before it, and a despawn removes the owner and team too.
     fn follow(app: &mut App) {
         DataFilter::<K>::follow_insert::<Owner>(app);
         DataFilter::<K>::follow_insert::<Team>(app);
+        // A remove's observer runs while its entity holds the component still.
         app.add_observer(
             |removed: On<'_, '_, Remove, Owner>,
-             units: Query<'_, '_, Option<&Team>, With<DataFilter<K>>>,
+             units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
-                if let Ok(team) = units.get(removed.entity) {
+                if let Ok((_, player, team)) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(DataFilter::<K>::new(None, team, &visibility));
+                        .try_insert(DataFilter::<K>::of(None, player, team, &visibility));
                 }
             },
         );
         app.add_observer(
             |removed: On<'_, '_, Remove, Team>,
-             units: Query<'_, '_, Option<&Owner>, With<DataFilter<K>>>,
+             units: Owners<'_, '_, K>,
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
-                if let Ok(owner) = units.get(removed.entity) {
+                if let Ok((owner, player, _)) = units.get(removed.entity) {
                     commands
                         .entity(removed.entity)
-                        .try_insert(DataFilter::<K>::new(owner, None, &visibility));
+                        .try_insert(DataFilter::<K>::of(owner, player, None, &visibility));
                 }
             },
         );
@@ -516,6 +517,19 @@ mod tests {
         world.flush();
         assert_eq!(held(world, creep), Some((None, Some(team(1)))));
         assert_eq!(held(world, tower), None);
+        // A player's own entity: its seat is its owner, through each change of its team.
+        let seat = world.spawn((Player::new(slot(3)), team(0), Stray)).id();
+        world.flush();
+        assert_eq!(held(world, seat), Some((Some(slot(3)), Some(team(0)))));
+        world.entity_mut(seat).remove::<Team>();
+        world.flush();
+        assert_eq!(held(world, seat), Some((Some(slot(3)), None)));
+        world
+            .entity_mut(seat)
+            .insert((Owner::new(slot(4)), team(1)));
+        world.entity_mut(seat).remove::<Owner>();
+        world.flush();
+        assert_eq!(held(world, seat), Some((Some(slot(3)), Some(team(1)))));
         world.entity_mut(hero).insert(Owner::new(slot(1)));
         world.flush();
         world.despawn(hero);
