@@ -40,7 +40,7 @@ impl SeedChain {
     }
 
     /// Every segment's seed, as the server that holds the chain knows them.
-    pub const fn seeds(&self) -> ServerSeeds {
+    pub fn seeds(&self) -> ServerSeeds {
         ServerSeeds::new(self.len.get() - 1, self.root)
     }
 

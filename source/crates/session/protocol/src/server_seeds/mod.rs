@@ -1,35 +1,37 @@
 use crate::server_seed::ServerSeed;
 
-/// The server seeds a holder knows: every segment's up to `last`, from `last`'s, as each seed is
-/// the hash of the next. The server knows its whole chain, from the root; a verifier knows the
-/// seeds a published log reveals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The server seeds a holder knows: every segment's up to the last, each derived once from the
+/// last's as the holder takes them, as each seed is the hash of the next. The server knows its
+/// whole chain, from the root; a verifier knows the seeds a published log reveals. A segment's
+/// seed is read as the segment starts, in the server's tick, so it costs no hash there.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerSeeds {
-    last: u32,
-    server_seed: ServerSeed,
+    /// Each segment's seed, from the first's.
+    seeds: Vec<ServerSeed>,
 }
 
 impl ServerSeeds {
-    /// The seeds up to segment `last`, whose seed is `server_seed`.
-    pub const fn new(last: u32, server_seed: ServerSeed) -> ServerSeeds {
-        ServerSeeds { last, server_seed }
+    /// The seeds up to segment `last`, whose seed is `server_seed`: `last` hashes.
+    pub fn new(last: u32, server_seed: ServerSeed) -> ServerSeeds {
+        let count = usize::try_from(last).expect("segments fit usize") + 1;
+        let mut seeds = Vec::with_capacity(count);
+        seeds.push(server_seed);
+        for _ in 0..last {
+            let later = *seeds.last().expect("the last segment's seed");
+            seeds.push(later.earlier());
+        }
+        seeds.reverse();
+        ServerSeeds { seeds }
     }
 
     /// The last segment whose seed is known.
-    pub const fn last(&self) -> u32 {
-        self.last
+    pub fn last(&self) -> u32 {
+        u32::try_from(self.seeds.len() - 1).expect("a segment fits u32")
     }
 
     /// Segment `segment`'s seed; none past the last known.
     pub fn seed(&self, segment: u32) -> Option<ServerSeed> {
-        if segment > self.last {
-            return None;
-        }
-        let mut seed = self.server_seed;
-        for _ in segment..self.last {
-            seed = seed.earlier();
-        }
-        Some(seed)
+        self.seeds.get(usize::try_from(segment).ok()?).copied()
     }
 }
 
@@ -53,6 +55,16 @@ mod tests {
             [0, 1, 2].map(|segment| Some(chain.seed(segment)))
         );
         assert_eq!(all.seed(3), None);
+        // A chain of the lobby's length, each seed the chain's own, which hashes from the root.
+        let long = SeedChain::new([7; 32], NonZeroU32::new(1024).unwrap());
+        let seeds = long.seeds();
+        assert_eq!(seeds.last(), 1023);
+        assert!((0..1024).all(|segment| seeds.seed(segment) == Some(long.seed(segment))));
+        assert_eq!(seeds.seed(1024), None);
+        assert_eq!(
+            ServerSeeds::new(0, long.seed(0)).seed(0),
+            Some(long.seed(0))
+        );
         let revealed = ServerSeeds::new(1, chain.seed(1));
         assert_eq!(revealed.seed(0), Some(chain.seed(0)));
         assert_eq!(revealed.seed(1), Some(chain.seed(1)));

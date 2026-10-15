@@ -9,7 +9,7 @@ use crate::approach::Approach;
 use crate::body_bound::MAX_BOUND;
 use crate::body_box::closer::{Closer, HalfDirections, LinesOnDemand};
 use crate::body_box::closure::Closure;
-use crate::body_box::edges::{Edges, LineBounds, Part, Reach};
+use crate::body_box::edges::{Edges, LineBounds, Reach};
 use crate::polygon::Polygon;
 
 #[cfg(feature = "internals")]
@@ -337,12 +337,13 @@ impl BodyBox {
         // no direction.
         let edges = Edges::of(frame);
         let mut lines = LinesOnDemand::new(&edges, Reach::of(i128::from(radius.to_bits())));
-        let outside = edges.probe(&edges.row(off[1]), off[0]).is_some();
-        if outside && edges.against(off, &mut lines) != Ordering::Less {
+        let probe = edges.probe(&edges.row(off[1]), off[0]);
+        if probe.is_some_and(|probe| edges.probe_against(&probe, &mut lines) != Ordering::Less) {
             return None;
         }
         let directions = &mut lines.directions;
-        let Nearest { distance, feature } = frame.nearest_to(off, directions);
+        let Nearest { distance, feature } =
+            edges.nearest(probe.as_ref(), |half| directions.of_half(half));
         let moved = match feature {
             Feature::Inside => {
                 let edge = frame.nearest_edge_inside(off, directions);
@@ -533,35 +534,8 @@ impl Frame {
     /// the first edge on a tie.
     fn nearest_to(&self, off: Flat, directions: &mut HalfDirections) -> Nearest {
         let edges = Edges::of(*self);
-        let Some(probe) = edges.probe(&edges.row(off[1]), off[0]) else {
-            return Nearest {
-                distance: 0,
-                feature: Feature::Inside,
-            };
-        };
-        // A half edge's direction only for an edge whose inside is nearest: none for a point
-        // nearest a corner, one for a point beside an edge.
-        let mut best: Option<Nearest> = None;
-        for edge in 0..4 {
-            let found = match edges.part(&probe, edge) {
-                Part::Corner(corner) => Nearest {
-                    distance: edges
-                        .corner_square(&probe, corner)
-                        .cast_unsigned()
-                        .nearest_root()
-                        .cast_signed(),
-                    feature: Feature::Corner(corner),
-                },
-                Part::Line => Nearest {
-                    distance: edges.apart(&probe, edge, directions.of_half(edge % 2)),
-                    feature: Feature::Edge(edge),
-                },
-            };
-            if best.is_none_or(|best| found.distance < best.distance) {
-                best = Some(found);
-            }
-        }
-        best.expect("four edges")
+        let probe = edges.probe(&edges.row(off[1]), off[0]);
+        edges.nearest(probe.as_ref(), |half| directions.of_half(half))
     }
 
     /// Whether the path from `start`, along `path`, both ends its own, meets the box of
