@@ -1,6 +1,9 @@
-use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
+use bevy_ecs::entity::Entity;
+use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
+use campfire_declare::Scratch;
 use campfire_sim::{Position, SimTick};
 use campfire_units::{Body, Dead, Destination};
 
@@ -33,7 +36,10 @@ impl Routing {
     /// static bodies changed since the tick before, against the bodies put in, which `changes`
     /// holds; as a route the static bodies do not block stays clear until one is put in, the
     /// outcome is that of checking every tick. A walker that asks or forgets its route forgets its
-    /// progress. One on its path asks as one of its spawn group's party, to its goal.
+    /// progress. One on its path asks as one of its spawn group's party, to its goal. With no
+    /// static change, a walker's route follows from its destination and its route alone: so a
+    /// run visits the walkers of which one changed since its last, and those that lived again,
+    /// `revived`, a buffer it keeps.
     pub(super) fn route_units(
         tick: Res<'_, SimTick>,
         (statics, mut changes): (Res<'_, BodyIndex>, ResMut<'_, StaticChanges>),
@@ -42,6 +48,7 @@ impl Routing {
             '_,
             '_,
             (
+                Entity,
                 &Position,
                 &mut Destination,
                 &mut Route,
@@ -51,11 +58,20 @@ impl Routing {
             ),
             Without<Dead>,
         >,
+        (mut lived, mut revived): (RemovedComponents<'_, '_, Dead>, Local<'_, Vec<Entity>>),
     ) {
         let now = tick.start();
         let planned = grid.is_some();
         let opened = planned && changes.removed();
-        for (&at, mut destination, mut route, mut progress, body, path) in &mut units {
+        let every = !changes.is_clear();
+        revived.clear();
+        revived.extend(lived.read());
+        revived.sort_unstable();
+        for (entity, &at, mut destination, mut route, mut progress, body, path) in &mut units {
+            let changed = destination.is_changed() || route.is_changed();
+            if !(every || changed || revived.binary_search(&entity).is_ok()) {
+                continue;
+            }
             let walker = Walker::walking(body);
             let party = |goal| {
                 let group = path.filter(|path| !path.left())?.group();

@@ -63,6 +63,27 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) changed: Query<'w, 's, Entity, (Changed<Gatherer>, Without<Dead>)>,
 }
 
+/// A node's parts as the loop reads them.
+type NodeRow<'a> = (
+    Entity,
+    &'a StableId,
+    &'a Position,
+    Option<&'a Body>,
+    &'a UnitType,
+    &'a Node,
+    &'a Team,
+    Option<&'a UnitTags>,
+);
+
+/// A worker as the loop looks at nodes for it: its gather, its team, and the match's relations,
+/// read once for each step.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Seeker<'a> {
+    pub(super) gather: Gather,
+    pub(super) team: Team,
+    pub(super) relations: &'a Relations,
+}
+
 /// A node the loop found: its entity, and where it stands.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoundNode {
@@ -90,16 +111,20 @@ impl GatherView<'_, '_> {
         })
     }
 
-    /// The living node of id `node` that `gather` gathers for a worker of `team`, with something
-    /// left: one that ran out is gone to the loop, though it stands until the tick ends.
-    pub(super) fn node(&self, node: StableId, gather: Gather, team: Team) -> Option<FoundNode> {
-        let (entity, _, &at, body, &unit_type, held, &node_team, tags) =
-            self.nodes.get(self.index.get(node)?).ok()?;
-        let relation = self.relations.get().between(team, node_team);
+    /// The living node of id `node` that `seeker`'s gather gathers for it, with something left:
+    /// one that ran out is gone to the loop, though it stands until the tick ends.
+    pub(super) fn node(&self, node: StableId, seeker: Seeker<'_>) -> Option<FoundNode> {
+        self.found(self.nodes.get(self.index.get(node)?).ok()?, seeker)
+    }
+
+    /// The node of `row`, when `seeker`'s gather gathers it for it, as `node` finds one.
+    fn found(&self, row: NodeRow<'_>, seeker: Seeker<'_>) -> Option<FoundNode> {
+        let (entity, _, &at, body, &unit_type, held, &node_team, tags) = row;
+        let relation = seeker.relations.between(seeker.team, node_team);
         let tags = tags.map(|tags| tags.tags).unwrap_or_default();
         let ours = held.amount() > 0
-            && self.nodes_book.resource(unit_type) == Some(gather.spec.resource)
-            && gather.filter.selects(relation, tags);
+            && self.nodes_book.resource(unit_type) == Some(seeker.gather.spec.resource)
+            && seeker.gather.filter.selects(relation, tags);
         ours.then_some(FoundNode {
             entity,
             place: Place {
@@ -109,26 +134,21 @@ impl GatherView<'_, '_> {
         })
     }
 
-    /// The nearest living node to a worker at `from` of `team` that its `gather` gathers, whose
-    /// body comes within its bounce of `near`'s, and that no worker holds: by the distance to its
+    /// The nearest living node to a worker at `from` that `seeker`'s gather gathers, whose body
+    /// comes within its bounce of `near`'s, and that no worker holds: by the distance to its
     /// body, the lower stable id on a tie.
-    fn free_node_near(
-        &self,
-        from: Position,
-        team: Team,
-        gather: Gather,
-        near: Place,
-    ) -> Option<NodeAt> {
+    fn free_node_near(&self, from: Position, seeker: Seeker<'_>, near: Place) -> Option<NodeAt> {
         let near_shape = Body::shape_of(near.body.as_ref());
         self.nodes
             .iter()
             .filter(|(.., node, _, _)| node.holder().is_none())
-            .filter_map(|(_, &id, ..)| {
-                let place = self.node(id, gather, team)?.place;
+            .filter_map(|row| {
+                let id = *row.1;
+                let place = self.found(row, seeker)?.place;
                 let shape = Body::shape_of(place.body.as_ref());
                 let within = self.map.metric.reaches(
                     Placed::new(near.pos, near_shape),
-                    gather.spec.bounce,
+                    seeker.gather.spec.bounce,
                     Placed::new(place.pos, shape),
                 );
                 within.then_some((place.distance_from(from), id, place.pos))
@@ -219,8 +239,9 @@ impl GatherView<'_, '_> {
         )
     }
 
-    /// What the worker of `entity` does in its loop this tick.
-    pub(crate) fn step(&self, entity: Entity) -> Step {
+    /// What the worker of `entity` does in its loop this tick, with the match's `relations`, which
+    /// the caller reads once for each read of the view.
+    pub(crate) fn step(&self, entity: Entity, relations: &Relations) -> Step {
         let Ok((_, _, &from, body, &team, owner, slots, gatherer, destination, arrived, tags)) =
             self.workers.get(entity)
         else {
@@ -232,7 +253,12 @@ impl GatherView<'_, '_> {
         let Some(gather) = self.gather(slots, order.slot) else {
             return Step::Stop;
         };
-        let node = self.node(order.node.node, gather, team);
+        let seeker = Seeker {
+            gather,
+            team,
+            relations,
+        };
+        let node = self.node(order.node.node, seeker);
         if UnitTags::properties_of(tags).blocks(Block::Use) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
@@ -243,7 +269,7 @@ impl GatherView<'_, '_> {
             pos: order.node.pos,
             body: None,
         };
-        let search = || match self.free_node_near(from, team, gather, gone) {
+        let search = || match self.free_node_near(from, seeker, gone) {
             Some(next) => Step::Retarget(next),
             None => Step::Stop,
         };
@@ -260,7 +286,7 @@ impl GatherView<'_, '_> {
                 if node.holder().is_none() {
                     return Step::Take(entity);
                 }
-                match self.free_node_near(from, team, gather, place) {
+                match self.free_node_near(from, seeker, place) {
                     Some(next) => Step::Retarget(next),
                     None => Step::Wait,
                 }
@@ -302,15 +328,16 @@ impl GatherView<'_, '_> {
                 }
                 let back = match node {
                     Some(_) => Some(order.node),
-                    None => self.free_node_near(from, team, gather, gone),
+                    None => self.free_node_near(from, seeker, gone),
                 };
                 Step::Deliver(back)
             }
         }
     }
 
-    /// The check of the gather order of the worker of `entity`, when it applied this tick.
-    pub(super) fn resolve(&self, entity: Entity) -> Option<CheckedGather> {
+    /// The check of the gather order of the worker of `entity`, when it applied this tick, with
+    /// the match's `relations`.
+    pub(super) fn resolve(&self, entity: Entity, relations: &Relations) -> Option<CheckedGather> {
         let (_, _, _, _, &team, owner, slots, gatherer, ..) = self.workers.get(entity).ok()?;
         let order = gatherer.order()?;
         if order.step != GatherStep::Ordered {
@@ -327,7 +354,12 @@ impl GatherView<'_, '_> {
             return checked(None, gatherer.load());
         };
         let target = order.node.node;
-        if let Some(found) = self.node(target, gather, team) {
+        let seeker = Seeker {
+            gather,
+            team,
+            relations,
+        };
+        if let Some(found) = self.node(target, seeker) {
             let node = NodeAt {
                 node: target,
                 pos: found.place.pos,
