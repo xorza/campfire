@@ -161,7 +161,6 @@ An imported game is one players already know, rebuilt on Campfire's sim: General
 
 - **From the player's own copy.** The `import` app writes one package from an install, the same bytes on every machine, so its fingerprint names it in a session. Each player, server and verifier makes their own ([Packages](05-protocol-spec.md#packages)).
 - **Rules as content.** What a game shares with others is a capability; what only it does is Rhai in its rules package, which holds no file of the game and ships with the importer. Only what Rhai cannot match, as a pathfinder, runs natively, behind a backend interface ([Backends](02-engine-core.md#backends)). If a game needs something scripts cannot do and no backend should, the script API is incomplete.
-- **Parity, measured.** The original, built from its released source, plays the game's replays and writes each frame's state; Campfire plays the same replays, and a test compares them.
 - **Written from the source.** Importers and rules packages are written from the original's GPL source, under MIT/Apache-2.0; a release that ships them takes a legal check first.
 
 **The MOBA** in `source/packages/test/moba/` is test content that tests and benches play ([MOBA test content](07-moba.md)).
@@ -170,7 +169,7 @@ An imported game is one players already know, rebuilt on Campfire's sim: General
 
 All four pillars ship in 1.0, in this order.
 
-1. **Zero Hour on LAN.** The determinism core, the prototype that proves the sim runs the same inside Lightyear and in a bare verifier, the game model in code and sessions that restore, built with the MOBA test content; then the `import` app and the parity oracle; then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore, within the parity measure. Players use local Nostr key files through the final delegation, handshake and log formats; no relays, listings, launcher or payments.
+1. **Zero Hour on LAN.** The determinism core, the prototype that proves the sim runs the same inside Lightyear and in a bare verifier, the game model in code and sessions that restore, built with the MOBA test content; then the `import` app; then a Zero Hour skirmish with its AI on LAN or a local server, with verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom and import recipes, reputation, ban lists, and the launcher with signed releases.
 3. **Payments.** Entry fees first, then wager pools, then the rest. Item sales and export wait for an imported game with a persistent world.
 4. **More imports.** Zero Hour's campaign, from its map scripts, and the next games, each with the capabilities it needs: Worms 4: Mayhem's `physics`, destructible terrain and the `spatial` metric first.

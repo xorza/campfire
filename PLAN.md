@@ -12,6 +12,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. It needs the turn rate, the load's rules and the selection to play.
 
-### U9. The Zero Hour check compares fingerprints and plays the parity suite
+### U9. The Zero Hour check compares fingerprints
 
-(`checks/zero-hour-check`, the parity oracle; Zero Hour D5, D7, D8.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, and plays the parity suite against the oracle's frames, as design 12 D7 says. It waits for the oracle, the fork of GeneralsX that writes each logic frame. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint; the suite's replays meet the measure.
+(`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.

@@ -162,4 +162,3 @@ Each is pure Rust, with no float math in what it writes, so one version and one 
 
 - **Sounds.** The WAV encodings, and an encoder of Ogg Vorbis that gives the same bytes on every OS.
 - **What the INI names.** Of the 6,759 model and animation names the INI gives, 80 are in no archive, most of them editor tiles (`aiblocktile`).
-- **The original's oracle.** The second machine, `192.168.0.5`, has GeneralsX installed, and clones of GeneralsX and GeneralsGameCode in `~/Projects`.
