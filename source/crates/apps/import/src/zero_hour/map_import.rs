@@ -459,7 +459,6 @@ mod tests {
                     ModeParam::Text("Player_1_Start".to_owned()),
                 )]
                 .into(),
-                events: false,
             }]
         );
         // The bounds hold the heights and reach the tank's x of 30 and the rock's z of −15, and

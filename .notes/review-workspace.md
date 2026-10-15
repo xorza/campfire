@@ -102,8 +102,7 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.
 
 - [ ] `capabilities/src/books/{book_builder.rs:229-321,book_parts.rs,unit_type_data.rs}`, `areas/src/lib.rs:115`, `projectiles/src/lib.rs:113`, `production/src/lib.rs:188-202`: each module's book declaration carries its build function, `into_books` walks the declarations, and the engine tags are numbered by the walk. Blocked: see `review-workspace_QUESTIONS.md`, Batch 8.
-- [ ] `values/src/relations.rs:94-100`: `seen_targets.rs:39` reads `VisionGroups`.
-- [ ] `mode/src/map_data.rs:112`: delete the unread `MarkerData.events`.
+- [ ] `values/src/relations.rs:94-100`: `seen_targets.rs:39` reads `VisionGroups`. Blocked: see `review-workspace_QUESTIONS.md`, Batch 8.
 
 ### Batch 9. One home for each session fact (RC3)
 

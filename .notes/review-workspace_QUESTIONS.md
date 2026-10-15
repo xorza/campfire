@@ -25,3 +25,16 @@ Now each engine tag is a `const` with its number (`Areas::TAG = EngineTag::new(3
 | --- | --- | --- |
 | **A. Keep the const numbers (recommended)** | The number stays in the `const`, and the walk checks it. | A new tag's author writes its number, and the walk refuses a wrong one at once. |
 | B. Numbers from the walk | A tag's number is its place in the walk, held in a resource. | Each `TAG` stops being a const value: its 27 uses (`Dead::TAG.tag()`, `StatusTags::from([Production::CONSTRUCTING])`, the filters on hot paths) read the number from the world. |
+
+## Batch 8: the vision group of a new unit
+
+The item: "`values/src/relations.rs:94-100`: `seen_targets.rs:39` reads `VisionGroups`."
+
+Blocked: this item only.
+
+`SeenTargets::sees` and `VisionColumn::seen_by` call `Relations::vision_group` for a unit that spawned after the last Vision stage. The call derives the group from the current relations, at most 256 steps, and only for such a unit. `VisionGroups` is a `Local` of the Vision pass, in its `Fog`, and is rebuilt only in that pass, when the relations changed.
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| **A. Keep the derivation (recommended)** | Both readers derive the group from the relations they read, so it is never stale. `Relations::vision_lowest` stays the one derivation that both `vision_group` and `VisionGroups` use. | A derivation of at most 256 steps for each check of a new unit. |
+| B. A shared `VisionGroups` | `VisionGroups` becomes a resource, rebuilt as the relations change, and the readers read it. | A mode script changes the relations in Mode, and an order check or a view refill that runs before the rebuild reads stale groups. A stale group shows a new unit to a team that no longer shares vision. Each reader then needs a rebuild ordered before it. |

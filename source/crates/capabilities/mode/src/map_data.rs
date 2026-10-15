@@ -107,9 +107,6 @@ pub struct MarkerData {
     pub team: Option<DeclaredName>,
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, ModeParam>,
-    /// Whether the mode hears units enter and leave its region.
-    #[serde(default)]
-    pub events: bool,
 }
 
 impl MapData {
@@ -238,7 +235,6 @@ pub(crate) mod internals {
                 region: None,
                 team: None,
                 params: BTreeMap::new(),
-                events: false,
             }
         }
     }
