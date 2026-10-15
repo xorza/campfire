@@ -1,5 +1,4 @@
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -8,11 +7,12 @@ use campfire_store::Worker;
 use crate::gateway::MESSAGE_MAX;
 
 /// A gateway on a loopback port: it answers each request it reads with the datagrams `answer`
-/// gives, none for silence, and keeps each request.
+/// gives, none for silence, and keeps each request. Its read blocks with no timeout, as a read
+/// that times out on Windows may cancel as a datagram completes it and lose that datagram; the
+/// drop sends it an empty datagram, which no client sends, to stop it.
 pub(crate) struct FakeGateway {
     pub(crate) address: SocketAddrV4,
     requests: Arc<Requests>,
-    stop: Arc<AtomicBool>,
     _worker: Worker,
 }
 
@@ -28,22 +28,22 @@ impl FakeGateway {
         mut answer: impl FnMut(&[u8]) -> Vec<Vec<u8>> + Send + 'static,
     ) -> FakeGateway {
         let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
-        socket
-            .set_read_timeout(Some(Duration::from_millis(5)))
-            .unwrap();
         let SocketAddr::V4(address) = socket.local_addr().unwrap() else {
             unreachable!()
         };
         let requests = Arc::new(Requests::default());
-        let stop = Arc::new(AtomicBool::new(false));
         let worker = {
-            let (requests, stop) = (Arc::clone(&requests), Arc::clone(&stop));
+            let requests = Arc::clone(&requests);
             Worker::start("fake-gateway", move || {
                 let mut buffer = [0; MESSAGE_MAX];
-                while !stop.load(Ordering::Relaxed) {
+                loop {
+                    // A reply to a client gone reaches Windows as a reset on the next read.
                     let Ok((len, from)) = socket.recv_from(&mut buffer) else {
                         continue;
                     };
+                    if len == 0 {
+                        break;
+                    }
                     // Kept before the replies go, so a client that has its answer finds its request.
                     let replies = answer(&buffer[..len]);
                     requests.kept.lock().unwrap().push(buffer[..len].to_vec());
@@ -57,7 +57,6 @@ impl FakeGateway {
         FakeGateway {
             address,
             requests,
-            stop,
             _worker: worker,
         }
     }
@@ -95,6 +94,7 @@ impl FakeGateway {
 
 impl Drop for FakeGateway {
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        let waker = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+        waker.send_to(&[], self.address).unwrap();
     }
 }
