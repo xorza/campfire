@@ -53,6 +53,7 @@ pub use crate::platform::shared_port::SharedPort;
 pub use crate::platform::stop_signals::StopSignals;
 pub use crate::secret_file::SecretFile;
 pub use crate::stream_writer::StreamWriter;
+pub use crate::stream_writer::error::StreamError;
 pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;
 

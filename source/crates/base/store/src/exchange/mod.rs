@@ -1,23 +1,24 @@
 use std::mem;
-use std::sync::Mutex;
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::sync::mpsc::{self, Receiver, SyncSender, TryRecvError};
 
 use crate::worker::Worker;
+use crate::worker::worker_lock::WorkerLock;
 
 /// One job at a time on a worker: the caller fills a job and sends it, and the worker does it and
 /// gives it back with its answer, so the next job reuses its buffers and a steady state allocates
-/// nothing. A send and a take never wait for the worker; only `wait` does. Dropping the exchange
-/// lets the worker finish the job it holds, then ends it.
+/// nothing. A send and a take never wait for the worker; only `wait` does. A worker that panicked
+/// passes its panic on to the call that next needs it. Dropping the exchange lets the worker
+/// finish the job it holds, then ends it.
 #[derive(Debug)]
 pub struct Exchange<J, A> {
     /// Dropped to close the worker.
     jobs: Option<SyncSender<J>>,
-    done: Mutex<Receiver<Done<J, A>>>,
+    done: WorkerLock<Receiver<Done<J, A>>>,
     /// The job the worker gave back last, for the next.
     spare: J,
     pending: bool,
     /// Dropped after the exchange's `Drop` closes it.
-    _worker: Worker,
+    worker: Worker,
 }
 
 /// A job the worker did, and its answer.
@@ -44,10 +45,10 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
         });
         Exchange {
             jobs: Some(jobs),
-            done: Mutex::new(done),
+            done: WorkerLock::new(done),
             spare: J::default(),
             pending: false,
-            _worker: worker,
+            worker,
         }
     }
 
@@ -56,25 +57,27 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
         assert!(!self.pending, "one job at a time");
         let mut job = mem::take(&mut self.spare);
         fill(&mut job);
-        self.jobs
-            .as_ref()
-            .expect("an exchange closes only as it drops")
-            .send(job)
-            .expect("the worker runs");
-        self.pending = true;
+        self.give(job);
     }
 
     /// Sends `job`, which the caller filled beforehand, and gives back the job given back last,
     /// whose buffers the caller keeps for the next it fills.
     pub fn send_filled(&mut self, job: J) -> J {
         assert!(!self.pending, "one job at a time");
-        self.jobs
-            .as_ref()
-            .expect("an exchange closes only as it drops")
-            .send(job)
-            .expect("the worker runs");
-        self.pending = true;
+        self.give(job);
         mem::take(&mut self.spare)
+    }
+
+    /// Gives `job` to the worker.
+    fn give(&mut self, job: J) {
+        let jobs = self
+            .jobs
+            .as_ref()
+            .expect("an exchange closes only as it drops");
+        if jobs.send(job).is_err() {
+            self.worker.resume_panic();
+        }
+        self.pending = true;
     }
 
     /// Whether a job was sent and its answer not taken.
@@ -87,7 +90,11 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
         if !self.pending {
             return None;
         }
-        let done = self.receiver().try_recv().ok()?;
+        let done = match self.done.get_mut().try_recv() {
+            Ok(done) => done,
+            Err(TryRecvError::Empty) => return None,
+            Err(TryRecvError::Disconnected) => self.worker.resume_panic(),
+        };
         Some(self.keep(done))
     }
 
@@ -96,17 +103,10 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
         if !self.pending {
             return None;
         }
-        let done = self
-            .receiver()
-            .recv()
-            .expect("the worker runs while a job is pending");
+        let Ok(done) = self.done.get_mut().recv() else {
+            self.worker.resume_panic();
+        };
         Some(self.keep(done))
-    }
-
-    fn receiver(&mut self) -> &Receiver<Done<J, A>> {
-        self.done
-            .get_mut()
-            .expect("no thread panics holding the answers")
     }
 
     fn keep(&mut self, done: Done<J, A>) -> A {

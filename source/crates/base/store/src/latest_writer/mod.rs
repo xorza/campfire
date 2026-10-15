@@ -1,7 +1,8 @@
 use std::mem;
-use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar};
 
 use crate::worker::Worker;
+use crate::worker::worker_lock::WorkerLock;
 
 /// A worker that writes the newest value it is given: a value not yet written is replaced by a
 /// newer one, so a slow disk skips values and never queues them, and no caller waits for it.
@@ -17,7 +18,7 @@ pub struct LatestWriter<T, E> {
 /// What the caller and the worker share.
 #[derive(Debug)]
 struct LatestShared<T, E> {
-    slot: Mutex<Slot<T, E>>,
+    slot: WorkerLock<Slot<T, E>>,
     wake: Condvar,
 }
 
@@ -37,7 +38,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
         mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static,
     ) -> LatestWriter<T, E> {
         let shared = Arc::new(LatestShared {
-            slot: Mutex::new(Slot {
+            slot: WorkerLock::new(Slot {
                 newest: None,
                 failures: Vec::new(),
                 closing: false,
@@ -47,19 +48,16 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || {
             loop {
-                let mut slot = writing.lock();
+                let mut slot = writing.slot.lock();
                 while slot.newest.is_none() && !slot.closing {
-                    slot = writing
-                        .wake
-                        .wait(slot)
-                        .expect("no thread panics holding the slot");
+                    slot = writing.slot.wait(&writing.wake, slot);
                 }
                 let Some(value) = slot.newest.take() else {
                     return;
                 };
                 drop(slot);
                 if let Err(error) = write(&value) {
-                    writing.lock().failures.push(error);
+                    writing.slot.lock().failures.push(error);
                 }
             }
         });
@@ -71,30 +69,19 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
 
     /// Hands `value` to the worker, in place of one it has not taken yet.
     pub fn give(&self, value: T) {
-        self.shared.lock().newest = Some(value);
+        self.shared.slot.lock().newest = Some(value);
         self.shared.wake.notify_one();
     }
 
     /// The writes that failed since the last call.
     pub fn take_failures(&self) -> Vec<E> {
-        mem::take(&mut self.shared.lock().failures)
-    }
-}
-
-impl<T, E> LatestShared<T, E> {
-    fn lock(&self) -> MutexGuard<'_, Slot<T, E>> {
-        self.slot.lock().expect("no thread panics holding the slot")
+        mem::take(&mut self.shared.slot.lock().failures)
     }
 }
 
 impl<T, E> Drop for LatestWriter<T, E> {
     fn drop(&mut self) {
-        // A drop as a panic unwinds must not panic again, which would abort.
-        let mut slot = self
-            .shared
-            .slot
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner);
+        let mut slot = self.shared.slot.lock_to_close();
         slot.closing = true;
         drop(slot);
         self.shared.wake.notify_one();
