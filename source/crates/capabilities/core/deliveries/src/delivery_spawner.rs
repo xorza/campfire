@@ -5,7 +5,9 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy_ecs::world::EntityWorldMut;
 use campfire_declare::EntityParts;
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
-use campfire_units::{NewUnitStates, Owner, UnitCore, UnitEntity, UnitFilter, UnitStateBook};
+use campfire_units::{
+    NewUnitStates, Owner, UnitCore, UnitEntity, UnitFilter, UnitStateBook, UnitStates,
+};
 use campfire_values::{Team, UnitType};
 
 /// Spawns the units that actions deliver, projectiles and areas, each for its source.
@@ -51,7 +53,10 @@ impl DeliverySpawner<'_, '_> {
             team,
             owner: owner.copied(),
         };
-        let parts = core.made(self.states.initial(unit_type), &mut self.new_states);
+        let parts = core.made(
+            UnitStates::initial(&self.states, unit_type),
+            &mut self.new_states,
+        );
         let mut unit = self.commands.spawn(make(id));
         parts.insert_into(&mut unit);
         unit.queue(|mut unit: EntityWorldMut<'_>| {

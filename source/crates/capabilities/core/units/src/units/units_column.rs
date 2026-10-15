@@ -49,7 +49,13 @@ impl ViewColumn for UnitsColumn {
         &mut self.rows
     }
 
-    fn begin(&mut self, _: &World) -> bool {
+    /// Takes the unit types' fields, as the load built them. A row holds its unit's values,
+    /// which another book fills none of again.
+    fn begin(&mut self, world: &World) -> bool {
+        let book = world.resource::<UnitStateBook>();
+        if !book.same(&self.book) {
+            self.book = book.clone();
+        }
         false
     }
 }
@@ -103,11 +109,6 @@ impl UnitsColumn {
             }
         }
         rows.rows.push(start..len(rows.values.len()));
-    }
-
-    /// Shares the unit types' fields, as the load built them.
-    pub(crate) fn share(view: &View, book: UnitStateBook) {
-        view.column_mut(|column: &mut UnitsColumn| column.book = book);
     }
 
     /// What `read` gives of the schema of `unit_type`, a type of the match.

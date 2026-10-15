@@ -58,7 +58,7 @@ impl UnitCore {
         parts: impl Bundle,
     ) -> EntityWorldMut<'_> {
         let owned = self.owner.is_some();
-        let initial = world.resource::<UnitStateBook>().initial(self.unit_type);
+        let initial = UnitStates::initial(world.resource::<UnitStateBook>(), self.unit_type);
         let made = self.made(initial, &mut world.resource_mut::<NewUnitStates>());
         let mut unit = world.spawn((kind, parts));
         debug_assert!(

@@ -2,8 +2,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_script::{StatePlace, StateValue, SyncTo};
 
+use campfire_values::UnitType;
+
 use crate::units::spawn_target::SpawnTarget;
 use crate::units::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
+use crate::units::unit_state_book::UnitStateBook;
 
 /// A new unit's script state: the values of each class of its fields, in the order of their
 /// names, each class a `UnitState` of its own as the unit spawns.
@@ -16,6 +19,17 @@ pub struct UnitStates {
 }
 
 impl UnitStates {
+    /// The state a unit of `unit_type` spawns with, by `book`, each field at its first value.
+    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> UnitStates {
+        let mut states = UnitStates::default();
+        if let Some(schema) = book.schema(unit_type) {
+            for (value, place) in schema.initial().iter().zip(schema.places()) {
+                states.push(place.sync, value.clone());
+            }
+        }
+        states
+    }
+
     const fn class_mut(&mut self, sync: SyncTo) -> &mut Vec<StateValue> {
         match sync {
             SyncTo::None => &mut self.none,

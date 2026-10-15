@@ -7,9 +7,6 @@ use campfire_script::{StateSchema, StateValue, SyncTo, View};
 use campfire_sim::Capability;
 use campfire_values::UnitType;
 
-use crate::units::unit_states::UnitStates;
-use crate::units::units_column::UnitsColumn;
-
 /// The script state each unit type declares, a schema for each type in the order of the types:
 /// each field's name, type, first value and the clients it goes to. Package data, not state: a
 /// restore loads it from the packages, as a new match does. A clone shares the schemas.
@@ -22,23 +19,17 @@ impl UnitStateBook {
         self.0.get(unit_type.index())
     }
 
-    /// The state a unit of `unit_type` spawns with, each field at its first value.
-    pub fn initial(&self, unit_type: UnitType) -> UnitStates {
-        let mut states = UnitStates::default();
-        if let Some(schema) = self.schema(unit_type) {
-            for (value, place) in schema.initial().iter().zip(schema.places()) {
-                states.push(place.sync, value.clone());
-            }
-        }
-        states
-    }
-
     /// Whether `values` are the fields of class `sync` of a unit of `unit_type`: one for each
     /// such field it declares, each of the field's type, and at least one, as a unit holds no
     /// class its type declares no field of.
     pub(crate) fn holds(&self, unit_type: UnitType, sync: SyncTo, values: &[StateValue]) -> bool {
         let schema = self.schema(unit_type);
         !values.is_empty() && schema.is_some_and(|schema| schema.holds(sync, values))
+    }
+
+    /// Whether `other` is this book as one load made it, not a book of another load.
+    pub(crate) fn same(&self, other: &UnitStateBook) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
     }
 
     /// Each type's schema, in the order of the types.
@@ -78,9 +69,7 @@ impl Book for UnitStateBook {
     const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        UnitsColumn::share(view, self.clone());
-    }
+    fn share(&self, _: &View) {}
 }
 
 #[cfg(test)]
@@ -88,6 +77,7 @@ mod tests {
     use campfire_script::{StateDecl, StateDefault, StateType, SyncedStateDecl};
 
     use super::*;
+    use crate::units::unit_states::UnitStates;
 
     #[test]
     fn a_unit_spawns_with_its_types_first_values_and_holds_only_classes_it_declares() {
@@ -117,9 +107,12 @@ mod tests {
         spawned.push(SyncTo::None, StateValue::Bool(false));
         spawned.push(SyncTo::Owner, StateValue::Int(7));
         spawned.push(SyncTo::Team, StateValue::Text("".into()));
-        assert_eq!(book.initial(unit_type), spawned);
-        assert_eq!(book.initial(bare), UnitStates::default());
-        assert_eq!(book.initial(UnitType::new(2)), UnitStates::default());
+        assert_eq!(UnitStates::initial(&book, unit_type), spawned);
+        assert_eq!(UnitStates::initial(&book, bare), UnitStates::default());
+        assert_eq!(
+            UnitStates::initial(&book, UnitType::new(2)),
+            UnitStates::default()
+        );
 
         // A unit holds no class its type has no field of, though the schema holds it empty.
         let int = [StateValue::Int(1), StateValue::Int(2)];
