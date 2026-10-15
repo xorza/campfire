@@ -431,20 +431,15 @@ impl<'a> BookBuilder<'a> {
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
     /// which numbers them: its types by name, each a delivery type or one that stands, then an
-    /// avatar package's avatar. The mode's types that stand are in the mode's scope, with the
-    /// avatars; every other type is in its package's own.
+    /// avatar package's avatar. Each type is in its package's scope, which for the mode is the
+    /// mode's; an avatar is in the mode's.
     pub(super) fn declare_types(
         types: &mut UnitTypeBook,
         index: PackageIndex,
         package: &BookPackage<'_>,
     ) -> Result<(), TypesError> {
+        let scope = TypeScope::of_package(index);
         for (name, file) in &package.content.units {
-            let scope = match package.kind {
-                BookKind::Mode if !file.delivers() => TypeScope::Mode,
-                BookKind::Mode | BookKind::Avatar(_) | BookKind::Loadout | BookKind::Rules => {
-                    TypeScope::of_package(index)
-                }
-            };
             types.load(scope, index, name.as_str(), &file.core())?;
         }
         if let BookKind::Avatar(unit) = package.kind {

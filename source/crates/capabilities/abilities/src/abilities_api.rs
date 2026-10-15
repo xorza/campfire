@@ -102,10 +102,10 @@ impl AbilitiesApi {
         }
     }
 
-    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
+    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the script's
     /// package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: ActionId, ms: i64) -> Checked<()> {
-        let action = AbilitiesApi::held(ctx, unit, id)?;
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: i64) -> Checked<()> {
+        AbilitiesApi::check_held(ctx, unit, action)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
@@ -114,10 +114,10 @@ impl AbilitiesApi {
         })
     }
 
-    /// Queues a charge more of `unit`'s action `id` of the script's package, which it holds and
+    /// Queues a charge more of `unit`'s action `action` of the script's package, which it holds and
     /// which has charges.
-    fn add_charge(ctx: &Ctx, unit: &Unit, id: ActionId) -> Checked<()> {
-        let action = AbilitiesApi::held(ctx, unit, id)?;
+    fn add_charge(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
+        AbilitiesApi::check_held(ctx, unit, action)?;
         if !ActionsColumn::has_charges(ctx.view(), action) {
             return Err(ApiError::NoCharges.fail().into());
         }
@@ -127,12 +127,12 @@ impl AbilitiesApi {
         })
     }
 
-    /// The action `action`, which `unit` holds.
-    fn held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<ActionId> {
+    /// Refuses `action` unless `unit` holds it.
+    fn check_held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
         if !ActionsColumn::holds(ctx.view(), unit.row_index(), action) {
             return Err(ApiError::NotHeld.fail().into());
         }
-        Ok(action)
+        Ok(())
     }
 
     /// Queues `fraction` of what is left off the cooldowns of `unit`'s actions in `kind`.
