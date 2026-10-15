@@ -45,6 +45,4 @@ The session on branch `perf-change-driven-passes`, on 2026-10-15, took every ite
 
 ## Items
 
-Files: `network/quic/src/admission.rs`. Goldens: none move.
-
-- [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue. It waits for a bench of a flood of handshakes, and so for `criterion` as a dependency of `quic`, which the user decides.
+None is open. The admission's map and expiry queue came in a later run of the session, once the user added `criterion` to `quic`.

@@ -68,3 +68,76 @@ fn an_ipv6_address_counts_by_its_64_and_a_mapped_ipv4_one_as_its_ipv4() {
     assert_eq!(v6("::1"), None);
     assert_eq!(v6("127.8.0.1"), None);
 }
+
+/// The admission as a walk of every bucket, one each address, finds it: the cross-check of the
+/// tree and its queue of times.
+#[derive(Debug)]
+struct EveryBucket {
+    limit: AddressLimit,
+    start: Instant,
+    buckets: Vec<(AddressKey, u128)>,
+}
+
+impl EveryBucket {
+    fn admit(&mut self, ip: IpAddr, now: Instant, live: usize) -> bool {
+        let Some(key) = AddressKey::of(ip) else {
+            return true;
+        };
+        let seats = self.limit.seats().get();
+        let share = self.limit.refill().as_nanos();
+        let now = now.saturating_duration_since(self.start).as_nanos() * u128::from(seats);
+        self.buckets.retain(|&(_, full_at)| full_at > now);
+        let at = self.buckets.iter().position(|&(held, _)| held == key);
+        let full_at = at.map_or(now, |at| self.buckets[at].1);
+        if full_at - now > share * u128::from(seats - 1) || live >= usize::try_from(seats).unwrap()
+        {
+            return false;
+        }
+        match at {
+            Some(at) => self.buckets[at].1 = full_at + share,
+            None => self.buckets.push((key, full_at + share)),
+        }
+        true
+    }
+}
+
+#[test]
+fn a_handshake_is_admitted_as_a_walk_of_every_bucket_admits_it() {
+    // Three seats over 3 s, 20,000 handshakes from 40 addresses, a loopback one among them, at
+    // steps of 0 to 99 ms, each with 0 to 3 live connections: each answer the walk's.
+    let limit = AddressLimit::new(NonZeroU32::new(3).unwrap(), Duration::from_secs(3));
+    let start = Instant::now();
+    let mut admission = Admission::new(limit, start);
+    let mut every = EveryBucket {
+        limit,
+        start,
+        buckets: Vec::new(),
+    };
+    let mut word: u64 = 0x5EED;
+    let mut draw = |below: u64| {
+        word = word
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (word >> 33) % below
+    };
+    let (mut now, mut admitted, mut refused) = (start, 0, 0);
+    for _ in 0..20_000 {
+        now += Duration::from_millis(draw(100));
+        let nth = u8::try_from(draw(40)).unwrap();
+        let ip = if nth == 0 {
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        } else {
+            IpAddr::V4(Ipv4Addr::new(203, 0, 113, nth))
+        };
+        let live = usize::try_from(draw(4)).unwrap();
+        let expected = every.admit(ip, now, live);
+        assert_eq!(admission.admit(ip, now, |_| live), expected);
+        if expected {
+            admitted += 1;
+        } else {
+            refused += 1;
+        }
+    }
+    // Both answers came often.
+    assert!(admitted > 2_000 && refused > 2_000, "{admitted} {refused}");
+}
