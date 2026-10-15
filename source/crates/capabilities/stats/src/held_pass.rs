@@ -169,7 +169,7 @@ impl HeldPass {
                     hold: Some(Hold::Held),
                 };
                 let source = entry.source.and_then(|source| params.source(source));
-                let param = |place: &ParamPlace| {
+                let param = |place: ParamPlace| {
                     let (action, rank) = (entry.action, entry.rank);
                     params.modifier_param(entry.modifier, action, rank, place, source.as_ref())
                 };

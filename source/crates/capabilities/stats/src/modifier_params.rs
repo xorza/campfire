@@ -46,7 +46,7 @@ impl ModifierParams<'_, '_> {
         modifier: ModifierId,
         action: Option<ActionId>,
         rank: Rank,
-        place: &ParamPlace,
+        place: ParamPlace,
         source: Option<&ParamSource<'_>>,
     ) -> ParamRead {
         self.params

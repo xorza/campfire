@@ -43,6 +43,11 @@ impl<V> NameTable<V> {
         run
     }
 
+    /// How many runs it holds.
+    pub const fn runs(&self) -> usize {
+        self.starts.len() - 1
+    }
+
     /// Whether it holds run `run`.
     pub const fn has_run(&self, run: usize) -> bool {
         run + 1 < self.starts.len()

@@ -8,8 +8,8 @@ use campfire_math::Num;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
 use campfire_units::UnitTypeBook;
-use campfire_values::ModifierId;
 use campfire_values::{DeclaredName, FilterData, Number, Param, ParamRef, Ranked, Scalar, Stat};
+use campfire_values::{ModifierId, Names};
 
 fn name(text: &str) -> DeclaredName {
     DeclaredName::new(text).unwrap()
@@ -75,13 +75,17 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         },
     };
     let filter = |text| Filter::parse(text, types.tags()).unwrap();
+    let mut appliers = Names::default();
+    let spec = ModifierSpec::of(&data, &names, &mut appliers);
     // `bind_ms` and `slow` are its own, the first and second of its params by name;
-    // `stun_ms` is the applier's. 1500 ms at 30 Hz is 1500 × 30 / 1000 = 45 ticks. The
+    // `stun_ms` is the applier's, the one name the spec adds to `appliers`. 1500 ms at 30 Hz is 1500 × 30 / 1000 = 45 ticks. The
     // changes follow the stats' order, an engine stat's first.
     let expected = ModifierSpec {
         duration: Some(SpecTime::Param(ParamPlace::Own(0))),
         interval: Some(SpecTime::Fixed(Ticks::new(45))),
-        stacks_expire: Some(SpecTime::Param(ParamPlace::Applier(name("stun_ms")))),
+        stacks_expire: Some(SpecTime::Param(ParamPlace::Applier(
+            appliers.named("stun_ms").unwrap(),
+        ))),
         reapply: Reapply::Stack,
         max_stacks: NonZeroU32::new(3),
         stats: Box::new([
@@ -105,17 +109,20 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         affects: Some(filter("allies:!rooted")),
         state: Arc::default(),
     };
-    assert_eq!(ModifierSpec::of(&data, &names), Ok(expected));
+    assert_eq!(spec, Ok(expected));
+    assert_eq!(appliers.texts().collect::<Vec<_>>(), ["stun_ms"]);
     assert_ne!(filter("enemies:rooted"), filter("allies:!rooted"));
     // 2³⁹ is past what a number holds, with 24 bits of fraction in 64; a negative time does
     // not count in ticks.
     data.shield = Some(Number::Value(Scalar::Int(1 << 39)));
     let overflow = Err(SpecError::Problem(ModifierProblem::Overflow));
-    assert_eq!(ModifierSpec::of(&data, &names), overflow);
+    assert_eq!(ModifierSpec::of(&data, &names, &mut appliers), overflow);
     data.shield = None;
     data.interval_ms = Some(Number::Value(Scalar::Int(-1)));
     let time = Err(SpecError::Problem(ModifierProblem::Time));
-    assert_eq!(ModifierSpec::of(&data, &names), time);
+    assert_eq!(ModifierSpec::of(&data, &names, &mut appliers), time);
+    // A name read again keeps its id.
+    assert_eq!(appliers.len(), 1);
 }
 
 #[test]
@@ -151,7 +158,7 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
         affects: Some(FilterData::parse("allies:rooted").unwrap()),
         ..ModifierData::default()
     };
-    assert!(ModifierSpec::of(&known, &names).is_ok());
+    assert!(ModifierSpec::of(&known, &names, &mut Names::default()).is_ok());
     let speed = Stat::named("attack_speed").unwrap();
     let cases = [
         ModifierData {
@@ -174,6 +181,6 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
     ];
     for (data, (of, name)) in cases.iter().zip(unknown) {
         let fails = Err(SpecError::Unknown(UnknownName::new(of, name)));
-        assert_eq!(ModifierSpec::of(data, &names), fails);
+        assert_eq!(ModifierSpec::of(data, &names, &mut Names::default()), fails);
     }
 }

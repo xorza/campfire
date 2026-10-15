@@ -55,7 +55,7 @@ impl GrantPass {
                             rank,
                             hold: Some(hold),
                         };
-                        let param = |place: &ParamPlace| {
+                        let param = |place: ParamPlace| {
                             params.modifier_param(modifier, action, rank, place, source.as_ref())
                         };
                         carried.apply(book.application(

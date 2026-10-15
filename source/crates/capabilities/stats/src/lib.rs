@@ -25,6 +25,7 @@ use crate::stats_column::RowReads;
 
 mod application;
 mod applier;
+mod applier_param;
 mod carried_mut;
 mod error;
 mod grant_pass;
@@ -78,6 +79,7 @@ mod unit_stats;
 
 pub use crate::application::{Application, NewInstance};
 pub use crate::applier::Applier;
+pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError};
 pub use crate::grant_pass::GrantPass;
@@ -303,7 +305,7 @@ impl Stats {
             .source
             .and_then(|source| ParamSource::of(world, source));
         let params = world.resource::<ParamBook>();
-        let param = |place: &ParamPlace| {
+        let param = |place: ParamPlace| {
             let (action, rank) = (applier.action, applier.rank);
             params.modifier_param(id, action, rank, place, source.as_ref())
         };
@@ -366,7 +368,7 @@ pub mod internals {
     use campfire_sim::{SimWorld, StableId, TickRate};
     use campfire_units::{ScriptBook, UnitTypeBook};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, Param, Rank, Stat, TagSet, UnitType,
+        ActionId, DeclaredName, ModifierId, Names, Param, Rank, Stat, TagSet, UnitType,
     };
 
     use crate::Stats;
@@ -532,6 +534,7 @@ pub mod internals {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
+            Stats::resolve_appliers(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -546,6 +549,19 @@ pub mod internals {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
+            Stats::resolve_appliers(world);
+        }
+
+        /// Resolves the params the match's modifiers read from their abilities in each action's
+        /// params again; a world with no modifier book has none.
+        fn resolve_appliers(world: &mut World) {
+            world.resource_scope(|world, mut params: Mut<'_, ParamBook>| {
+                let none = Names::default();
+                let appliers = world
+                    .get_resource::<ModifierBook>()
+                    .map_or(&none, ModifierBook::appliers);
+                params.resolve(appliers);
+            });
         }
 
         /// The place of each of `stats` in the match's book, which a world that names no stat

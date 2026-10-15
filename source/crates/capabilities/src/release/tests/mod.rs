@@ -425,10 +425,9 @@ fn no_module_names_another_modules_sets() {
 /// Every lookup by name that the production code calls, by file: a method or function whose
 /// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
 /// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
-/// types take them, or in the load, which resolves the packages' names once; but the one marked,
-/// which runs as a modifier applies. The test fails when a lookup appears and when one listed
-/// here is gone.
-const LOOKUPS: [(&str, &str); 34] = [
+/// types take them, or in the load, which resolves the packages' names once. The test fails when a
+/// lookup appears and when one listed here is gone.
+const LOOKUPS: [(&str, &str); 35] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -440,6 +439,8 @@ const LOOKUPS: [(&str, &str); 34] = [
     ("mode/mode_map.rs", "named"),
     ("mode/mode_names.rs", "named"),
     ("stats/modifier_book.rs", "named"),
+    ("stats/modifier_spec.rs", "named"),
+    ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("units/unit_type_book.rs", "named"),
     ("values/stat.rs", "named"),
@@ -467,9 +468,6 @@ const LOOKUPS: [(&str, &str); 34] = [
     ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
     ("values/name_table.rs", "named"),
-    // As a modifier applies: a param of the ability that applies it, by name, as the place
-    // differs by ability.
-    ("stats/param_book.rs", "named"),
 ];
 
 /// Each role a module's type may hold, by the trait it implements or, for a script API, by the

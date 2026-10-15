@@ -77,10 +77,12 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     let mut tables = ParamTables::default();
     let stat = |_: &Stat| Ok::<_, Infallible>(StatId::new(0));
     tables.push_action(&action, stat).unwrap();
+    let second = BTreeMap::from([(name("pace"), int(300))]);
+    tables.push_action(&second, stat).unwrap();
     for (_, data) in &data {
         tables.push_modifier(&data.params, stat).unwrap();
     }
-    let params = ParamBook::new(tables);
+    let params = ParamBook::new(tables, book.appliers());
     let ways = |action, rank| -> Vec<Option<ParamProblem>> {
         let rank = Rank::new(rank).unwrap();
         let check = |at| book.check_way(ModifierBook::id_at(at), action, rank, &params, rate);
@@ -100,6 +102,12 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     let mut no_action = vec![Some(Missing); data.len()];
     no_action[3] = None;
     assert_eq!(ways(None, 1), no_action);
+    // A second action declares only `pace`, 300 ms, at its first place where the first action
+    // holds it at its third: by it, only `own` and `pace` hold.
+    let mut by_second = vec![Some(Missing); data.len()];
+    by_second[3] = None;
+    by_second[4] = None;
+    assert_eq!(ways(Some(ActionId::new(1)), 1), by_second);
     // A live param is the action's scaling table, at a rank it has: not 2⁴⁰, which is no
     // table, nor a place past its params, nor rank 3.
     let live = |at| LiveParam {

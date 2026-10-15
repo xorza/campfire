@@ -92,6 +92,11 @@ impl ParamTable {
         self.params.named(run, name)
     }
 
+    /// How many runs it holds.
+    pub(crate) const fn runs(&self) -> usize {
+        self.params.runs()
+    }
+
     /// Whether it holds run `run`.
     pub(crate) const fn has_run(&self, run: usize) -> bool {
         self.params.has_run(run)

@@ -247,8 +247,8 @@ impl<'a> BookBuilder<'a> {
         built.add(ground);
         built.add(self.stats);
         built.add(self.pools);
+        built.add(ParamBook::new(parts.params, parts.modifiers.appliers()));
         built.add(parts.modifiers);
-        built.add(ParamBook::new(parts.params));
         built.add(SupplyCostBook::new(parts.supplies, &parts.actions));
         built.add(parts.actions);
         built.add(parts.effects);

@@ -11,6 +11,7 @@ use campfire_values::{ActionId, DeclaredName, ModifierId, Names, Rank, Stat, Tag
 
 use crate::application::{Application, NewInstance};
 use crate::applier::Applier;
+use crate::applier_param::ApplierParam;
 use crate::error::ModifierError;
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::interval::Interval;
@@ -30,6 +31,8 @@ pub struct ModifierBook {
     entries: Arc<Vec<ModifierEntry>>,
     /// Each modifier's name in its package.
     names: Arc<Names<ModifierId>>,
+    /// The names of the params its modifiers read from the abilities that apply them.
+    appliers: Arc<Names<ApplierParam>>,
 }
 
 /// A loaded modifier: its package, its spec, and its compiled script with the combat events it
@@ -117,10 +120,11 @@ impl ModifierBook {
                 }
             },
         };
+        let appliers = Arc::make_mut(&mut self.appliers);
         let specs = modifiers
             .iter()
             .map(|modifier| {
-                ModifierSpec::of(modifier.data, &names).map_err(|error| ModifierError {
+                ModifierSpec::of(modifier.data, &names, appliers).map_err(|error| ModifierError {
                     modifier: modifier.name.clone(),
                     error,
                 })
@@ -144,12 +148,19 @@ impl ModifierBook {
 
     /// Whether `other` is this book as one load made it, not a book of another load.
     pub(crate) fn same(&self, other: &ModifierBook) -> bool {
-        Arc::ptr_eq(&self.entries, &other.entries) && Arc::ptr_eq(&self.names, &other.names)
+        Arc::ptr_eq(&self.entries, &other.entries)
+            && Arc::ptr_eq(&self.names, &other.names)
+            && Arc::ptr_eq(&self.appliers, &other.appliers)
     }
 
     /// Each modifier's name in its package.
     pub const fn names(&self) -> &Arc<Names<ModifierId>> {
         &self.names
+    }
+
+    /// The names of the params its modifiers read from the abilities that apply them.
+    pub fn appliers(&self) -> &Names<ApplierParam> {
+        &self.appliers
     }
 
     /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
@@ -200,11 +211,11 @@ impl ModifierBook {
             return Err(ParamProblem::Short);
         }
         let spec = &self.get(id).spec;
-        for name in spec.number_params().filter_map(ParamPlace::applier) {
-            params.gives(action, rank, name, None)?;
+        for param in spec.number_params().filter_map(ParamPlace::applier) {
+            params.gives(action, rank, param, None)?;
         }
-        for name in spec.time_params().filter_map(ParamPlace::applier) {
-            params.gives(action, rank, name, Some(rate))?;
+        for param in spec.time_params().filter_map(ParamPlace::applier) {
+            params.gives(action, rank, param, Some(rate))?;
         }
         Ok(())
     }
@@ -238,7 +249,7 @@ impl ModifierBook {
         duration: Option<Ticks>,
         now: Tick,
         rate: TickRate,
-        param: impl Fn(&ParamPlace) -> ParamRead,
+        param: impl Fn(ParamPlace) -> ParamRead,
     ) -> Application {
         let entry = self.get(id);
         let spec = &entry.spec;
@@ -247,7 +258,7 @@ impl ModifierBook {
                 value: *value,
                 live: None,
             },
-            SpecNumber::Param(place) => param(place),
+            SpecNumber::Param(place) => param(*place),
         };
         // The load refuses a negative value and rank; a scaling param can still give one.
         let not_negative =
