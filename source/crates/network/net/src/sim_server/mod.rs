@@ -151,7 +151,7 @@ impl Plugin for SimServer {
             Update,
             (
                 Lobby::free_seats,
-                Lobby::offer,
+                Offering::offer_links::<Lobby>,
                 Lobby::take_joins,
                 Lobby::start_when_full,
             )
@@ -162,7 +162,7 @@ impl Plugin for SimServer {
         // the frame may end it.
         app.add_systems(
             Update,
-            (Door::offer, Door::take_joins, Door::watch)
+            (Offering::offer_links::<Door>, Door::take_joins, Door::watch)
                 .chain()
                 .distributive_run_if(resource_exists::<Door>)
                 .distributive_run_if(session_running),
@@ -257,6 +257,8 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) files: Option<SessionFiles>,
     pub(crate) server: &'a ServerSetup,
     pub(crate) bots: ServerBots,
+    /// The lobby's offering, which the door offers from then on.
+    pub(crate) offering: Offering,
 }
 
 /// The save commands' links, each with its player.
@@ -323,6 +325,7 @@ impl SimServer {
             files,
             server,
             bots,
+            offering,
         } = start;
         assert_eq!(
             clients.len(),
@@ -335,7 +338,7 @@ impl SimServer {
         let slots = log.slot_count();
         Session::start(world, log, seeds, packages)?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
-        SimServer::open_door(world, terms, server, journal);
+        SimServer::open_door(world, offering, server, journal);
         if let Some(snapshots) = snapshots {
             Checkpoints::start(
                 world,
@@ -369,11 +372,11 @@ impl SimServer {
         Ok(())
     }
 
-    /// Opens the door of the session of `terms` on the server of `server`, which signs what it
-    /// logs; with a `journal`, the log goes into it from now on.
+    /// Opens the door of the session `offering` offers on the server of `server`, which signs
+    /// what it logs; with a `journal`, the log goes into it from now on.
     fn open_door(
         world: &mut World,
-        terms: SessionTerms,
+        offering: Offering,
         server: &ServerSetup,
         journal: Option<SessionJournal>,
     ) {
@@ -384,7 +387,7 @@ impl SimServer {
                 .keep_journal(Box::new(journal));
         }
         world.insert_resource(ServerSigner::new(server.key, server.os.entropy));
-        world.insert_resource(Door::new(Offering::new(terms, server)));
+        world.insert_resource(Door::new(offering));
     }
 
     /// Keeps the visibility `terms` carry, which each data filter takes its audience from as
@@ -451,7 +454,7 @@ impl SimServer {
                 record_hash(world);
             }
         })?;
-        SimServer::open_door(world, terms, server, None);
+        SimServer::open_door(world, Offering::new(terms, server), server, None);
         Checkpoints::start(world, snapshots, signer);
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began.

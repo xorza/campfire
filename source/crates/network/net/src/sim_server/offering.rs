@@ -3,18 +3,24 @@ use std::time::Duration;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
+use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res};
+use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
+use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
-use lightyear::prelude::{Connected, MessageReceiver, MessageSender, Tick as NetTick, Unlinked};
+use lightyear::prelude::{
+    Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, Unlinked,
+};
 use secp256k1::{Secp256k1, VerifyOnly};
 use tracing::debug;
 
 use crate::close_code::CloseCode;
 use crate::dismissed::Dismissed;
+use crate::events::join_refused::JoinRefused;
 use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
@@ -249,6 +255,36 @@ impl Offering {
                 challenge,
             });
         }
+    }
+
+    /// Offers the terms to each connected link that has no offer, as `offer` does, from the
+    /// offering `H` holds: the lobby's before the start, the door's after it.
+    pub(crate) fn offer_links<H: Resource + AsRef<Offering>>(
+        holder: Res<'_, H>,
+        timeline: Res<'_, LocalTimeline>,
+        time: Res<'_, Time<Real>>,
+        mut links: OfferLinks<'_, '_>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        H::as_ref(&holder).offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
+    }
+
+    /// The join an offered link sent, with the link and its offer; none when it sent none.
+    pub(crate) fn received(
+        (link, offered, mut receiver): (Entity, &Offered, Mut<'_, MessageReceiver<Join>>),
+    ) -> Option<(Entity, Offered, Join)> {
+        let join = receiver.receive().next()?;
+        Some((link, *offered, join))
+    }
+
+    /// Refuses the join of `link` for `error`, logged; see `Dismissing::refuse`.
+    pub(crate) fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
+        JoinRefused {
+            link: format!("{link:?}"),
+            error: ErrorReport::of(&error).to_string(),
+        }
+        .log();
+        Dismissing::refuse(commands, link, error);
     }
 
     /// The delegation of `join`, when its session key answered the challenge `offered` over the

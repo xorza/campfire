@@ -1,20 +1,18 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Local, Res};
+use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
-use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::ModeWorld;
 use campfire_protocol::{Controller, Delegation, LeaveReason, ServerInput};
 use campfire_quic::CloseLink;
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
-use lightyear::prelude::{Connected, LocalTimeline, MessageReceiver, MessageSender};
+use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::close_code::CloseCode;
-use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::leave_match::LeaveMatch;
 use crate::match_clock::MatchClock;
@@ -23,7 +21,7 @@ use crate::net_protocol::MatchChannel;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{
-    CheckedJoins, Dismissing, JoinLink, Joined, OfferLinks, Offered, Offering, ToAnswer,
+    CheckedJoins, Dismissing, JoinLink, Joined, Offered, Offering, ToAnswer,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
@@ -50,21 +48,15 @@ struct SeatIn {
     chain: Option<ChainHead>,
 }
 
+impl AsRef<Offering> for Door {
+    fn as_ref(&self) -> &Offering {
+        &self.offering
+    }
+}
+
 impl Door {
     pub(crate) const fn new(offering: Offering) -> Door {
         Door { offering }
-    }
-
-    /// Offers the terms to each connected link that has no offer; see `Offering::offer`.
-    pub(crate) fn offer(
-        door: Res<'_, Door>,
-        timeline: Res<'_, LocalTimeline>,
-        time: Res<'_, Time<Real>>,
-        mut links: OfferLinks<'_, '_>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        door.offering
-            .offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
     }
 
     /// Seats the player of each offered link that answered, or refuses them; the joins of one
@@ -75,14 +67,7 @@ impl Door {
         mut joins: Local<'_, Vec<(Entity, Offered, Join)>>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
-        joins.extend(
-            links
-                .iter_mut(world)
-                .filter_map(|(link, offered, mut receiver)| {
-                    let join = receiver.receive().next()?;
-                    Some((link, *offered, join))
-                }),
-        );
+        joins.extend(links.iter_mut(world).filter_map(Offering::received));
         world
             .resource::<Door>()
             .offering
@@ -105,12 +90,7 @@ impl Door {
     }
 
     fn refuse(world: &mut World, link: Entity, error: JoinError) {
-        JoinRefused {
-            link: format!("{link:?}"),
-            error: ErrorReport::of(&error).to_string(),
-        }
-        .log();
-        Dismissing::refuse(&mut world.commands(), link, error);
+        Offering::refuse(&mut world.commands(), link, error);
         world.flush();
     }
 

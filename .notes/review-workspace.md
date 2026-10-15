@@ -108,7 +108,6 @@ Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/
 
 Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
 
-- [ ] `net/src/sim_server/lobby/mod.rs:168-239`, `door.rs:59-115`: one `Offering`.
 - [ ] `net/src/sim_server/mod.rs:269-325,386-458`: one private step serves `start_match` and `restore_match`.
 - [ ] `net/src/sim_server/data_filter.rs:14-29,89-125`: the filters come from the `Release::state_types` walk, and `net` drops its dependencies on `items`, `navigation`, `production` and `stats`.
 - [ ] Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes.

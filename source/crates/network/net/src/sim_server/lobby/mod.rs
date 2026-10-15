@@ -4,11 +4,9 @@ use std::sync::Arc;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
-use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
-use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
@@ -16,15 +14,12 @@ use campfire_protocol::{
 };
 use campfire_runner::SessionRules;
 use campfire_visibility::{HostVisibility, Visibility};
-use lightyear::prelude::{Connected, LocalTimeline};
+use lightyear::prelude::Connected;
 use tracing::info;
 
-use crate::events::join_refused::JoinRefused;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
-use crate::sim_server::offering::{
-    CheckedJoins, Dismissing, JoinLinks, Joined, OfferLinks, Offering,
-};
+use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
@@ -89,6 +84,12 @@ pub struct LobbySetup {
     /// What the host sets of the session's visibility, within what the mode leaves it.
     pub host: HostVisibility,
     pub server: ServerSetup,
+}
+
+impl AsRef<Offering> for Lobby {
+    fn as_ref(&self) -> &Offering {
+        &self.offering
+    }
 }
 
 impl Lobby {
@@ -217,19 +218,6 @@ impl Lobby {
         self.joined.len()
     }
 
-    /// Offers the terms to each connected link that has no offer; see `Offering::offer`.
-    pub(crate) fn offer(
-        lobby: Res<'_, Lobby>,
-        timeline: Res<'_, LocalTimeline>,
-        time: Res<'_, Time<Real>>,
-        mut links: OfferLinks<'_, '_>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        lobby
-            .offering
-            .offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
-    }
-
     /// Takes each offered link's join: a player who answered their challenge joins in the next
     /// free slot, or the seat their main key held, whose older link ends; one who answered to
     /// watch takes a spectator's place while one is free; a refused link keeps its reason. The
@@ -241,15 +229,10 @@ impl Lobby {
         mut commands: Commands<'_, '_>,
         mut checked: Local<'_, CheckedJoins>,
     ) {
-        let joins = links
-            .iter_mut()
-            .filter_map(|(link, offered, mut receiver)| {
-                let join = receiver.receive().next()?;
-                Some((link, *offered, join))
-            });
+        let joins = links.iter_mut().filter_map(Offering::received);
         lobby.offering.check_all(joins, &mut checked);
         for (link, error) in checked.refused.drain(..) {
-            Lobby::refuse(&mut commands, link, error);
+            Offering::refuse(&mut commands, link, error);
         }
         let mut watching = Spectators::count(viewers.iter());
         for link in checked.watching.drain(..) {
@@ -259,7 +242,7 @@ impl Lobby {
                     watching += 1;
                     info!(?link, "a spectator joined");
                 }
-                Err(error) => Lobby::refuse(&mut commands, link, error),
+                Err(error) => Offering::refuse(&mut commands, link, error),
             }
         }
         for (link, delegation) in checked.answered.drain(..) {
@@ -277,18 +260,9 @@ impl Lobby {
                         Dismissing::refuse(&mut commands, older, JoinError::Superseded);
                     }
                 }
-                Err(error) => Lobby::refuse(&mut commands, link, error),
+                Err(error) => Offering::refuse(&mut commands, link, error),
             }
         }
-    }
-
-    fn refuse(commands: &mut Commands<'_, '_>, link: Entity, error: JoinError) {
-        JoinRefused {
-            link: format!("{link:?}"),
-            error: ErrorReport::of(&error).to_string(),
-        }
-        .log();
-        Dismissing::refuse(commands, link, error);
     }
 
     /// Starts the match once every slot is taken, and closes the lobby: the door takes the
@@ -325,6 +299,7 @@ impl Lobby {
             files: lobby.files,
             server: &lobby.server,
             bots: lobby.bots,
+            offering: lobby.offering,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
