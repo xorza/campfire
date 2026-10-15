@@ -106,12 +106,6 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
 
-### Batch 10. One home for each format (RC3)
-
-Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client formats' crate of Batch 3, `capabilities/mode/src/map_data.rs`, `apps/client/src/{view/client_data,view/ground_heights,args,connection}*`. Goldens: none move. The imported packages stay byte-equal, or the batch says why not.
-
-- [ ] Guard, as D10 says: a test reads the units file the import's `UnitsToml` writes through `package`'s `UnitsFile`; the map's and KTX2's are done.
-
 ### Batch 11. Change-driven passes (RC4)
 
 Waits for the user's next optimization session (D11): each item is written there, with its bench before and after, and an item that does not pay is dropped.

@@ -8,10 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H10. One home for each format
-
-(`import`, the client formats' crate, `mode`, `client`, `math`; review RC3.) After H3. The import writes through the reader's types, one KTX2 codec, one name table of templates, one client-data owner. Guard: a round-trip test for each format the import writes. Goldens: none move.
-
 ### H11. Change-driven passes
 
 (sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. It waits for the user's next optimization session (D11), where each item's bench decides it. Goldens: none move.

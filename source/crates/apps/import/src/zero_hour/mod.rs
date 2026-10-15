@@ -387,7 +387,7 @@ mod tests {
         assert_eq!(zero_hour.version().name, "fixture");
 
         // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
-        // its import gives, and its two unit types the package's.
+        // its import gives, and the unit types it places the package's.
         let imported = zero_hour.write(&scratch.path("one")).unwrap();
         let fingerprint = imported.fingerprint;
         // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
@@ -412,8 +412,17 @@ mod tests {
             scratch.read("one/zero-hour/package.index"),
             include_bytes!("../../../../../packages/zero-hour/package.index")
         );
+        // The package's own reader takes its units file: the tank, the wall and the rocks the
+        // map places.
         let mode = PackageDir::new(scratch.path("one/game")).mode_packages(&named);
-        assert!(mode.is_ok(), "{mode:?}");
+        let types: Vec<String> = mode
+            .unwrap()
+            .content()
+            .units
+            .keys()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(types, ["americatankcrusader", "fortresswall", "rocks1"]);
         assert_eq!(scratch.names("one/game/map"), ["fixture_map"]);
         assert_eq!(
             scratch.names("one/game/map/fixture_map"),
