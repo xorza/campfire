@@ -33,6 +33,8 @@ impl StateTypes for ApiBinder<'_, '_> {
 
 impl KindVisitor for ApiBinder<'_, '_> {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for ApiBinder<'_, '_> {

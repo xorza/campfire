@@ -92,6 +92,8 @@ struct DeclarationAudit {
     /// The capability of the module whose declarations it visits.
     capability: Option<Capability>,
     kinds: Vec<TypeId>,
+    /// Each kind's parts of its states, by the kind.
+    kind_states: Vec<(Named, Named)>,
     states: Vec<State>,
     resources: Vec<&'static str>,
     requires: Vec<(Named, Named)>,
@@ -162,6 +164,18 @@ impl DeclarationAudit {
             self.call_parts.iter().map(|ty| ty.name).collect(),
         );
         once("part", self.parts.iter().map(|(.., ty)| ty.name).collect());
+        // A state part sits on a declared kind, and never comes with the spawn as well.
+        for (kind, state) in &self.kind_states {
+            if !self.kinds.contains(&kind.id) {
+                problems.push(format!(
+                    "{} is a state of {}, no kind",
+                    state.name, kind.name
+                ));
+            }
+            if self.parts.iter().any(|(.., part)| part.id == state.id) {
+                problems.push(format!("{} is a state and a part of a spawn", state.name));
+            }
+        }
         let kinds_declared = |kinds: &[TypeId]| kinds.iter().all(|kind| self.kinds.contains(kind));
         for state in &self.states {
             let hosted = self.hosts.iter().find(|(ty, _)| ty.id == state.ty.id);
@@ -319,6 +333,10 @@ impl KindVisitor for DeclarationAudit {
     fn kind<K: EntityKind>(&mut self) {
         self.kinds.push(TypeId::of::<K>());
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {
+        self.kind_states.push((Named::of::<K>(), Named::of::<S>()));
+    }
 }
 
 impl Declarations for DeclarationAudit {
@@ -428,10 +446,11 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 26 of a unit, items' `UseGroup` among them, and
+    // player, the mode's three of the match, the 27 of a unit, items' `UseGroup` and orders'
+    // `NextThink` among them, and
     // the 45 books, 14 of the core's, interaction's two among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 31);
+    assert_eq!(audit.parts.len(), 32);
     assert_eq!(audit.books.len(), 45);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 14);

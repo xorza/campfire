@@ -1,4 +1,5 @@
 use bevy_app::{App, FixedUpdate};
+use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, RemovedComponents};
 use bevy_ecs::observer::On;
@@ -165,4 +166,6 @@ impl KindVisitor for KindShows<'_> {
             self.app.add_observer(KindShows::predict_seated::<K>);
         }
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }

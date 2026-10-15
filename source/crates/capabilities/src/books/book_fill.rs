@@ -40,6 +40,8 @@ impl StateTypes for BookFill<'_> {
 
 impl KindVisitor for BookFill<'_> {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for BookFill<'_> {

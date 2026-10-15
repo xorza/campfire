@@ -141,6 +141,7 @@ impl Module for Combat {
         d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<Respawn>();
+        d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
         d.report::<Deaths>();
         d.book::<CombatBook>();

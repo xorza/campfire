@@ -53,10 +53,7 @@ impl Thinking {
             (Entity, Option<&Destination>),
             (With<Resetting>, Without<Dead>),
         >,
-        thinkers: &mut QueryState<
-            (Entity, &StableId, &UnitType, Option<&NextThink>),
-            Without<Dead>,
-        >,
+        thinkers: &mut QueryState<(Entity, &StableId, &UnitType, &NextThink), Without<Dead>>,
         (mut due, mut reset): (Local<'_, Vec<Due>>, Local<'_, Vec<Entity>>),
     ) {
         let now = world.resource::<SimTick>().start();
@@ -76,8 +73,8 @@ impl Thinking {
                 continue;
             };
             let period = ai.period;
-            let since = match next {
-                Some(next) => next.get(),
+            let since = match next.get() {
+                Some(next) => next,
                 None if now.get() % period.get() == id.get() % period.get() => now,
                 None => continue,
             };
@@ -130,10 +127,10 @@ impl Thinking {
                         now.after(period)
                     }
                 };
-                batch
+                *batch
                     .world()
-                    .entity_mut(entity)
-                    .insert(NextThink::new(next));
+                    .get_mut::<NextThink>(entity)
+                    .expect("a unit that thinks holds its next think") = NextThink::new(next);
             }
         });
     }

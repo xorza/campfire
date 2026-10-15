@@ -920,8 +920,8 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     // other waits; none is lost.
     let next = |game: &Match, id| {
         game.try_part::<NextThink>(id)
-            .copied()
-            .map(|next| next.get().get())
+            .and_then(|next| next.get())
+            .map(Tick::get)
     };
     let mut seen = Vec::new();
     for _ in 0..3 {

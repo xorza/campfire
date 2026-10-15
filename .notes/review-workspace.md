@@ -101,12 +101,11 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.
 
-- [ ] Guard: a unit changes archetype after its spawn only by its kind's declared state markers, in the scripted matches.
 - [ ] `InstallCx` keeps `world` and `schedule` private. The resources and hooks of `units/src/units.rs:234`, `combat/src/lib.rs:169`, `navigation/src/lib.rs:193` and `stats/src/lib.rs:242` become declarations. This removes the issue log's **Declare** item.
 - [ ] `combat/src/lib.rs:170-178`, `mode/src/lib.rs:281,285`: `Deaths` is declared, and the damage and heal weighers are a declared callback registry that mode fills.
 - [ ] `stats/src/lib.rs:278-302`, `mode/src/mode_units.rs:22-44`, `unit_type_setup.rs:10`: a stats `ByType` passive book and a `SpawnHooks` callback. Delete `Stats::grant`, `ModeUnits::apply_passive` and `UnitTypeSetup.passive`.
 - [ ] `mode/src/mode_map.rs:227-309`: navigation owns the map walk check, and its eight types go back to `pub(crate)`.
-- [ ] `orders/src/thinking.rs:133-136`, `production/src/construction/mod.rs:193,215`, `gather_loop/mod.rs:366`: `NextThink`, `Site` and `StatusTags` come with the spawn.
+- [ ] `production/src/construction/mod.rs:193,215`, `gather_loop/mod.rs:366`: `Site` and `StatusTags` come with the spawn.
 - [ ] `deliveries/src/delivery_spawner.rs:54-59`: a delivery spawns through the one core spawn of `units::Spawner`.
 - [ ] `progression/src/progression_effect.rs:60-75`, `experience.rs:20-30,83`: progression asks stats for a level change through a contract below both, as design 04 says (stats owns the level, progression decides when it changes). `TrackXp.level: Option<Level>` goes.
 - [ ] `capabilities/src/books/{book_builder.rs:229-321,book_parts.rs,unit_type_data.rs}`, `areas/src/lib.rs:115`, `projectiles/src/lib.rs:113`, `production/src/lib.rs:188-202`: each module's book declaration carries its build function, `into_books` walks the declarations, and the engine tags are numbered by the walk.

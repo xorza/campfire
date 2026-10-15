@@ -34,6 +34,8 @@ impl StateTypes for ModuleSets {
 
 impl KindVisitor for ModuleSets {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for ModuleSets {

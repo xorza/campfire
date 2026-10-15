@@ -203,6 +203,8 @@ impl Units {
     /// Visits each kind of entity of the core's units, which state types name as their host.
     fn kinds<V: KindVisitor>(v: &mut V) {
         v.kind::<BodyUnit>();
+        v.state::<BodyUnit, Dead>();
+        v.state::<BodyUnit, ForcedMove>();
         v.kind::<DeliveryEntity>();
     }
 

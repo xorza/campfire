@@ -43,6 +43,8 @@ impl<T: StateTypes> StateTypes for StateOnly<'_, T> {
 
 impl<T> KindVisitor for StateOnly<'_, T> {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl<T: StateTypes> Declarations for StateOnly<'_, T> {

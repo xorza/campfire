@@ -4,6 +4,7 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod archetype_watch;
 mod arena;
 mod copy_check;
 mod fixed_session;
@@ -17,6 +18,7 @@ mod proving_match;
 mod scripted;
 mod scripted_mode;
 
+pub use crate::archetype_watch::ArchetypeWatch;
 pub use crate::arena::Arena;
 pub use crate::fixed_session::FixedSession;
 pub use crate::fixed_session::fixed_match::FixedMatch;

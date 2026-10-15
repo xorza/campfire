@@ -14,6 +14,7 @@ use campfire_actions::{ActionTarget, Delivery, EffectQueues};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind};
 use campfire_sim::{Capability, Position, StableId};
+use campfire_units::DeliveryEntity;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod area;
@@ -87,6 +88,7 @@ impl Module for Areas {
         d.engine_tags(&[Areas::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
+        d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
         d.callback::<Deliverers>(DeliveryKind::Area, Areas::deliver);
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);

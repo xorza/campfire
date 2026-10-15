@@ -14,7 +14,9 @@ use campfire_actions::{ActionSlot, ActionSlots, SlotKind};
 use campfire_capabilities::Match;
 use campfire_combat::{Deaths, Respawn};
 use campfire_common::Tick;
-use campfire_harness::{FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode};
+use campfire_harness::{
+    ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode,
+};
 use campfire_math::Num;
 use campfire_mode::{ModeParam, ModeWorld};
 use campfire_navigation::PathWalker;
@@ -173,9 +175,11 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
     let mut showcase = Showcase::default();
+    let mut watch = ArchetypeWatch::of(fixed.game());
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
         record.tick(fixed.game_mut());
+        watch.tick(fixed.game(), tick);
         let game = fixed.game();
         let failures = game.non_send::<ScriptFailures>();
         assert!(
@@ -204,6 +208,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         }
         showcase.read(game, moba, tick);
     }
+    watch.assert_kept();
     fixed.game_mut().session_mut().reveal_seed();
     Run {
         fixed,

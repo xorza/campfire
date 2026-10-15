@@ -33,6 +33,8 @@ impl StateTypes for EngineTagList {
 
 impl KindVisitor for EngineTagList {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for EngineTagList {

@@ -34,6 +34,8 @@ impl StateTypes for CalledRegistries {
 
 impl KindVisitor for CalledRegistries {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for CalledRegistries {

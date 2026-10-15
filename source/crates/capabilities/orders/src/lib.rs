@@ -12,6 +12,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
+use campfire_units::BodyUnit;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 mod ai;
@@ -83,7 +84,9 @@ impl Module for Orders {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<OrdersSet>();
         d.component::<NextThink>();
+        d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<Resetting>();
+        d.state::<BodyUnit, Resetting>();
         d.scratch::<PlayerOrders>();
         d.book::<ByType<Ai>>();
         d.api(OrdersApi::register);

@@ -93,6 +93,8 @@ impl KindVisitor for DeclaredResources {
     fn kind<K: EntityKind>(&mut self) {
         self.ids.push(TypeId::of::<EntityKinds>());
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for DeclaredResources {

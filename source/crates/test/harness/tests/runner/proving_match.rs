@@ -11,7 +11,7 @@ use campfire_areas::Area;
 use campfire_capabilities::{Order, Release};
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
-use campfire_harness::{FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
+use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::Num;
 use campfire_mode::ModeWorld;
 use campfire_orders::OrdersAction;
@@ -218,6 +218,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // The match's setup clears none, so the first tick's messages hold its removals too.
     let start = Removals::of(fixed.game());
     let (mut written, mut removed) = (start.written - start.held, false);
+    let mut watch = ArchetypeWatch::of(fixed.game());
     for tick in 0..ProvingMatch::TICKS {
         proving.play_tick(&mut fixed, tick);
         // The removed-component messages hold this tick's removals alone, as an `App`'s update
@@ -227,6 +228,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         removed |= removals.held > 0;
         written = removals.written;
         record.tick(fixed.game_mut());
+        watch.tick(fixed.game(), tick);
         assert_sound(&fixed, tick, capabilities);
         look(&fixed, tick, &mut seen);
         if fixed.game().save_due() {
@@ -234,6 +236,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         }
     }
     record.check("proving");
+    watch.assert_kept();
     assert!(removed, "no tick removed a component");
     let world = fixed.game();
     // The mode's hooks saw player 1 join in tick 1 and leave in tick 400; its state fields, by

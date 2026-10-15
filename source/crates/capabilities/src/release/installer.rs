@@ -83,6 +83,8 @@ impl KindVisitor for Installer<'_> {
         let id = self.world.register_component::<K>();
         self.world.get_resource_or_init::<EntityKinds>().add(id);
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for Installer<'_> {

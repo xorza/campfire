@@ -35,6 +35,10 @@ impl<V: KindVisitor> KindVisitor for KindsOnly<'_, V> {
     fn kind<K: EntityKind>(&mut self) {
         self.0.kind::<K>();
     }
+
+    fn state<K: EntityKind, S: Component>(&mut self) {
+        self.0.state::<K, S>();
+    }
 }
 
 impl<V: KindVisitor> Declarations for KindsOnly<'_, V> {

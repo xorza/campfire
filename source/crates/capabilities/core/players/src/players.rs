@@ -46,6 +46,7 @@ impl Players {
     fn kinds<V: KindVisitor>(v: &mut V) {
         v.kind::<MatchEntity>();
         v.kind::<Player>();
+        v.state::<Player, OutOfPlay>();
     }
 
     /// Whether the match's entity stands, as every match that started spawns it, so no system

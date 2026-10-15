@@ -54,6 +54,8 @@ impl StateTypes for EveryBook {
 
 impl KindVisitor for EveryBook {
     fn kind<K: EntityKind>(&mut self) {}
+
+    fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
 impl Declarations for EveryBook {
