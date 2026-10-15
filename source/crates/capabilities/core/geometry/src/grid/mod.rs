@@ -354,7 +354,7 @@ impl Grid {
         while z <= last {
             let dz = I64x4::splat(from[1] - cell * (2 * z + 1)).wrapping_sub(along);
             let rest = top.wrapping_sub(dz.mul_narrow(dz));
-            let half = rest.max(zero).cast_unsigned().floor_root().cast_signed();
+            let half = I64x4::cast_signed(rest.max(zero).cast_unsigned().floor_root());
             let low = zero
                 .wrapping_sub(
                     half.wrapping_add(I64x4::splat(cell - from[0]))

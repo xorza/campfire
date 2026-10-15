@@ -56,10 +56,3 @@ proptest! {
         prop_assert_eq!(roots.map(u128::from), expected);
     }
 }
-
-#[test]
-fn casts_keep_each_lanes_bits() {
-    let lanes = [0, 1, 1 << 63, u64::MAX];
-    assert_eq!(U64x4(lanes).cast_signed().to_array(), [0, 1, i64::MIN, -1]);
-    assert_eq!(U64x4(lanes).cast_signed().cast_unsigned(), U64x4(lanes));
-}

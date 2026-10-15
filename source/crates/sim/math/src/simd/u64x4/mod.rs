@@ -1,6 +1,5 @@
 use crate::root::FloorRoot;
 use crate::simd::f64x4::F64x4;
-use crate::simd::i64x4::I64x4;
 
 /// Four `u64` lanes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,16 +12,6 @@ impl U64x4 {
 
     pub const fn to_array(self) -> [u64; 4] {
         self.0
-    }
-
-    pub const fn cast_signed(self) -> I64x4 {
-        let [a, b, c, d] = self.0;
-        I64x4::from_array([
-            a.cast_signed(),
-            b.cast_signed(),
-            c.cast_signed(),
-            d.cast_signed(),
-        ])
     }
 
     /// The floor root of `value` from `estimate`, the floor or one above it, at most 2³².
@@ -41,7 +30,7 @@ impl FloorRoot for U64x4 {
     /// root once more, so the estimate lies within 2⁻²⁰ of the root, below 2³²; rounded to the
     /// nearest integer, it is the floor or one above it, and one step down corrects it.
     fn floor_root(self) -> U64x4 {
-        let estimate = F64x4::from_u64(self).sqrt().round_to_u64().to_array();
+        let estimate = F64x4::from_u64(self.0).sqrt().round_to_u64();
         let [a, b, c, d] = self.0;
         U64x4([
             U64x4::corrected(a, estimate[0]),
