@@ -1,5 +1,6 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
@@ -104,6 +105,10 @@ impl Declarations for EveryBook {
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
+
+    fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
+
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
 }
 
 /// Every book a module declares, built empty.

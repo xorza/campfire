@@ -104,8 +104,7 @@ impl Module for Progression {
     /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
     /// effects queue through its callback.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.schedule
-            .add_systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
+        cx.systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
     }
 }
 

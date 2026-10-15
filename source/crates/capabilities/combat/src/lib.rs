@@ -14,7 +14,6 @@ use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
-use campfire_script::Ctx;
 use campfire_sim::Capability;
 use campfire_stats::Life;
 use campfire_units::{BodyUnit, Dead, SpawnPoint};
@@ -144,6 +143,7 @@ impl Module for Combat {
         d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
         d.report::<Deaths>();
+        d.non_send::<CombatHooks>(CombatHooks::install);
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
@@ -168,18 +168,7 @@ impl Module for Combat {
     /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
     /// pays no toggle, as its pools come from the server.
     fn install(cx: &mut InstallCx<'_>) {
-        let scripts = cx.scripts();
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(Deaths::default());
-        let events = scripts.then(|| {
-            let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
-            CombatEvents::new(move |batch, event| hooks.hear(batch, event))
-        });
-        world.insert_non_send(CombatHooks {
-            events,
-            ..CombatHooks::default()
-        });
-        schedule.add_systems((
+        cx.systems((
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
             ModifierIntervals::run_intervals.in_set(CombatSet::Interval),

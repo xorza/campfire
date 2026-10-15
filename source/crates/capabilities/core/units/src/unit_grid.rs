@@ -32,7 +32,11 @@ impl TrackedUnits for GridUnits {
     type Filter = With<BodyUnit>;
 }
 
-impl Cache for UnitGrid {}
+impl Cache for UnitGrid {
+    fn installed() -> Option<UnitGrid> {
+        Some(UnitGrid::default())
+    }
+}
 
 impl UnitsNear<'_, '_> {
     /// The grid of the body units as they stand, built again first when its tracker finds them

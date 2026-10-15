@@ -197,7 +197,7 @@ impl Module for Mode {
     fn install(cx: &mut InstallCx<'_>) {
         let defines = ModeHooks::defines;
         let joins = defines(Hook::OnPlayerJoin).or_else(defines(Hook::OnPlayerLeave));
-        cx.schedule.add_systems((
+        cx.systems((
             ModeHooks::mode_inputs
                 .run_if(defines(Hook::OnModeInput))
                 .in_set(ModeSet::Inputs),
@@ -212,7 +212,7 @@ impl Module for Mode {
             OutOfPlay::refresh.in_set(ModeSet::OutOfPlay),
         ));
         if cx.has(Capability::Progression) {
-            cx.schedule.add_systems(
+            cx.systems(
                 (
                     ModeHooks::level_ups.run_if(defines(Hook::OnLevelUp)),
                     ModeHooks::clear_level_ups.run_if(not(defines(Hook::OnLevelUp))),

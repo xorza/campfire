@@ -241,7 +241,6 @@ impl Module for Stats {
     /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
     /// book, as before a mode loads one, nothing changes.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.world.insert_resource(LiveCarriers::default());
         cx.systems((
             ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
             Refresh::regenerate.in_set(StatsSet::Regenerate),

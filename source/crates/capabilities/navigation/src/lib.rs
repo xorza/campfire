@@ -15,7 +15,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_geometry::{Grid, MAX_BOUND};
+use campfire_geometry::Grid;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, SimEdge, SimSet};
 use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
@@ -190,10 +190,7 @@ impl Module for Navigation {
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
     fn install(cx: &mut InstallCx<'_>) {
-        let (world, schedule) = (&mut *cx.world, &mut *cx.schedule);
-        world.insert_resource(BodyIndex::new(MAX_BOUND));
-        world.init_resource::<UnitTracker<StaticBodies>>();
-        schedule.add_systems((
+        cx.systems((
             StaticTracking::track_static_bodies.in_set(NavigationSet::TrackStatics),
             (
                 Walking::forget_dead,
@@ -212,7 +209,7 @@ impl Module for Navigation {
         ));
         for set in NavigationSet::ALL {
             if let NavigationSet::Report(_) = set {
-                schedule.add_systems(Walking::report_short.in_set(set));
+                cx.systems(Walking::report_short.in_set(set));
             }
         }
     }

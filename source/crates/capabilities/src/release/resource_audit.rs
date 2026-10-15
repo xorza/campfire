@@ -1,5 +1,6 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
@@ -8,7 +9,7 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Scratch, SpawnParts,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
@@ -161,4 +162,10 @@ impl Declarations for DeclaredResources {
     }
 
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
+
+    fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
+
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {
+        self.ids.push(TypeId::of::<R>());
+    }
 }

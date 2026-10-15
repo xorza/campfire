@@ -8,7 +8,7 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_stats::ParamBook;
@@ -223,21 +223,15 @@ impl Module for Actions {
     /// abilities'.
     fn install(cx: &mut InstallCx<'_>) {
         if cx.has(Capability::Combat) {
-            Actions::schedule(cx.schedule);
+            cx.systems((
+                (Holds::hold_charges, Holds::want_passives)
+                    .chain()
+                    .in_set(ActionsSet::HoldAtInputs),
+                Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
+                Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
+                Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
+            ));
         }
-    }
-}
-
-impl Actions {
-    fn schedule(schedule: &mut Schedule) {
-        schedule.add_systems((
-            (Holds::hold_charges, Holds::want_passives)
-                .chain()
-                .in_set(ActionsSet::HoldAtInputs),
-            Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
-            Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
-            Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
-        ));
     }
 }
 

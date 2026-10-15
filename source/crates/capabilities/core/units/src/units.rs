@@ -120,6 +120,7 @@ impl Module for Units {
         d.derived::<ArrivedShort>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
+        d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
         d.observer(UnitTracker::<GridUnits>::aged);
@@ -174,12 +175,6 @@ impl Module for Units {
     /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
     /// tick ends, its writes to units that never spawned drop.
     fn install(cx: &mut InstallCx<'_>) {
-        let world = &mut *cx.world;
-        world
-            .register_component_hooks::<UnitType>()
-            .on_insert(TagBook::give_tags);
-        world.init_resource::<UnitGrid>();
-        world.init_resource::<UnitTracker<GridUnits>>();
         cx.scripted((
             UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
             UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),

@@ -99,7 +99,7 @@ impl Module for Projectiles {
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
     /// delivery, so it flies none.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.schedule.add_systems((
+        cx.systems((
             Launching::take_shots.in_set(ProjectilesSet::TakeShots),
             Launching::launch.in_set(ProjectilesSet::Launch),
         ));

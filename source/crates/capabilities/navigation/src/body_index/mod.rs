@@ -442,7 +442,12 @@ impl Buckets {
     }
 }
 
-impl Cache for BodyIndex {}
+/// Over the world's whole bound.
+impl Cache for BodyIndex {
+    fn installed() -> Option<BodyIndex> {
+        Some(BodyIndex::new(MAX_BOUND))
+    }
+}
 
 #[cfg(test)]
 mod tests;

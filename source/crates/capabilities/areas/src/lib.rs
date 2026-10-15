@@ -104,7 +104,7 @@ impl Module for Areas {
     /// delivery, so it triggers none.
     fn install(cx: &mut InstallCx<'_>) {
         cx.server(AreaLife::trigger.in_set(AreasSet::Trigger));
-        cx.schedule.add_systems((
+        cx.systems((
             AreaLife::land.in_set(AreasSet::Land),
             AreaLife::land.in_set(AreasSet::LandAtResolve),
             AreaHolds::hold_inside.in_set(AreasSet::HoldInside),

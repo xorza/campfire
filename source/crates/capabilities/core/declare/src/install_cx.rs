@@ -3,7 +3,6 @@ use std::fmt;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::ScheduleSystem;
-use bevy_ecs::world::World;
 use campfire_sim::Capability;
 
 use crate::callbacks::Callbacks;
@@ -11,12 +10,12 @@ use crate::capability_set::CapabilitySet;
 use crate::role::Role;
 use crate::server_only::ServerOnly;
 
-/// What a module's install reads and changes: the match's world and schedule, and what it knows
-/// of the match.
+/// What a module's install reads and changes: the match's schedule, which it adds its systems to,
+/// each by the role it serves, and what it knows of the match. All else a module adds is a
+/// declaration, which the installer puts in.
 pub struct InstallCx<'a> {
-    pub world: &'a mut World,
-    pub schedule: &'a mut Schedule,
-    facts: MatchFacts<'a>,
+    schedule: &'a mut Schedule,
+    facts: &'a MatchFacts<'a>,
 }
 
 /// What an install knows of its match: the capabilities it declares, its role, and the registries
@@ -29,16 +28,8 @@ pub struct MatchFacts<'a> {
 }
 
 impl<'a> InstallCx<'a> {
-    pub const fn new(
-        world: &'a mut World,
-        schedule: &'a mut Schedule,
-        facts: MatchFacts<'a>,
-    ) -> InstallCx<'a> {
-        InstallCx {
-            world,
-            schedule,
-            facts,
-        }
+    pub const fn new(schedule: &'a mut Schedule, facts: &'a MatchFacts<'a>) -> InstallCx<'a> {
+        InstallCx { schedule, facts }
     }
 
     /// The capabilities the match declares.
@@ -49,12 +40,6 @@ impl<'a> InstallCx<'a> {
     /// Whether the match declares `capability`.
     pub const fn has(&self, capability: Capability) -> bool {
         self.facts.set.contains(capability)
-    }
-
-    /// Whether the match runs scripts, for the state an install builds that the scripts call
-    /// into; its systems name their role by the method that adds them.
-    pub const fn scripts(&self) -> bool {
-        self.facts.role.scripts()
     }
 
     /// Whether a module of the match calls the registry `C`, or declares a callback in it.

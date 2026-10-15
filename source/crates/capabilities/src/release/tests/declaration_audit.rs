@@ -8,6 +8,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
@@ -15,7 +16,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Phase, Report, Scratch, SetPlace,
+    ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -438,6 +439,10 @@ impl Declarations for DeclarationAudit {
     fn server_part<H: Component, C: Component + Default>(&mut self) {
         self.server_parts.push((Named::of::<H>(), Named::of::<C>()));
     }
+
+    fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
+
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
 }
 
 #[test]

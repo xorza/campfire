@@ -20,4 +20,9 @@ impl SaveAsked {
     }
 }
 
-impl Report for SaveAsked {}
+/// The mode puts it in as it asks for a save.
+impl Report for SaveAsked {
+    fn installed() -> Option<SaveAsked> {
+        None
+    }
+}

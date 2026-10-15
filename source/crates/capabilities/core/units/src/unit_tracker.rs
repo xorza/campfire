@@ -83,7 +83,11 @@ impl<T> Default for UnitTracker<T> {
     }
 }
 
-impl<T: TrackedUnits> Cache for UnitTracker<T> {}
+impl<T: TrackedUnits> Cache for UnitTracker<T> {
+    fn installed() -> Option<UnitTracker<T>> {
+        Some(UnitTracker::default())
+    }
+}
 
 impl<T: TrackedUnits> UnitTracker<T> {
     /// Marks the units changed, as a reader must take them again.

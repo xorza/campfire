@@ -7,8 +7,8 @@ use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_declare::{
-    Book, CapabilityError, CapabilitySet, Declarations, InstallCx, KindVisitor, MatchFacts,
-    ModuleVisitor, Phase, Role,
+    Book, CapabilityError, CapabilitySet, Declarations, KindVisitor, MatchFacts, ModuleVisitor,
+    Phase, Role,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
@@ -218,8 +218,9 @@ impl Release {
             role: &role,
             called: Release::called(set),
         };
-        let mut cx = InstallCx::new(world, schedule, facts);
-        Release::modules(&mut Installing::new(&mut cx, registry, &role));
+        Release::modules(&mut Installing::new(
+            world, schedule, registry, &role, &facts,
+        ));
         UnitTypeBook::new(Release::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
@@ -248,8 +249,7 @@ impl Release {
             role: &role,
             called: Release::called(set),
         };
-        let mut cx = InstallCx::new(world, schedule, facts);
-        Installing::new(&mut cx, registry, &role).install::<Mode>();
+        Installing::new(world, schedule, registry, &role, &facts).install::<Mode>();
         Mode::load(world, setup, load);
         sim.build();
     }

@@ -316,7 +316,12 @@ impl Clearance<'_> {
     }
 }
 
-impl Cache for PathingGrid {}
+/// The map's install builds it, of the map's walkers.
+impl Cache for PathingGrid {
+    fn installed() -> Option<PathingGrid> {
+        None
+    }
+}
 
 #[cfg(test)]
 mod tests;

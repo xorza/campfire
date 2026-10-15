@@ -558,7 +558,12 @@ impl RoutePlanner {
     }
 }
 
-impl Cache for RoutePlanner {}
+/// The map's install builds it, of the map's walkers.
+impl Cache for RoutePlanner {
+    fn installed() -> Option<RoutePlanner> {
+        None
+    }
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {

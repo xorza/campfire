@@ -1,6 +1,7 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -17,6 +18,7 @@ use crate::kind_visitor::KindVisitor;
 use crate::module_set::ModuleSet;
 use crate::one_shot::OneShot;
 use crate::report::Report;
+use crate::role::Role;
 use crate::scratch::Scratch;
 
 /// How a column `C` of the script view fills from the parts `D` of each unit.
@@ -93,6 +95,13 @@ pub trait Declarations: StateTypes + KindVisitor {
 
     /// `system`, which the module runs out of the schedule, by the id `R` keeps.
     fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static);
+
+    /// `hook`, which runs as each `C` is inserted, as Bevy's component hook.
+    fn on_insert<C: Component>(&mut self, hook: ComponentHook);
+
+    /// The non-send resource `R`, which `build` makes of the world, as the install of the
+    /// match's role finds it.
+    fn non_send<R: 'static>(&mut self, build: fn(&World, &Role) -> R);
 
     /// `C`, a part the server alone computes, which every entity that holds `H` spawns with on a
     /// server's match, by Bevy's required component, its default; a client receives it from the
