@@ -35,7 +35,7 @@ struct Overlap {
 
 impl Collider {
     /// Pushes the two colliders of each of `contacts`, in order, apart along the line between
-    /// them, on the ground plane, until their centres lie the sum of their radii apart, each
+    /// them, on the ground plane, until their centers lie the sum of their radii apart, each
     /// coordinate of that offset rounded away from zero past the direction's own rounding, so
     /// they end touching or apart, less than a bit past it on each axis: each contact sees the
     /// pushes of the contacts before it, and one they parted already is skipped. A unit that

@@ -103,8 +103,8 @@ const fn blend(tile: u16, shape: BlendShape, inverted: bool, flipped: bool) -> B
     }
 }
 
-/// A layer's alpha at its cell's centre, which lies on the diagonal its triangles meet on.
-fn centre(layer: Layer) -> f32 {
+/// A layer's alpha at its cell's center, which lies on the diagonal its triangles meet on.
+fn center(layer: Layer) -> f32 {
     let [a0, a1, a2, a3] = layer.alpha.map(f32::from);
     if layer.flip {
         f32::midpoint(a1, a3)
@@ -155,7 +155,7 @@ fn each_blend_is_opaque_at_its_corners_and_splits_its_cell_along_its_fade() {
     let right = |long| BlendShape::RightDiagonal { long };
     let left = |long| BlendShape::LeftDiagonal { long };
     // Each shape, inverted or not: its alpha at the corners south-west, south-east, north-east,
-    // north-west, its flip, and its alpha at the centre, the mean of the split's two ends.
+    // north-west, its flip, and its alpha at the center, the mean of the split's two ends.
     let cases = [
         (horizontal, false, [0, 255, 255, 0], false, 127.5),
         (horizontal, true, [255, 0, 0, 255], false, 127.5),
@@ -182,7 +182,7 @@ fn each_blend_is_opaque_at_its_corners_and_splits_its_cell_along_its_fade() {
             alpha: pattern.alpha,
             flip: pattern.flip,
         };
-        assert_eq!(centre(layer), middle, "{shape:?} {inverted}");
+        assert_eq!(center(layer), middle, "{shape:?} {inverted}");
     }
     // A third blend's flip turns a blend across or along the cell, unless third blends are off;
     // a custom edge has no alpha and no flip.

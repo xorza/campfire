@@ -76,7 +76,7 @@ impl Grid {
     /// The square of the distance from `pos` to the nearest center of the cells from column and
     /// row `low` to `high`, both in, on the ground plane, in halves of a bit, exactly.
     pub fn box_distance(&self, low: [usize; 2], high: [usize; 2], pos: Vec3) -> u128 {
-        // Centres and positions lie within 2⁴⁸ halves of a bit, so each offset fits `i64` and
+        // Centers and positions lie within 2⁴⁸ halves of a bit, so each offset fits `i64` and
         // each square `i128`, and the wrapping steps skip the checks a release build makes.
         let step = self.cell.to_bits();
         let min = self.bounds.min();
@@ -151,20 +151,20 @@ impl Grid {
         reach: Num,
         mut mark: impl FnMut(Range<usize>),
     ) {
-        let centre = Halves::ground(pos);
-        let point = centre.to_array();
+        let center = Halves::ground(pos);
+        let point = center.to_array();
         let extent = body.extent();
-        // The cells whose centres lie within the rectangle grown by the reach.
+        // The cells whose centers lie within the rectangle grown by the reach.
         let span = |axis: usize| {
             let grow = Halves::of(extent[axis]) + Halves::of(reach);
             let (low, high) = (point[axis] - grow, point[axis] + grow);
-            self.cells_along(axis, low, high, CellPart::Centre)
+            self.cells_along(axis, low, high, CellPart::Center)
         };
         let closer = body.closer_twice(reach);
         self.runs(
             span(1),
             span(0),
-            centre,
+            center,
             |z| closer.row(z),
             |row, x| closer.holds(row, x),
             &mut mark,
@@ -197,8 +197,8 @@ impl Grid {
     /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point
     /// with, `body` at `pos`: the cells it covers, touching not counted. Rows in order.
     pub fn box_covers(&self, pos: Vec3, body: &BodyBox, mut mark: impl FnMut(Range<usize>)) {
-        let centre = Halves::ground(pos);
-        let point = centre.to_array();
+        let center = Halves::ground(pos);
+        let point = center.to_array();
         let extent = body.extent();
         // The cells whose squares the rectangle meets.
         let span = |axis: usize| {
@@ -208,11 +208,11 @@ impl Grid {
         };
         let covers = body.overlaps_square_twice(i128::from(self.cell.to_bits()));
         let hits = |&z: &i64, x: i64| covers(Flat::new(i128::from(x), i128::from(z)));
-        self.runs(span(1), span(0), centre, |z| z, hits, &mut mark);
+        self.runs(span(1), span(0), center, |z| z, hits, &mut mark);
     }
 
-    /// Calls `mark` with each of `rows`' run of the cells of `columns` whose centres, as offsets
-    /// from `centre` in halves of a bit, `hits` holds of, given what `row` makes of the offset
+    /// Calls `mark` with each of `rows`' run of the cells of `columns` whose centers, as offsets
+    /// from `center` in halves of a bit, `hits` holds of, given what `row` makes of the offset
     /// across of each row, for a convex shape: a row's cells are one run. Rows in order. Each
     /// offset lies within twice the world's bound, in halves of a bit, so a column's is the first
     /// column's and its steps of two cells, exact in `i64`.
@@ -220,15 +220,15 @@ impl Grid {
         &self,
         rows: RangeInclusive<i128>,
         columns: RangeInclusive<i128>,
-        centre: Flat,
+        center: Flat,
         row: impl Fn(i64) -> R,
         hits: impl Fn(&R, i64) -> bool,
         mark: &mut impl FnMut(Range<usize>),
     ) {
         let index = |value: i128| usize::try_from(value).expect("a cell of the grid");
-        let centre = centre.to_array();
+        let center = center.to_array();
         let offset = |axis: usize, index: i128| {
-            i64::try_from(self.center_twice_along(axis, index) - centre[axis])
+            i64::try_from(self.center_twice_along(axis, index) - center[axis])
                 .expect("an offset within twice the world's bound")
         };
         let (column_zero, pitch) = (offset(0, 0), 2 * self.cell.to_bits());
@@ -454,7 +454,7 @@ impl Grid {
 
     /// The cells along `axis`, 0 for x and 1 for z, whose `part` lies within the span from `low`
     /// to `high`, or for a square meets it, both ends in halves of a bit, within the grid's. A
-    /// centre lies at `2 min + cell (2 i + 1)` halves, and a square from `2 min + 2 cell i` to
+    /// center lies at `2 min + cell (2 i + 1)` halves, and a square from `2 min + 2 cell i` to
     /// the next.
     fn cells_along(
         &self,
@@ -466,7 +466,7 @@ impl Grid {
         let min = Halves::of(self.bounds.min()[axis]);
         let cell = i128::from(self.cell.to_bits());
         let (first, end) = match part {
-            CellPart::Centre => (
+            CellPart::Center => (
                 Rounding::Ceiling.divide(low - min - cell, 2 * cell),
                 Grid::floor_halves(high - min - cell, 2 * cell),
             ),
@@ -496,7 +496,7 @@ impl Grid {
 /// The part of a cell that a span along an axis must hold, or meet, for the cell to count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CellPart {
-    Centre,
+    Center,
     Square,
 }
 

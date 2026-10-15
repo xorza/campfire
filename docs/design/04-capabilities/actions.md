@@ -103,7 +103,7 @@ Projectiles and areas are units of types with a `projectile` or an `area` sectio
 
 A projectile or area type may have a `vision` section, revealing to its source's group what it sees while it lasts ([Vision](vision.md#grid-fog-of-war)).
 
-Each delivery records how it reached a unit in a **hit**: the projectile or area unit, or `()` for an instant one; the unit the action aimed at; where it hit or ended, an area's centre for an area; the distance flown or a dash's way, 0 for an area; the direction, none for an area; and for a ray or sweep the body part. `on_hit` and `on_end` receive it, and its damage carries it as `d.hit` ([Combat](combat.md#damage-and-heals)).
+Each delivery records how it reached a unit in a **hit**: the projectile or area unit, or `()` for an instant one; the unit the action aimed at; where it hit or ended, an area's center for an area; the distance flown or a dash's way, 0 for an area; the direction, none for an area; and for a ray or sweep the body part. `on_hit` and `on_end` receive it, and its damage carries it as `d.hit` ([Combat](combat.md#damage-and-heals)).
 
 ### Effects
 

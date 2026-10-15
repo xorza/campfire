@@ -323,7 +323,7 @@ fn from_runs(grid: &Grid, spans: impl FnOnce(&mut dyn FnMut(Range<usize>))) -> V
 
 #[test]
 fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
-    // Cells of 0.3 m over ±6 m, which puts centres at odd halves of a bit's grid; boxes at any
+    // Cells of 0.3 m over ±6 m, which puts centers at odd halves of a bit's grid; boxes at any
     // angle and place, some by the bounds' edge, every other one thin, down to the least size,
     // whose rows' runs may share no column or skip a row; reaches from 0: each run is a cell a
     // brute test of every cell keeps, and none is missed.
@@ -343,26 +343,26 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
         };
         let size = [narrow, draw(one / 4, 4 * one)].map(Num::from_bits);
         let body = BodyBox::new(size, Num::from_bits(draw(0, 360 * one))).unwrap();
-        let centre = Vec3::from((
+        let center = Vec3::from((
             Num::from_bits(draw(-6 * one, 12 * one)),
             0,
             Num::from_bits(draw(-6 * one, 12 * one)),
         ));
         let reach = Num::from_bits(if round % 4 == 1 { 0 } else { draw(0, one) });
-        let off = |cell: usize| grid.center_twice(cell) - Halves::ground(centre);
+        let off = |cell: usize| grid.center_twice(cell) - Halves::ground(center);
         let closer = from_runs(&grid, |mark| {
-            grid.box_spans_closer(centre, &body, reach, mark);
+            grid.box_spans_closer(center, &body, reach, mark);
         });
         let expected: Vec<usize> = (0..grid.cells())
             .filter(|&cell| body.closer_twice(reach).holds_point(off(cell)))
             .collect();
-        assert_eq!(closer, expected, "{body:?} at {centre:?} within {reach:?}");
+        assert_eq!(closer, expected, "{body:?} at {center:?} within {reach:?}");
         let half = i128::from(cell.to_bits());
-        let covers = from_runs(&grid, |mark| grid.box_covers(centre, &body, mark));
+        let covers = from_runs(&grid, |mark| grid.box_covers(center, &body, mark));
         let expected: Vec<usize> = (0..grid.cells())
             .filter(|&cell| body.overlaps_square_twice(half)(off(cell)))
             .collect();
-        assert_eq!(covers, expected, "{body:?} at {centre:?}");
+        assert_eq!(covers, expected, "{body:?} at {center:?}");
         marked += closer.len();
         covered += covers.len();
     }

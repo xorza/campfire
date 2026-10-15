@@ -366,7 +366,7 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
             assert_eq!(arrived, Some(34));
             assert_eq!(game.part::<Position>(walker).get(), Vec3::from((4, 0, 0)));
         } else {
-            // It stops against the tower, the two radii from its centre, pressed there.
+            // It stops against the tower, the two radii from its center, pressed there.
             assert_eq!(arrived, None);
             let stop = Vec3::new(-(tower_radius + half), Num::ZERO, Num::ZERO);
             assert_eq!(game.part::<Position>(walker).get(), stop);
@@ -480,7 +480,7 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
             assert_eq!(game.part::<Position>(walker).get(), Vec3::from((4, 0, 0)));
             assert_eq!(still, [Vec3::from((0, 0, 0)), creep_at]);
         } else {
-            // Against the hero, the two radii, 1 m, from its centre.
+            // Against the hero, the two radii, 1 m, from its center.
             assert_eq!(arrived, None);
             assert_eq!(game.part::<Position>(walker).get(), Vec3::from((-1, 0, 0)));
         }

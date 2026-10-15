@@ -77,9 +77,9 @@ fn route_searches(game: &Match) -> u64 {
 
 #[test]
 fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_it_sees() {
-    // A move away from the box of (1, 1), (2, 1) and (3, 1), centre (2, 1), to (8, 1): their
+    // A move away from the box of (1, 1), (2, 1) and (3, 1), center (2, 1), to (8, 1): their
     // goals are (7, 1), (8, 1) and (9, 1). The route is searched from (2, 1), the nearest the
-    // centre, to (8, 1), by the walled scene's route. Each sees its first waypoint, (3.5, 4.5),
+    // center, to (8, 1), by the walled scene's route. Each sees its first waypoint, (3.5, 4.5),
     // and not the second or the goal past the wall; from the second, (6.5, 4.5), the straight
     // line to each goal is clear, so each ends on its own.
     let mut game = walled(&[]);
@@ -106,8 +106,8 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
         assert!(route.reached() && route.asked().is_none());
     }
 
-    // A move into the box of (1, 1), (2, 1) and (9, 5), centre (5, 3): every goal is (8, 1),
-    // and (2, 1) is nearest the centre, √13 m off, against √20 m. The unit at
+    // A move into the box of (1, 1), (2, 1) and (9, 5), center (5, 3): every goal is (8, 1),
+    // and (2, 1) is nearest the center, √13 m off, against √20 m. The unit at
     // (9, 5) sees the goal itself past the wall's corner, so its route is the goal alone.
     let mut game = walled(&[]);
     let party = ordered(goal);
@@ -157,7 +157,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
 #[test]
 fn a_member_that_sees_no_waypoint_plans_its_own_route() {
     // A second wall from (2, 4) to (3, 6) hides (1, 5) from the shared route's waypoints:
-    // the line to each crosses column 2 in row 4. Of the box of (2, 1) and (1, 5), centre
+    // the line to each crosses column 2 in row 4. Of the box of (2, 1) and (1, 5), center
     // (1.5, 3), the member at (2, 1), the lower id of the two as near, plans for both, and
     // the member at (1, 5) searches its own route to its goal, (7.5, 3). The first's goal,
     // (8.5, −1), is taken into the bounds, (8.5, 0), which it sees from (6.5, 4.5).
@@ -181,7 +181,7 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
 fn a_party_searches_once_for_each_layer_it_moves_on() {
     // Two walkers of no body on the ground at (2, 1) and (3, 1), two of a quarter meter in the
     // air at (2, 1) and (2, 2); no wall blocks the air, so the air's route is the goal alone. The
-    // ground's is searched from (2, 1), the lower id of the two as near the centre, (2.5, 1.5).
+    // ground's is searched from (2, 1), the lower id of the two as near the center, (2.5, 1.5).
     let mut game = walled(&[]);
     let goal = Vec3::from((8, 0, 1));
     let party = ordered(goal);

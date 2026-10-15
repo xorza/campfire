@@ -24,7 +24,7 @@ impl AreaLife {
     /// stable ids. A trigger reaches each living unit its type's `affects` selects whose body comes
     /// within its radius, whose tags block it as a target or not, by stable id, each with its
     /// action's `on_hit`, and the area's trigger goes; an end, of an area with no trigger to come,
-    /// runs `on_end`, and the area despawns after the hooks. Each hit is at the area's centre, of
+    /// runs `on_end`, and the area despawns after the hooks. Each hit is at the area's center, of
     /// no distance or direction.
     pub(super) fn trigger(
         targets: Targets<'_, '_>,

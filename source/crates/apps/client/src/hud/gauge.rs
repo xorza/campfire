@@ -54,7 +54,7 @@ pub(crate) enum GaugeKind {
 }
 
 /// An ability slot's place in the own avatar's row of slots: its index, and how many the row
-/// holds, which it centres on the stand.
+/// holds, which it centers on the stand.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotPlace {
     pub(crate) slot: u8,
@@ -62,7 +62,7 @@ pub(crate) struct SlotPlace {
 }
 
 impl SlotPlace {
-    /// Its pip's center across the stand: the row of `of` pips, a step apart, centred.
+    /// Its pip's center across the stand: the row of `of` pips, a step apart, centered.
     fn across(self) -> f32 {
         (f32::from(self.slot) - (f32::from(self.of) - 1.0) / 2.0) * PIP_STEP
     }
@@ -238,7 +238,7 @@ mod tests {
         let health = GaugeKind::Life { shown: None }.layout();
         let quarter = health.fill(0.25);
         assert_eq!(quarter.scale, Vec3::new(0.3, 1.0, THICKNESS));
-        // The fill's centre is an f32 sum of halves of the width, exact to an ulp of 0.45.
+        // The fill's center is an f32 sum of halves of the width, exact to an ulp of 0.45.
         assert!((quarter.translation.x + 0.45).abs() < 1e-6, "{quarter:?}");
         // Out of range, a share holds at the ends.
         assert_eq!(health.fill(1.5).scale.x, WIDE);

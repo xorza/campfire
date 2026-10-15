@@ -20,17 +20,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (`checks/zero-hour-check`; Zero Hour D4, D7.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, as design 12 D7 says. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint.
 
-## 2. One spelling of `center`
+## 2. Production's start and exit
 
-Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the fixes.
-
-### I5. The engine spells the middle of a shape `center`
-
-(Every crate's names and comments, and the documents; the issue log's Geometry item.) Each `centre` of the engine's names, comments and documents becomes `center`, Bevy's spelling, so one word has one spelling. Check: no `centre` is left outside quoted sources, and the goldens do not move.
-
-## 3. Production's start and exit
-
-`production`; `docs/design/04-capabilities/production.md`. It stands before batch 4, as the import writes what it adds.
+`production`; `docs/design/04-capabilities/production.md`. It stands before batch 3, as the import writes what it adds.
 
 ### P1. A build may start as it is ordered
 
@@ -40,7 +32,7 @@ Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the f
 
 (`production`: `production_data`, `trains`; design 18, D2.) `production` gains `exit` and `rally`, `[x, z]` in the producer's frame, turned with it. A trained unit spawns at the free cell nearest the exit point; with no rally point set it walks to the default one. [Train queues](docs/design/04-capabilities/production.md#train-queues) and its Data gain the rule. Check: a producer turned 90° spawns its unit at the cell nearest its turned exit, computed by hand, which walks to the turned default rally point, and to the player's rally point once one is set; a producer of neither is unchanged.
 
-## 4. Zero Hour's trains and builds
+## 3. Zero Hour's trains and builds
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`; `actions`'s load. It needs P1 and P2.
 
@@ -56,7 +48,7 @@ Every crate, `docs/`, `AGENTS.md`. A rename alone, so it stands apart from the f
 
 (`checks/zero-hour-check`; design 18's checks.) The check pins the counts of trains, builds and dropped buttons by cause, and plays on Tournament Desert the command center's dozer, the dozer's barracks and the barracks' ranger, each paid from 10,000 and done in its ticks. Check: `./drive.py zero-hour` passes.
 
-## 5. The command panel
+## 4. The command panel
 
 `client`: a new `command_panel`, `orders`, `pointer`, `view`. It needs P4 to be played.
 

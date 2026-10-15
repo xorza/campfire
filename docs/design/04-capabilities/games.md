@@ -26,7 +26,7 @@ Each genre says its rules in the same terms ([The model](00-overview.md#the-mode
 | Relations | Two teams; camps on a hostile team | Two teams | Two to eight teams | Factions; neutral monsters | Up to 100 squads |
 | Space | Planar, one layer | Spatial | Planar, ground and air | Planar or spatial | Spatial |
 | Vision | Grid fog | 3D occlusion | Grid fog | Relevance | Relevance |
-| Markers | Spawns, camps | Bomb sites, buy zones | Start locations, resource fields | Zones, quest givers | Loot spots, zone centres |
+| Markers | Spawns, camps | Bomb sites, buy zones | Start locations, resource fields | Zones, quest givers | Loot spots, zone centers |
 | Choices | Hero, spells | Side, loadout | Faction | Character | Loadout |
 
 A battle royale's shrinking zone is an area unit that damages, through a modifier, the units outside it; its loot is item units at markers. An MMO's quest giver is a unit whose `use` action opens a dialogue. A first-person commander drives a `character` with `hitboxes` weapons, orders squads through `orders`, and fights units that walk `navigation` paths: one package, one tick rate.

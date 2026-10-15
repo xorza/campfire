@@ -31,7 +31,7 @@ impl GroupBox {
 
     /// The box's midpoint: each coordinate the half of its two ends' sum, rounded toward negative
     /// infinity.
-    pub(crate) fn centre(self) -> [Num; 2] {
+    pub(crate) fn center(self) -> [Num; 2] {
         // Both ends lie within the world's bound, far inside an i64's half.
         let mid = |axis: usize| {
             Num::from_bits((self.low[axis].to_bits() + self.high[axis].to_bits()) >> 1)
@@ -45,13 +45,13 @@ impl GroupBox {
     }
 
     /// The goal of the unit at `pos` of a group ordered to `goal`, a point within `bounds`: outside
-    /// the box, `goal` plus the unit's offset from the centre, taken into the bounds; inside the
+    /// the box, `goal` plus the unit's offset from the center, taken into the bounds; inside the
     /// box or on its edge, `goal` itself.
     pub fn goal_of(self, pos: Vec3, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
         if self.holds(goal) {
             return goal;
         }
-        let [cx, cz] = self.centre();
+        let [cx, cz] = self.center();
         bounds.clamp_ground([goal[0] + (pos.x - cx), goal[1] + (pos.z - cz)])
     }
 }
@@ -63,8 +63,8 @@ mod tests {
 
     #[test]
     fn a_group_keeps_its_shape_only_on_a_move_away_from_its_box() {
-        // Three units at (1, 2), (4, 6) and (2, 3): the box runs from (1, 2) to (4, 6), its centre
-        // (2.5, 4). A goal of (20, 10) lies outside, so each goes to its offset from the centre
+        // Three units at (1, 2), (4, 6) and (2, 3): the box runs from (1, 2) to (4, 6), its center
+        // (2.5, 4). A goal of (20, 10) lies outside, so each goes to its offset from the center
         // added to the goal: (−1.5, −2) → (18.5, 8), (1.5, 2) → (21.5, 12), (−0.5, −1) →
         // (19.5, 9). Bounds of ±21 m take the second to x = 21.
         let int = Num::int;
@@ -75,7 +75,7 @@ mod tests {
             Vec3::from((int(2), 0, int(3))),
         ];
         let group = GroupBox::of(units).unwrap();
-        assert_eq!(group.centre(), [half(5), int(4)]);
+        assert_eq!(group.center(), [half(5), int(4)]);
         let bounds = Bounds::new([int(-21), int(-21)], [int(21), int(21)]).unwrap();
         let goals = units.map(|unit| group.goal_of(unit, [int(20), int(10)], bounds));
         assert_eq!(
@@ -97,7 +97,7 @@ mod tests {
     }
 
     #[test]
-    fn the_centre_rounds_toward_negative_infinity() {
+    fn the_center_rounds_toward_negative_infinity() {
         // Ends 1 and 2 bits apart: (−1 + 0) / 2 = −½ bit rounds to −1 bit, (0 + 1) / 2 = ½ to 0.
         let bit = Num::from_bits;
         let group = GroupBox::of([
@@ -105,6 +105,6 @@ mod tests {
             Vec3::from((bit(0), 0, bit(1))),
         ])
         .unwrap();
-        assert_eq!(group.centre(), [bit(-1), bit(0)]);
+        assert_eq!(group.center(), [bit(-1), bit(0)]);
     }
 }

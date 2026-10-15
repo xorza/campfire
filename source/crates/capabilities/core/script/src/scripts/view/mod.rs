@@ -268,7 +268,7 @@ impl View {
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
     /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
-    /// the view's columns and its row, by exact distance between centres, the lower stable id on
+    /// the view's columns and its row, by exact distance between centers, the lower stable id on
     /// a tie; `()` when there is none.
     pub fn nearest(
         &self,

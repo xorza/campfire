@@ -16,6 +16,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Runner.** `proving_match::a_snapshot_restores_and_a_flawed_one_never_panics` runs at the bound of 1 s for a test alone: on an i9-13980HX, with `--test-threads 1`, 1.11 s at commit e43f95af, and 0.87 s in a later run.
 
 ## Ready
-
-- **Geometry.** **Plan: I5.** The engine spells the middle of a shape two ways: `centre` 203 times and `center` 138 times outside the client, as `Grid::center` and its cells' centers beside `BodyBox`'s `centre` arguments; Bevy's own names, which the client calls, are `center`.
-

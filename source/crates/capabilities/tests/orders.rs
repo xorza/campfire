@@ -1250,8 +1250,8 @@ fn order_to(units: &[StableId], action: OrdersAction) -> Vec<u8> {
 fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_search() {
     // Player 0's walkers at (1, 2), (4, 6) and (2, 3), player 1's at (3, 3), and player 0's unit
     // that does not walk at (0, 0), all named by one order, on a pathing grid with no wall. The
-    // box of player 0's walkers runs from (1, 2) to (4, 6), centre (2.5, 4). A move to (20, 10)
-    // sends each to its offset from the centre added to it: (18.5, 8), (21.5, 12) and (19.5, 9);
+    // box of player 0's walkers runs from (1, 2) to (4, 6), center (2.5, 4). A move to (20, 10)
+    // sends each to its offset from the center added to it: (18.5, 8), (21.5, 12) and (19.5, 9);
     // a move to (3, 4), inside the box, sends each to (3, 4) itself. The others stay. The three
     // plan one search, where three orders of one unit each plan three.
     let half = |x: i64, z: i64| Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z);

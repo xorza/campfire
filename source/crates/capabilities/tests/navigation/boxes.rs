@@ -18,13 +18,13 @@ fn quarters(x: i64, z: i64) -> Vec3 {
     Vec3::new(quarter(x), Num::ZERO, quarter(z))
 }
 
-/// Whether the circle of `radius` at `pos` comes into `body`, a box at `centre`, by more than
+/// Whether the circle of `radius` at `pos` comes into `body`, a box at `center`, by more than
 /// two bits, as a push of collision rounds.
-fn sunk(pos: Vec3, radius: Num, centre: Vec3, body: &Body) -> bool {
+fn sunk(pos: Vec3, radius: Num, center: Vec3, body: &Body) -> bool {
     let Shape::Box(boxed) = body.shape() else {
         panic!("a box");
     };
-    boxed.nearest(centre, pos, radius - Num::from_bits(2)) == Ordering::Less
+    boxed.nearest(center, pos, radius - Num::from_bits(2)) == Ordering::Less
 }
 
 #[test]

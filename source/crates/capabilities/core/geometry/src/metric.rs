@@ -125,7 +125,7 @@ mod tests {
     fn a_reach_runs_from_edge_to_edge() {
         let num = |value| Num::from_int(value).unwrap();
         let (from, to) = (Vec3::from((0, 0, 0)), Vec3::from((10, 0, 0)));
-        // 10 m between centres: a range of 7 from a body of 1 to one of 2 reaches, 7 - ε not; a
+        // 10 m between centers: a range of 7 from a body of 1 to one of 2 reaches, 7 - ε not; a
         // point reaches as a body of 0.
         let cases = [
             (num(1), num(7), num(2), true),
