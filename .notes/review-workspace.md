@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `base/store/src/{data_dir/mod.rs,platform/owner_only.rs,durable_file/*,stream_writer/mod.rs,exchange/mod.rs,append_writer/mod.rs}`, `network/quic/src/{link_end,quic_plugin,endpoint_state,port_mapper/mod}.rs`, `network/net/src/sim_server/data_filter.rs`. Goldens: none move.
 
-- [ ] `store/src/durable_file/*`: a `DurableDir` with its own error enum. `data_dir/mod.rs:30` uses it, and `OwnerOnly::create_dir_all` (`platform/owner_only.rs:37`) goes.
 
 ### Batch 6. Client and harness
 

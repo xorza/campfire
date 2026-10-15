@@ -2,7 +2,7 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_package::{ContentError, LoadError, PackageName};
-use campfire_store::{DurableCreateError, DurableError, PathError, ReadError};
+use campfire_store::{DurableDirCreateError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
 /// Why the files under a package's directory make no index, as its builder writes one.
@@ -30,10 +30,10 @@ pub enum IndexError {
 pub enum WriteError {
     /// The package's directory does not make, as when one is there.
     #[error("the package's directory does not make")]
-    CreateDir(#[source] PathError<DurableCreateError>),
+    CreateDir(#[source] PathError<DurableDirCreateError>),
     /// A directory in the package does not make.
     #[error("a directory of the package does not make")]
-    Directory(#[source] PathError<DurableError>),
+    Directory(#[source] PathError<DurableDirError>),
     /// A file of the package does not write, as one written twice.
     #[error("a file of the package does not write")]
     File(#[source] PathError<io::Error>),

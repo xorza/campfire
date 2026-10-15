@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use campfire_protocol::SnapshotFingerprint;
-use campfire_store::{DurableError, DurableFile, PathError};
+use campfire_store::{DurableDir, DurableError, DurableFile, PathError};
 
 /// A session's `snapshots` directory, where each checkpoint's snapshot is named by its
 /// fingerprint in hex.
@@ -16,7 +16,7 @@ impl SnapshotDir {
         snapshot: &[u8],
     ) -> Result<SnapshotFingerprint, PathError<DurableError>> {
         let fingerprint = SnapshotFingerprint::of(snapshot);
-        DurableFile::create_dir(&self.0)?;
+        DurableDir::create(&self.0)?;
         DurableFile::write(&self.file(fingerprint), snapshot)?;
         Ok(fingerprint)
     }

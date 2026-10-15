@@ -28,7 +28,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_runner::SessionWorld;
-use campfire_store::DurableFile;
+use campfire_store::DurableDir;
 use campfire_values::PackagePath;
 use tracing::{error, info};
 
@@ -92,9 +92,9 @@ fn run(root: &Path) -> Result<Vec<Failure>, CheckError> {
     let since = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("the clock is after 1970");
-    DurableFile::create_dir_all(root).map_err(CheckError::RunRoot)?;
+    DurableDir::create_all(root).map_err(CheckError::RunRoot)?;
     let dir = root.join(format!("run-{}", since.as_millis()));
-    DurableFile::create_new_dir(&dir).map_err(CheckError::RunDir)?;
+    DurableDir::create_new(&dir).map_err(CheckError::RunDir)?;
     let out = dir.join("packages");
     let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
     let imported = zero_hour.write(&out).map_err(CheckError::Import)?;

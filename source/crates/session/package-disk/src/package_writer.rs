@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_common::Fingerprint;
 use campfire_package::{FileIndex, PackageWalk};
-use campfire_store::{DurableFile, OutputFile};
+use campfire_store::{DurableDir, DurableFile, OutputFile};
 use campfire_values::PackagePath;
 
 use crate::error::WriteError;
@@ -19,7 +19,7 @@ pub struct PackageWriter {
 impl PackageWriter {
     /// A writer of the package in the new directory `root`; an error when one is there.
     pub fn create(root: &Path) -> Result<PackageWriter, WriteError> {
-        DurableFile::create_new_dir(root).map_err(WriteError::CreateDir)?;
+        DurableDir::create_new(root).map_err(WriteError::CreateDir)?;
         Ok(PackageWriter {
             root: root.to_owned(),
             rows: PackageWalk::new(),
@@ -34,7 +34,7 @@ impl PackageWriter {
             .split('/')
             .fold(self.root.clone(), |at, name| at.join(name));
         if let Some(dir) = at.parent() {
-            DurableFile::create_dir_all(dir).map_err(WriteError::Directory)?;
+            DurableDir::create_all(dir).map_err(WriteError::Directory)?;
         }
         OutputFile::write_new(&at, bytes).map_err(WriteError::File)?;
         self.rows.add(path, bytes).map_err(WriteError::Package)

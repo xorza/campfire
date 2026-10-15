@@ -9,8 +9,8 @@ use campfire_package::ModePackages;
 use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
 use campfire_runner::{Session, SessionWorld};
 use campfire_store::{
-    AppendOpenError, DirEntries, DurableError, DurableFile, InputFile, PathError, ReadError,
-    Stamped,
+    AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
+    ReadError, Stamped,
 };
 use secp256k1::Keypair;
 
@@ -62,9 +62,9 @@ impl SessionDir {
         data: &ServerDir,
         private: &SessionPrivate,
     ) -> Result<SessionDir, PathError<DurableError>> {
-        DurableFile::create_dir(&data.layout().sessions_dir())?;
+        DurableDir::create(&data.layout().sessions_dir())?;
         let path = data.layout().session_dir(private.terms.session_id());
-        DurableFile::create_dir(&path)?;
+        DurableDir::create(&path)?;
         let dir = SessionDir { path };
         let mut bytes = Vec::new();
         private.encode(&mut bytes);
@@ -194,12 +194,12 @@ impl SessionDir {
 
     /// Removes the directory of a session whose match never started, which logged nothing.
     pub fn remove(self) -> Result<(), PathError<DurableError>> {
-        DurableFile::remove_dir(&self.path)
+        Ok(DurableDir::remove(&self.path)?)
     }
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
     pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PathError<DurableError>> {
-        DurableFile::create_dir(&data.layout().logs_dir())?;
+        DurableDir::create(&data.layout().logs_dir())?;
         let file = data.layout().published_log(log.session_id());
         let mut bytes = Vec::new();
         log.encode(&mut bytes);
@@ -299,8 +299,8 @@ mod tests {
             !scratch.exists(&session)
         };
         // Stopped with its directory made, before its private record.
-        DurableFile::create_dir(&root.join("sessions")).unwrap();
-        DurableFile::create_dir(&path).unwrap();
+        DurableDir::create(&root.join("sessions")).unwrap();
+        DurableDir::create(&path).unwrap();
         assert!(gone(&data));
         // Before its journal.
         SessionDir::create(&data, &private).unwrap();
@@ -310,7 +310,7 @@ mod tests {
         drop(dir.start().unwrap());
         assert!(gone(&data));
         // An entry named by no session id is no session's.
-        DurableFile::create_dir(&root.join("sessions").join("stray")).unwrap();
+        DurableDir::create(&root.join("sessions").join("stray")).unwrap();
         assert!(matches!(
             SessionDir::find(&data),
             Err(FindError::Stray(name)) if name == "stray"
@@ -320,10 +320,10 @@ mod tests {
         // `-` sorts before them all.
         for id in ['0', '1'] {
             let name = String::from(id).repeat(64);
-            DurableFile::create_dir(&root.join("sessions").join(name)).unwrap();
+            DurableDir::create(&root.join("sessions").join(name)).unwrap();
         }
         assert!(matches!(SessionDir::find(&data), Err(FindError::Several)));
-        DurableFile::create_dir(&root.join("sessions").join("-stray")).unwrap();
+        DurableDir::create(&root.join("sessions").join("-stray")).unwrap();
         assert!(matches!(
             SessionDir::find(&data),
             Err(FindError::Stray(name)) if name == "-stray"

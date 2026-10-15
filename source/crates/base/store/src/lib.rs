@@ -13,6 +13,7 @@
 mod append_writer;
 mod data_dir;
 mod dir_entries;
+mod durable_dir;
 mod durable_file;
 mod exchange;
 mod input_file;
@@ -40,6 +41,8 @@ pub use crate::append_writer::slow_sync::SlowSync;
 pub use crate::data_dir::DataDir;
 pub use crate::data_dir::error::DataDirError;
 pub use crate::dir_entries::{DirEntries, DirEntry, EntryKind};
+pub use crate::durable_dir::DurableDir;
+pub use crate::durable_dir::error::{DurableDirCreateError, DurableDirError};
 pub use crate::durable_file::DurableFile;
 pub use crate::durable_file::error::{DurableCreateError, DurableError};
 pub use crate::exchange::Exchange;

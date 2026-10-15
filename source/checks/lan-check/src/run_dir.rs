@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use campfire_store::DurableFile;
+use campfire_store::DurableDir;
 
 use crate::error::CheckError;
 
@@ -17,8 +17,8 @@ impl RunDir {
     /// does not exist; an error if the directory exists.
     pub(crate) fn create(root: &Path, start: SystemTime) -> Result<RunDir, CheckError> {
         let path = root.join(RunDir::name(start));
-        DurableFile::create_dir_all(root).map_err(CheckError::Write)?;
-        DurableFile::create_new_dir(&path).map_err(CheckError::RunDir)?;
+        DurableDir::create_all(root).map_err(CheckError::RunRoot)?;
+        DurableDir::create_new(&path).map_err(CheckError::RunDir)?;
         Ok(RunDir { path })
     }
 
@@ -68,7 +68,7 @@ mod tests {
     use std::time::Duration;
 
     use campfire_store::internals::Scratch;
-    use campfire_store::{DurableCreateError, PathError};
+    use campfire_store::{DurableDirCreateError, PathError};
 
     use super::*;
 
@@ -105,7 +105,7 @@ mod tests {
         assert!(matches!(
             RunDir::create(&root, at(1_000)),
             Err(CheckError::RunDir(PathError {
-                error: DurableCreateError::Exists,
+                error: DurableDirCreateError::Exists,
                 ..
             }))
         ));

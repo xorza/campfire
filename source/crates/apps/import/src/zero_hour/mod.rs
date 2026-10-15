@@ -9,7 +9,7 @@ use campfire_client_files::{
 use campfire_codec::Toml;
 use campfire_common::{Fingerprint, MapName};
 use campfire_package_disk::{PackageWriter, WriteError};
-use campfire_store::DurableFile;
+use campfire_store::DurableDir;
 use campfire_values::PackagePath;
 
 use crate::texture::dds_file::DdsFile;
@@ -120,7 +120,7 @@ impl<'a> ZeroHour<'a> {
     /// `data/units.toml`; each texture becomes a KTX2 file of `client/textures/`, at its path in
     /// the archives.
     pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
-        DurableFile::create_new_dir(out)
+        DurableDir::create_new(out)
             .map_err(WriteError::CreateDir)
             .map_err(ZeroHourError::Write)?;
         let rules = ZeroHour::write_rules(&out.join(ZeroHour::RULES))?;

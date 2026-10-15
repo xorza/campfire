@@ -2,13 +2,16 @@ use std::io;
 
 use thiserror::Error;
 
+use crate::durable_dir::error::DurableDirError;
+use crate::path_error::PathError;
 use crate::platform::owner_only::Exposure;
 
 /// Why a data directory did not open.
 #[derive(Debug, Error)]
 pub enum DataDirError {
+    /// It, or a directory above it, was not made.
     #[error("could not make the data directory")]
-    Create(#[source] io::Error),
+    Create(#[source] PathError<DurableDirError>),
     /// Who may open it did not read.
     #[error("could not check who may open the data directory")]
     Inspect(#[source] io::Error),

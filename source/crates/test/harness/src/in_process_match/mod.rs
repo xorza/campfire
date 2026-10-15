@@ -963,7 +963,7 @@ pub(crate) mod bench {
     use campfire_orders::OrdersAction;
     use campfire_package_disk::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
-    use campfire_store::DurableFile;
+    use campfire_store::DurableDir;
     use lightyear::prelude::RollbackMode;
 
     use crate::in_process_match::link_model::LinkModel;
@@ -1127,7 +1127,7 @@ pub(crate) mod bench {
                 worst.keep_worst(&local.step_cost);
             }
             drop(local);
-            DurableFile::remove_dir(&dir).expect("the bench's own data directory");
+            DurableDir::remove(&dir).expect("the bench's own data directory");
             worst
         }
     }
