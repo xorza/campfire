@@ -58,10 +58,9 @@ jobs:
           path: source/target/drive/lan-check
           retention-days: 7
           if-no-files-found: ignore
-      # The gate's last build, the LAN check's, writes the check and the verifier in target/debug,
-      # after the tests' build of them with every feature. A tar keeps the executable bits, which
-      # an artifact drops. Its paths stay relative: GNU tar reads the `D:` of a Windows path as a
-      # remote host.
+      # The gate's LAN build writes the check and the verifier in target/debug, in the tests' build
+      # with every feature. A tar keeps the executable bits, which an artifact drops. Its paths stay
+      # relative: GNU tar reads the `D:` of a Windows path as a remote host.
       - name: Pack the verifier
         run: |
           exe=""

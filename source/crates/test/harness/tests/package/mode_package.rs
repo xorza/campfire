@@ -3265,3 +3265,37 @@ fn a_box_lies_only_on_a_planar_map() {
     let alone = load(&edited([(MAP, Edit::Create(&raised))]));
     assert!(alone.is_ok(), "{:?}", alone.err());
 }
+
+#[test]
+fn a_build_or_a_gather_without_navigation_fails_its_load() {
+    // The skirmish runs no navigation, and production without it runs no build, whose box only
+    // navigation tests for room and whose worker walks, nor a gather, whose worker walks.
+    let raise = "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\n";
+    let mine = "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"money\"\ntake = 5\n";
+    for (action, data) in [("raise", raise), ("mine", mine)] {
+        let mut tree = PackageTree::of(TestMode::Skirmish);
+        tree.edit(
+            "test/modes/skirmish/manifest.toml",
+            Edit::Replace(
+                r#"["stats", "combat"]"#,
+                r#"["stats", "combat", "production"]"#,
+            ),
+        )
+        .edit("test/modes/skirmish/data/mode.toml", Edit::Append(data))
+        .edit(
+            "test/modes/skirmish/data/units.toml",
+            Edit::Append("[units.yard]\ncollision = { box = [\"4\", \"2\"] }\n"),
+        );
+        let error = tree.load().unwrap_err();
+        assert!(
+            matches!(
+                &*error.problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Navigation,
+                    at: Place::Action(at),
+                } if at == action
+            ),
+            "{action}: {error:?}"
+        );
+    }
+}

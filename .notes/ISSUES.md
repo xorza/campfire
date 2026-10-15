@@ -4,7 +4,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
-- **Production.** A mode of `production` with no `navigation` loads a `build` action, as the load asks only for `production`, but the sim installs no system that starts a build without navigation, so the order does nothing; the client's command panel hides its button. The options: the load refuses a build in a mode of no navigation, or a build without navigation places its site with no test of room.
 
 ## Research
 
@@ -23,4 +22,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Ready
 
 - **Combat.** An attack lands its damage in the tick it fires, where Zero Hour deals a weapon of no projectile `distance / WeaponSpeed` frames after the shot, rounded up, when that is a frame or more (`WeaponStore::setDelayedDamage`): the import drops each non-laser weapon whose `WeaponSpeed` is below the default, 7 of the install's starting weapons, `HumveeGun` and `SentryDroneGun` among them (design 19, D6).
-- **Driver.** `source/.config/nextest.toml` says that a bench case ends at 60 s, in the comment of its `kind(bench)` override and in that of `[profile.ci]`, where the override ends one at 80 s, 4 periods of 20 s.

@@ -52,7 +52,7 @@ use crate::action_names::ActionNames;
 use crate::args::{Args, CommandLine};
 use crate::bot::Bot;
 use crate::build_preview::BuildPreview;
-use crate::command_panel::{BuildButtons, CommandPanel};
+use crate::command_panel::CommandPanel;
 use crate::connection::Connection;
 use crate::hud::Hud;
 use crate::inventory_bar::InventoryBar;
@@ -245,11 +245,10 @@ fn add_ends(
             InventoryBar,
         ));
     }
-    // The command panel reads production's books; a build places a box only navigation tests,
-    // so a mode of no navigation has no preview, and the panel no build button.
+    // The command panel reads production's books; a build needs navigation, which the load
+    // holds, so only a mode of navigation has the preview of one.
     let capabilities = &packages.manifest().capabilities;
     if capabilities.contains(Capability::Production) {
-        let navigates = capabilities.contains(Capability::Navigation);
         let names: Names<ResourceId> = packages
             .data()
             .resources
@@ -257,18 +256,13 @@ fn add_ends(
             .map(DeclaredName::as_str)
             .collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
-        let builds = if navigates {
-            BuildButtons::Shown
-        } else {
-            BuildButtons::Hidden
-        };
         app.add_plugins((
             ActionNames {
                 packages: Arc::clone(packages),
             },
-            CommandPanel { resources, builds },
+            CommandPanel { resources },
         ));
-        if navigates {
+        if capabilities.contains(Capability::Navigation) {
             app.add_plugins(BuildPreview);
         }
     }

@@ -2559,7 +2559,6 @@ dependencies = [
  "campfire-verifier",
  "clap",
  "derive_more",
- "serde",
  "thiserror 2.0.21",
  "tracing",
 ]

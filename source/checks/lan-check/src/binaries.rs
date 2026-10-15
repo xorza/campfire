@@ -1,16 +1,11 @@
 use std::env;
-use std::ffi::OsStr;
+use std::env::consts::EXE_SUFFIX;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::str;
-
-use campfire_codec::Json;
-use serde::Deserialize;
 
 use crate::error::CheckError;
-use crate::target_name::TargetName;
 
-/// The executables the check runs, as cargo built them.
+/// The executables the check runs: those beside its own, which `./drive.py` builds with it in the
+/// tests' build, so the workspace compiles once.
 #[derive(Debug)]
 pub(crate) struct Binaries {
     pub(crate) server: PathBuf,
@@ -18,69 +13,46 @@ pub(crate) struct Binaries {
     pub(crate) verifier: PathBuf,
 }
 
-/// A line of cargo's JSON output: the check reads only the artifacts it builds.
-#[derive(Debug, Deserialize)]
-#[serde(tag = "reason", rename_all = "kebab-case")]
-enum Message {
-    CompilerArtifact {
-        target: Target,
-        executable: Option<PathBuf>,
-    },
-    #[serde(other)]
-    Other,
-}
-
-#[derive(Debug, Deserialize)]
-struct Target {
-    name: TargetName,
-}
-
 impl Binaries {
-    /// Builds the server, client and verifier with `cargo`, in its default profile, and finds
-    /// their executables.
-    pub(crate) fn build(cargo: &OsStr) -> Result<Binaries, CheckError> {
-        let mut command = Command::new(cargo);
-        // `cargo run` gives the check its package's variables; a build script that tracks one,
-        // as `ring`'s tracks `CARGO_MANIFEST_DIR`, would rebuild on every run with them.
-        for (name, _) in env::vars_os() {
-            let package = name.to_str().is_some_and(|name| {
-                name.starts_with("CARGO_PKG_") || name.starts_with("CARGO_MANIFEST_")
-            });
-            if package {
-                command.env_remove(name);
-            }
-        }
-        command.arg("build");
-        for target in TargetName::RUN {
-            command.args(["-p", target.name()]);
-        }
-        let output = command
-            .arg("--message-format=json-render-diagnostics")
-            .stderr(Stdio::inherit())
-            .output()
-            .map_err(CheckError::CargoStart)?;
-        if !output.status.success() {
-            return Err(CheckError::Build);
-        }
-        let mut built = TargetName::RUN.map(|target| (target, None));
-        for line in output.stdout.split(|&byte| byte == b'\n') {
-            let Ok(Message::CompilerArtifact {
-                target,
-                executable: Some(executable),
-            }) = str::from_utf8(line).map_or(Ok(Message::Other), Json::parse)
-            else {
-                continue;
-            };
-            if let Some((_, path)) = built.iter_mut().find(|(name, _)| *name == target.name) {
-                *path = Some(executable);
-            }
-        }
+    /// The server's, client's and verifier's binaries, each its package's name, which the
+    /// driver's `LAN_BINARIES` builds with the check: one it left out would be an old build.
+    const NAMES: [&str; 3] = ["campfire-server", "campfire-client", "campfire-verifier"];
+
+    /// The server, client and verifier in the folder of the check's own executable.
+    pub(crate) fn beside_check() -> Result<Binaries, CheckError> {
+        let own = env::current_exe().map_err(CheckError::OwnExecutable)?;
+        let dir = own.parent().expect("an executable is in a folder");
         let [server, client, verifier] =
-            built.map(|(target, path)| path.ok_or(CheckError::NoExecutable(target)));
+            Binaries::NAMES.map(|name| dir.join(format!("{name}{EXE_SUFFIX}")));
         Ok(Binaries {
-            server: server?,
-            client: client?,
-            verifier: verifier?,
+            server,
+            client,
+            verifier,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_driver_builds_the_check_and_each_binary_it_runs() {
+        let driver = include_str!("../../../drive.py");
+        let list = driver
+            .split_once("LAN_BINARIES = (")
+            .and_then(|(_, rest)| rest.split_once(')'))
+            .map(|(list, _)| list)
+            .expect("the driver lists the LAN binaries");
+        let mut built: Vec<&str> = list
+            .split(',')
+            .map(|name| name.trim().trim_matches('"'))
+            .filter(|name| !name.is_empty())
+            .collect();
+        built.sort_unstable();
+        let mut run = vec!["campfire-lan-check"];
+        run.extend(Binaries::NAMES);
+        run.sort_unstable();
+        assert_eq!(built, run);
     }
 }
