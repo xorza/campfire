@@ -10,6 +10,7 @@
 mod book;
 mod by_type;
 mod cache;
+mod callback_table;
 mod callbacks;
 mod capability_set;
 mod declarations;
@@ -35,6 +36,7 @@ mod spawn_parts;
 pub use crate::book::Book;
 pub use crate::by_type::ByType;
 pub use crate::cache::Cache;
+pub use crate::callback_table::CallbackTable;
 pub use crate::callbacks::Callbacks;
 pub use crate::capability_set::CapabilitySet;
 pub use crate::declarations::{ColumnFill, Declarations};

@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Callbacks;
+use campfire_declare::{CallbackTable, Callbacks};
 use campfire_math::Num;
 use campfire_script::{CallError, ScriptBatch};
 use campfire_sim::Capability;
@@ -11,7 +11,7 @@ use crate::heal::Heal;
 /// its `calc_damage` and `calc_heal`, each a pure call in the pass's batch, none of a hook its
 /// script does not define, which leaves the amount as it is.
 #[derive(Resource, Debug, Default)]
-pub struct Weighers(Option<Weigh>);
+pub struct Weighers(CallbackTable<Weigh, 1>);
 
 /// The mode's weighers of a damage and of a heal.
 #[derive(Debug, Clone, Copy)]
@@ -29,14 +29,13 @@ impl Callbacks for Weighers {
     }
 
     fn register(&mut self, (): (), weigh: Weigh) {
-        assert!(self.0.is_none(), "the mode's weighers register once");
-        self.0 = Some(weigh);
+        self.0.register(0, weigh);
     }
 }
 
 impl Weighers {
     /// The mode's weighers, when a mode declares them.
     pub(crate) const fn get(&self) -> Option<Weigh> {
-        self.0
+        self.0.get(0)
     }
 }

@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Callbacks;
+use campfire_declare::{CallbackTable, Callbacks};
 use campfire_script::{CallError, Frame, View};
 use campfire_sim::{Capability, StableId};
 
@@ -15,7 +15,7 @@ pub type QueueListed =
 /// each declares its own, as a call's effects apply themselves, so the lists name no
 /// capability's effect types.
 #[derive(Resource, Debug, Default)]
-pub struct EffectQueues([Option<QueueListed>; Capability::ALL.len()]);
+pub struct EffectQueues(CallbackTable<QueueListed, { Capability::ALL.len() }>);
 
 impl Callbacks for EffectQueues {
     type Key = Capability;
@@ -26,16 +26,15 @@ impl Callbacks for EffectQueues {
     }
 
     fn register(&mut self, capability: Capability, queue: QueueListed) {
-        let slot = &mut self.0[capability as usize];
-        assert!(slot.is_none(), "{capability:?} registers its effects once");
-        *slot = Some(queue);
+        self.0.register(capability as usize, queue);
     }
 }
 
 impl EffectQueues {
     /// How `capability`'s listed effects queue, which a match registered as it installed it.
     pub fn of(&self, capability: Capability) -> QueueListed {
-        self.0[capability as usize]
+        self.0
+            .get(capability as usize)
             .expect("the load refuses an effect of a capability the match does not have")
     }
 }

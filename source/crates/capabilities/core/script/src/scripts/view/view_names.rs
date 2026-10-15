@@ -1,4 +1,4 @@
-use std::any::{Any, TypeId};
+use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ use campfire_values::{
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_names::ScriptNames;
 use crate::scripts::script_text::ScriptText;
+use crate::scripts::type_slots::{Slot, TypeSlots};
 use crate::scripts::view::tag_names::TagNames;
 use crate::scripts::view::teams::Teams;
 
@@ -19,7 +20,7 @@ use crate::scripts::view::teams::Teams;
 #[derive(Debug, Default)]
 pub struct ViewNames {
     /// The names of each kind of id, a `ScriptNames<I>` by the id's type `I`.
-    tables: Vec<(TypeId, Box<dyn Any>)>,
+    tables: TypeSlots<dyn AnyNames>,
     tags: TagNames,
     /// The match's teams; none before a mode sets them.
     teams: Option<Rc<Teams>>,
@@ -30,20 +31,18 @@ pub struct ViewNames {
 impl ViewNames {
     /// Puts in the names of the ids of type `I`, in place of those it held.
     pub fn set_table<I: NameId + 'static>(&mut self, names: Arc<Names<I>>) {
-        let table: Box<dyn Any> = Box::new(ScriptNames::new(names));
-        let kind = TypeId::of::<I>();
-        match self.tables.iter_mut().find(|(held, _)| *held == kind) {
-            Some((_, held)) => *held = table,
-            None => self.tables.push((kind, table)),
+        let table = ScriptNames::new(names);
+        match self.tables.get_mut::<ScriptNames<I>>() {
+            Some(held) => *held = table,
+            None => {
+                self.tables.add(Box::new(table));
+            }
         }
     }
 
     /// The names of the ids of type `I`; none before their owner puts them in.
     pub fn table<I: NameId + 'static>(&self) -> Option<&ScriptNames<I>> {
-        let kind = TypeId::of::<I>();
-        let (_, table) = self.tables.iter().find(|(held, _)| *held == kind)?;
-        let names = table.downcast_ref::<ScriptNames<I>>();
-        Some(names.expect("a table holds the names of its kind"))
+        self.tables.get::<ScriptNames<I>>()
     }
 
     /// The id of type `I` named `key`.
@@ -129,3 +128,8 @@ impl ViewNames {
         }
     }
 }
+
+/// A table of the names of one kind of id, as `ViewNames` holds it among the others.
+trait AnyNames: Slot + fmt::Debug {}
+
+impl<I: NameId + 'static> AnyNames for ScriptNames<I> {}
