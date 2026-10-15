@@ -2,12 +2,13 @@ use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::Tick;
 use campfire_package::ModePackages;
-use campfire_protocol::{Checkpoint, SeedError, SessionLog, SnapshotFingerprint};
-use campfire_sim::SimWorld;
+use campfire_protocol::{Checkpoint, SeedError, SessionLog};
+use campfire_sim::{SimWorld, TickRate};
 
-use crate::replay::error::{ReplayError, SnapshotCheckError};
+use crate::match_build::MatchBuild;
+use crate::replay::error::ReplayError;
 use crate::session::Session;
-use crate::session::error::StartError;
+use crate::session::error::{SnapshotCheckError, StartError};
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -98,19 +99,11 @@ impl<'p> Replay<'p> {
         record: &Checkpoint,
         snapshot: &[u8],
     ) -> Result<(), SnapshotCheckError> {
-        if SnapshotFingerprint::of(snapshot) != record.snapshot {
-            return Err(SnapshotCheckError::Fingerprint);
-        }
         let header = self.game.session().log().header();
-        let restored = Session::snapshot_hash(self.packages, header, snapshot)
-            .map_err(SnapshotCheckError::Restore)?;
-        if restored != record.state_hash {
-            return Err(SnapshotCheckError::Hash {
-                logged: record.state_hash,
-                restored,
-            });
-        }
-        Ok(())
+        let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
+        let rate = TickRate::new(header.terms.tick_hz);
+        let mut game = MatchBuild::restore_target(self.packages, rate, slots);
+        Session::restore_checked(&mut game, record, snapshot)
     }
 
     pub const fn game(&self) -> &Match {

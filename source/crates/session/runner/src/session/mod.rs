@@ -3,19 +3,21 @@ use std::num::NonZeroU64;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{StateHash, Tick, Ticks};
+use campfire_common::{Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_package::ModePackages;
 use campfire_protocol::{
     AfterLeave, Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError,
-    PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionHeader,
-    SessionLog, SessionResult, Signature, SnapshotFingerprint,
+    PlayerInput, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
+    SessionResult, Signature, SnapshotFingerprint,
 };
-use campfire_sim::{SimWorld, SnapshotError, TickRate};
+use campfire_sim::{SimWorld, TickRate};
 use secp256k1::{Keypair, Secp256k1, Signing};
 
 use crate::match_build::MatchBuild;
-use crate::session::error::{CheckpointBeginError, ResumeError, ServerInputRefused, StartError};
+use crate::session::error::{
+    CheckpointBeginError, ResumeError, ServerInputRefused, SnapshotCheckError, StartError,
+};
 use crate::session_rules::SessionRules;
 use crate::slot_rules::SlotRules;
 
@@ -99,19 +101,28 @@ impl Session {
         })
     }
 
-    /// The state hash of `snapshot` restored in a match of the mode `packages` holds, as the
-    /// session of `header` plays it, as a verifier checks a checkpoint's snapshot; an error for
-    /// bytes that do not restore.
-    pub fn snapshot_hash(
-        packages: &ModePackages,
-        header: &SessionHeader,
+    /// Restores `snapshot` in `world`, a match built for it, when it is the snapshot `record`,
+    /// a checkpoint of the log, names, and checks that it restores to the state the record
+    /// holds. An error for another snapshot, bytes that do not restore, and another state.
+    pub(crate) fn restore_checked(
+        world: &mut World,
+        record: &Checkpoint,
         snapshot: &[u8],
-    ) -> Result<StateHash, SnapshotError> {
-        let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
-        let rate = TickRate::new(header.terms.tick_hz);
-        let mut game = MatchBuild::restore_target(packages, rate, slots);
-        game.restore(snapshot)?;
-        Ok(game.state_hash())
+    ) -> Result<(), SnapshotCheckError> {
+        if SnapshotFingerprint::of(snapshot) != record.snapshot {
+            return Err(SnapshotCheckError::Fingerprint);
+        }
+        world
+            .restore(snapshot)
+            .map_err(SnapshotCheckError::Restore)?;
+        let restored = world.state_hash();
+        if restored != record.state_hash {
+            return Err(SnapshotCheckError::Hash {
+                logged: record.state_hash,
+                restored,
+            });
+        }
+        Ok(())
     }
 
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
@@ -306,18 +317,12 @@ impl Session {
         let record = log
             .checkpoints()
             .find(|record| record.segment == segment)
-            .ok_or(ResumeError::NoCheckpoint)?;
-        let (tick, state_hash) = (record.tick, record.state_hash);
-        if SnapshotFingerprint::of(snapshot) != record.snapshot {
-            return Err(ResumeError::Fingerprint);
-        }
+            .ok_or(ResumeError::NoCheckpoint)?
+            .clone();
         let mut session =
             Session::build(world, log, seeds, packages, segment).map_err(ResumeError::Start)?;
-        world.restore(snapshot).map_err(ResumeError::Snapshot)?;
-        if world.state_hash() != state_hash {
-            return Err(ResumeError::StateHash);
-        }
-        session.log.seal_until(tick);
+        Session::restore_checked(world, &record, snapshot).map_err(ResumeError::Snapshot)?;
+        session.log.seal_until(record.tick);
         world.insert_resource(session);
         Ok(())
     }

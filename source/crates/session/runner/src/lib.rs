@@ -13,10 +13,11 @@ mod slot_rules;
 pub use crate::events::script_call_failed::ScriptCallFailed;
 pub use crate::match_build::MatchBuild;
 pub use crate::replay::Replay;
-pub use crate::replay::error::{ReplayError, SnapshotCheckError};
+pub use crate::replay::error::ReplayError;
 pub use crate::session::Session;
 pub use crate::session::error::{
-    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, StartError,
+    CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, SnapshotCheckError,
+    StartError,
 };
 pub use crate::session::session_world::SessionWorld;
 pub use crate::session_rules::SessionRules;

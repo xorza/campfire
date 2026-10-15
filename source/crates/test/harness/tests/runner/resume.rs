@@ -11,7 +11,7 @@ use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
-use campfire_runner::{Replay, ResumeError, Session, SessionWorld};
+use campfire_runner::{Replay, ResumeError, Session, SessionWorld, SnapshotCheckError};
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_units::Dead;
 
@@ -195,12 +195,17 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     assert!(matches!(resume(3, &first), Some(ResumeError::NoCheckpoint)));
     assert!(matches!(
         resume(1, &garbage),
-        Some(ResumeError::Fingerprint)
+        Some(ResumeError::Snapshot(SnapshotCheckError::Fingerprint))
     ));
-    assert!(matches!(resume(1, &first), Some(ResumeError::StateHash)));
+    assert!(matches!(
+        resume(1, &first),
+        Some(ResumeError::Snapshot(SnapshotCheckError::Hash { .. }))
+    ));
     assert!(matches!(
         resume(2, &garbage),
-        Some(ResumeError::Snapshot(SnapshotError::NotSnapshot))
+        Some(ResumeError::Snapshot(SnapshotCheckError::Restore(
+            SnapshotError::NotSnapshot
+        )))
     ));
 }
 

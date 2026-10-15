@@ -30,6 +30,23 @@ pub enum StartError {
     MatchStart(#[source] CallError),
 }
 
+/// Why a snapshot does not hold what a checkpoint record says of it.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SnapshotCheckError {
+    /// Its fingerprint is not the record's.
+    #[error("the snapshot is not the one its checkpoint names")]
+    Fingerprint,
+    /// It does not restore.
+    #[error("the snapshot does not restore")]
+    Restore(#[source] SnapshotError),
+    /// It restores to another state than the record's.
+    #[error("the snapshot restores to state {restored}, and its checkpoint records {logged}")]
+    Hash {
+        logged: StateHash,
+        restored: StateHash,
+    },
+}
+
 /// Why a session log and a snapshot do not resume a match from a checkpoint. A restore reads
 /// both from the disk, and a verifier from a published log, so each is an expected failure.
 #[derive(Debug, Error)]
@@ -39,14 +56,8 @@ pub enum ResumeError {
     /// The log holds no checkpoint that starts the segment.
     #[error("the log holds no such checkpoint")]
     NoCheckpoint,
-    /// The snapshot is not the one the checkpoint fingerprints.
-    #[error("the snapshot is not the one the checkpoint fingerprints")]
-    Fingerprint,
-    #[error("the snapshot does not restore")]
-    Snapshot(#[source] SnapshotError),
-    /// The snapshot restores to another state hash than the checkpoint's.
-    #[error("the snapshot restores to another state than the checkpoint's")]
-    StateHash,
+    #[error(transparent)]
+    Snapshot(SnapshotCheckError),
     /// The log does not load the save.
     #[error("the save does not load")]
     Load(#[source] LogLoadError),
