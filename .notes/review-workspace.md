@@ -97,31 +97,10 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
 
-### Batch 1. Restore safety (RC1)
-
-Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry/{mod,internals}.rs`, `capabilities/core/declare/src/**`, `capabilities/core/units/src/units/{forced_move,spawn_point}.rs`, `capabilities/core/actions/src/action_slots/{mod,slot_times}.rs`, `capabilities/mode/src/choices.rs`, `capabilities/items/src/inventory.rs`, `capabilities/navigation/src/{static_bodies,walking}.rs`, `session/runner/src/session_rules/mod.rs`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/sim_{server,client}/mod.rs`. Goldens: none move, as the wide-domain arithmetic rounds once, as the `Num` arithmetic did.
-
-
-### Batch 2. Order and roles (RC9, RC8)
-
-Files: `sim/sim/src/{sim_world,state_registry/mod}.rs`, `test/harness/tests/runner/resume.rs`, `capabilities/combat/src/{dying,attacks}.rs`, `capabilities/core/declare/src/declare/{install_cx,role}.rs`, every module's `install`, `capabilities/abilities/src/lib.rs`, `capabilities/items/src/lib.rs`, `capabilities/vision/src/lib.rs`, `sim/sim/src/{capability,sim_rng}.rs`, `capabilities/src/release/*`, `capabilities/core/script/src/scripts/script_call.rs`, `capabilities/production/src/{trains,lib,production_orders}.rs`, `docs/design/14-replication-audiences.md`. Goldens: they move for the RNG key, and maybe for the order of deaths.
-
-
-### Batch 3. Package crates (D3, D4)
-
-Goes before the batches that edit `package`, so each fix lands in its final crate. Files: `session/package/**`, `session/runner/src/**`, `session/verifier/src/**`, `capabilities/mode/src/height_grid.rs`, the `Cargo.toml` of every crate that depends on `package`, `docs/design/02-engine-core.md`. Goldens: none move. The packages' fingerprints stay byte-equal.
-
-
-### Batch 4. Untrusted files (RC2)
-
-Files: `session/package/src/{package_dir/mod.rs,client_data/texture_levels.rs,mode_packages/{load_check,name_tables}.rs}`, `capabilities/src/books/*`, `capabilities/core/actions/src/{effect_list_book,slot_kinds}.rs`, `capabilities/items/src/{shop,inventory}.rs`, `capabilities/core/geometry/src/{polygon/mod,bounds}.rs`. Goldens: none move.
-
-
 ### Batch 5. Store and network bugs
 
 Files: `base/store/src/{data_dir/mod.rs,platform/owner_only.rs,durable_file/*,stream_writer/mod.rs,exchange/mod.rs,append_writer/mod.rs}`, `network/quic/src/{link_end,quic_plugin,endpoint_state,port_mapper/mod}.rs`, `network/net/src/sim_server/data_filter.rs`. Goldens: none move.
 
-- [ ] `quic/src/link_end.rs:252-259`: a `LinkEnd` case for an app close that the handshake hid (`Transport { code: 12 }` before 1-RTT, RFC 9000 §10.2.3), mapped by `LinkLossCause`. Test: a close before the handshake ends reports the new case. This should remove the issue log's flaky `quic_endpoint` test item.
 - [ ] `quic/src/quic_plugin.rs:54`: `try_insert`, as `unlink` has.
 - [ ] `quic/src/port_mapper/mod.rs:201-203`: the PCP lifetime is clamped to `retry`.
 - [ ] `net/src/sim_server/data_filter.rs:236-260`: the remove observers build through `DataFilter::of`.

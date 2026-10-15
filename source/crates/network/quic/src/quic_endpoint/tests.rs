@@ -436,7 +436,9 @@ fn a_connection_a_server_ends_before_its_frame_is_never_linked() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     // The server's thread completes the handshake while its app runs no frame, then the server
-    // ends before the frame that would link it: the connection closes as its links would.
+    // ends before the frame that would link it: the connection closes as its links would, with
+    // `ENDED`. A server that has yet to read the client's last handshake packet sends its close
+    // in the handshake's packets too, which carry no code: the one the client reads first wins.
     let start = Instant::now();
     while !client.is::<Linked>() {
         assert!(start.elapsed() < PATIENCE, "the handshake did not complete");
@@ -450,9 +452,10 @@ fn a_connection_a_server_ends_before_its_frame_is_never_linked() {
     });
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
-    assert_eq!(
-        client.app.world().get::<LinkEnd>(client.entity),
-        Some(&LinkEnd::Ended)
+    let end = client.app.world().get::<LinkEnd>(client.entity);
+    assert!(
+        matches!(end, Some(LinkEnd::Ended | LinkEnd::ClosedInHandshake)),
+        "{end:?}"
     );
 }
 

@@ -30,6 +30,9 @@ pub enum LinkEnd {
     Unfit,
     /// The peer's app closed the link with its code.
     ClosedByPeer(AppCode),
+    /// The peer's app closed the link before the peer confirmed the handshake, whose packets
+    /// carry no app code (RFC 9000 §10.2.3).
+    ClosedInHandshake,
     /// QUIC or TLS failed with this error code, the peer's or this end's.
     Transport { code: u64 },
     /// The peer speaks no QUIC version this end does.
@@ -56,6 +59,11 @@ impl LinkEnd {
             {
                 LinkEnd::Refused
             }
+            ConnectionError::ConnectionClosed(close)
+                if close.error_code == TransportErrorCode::APPLICATION_ERROR =>
+            {
+                LinkEnd::ClosedInHandshake
+            }
             ConnectionError::ConnectionClosed(close) => LinkEnd::Transport {
                 code: close.error_code.into(),
             },
@@ -74,5 +82,38 @@ impl LinkEnd {
                 unreachable!("quinn-proto refuses an accept by it, and loses no connection by it")
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use bytes::Bytes;
+    use quinn_proto::ConnectionClose;
+
+    use super::*;
+
+    #[test]
+    fn a_transport_close_ends_a_link_by_its_code() {
+        let closed = |error_code| {
+            LinkEnd::of(&ConnectionError::ConnectionClosed(ConnectionClose {
+                error_code,
+                frame_type: None,
+                reason: Bytes::new(),
+            }))
+        };
+        // An app's close in the handshake's packets is 0x0c; a refusal 0x02; a protocol
+        // violation, 0x0a, is the transport's.
+        assert_eq!(
+            closed(TransportErrorCode::APPLICATION_ERROR),
+            LinkEnd::ClosedInHandshake
+        );
+        assert_eq!(
+            closed(TransportErrorCode::CONNECTION_REFUSED),
+            LinkEnd::Refused
+        );
+        assert_eq!(
+            closed(TransportErrorCode::PROTOCOL_VIOLATION),
+            LinkEnd::Transport { code: 0x0a }
+        );
     }
 }

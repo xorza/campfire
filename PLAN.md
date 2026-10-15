@@ -8,22 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H1. Restore safety
-
-(sim, the core capabilities, `mode`, `items`, `navigation`, `runner`, `server`, `net`; review RC1.) Code that computes on state is total over what its check accepts, in the wide domain of design 09; each kind declares the parts and state markers its entities may carry, and one restore walk refuses any other; a value a book fixes is checked against the book; `SessionRules::check` returns `CheckedTerms`, which every later reader takes. Guard: the drawn-values test fails on a state type with no holder, holds every state type, and plays a scripted window after each restore. First, as the restore bugs are the ones a peer can cause. Goldens: none move.
-
-### H2. Order and roles
-
-(sim, `declare`, every module's install, `combat`, `abilities`, `items`, `vision`, `production`, design 14; review RC8, RC9, D2.) Systems whose output order reaches state walk through `Ordered`; `InstallCx` installs by role through `systems`, `server` and `scripted`, with no `role()`; the server alone pays, refunds and despawns (D2); the capabilities no module builds leave `Capability`; mode draws are keyed by `StableId::MATCH`. Guard: a restore target that spawns in reverse order, checked by the resume test. Goldens: they move, for the RNG key and maybe the order of deaths.
-
-### H3. Package crates
-
-(`package`, `runner`, `verifier`, `mode`, design 02; review D3, D4.) `package` splits into a core crate of bytes and an outer crate that reads directories; a new crate holds the client's formats and `HeightGrid`. Before H4 and H10, so their fixes land in the final crates. Goldens: none move.
-
-### H4. Untrusted files
-
-(`package`, the books, `actions`, `items`, `geometry`; review RC2.) A read takes a `ReadBound`; each binary format checks its sizes in one function; the book builder is the load's check, and `load_check.rs` keeps only the rules that span books. Guard: every truncation and flip of each package binary format is refused. Goldens: none move.
-
 ### H5. Store and network bugs
 
 (`store`, `quic`, `net`; review RC10.) One failure and lock-poison helper for the store's workers, a `DurableDir`, a `LinkEnd` case for an app close the handshake hid, and the small QUIC and filter fixes. Goldens: none move.
