@@ -4,14 +4,14 @@
 //! `pub use` list names only its own items: a crate above depends on the crate of each type it
 //! names.
 //!
-//! A capability crate depends only on the crates of lower layers, lowest first: `state-types`
-//! and `values`; `geometry` and `visibility`; the `core` (units, scripts, players, and how a
-//! module declares what it adds); `stats`; `actions`; `combat`, `deliveries`, `items` and
-//! `progression`; `areas`, `navigation`, `projectiles` and `vision`; `abilities` and
-//! `production`; and `mode` and `orders`. `LAYERS`, in `release`'s tests, holds this list, and a
-//! test fails on a dependency on the same layer or a higher one. A capability gives the script
-//! view its fields of a unit through its column, and the call frame what a call reads besides
-//! the core's through its part.
+//! A capability crate depends only on the crates of lower layers, lowest first: `geometry` and
+//! `state-types`; `values` and `visibility`; the `core` (scripts, how a module declares what it
+//! adds, units, players); `stats` and `vision`; `actions`; `combat`, `deliveries`,
+//! `interaction`, `items` and `progression`; `abilities`, `areas`, `navigation` and
+//! `projectiles`; `production`; and `mode` and `orders`. `LAYERS`, in `release`'s tests, holds
+//! this list, each crate one layer above its highest dependency, and a test fails on a crate it
+//! lacks or places otherwise. A capability gives the script view its fields of a unit through
+//! its column, and the call frame what a call reads besides the core's through its part.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

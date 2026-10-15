@@ -41,8 +41,8 @@ pub use crate::areas_api::AreasApi;
 pub use crate::areas_effect::AreasEffect;
 pub use crate::error::AreaError;
 
-/// The `areas` capability: area units, which actions deliver. It builds on combat, which a match
-/// installs too.
+/// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an
+/// area holds on the units inside it.
 #[derive(Debug)]
 pub struct Areas;
 

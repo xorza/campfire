@@ -128,37 +128,37 @@ Each module is a crate, as Bevy's are, so each import between modules is a depen
 
 | Layer | Crate | Folder | Needs | Uses |
 | --- | --- | --- | --- | --- |
+| 0 | `campfire-geometry` | `capabilities/core/geometry` | — | — |
 | 0 | `campfire-state-types` | `capabilities/core/state-types` | — | — |
 | 1 | `campfire-values` | `capabilities/core/values` | — | — |
 | 1 | `campfire-visibility` | `capabilities/core/visibility` | — | — |
-| 2 | `campfire-geometry` | `capabilities/core/geometry` | — | — |
-| 3 | `campfire-script` | `capabilities/core/script` | — | — |
-| 4 | `campfire-declare` | `capabilities/core/declare` | — | — |
-| 5 | `campfire-units` | `capabilities/core/units` | — | — |
-| 6 | `campfire-players` | `capabilities/core/players` | — | — |
-| 7 | `campfire-stats` | `capabilities/stats` | — | — |
-| 8 | `campfire-actions` | `capabilities/core/actions` | — | — |
-| 9 | `campfire-combat` | `capabilities/combat` | stats | — |
-| 9 | `campfire-deliveries` | `capabilities/core/deliveries` | — | — |
-| 9 | `campfire-interaction` | `capabilities/interaction` | — | — |
-| 9 | `campfire-items` | `capabilities/items` | stats | — |
-| 9 | `campfire-progression` | `capabilities/progression` | stats | — |
-| 10 | `campfire-abilities` | `capabilities/abilities` | stats | — |
-| 10 | `campfire-areas` | `capabilities/areas` | stats | — |
-| 10 | `campfire-navigation` | `capabilities/navigation` | — | — |
-| 10 | `campfire-projectiles` | `capabilities/projectiles` | stats | — |
-| 10 | `campfire-vision` | `capabilities/vision` | — | — |
-| 11 | `campfire-production` | `capabilities/production` | — | navigation, stats, vision |
-| 12 | `campfire-mode` | `capabilities/mode` | — | combat, items, navigation, production, progression, stats, vision |
-| 12 | `campfire-orders` | `capabilities/orders` | navigation, stats | interaction, production, vision |
-| 13 | `campfire-capabilities` | `capabilities` | — | — |
+| 2 | `campfire-script` | `capabilities/core/script` | — | — |
+| 3 | `campfire-declare` | `capabilities/core/declare` | — | — |
+| 4 | `campfire-units` | `capabilities/core/units` | — | — |
+| 5 | `campfire-players` | `capabilities/core/players` | — | — |
+| 6 | `campfire-stats` | `capabilities/stats` | — | — |
+| 6 | `campfire-vision` | `capabilities/vision` | — | — |
+| 7 | `campfire-actions` | `capabilities/core/actions` | — | — |
+| 8 | `campfire-combat` | `capabilities/combat` | stats | — |
+| 8 | `campfire-deliveries` | `capabilities/core/deliveries` | — | — |
+| 8 | `campfire-interaction` | `capabilities/interaction` | — | — |
+| 8 | `campfire-items` | `capabilities/items` | stats | — |
+| 8 | `campfire-progression` | `capabilities/progression` | stats | — |
+| 9 | `campfire-abilities` | `capabilities/abilities` | stats | — |
+| 9 | `campfire-areas` | `capabilities/areas` | stats | — |
+| 9 | `campfire-navigation` | `capabilities/navigation` | — | — |
+| 9 | `campfire-projectiles` | `capabilities/projectiles` | stats | — |
+| 10 | `campfire-production` | `capabilities/production` | — | navigation, stats, vision |
+| 11 | `campfire-mode` | `capabilities/mode` | — | combat, items, navigation, production, progression, stats, vision |
+| 11 | `campfire-orders` | `capabilities/orders` | navigation, stats | interaction, production, vision |
+| 12 | `campfire-capabilities` | `capabilities` | — | — |
 
 - **The senders' `Order`.** `Order` and its `Action`, a sum of each owner's action, live in the top crate, so `orders` depends on neither `items` nor `progression`. `orders` keeps its dependency on `production`, whose build and gather orders a unit takes, on `interaction`, whose use slot a use order fills, and on `vision`, whose sight it reads.
 - **Contracts.** A capability asks another for its work through a part of `units` that both read, never by writing the other's state, as 0 A.D.'s components ask a walk of `UnitMotion` through its interface. Each such part is the state or the report of the capability that pursues it, kept in `units` so the capabilities that ask need no dependency on it: `Dead`, `ForcedMove`, and a walk's `Destination` with `ArrivedShort`, which navigation pursues and answers ([Navigation](04-capabilities/navigation.md), Walking a route). So `abilities`, which walks a caster into range, depends on no navigation. A change that the asker decides and the owner applies at once is an event of `units` that the owner observes: progression triggers `LevelRaised` as a unit's `level` track rises, and stats, which owns the unit's `Level`, sets it.
 - **Visibility.** An item that another crate uses becomes `pub`; the rest stays `pub(crate)`. A crate's published surface is its `lib.rs`, which names only the crate's own items: `net`, `runner`, `client` and the rest depend on the home crate of each type they name.
 - **Tests.** A test that builds a whole `Match` lives in the top crate's `tests/`, one binary, in a module for each capability crate and for each of the core's crates: `release` composes the match there, and every crate it tests is a dependency of that crate. A test of a crate's own types, with no `Match`, stays a unit test in its crate. So no crate has a dev-dependency on a crate above it, and no test build holds a second copy of a crate, whose types would not be the match's. A test helper that another crate's tests use is behind `internals`, and one that needs a higher crate is a method of an extension trait in the top crate's `internals`. The tests that play a session or a network match live alike in the top crate of their own, `harness`, which holds the match harness and every crate those tests read. A crate's dev-dependencies are itself with `internals`, the test infrastructure of a base crate, `store`'s scratch and pinned files, `log`'s `LogCheck`, `common`'s allocation audit and `codec` for a type's encoded form, `math` for the numbers a crate's values hold, and outside test tools; a binary, which cannot dev-depend on itself, dev-depends on the dependencies whose helpers its tests read. `common`'s test of the feature refuses any other. `harness` is all test code, its benches included, so it has no `internals` of its own and no dev-dependency: it depends, with their `internals`, on every crate its tests read.
 - **Dependencies.** A crate's `internals` turns on `internals` in each of its dependencies that has the feature, so its self dev-dependency gives its tests every dependency's `internals`. Its other dev-dependencies are only tools its tests use that are not its dependencies: `campfire-codec` for a unit test of a type's encoded form, as every format goes through it, and `campfire-store`, with its `internals`, for the files a test reads.
-- **Checks.** Each crate carries the lint list and the `internals` self dev-dependency, and the drive's lanes cover it. Cargo refuses a cycle, but not a dependency on the same layer or a higher one whose crate does not depend back: `LAYERS` lists each capability crate with its layer, and a test reads each crate's manifest and fails on a dependency that is not on a lower layer. A crate's layer is one above the highest of the crates it depends on and the capabilities it needs, so no two crates of one layer depend on each other. The test that no module names another's sets reads every capability crate.
+- **Checks.** Each crate carries the lint list and the `internals` self dev-dependency, and the drive's lanes cover it. Cargo refuses a cycle, but not a dependency on the same layer or a higher one whose crate does not depend back: `LAYERS` lists each capability crate with its layer, and a test reads each crate's manifest and fails on a crate the list lacks, and on a layer that is not one above the highest of the crates the crate depends on, which hold the capabilities it needs, or 0 for none. So no two crates of one layer depend on each other. The test that no module names another's sets reads every capability crate.
 
 ### The core's crates
 
@@ -186,7 +186,7 @@ Each rule has a test that fails when it breaks, as a rule only a review checks d
 | A name becomes an id where it enters. After the load no system looks up a name; a script call resolves its name once, with no allocation. Every lookup of an id by name is a method ending in `named`. The book builder that resolves a name is its check: it returns the name the match does not have, and the load check looks a name up only where a rule of its own reads it. | The book builder's tests; the allowlist test of name lookups; the flaw tests of the package load |
 | A rule of a package's data has one home, the function that tests it, and the book builder that holds the data returns the rule's case: untrusted data never reaches a builder's `expect`. The load check maps each case to its problem, and calls a rule's function itself only where another of its checks reads what the function gives, as the slotted ranks and an action's kind fields. | The flaw tests of the package load; the ability load test |
 | The load refuses everything a match can refuse. A match start fails only on its terms (players, tick rate, seed, the packages they name) and on `on_match_start`'s runtime failure. | `StartError` has no case of a package's data |
-| A layer calls a higher one only through a hook the higher one registers: a column of the script view, a part of a call's frame, an effect type, an entry of the release's module list. | Cargo, as a crate builds only on its dependencies; the layer test, which reads each capability crate's manifest and refuses a dependency that is not on a lower layer |
+| A layer calls a higher one only through a hook the higher one registers: a column of the script view, a part of a call's frame, an effect type, an entry of the release's module list. | Cargo, as a crate builds only on its dependencies; the layer test, which reads each capability crate's manifest and refuses a layer that is not one above the highest of its dependencies |
 | No crate re-exports another crate, whole or in part: a crate that names a type depends on its home crate, at the version the workspace pins, and a type its callers must not take from its home crate is its own, as `campfire-codec`'s `TomlError` and `JsonError`. | `no_crate_re_exports_another_crate` |
 | Every order that matters is by stable id, and every rounding uses one helper. A system that spends something shared, takes ids or runs scripts walks its units through `Ordered`, sorted by stable id, as a query gives archetype order, which a component added or a restore changes. | The archetype-shuffle test |
 | Each tick's work has a fixed limit or a cost in proportion to the units that take part: no tick pays for a scan or a rebuild the others do not. | The work record; the navigation bench |

@@ -127,7 +127,5 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 D5 shapes it. Files: `docs/design/02-engine-core.md`, `docs/design/12-zero-hour.md`, `capabilities/src/{lib.rs,release/tests/mod.rs}`, `capabilities/areas/src/lib.rs`, `base/common/src/tests.rs`, `source/checks/*`.
 
-- [ ] Guard: every crate has a layer, and a test holds the rule "no two crates of one layer depend on each other" for all of them. The test also checks "one above the highest dependency", which today places `vision` at 10 where the rule gives 7.
 - [ ] D5: design 12 D7 stays. `PLAN.md` holds the fingerprint comparison and the parity suite as open steps, and design 02's dependency list of `zero-hour-check` follows the code.
-- [ ] `capabilities/src/lib.rs:7-13`, `areas/src/lib.rs:43`: the docs follow `LAYERS` and `NEEDS`.
 - [ ] `checks/zero-hour-check/src/main.rs`, `lan-check/src/run_dir.rs`: one run-root helper, in a home the design names.
