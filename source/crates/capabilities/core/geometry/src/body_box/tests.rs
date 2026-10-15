@@ -733,7 +733,7 @@ fn check_path(body: &BodyBox, centre: Position, from: Position, to: Position, re
     let by_shape = Placed::new(centre, Shape::Box(*body)).comes_closer(from, to, reach);
     assert_eq!(by_shape, comes_closer, "{case}");
     let length = Direction::of(path.to_array()).map_or(0, |direction| direction.length());
-    let meets = body.frame().meets_path(start, path);
+    let meets = body.frame().meets_path(start, path, Closure::Closed);
     assert_eq!(
         meets,
         body.frame().entry(start, path, length).is_some(),

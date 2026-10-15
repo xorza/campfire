@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::approach::Approach;
 use crate::body_bound::MAX_BOUND;
 use crate::body_box::closer::{Closer, HalfDirections, LinesOnDemand};
+use crate::body_box::closure::Closure;
 use crate::body_box::edges::{Edges, Part};
 use crate::body_box::edges::{LineBounds, Reach};
 use crate::polygon::Polygon;
@@ -15,6 +16,7 @@ use crate::polygon::Polygon;
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 mod closer;
+mod closure;
 mod edges;
 
 /// A box body: a parallelogram on the ground plane around its unit's position, held as its two
@@ -288,7 +290,7 @@ impl BodyBox {
         let reach = i128::from(reach.to_bits());
         let edges = Edges::of(frame);
         let mut lines = LinesOnDemand::new(&edges, Reach::of(reach));
-        if frame.meets_path(start, path)
+        if frame.meets_path(start, path, Closure::Closed)
             || edges.closer_point(start, &mut lines)
             || edges.closer_point(start + path, &mut lines)
         {
@@ -370,7 +372,7 @@ impl BodyBox {
     /// touching is not overlap.
     pub fn overlaps(&self, centre: Position, other: &BodyBox, other_centre: Position) -> bool {
         let apart = flat(other_centre) - flat(centre);
-        self.frame().meets(apart, other.frame(), true)
+        self.frame().meets(apart, other.frame(), Closure::Open)
     }
 
     /// How the distance between the box at `centre` and `other` at `other_centre` lies against
@@ -396,7 +398,7 @@ impl BodyBox {
         }
         let (ours, theirs) = (self.frame(), other.frame());
         let reach = i128::from(reach.to_bits());
-        if ours.meets(apart, theirs, false) {
+        if ours.meets(apart, theirs, Closure::Closed) {
             return 0.cmp(&reach);
         }
         // Apart, two convex shapes come nearest at a corner of one: the nearest corner's order
@@ -432,7 +434,7 @@ impl BodyBox {
             let next = points[(at + 1) % points.len()];
             let start = Flat::from_nums(points[at]) - flat(centre);
             let path = Flat::from_nums(next) - Flat::from_nums(points[at]);
-            frame.passes_through(start, path)
+            frame.meets_path(start, path, Closure::Open)
         });
         let at = centre.get();
         crosses || polygon.holds_point([at.x, at.z])
@@ -455,7 +457,7 @@ impl BodyBox {
             halves: [Flat::new(half, 0), Flat::new(0, half)],
         };
         let frame = self.frame_twice();
-        move |off| frame.meets(off, square, true)
+        move |off| frame.meets(off, square, Closure::Open)
     }
 
     fn frame(&self) -> Frame {
@@ -563,15 +565,18 @@ impl Frame {
         best.expect("four edges")
     }
 
-    /// Whether the closed path from `start`, along `path`, meets the closed box, as `entry` finds
-    /// it, by separating axes, with no fraction: a box and a segment are convex, so they meet
-    /// unless one of the box's two slab axes or the path's normal separates them. Along a slab
-    /// the path runs from its start's value to its end's; across the path, the box spans its
-    /// half edges' crosses with the path either side of 0, and the path lies at its start's.
-    /// Within the world's bound each value stays below 2¹⁰⁰, so the wrapping steps, here and in
-    /// `passes_through`, skip the checks a release build makes.
-    fn meets_path(&self, start: Flat, path: Flat) -> bool {
-        let area = self.quarter_area();
+    /// Whether the path from `start`, along `path`, both ends its own, meets the box of
+    /// `closure`, by separating axes, with no fraction: a box and a segment are convex, so they
+    /// meet unless one of the box's two slab axes or the path's normal separates them. Along a
+    /// slab the path runs from its start's value to its end's; across the path, the box spans
+    /// its half edges' crosses with the path either side of 0, and the path lies at its start's.
+    /// A path of no length has no normal, and only the slabs separate it. Within the world's
+    /// bound each value stays below 2¹⁰⁰, so the wrapping steps skip the checks a release build
+    /// makes. Closed, it meets as `entry` finds.
+    fn meets_path(&self, start: Flat, path: Flat, closure: Closure) -> bool {
+        let area = closure
+            .bound(self.quarter_area().cast_unsigned())
+            .cast_signed();
         let (from, along) = (self.slabs(start), self.slabs(path));
         let slab_apart = (0..2).any(|slab| {
             let (from, to) = (from[slab], from[slab].wrapping_add(along[slab]));
@@ -579,7 +584,9 @@ impl Frame {
         });
         let [a, b] = self.halves;
         let across = |half: Flat| cross(path, half).unsigned_abs();
-        !slab_apart && across(start) <= across(a).wrapping_add(across(b))
+        let still = path[0] == 0 && path[1] == 0;
+        let spread = closure.bound(across(a).wrapping_add(across(b)));
+        !slab_apart && (still || across(start) <= spread)
     }
 
     /// The edge nearest `off`, which lies inside the box, each edge's distance to the nearest
@@ -606,30 +613,28 @@ impl Frame {
         touching(off, directions.normal(edge), self.corners()[edge], radius)
     }
 
-    /// Whether the boxes' insides share a point, with `open`; or, without, whether they touch
-    /// or overlap: no axis of either separates them. `other`'s position lies `apart` from this
-    /// one's.
-    fn meets(&self, apart: Flat, other: Frame, open: bool) -> bool {
-        !self.separates(apart, other, open) && !other.separates(-apart, *self, open)
+    /// Whether the boxes of `closure` meet: no axis of either separates them. `other`'s
+    /// position lies `apart` from this one's.
+    fn meets(&self, apart: Flat, other: Frame, closure: Closure) -> bool {
+        !self.separates(apart, other, closure) && !other.separates(-apart, *self, closure)
     }
 
     /// Whether one of this box's slab axes separates it from `other`, whose position lies
     /// `apart` from this one's.
-    fn separates(&self, apart: Flat, other: Frame, open: bool) -> bool {
+    fn separates(&self, apart: Flat, other: Frame, closure: Closure) -> bool {
         let area = self.quarter_area();
         let [their_a, their_b] = other.halves;
         let centre = self.slabs(apart);
         let (a_spread, b_spread) = (self.slabs(their_a), self.slabs(their_b));
         // `|centre| > bound` exactly when `centre + bound`, unsigned, passes twice the bound,
-        // where a centre below `−bound` wraps past it; open, the bound is the limit less one, as
-        // `|centre| ≥ limit` is `|centre| > limit − 1`. A box and an offset within the world's
+        // where a centre below `−bound` wraps past it. A box and an offset within the world's
         // bound keep each value below 2¹⁰⁰, so no sum wraps.
         (0..2).any(|slab| {
             let limit = area
                 .cast_unsigned()
                 .wrapping_add(a_spread[slab].unsigned_abs())
                 .wrapping_add(b_spread[slab].unsigned_abs());
-            let bound = limit.wrapping_sub(u128::from(open));
+            let bound = closure.bound(limit);
             centre[slab].cast_unsigned().wrapping_add(bound) > bound << 1
         })
     }
@@ -639,7 +644,7 @@ impl Frame {
     /// place the latest of the slabs' entries, from 0 to the length, each rounded once. A slab's
     /// value below 2⁸¹ and a length below 2⁴⁶ keep each product below 2¹²⁷.
     fn entry(&self, start: Flat, path: Flat, length: i128) -> Option<i128> {
-        if !self.meets_path(start, path) {
+        if !self.meets_path(start, path, Closure::Closed) {
             return None;
         }
         let area = self.quarter_area();
@@ -652,23 +657,6 @@ impl Frame {
             })
             .fold(0, i128::max);
         Some(enter.min(length))
-    }
-
-    /// Whether the closed path from `start`, along `path`, has a point inside the open box: as
-    /// `meets_path`, with the box's bounds open, so a path that touches it is apart. A path of no
-    /// length has no normal, and only the slabs separate it.
-    fn passes_through(&self, start: Flat, path: Flat) -> bool {
-        let area = self.quarter_area();
-        let (from, along) = (self.slabs(start), self.slabs(path));
-        let slab_apart = (0..2).any(|slab| {
-            let (from, to) = (from[slab], from[slab].wrapping_add(along[slab]));
-            from.min(to) >= area || from.max(to) <= area.wrapping_neg()
-        });
-        let [a, b] = self.halves;
-        let across = |half: Flat| cross(path, half).unsigned_abs();
-        let across_apart =
-            (path[0] != 0 || path[1] != 0) && across(start) >= across(a).wrapping_add(across(b));
-        !slab_apart && !across_apart
     }
 }
 
