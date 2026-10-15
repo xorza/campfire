@@ -68,6 +68,22 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!Choices(vec![None; 3]).check(&game));
     choices.0[0] = Some(Offer::new(99));
     assert!(!choices.check(&game));
+    // Each row is `duo`'s two values, then `hero`'s, then `spells`'s, by their names. A choice is
+    // all chosen or none: half of `duo` is refused. Its two values differ. A unique `hero` is one
+    // player's: the same hero in two rows is refused, while a `duo` two players share restores.
+    let chose = |values: &[(usize, usize)]| {
+        let mut choices = Choices(vec![None; 12]);
+        for &(at, offer) in values {
+            choices.0[at] = Some(Offer::new(offer));
+        }
+        choices.check(&game)
+    };
+    assert!(chose(&[(0, 0), (1, 1), (2, 0)]));
+    assert!(!chose(&[(0, 0)]));
+    assert!(!chose(&[(0, 1), (1, 1)]));
+    assert!(chose(&[(0, 0), (1, 1), (4, 0), (5, 1)]));
+    assert!(chose(&[(2, 0), (6, 1)]));
+    assert!(!chose(&[(2, 0), (6, 0)]));
     // A grunt's state: `hits`, an integer, its owner's, and `mark`, a text, of all; neither class
     // a field short, nor a value of another type, and no class it declares no field of.
     let owner_state = game.get::<UnitState<SyncOwner>>(grunt).unwrap();

@@ -21,18 +21,26 @@ impl Choices {
         Choices(vec![None; specs.width() * players])
     }
 
-    /// Whether these choices hold a row of `specs` for each of `players` players, each value
-    /// one of its choice's offers in `roster`.
+    /// Whether these choices hold a row of `specs` for each of `players` players, as `choose`
+    /// makes them: each choice all chosen or none, its values each one of its offers in `roster`
+    /// and no two alike, and a value of a unique choice no other player's.
     pub(crate) fn fits(&self, specs: &ChoiceSpecs, players: usize, roster: &Roster) -> bool {
         if Some(self.0.len()) != specs.width().checked_mul(players) {
             return false;
         }
         (0..players).all(|row| {
             specs.iter().all(|choice| {
-                self.0[specs.run(row, choice)]
-                    .iter()
-                    .flatten()
-                    .all(|&offer| roster.holds(choice.offers, offer))
+                let values = &self.0[specs.run(row, choice)];
+                let whole =
+                    values.iter().all(Option::is_some) || values.iter().all(Option::is_none);
+                let distinct = (1..values.len())
+                    .all(|at| values[at].is_none() || !values[..at].contains(&values[at]));
+                let slot = PlayerSlot::new(u32::try_from(row).expect("a player's row fits u32"));
+                let offered = values.iter().flatten().all(|&offer| {
+                    roster.holds(choice.offers, offer)
+                        && !(choice.unique && self.taken(specs, slot, choice, offer))
+                });
+                whole && distinct && offered
             })
         })
     }
