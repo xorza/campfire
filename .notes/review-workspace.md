@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `base/common/src/tests.rs`, `capabilities/core/{units,declare,players}/src/**`, `capabilities/core/script/src/scripts/{view/*,core_api.rs}`, `network/net/src/sim_server/{session_dir,checkpoints,sim_server_world}/*`, `capabilities/orders/src/{lib,unit_order}.rs`. Goldens: none move.
 
-- [ ] The wrappers go: `units/src/lib.rs:14`, `declare/src/lib.rs:10`, `players/src/lib.rs:6`.
 - [ ] `orders/src/lib.rs:137-149`: `apply_order` is inlined into `UnitOrder`'s `Effect` impl.
 
 ### Batch 8. Declarations own install and spawn (RC5)

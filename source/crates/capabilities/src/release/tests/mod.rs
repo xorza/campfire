@@ -441,7 +441,7 @@ const LOOKUPS: [(&str, &str); 34] = [
     ("mode/mode_names.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
-    ("units/units/unit_type_book.rs", "named"),
+    ("units/unit_type_book.rs", "named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
