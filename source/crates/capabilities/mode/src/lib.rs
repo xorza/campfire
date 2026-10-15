@@ -345,8 +345,6 @@ impl Mode {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    use std::slice;
-
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
@@ -497,8 +495,10 @@ pub mod internals {
 
         /// Runs a tick with `inputs`, each a player's slot and a mode input.
         pub fn tick_inputs(world: &mut World, inputs: &[(u32, ModeInput<'_>)]) {
+            let (mut body, mut payload) = (Vec::new(), Vec::new());
             for (slot, input) in inputs {
-                let payload = ModeInput::payload(slice::from_ref(input));
+                payload.clear();
+                input.write_payload(&mut body, &mut payload);
                 world.push_input(PlayerSlot::new(*slot), &payload);
             }
             world.step();

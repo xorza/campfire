@@ -667,8 +667,8 @@ fn send_orders(
                 }
             }
             Pending::Input(input) => {
-                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |_, out| {
-                    input.write_payload(out);
+                let kept = sent.push(seq, stamp, session.inputs.max_payload_len, |body, out| {
+                    input.write_payload(body, out);
                 });
                 if !kept {
                     InputDropped { name: input.name }.log();

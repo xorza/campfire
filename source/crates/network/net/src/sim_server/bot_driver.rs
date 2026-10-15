@@ -25,7 +25,7 @@ use crate::sim_server::server_signer::ServerSigner;
 pub(crate) struct BotDriver {
     bots: Vec<DrivenBot>,
     takeover: Option<OrderScript>,
-    /// The payload being logged, and the body of the order in it, kept so no input allocates.
+    /// The payload being logged, and the body of the command in it, kept so no order allocates.
     payload: Vec<u8>,
     body: Vec<u8>,
     /// Who each slot commands, kept so no tick builds its query again.
@@ -122,7 +122,7 @@ impl BotDriver {
             let script_tick = Tick::new(since.get());
             for input in driven.script.due_inputs(script_tick) {
                 payload.clear();
-                input.write_payload(payload);
+                input.write_payload(body, payload);
                 BotDriver::log(signer, session, driven.slot, payload);
             }
             let avatar = players.avatar(world, driven.slot).map(|avatar| avatar.id);

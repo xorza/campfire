@@ -21,13 +21,13 @@ impl<'a> ModeInput<'a> {
     /// The owner of mode inputs.
     pub const CAPABILITY: Capability = Capability::Mode;
 
-    pub fn encode(&self) -> Vec<u8> {
-        let mut body = Binary::encode(self.name);
+    /// Appends the body of the input to `out`.
+    pub fn encode_into(&self, out: &mut Vec<u8>) {
+        Binary::encode_into(self.name, out);
         match &self.value {
-            InputValue::String(text) => Binary::encode_into(text, &mut body),
-            InputValue::StringList(texts) => Binary::encode_into(texts, &mut body),
+            InputValue::String(text) => Binary::encode_into(text, out),
+            InputValue::StringList(texts) => Binary::encode_into(texts, out),
         }
-        body
     }
 
     /// The input in `body`, when its name is one of `types` and its value is exactly of the
@@ -56,10 +56,29 @@ impl<'a> ModeInput<'a> {
         rest.is_empty().then_some(ModeInput { name, value })
     }
 
-    /// A payload of `inputs` alone, one command each.
+    /// A payload of `inputs`, one command each.
     pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
-        let bodies: Vec<Vec<u8>> = inputs.iter().map(ModeInput::encode).collect();
+        let bodies: Vec<Vec<u8>> = inputs
+            .iter()
+            .map(|input| {
+                let mut body = Vec::new();
+                input.encode_into(&mut body);
+                body
+            })
+            .collect();
         Command::payload(ModeInput::CAPABILITY, &bodies)
+    }
+
+    /// Appends the payload of this input alone to `out`, its body written in `body`, which it
+    /// clears first, as a sender keeps both so no input allocates.
+    pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
+        body.clear();
+        self.encode_into(body);
+        let command = Command {
+            capability: ModeInput::CAPABILITY,
+            body,
+        };
+        Command::write(&[command], out);
     }
 }
 
