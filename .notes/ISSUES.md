@@ -23,5 +23,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Ready
 
 - **Combat.** An attack lands its damage in the tick it fires, where Zero Hour deals a weapon of no projectile `distance / WeaponSpeed` frames after the shot, rounded up, when that is a frame or more (`WeaponStore::setDelayedDamage`): the import drops each non-laser weapon whose `WeaponSpeed` is below the default, 7 of the install's starting weapons, `HumveeGun` and `SentryDroneGun` among them (design 19, D6).
-- **Harness.** `source/crates/test/harness/Cargo.toml` declares `campfire-verifier` as a dependency that the crate's library does not use: cargo's `unused_dependencies` warns of it in each build on the 1.100 beta.
-- **Runner.** `source/crates/session/runner/Cargo.toml` declares the optional dependency `campfire-package-disk`, which no code of the crate uses: cargo's `unused_dependencies` warns of it in each build on the 1.100 beta.
+- **Driver.** `source/.config/nextest.toml` says that a bench case ends at 60 s, in the comment of its `kind(bench)` override and in that of `[profile.ci]`, where the override ends one at 80 s, 4 periods of 20 s.

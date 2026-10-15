@@ -546,15 +546,43 @@ fn internals_entries(manifest: &str) -> Vec<&str> {
     entries
 }
 
+/// The crates of the workspace each crate of `manifests` builds on, by its name: those it
+/// depends on, and theirs, by its dependencies alone.
+fn dependency_closures(manifests: &[(String, String)]) -> BTreeMap<&str, BTreeSet<&str>> {
+    let workspace = |other: &str| manifests.iter().any(|(crate_name, _)| crate_name == other);
+    manifests
+        .iter()
+        .map(|(name, _)| {
+            let mut found = BTreeSet::new();
+            let mut next = vec![name.as_str()];
+            while let Some(at) = next.pop() {
+                let (_, manifest) = manifests
+                    .iter()
+                    .find(|(crate_name, _)| crate_name == at)
+                    .expect("a closure walks the workspace's crates");
+                for other in section(manifest, "dependencies").map(dependency) {
+                    if workspace(other) && found.insert(other) {
+                        next.push(other);
+                    }
+                }
+            }
+            (name.as_str(), found)
+        })
+        .collect()
+}
+
 /// What breaks the rule of the `internals` feature, by crate: a test build turns it on through
 /// the dev-dependencies alone, so the code a test or a bench reaches has one gate,
 /// `feature = "internals"`. A crate with the feature dev-depends on itself with it, and its
 /// feature turns on the feature of each dependency that has it; each dev-dependency on a crate
 /// with it turns it on, as a test of one crate uses another's helpers; and no crate has a `bench`
-/// feature beside it. A dev-dependency on another crate of the workspace is test infrastructure,
-/// or, of a crate with no feature of its own, as a binary, which cannot dev-depend on itself, a
-/// dependency whose helpers its tests read.
+/// feature beside it. A dev-dependency on another crate of the workspace is test infrastructure;
+/// a crate that is none of its dependencies, which only its tests read, and that builds on no
+/// crate its own build lacks, so the test build gains that crate alone and holds no second copy
+/// of one, as a crate that depends on it would bring; or, of a crate with no feature of its own,
+/// as a binary, which cannot dev-depend on itself, a dependency whose helpers its tests read.
 fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
+    let closures = dependency_closures(manifests);
     let has = |manifest: &str, feature: &str| {
         section(manifest, "features").any(|line| line.starts_with(&format!("{feature} = ")))
     };
@@ -586,8 +614,11 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
                 problems.push(format!("{name} dev-depends on {other} with no internals"));
             }
             let workspace = manifests.iter().any(|(crate_name, _)| crate_name == other);
-            let read = !own && dependencies.iter().any(|line| dependency(line) == other);
-            let allowed = other == name || TEST_INFRASTRUCTURE.contains(&other) || read;
+            let depends = dependencies.iter().any(|line| dependency(line) == other);
+            let within = workspace && closures[other].is_subset(&closures[name.as_str()]);
+            let allowed = other == name
+                || TEST_INFRASTRUCTURE.contains(&other)
+                || if depends { !own } else { within };
             if workspace && !allowed {
                 problems.push(format!(
                     "{name} dev-depends on {other}, past its tests' rule"
@@ -693,14 +724,17 @@ fn a_test_build_turns_internals_on_and_code_has_one_gate_for_it() {
 
 #[test]
 fn the_internals_rule_names_each_crate_that_breaks_it() {
-    // `a` has the feature and no dev-dependency on itself; `b` has it on itself, and on `a`
-    // without it, and a `bench` feature beside it; `c` has none, and dev-depends on `b`, its
-    // dependency, with it. `d` has the feature, leaves its dependency `b`'s off, and dev-depends on
-    // it, on `c`, which is no dependency, and on `campfire-store`, test infrastructure.
+    // `a` has the feature and no dev-dependency on itself, and dev-depends on `b`, which builds on
+    // nothing, and on `c`, which builds on `b`, past `a`'s build of nothing; `b` has it on itself,
+    // and on `a` without it, and a `bench` feature beside it; `c` has none, and dev-depends on `b`,
+    // its dependency, with it. `d` has the feature, leaves its dependency `b`'s off, and
+    // dev-depends on it, on `c`, no dependency, which builds on `b` alone, and on
+    // `campfire-store`, test infrastructure. `e` depends on `c` and dev-depends on `b`, which its
+    // build holds through `c`.
     let crates = [
         (
             "a",
-            "[features]\ninternals = []\n\n[dev-dependencies]\nb.workspace = true\n",
+            "[features]\ninternals = []\n\n[dev-dependencies]\nb.workspace = true\nc.workspace = true\n",
         ),
         (
             "b",
@@ -726,12 +760,25 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
                 "d = { workspace = true, features = [\"internals\"] }\n"
             ),
         ),
+        (
+            "e",
+            concat!(
+                "[features]\ninternals = []\n\n[dependencies]\nc.workspace = true\n\n",
+                "[dev-dependencies]\nb = { workspace = true, features = [\"internals\"] }\n",
+                "e = { workspace = true, features = [\"internals\"] }\n"
+            ),
+        ),
     ]
     .map(|(name, manifest)| (name.to_owned(), manifest.to_owned()));
     // `a` turns no crate's on; `b` its own; `c` `b`'s; `d` its own, `a`'s through its own, `b`'s,
     // and `campfire-store`'s, which is not among them, and not `c`'s, which `d` passes on weakly.
     let reads = "x::internals::X; a::internals::A; b::internals::B; data::internals::D;";
     let weak = "c::internals::C;";
+    let closures = dependency_closures(&crates);
+    assert_eq!(
+        ["a", "c", "e"].map(|name| closures[name].iter().copied().collect::<Vec<_>>()),
+        [vec![], vec!["b"], vec!["b", "c"]]
+    );
     let off = |name: &str| internals_read_off(&crates, name, reads);
     assert_eq!(off("a"), ["b"]);
     assert_eq!(off("b"), ["a"]);
@@ -746,14 +793,12 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
         internals_problems(&crates),
         [
             "a dev-depends on b with no internals",
-            "a dev-depends on b, past its tests' rule",
+            "a dev-depends on c, past its tests' rule",
             "a dev-depends on itself with no internals",
             "b has a bench feature",
             "b dev-depends on a with no internals",
-            "b dev-depends on a, past its tests' rule",
             "d's internals leaves b's off",
             "d dev-depends on b, past its tests' rule",
-            "d dev-depends on c, past its tests' rule",
         ]
     );
     // The gate is spelled in parts, so this file holds none.

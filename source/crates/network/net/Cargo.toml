@@ -16,7 +16,6 @@ internals = [
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-orders/internals",
-    "campfire-package-disk/internals",
     "campfire-package/internals",
     "campfire-players/internals",
     "campfire-production/internals",
@@ -45,8 +44,6 @@ campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
-# Its tests read the workspace's test packages from disk.
-campfire-package-disk = { workspace = true, optional = true }
 campfire-players.workspace = true
 campfire-production.workspace = true
 campfire-progression.workspace = true
@@ -74,6 +71,8 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+# Its tests read the workspace's test packages from disk.
+campfire-package-disk = { workspace = true, features = ["internals"] }
 campfire-net = { workspace = true, features = ["internals"] }
 
 [lints]
