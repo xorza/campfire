@@ -24,8 +24,8 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use campfire_client_files::{ClientObjects, HeightGrid, TerrainFile};
-use campfire_codec::{Binary, Toml};
+use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
+use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::{ExitStatus, MapName};
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
@@ -33,12 +33,12 @@ use campfire_math::Num;
 use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
-use campfire_values::PackagePath;
+use campfire_values::{DeclaredName, PackagePath};
 use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
-use crate::failure::{Failure, TerrainDrawn};
+use crate::failure::{Failure, LookCounts, TerrainDrawn};
 use crate::start_drive::StartDrive;
 
 mod command_line;
@@ -56,6 +56,14 @@ const WALLS: usize = 286;
 /// The most ticks player 1's dozer takes from its start to player 2's on Tournament Desert, at 30
 /// ticks a second, which the check pins: what it took, 57.2 s.
 const DRIVE_TICKS: u64 = 1717;
+
+/// The looks the import gives night or snow variants, of unit types and of client objects, and
+/// the maps of night and of snow among the 150.
+const LOOKS: LookCounts = LookCounts {
+    varied: 382,
+    night: 15,
+    snowy: 17,
+};
 
 /// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
 /// its overlays; a copy for each tile its classes' textures load; and a border wrap for each
@@ -142,10 +150,7 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     if (units, types) != (142, 41) {
         failures.push(Failure::Units { units, types });
     }
-    let path =
-        PackagePath::parse(&ClientObjects::path(MAP)).expect("a map's file is a package path");
-    let client = Toml::parse::<ClientObjects>(&read_text(files, &path)?)
-        .map_err(|error| CheckError::Read(ContentError::Data { path, error }))?;
+    let client: ClientObjects = read_toml(files, &ClientObjects::path(MAP), Toml::parse)?;
     let objects = client.objects.len();
     let by_look = tally(client.objects.iter().map(|object| object.look.as_str()));
     let looks = by_look.len();
@@ -158,6 +163,35 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     if markers != 28 {
         failures.push(Failure::Markers(markers));
     }
+    // The looks that draw other models on a night or snowy map, and the maps of each.
+    let unit_looks: ClientUnits = read_toml(files, "client/units.toml", Toml::parse)?;
+    let varied = unit_looks
+        .units
+        .values()
+        .chain(unit_looks.objects.values())
+        .filter(|look| !look.variants.is_empty())
+        .count();
+    let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
+    let mut drawn = LookCounts {
+        varied,
+        night: 0,
+        snowy: 0,
+    };
+    for other in imported.untextured_cells.keys() {
+        let held: MapConditions =
+            read_toml(files, &MapConditions::path(other.as_str()), Toml::parse)?;
+        drawn.night += usize::from(held.conditions.contains(&night));
+        drawn.snowy += usize::from(held.conditions.contains(&snow));
+    }
+    if drawn != LOOKS {
+        failures.push(Failure::Looks(drawn));
+    }
+    info!(
+        varied = drawn.varied,
+        night = drawn.night,
+        snowy = drawn.snowy,
+        "the looks of night and snow"
+    );
     let terrain = read(files, &TerrainFile::path(MAP))?;
     let terrain = Binary::decode::<TerrainFile>(&terrain).map_err(CheckError::Decode)?;
     let drawn = TerrainDrawn {
@@ -277,15 +311,21 @@ fn listed(counts: &BTreeMap<&str, usize>) -> String {
     entries.join(", ")
 }
 
-/// The text of the package's file at `path`.
-fn read_text(files: &PackageReader, path: &PackagePath) -> Result<String, CheckError> {
-    let bytes = files.read_file(path).map_err(CheckError::Read)?;
-    String::from_utf8(bytes).map_err(|error| {
+/// The package's TOML file at `path`, as `parse` reads its text.
+fn read_toml<T>(
+    files: &PackageReader,
+    path: &str,
+    parse: fn(&str) -> Result<T, TomlError>,
+) -> Result<T, CheckError> {
+    let path = PackagePath::parse(path).expect("a map's file is a package path");
+    let bytes = files.read_file(&path).map_err(CheckError::Read)?;
+    let text = String::from_utf8(bytes).map_err(|error| {
         CheckError::Read(ContentError::NotText {
             path: path.clone(),
             error: error.utf8_error(),
         })
-    })
+    })?;
+    parse(&text).map_err(|error| CheckError::Read(ContentError::Data { path, error }))
 }
 
 /// The bytes of the package's file at `path`.

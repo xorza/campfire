@@ -2298,6 +2298,7 @@ dependencies = [
  "campfire-client-files",
  "campfire-codec",
  "campfire-common",
+ "campfire-interaction",
  "campfire-items",
  "campfire-log",
  "campfire-math",

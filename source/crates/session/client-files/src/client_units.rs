@@ -15,11 +15,57 @@ pub struct ClientUnits {
     pub objects: BTreeMap<DeclaredName, ClientUnit>,
 }
 
-/// A unit type's look: the models drawn at its unit's place, all of them.
+/// A unit type's look: the models drawn at its unit's place, all of them, and its variants, the
+/// models it draws in their stead on a map of their conditions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientUnit {
     pub models: Vec<ClientModel>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variants: Vec<LookVariant>,
+}
+
+/// A look's models on a map of some conditions, as a night or snowy weather, by name: any game
+/// names its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LookVariant {
+    pub conditions: Vec<DeclaredName>,
+    pub models: Vec<ClientModel>,
+}
+
+impl ClientUnit {
+    /// The look of `models`, of no variant.
+    pub const fn new(models: Vec<ClientModel>) -> ClientUnit {
+        ClientUnit {
+            models,
+            variants: Vec::new(),
+        }
+    }
+
+    /// Draws, on a map of `conditions`, the models of its variant whose conditions have the most
+    /// in common with the map's, of a tie the one of the fewest the map lacks, of a tie the first,
+    /// its own models counted first as of no condition; and holds no variant after. It is the
+    /// rule by which Zero Hour picks a model's condition state (`SparseMatchFinder`).
+    pub fn settle(&mut self, conditions: &[DeclaredName]) {
+        let mut best = None;
+        let (mut most, mut fewest) = (0, 0);
+        for (at, variant) in self.variants.iter().enumerate() {
+            let common = variant
+                .conditions
+                .iter()
+                .filter(|condition| conditions.contains(condition))
+                .count();
+            let lacked = variant.conditions.len() - common;
+            if common > most || (common >= most && lacked < fewest) {
+                (best, most, fewest) = (Some(at), common, lacked);
+            }
+        }
+        let mut variants = std::mem::take(&mut self.variants);
+        if let Some(at) = best {
+            self.models = variants.swap_remove(at).models;
+        }
+    }
 }
 
 /// A model, a `.glb` of the package, the scale it is drawn at, and the names of its nodes its
@@ -144,5 +190,44 @@ model = "x""#
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn a_look_draws_its_variant_that_best_matches_the_maps_conditions() {
+        let text = r#"
+            [units.barracks]
+            models = [{ model = "day.glb" }]
+            variants = [
+                { conditions = ["night"], models = [{ model = "night.glb" }] },
+                { conditions = ["snow"], models = [{ model = "snow.glb" }] },
+                { conditions = ["night", "snow"], models = [{ model = "both.glb" }] },
+                { conditions = ["night", "damaged"], models = [{ model = "hurt.glb" }] },
+            ]
+        "#;
+        let units: ClientUnits = Toml::parse(text).unwrap();
+        assert_eq!(
+            Toml::parse::<ClientUnits>(&Toml::write(&units)).unwrap(),
+            units
+        );
+        let drawn = |conditions: &[&str]| {
+            let conditions: Vec<DeclaredName> = conditions
+                .iter()
+                .map(|condition| DeclaredName::new(condition).unwrap())
+                .collect();
+            let mut look = units.units["barracks"].clone();
+            look.settle(&conditions);
+            assert!(look.variants.is_empty());
+            look.models[0].model.as_str().to_owned()
+        };
+        // A day map has no condition in common with a variant: the look's own. A night map: the
+        // night variant, 1 in common and none lacked, before both, of 1 and 1 lacked, and the
+        // damaged night, of 1 and 1. Night and snow: both, of 2. Rain, of none: the look's own.
+        assert_eq!(drawn(&[]), "day.glb");
+        assert_eq!(drawn(&["night"]), "night.glb");
+        assert_eq!(drawn(&["snow"]), "snow.glb");
+        assert_eq!(drawn(&["night", "snow"]), "both.glb");
+        assert_eq!(drawn(&["rain"]), "day.glb");
+        // Night and damage: the damaged night, of 2 in common, past the night's 1.
+        assert_eq!(drawn(&["night", "damaged"]), "hurt.glb");
     }
 }

@@ -4,7 +4,7 @@ use campfire_math::{Num, Vec3};
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{DRIVE_TICKS, TERRAIN, WALLS};
+use crate::{DRIVE_TICKS, LOOKS, TERRAIN, WALLS};
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
@@ -38,6 +38,9 @@ pub(crate) enum Failure {
     /// A map of the import does not load in the imported mode.
     #[display("map {map} does not load: {}", ErrorReport::of(error))]
     MapLoad { map: MapName, error: LoadError },
+    /// The import's looks of night and snow, and its maps of each, differ from the pinned.
+    #[display("it has {_0}, not {LOOKS}")]
+    Looks(LookCounts),
     /// Tournament Desert lacks a start of player 1 or 2.
     #[display("it has no start of player 1 or of player 2")]
     NoStarts,
@@ -64,6 +67,15 @@ pub(crate) enum Failure {
     /// The dozer took more ticks to the other start than the check pins.
     #[display("the dozer took {_0} ticks to the other start, not at most {DRIVE_TICKS}")]
     DriveTicks(u64),
+}
+
+/// How many looks have night or snow variants, and how many maps are night maps and snowy maps.
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display("{varied} varied looks, {night} night maps and {snowy} snowy maps")]
+pub(crate) struct LookCounts {
+    pub(crate) varied: usize,
+    pub(crate) night: usize,
+    pub(crate) snowy: usize,
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

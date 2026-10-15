@@ -112,7 +112,7 @@ mod tests {
                 .map(|(name, models)| {
                     (
                         campfire_values::DeclaredName::new(name).unwrap(),
-                        ClientUnit { models },
+                        ClientUnit::new(models),
                     )
                 })
                 .collect(),

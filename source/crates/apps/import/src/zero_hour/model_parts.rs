@@ -1,4 +1,4 @@
-use crate::zero_hour::object_ini::{DefaultLook, WeaponBones};
+use crate::zero_hour::object_ini::{StateLook, WeaponBones};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
 /// full name, its pivot, whether the model has a node of it, and whether its mesh is hidden by
@@ -28,7 +28,7 @@ impl ModelParts {
     /// The names of the drawn sub-objects `look` leaves hidden, as `W3DModelDraw` sets a state: those
     /// hidden by their flag; then each weapon slot's muzzle flashes; then each hide or show in
     /// order, also over the sub-objects on the strict child pivots of its own.
-    pub(crate) fn hidden(&self, look: &DefaultLook) -> Vec<String> {
+    pub(crate) fn hidden(&self, look: &StateLook) -> Vec<String> {
         let mut hidden: Vec<bool> = self.sub_objects.iter().map(|part| part.hidden).collect();
         for weapon in &look.weapons {
             for flash in self.muzzle_flashes(weapon) {
@@ -191,7 +191,7 @@ mod tests {
         // 2 finds `Fire01` and `Fire02` but no numbered flash, so not its bare `Flash` either.
         // Slot 3 numbers nothing, so its bare `Solo`. The decal is hidden by its flag; the box,
         // which has no node, is never named.
-        let flashes = DefaultLook {
+        let flashes = StateLook {
             hide_show: Vec::new(),
             weapons: [
                 bones(None, "MuzzleFX"),
@@ -210,9 +210,9 @@ mod tests {
             name: name.to_owned(),
             hide,
         };
-        let look = |hide_show| DefaultLook {
+        let look = |hide_show| StateLook {
             hide_show,
-            ..DefaultLook::default()
+            ..StateLook::default()
         };
         let turret = look(vec![
             change("TURRET", true),
@@ -236,6 +236,6 @@ mod tests {
         assert_eq!(parts.hidden(&root).len(), 9);
         let root = look(vec![change("tank.hull", true), change("Decal", false)]);
         assert_eq!(parts.hidden(&root), ["tank.hull"]);
-        assert_eq!(parts.hidden(&DefaultLook::default()), ["tank.decal"]);
+        assert_eq!(parts.hidden(&StateLook::default()), ["tank.decal"]);
     }
 }

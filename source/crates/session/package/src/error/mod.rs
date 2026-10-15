@@ -3,7 +3,7 @@ use std::io;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use campfire_codec::{BinaryError, TomlError};
+use campfire_codec::{TaggedError, TomlError};
 use campfire_common::Fingerprint;
 use campfire_values::PackagePath;
 use derive_more::Display;
@@ -68,12 +68,10 @@ pub enum ContentError {
     /// A file's size or SHA-256 differs from its row of the package's index.
     #[error("{path} differs from the package's index")]
     Changed { path: PackagePath },
-    /// The package's index does not start with the tag of this version of its format.
-    #[error("the package's index is no index of this version")]
-    IndexTag,
-    /// The package's index is no postcard list of rows, or not their one encoding.
-    #[error("the package's index does not decode")]
-    IndexDecode(#[source] BinaryError),
+    /// The package's index does not start with the tag of this version of its format, or is no
+    /// postcard list of rows after it, or not their one encoding.
+    #[error("the package's index does not read as an index of this version")]
+    Index(#[source] TaggedError),
     /// A row of the package's index names no package path.
     #[error("the package's index lists {0:?}, no path a package can name")]
     IndexPath(String),

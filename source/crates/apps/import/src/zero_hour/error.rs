@@ -332,6 +332,7 @@ pub enum Chunk {
     ObjectsList,
     Object,
     GlobalLighting,
+    WorldInfo,
 }
 
 impl Chunk {
@@ -343,6 +344,7 @@ impl Chunk {
             Chunk::ObjectsList => "ObjectsList",
             Chunk::Object => "Object",
             Chunk::GlobalLighting => "GlobalLighting",
+            Chunk::WorldInfo => "WorldInfo",
         }
     }
 }
@@ -401,6 +403,9 @@ pub enum IniError {
     /// A model draw module's default state names no `Model`.
     #[error("line {line}: a default state names no model")]
     NoModel { line: usize },
+    /// An `AliasConditionState` comes before any state, so it names none.
+    #[error("line {line}: an alias state comes before any state")]
+    FirstAlias { line: usize },
     /// A weapon bone names no slot of `PRIMARY`, `SECONDARY` and `TERTIARY`, or no bone.
     #[error("line {line}: a weapon bone names no slot and bone")]
     WeaponSlot { line: usize },

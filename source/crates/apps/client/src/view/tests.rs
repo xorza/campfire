@@ -242,13 +242,11 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         vec![8; 16],
     )
     .unwrap();
-    let tank = ClientUnit {
-        models: vec![ClientModel {
-            model: PackagePath::parse("client/models/tank.glb").unwrap(),
-            scale: ModelScale::new(1.25).unwrap(),
-            hide: ["tank.flash".to_owned()].into(),
-        }],
-    };
+    let tank = ClientUnit::new(vec![ClientModel {
+        model: PackagePath::parse("client/models/tank.glb").unwrap(),
+        scale: ModelScale::new(1.25).unwrap(),
+        hide: ["tank.flash".to_owned()].into(),
+    }]);
     let data = ClientData {
         units: vec![ClientUnits {
             units: [(DeclaredName::new("tank").unwrap(), tank)]

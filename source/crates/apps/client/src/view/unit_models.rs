@@ -343,18 +343,14 @@ mod tests {
             objects: [
                 (
                     name("oak"),
-                    ClientUnit {
-                        models: vec![
-                            model("client/models/oak.glb", 1.5, &[]),
-                            model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
-                        ],
-                    },
+                    ClientUnit::new(vec![
+                        model("client/models/oak.glb", 1.5, &[]),
+                        model("client/models/leaves.glb", 1.0, &["leaves.stump"]),
+                    ]),
                 ),
                 (
                     name("bush"),
-                    ClientUnit {
-                        models: vec![model("client/models/bush.glb", 1.0, &[])],
-                    },
+                    ClientUnit::new(vec![model("client/models/bush.glb", 1.0, &[])]),
                 ),
             ]
             .into(),

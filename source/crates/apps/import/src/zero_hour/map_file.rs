@@ -5,6 +5,8 @@ use miniz_oxide::inflate::decompress_to_vec_zlib_with_limit;
 
 use crate::zero_hour::chunk_reader::{ChunkReader, RawChunk};
 use crate::zero_hour::error::{Chunk, MapError, Packing};
+use crate::zero_hour::look_conditions::LookConditions;
+use crate::zero_hour::map_dict::{self, DictValue};
 use crate::zero_hour::map_object::MapObject;
 use crate::zero_hour::ref_pack::RefPack;
 use crate::zero_hour::terrain::{
@@ -23,7 +25,24 @@ pub(crate) struct MapFile {
     /// The three lights its objects are drawn in at its time of day (`GlobalLighting`), on the
     /// game's axes, a light the file does not give as the game starts it, dark and straight down.
     pub(crate) lights: [GameLight; 3],
+    /// The conditions its models follow: night at a time of day of night, snow when its world
+    /// dictionary's `weather` is snowy.
+    pub(crate) conditions: LookConditions,
 }
+
+/// A map's `GlobalLighting` as the import reads it: the lights of its time of day, and whether
+/// that time is night.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Lighting {
+    lights: [GameLight; 3],
+    night: bool,
+}
+
+/// `TIME_OF_DAY_NIGHT`, the last of the four.
+const NIGHT: i32 = 4;
+
+/// `WEATHER_SNOWY`.
+const SNOWY: i32 = 1;
 
 /// One of the game's global lights: its ambient and diffuse colors, and the way its light goes,
 /// which the game calls its position.
@@ -85,12 +104,13 @@ impl MapFile {
                 return Err(MapError::NameTwice(id));
             }
         }
-        let mut chunks: [Option<RawChunk<'_>>; 4] = [None, None, None, None];
+        let mut chunks: [Option<RawChunk<'_>>; 5] = [const { None }; 5];
         let kinds = [
             Chunk::HeightMapData,
             Chunk::BlendTileData,
             Chunk::ObjectsList,
             Chunk::GlobalLighting,
+            Chunk::WorldInfo,
         ];
         while !reader.is_empty() {
             let chunk = reader.chunk()?;
@@ -104,7 +124,7 @@ impl MapFile {
                 return Err(MapError::Twice(kinds[at]));
             }
         }
-        let [heights, terrain, objects, lighting] = chunks;
+        let [heights, terrain, objects, lighting, world] = chunks;
         let heights = MapFile::heights(heights.ok_or(MapError::Missing(Chunk::HeightMapData))?)?;
         let terrain = MapFile::terrain(
             terrain.ok_or(MapError::Missing(Chunk::BlendTileData))?,
@@ -114,12 +134,21 @@ impl MapFile {
             objects.ok_or(MapError::Missing(Chunk::ObjectsList))?,
             &names,
         )?;
-        let lights = MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
+        let lighting =
+            MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
+        let snow = match world {
+            Some(world) => MapFile::snowy(world, &names)?,
+            None => false,
+        };
         Ok(MapFile {
             heights,
             terrain,
             objects,
-            lights,
+            lights: lighting.lights,
+            conditions: LookConditions {
+                night: lighting.night,
+                snow,
+            },
         })
     }
 
@@ -352,7 +381,7 @@ impl MapFile {
     /// lights; and the shadows' color, which the import does not keep. The object lights of the
     /// map's time of day: the terrain is lit by them (design 16, D3), so its own are read and
     /// dropped, each still refused when a number of it is not finite.
-    fn lighting(chunk: RawChunk<'_>) -> Result<[GameLight; 3], MapError> {
+    fn lighting(chunk: RawChunk<'_>) -> Result<Lighting, MapError> {
         chunk.check_version(Chunk::GlobalLighting, 1..=3)?;
         let version = chunk.version;
         let mut body = chunk.body;
@@ -381,7 +410,28 @@ impl MapFile {
             body.u32()?;
         }
         body.ended(Chunk::GlobalLighting)?;
-        Ok(times[at])
+        Ok(Lighting {
+            lights: times[at],
+            night: time == NIGHT,
+        })
+    }
+
+    /// Whether the map's `WorldInfo` dictionary names snowy weather, as
+    /// `WorldHeightMap::ParseWorldDictDataChunk` sets the game's weather from its `weather`
+    /// integer; its keys named by `names`.
+    fn snowy(chunk: RawChunk<'_>, names: &BTreeMap<u32, &[u8]>) -> Result<bool, MapError> {
+        let mut body = chunk.body;
+        let mut weather = None;
+        map_dict::read(&mut body, names, |key, value| {
+            if key == b"weather" {
+                weather = match value {
+                    DictValue::Int(value) => Some(value),
+                    DictValue::Text(_) | DictValue::Other => None,
+                };
+            }
+        })?;
+        body.ended(Chunk::WorldInfo)?;
+        Ok(weather == Some(SNOWY))
     }
 
     /// A light: its ambient color, its diffuse color and its position, each three floats.
@@ -617,9 +667,15 @@ mod tests {
                 (0..18_u8).flat_map(|at| (f32::from(time) + f32::from(at) / 32.0).to_le_bytes()),
             );
         }
-        let lights = read(1, &one).unwrap();
+        let lighting = read(1, &one).unwrap();
+        let lights = lighting.lights;
         // The night, the fourth: its first terrain light is floats 0 to 8, which the import drops,
-        // its first object light 9 to 17; the others as the game starts them.
+        // its first object light 9 to 17; the others as the game starts them. Its models follow
+        // the night; at the evening, the third, they do not.
+        assert!(lighting.night);
+        let mut evening = one.clone();
+        evening[..4].copy_from_slice(&3_i32.to_le_bytes());
+        assert!(!read(1, &evening).unwrap().night);
         assert_eq!(lights[0].ambient, [4.28125, 4.3125, 4.34375]);
         assert_eq!(lights[0].position, [4.468_75, 4.5, 4.531_25]);
         assert_eq!(lights[1..], [GameLight::DARK; 2]);
@@ -639,6 +695,40 @@ mod tests {
                 version: 4
             })
         );
+    }
+
+    #[test]
+    fn a_world_snows_at_its_snowy_weather_alone() {
+        // A `weather` of 1, `WEATHER_SNOWY`, snows; of 0 or 2, of text, or none, it does not; a
+        // key set twice takes its last value.
+        let snowy = |entries: &[(&str, u8, Vec<u8>)]| {
+            let mut writer = ChunkWriter::default();
+            let count = u16::try_from(entries.len()).unwrap();
+            let mut body = count.to_le_bytes().to_vec();
+            for (key, kind, value) in entries {
+                body.extend(writer.entry(key, *kind, value));
+            }
+            let chunk = RawChunk {
+                id: 0,
+                version: 1,
+                body: ChunkReader::new(&body),
+            };
+            MapFile::snowy(chunk, &writer.table())
+        };
+        let int = |value: i32| value.to_le_bytes().to_vec();
+        assert_eq!(snowy(&[("weather", 1, int(1))]), Ok(true));
+        for weather in [0, 2] {
+            assert_eq!(snowy(&[("weather", 1, int(weather))]), Ok(false));
+        }
+        let text = ChunkWriter::text(b"snowy");
+        assert_eq!(snowy(&[("weather", 3, text)]), Ok(false));
+        assert_eq!(snowy(&[("mapName", 1, int(1))]), Ok(false));
+        assert_eq!(snowy(&[]), Ok(false));
+        let twice = [("weather", 1, int(0)), ("weather", 1, int(1))];
+        assert_eq!(snowy(&twice), Ok(true));
+        // The fixture's world dictionary is empty: a day map, not snowy.
+        let read = MapFile::read(&map(8)).unwrap();
+        assert_eq!(read.conditions, LookConditions::default());
     }
 
     #[test]

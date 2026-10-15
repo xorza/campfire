@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use bevy_math::Vec3;
 use campfire_client_files::{
-    ClientObject, ClientObjects, ClientUnits, HeightGrid, MapLight, MapLights, TerrainFile,
-    TerrainSurface,
+    ClientObject, ClientObjects, ClientUnits, HeightGrid, MapConditions, MapLight, MapLights,
+    TerrainFile, TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
 use campfire_geometry::{Bounds, Metric};
@@ -25,8 +25,9 @@ use crate::zero_hour::terrain_cells::TerrainCells;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
-/// `client/maps/<name>/objects.toml`; how many cells its terrain draws a tile of with no
-/// texture; and the names of the waypoints it dropped, past its bounds.
+/// `client/maps/<name>/objects.toml` and `client/maps/<name>/conditions.toml`; how many cells its
+/// terrain draws a tile of with no texture; and the names of the waypoints it dropped, past its
+/// bounds.
 #[derive(Debug)]
 pub(crate) struct MapImport {
     pub(crate) map: String,
@@ -35,6 +36,7 @@ pub(crate) struct MapImport {
     pub(crate) untextured: usize,
     pub(crate) lights: String,
     pub(crate) objects: String,
+    pub(crate) conditions: String,
     pub(crate) dropped_waypoints: Vec<String>,
 }
 
@@ -320,6 +322,9 @@ impl MapImport {
             untextured,
             lights: Toml::write(&map_lights),
             objects: Toml::write(&client),
+            conditions: Toml::write(&MapConditions {
+                conditions: file.conditions.names(),
+            }),
             dropped_waypoints,
         })
     }
@@ -374,6 +379,7 @@ mod tests {
 
     use super::*;
     use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::look_conditions::LookConditions;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
     use crate::zero_hour::terrain::{BlendShape, BlendTile};
@@ -414,7 +420,7 @@ box = ["20", "5"]
         let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
             (
                 DeclaredName::new(look).unwrap(),
-                ClientUnit { models: Vec::new() },
+                ClientUnit::new(Vec::new()),
             )
         });
         let looks = ClientUnits {
@@ -606,6 +612,19 @@ box = ["20", "5"]
                 ]
             }
         );
+        // A day map of fair weather sets no condition: its looks draw their own models. A night
+        // map sets `night`, a snowy one `snow`, and a snowy night both.
+        assert_eq!(imported.conditions, "conditions = []\n");
+        let mut dark = file.clone();
+        for (night, snow, conditions) in [
+            (true, false, r#"["night"]"#),
+            (false, true, r#"["snow"]"#),
+            (true, true, r#"["night", "snow"]"#),
+        ] {
+            dark.conditions = LookConditions { night, snow };
+            let written = import(&dark, &mut ImportNames::default(), 3).unwrap();
+            assert_eq!(written.conditions, format!("conditions = {conditions}\n"));
+        }
         // Its navigation's cells are the pathfinder's, of 10 m. Its cliffs, the game's cells
         // [0, 0] and [3, 2] of 4 × 3, grow over [0, 0] to [1, 1] and [2, 1] to [3, 2]: the runs 0
         // to 1 of row 0, 0 to 3 of row 1 and 2 to 3 of row 2. The game's row `y` of its 3 rows of
