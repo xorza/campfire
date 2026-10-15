@@ -3,7 +3,7 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{ResMut, SystemParam};
 use campfire_declare::Cache;
-use campfire_geometry::{BodyGrid, Placed};
+use campfire_geometry::{BodyGrid, Indexed, Placed};
 
 use crate::body::Body;
 use crate::unit_entity::body_unit::BodyUnit;
@@ -46,11 +46,10 @@ impl UnitsNear<'_, '_> {
             let mut count = 0;
             self.grid.0.rebuild(self.tracking.units().map(|unit| {
                 count += 1;
-                Placed {
+                Indexed {
                     id: unit.id,
                     key: unit.entity,
-                    pos: unit.pos,
-                    shape: Body::shape_of(unit.body),
+                    body: Placed::new(unit.pos, Body::shape_of(unit.body)),
                 }
             }));
             self.tracking.took(count);

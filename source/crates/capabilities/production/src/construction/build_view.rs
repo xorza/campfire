@@ -87,7 +87,7 @@ pub(super) struct Building<'a> {
 /// Where a build's building stands: at the order's point, at the builder's height, its box
 /// turned by the order's angle, or the site's.
 #[derive(Debug, Clone, Copy)]
-pub(super) struct Placed {
+pub(super) struct BuildPlace {
     pub pos: Position,
     pub(super) body: Body,
 }
@@ -128,11 +128,11 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         from: Position,
         owner: Option<&Owner>,
         target: BuildTarget,
-    ) -> Option<Placed> {
+    ) -> Option<BuildPlace> {
         match target {
             BuildTarget::Point { x, z, angle } => {
                 let at = Vec3::new(x, from.get().y, z);
-                Some(Placed {
+                Some(BuildPlace {
                     pos: Position::new(at).expect("a point within the bounds"),
                     body: building.spec.form.at(angle),
                 })
@@ -141,7 +141,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
                 let same = unit_type == building.unit_type && site_owner == owner;
-                same.then_some(Placed { pos: at, body })
+                same.then_some(BuildPlace { pos: at, body })
             }
         }
     }
@@ -215,7 +215,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         from: Position,
         body: Option<&Body>,
         building: Building<'_>,
-        placed: Placed,
+        placed: BuildPlace,
     ) -> bool {
         Construction::in_range(self.map.metric, from, body, building.range, placed)
     }

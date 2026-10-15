@@ -1,6 +1,7 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res};
 use campfire_actions::{ActionBook, ActionRange, ActionSlots, Targets};
+use campfire_geometry::Placed;
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_sim::Position;
 use campfire_units::{ArrivedShort, Body, Dead, Destination};
@@ -87,7 +88,11 @@ impl Destinations {
                     Destination::walk_to(&mut destination, arrived, None);
                 }
                 Some((unit, ActionRange::Meters(range)))
-                    if !targets.reaches(position, Body::shape_of(body), range, &unit) =>
+                    if !targets.reaches(
+                        Placed::new(position, Body::shape_of(body)),
+                        range,
+                        &unit,
+                    ) =>
                 {
                     Destination::walk_to(&mut destination, arrived, Some(unit.pos));
                 }

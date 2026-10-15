@@ -272,7 +272,7 @@ impl BodyBox {
     /// `centre`, as `approach` finds it, with no place: a path that meets the closed box is at 0,
     /// and one that does not comes nearest at an end, or where a corner's nearest point lies
     /// inside it, so it is closer when one of these is.
-    pub(crate) fn comes_within(
+    pub(crate) fn comes_closer(
         &self,
         centre: Position,
         from: Position,

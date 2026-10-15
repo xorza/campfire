@@ -4,7 +4,7 @@ use campfire_actions::Targets;
 use campfire_common::Ticks;
 use campfire_declare::ByType;
 use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, Reached};
-use campfire_geometry::Shape;
+use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_units::UnitsNear;
@@ -79,7 +79,7 @@ impl AreaLife {
                     };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
-                        && targets.reaches(pos, Shape::POINT, spec.radius, &unit)
+                        && targets.reaches(Placed::point(pos), spec.radius, &unit)
                     {
                         reached.push(unit.id);
                     }

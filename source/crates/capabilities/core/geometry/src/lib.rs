@@ -14,6 +14,7 @@ mod cell_levels;
 mod grid;
 mod halves;
 mod metric;
+mod placed;
 mod polygon;
 mod shape;
 
@@ -23,12 +24,13 @@ mod kernel_scene;
 pub use crate::approach::Approach;
 pub use crate::body_bound::MAX_BOUND;
 pub use crate::body_box::BodyBox;
-pub use crate::body_grid::{BodyGrid, Placed};
+pub use crate::body_grid::{BodyGrid, Indexed};
 pub use crate::bounds::Bounds;
 pub use crate::cell_key::CellKey;
 pub use crate::cell_levels::CellLevels;
 pub use crate::grid::Grid;
 pub use crate::metric::Metric;
+pub use crate::placed::Placed;
 pub use crate::polygon::Polygon;
 pub use crate::polygon::error::PolygonError;
 pub use crate::shape::Shape;
@@ -37,12 +39,12 @@ pub use crate::shape::Shape;
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::{body_box, body_grid, grid, shape};
+    use crate::{body_box, body_grid, grid, placed};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         body_box::bench::body_box(c);
-        shape::bench::shape(c);
+        placed::bench::placed(c);
         grid::bench::grid(c);
         body_grid::bench::body_grid(c);
     }

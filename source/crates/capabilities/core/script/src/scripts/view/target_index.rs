@@ -1,4 +1,4 @@
-use campfire_geometry::{BodyGrid, Placed, Shape};
+use campfire_geometry::{BodyGrid, Indexed, Placed, Shape};
 use campfire_math::Num;
 use campfire_sim::Position;
 use campfire_values::Team;
@@ -42,11 +42,10 @@ impl TargetIndex {
         }
         let rows = rows.iter().enumerate();
         let targets = rows.filter(|(_, row)| row.targetable);
-        self.bodies.rebuild(targets.map(|(at, row)| Placed {
+        self.bodies.rebuild(targets.map(|(at, row)| Indexed {
             id: row.id,
             key: at,
-            pos: row.pos,
-            shape: row.shape,
+            body: Placed::new(row.pos, row.shape),
         }));
         self.indexed = true;
     }
@@ -58,7 +57,7 @@ impl TargetIndex {
         rows: &ViewRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        visit: impl FnMut(&Placed<usize>),
+        visit: impl FnMut(&Indexed<usize>),
     ) {
         self.index(rows.units());
         TargetIndex::each_reached(&self.bodies, rows, query, seen, visit);
@@ -73,8 +72,8 @@ impl TargetIndex {
     ) -> &[usize] {
         self.index(rows.units());
         self.found.clear();
-        TargetIndex::each_reached(&self.bodies, rows, query, seen, |body| {
-            self.found.push(body.key);
+        TargetIndex::each_reached(&self.bodies, rows, query, seen, |entry| {
+            self.found.push(entry.key);
         });
         self.found.sort_unstable();
         &self.found
@@ -86,7 +85,7 @@ impl TargetIndex {
         rows: &ViewRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        mut visit: impl FnMut(&Placed<usize>),
+        mut visit: impl FnMut(&Indexed<usize>),
     ) {
         let TargetQuery {
             team,
@@ -97,14 +96,15 @@ impl TargetIndex {
         } = query;
         let reach = shape.bound().checked_add(radius).unwrap_or(Num::MAX);
         let metric = rows.metric();
-        bodies.visit_near(from, reach, |body| {
-            let row = &rows.units()[body.key];
+        let from = Placed::new(from, shape);
+        bodies.visit_near(from.pos, reach, |entry| {
+            let row = &rows.units()[entry.key];
             let relation = rows.relations().between(team, row.team);
-            if metric.reaches(from, shape, radius, body.pos, body.shape)
+            if metric.reaches(from, radius, entry.body)
                 && filter.selects(relation, row.tags.tags)
-                && seen(rows.columns(), body.key)
+                && seen(rows.columns(), entry.key)
             {
-                visit(body);
+                visit(entry);
             }
         });
     }

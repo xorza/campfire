@@ -2,7 +2,7 @@ use std::cmp::Ordering;
 
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_geometry::Shape;
+use campfire_geometry::{Placed, Shape};
 use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook, Walls};
 use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
@@ -102,11 +102,9 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                 let tags = tags.map(|tags| tags.tags).unwrap_or_default();
                 rule.filter.selects(relation, tags)
                     && self.map.metric.reaches(
-                        pos,
-                        body.shape(),
+                        Placed::new(pos, body.shape()),
                         rule.distance,
-                        other_pos,
-                        Body::shape_of(other),
+                        Placed::new(other_pos, Body::shape_of(other)),
                     )
             })
     }

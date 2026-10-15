@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::approach::Approach;
 use crate::body_box::BodyBox;
+use crate::placed::Placed;
 use crate::shape::Shape;
 
 /// How a map measures ranges, reach and sight: on the ground plane, as MOBAs and RTS games do, or
@@ -52,18 +53,21 @@ impl Metric {
         Vec3::ZERO.within(self.offset(a, b), range)
     }
 
-    /// Whether `range` from the edge of the body `from_shape` at `from` reaches the edge of the
-    /// body `to_shape` at `to`, exactly: the one rule of reach, which ranges, areas, auras, script
-    /// queries and homing hits all decide by. A point is a circle of radius 0. A reach past what a
-    /// number holds is past every distance within the bound. A box lies only on a planar map.
-    pub fn reaches(
-        self,
-        from: Position,
-        from_shape: Shape,
-        range: Num,
-        to: Position,
-        to_shape: Shape,
-    ) -> bool {
+    /// Whether `range` from the edge of the body `from` reaches the edge of the body `to`,
+    /// exactly: the one rule of reach, which ranges, areas, auras, script queries and homing hits
+    /// all decide by. A point is a circle of radius 0. A reach past what a number holds is past
+    /// every distance within the bound. A box lies only on a planar map.
+    pub fn reaches(self, from: Placed, range: Num, to: Placed) -> bool {
+        let (
+            Placed {
+                pos: from,
+                shape: from_shape,
+            },
+            Placed {
+                pos: to,
+                shape: to_shape,
+            },
+        ) = (from, to);
         debug_assert!(range >= Num::ZERO);
         let within = |body: &BodyBox, pos: Position, other: Position, radius: Num| {
             debug_assert!(self == Metric::Planar, "a box lies on a planar map");
@@ -87,16 +91,16 @@ impl Metric {
         }
     }
 
-    /// How the straight path from `from` to `to` comes to the body `shape` at `pos`, against
-    /// `reach`, as `reaches` counts it.
+    /// How the straight path from `from` to `to` comes to `body`, against `reach`, as `reaches`
+    /// counts it.
     pub(crate) fn approach(
         self,
-        shape: Shape,
-        pos: Position,
+        body: Placed,
         from: Position,
         to: Position,
         reach: Num,
     ) -> Approach {
+        let Placed { pos, shape } = body;
         match shape {
             Shape::Circle(radius) => {
                 Approach::of_circle(self.offset(from, to), self.offset(from, pos), reach, radius)
@@ -108,18 +112,11 @@ impl Metric {
         }
     }
 
-    /// Whether the straight path from `from` to `to` comes within `reach` of the body `shape` at
-    /// `pos`, each distance to the nearest bit; and if it does, the place along the path of its
-    /// point nearest the body, the first where it enters a box, its distance from `from`.
-    pub fn meets(
-        self,
-        from: Position,
-        to: Position,
-        pos: Position,
-        shape: Shape,
-        reach: Num,
-    ) -> Option<Num> {
-        let approach = self.approach(shape, pos, from, to, reach);
+    /// Whether the straight path from `from` to `to` comes within `reach` of `body`, each
+    /// distance to the nearest bit; and if it does, the place along the path of its point nearest
+    /// the body, the first where it enters a box, its distance from `from`.
+    pub fn meets(self, from: Position, to: Position, body: Placed, reach: Num) -> Option<Num> {
+        let approach = self.approach(body, from, to, reach);
         (approach.nearest != Ordering::Greater).then_some(approach.place)
     }
 }
@@ -145,16 +142,31 @@ mod tests {
         ];
         let circle = Shape::Circle;
         for (from_radius, range, to_radius, reaches) in cases {
-            let met =
-                Metric::Planar.reaches(from, circle(from_radius), range, to, circle(to_radius));
+            let met = Metric::Planar.reaches(
+                Placed::new(from, circle(from_radius)),
+                range,
+                Placed::new(to, circle(to_radius)),
+            );
             assert_eq!(met, reaches, "{from_radius:?} + {range:?} + {to_radius:?}");
         }
         // 4 m up and 3 m along: 3 apart on a planar map, 5 on a spatial one.
         let above = Position::from((3, 4, 0));
         let point = Shape::POINT;
-        assert!(Metric::Planar.reaches(from, point, num(3), above, point));
-        assert!(!Metric::Spatial.reaches(from, point, num(4), above, point));
-        assert!(Metric::Spatial.reaches(from, circle(num(1)), num(3), above, circle(num(1))));
+        assert!(Metric::Planar.reaches(
+            Placed::new(from, point),
+            num(3),
+            Placed::new(above, point)
+        ));
+        assert!(!Metric::Spatial.reaches(
+            Placed::new(from, point),
+            num(4),
+            Placed::new(above, point)
+        ));
+        assert!(Metric::Spatial.reaches(
+            Placed::new(from, circle(num(1))),
+            num(3),
+            Placed::new(above, circle(num(1)))
+        ));
         // A box of 4 × 2 m at 10 m along x, its near edge at 8 m: a point reaches it at 8, a
         // body of 1 m at 7, either way round, and a box of 2 × 2 m at the start, its edge at 1 m,
         // at 7, not 7 less a bit. A reach past what a number holds reaches all.
@@ -170,8 +182,10 @@ mod tests {
             (circle(num(1)), Num::MAX, far, true),
         ];
         for (shape, range, other, reaches) in shapes {
-            let there = Metric::Planar.reaches(from, shape, range, to, other);
-            let back = Metric::Planar.reaches(to, other, range, from, shape);
+            let there =
+                Metric::Planar.reaches(Placed::new(from, shape), range, Placed::new(to, other));
+            let back =
+                Metric::Planar.reaches(Placed::new(to, other), range, Placed::new(from, shape));
             assert_eq!((there, back), (reaches, reaches), "{shape:?} {range:?}");
         }
     }
@@ -223,39 +237,63 @@ mod tests {
             (Position::from((12, 0, 0)), num(1), None),
         ];
         for (at, reach, expected) in cases {
-            let met = Metric::Planar.meets(from, to, at, point, reach);
+            let met = Metric::Planar.meets(from, to, Placed::new(at, point), reach);
             assert_eq!(met, expected, "{at:?} within {reach:?}");
         }
         // A circle of 1 m is met within a reach 1 m shorter.
         let circle = Shape::Circle(num(1));
         assert_eq!(
-            Metric::Planar.meets(from, to, Position::from((4, 0, 2)), circle, num(1)),
+            Metric::Planar.meets(
+                from,
+                to,
+                Placed::new(Position::from((4, 0, 2)), circle),
+                num(1)
+            ),
             cases[0].2
         );
         // 3 m up: a planar map ignores the height, a spatial one counts it, √(4 + 9) > 3.
         let above = Position::from((4, 3, 2));
         // Its place on the path is the point's along it, 4 m, either way.
         let along = Some(num(4));
-        assert_eq!(Metric::Planar.meets(from, to, above, point, num(2)), along);
-        assert_eq!(Metric::Spatial.meets(from, to, above, point, num(3)), None);
-        assert_eq!(Metric::Spatial.meets(from, to, above, point, num(4)), along);
+        assert_eq!(
+            Metric::Planar.meets(from, to, Placed::new(above, point), num(2)),
+            along
+        );
+        assert_eq!(
+            Metric::Spatial.meets(from, to, Placed::new(above, point), num(3)),
+            None
+        );
+        assert_eq!(
+            Metric::Spatial.meets(from, to, Placed::new(above, point), num(4)),
+            along
+        );
         // A path of no length meets what is within reach of its point.
-        let still = Metric::Planar.meets(from, from, Position::from((0, 0, 1)), point, num(1));
+        let still = Metric::Planar.meets(
+            from,
+            from,
+            Placed::new(Position::from((0, 0, 1)), point),
+            num(1),
+        );
         assert_eq!(still, Some(Num::ZERO));
         // A box of 4 × 2 m at 5 m along, through which the path runs: met where it enters, at
         // 3 m, whatever the reach.
         let body = Shape::Box(BodyBox::new([num(4), num(2)], Num::ZERO).unwrap());
-        let entered = Metric::Planar.meets(from, to, Position::from((5, 0, 0)), body, Num::ZERO);
+        let entered = Metric::Planar.meets(
+            from,
+            to,
+            Placed::new(Position::from((5, 0, 0)), body),
+            Num::ZERO,
+        );
         assert_eq!(entered, Some(num(3)));
         // A reach and a radius whose sum passes every number reach every distance, as
         // `reaches` counts them: met at the path's nearest point, 4 m along, and come within.
         let huge = Shape::Circle(Num::MAX);
         let far = Position::from((4, 0, 900));
         assert_eq!(
-            Metric::Planar.meets(from, to, far, huge, Num::MAX),
+            Metric::Planar.meets(from, to, Placed::new(far, huge), Num::MAX),
             Some(num(4))
         );
-        assert!(huge.comes_within(far, from, to, Num::MAX));
-        assert!(Metric::Planar.reaches(from, huge, Num::MAX, far, point));
+        assert!(Placed::new(far, huge).comes_closer(from, to, Num::MAX));
+        assert!(Metric::Planar.reaches(Placed::new(from, huge), Num::MAX, Placed::new(far, point)));
     }
 }

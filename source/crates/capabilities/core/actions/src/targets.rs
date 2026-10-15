@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_geometry::{Metric, Shape};
+use campfire_geometry::{Metric, Placed};
 use campfire_math::Num;
 use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
@@ -60,26 +60,17 @@ impl Targets<'_, '_> {
         self.relations.get().between(of, other)
     }
 
-    /// Whether `range` from a unit at `from` of body `shape` reaches `target`: within range in
-    /// the map's metric, exactly, from the edge of the one body to the edge of the other.
-    pub fn reaches(&self, from: Position, shape: Shape, range: Num, target: &LivingUnit) -> bool {
-        self.map
-            .metric
-            .reaches(from, shape, range, target.pos, target.shape)
+    /// Whether `range` from the body `from` reaches `target`: within range in the map's metric,
+    /// exactly, from the edge of the one body to the edge of the other.
+    pub fn reaches(&self, from: Placed, range: Num, target: &LivingUnit) -> bool {
+        let target = Placed::new(target.pos, target.shape);
+        self.map.metric.reaches(from, range, target)
     }
 
-    /// Whether `range` from a unit at `from` of body `shape` reaches the point `pos`, from the
-    /// edge of its body, exactly.
-    pub(crate) fn reaches_point(
-        &self,
-        from: Position,
-        shape: Shape,
-        range: Num,
-        pos: Position,
-    ) -> bool {
-        self.map
-            .metric
-            .reaches(from, shape, range, pos, Shape::POINT)
+    /// Whether `range` from the body `from` reaches the point `pos`, from the edge of the body,
+    /// exactly.
+    pub(crate) fn reaches_point(&self, from: Placed, range: Num, pos: Position) -> bool {
+        self.map.metric.reaches(from, range, Placed::point(pos))
     }
 
     /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.

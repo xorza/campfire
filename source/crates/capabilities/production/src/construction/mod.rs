@@ -4,7 +4,7 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
-use campfire_geometry::Metric;
+use campfire_geometry::{Metric, Placed};
 use campfire_math::Num;
 use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
@@ -18,7 +18,7 @@ use crate::Production;
 use crate::build_book::{BuildBook, Style};
 use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
-use crate::construction::build_view::{BuildView, Placed};
+use crate::construction::build_view::{BuildPlace, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{Start, Step};
 use crate::held::Held;
@@ -41,14 +41,12 @@ impl Construction {
         from: Position,
         body: Option<&Body>,
         range: Num,
-        placed: Placed,
+        placed: BuildPlace,
     ) -> bool {
         metric.reaches(
-            from,
-            Body::shape_of(body),
+            Placed::new(from, Body::shape_of(body)),
             range,
-            placed.pos,
-            placed.body.shape(),
+            Placed::new(placed.pos, placed.body.shape()),
         )
     }
 
@@ -301,7 +299,7 @@ impl Construction {
                 continue;
             };
             let range = slots.meters_in(&book, slot);
-            let placed = Placed {
+            let placed = BuildPlace {
                 pos: at,
                 body: *site_body,
             };

@@ -2528,6 +2528,7 @@ dependencies = [
  "campfire-actions",
  "campfire-common",
  "campfire-declare",
+ "campfire-geometry",
  "campfire-items",
  "campfire-math",
  "campfire-players",

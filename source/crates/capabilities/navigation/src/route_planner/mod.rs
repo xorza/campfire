@@ -148,7 +148,7 @@ impl<'a> Walkable<'a> {
                 short
                     .blockers
                     .iter()
-                    .any(|body| body.comes_within(segment, radius))
+                    .any(|body| body.comes_closer(segment, radius))
             })
     }
 }

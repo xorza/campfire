@@ -1,6 +1,7 @@
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_declare::ByType;
+use campfire_geometry::Placed;
 use campfire_players::OnMatch;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook};
@@ -90,8 +91,9 @@ impl Shopping<'_, '_> {
         let visitor = self.visitor(unit)?;
         let buyer = visitor.buyer(self.relations.get().between(team, visitor.team));
         spec.serves(buyer, |reach| {
-            let (from, to) = (Body::shape_of(body), Body::shape_of(visitor.body));
-            self.map.metric.reaches(at, from, reach, visitor.pos, to)
+            let from = Placed::new(at, Body::shape_of(body));
+            let to = Placed::new(visitor.pos, Body::shape_of(visitor.body));
+            self.map.metric.reaches(from, reach, to)
         })
         .then_some(spec)
     }

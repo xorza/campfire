@@ -290,9 +290,9 @@ impl View {
         self.0
             .targets
             .borrow_mut()
-            .visit(&rows, query, seen, |body| {
-                let distance = metric.offset(of.pos, body.pos).length_squared_bits();
-                let candidate = (distance, body.id, body.key);
+            .visit(&rows, query, seen, |entry| {
+                let distance = metric.offset(of.pos, entry.body.pos).length_squared_bits();
+                let candidate = (distance, entry.id, entry.key);
                 if nearest.is_none_or(|best| candidate < best) {
                     nearest = Some(candidate);
                 }

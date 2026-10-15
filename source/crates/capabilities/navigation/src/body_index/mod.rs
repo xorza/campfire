@@ -4,7 +4,7 @@ use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Cache;
-use campfire_geometry::{BodyBox, CellLevels, Grid, MAX_BOUND, Shape};
+use campfire_geometry::{BodyBox, CellLevels, Grid, MAX_BOUND, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_units::{Body, Layer};
@@ -147,9 +147,8 @@ impl IndexedBody {
 
     /// Whether `segment` comes closer than `reach` to the body: a walker of that radius along
     /// it would overlap it. Touching is not closer.
-    pub(crate) fn comes_within(&self, segment: Segment, reach: Num) -> bool {
-        self.shape
-            .comes_within(self.pos, segment.start(), segment.end(), reach)
+    pub(crate) fn comes_closer(&self, segment: Segment, reach: Num) -> bool {
+        Placed::new(self.pos, self.shape).comes_closer(segment.start(), segment.end(), reach)
     }
 
     /// Whether the insides of the body and of `body`, a box at `pos`, share a point: touching is
@@ -361,7 +360,7 @@ impl BodyIndex {
             high: [high_x, high_z],
         };
         let met = self.meeting(walker.layer, square, |body| {
-            if body.comes_within(segment, radius) {
+            if body.comes_closer(segment, radius) {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())

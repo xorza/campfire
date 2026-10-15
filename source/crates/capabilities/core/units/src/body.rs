@@ -127,7 +127,7 @@ impl<'de> Deserialize<'de> for Body {
 pub(crate) mod internals {
     use std::cmp::Ordering;
 
-    use campfire_geometry::{Metric, Shape};
+    use campfire_geometry::{Metric, Placed, Shape};
     use campfire_math::Num;
     use campfire_sim::Position;
 
@@ -143,8 +143,8 @@ pub(crate) mod internals {
             to: Position,
             to_body: Option<&Body>,
         ) -> bool {
-            let (from_shape, to_shape) = (Body::shape_of(from_body), Body::shape_of(to_body));
-            Metric::Planar.reaches(from, from_shape, range, to, to_shape)
+            let from = Placed::new(from, Body::shape_of(from_body));
+            Metric::Planar.reaches(from, range, Placed::new(to, Body::shape_of(to_body)))
         }
 
         /// Whether `range` from the edge of `from_body` at `from` reaches the least circle round
@@ -156,8 +156,8 @@ pub(crate) mod internals {
             to: Position,
             to_body: Option<&Body>,
         ) -> bool {
-            let bound = Shape::Circle(Body::shape_of(to_body).bound());
-            Metric::Planar.reaches(from, Body::shape_of(from_body), range, to, bound)
+            let bound = Placed::new(to, Shape::Circle(Body::shape_of(to_body).bound()));
+            Metric::Planar.reaches(Placed::new(from, Body::shape_of(from_body)), range, bound)
         }
 
         /// Whether this circle at `pos` overlaps the box `body` at `centre`: a body collision

@@ -1,7 +1,7 @@
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_declare::ByType;
-use campfire_geometry::Shape;
+use campfire_geometry::Placed;
 use campfire_sim::Position;
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::UnitsNear;
@@ -45,7 +45,7 @@ impl AreaHolds {
                 let Some(unit) = targets.living_at(body.key) else {
                     return;
                 };
-                if !targets.reaches(pos, Shape::POINT, spec.radius, &unit) {
+                if !targets.reaches(Placed::point(pos), spec.radius, &unit) {
                     return;
                 }
                 let by = area.by();

@@ -35,7 +35,7 @@ pub(crate) mod internals {
     impl Segment {
         /// Whether the segment comes closer than `reach` to `pos`, exactly; touching at `reach`
         /// is not closer: the circles' test, which the shapes' must agree with.
-        pub fn comes_within(self, pos: Position, reach: Num) -> bool {
+        pub fn comes_closer(self, pos: Position, reach: Num) -> bool {
             let path = Metric::Planar.offset(self.from, self.to);
             let off = Metric::Planar.offset(self.from, pos);
             Approach::nearest_of(path, off, reach) == Ordering::Less

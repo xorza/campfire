@@ -221,7 +221,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "({x}, {z})");
     }
 }
@@ -242,7 +242,7 @@ fn lattice(ids: &mut IdAllocator) -> (BodyIndex, Vec<IndexedBody>) {
 }
 
 #[test]
-fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
+fn a_segment_is_blocked_exactly_when_a_body_comes_closer_reach() {
     let mut ids = IdAllocator::default();
     let (index, bodies) = lattice(&mut ids);
     // Segments of every direction and length over the lattice, long diagonals, lines along an
@@ -292,7 +292,7 @@ fn a_segment_is_blocked_exactly_when_a_body_comes_within_reach() {
         };
         let reached = bodies
             .iter()
-            .any(|body| segment.comes_within(body.pos, walker.radius + body.shape.bound()));
+            .any(|body| segment.comes_closer(body.pos, walker.radius + body.shape.bound()));
         assert_eq!(index.blocks(segment, walker), reached, "{from:?} {to:?}");
     }
 }

@@ -1,4 +1,4 @@
-use campfire_geometry::Shape;
+use campfire_geometry::Placed;
 use campfire_math::{Num, Vec3};
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptValue, Unit,
@@ -133,6 +133,6 @@ impl UnitsApi {
     fn within(ctx: &Ctx, from: Position, to: Position, radius: Num) -> Checked<bool> {
         let radius = ApiError::radius(radius)?;
         let metric = ctx.view().metric();
-        Ok(metric.reaches(from, Shape::POINT, radius, to, Shape::POINT))
+        Ok(metric.reaches(Placed::point(from), radius, Placed::point(to)))
     }
 }
