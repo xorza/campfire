@@ -39,6 +39,7 @@ pub(crate) mod script_text;
 pub(crate) mod script_value;
 pub(crate) mod scripts_world;
 pub(crate) mod state_decl;
+pub(crate) mod state_type;
 pub(crate) mod state_value;
 pub(crate) mod type_slots;
 pub(crate) mod view;

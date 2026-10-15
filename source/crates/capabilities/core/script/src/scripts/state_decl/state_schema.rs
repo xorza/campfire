@@ -1,7 +1,8 @@
 use campfire_values::{NameId, Names};
 
+use crate::scripts::state_decl::StateDecl;
 use crate::scripts::state_decl::synced_state_decl::SyncTo;
-use crate::scripts::state_decl::{StateDecl, StateType};
+use crate::scripts::state_type::StateType;
 use crate::scripts::state_value::StateValue;
 
 /// The fields of one declared script state, the mode's, a unit type's or a modifier's: each
