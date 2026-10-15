@@ -75,6 +75,19 @@ struct GaugeScratch {
 }
 
 impl GaugeScratch {
+    /// Reads the rows of each of `slots`, in order, as `learning` gives them.
+    fn read_slots(&mut self, slots: &ActionSlots, learning: Option<&Learning<'_>>) {
+        self.slots.clear();
+        self.slots.extend(slots.iter().map(|held| {
+            SlotRows {
+                ranks: learning.and_then(|learning| learning.ranks(held)),
+                charges: learning
+                    .and_then(|learning| learning.charges(held))
+                    .map(|rule| rule.max.get()),
+            }
+        }));
+    }
+
     /// The own avatar's ability rows from row `row`, for the slots `slots` holds in order: a learn
     /// mark over each ability that ranks up, when one does; a cooldown pip for each slot; the
     /// rank ticks of each ability that ranks up; and the charge ticks of each ability with
@@ -137,7 +150,7 @@ impl GaugeScratch {
 
 /// What an ability slot's rows show of it: the count of ranks of an ability that ranks up, and
 /// the most charges of one with charges.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct SlotRows {
     ranks: Option<u8>,
     charges: Option<u8>,
@@ -166,10 +179,12 @@ type Ungauged<'w, 's> = Query<
     (Without<Gauged>, Allow<Unpredicted>),
 >;
 
-/// On a unit: its gauges are made, on their stand, when it has any.
-#[derive(Component, Debug)]
+/// On a unit: its gauges are made, on their stand, when it has any; and on the own avatar, the
+/// rows of the ability slots they were made for.
+#[derive(Component, Debug, Default)]
 struct Gauged {
     stand: Option<Entity>,
+    slots: Option<Vec<SlotRows>>,
 }
 
 /// What the gauges show of each unit, and where they stand.
@@ -240,7 +255,9 @@ impl Plugin for Hud {
         app.add_systems(
             Update,
             (
+                Hud::regauge,
                 Hud::add_gauges,
+                Hud::lift_stands,
                 Hud::face_camera,
                 Hud::mark_hits,
                 Hud::fill_gauges,
@@ -302,7 +319,7 @@ impl Hud {
         for (unit, drawing, team, life, pools, slots) in &drawn {
             // A projectile's drawing has no look, and no gauges.
             let Ok(shape) = shapes.get(drawing.root()) else {
-                commands.entity(unit).insert(Gauged { stand: None });
+                commands.entity(unit).insert(Gauged::default());
                 continue;
             };
             let mine = Some(unit) == avatar;
@@ -320,21 +337,18 @@ impl Hud {
                     row += 1;
                 }
             }
-            if mine && let Some(slots) = slots {
-                let learning = learning.as_ref();
-                scratch.slots.clear();
-                scratch.slots.extend(slots.iter().map(|held| {
-                    SlotRows {
-                        ranks: learning.and_then(|learning| learning.ranks(held)),
-                        charges: learning
-                            .and_then(|learning| learning.charges(held))
-                            .map(|rule| rule.max.get()),
-                    }
-                }));
+            let rows = if mine && let Some(slots) = slots {
+                scratch.read_slots(slots, learning.as_ref());
                 scratch.ability_rows(row);
-            }
+                Some(scratch.slots.clone())
+            } else {
+                None
+            };
             if scratch.kinds.is_empty() {
-                commands.entity(unit).insert(Gauged { stand: None });
+                commands.entity(unit).insert(Gauged {
+                    stand: None,
+                    slots: rows,
+                });
                 continue;
             }
             let top = Vec3::Y * (shape.height + ABOVE);
@@ -346,7 +360,10 @@ impl Hud {
                 ))
                 .id();
             commands.entity(drawing.root()).add_child(stand);
-            commands.entity(unit).insert(Gauged { stand: Some(stand) });
+            commands.entity(unit).insert(Gauged {
+                stand: Some(stand),
+                slots: rows,
+            });
             for &kind in &scratch.kinds {
                 let layout = kind.layout();
                 let back = commands
@@ -368,6 +385,44 @@ impl Hud {
                     .add_children(&[back, fill])
                     .id();
                 commands.entity(stand).add_child(gauge);
+            }
+        }
+    }
+
+    /// Takes the own avatar's gauges down when its ability slots change their rows, as an
+    /// ability or an item joins or leaves them, or a rank gives charges, so `add_gauges` makes
+    /// them again.
+    fn regauge(
+        learning: Option<Learning<'_>>,
+        avatars: Query<'_, '_, (Entity, &Gauged, &ActionSlots), Changed<ActionSlots>>,
+        mut scratch: Local<'_, GaugeScratch>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (unit, gauged, slots) in &avatars {
+            let Some(rows) = &gauged.slots else {
+                continue;
+            };
+            scratch.read_slots(slots, learning.as_ref());
+            if scratch.slots == *rows {
+                continue;
+            }
+            if let Some(stand) = gauged.stand {
+                commands.entity(stand).despawn();
+            }
+            commands.entity(unit).remove::<Gauged>();
+        }
+    }
+
+    /// Stands each unit's gauges over its drawing's top as its shape's height changes, as a
+    /// model drawing's does once its meshes have their bounds.
+    fn lift_stands(
+        roots: Query<'_, '_, (&Shape, &Children), Changed<Shape>>,
+        mut stands: Query<'_, '_, &mut Transform, With<GaugeStand>>,
+    ) {
+        for (shape, children) in &roots {
+            let mut lifted = stands.iter_many_mut(children);
+            while let Some(mut place) = lifted.fetch_next() {
+                place.translation = Vec3::Y * (shape.height + ABOVE);
             }
         }
     }
@@ -397,7 +452,7 @@ impl Hud {
         mut gauges: Query<'_, '_, &mut Gauge>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (life, drawing, Gauged { stand }) in &units {
+        for (life, drawing, Gauged { stand, .. }) in &units {
             let (Some(stand), Ok(root)) = (*stand, roots.get(drawing.root())) else {
                 continue;
             };
@@ -452,7 +507,7 @@ impl Hud {
         touched.dedup();
         let now = tick.map(|tick| tick.start());
         for &unit in &*touched {
-            let Ok((Gauged { stand }, dead, (life, pools), (slots, times), points, level)) =
+            let Ok((Gauged { stand, .. }, dead, (life, pools), (slots, times), points, level)) =
                 units.get(unit)
             else {
                 continue;
@@ -617,10 +672,11 @@ mod tests {
 
     use bevy::asset::{AssetApp, AssetPlugin};
     use bevy::time::{TimePlugin, TimeUpdateStrategy};
+    use campfire_actions::SlotKind;
     use campfire_math::Num;
     use campfire_sim::{IdAllocator, Position};
     use campfire_units::BodyUnit;
-    use campfire_values::UnitType;
+    use campfire_values::{ActionId, UnitType};
 
     use super::*;
     use crate::selection::Selection;
@@ -670,7 +726,10 @@ mod tests {
         let shown = |shown| GaugeKind::Life {
             shown: Some(Num::int(shown)),
         };
-        let stand = app.world_mut().spawn((GaugeStand, ChildOf(root))).id();
+        let stand = app
+            .world_mut()
+            .spawn((GaugeStand, Transform::default(), ChildOf(root)))
+            .id();
         let gauge = app
             .world_mut()
             .spawn((
@@ -681,9 +740,10 @@ mod tests {
                 ChildOf(stand),
             ))
             .id();
-        app.world_mut()
-            .entity_mut(unit)
-            .insert(Gauged { stand: Some(stand) });
+        app.world_mut().entity_mut(unit).insert(Gauged {
+            stand: Some(stand),
+            slots: None,
+        });
         let mut rings = app.world_mut().query::<(&Ring, &Transform)>();
         // Unchanged, its life marks nothing; a drop to 450 marks one ring on the ground under it,
         // a rise to 500 none, and the gauge keeps what it showed last.
@@ -698,6 +758,40 @@ mod tests {
         app.update();
         assert_eq!(app.world().get::<Gauge>(gauge).unwrap().kind, shown(500));
         assert_eq!(rings.iter(app.world()).count(), 1);
+
+        // Its drawing grows to 5 m, as a model's bounds come: the stand stands 0.35 m over it.
+        app.world_mut().get_mut::<Shape>(root).unwrap().height = 5.0;
+        app.update();
+        let place = app.world().get::<Transform>(stand).unwrap().translation;
+        assert_eq!(place, Vec3::Y * 5.35);
+
+        // As the own avatar, its gauges made for one slot of no ranks and no charges: a change of
+        // its slots that keeps those rows keeps them, and a second slot takes them down for
+        // `add_gauges`, stand and all.
+        let slot = |at| (ActionId::new(at), SlotKind::new(0), Some(Rank::FIRST));
+        let none = SlotRows {
+            ranks: None,
+            charges: None,
+        };
+        app.world_mut().entity_mut(unit).insert((
+            Gauged {
+                stand: Some(stand),
+                slots: Some(vec![none]),
+            },
+            ActionSlots::new([slot(0)]),
+        ));
+        app.update();
+        app.world_mut()
+            .entity_mut(unit)
+            .insert(ActionSlots::new([slot(1)]));
+        app.update();
+        assert!(app.world().get::<Gauged>(unit).is_some());
+        app.world_mut()
+            .entity_mut(unit)
+            .insert(ActionSlots::new([slot(0), slot(1)]));
+        app.update();
+        assert!(app.world().get::<Gauged>(unit).is_none());
+        assert!(app.world().get_entity(stand).is_err());
     }
 
     #[test]
