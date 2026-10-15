@@ -546,19 +546,19 @@ impl View {
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
     ) {
         for (drawing, slots) in &units {
-            let aim = slots
-                .attacking()
-                .and_then(|target| index.get(target))
-                .and_then(|target| drawn.get(target).ok())
-                .and_then(|target| roots.get(target.root()).ok())
-                .map(|(transform, _, _)| transform.translation);
-            // A unit its models draw has no figure to lean.
+            // A unit its models draw has no figure to lean, nor a target to look up.
             let Ok((root, Some(look), shape)) = roots.get(drawing.root()) else {
                 continue;
             };
             let Ok(mut figure) = figures.get_mut(look.figure) else {
                 continue;
             };
+            let aim = slots
+                .attacking()
+                .and_then(|target| index.get(target))
+                .and_then(|target| drawn.get(target).ok())
+                .and_then(|target| roots.get(target.root()).ok())
+                .map(|(transform, _, _)| transform.translation);
             let lean = aim.map_or(Quat::IDENTITY, |to| lean_toward(root.translation, to));
             let rotation = lean * shape.footing.upright();
             if figure.rotation != rotation {
