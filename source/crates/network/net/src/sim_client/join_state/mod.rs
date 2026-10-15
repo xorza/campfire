@@ -14,6 +14,7 @@ use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 use secp256k1::{Keypair, Secp256k1, VerifyOnly};
 
 use crate::dismissed::Dismissed;
+use crate::events::receipt_refused::error::ReceiptRefusal;
 use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -21,7 +22,7 @@ use crate::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
-use crate::sim_client::join_state::error::{ReceiptRefusal, TermsMismatch};
+use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;

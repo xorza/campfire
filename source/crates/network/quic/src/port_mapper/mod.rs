@@ -107,9 +107,7 @@ impl Routes {
         match self {
             Routes::System => {
                 let gateway = netdev::get_default_gateway().map_err(MapError::NoGateway)?;
-                let address = gateway.ipv4.first().ok_or_else(|| {
-                    MapError::NoGateway(String::from("the default gateway has no IPv4 address"))
-                })?;
+                let address = gateway.ipv4.first().ok_or(MapError::NoIpv4Gateway)?;
                 Ok(SocketAddrV4::new(*address, PCP_PORT))
             }
             #[cfg(test)]

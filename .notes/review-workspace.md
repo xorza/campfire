@@ -139,7 +139,7 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mode/src/{game_map,marker,marker_tag,marker_spec,mode_map}.rs`, `capabilities/core/{script,actions,values}/src/**`, `session/protocol/src/**`, `network/net/src/events/*`, `network/quic/src/{port_mapper/mod,error}.rs`. Goldens: none move.
 
-- [ ] `net/src/events/{save,receipt,join}_refused`: typed fields, as `LinkLost` has. `quic/src/error.rs:22`: its own variant for a gateway with no IPv4 address.
+- [ ] `net/src/events/join_refused`: typed fields, as `LinkLost` has. Blocked: see `review-workspace_QUESTIONS.md`, Batch 13.
 
 ### Batch 14. Sibling APIs (RC10)
 

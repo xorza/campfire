@@ -308,10 +308,7 @@ impl SimServer {
                 Ok(Some(segment)) => world
                     .load_session_save(segment)
                     .expect("no checkpoint is on the thread"),
-                Err(error) => SaveRefused {
-                    reason: ErrorReport::of(&error).to_string(),
-                }
-                .log(),
+                Err(refusal) => SaveRefused { refusal }.log(),
             }
         }
     }

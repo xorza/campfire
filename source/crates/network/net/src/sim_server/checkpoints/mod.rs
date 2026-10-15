@@ -9,17 +9,15 @@ use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 use campfire_store::{DurableError, PathError};
 
 use crate::events::checkpoint_taken::CheckpointTaken;
+use crate::events::save_refused::error::SaveRefusal;
 use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::save_command::SaveCommand;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
-use crate::sim_server::checkpoints::error::SaveRefusal;
 use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::snapshot_dir::SnapshotDir;
-
-pub(crate) mod error;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
 /// takes them. At a boundary due, right after the tick before it, the main thread begins the

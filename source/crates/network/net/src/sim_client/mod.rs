@@ -405,11 +405,8 @@ fn receive_receipt(
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(error) = state.take_receipt(&receipt, &verifier.0) {
-                ReceiptRefused {
-                    reason: ErrorReport::of(&error).to_string(),
-                }
-                .log();
+            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+                ReceiptRefused { refusal }.log();
                 continue;
             }
             if let Some(writer) = &writer {

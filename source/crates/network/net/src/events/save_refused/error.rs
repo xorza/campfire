@@ -1,7 +1,8 @@
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Why a server refused a player's save command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error, Serialize, Deserialize)]
 pub enum SaveRefusal {
     /// Only a local server takes a player's saves and loads.
     #[error("only a local server takes a player's saves and loads")]

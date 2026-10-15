@@ -4,7 +4,12 @@ use super::*;
 
 #[test]
 fn the_event_reads_back_what_it_logs() {
-    round_trip(&SaveRefused {
-        reason: "the mode alone saves".to_owned(),
-    });
+    for refusal in [
+        SaveRefusal::NotLocal,
+        SaveRefusal::ByMode,
+        SaveRefusal::NoData,
+        SaveRefusal::NoSave,
+    ] {
+        round_trip(&SaveRefused { refusal });
+    }
 }

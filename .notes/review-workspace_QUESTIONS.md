@@ -78,3 +78,17 @@ Blocked: all of Batch 11.
 | --- | --- | --- |
 | **A. In the optimization session (recommended)** | The batch moves whole to the user's next optimization session, where each item's bench measures the pass before and after its change, and an item that does not pay is dropped. | The scans stay until then. |
 | B. Now, measured later | Each item is written now, its tests holding its results, and the session measures them. | Changes land unmeasured; a change that costs more than the scan it removes stays until the session finds it. |
+
+## Batch 13: the `JoinRefused` event's fields
+
+The item: "`net/src/events/{save,receipt,join}_refused`: typed fields, as `LinkLost` has." `SaveRefused` and `ReceiptRefused` are done: each carries its refusal enum, which serializes as `LinkLost`'s cause does.
+
+Blocked: `JoinRefused`.
+
+`JoinRefused` holds `link`, the link's entity as `Debug` writes it, and `error`, the `JoinError`'s report as text. `JoinError` wraps `DelegationError`, whose `NotEvent` case holds nostr's error, which has no serde form, and `ServerInputRefused` from `runner`. The other lines of the lobby name a link by `Debug` too, as `link = ?entity`.
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| **A. A serializable join refusal (recommended)** | `JoinError` and the errors it wraps derive `Serialize` and `Deserialize`. `EventError` keeps nostr's error kind, as a `Copy` enum of its own, in place of the `Arc` of nostr's error, which its `PartialEq` already compares alone. `JoinRefused` carries the `JoinError`, and the link as its entity's bits; the lobby's other lines name links the same way. | `EventError` keeps no source chain beyond the kind. `runner`'s `ServerInputRefused` and `protocol`'s `ScopeError` gain serde derives. |
+| B. A kind beside the text | `JoinRefused` gains `kind`, a field-less enum of `JoinError`'s cases that `JoinError::kind` gives, and keeps the report as text, with the link as now. | Two enums say the cases of a join refusal; the compiler keeps the match exhaustive. |
+| C. Keep the text | The report is human text, which the rule lets a string hold; the link stays as the text the lobby's lines use. | A test or a reader of the log matches a refusal by its text. |

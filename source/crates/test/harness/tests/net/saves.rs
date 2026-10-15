@@ -12,8 +12,8 @@ use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_mode::{SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefused, ServerDir,
-    SessionDir, SimServerWorld,
+    InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefusal, SaveRefused,
+    ServerDir, SessionDir, SimServerWorld,
 };
 use campfire_protocol::{InputRules, JournalFrames, Outcome, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session};
@@ -81,7 +81,7 @@ fn a_players_save_is_refused_when_the_mode_alone_saves() {
     assert_eq!(
         local.log().take::<SaveRefused>(),
         [SaveRefused {
-            reason: "the mode alone saves".to_owned(),
+            refusal: SaveRefusal::ByMode,
         }]
     );
 }
