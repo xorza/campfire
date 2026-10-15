@@ -71,7 +71,8 @@ pub struct OrderedUnit {
 }
 
 /// For the unit that thinks in the call, which checked the order against the units as the phase
-/// began; no unit dies within Think. A unit that resets takes none.
+/// began; no unit dies within Think. A unit that resets takes none, and a reset marks the unit
+/// as resetting until it is home.
 impl Effect for UnitOrder {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
@@ -87,7 +88,8 @@ impl Effect for UnitOrder {
         let parts = unit
             .get_components_mut::<OrderedUnit>()
             .expect("an ordered unit stands");
-        if self.apply(parts, &bounds, now) {
+        self.apply(parts, &bounds, now);
+        if self == UnitOrder::Reset {
             unit.insert(Resetting);
         }
     }
@@ -105,9 +107,8 @@ impl UnitOrder {
     /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's build
     /// order, its point taken into the bounds, and a gather its gather loop, each dropping the
     /// target and the destination; every other order ends both. Every order cuts a channel and ends
-    /// a cast that walks in range, with its walk, and an attack cancels a charge. Whether the unit
-    /// now resets, and takes no order until it is home.
-    pub fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) -> bool {
+    /// a cast that walks in range, with its walk, and an attack cancels a charge.
+    pub fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
         let OrderedUnitItem {
             pos: &at,
             spawn,
@@ -137,7 +138,7 @@ impl UnitOrder {
                     slots.cancel_charge();
                     slots.set_attack_target(Some(target));
                 }
-                return false;
+                return;
             }
             UnitOrder::Slot { slot, target } => {
                 let target = match target {
@@ -150,7 +151,7 @@ impl UnitOrder {
                 if let Some(slots) = &mut slots {
                     slots.order(slot, target);
                 }
-                return false;
+                return;
             }
             UnitOrder::Use {
                 slot,
@@ -163,7 +164,7 @@ impl UnitOrder {
                     slots.fill(&mut times, slot, Some(action));
                 }
                 slots.order(slot, ActionTarget::Unit(target));
-                return false;
+                return;
             }
             UnitOrder::FollowPath => {
                 if let Some(slots) = &mut slots {
@@ -172,7 +173,7 @@ impl UnitOrder {
                 if let Some(mut walker) = walker {
                     walker.rejoin();
                 }
-                return false;
+                return;
             }
             UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
             UnitOrder::Reset => Some(
@@ -204,7 +205,6 @@ impl UnitOrder {
             route.ask(to, now, party);
             progress.restart();
         }
-        self == UnitOrder::Reset
     }
 
     /// Sets the unit's build order and gather loop: a build's, its point taken into the bounds,

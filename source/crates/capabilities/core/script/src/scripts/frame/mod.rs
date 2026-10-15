@@ -164,10 +164,16 @@ impl Frame {
             world.resource_mut::<IdAllocator>().clone_from(&self.ids);
         }
         self.parts.commit(world, Commit::BeforeEffects);
-        for at in 0..self.effects.order().len() {
+        let count = self.effects.order().len();
+        for at in 0..count {
             let apply = self.effects.order()[at];
             apply(world, self);
         }
+        debug_assert_eq!(
+            self.effects.order().len(),
+            count,
+            "an effect queues no effect as it applies, which the clear would drop"
+        );
         self.effects.clear();
         self.parts.commit(world, Commit::AfterEffects);
     }
