@@ -1,4 +1,4 @@
-use campfire_protocol::AfterLeave;
+use campfire_common::AfterLeave;
 use thiserror::Error;
 
 /// Why the mode's `[players]` refuses a change of a slot's controller.

@@ -12,7 +12,7 @@ fn players_read_with_their_defaults_and_refuse_what_they_do_not_know() {
         PlayersData {
             late_join: false,
             bot_takeover: false,
-            leaver: Leaver::Reserve,
+            leaver: AfterLeave::Reserve,
         }
     );
     let open = read("late_join = true\nbot_takeover = true\nleaver = \"open\"").unwrap();
@@ -21,10 +21,10 @@ fn players_read_with_their_defaults_and_refuse_what_they_do_not_know() {
         PlayersData {
             late_join: true,
             bot_takeover: true,
-            leaver: Leaver::Open,
+            leaver: AfterLeave::Open,
         }
     );
-    assert_eq!(read("leaver = \"bot\"").unwrap().leaver, Leaver::Bot);
+    assert_eq!(read("leaver = \"bot\"").unwrap().leaver, AfterLeave::Bot);
     assert!(read("leaver = \"kick\"").is_err());
     assert!(read("late_joins = true").is_err());
 }

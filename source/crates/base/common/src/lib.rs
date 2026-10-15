@@ -11,6 +11,7 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod after_leave;
 #[cfg(feature = "internals")]
 mod alloc_audit;
 mod bytes32;
@@ -26,6 +27,7 @@ mod state_hash;
 mod tick;
 mod tls_key;
 
+pub use crate::after_leave::AfterLeave;
 pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
 pub use crate::channel_binding::ChannelBinding;

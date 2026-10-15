@@ -11,7 +11,7 @@ fn the_rules_allow_each_change_the_modes_players_allow() {
     };
     let joined = |from| SlotChangeKind::Joined { from };
     let left = |becomes| SlotChangeKind::Left { becomes };
-    let closed = rules(false, false, Leaver::Reserve);
+    let closed = rules(false, false, AfterLeave::Reserve);
     assert_eq!(closed.check(joined(Taken::Own)), Ok(()));
     assert_eq!(
         closed.check(joined(Taken::Open)),
@@ -22,7 +22,7 @@ fn the_rules_allow_each_change_the_modes_players_allow() {
         Err(SlotRuleError::BotTakeover)
     );
     assert_eq!(closed.check(left(AfterLeave::Reserve)), Ok(()));
-    let open = rules(true, true, Leaver::Bot);
+    let open = rules(true, true, AfterLeave::Bot);
     assert_eq!(open.check(joined(Taken::Open)), Ok(()));
     assert_eq!(open.check(joined(Taken::Bot)), Ok(()));
     assert_eq!(open.check(left(AfterLeave::Bot)), Ok(()));
@@ -33,7 +33,7 @@ fn the_rules_allow_each_change_the_modes_players_allow() {
         );
     }
     // Late join alone takes open slots, no bot's.
-    let late = rules(true, false, Leaver::Open);
+    let late = rules(true, false, AfterLeave::Open);
     assert_eq!(late.check(joined(Taken::Open)), Ok(()));
     assert_eq!(
         late.check(joined(Taken::Bot)),
@@ -41,7 +41,7 @@ fn the_rules_allow_each_change_the_modes_players_allow() {
     );
     assert_eq!(late.check(left(AfterLeave::Open)), Ok(()));
     // What a leaver's slot becomes, by each `leaver`.
-    let becomes = [Leaver::Reserve, Leaver::Bot, Leaver::Open]
+    let becomes = [AfterLeave::Reserve, AfterLeave::Bot, AfterLeave::Open]
         .map(|leaver| rules(true, true, leaver).after_leave());
     assert_eq!(
         becomes,

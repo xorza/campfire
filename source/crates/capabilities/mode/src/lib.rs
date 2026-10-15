@@ -102,7 +102,7 @@ pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
 pub use crate::offer::Offer;
 pub use crate::placed_unit::{PlacedPath, PlacedUnit};
-pub use crate::players_data::{Leaver, PlayersData};
+pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
 pub use crate::save_asked::SaveAsked;

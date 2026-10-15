@@ -108,8 +108,7 @@ Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/
 
 Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
 
-- [ ] Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes.
-- [ ] `runner/src/slot_rules/mod.rs:20-50`, `mode::Leaver`, `protocol::AfterLeave`: one type in `common`.
+- [ ] Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes. Blocked: see `review-workspace_QUESTIONS.md`, Batch 9.
 - [ ] `package/src/files/version.rs`, `protocol/src/engine_release/mod.rs`: one version type in `common`.
 - [ ] `protocol/src/receipt/mod.rs:86-105`, `session_private/mod.rs:29-48`: one tagged-file helper and error.
 - [ ] `protocol/src/session_log/mod.rs`: the durable-head tracking becomes its own type, and the file and journal codecs become child modules.

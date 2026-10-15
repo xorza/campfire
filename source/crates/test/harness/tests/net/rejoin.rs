@@ -4,17 +4,17 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
-use campfire_common::PlayerSlot;
+use campfire_common::{AfterLeave, PlayerSlot};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
-use campfire_mode::{Leaver, PlayersData};
+use campfire_mode::PlayersData;
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, OrderScript,
     PlayerLink, SessionTimes, TickHashes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{AfterLeave, Controller, LeaveReason, ServerInput};
+use campfire_protocol::{Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
 use campfire_store::internals::Scratch;
@@ -276,7 +276,7 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
         leaver,
     };
     // Reserved: a new player finds no slot, and the leaver takes theirs back, on a new chain.
-    let (mut local, slot) = left_past_grace(rules(Leaver::Reserve, false, false));
+    let (mut local, slot) = left_past_grace(rules(AfterLeave::Reserve, false, false));
     assert_eq!(
         local.server_inputs()[1..],
         [ServerInput::Leave {
@@ -309,14 +309,14 @@ fn a_player_gone_past_the_grace_period_leaves_as_the_mode_says_and_a_late_joiner
     ));
 
     // Played by a bot, which a new player takes over.
-    let (mut local, slot) = left_past_grace(rules(Leaver::Bot, true, true));
+    let (mut local, slot) = left_past_grace(rules(AfterLeave::Bot, true, true));
     assert_eq!(controller(&local, slot), Some(Controller::Bot));
     let late = local.add_client(2);
     step_until(&mut local, REJOIN_STEPS, |local| playing(local, late));
     assert_eq!(slot_of(&local, late), slot);
 
     // Open, which a new player takes.
-    let (mut local, slot) = left_past_grace(rules(Leaver::Open, true, false));
+    let (mut local, slot) = left_past_grace(rules(AfterLeave::Open, true, false));
     assert_eq!(controller(&local, slot), Some(Controller::Open));
     let late = local.add_client(2);
     step_until(&mut local, REJOIN_STEPS, |local| playing(local, late));

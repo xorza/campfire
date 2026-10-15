@@ -1,5 +1,5 @@
 use campfire_codec::{Binary, Taken};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
@@ -51,15 +51,6 @@ pub enum LeaveReason {
     Asked,
     /// The player's link stayed down past the grace period.
     Grace,
-}
-
-/// What the slot of a player who left becomes: reserved for them alone, played by a bot, or
-/// open, as the mode's `[players] leaver` says.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AfterLeave {
-    Reserve,
-    Bot,
-    Open,
 }
 
 /// A server input as it is signed and logged: a delegation as its JSON.

@@ -12,9 +12,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order};
-use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
+use campfire_common::{AfterLeave, ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
-use campfire_mode::{Leaver, PlayersData, SaveBy, SavesData};
+use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     BotScript, ClientDir, Clock, Entropy, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
@@ -426,9 +426,9 @@ impl InProcessMatch {
     /// The test lane mode, its `[players]` as `rules` says, and its `[saves]` as `saves` says.
     pub fn lane_mode(rules: PlayersData, saves: SavesData) -> ModePackages {
         let leaver = match rules.leaver {
-            Leaver::Reserve => "reserve",
-            Leaver::Bot => "bot",
-            Leaver::Open => "open",
+            AfterLeave::Reserve => "reserve",
+            AfterLeave::Bot => "bot",
+            AfterLeave::Open => "open",
         };
         let by = match saves.by {
             SaveBy::Player => "player",

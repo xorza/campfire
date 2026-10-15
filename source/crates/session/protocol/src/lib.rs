@@ -67,7 +67,7 @@ pub use crate::receipt::{Receipt, SignedReceipt};
 pub use crate::seed_chain::SeedChain;
 pub use crate::seed_commitment::SeedCommitment;
 pub use crate::server_input::error::ServerInputDecodeError;
-pub use crate::server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
+pub use crate::server_input::{InputPlace, LeaveReason, ServerInput};
 pub use crate::server_seed::ServerSeed;
 pub use crate::server_seeds::ServerSeeds;
 pub use crate::session_id::SessionId;

@@ -1,3 +1,4 @@
+use campfire_common::AfterLeave;
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -12,7 +13,7 @@ pub struct PlayersData {
     /// A new player may take a slot a bot plays; only with `late_join`, which the load checks.
     pub bot_takeover: bool,
     /// What a slot becomes when its player leaves.
-    pub leaver: Leaver,
+    pub leaver: AfterLeave,
 }
 
 impl PlayersData {
@@ -21,21 +22,8 @@ impl PlayersData {
     pub const DEFAULT: PlayersData = PlayersData {
         late_join: false,
         bot_takeover: false,
-        leaver: Leaver::Reserve,
+        leaver: AfterLeave::Reserve,
     };
-}
-
-/// What the slot of a player who left becomes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Leaver {
-    /// It stays the leaver's alone, and idle.
-    #[default]
-    Reserve,
-    /// A bot plays it.
-    Bot,
-    /// It is open, for a new player when `late_join` is on.
-    Open,
 }
 
 impl DataSection for PlayersData {

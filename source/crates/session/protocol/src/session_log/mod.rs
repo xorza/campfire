@@ -4,7 +4,7 @@ use std::mem;
 use std::ops::Range;
 
 use campfire_codec::{Binary, BinaryError};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -21,7 +21,7 @@ use crate::journal::journal_frames::MAX_RECORD;
 use crate::journal::record_sink::RecordSink;
 use crate::player_input::PlayerInput;
 use crate::server_input::error::ServerInputDecodeError;
-use crate::server_input::{AfterLeave, InputPlace, LeaveReason, ServerInput};
+use crate::server_input::{InputPlace, LeaveReason, ServerInput};
 use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 use crate::session_id::SessionId;
