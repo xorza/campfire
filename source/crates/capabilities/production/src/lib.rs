@@ -77,7 +77,7 @@ pub use crate::requirement_book::{Required, RequirementBook};
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site};
 pub use crate::supply_book::SupplyBook;
-pub use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
+pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 pub use crate::supply_data::SupplyData;
 pub use crate::train_queue::{Queued, TrainQueue};
 pub use crate::trains::Trains;

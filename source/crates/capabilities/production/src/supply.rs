@@ -1,9 +1,7 @@
 use campfire_common::PlayerSlot;
-use campfire_values::UnitType;
 
 use crate::mode_supply_data::ModeSupplyData;
-use crate::supply_cost_book::{SupplyCostBook, UnitSupply};
-use crate::train_queue::TrainQueue;
+use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 
 /// Each player's supply, by slot, counted from the units and the queues: what its living units
 /// and its queued trains use, and what its living, complete units give, at most the mode's `max`.
@@ -21,15 +19,11 @@ pub(crate) struct SupplySums {
     given: u64,
 }
 
-/// A unit as supply counts it: its type, its player, whether it is dead, whether it is complete,
-/// not a site, and its train queue.
+/// A unit as supply counts it: its player, and the unit as its supply counts.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct CountedUnit<'a> {
-    pub(crate) unit_type: UnitType,
     pub owner: PlayerSlot,
-    pub(crate) dead: bool,
-    pub(crate) complete: bool,
-    pub(crate) queue: Option<&'a TrainQueue>,
+    pub(crate) unit: SupplyUnit<'a>,
 }
 
 impl Supply {
@@ -44,7 +38,7 @@ impl Supply {
         self.players.clear();
         self.max = u64::from(rules.max);
         for unit in units {
-            let counted = costs.unit(unit.unit_type, unit.dead, unit.complete, unit.queue);
+            let counted = costs.unit(unit.unit);
             self.entry_mut(unit.owner).add(counted);
         }
     }

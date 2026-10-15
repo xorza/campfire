@@ -24,6 +24,7 @@ use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
 use crate::supply::{CountedUnit, Supply};
+use crate::supply_cost_book::SupplyUnit;
 use crate::train_queue::{Queued, TrainQueue};
 
 /// The parts of a unit supply counts, dead or not.
@@ -108,11 +109,13 @@ impl Trains {
                 let units = counted
                     .iter()
                     .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
-                        unit_type,
                         owner: owner.slot(),
-                        dead,
-                        complete: !site,
-                        queue,
+                        unit: SupplyUnit {
+                            unit_type,
+                            dead,
+                            complete: !site,
+                            queue,
+                        },
                     });
                 supply.count(&costs, rules, units);
             }

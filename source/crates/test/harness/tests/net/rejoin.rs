@@ -185,7 +185,7 @@ fn a_superseded_client_hears_of_it_though_the_first_notice_is_lost() {
     let slot = slot_of(&local, 0);
     // The server's packets to the first client are lost as a second login takes the slot: the
     // server keeps the old link, as its notice has not arrived, and the first client plays on.
-    local.lose_server_packets(0, true);
+    local.lose_server_packets(0);
     let second = local.add_client(0);
     step_until(&mut local, REJOIN_STEPS, |local| playing(local, second));
     let loss = |local: &InProcessMatch| local.client(0).world().resource::<JoinState>().loss();
@@ -197,7 +197,7 @@ fn a_superseded_client_hears_of_it_though_the_first_notice_is_lost() {
     assert!(local.server().world().get::<Unlinked>(first).is_none());
     // The packets pass again: the reliable channel sends the notice again, and the first client
     // stops and ends its link. The newer login keeps the slot, and no input is logged.
-    local.lose_server_packets(0, false);
+    local.pass_server_packets(0);
     step_until(&mut local, 20, |local| loss(local).is_some());
     assert_eq!(loss(&local), Some(Loss::Superseded));
     assert_eq!(

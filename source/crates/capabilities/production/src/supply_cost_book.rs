@@ -28,6 +28,16 @@ pub struct UnitSupply {
     pub given: u64,
 }
 
+/// A unit as its supply counts: its type, whether it is dead, whether it is complete, not a
+/// site, and its train queue.
+#[derive(Debug, Clone, Copy)]
+pub struct SupplyUnit<'a> {
+    pub unit_type: UnitType,
+    pub dead: bool,
+    pub complete: bool,
+    pub queue: Option<&'a TrainQueue>,
+}
+
 impl SupplyCostBook {
     /// The costs of `types`, and of the trains of `book`.
     pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCostBook {
@@ -59,16 +69,15 @@ impl SupplyCostBook {
         self.types.get(unit_type).map_or(0, |supply| supply.cost)
     }
 
-    /// What a unit of `unit_type`, dead when `dead`, complete unless a site, with `queue`,
-    /// counts for: a living unit uses its type's `cost`, and gives its `provides` once complete;
-    /// a queued train, of a producer living or dead, uses its unit's `cost`.
-    pub fn unit(
-        &self,
-        unit_type: UnitType,
-        dead: bool,
-        complete: bool,
-        queue: Option<&TrainQueue>,
-    ) -> UnitSupply {
+    /// What `unit` counts for: a living unit uses its type's `cost`, and gives its `provides`
+    /// once complete; a queued train, of a producer living or dead, uses its unit's `cost`.
+    pub fn unit(&self, unit: SupplyUnit<'_>) -> UnitSupply {
+        let SupplyUnit {
+            unit_type,
+            dead,
+            complete,
+            queue,
+        } = unit;
         let own = match self.types.get(unit_type) {
             Some(supply) if !dead => *supply,
             _ => SupplyData::default(),

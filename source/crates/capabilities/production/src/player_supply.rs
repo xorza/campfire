@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::supply::{CountedUnit, Supply};
 use crate::supply_book::SupplyBook;
-use crate::supply_cost_book::SupplyCostBook;
+use crate::supply_cost_book::{SupplyCostBook, SupplyUnit};
 use crate::trains::Counted;
 
 /// A player's supply, on its entity, as its kind's audience sees it (design 14, D7): what its
@@ -45,11 +45,13 @@ impl PlayerSupply {
         let counted = units
             .iter()
             .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
-                unit_type,
                 owner: owner.slot(),
-                dead,
-                complete: !site,
-                queue,
+                unit: SupplyUnit {
+                    unit_type,
+                    dead,
+                    complete: !site,
+                    queue,
+                },
             });
         supply.count(&costs, rules, counted);
         for (player, mut held) in &mut players {

@@ -12,8 +12,8 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    Clock, Entropy, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol,
-    Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
+    Clock, Entropy, Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup,
+    NetProtocol, Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
 };
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
@@ -50,7 +50,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         session_key: keys.session,
         server: server.pin(),
         role: JoinRole::Play,
-        local: true,
+        hosting: Hosting::Local,
         packages,
         os: Os {
             clock: Clock::manual(TestKey::NOW),

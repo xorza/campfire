@@ -35,7 +35,8 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient, WatchRequest,
+    Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
+    WatchRequest,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -136,7 +137,10 @@ fn main() -> ExitCode {
         } else {
             JoinRole::Play
         },
-        local: matches!(connection, Connection::Local { .. }),
+        hosting: match connection {
+            Connection::Local { .. } => Hosting::Local,
+            Connection::Remote { .. } => Hosting::Remote,
+        },
         packages: Arc::clone(&packages),
         os: Os::SYSTEM,
         data: connection.data(),
@@ -153,7 +157,7 @@ fn main() -> ExitCode {
     add_ends(
         &mut app,
         script,
-        sim_client.local.then_some(&pace),
+        (sim_client.hosting == Hosting::Local).then_some(&pace),
         &packages,
     );
     app.add_plugins((sim_client, LinkWatch));

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
@@ -17,10 +18,10 @@ use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    BotScript, ClientDir, Clock, Entropy, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
-    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir,
-    ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld,
-    SlotBot, TickHashes,
+    BotScript, ClientDir, Clock, Entropy, Hosting, JoinRole, JoinState, Lobby, LobbySetup,
+    LocalPace, MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots,
+    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
@@ -609,15 +610,22 @@ impl InProcessMatch {
             .is_some_and(|avatar| world.entity_of(avatar).is_some())
     }
 
-    /// Loses every packet the server sends `client` while `lost`, as a link that drops one way
-    /// does, though the client's own packets arrive; with `false`, passes them again.
-    pub fn lose_server_packets(&mut self, client: usize, lost: bool) {
+    /// Loses every packet the server sends `client` from now on, as a link that drops one way
+    /// does, though the client's own packets arrive.
+    pub fn lose_server_packets(&mut self, client: usize) {
+        self.server_delay(client).lose_all();
+    }
+
+    /// Passes the packets the server sends `client` again.
+    pub fn pass_server_packets(&mut self, client: usize) {
+        self.server_delay(client).pass_all();
+    }
+
+    /// The delay line of the server's link to `client`.
+    fn server_delay(&mut self, client: usize) -> Mut<'_, DelayLine> {
         let world = self.server.world_mut();
-        let mut delay = world.get_mut::<DelayLine>(self.links[client]);
-        delay
-            .as_mut()
-            .expect("a link passes through a delay line")
-            .lose_all(lost);
+        let delay = world.get_mut::<DelayLine>(self.links[client]);
+        delay.expect("a link passes through a delay line")
     }
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.
@@ -888,7 +896,7 @@ impl ClientApp {
                 tick_hz,
             },
             role,
-            local: true,
+            hosting: Hosting::Local,
             packages: Arc::clone(&local.packages),
             os: Os {
                 clock: local.clock.clone(),

@@ -61,6 +61,14 @@ const BLEND_MARK: u32 = 0x7ADA_0000;
 /// `PATHFIND_CLIFF_SLOPE_LIMIT_F`, 9.8, lies between 15 and 16 steps of 0.625.
 const CLIFF_STEPS: u8 = 16;
 
+/// Which list of a map's texture classes a class is of: the terrain's, which holds one more
+/// field, or the edges'.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ClassForm {
+    Terrain,
+    Edge,
+}
+
 impl MapFile {
     /// The map whose file, packed or not, is `packed`.
     pub(crate) fn read(packed: &[u8]) -> Result<MapFile, MapError> {
@@ -210,11 +218,11 @@ impl MapFile {
         let blend_count = body.count()?;
         let cliff_count = body.count()?;
         let classes = (0..body.count()?)
-            .map(|_| MapFile::texture_class(&mut body, true))
+            .map(|_| MapFile::texture_class(&mut body, ClassForm::Terrain))
             .collect::<Result<_, _>>()?;
         let edge_tiles = MapFile::u32(&mut body)?;
         let edge_classes = (0..body.count()?)
-            .map(|_| MapFile::texture_class(&mut body, false))
+            .map(|_| MapFile::texture_class(&mut body, ClassForm::Edge))
             .collect::<Result<_, _>>()?;
         let blend_tiles = (1..blend_count)
             .map(|at| MapFile::blend_tile(&mut body, at))
@@ -264,13 +272,17 @@ impl MapFile {
             .collect()
     }
 
-    /// A texture class: its first tile, its count of tiles, its width in tiles, in a texture
-    /// class a field the game no longer reads, and its name; its texture is the import's to find.
-    fn texture_class(body: &mut ChunkReader<'_>, legacy: bool) -> Result<TextureClass, MapError> {
+    /// A texture class of `form`: its first tile, its count of tiles, its width in tiles, a
+    /// terrain class's field the game no longer reads, and its name; its texture is the import's
+    /// to find.
+    fn texture_class(
+        body: &mut ChunkReader<'_>,
+        form: ClassForm,
+    ) -> Result<TextureClass, MapError> {
         let first_tile = MapFile::u32(body)?;
         let tiles = MapFile::u32(body)?;
         let width = MapFile::u32(body)?;
-        if legacy {
+        if form == ClassForm::Terrain {
             body.i32()?;
         }
         let name = body.text()?;

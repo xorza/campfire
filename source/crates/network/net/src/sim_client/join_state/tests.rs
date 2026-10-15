@@ -40,7 +40,7 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         main_key: TestKey::of(1),
         server,
         role: JoinRole::Play,
-        local: false,
+        hosting: Hosting::Remote,
         rules: lane_rules(),
         clock: Clock::manual(TestKey::NOW),
     })
@@ -444,9 +444,9 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
     // there, heads[1]: a local server's chain is taken, its 2 inputs after seq 1 never apply and
     // its receipt is dropped; any other server rewrote the chain.
     let verifier = Secp256k1::verification_only();
-    for local in [true, false] {
+    for hosting in [Hosting::Local, Hosting::Remote] {
         let (mut state, mut signer, heads, _, receipt) = receipted();
-        state.player.local = local;
+        state.player.hosting = hosting;
         state.take_receipt(&signed(receipt), &verifier).unwrap();
         state.lose(Duration::ZERO, [0; 32]);
         state
@@ -462,7 +462,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
             loaded: true,
             ..START
         };
-        if local {
+        if hosting == Hosting::Local {
             assert_eq!(state.start(loaded), Started::Playing { discarded: 2 });
             let playing = state.playing().unwrap();
             assert_eq!(

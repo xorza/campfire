@@ -97,11 +97,17 @@ fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
     );
     let costs = game.resource::<SupplyCostBook>();
     let queue = queue(train, &[9, 9]);
-    let count = |dead| costs.unit(shop.barracks, dead, true, Some(&queue));
+    let unit = |dead, complete, queue| SupplyUnit {
+        unit_type: shop.barracks,
+        dead,
+        complete,
+        queue,
+    };
+    let count = |dead| costs.unit(unit(dead, true, Some(&queue)));
     assert_eq!((count(false).used, count(false).given), (8, 5));
     assert_eq!((count(true).used, count(true).given), (6, 0));
     // A site uses its cost, and gives nothing until it completes.
-    let site = costs.unit(shop.barracks, false, false, None);
+    let site = costs.unit(unit(false, false, None));
     assert_eq!((site.used, site.given), (2, 0));
 }
 

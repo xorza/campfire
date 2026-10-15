@@ -15,6 +15,7 @@ use secp256k1::{Keypair, Secp256k1, VerifyOnly};
 
 use crate::dismissed::Dismissed;
 use crate::events::receipt_refused::error::ReceiptRefusal;
+use crate::hosting::Hosting;
 use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
@@ -93,9 +94,9 @@ pub(crate) struct Joining {
     pub(crate) main_key: Keypair,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
-    /// Whether the server runs on a thread of the client's process: only such a server loads a
-    /// save, so only its match start that says so is taken as one.
-    pub(crate) local: bool,
+    /// Where the server runs: only a local server loads a save, so only its match start that
+    /// says so is taken as one.
+    pub(crate) hosting: Hosting,
     pub(crate) rules: SessionRules,
     /// When a delegation is made, and so when it expires.
     pub(crate) clock: Clock,
@@ -394,7 +395,7 @@ impl JoinState {
         };
         let mut member = answered.member;
         // Any other server loads no save, so its word would let it rewrite the chain unseen.
-        let loaded = start.loaded && self.player.local;
+        let loaded = start.loaded && self.player.hosting == Hosting::Local;
         if loaded {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;

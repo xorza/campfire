@@ -147,8 +147,10 @@ impl View {
     /// Changes the column of type `C` by `write`, when one was added.
     /// The next read fills every row again, as the rows may derive from what `write` changes.
     pub fn column_mut<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
-        if let Some(column) = self.0.rows.borrow_mut().column_mut(true) {
+        let mut rows = self.0.rows.borrow_mut();
+        if let Some(column) = rows.column_mut() {
             write(column);
+            rows.refill_next();
         }
     }
 
@@ -162,7 +164,7 @@ impl View {
     /// Changes the rows of the column of type `C` by `write`, as a call's effect changes the
     /// units' parts too, which the next read finds changed.
     pub fn write_rows<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
-        if let Some(column) = self.0.rows.borrow_mut().column_mut(false) {
+        if let Some(column) = self.0.rows.borrow_mut().column_mut() {
             write(column);
         }
     }

@@ -78,7 +78,15 @@ impl GlbBuilder {
     /// An accessor of colors, each 4 bytes read as 0 to 1.
     pub(crate) fn colors(&mut self, colors: &[[u8; 4]]) -> usize {
         let view = self.view(colors.iter().flatten().copied().collect(), ARRAY_BUFFER);
-        self.accessor(view, UNSIGNED_BYTE, true, colors.len(), "VEC4")
+        self.accessor(Accessor {
+            buffer_view: view,
+            component_type: UNSIGNED_BYTE,
+            normalized: true,
+            count: colors.len(),
+            kind: "VEC4",
+            min: None,
+            max: None,
+        })
     }
 
     pub(crate) fn indices(&mut self, indices: &[u32]) -> usize {
@@ -87,7 +95,15 @@ impl GlbBuilder {
             .flat_map(|index| index.to_le_bytes())
             .collect();
         let view = self.view(bytes, ELEMENT_ARRAY_BUFFER);
-        self.accessor(view, UNSIGNED_INT, false, indices.len(), "SCALAR")
+        self.accessor(Accessor {
+            buffer_view: view,
+            component_type: UNSIGNED_INT,
+            normalized: false,
+            count: indices.len(),
+            kind: "SCALAR",
+            min: None,
+            max: None,
+        })
     }
 
     /// A texture of the image at `uri`, wrapped as `wrap_s` and `wrap_t`.
@@ -166,7 +182,15 @@ impl GlbBuilder {
         kind: &'static str,
     ) -> usize {
         let view = self.view(floats.flat_map(f32::to_le_bytes).collect(), ARRAY_BUFFER);
-        self.accessor(view, FLOAT, false, count, kind)
+        self.accessor(Accessor {
+            buffer_view: view,
+            component_type: FLOAT,
+            normalized: false,
+            count,
+            kind,
+            min: None,
+            max: None,
+        })
     }
 
     /// A buffer view of `bytes`, at the buffer's end aligned to 4, as every accessor's
@@ -183,23 +207,9 @@ impl GlbBuilder {
         self.document.buffer_views.len() - 1
     }
 
-    fn accessor(
-        &mut self,
-        view: usize,
-        component_type: u32,
-        normalized: bool,
-        count: usize,
-        kind: &'static str,
-    ) -> usize {
-        self.document.accessors.push(Accessor {
-            buffer_view: view,
-            component_type,
-            normalized,
-            count,
-            kind,
-            min: None,
-            max: None,
-        });
+    /// Adds `accessor`; its place.
+    fn accessor(&mut self, accessor: Accessor) -> usize {
+        self.document.accessors.push(accessor);
         self.document.accessors.len() - 1
     }
 }

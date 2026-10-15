@@ -50,6 +50,7 @@ use crate::events::receipt_refused::ReceiptRefused;
 use crate::events::session_refused::SessionRefused;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
+use crate::hosting::Hosting;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::join::{Join, JoinRole};
@@ -97,9 +98,8 @@ pub struct SimClient {
     pub server: ServerPin,
     /// Whether the player plays a slot or watches.
     pub role: JoinRole,
-    /// Whether the server runs on a thread of the client's process, the only one that loads a
-    /// save.
-    pub local: bool,
+    /// Where the server runs.
+    pub hosting: Hosting,
     /// The packages of the mode it plays, which must run at the server's rate: `check`.
     pub packages: Arc<ModePackages>,
     /// Its clock, at which the delegation is made, and so expires, and its random bytes.
@@ -216,7 +216,7 @@ impl Plugin for SimClient {
             main_key: self.main_key,
             server: self.server,
             role: self.role,
-            local: self.local,
+            hosting: self.hosting,
             rules: SessionRules::of(packages),
             clock: self.os.clock.clone(),
         }));
