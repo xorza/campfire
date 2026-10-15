@@ -12,12 +12,12 @@ use bevy_app::{App, TaskPoolPlugin};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_net::{
-    Clock, Entropy, Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup,
-    NetProtocol, Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
+    Clock, Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol,
+    Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
 };
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Outcome, SessionLog};
+use campfire_protocol::{Entropy, Outcome, SessionLog};
 use campfire_runner::TermsError;
 use campfire_store::internals::Scratch;
 use lightyear::prelude::Connect;

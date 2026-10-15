@@ -18,7 +18,7 @@ use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
-use campfire_protocol::{PlayerInput, SignedReceipt};
+use campfire_protocol::{PlayerInput, SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
@@ -32,7 +32,7 @@ use lightyear::prelude::{
     Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline, UnlinkReason, Unlinked,
     is_in_rollback,
 };
-use secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use secp256k1::Keypair;
 use tracing::info;
 
 use crate::bot_script::BotScript;
@@ -63,10 +63,10 @@ use crate::os::Os;
 use crate::save_command::SaveCommand;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
+use crate::sim_client::player_signer::PlayerSigner;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 use crate::watch_teams::WatchTeams;
 
@@ -74,10 +74,10 @@ pub(crate) mod chain_history;
 pub(crate) mod client_dir;
 pub(crate) mod client_layout;
 pub(crate) mod join_state;
+pub(crate) mod player_signer;
 pub(crate) mod receipt_writer;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
-pub(crate) mod signer;
 pub(crate) mod sim_client_world;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
@@ -107,16 +107,6 @@ pub struct SimClient {
     /// The client's data directory, held locked, where it writes the newest receipt of its
     /// session; none writes none.
     pub data: Option<Arc<ClientDir>>,
-}
-
-/// The context that checks receipts' signatures.
-#[derive(Debug)]
-struct Verifier(Secp256k1<VerifyOnly>);
-
-impl Default for Verifier {
-    fn default() -> Verifier {
-        Verifier(Secp256k1::verification_only())
-    }
 }
 
 /// The player's wish to leave the match: the client tells the server once, and then tries its
@@ -211,7 +201,8 @@ impl Plugin for SimClient {
         );
         packages.books(rate).install_prediction(world);
         mark_unpredicted(world);
-        world.insert_resource(Signer::new(self.session_key, self.os.entropy));
+        world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
+        world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
             main_key: self.main_key,
             server: self.server,
@@ -284,7 +275,7 @@ type Answering = (
 fn answer_offer(
     mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
     mut sender: Single<'_, '_, Answering, With<Client>>,
-    mut signer: ResMut<'_, Signer>,
+    mut signer: ResMut<'_, PlayerSigner>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -294,7 +285,7 @@ fn answer_offer(
             let session = offer.terms.session_id();
             let LinkBinding(binding) =
                 binding.expect("a client that receives an offer holds its link's binding");
-            match state.answer(&offer, binding, &mut signer) {
+            match state.answer(&offer, binding, &mut signer.0) {
                 None => {}
                 Some(Ok(join)) => {
                     let visibility = state
@@ -367,7 +358,7 @@ fn lose_link(
     unlinked: On<'_, '_, Insert, Unlinked>,
     clients: Query<'_, '_, (&Unlinked, Option<&LinkEnd>), With<Client>>,
     time: Res<'_, Time<Real>>,
-    signer: Res<'_, Signer>,
+    os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
     mut pending: ResMut<'_, PendingOrders>,
@@ -379,7 +370,7 @@ fn lose_link(
         return;
     }
     let cause = LinkLossCause::of(end);
-    match state.lose(time.elapsed(), signer.random()) {
+    match state.lose(time.elapsed(), os.entropy.random()) {
         LinkLoss::Rejoining => {
             info!(?cause, "the link to the server failed; trying again");
             sent.clear();
@@ -400,7 +391,7 @@ fn receive_receipt(
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(refusal) = state.take_receipt(&receipt, &verifier.0) {
+            if let Err(refusal) = state.take_receipt(&receipt, &verifier) {
                 ReceiptRefused { refusal }.log();
                 continue;
             }
@@ -507,7 +498,7 @@ fn send_leave(
 fn retry_link(
     client: Single<'_, '_, (Entity, Has<Unlinked>), With<Client>>,
     time: Res<'_, Time<Real>>,
-    signer: Res<'_, Signer>,
+    os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -515,7 +506,7 @@ fn retry_link(
     if !state.rejoining() || !unlinked {
         return;
     }
-    match state.retry(time.elapsed(), signer.random()) {
+    match state.retry(time.elapsed(), os.entropy.random()) {
         Retry::Wait => {}
         Retry::Connect => {
             info!("connecting to the server again");
@@ -606,7 +597,7 @@ fn send_orders(
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
     players: PlayerUnits<'_, '_>,
-    signer: Res<'_, Signer>,
+    signer: Res<'_, PlayerSigner>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
     mut sent: ResMut<'_, SentInputs>,
@@ -696,7 +687,7 @@ fn send_orders(
         stamp,
         payload,
     });
-    let signature = signer.sign(&playing.chain, session.id);
+    let signature = playing.chain.sign(&signer.0, session.id);
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
 }
 

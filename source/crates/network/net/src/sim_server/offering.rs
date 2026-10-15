@@ -9,13 +9,12 @@ use bevy_ecs::world::Mut;
 use bevy_time::{Real, Time};
 use campfire_common::ChannelBinding;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::{ConnectChallenge, Delegation, SessionTerms};
+use campfire_protocol::{ConnectChallenge, Delegation, Entropy, SessionTerms, Verifier};
 use campfire_quic::{CloseLink, LinkBinding};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, Unlinked,
 };
-use secp256k1::{Secp256k1, VerifyOnly};
 use tracing::debug;
 
 use crate::close_code::CloseCode;
@@ -24,7 +23,7 @@ use crate::events::join_refused::JoinRefused;
 use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
-use crate::os::{Clock, Entropy};
+use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_server::error::JoinError;
 use crate::sim_server::player_link::PlayerLink;
@@ -48,7 +47,7 @@ pub(crate) struct Offering {
     pub(crate) times: SessionTimes,
     clock: Clock,
     entropy: Entropy,
-    secp: Secp256k1<VerifyOnly>,
+    verifier: Verifier,
 }
 
 /// The challenge a link was offered, the channel binding of its TLS session, which its answer
@@ -210,7 +209,7 @@ impl Offering {
             times: server.times,
             clock: server.os.clock.clone(),
             entropy: server.os.entropy,
-            secp: Secp256k1::verification_only(),
+            verifier: Verifier::new(),
         }
     }
 
@@ -294,7 +293,7 @@ impl Offering {
         offered
             .challenge
             .check(
-                &self.secp,
+                &self.verifier,
                 &self.terms,
                 &offered.binding,
                 &delegation,

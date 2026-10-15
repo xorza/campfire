@@ -5,13 +5,13 @@ use bevy_ecs::resource::Resource;
 use campfire_common::{ChannelBinding, PlayerSlot, Tick};
 use campfire_protocol::{
     Delegation, DelegationId, DelegationTerms, InputChain, InputRules, SeedContribution, SessionId,
-    SessionTerms, SignedReceipt,
+    SessionTerms, SignedReceipt, Signer, Verifier,
 };
 use campfire_runner::SessionRules;
 use campfire_values::Team;
 use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
-use secp256k1::{Keypair, Secp256k1, VerifyOnly};
+use secp256k1::Keypair;
 
 use crate::dismissed::Dismissed;
 use crate::events::receipt_refused::error::ReceiptRefusal;
@@ -25,7 +25,6 @@ use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
 use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::signer::Signer;
 use crate::watch_start::WatchStart;
 
 pub(crate) mod error;
@@ -373,7 +372,7 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: signer.answer(offer.challenge, binding),
+            answer: offer.challenge.answer(signer, binding),
             role: self.player.role,
         };
         self.step = Step::Answered(answered);
@@ -513,7 +512,7 @@ impl JoinState {
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
-        secp: &Secp256k1<VerifyOnly>,
+        verifier: &Verifier,
     ) -> Result<(), ReceiptRefusal> {
         let (member, slot, history) = match &mut self.step {
             Step::Playing(playing) => (
@@ -525,7 +524,7 @@ impl JoinState {
             _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
-        if !signed.signed_by(secp, &self.player.server.key, &receipt.signature) {
+        if !signed.signed_by(verifier, &self.player.server.key, &receipt.signature) {
             return Err(ReceiptRefusal::BadSignature);
         }
         if signed.session_id != member.session.id
@@ -639,10 +638,11 @@ impl Joining {
             session_key: signer.public_key(),
             server_key: terms.server_key,
             session_id: terms.session_id(),
-            seed_contribution: SeedContribution::new(signer.random()),
+            seed_contribution: SeedContribution::new(signer.entropy().random()),
             expiration: now + DELEGATION_LIFETIME,
         };
-        signer.delegate(&self.main_key, &granted, now)
+        let main = Signer::new(self.main_key, signer.entropy());
+        Delegation::sign(&main, &granted, now)
     }
 }
 

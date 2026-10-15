@@ -7,22 +7,19 @@ use bevy_ecs::world::World;
 use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate};
+use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate, Signer};
 use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
 use campfire_sim::StateRegistry;
 use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
 };
-use secp256k1::Keypair;
 
 use crate::events::session_aborted::SessionAborted;
-use crate::os::Entropy;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::snapshot_dir::SnapshotDir;
@@ -59,14 +56,12 @@ pub struct RestoredSession {
 }
 
 /// What publishes a session that ends unrestored: the server's data directory, the packages of
-/// its mode, and the server's key, which signs its result with auxiliary randomness from
-/// `entropy`.
+/// its mode, and the server's signer, which signs its result.
 #[derive(Debug, Clone, Copy)]
 pub struct Publisher<'a> {
     pub data: &'a ServerDir,
     pub packages: &'a ModePackages,
-    pub server_key: Keypair,
-    pub entropy: Entropy,
+    pub signer: &'a Signer,
 }
 
 impl SessionDir {
@@ -227,13 +222,13 @@ impl RestoredSession {
     /// the latest checkpoint whose record the log holds, or from tick 0 with none; resumes its
     /// journal, which `JournalWatch` watches; and replays the log from there to the tick the
     /// server stopped before, running `after_tick` after each tick the replay runs, and taking
-    /// again, signed by `signer`, a checkpoint begun with no record as the replay reaches its
-    /// boundary. Its snapshots.
+    /// again a checkpoint begun with no record as the replay reaches its boundary; the session
+    /// signs with `signer`, the server's. Its snapshots.
     pub(crate) fn replay(
         self,
         world: &mut World,
         packages: &ModePackages,
-        signer: &ServerSigner,
+        signer: Signer,
         mut after_tick: impl FnMut(&mut World),
     ) -> Result<SnapshotDir, RestoreMatchError> {
         let RestoredSession {
@@ -258,6 +253,7 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer: Some(signer),
             };
             let at = ResumeAt {
                 segment,
@@ -269,6 +265,7 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer: Some(signer),
             };
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
@@ -279,8 +276,7 @@ impl RestoredSession {
             if world.session().log().next_tick() > resumed {
                 after_tick(world);
             }
-            Checkpoints::take_again(world, &snapshots, signer)
-                .map_err(RestoreMatchError::WriteSnapshot)
+            Checkpoints::take_again(world, &snapshots).map_err(RestoreMatchError::WriteSnapshot)
         })?;
         Ok(snapshots)
     }
@@ -294,19 +290,16 @@ impl RestoredSession {
         let Publisher {
             data,
             packages,
-            server_key,
-            entropy,
+            signer,
         } = publisher;
         let mut world = World::new();
-        let signer = ServerSigner::new(server_key, entropy);
-        self.replay(&mut world, packages, &signer, |_| {})
+        self.replay(&mut world, packages, signer.clone(), |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
             let result = world.session_result_as(Outcome::Aborted);
-            let mut session = world.session_mut();
-            let signature = signer.sign_result(&result, session.log().session_id());
-            session
-                .record_result(result, &signature)
+            world
+                .session_mut()
+                .record_result(result)
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();

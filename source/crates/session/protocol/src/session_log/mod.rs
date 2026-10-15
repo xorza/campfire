@@ -5,7 +5,6 @@ use std::ops::Range;
 
 use campfire_codec::{Binary, BinaryError};
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::Checkpoint;
@@ -33,10 +32,12 @@ use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::session_header::SessionHeader;
 use crate::session_result::SessionResult;
 use crate::signature::Signature;
+use crate::signer::Signer;
 use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 use crate::slot_start::SlotStart;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
+use crate::verifier::Verifier;
 
 pub(crate) mod applied;
 pub(crate) mod durable_head;
@@ -67,8 +68,8 @@ pub struct SessionLog {
     header: SessionHeader,
     /// Present once the segment is published.
     revealed: Option<ServerSeed>,
-    secp: Secp256k1<VerifyOnly>,
-    /// The scratch each server signature's message is written into, cleared and refilled.
+    verifier: Verifier,
+    /// The scratch a server input's message is written into as the log signs it.
     message: Vec<u8>,
     /// Each slot's controller and counts, by slot.
     slots: Vec<Slot>,
@@ -312,7 +313,7 @@ impl SessionLog {
             result: None,
             header,
             revealed: None,
-            secp: Secp256k1::verification_only(),
+            verifier: Verifier::new(),
             message: Vec::new(),
             inputs: PagedVec::default(),
             payloads: PagedBytes::default(),
@@ -557,7 +558,7 @@ impl SessionLog {
         for input in inputs.clone() {
             chain.extend(input.stamp, input.payload);
         }
-        if !chain.signed_by(&self.secp, &session_key, self.session_id, signature) {
+        if !chain.signed_by(&self.verifier, &session_key, self.session_id, signature) {
             return Err(InputError::BadSignature);
         }
 
@@ -689,42 +690,34 @@ impl SessionLog {
         let place = self.next_place();
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
-        if !input.signed_by(
-            &self.secp,
-            server_key,
-            id,
-            place,
-            signature,
-            &mut self.message,
-        ) {
+        if !input.signed_by(&mut self.verifier, server_key, id, place, signature) {
             return Err(ServerInputError::BadSignature);
         }
         self.log_server(input, change, signature);
         Ok(())
     }
 
-    /// Logs a server input as `record_server` does, signed here with the server's `key`, the
-    /// terms' server key, with BIP-340's auxiliary randomness `aux`. A signature the log made
-    /// over the message it wrote needs no check, which is the most a server input costs.
-    pub fn serve<C: Signing>(
+    /// Logs a server input as `record_server` does, signed here by `server`, of the terms'
+    /// server key. A signature the log made over the message it wrote needs no check, which is
+    /// the most a server input costs.
+    pub fn serve(
         &mut self,
         input: ServerInput<'_>,
-        secp: &Secp256k1<C>,
-        key: &Keypair,
-        aux: &[u8; 32],
+        server: &Signer,
     ) -> Result<(), ServerInputError> {
         let server_key = self.header.terms.server_key;
         debug_assert_eq!(
-            key.x_only_public_key().0,
+            server.public_key(),
             server_key,
             "the server signs with the terms' server key"
         );
         let change = self.change_of(&input)?;
         let place = self.next_place();
         input.write_message(self.session_id, place, &mut self.message);
-        let signature = Signature::sign(secp, key, &self.message, aux);
+        let signature = server.sign(&self.message);
         debug_assert!(
-            signature.verifies(&self.secp, &server_key, &self.message),
+            self.verifier
+                .verifies(signature, &server_key, &self.message),
             "a signature the log made verifies"
         );
         self.log_server(input, change, &signature);
@@ -880,7 +873,7 @@ impl SessionLog {
         let begun = self.begun.as_ref().ok_or(CheckpointError::NotBegun)?;
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
-        if !record.signed_by(&self.secp, server_key, id, signature, &mut self.message) {
+        if !record.signed_by(&mut self.verifier, server_key, id, signature) {
             return Err(CheckpointError::BadSignature);
         }
         if record.segment != begun.segment {
@@ -957,7 +950,7 @@ impl SessionLog {
         assert!(self.result.is_none(), "a session ends once");
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
-        if !result.signed_by(&self.secp, server_key, id, signature, &mut self.message) {
+        if !result.signed_by(&mut self.verifier, server_key, id, signature) {
             return Err(ResultError::BadSignature);
         }
         if result.tick != self.next_tick() {

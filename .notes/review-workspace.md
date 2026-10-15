@@ -16,7 +16,7 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 - **D6. The books' build:** `into_books` keeps its list of books, which the declared-and-built check and the books test hold.
 - **D7. The engine tags' numbers:** each tag keeps its number in its `const`, and the declaration walk checks it.
 - **D8. A new unit's vision group:** each reader derives it from the relations it reads; `VisionGroups` stays the Vision pass's own.
-- **D9. The protocol's signer:** the session signs. `Entropy` moves to `common`. Protocol's `Signer` holds the key, the signing context and the entropy. The runner's `Session` holds the server's `Signer`, an `Option` that a server alone fills, and signs its own inputs, checkpoints and result. `ServerSigner` goes, and the client's signer is protocol's.
+- **D9. The protocol's signer:** the session signs. `Entropy` moves to `protocol`, the lowest crate that needs it: design 02 keeps `common` to plain values with no dependency past `serde` and `derive_more`, and `Entropy` calls `getrandom`. Protocol's `Signer` holds the key, the signing context and the entropy. The runner's `Session` holds the server's `Signer`, an `Option` that a server alone fills, and signs its own inputs, checkpoints and result. `ServerSigner` goes, and the client's signer is protocol's.
 - **D10. The units file's writer:** the import keeps its `UnitsToml`, and a test reads what it writes through `package`'s `UnitsFile`.
 - **D11. Change-driven passes:** Batch 11 moves whole to the user's next optimization session, where each item's bench decides it.
 - **D12. `JoinRefused`:** `JoinError` and the errors it wraps derive serde; `EventError` keeps nostr's error kind as a `Copy` enum of its own; `JoinRefused` carries the `JoinError`, and the link as its entity's bits, as the lobby's other lines then name links.
@@ -105,13 +105,6 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 ## 2. Plan
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
-
-### Batch 9. One home for each session fact (RC3)
-
-Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
-
-- [ ] Protocol signing, as D9 says: a `Signer` of the key, the signing context and `common`'s `Entropy`, and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. The session holds the server's signer and signs its own records. `ServerSigner` goes.
-- [ ] `net/src/sim_client/mod.rs` `lose_link`, `retry_link`: the retry jitter takes the client's `Entropy`, not its `Signer`.
 
 ### Batch 10. One home for each format (RC3)
 

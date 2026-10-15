@@ -13,6 +13,7 @@ use bevy_ecs::world::World;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
+use campfire_protocol::Signer;
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::Worker;
@@ -132,8 +133,7 @@ impl LocalServer {
         LocalServer::end_earlier(Publisher {
             data: &dir,
             packages: &packages,
-            server_key: key,
-            entropy: os.entropy,
+            signer: &Signer::new(key, os.entropy),
         })?;
         let server = ServerSetup {
             key,

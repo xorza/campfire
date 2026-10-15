@@ -7,11 +7,10 @@ use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerInput,
-    RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult,
-    Signature, SnapshotFingerprint,
+    Receipt, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
+    SessionResult, Signature, Signer, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
-use secp256k1::{Keypair, Secp256k1, Signing};
 
 use crate::match_build::MatchBuild;
 use crate::session::error::{
@@ -43,6 +42,8 @@ pub struct Session {
     saves: SavesData,
     /// The ticks between two autosaves, without which the mode makes none.
     autosave: Option<Ticks>,
+    /// The server's signer, of the terms' server key; none on a replay or a verifier.
+    signer: Option<Signer>,
 }
 
 impl Session {
@@ -58,7 +59,14 @@ impl Session {
             log,
             seeds,
             packages,
+            signer,
         } = source;
+        debug_assert!(
+            signer
+                .as_ref()
+                .is_none_or(|signer| signer.public_key() == log.header().terms.server_key),
+            "a session's signer holds its terms' server key"
+        );
         let header = log.header();
         let visibility = SessionRules::of(packages)
             .check(&header.terms)
@@ -95,6 +103,7 @@ impl Session {
             rules,
             saves,
             autosave,
+            signer,
         })
     }
 
@@ -136,32 +145,15 @@ impl Session {
         self.log.record(inputs, signature, applied)
     }
 
-    /// Logs a server input before the next tick, its `signature` the server key's at its place;
-    /// see `SessionLog::record_server`. The mode's `[players]` refuses a change of a slot's
-    /// controller it does not allow, before the log takes it.
-    pub fn record_server(
-        &mut self,
-        input: ServerInput<'_>,
-        signature: &Signature,
-    ) -> Result<(), ServerInputRefused> {
+    /// Logs a server input before the next tick, signed in the log with the server's key at
+    /// the place it takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a
+    /// slot's controller it does not allow, before the log takes it. Only a server's session
+    /// serves.
+    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
         self.check_rules(&input)?;
+        let signer = self.signer.as_ref().expect("only a server's session signs");
         self.log
-            .record_server(input, signature)
-            .map_err(ServerInputRefused::Log)
-    }
-
-    /// Logs a server input as `record_server` does, signed in the log with the server's `key`;
-    /// see `SessionLog::serve`.
-    pub fn serve<C: Signing>(
-        &mut self,
-        input: ServerInput<'_>,
-        secp: &Secp256k1<C>,
-        key: &Keypair,
-        aux: &[u8; 32],
-    ) -> Result<(), ServerInputRefused> {
-        self.check_rules(&input)?;
-        self.log
-            .serve(input, secp, key, aux)
+            .serve(input, signer)
             .map_err(ServerInputRefused::Log)
     }
 
@@ -222,24 +214,28 @@ impl Session {
             .map_err(CheckpointBeginError::Log)
     }
 
-    /// Logs the record of the checkpoint begun, with the server key's `signature` over it; see
-    /// `SessionLog::record_checkpoint`.
-    pub fn record_checkpoint(
-        &mut self,
-        record: Checkpoint,
-        signature: &Signature,
-    ) -> Result<(), CheckpointError> {
-        self.log.record_checkpoint(record, signature)
+    /// Logs the record of the checkpoint begun, signed with the server's key; see
+    /// `SessionLog::record_checkpoint`. Only a server's session takes checkpoints.
+    pub fn record_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
+        let signature = record.sign(self.signer(), self.log.session_id());
+        self.log.record_checkpoint(record, &signature)
     }
 
-    /// Logs the result with the server key's `signature` over it; see
-    /// `SessionLog::record_result`.
-    pub fn record_result(
-        &mut self,
-        result: SessionResult,
-        signature: &Signature,
-    ) -> Result<(), ResultError> {
-        self.log.record_result(result, signature)
+    /// Logs the result, signed with the server's key; see `SessionLog::record_result`. Only a
+    /// server's session ends with a result.
+    pub fn record_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
+        let signature = result.sign(self.signer(), self.log.session_id());
+        self.log.record_result(result, &signature)
+    }
+
+    /// The server key's signature over `receipt`, of a player's inputs this session logged.
+    pub fn sign_receipt(&self, receipt: &Receipt) -> Signature {
+        receipt.sign(self.signer())
+    }
+
+    /// The server's signer, which only a server's session holds.
+    const fn signer(&self) -> &Signer {
+        self.signer.as_ref().expect("only a server's session signs")
     }
 
     /// Publishes the log by adding the server seed of its last segment, which reveals every
@@ -346,12 +342,18 @@ pub(crate) mod internals {
             let session = game
                 .remove_resource::<Session>()
                 .expect("a session's match holds its session");
-            let (mut log, seeds) = (session.log, session.seeds);
+            let Session {
+                mut log,
+                seeds,
+                signer,
+                ..
+            } = session;
             log.load(at.segment).map_err(ResumeError::Load)?;
             let source = SessionSource {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer,
             };
             Session::resume_match(source, at)
         }

@@ -8,10 +8,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## 1. Hardening
 
-### H9. One home for each session fact
-
-(`protocol`, `runner`, `package`, `server`, `net`, `math`, `store`; review RC3.) After H1. `InputRules` nests in the terms, one lobby opening serves both servers, one snapshot check, one offering, data filters from the state-type walk, a protocol `Signer`, and the shared types in `common`. Goldens: none move.
-
 ### H10. One home for each format
 
 (`import`, the client formats' crate, `mode`, `client`, `math`; review RC3.) After H3. The import writes through the reader's types, one KTX2 codec, one name table of templates, one client-data owner. Guard: a round-trip test for each format the import writes. Goldens: none move.

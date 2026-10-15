@@ -101,6 +101,7 @@ impl Checkpointed {
                 log,
                 seeds: FixedSession::seeds(),
                 packages,
+                signer: None,
             };
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
@@ -157,17 +158,15 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     // no snapshot.
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    let session_id = fixed.game().session().log().session_id();
     let checkpoint = |fixed: &mut FixedMatch, flaw: fn(&mut Checkpoint, &mut Vec<u8>)| {
         let mut snapshot = Vec::new();
         fixed.game_mut().session_mut().begin_checkpoint().unwrap();
         let mut record = fixed.game().checkpoint(&mut snapshot).unwrap();
         flaw(&mut record, &mut snapshot);
-        let signature = FixedSession::checkpoint_signature(&record, session_id);
         fixed
             .game_mut()
             .session_mut()
-            .record_checkpoint(record, &signature)
+            .record_checkpoint(record)
             .unwrap();
         snapshot
     };
@@ -192,6 +191,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
             log,
             seeds: FixedSession::seeds(),
             packages: proving.packages(),
+            signer: None,
         };
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
@@ -217,7 +217,6 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     // A save before tick 100, segment 1, and a checkpoint before tick 150, segment 2.
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
-    let id = fixed.game().session().log().session_id();
     let mut hashes = Vec::new();
     let mut save = Vec::new();
     for tick in 0..200 {
@@ -252,10 +251,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     }
     assert_ne!(game.state_hash(), hashes[149]);
     let result = game.session_result_as(Outcome::Aborted);
-    let signature = FixedSession::result_signature(&result, id);
-    game.session_mut()
-        .record_result(result, &signature)
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
     game.session().log().encode(&mut bytes);

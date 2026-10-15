@@ -34,8 +34,6 @@ const RELEASE: Version = Version::new(0, 1, 0);
 const VISIBILITY: [u8; 3] = [7, 0, 1];
 const MODE: Fingerprint = Fingerprint::new([51; 32]);
 const DEPENDENCIES: [Fingerprint; 2] = [Fingerprint::new([52; 32]), Fingerprint::new([53; 32])];
-/// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
-const AUX: [u8; 32] = [0; 32];
 
 /// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.
 fn x_only(byte: u8) -> XOnlyPublicKey {
@@ -63,7 +61,7 @@ fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Dele
     };
     change(&mut terms);
     let main_key = TestKey::of(u8::try_from(11 + slot).unwrap());
-    Delegation::sign(&Secp256k1::new(), &main_key, &terms, TestKey::NOW, &AUX)
+    Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
 }
 
 fn terms() -> SessionTerms {
@@ -185,7 +183,6 @@ fn chained_with_tail() -> Vec<Vec<Sent<'static>>> {
 }
 
 fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
-    let secp = Secp256k1::new();
     let keys = [0, 1].map(session_key);
     let mut chains = [0, 1].map(|slot| InputChain::new(PlayerSlot::new(slot), root(slot)));
     script
@@ -196,7 +193,7 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
             for &(slot, stamp, payload) in *sends {
                 let chain = &mut chains[slot as usize];
                 let input = chain.extend(Tick::new(stamp), payload);
-                let signature = chain.sign(&secp, &keys[slot as usize], session_id(), &AUX);
+                let signature = chain.sign(&TestKey::signer(keys[slot as usize]), session_id());
                 match packets.last_mut() {
                     Some(packet) if last_slot == Some(slot) => {
                         packet.inputs.push(input);
@@ -217,7 +214,6 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
 /// Player `slot`'s first packets, `(stamp, payload)` each, chained from the root and signed by
 /// the session key of `signer`.
 fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Sent<'static>> {
-    let secp = Secp256k1::new();
     let mut chain = InputChain::new(PlayerSlot::new(slot), root(slot));
     packets
         .iter()
@@ -226,7 +222,7 @@ fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Se
                 .iter()
                 .map(|&(stamp, payload)| chain.extend(Tick::new(stamp), payload))
                 .collect();
-            let signature = chain.sign(&secp, &session_key(signer), session_id(), &AUX);
+            let signature = chain.sign(&TestKey::signer(session_key(signer)), session_id());
             Sent { inputs, signature }
         })
         .collect()
@@ -897,13 +893,7 @@ fn a_log_file_has_its_layout() {
         slot: PlayerSlot::new(0),
     };
     let place = log.next_place();
-    let signature = disconnected.sign(
-        &Secp256k1::new(),
-        &TestKey::server(),
-        session_id(),
-        place,
-        &AUX,
-    );
+    let signature = disconnected.sign(&TestKey::signer(TestKey::server()), session_id(), place);
     serve(&mut log, disconnected).unwrap();
     drop(log.seal_tick());
     log.reveal_seed(server_seed());
@@ -983,7 +973,6 @@ fn play_minimal(log: &mut SessionLog) {
     };
     serve(log, connected).unwrap();
     drop(log.seal_tick());
-    let secp = Secp256k1::new();
     log.begin_checkpoint().unwrap();
     let record = Checkpoint {
         segment: 1,
@@ -992,7 +981,7 @@ fn play_minimal(log: &mut SessionLog) {
         snapshot: SnapshotFingerprint::new([4; 32]),
         carry: log.carry(),
     };
-    let signature = record.sign(&secp, &TestKey::server(), session_id(), &AUX);
+    let signature = record.sign(&TestKey::signer(TestKey::server()), session_id());
     log.record_checkpoint(record, &signature).unwrap();
     sent[1].submit(log, &mut applied).unwrap();
     let result = SessionResult {
@@ -1000,7 +989,7 @@ fn play_minimal(log: &mut SessionLog) {
         outcome: Outcome::Won { team: 1 },
         state_hash: StateHash::new([5; 32]),
     };
-    let signature = result.sign(&secp, &TestKey::server(), session_id(), &AUX);
+    let signature = result.sign(&TestKey::signer(TestKey::server()), session_id());
     log.record_result(result, &signature).unwrap();
 }
 
@@ -1164,7 +1153,7 @@ fn mixed_delegation(main: u32, key: u32) -> Delegation {
         expiration: TestKey::NOW + 86_400,
     };
     let main_key = TestKey::of(u8::try_from(11 + main).unwrap());
-    Delegation::sign(&Secp256k1::new(), &main_key, &terms, TestKey::NOW, &AUX)
+    Delegation::sign(&TestKey::signer(main_key), &terms, TestKey::NOW)
 }
 
 /// A log of `mixed_terms`: player 0 in slot 0, a bot in slot 1, slot 2 open.
@@ -1183,7 +1172,7 @@ fn mixed_log() -> SessionLog {
 /// `input` served into `log`, which signs it with the server key at its next place. A log file
 /// with it decodes, recording each server input with its signature, which `record_server` checks.
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
-    log.serve(input, &Secp256k1::new(), &TestKey::server(), &AUX)
+    log.serve(input, &TestKey::signer(TestKey::server()))
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain
@@ -1198,10 +1187,8 @@ fn mixed_packet(
         .map(|&(stamp, payload)| chain.extend(Tick::new(stamp), payload))
         .collect();
     let signature = chain.sign(
-        &Secp256k1::new(),
-        &session_key(key),
+        &TestKey::signer(session_key(key)),
         mixed_terms().session_id(),
-        &AUX,
     );
     Sent { inputs, signature }
 }
@@ -1296,13 +1283,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         tick: log.next_tick(),
         index: 0,
     };
-    let stale = input.sign(
-        &Secp256k1::new(),
-        &TestKey::server(),
-        log.session_id(),
-        early,
-        &AUX,
-    );
+    let stale = input.sign(&TestKey::signer(TestKey::server()), log.session_id(), early);
     assert_eq!(
         log.record_server(input, &stale),
         Err(ServerInputError::BadSignature)

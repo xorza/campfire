@@ -5,9 +5,9 @@
 use campfire_common::{StateHash, Tick, Version};
 use campfire_harness::HashTrail;
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
-use campfire_net::{Entropy, Publisher, RestoreError, ServerDir, SessionDir, TickHashes};
+use campfire_net::{Publisher, RestoreError, ServerDir, SessionDir, TickHashes};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Outcome, SessionLog, SessionPrivate};
+use campfire_protocol::{Entropy, Outcome, SessionLog, SessionPrivate, Signer};
 use campfire_runner::{Replay, Session};
 use campfire_store::internals::Scratch;
 
@@ -96,8 +96,7 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .abort(Publisher {
             data: &stopped,
             packages: local.packages(),
-            server_key: key,
-            entropy: Entropy::Fixed(6),
+            signer: &Signer::new(key, Entropy::Fixed(6)),
         })
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());

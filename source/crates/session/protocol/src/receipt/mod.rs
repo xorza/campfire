@@ -1,12 +1,14 @@
 use campfire_codec::{Binary, TaggedError};
 use campfire_common::{PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
+use crate::signer::Signer;
+use crate::verifier::Verifier;
 
 /// Starts every receipt file and states its version, so other bytes are refused at once.
 const FILE_TAG: &[u8] = b"campfire/receipt-file/v1";
@@ -36,24 +38,19 @@ pub struct SignedReceipt {
 }
 
 impl Receipt {
-    /// The server key's signature over the receipt, with BIP-340's auxiliary randomness `aux`.
-    pub fn sign<C: Signing>(
-        &self,
-        secp: &Secp256k1<C>,
-        server_key: &Keypair,
-        aux: &[u8; 32],
-    ) -> Signature {
-        Signature::sign(secp, server_key, &self.message(), aux)
+    /// The server key's signature over the receipt, `server`'s.
+    pub fn sign(&self, server: &Signer) -> Signature {
+        server.sign(&self.message())
     }
 
     /// Whether `signature` is `server_key`'s over the receipt.
-    pub fn signed_by<C: Verification>(
+    pub fn signed_by(
         &self,
-        secp: &Secp256k1<C>,
+        verifier: &Verifier,
         server_key: &XOnlyPublicKey,
         signature: &Signature,
     ) -> bool {
-        signature.verifies(secp, server_key, &self.message())
+        verifier.verifies(*signature, server_key, &self.message())
     }
 
     /// `domain ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head`,

@@ -1,6 +1,7 @@
 use std::error::Error as StdError;
 
 use nostr::error::ErrorKind;
+use secp256k1::Keypair;
 
 use super::*;
 use crate::harness::test_key::TestKey;
@@ -20,27 +21,21 @@ fn terms() -> DelegationTerms {
 }
 
 fn signed() -> Delegation {
-    Delegation::sign(
-        &Secp256k1::new(),
-        &main_key(),
-        &terms(),
-        TestKey::NOW,
-        &[0; 32],
-    )
+    Delegation::sign(&TestKey::signer(main_key()), &terms(), TestKey::NOW)
 }
 
 /// The JSON of an event of `kind` with `tags`, signed by the main key.
 fn event(kind: u16, tags: Vec<Tag>) -> String {
-    let keys = Keys::new(SecretKey::from(main_key().secret_key()));
+    let main = TestKey::signer(main_key());
     let unsigned = UnsignedEvent::new(
-        keys.public_key(),
+        PublicKey::from(main.public_key()),
         Timestamp::from_secs(TestKey::NOW),
         Kind::from_u16(kind),
         tags,
         "",
     );
     let id = unsigned.compute_id();
-    let signature = keys.sign_schnorr_with_aux_rand(&Secp256k1::new(), id.as_bytes(), &[0; 32]);
+    let signature = Signature::from_byte_array(main.sign(id.as_bytes()).to_bytes());
     unsigned.add_signature(signature).unwrap().as_json()
 }
 

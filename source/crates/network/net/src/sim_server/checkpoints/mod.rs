@@ -3,7 +3,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_common::{Tick, Ticks};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::SaveBy;
-use campfire_protocol::{CheckpointBegun, CheckpointError, Outcome};
+use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError, Outcome};
 use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 use campfire_store::{DurableError, PathError};
@@ -14,9 +14,8 @@ use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
 use crate::save_command::SaveCommand;
-use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned, SignedCheckpoint};
+use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned};
 use crate::sim_server::local_session::LocalSession;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
@@ -36,17 +35,11 @@ impl Checkpoints {
     /// Starts the checkpoints of the session in `world`, before the next tick runs: the thread's
     /// copy of the state starts as a full copy of the state now, and the snapshots go to
     /// `snapshots`.
-    pub(super) fn start(world: &mut World, snapshots: SnapshotDir, signer: ServerSigner) {
+    pub(super) fn start(world: &mut World, snapshots: SnapshotDir) {
         let mut base = StateDelta::default();
         world.track(&mut base);
-        let session = world.resource::<Session>();
-        let thread = CheckpointThread::start(
-            world.resource::<StateRegistry>().clone(),
-            base,
-            session.log().session_id(),
-            snapshots,
-            signer,
-        );
+        let thread =
+            CheckpointThread::start(world.resource::<StateRegistry>().clone(), base, snapshots);
         world.insert_resource(Checkpoints {
             plan: Vec::new(),
             thread,
@@ -167,11 +160,10 @@ impl Checkpoints {
 
     /// Takes the checkpoint begun at the boundary before the next tick again, on the main thread,
     /// as a restore does once its replay reaches it: writes its snapshot into `snapshots`, and
-    /// logs its record, which `signer` signs. Nothing when no checkpoint begun starts there.
+    /// logs its record. Nothing when no checkpoint begun starts there.
     pub(super) fn take_again(
         world: &mut World,
         snapshots: &SnapshotDir,
-        signer: &ServerSigner,
     ) -> Result<(), PathError<DurableError>> {
         let session = world.resource::<Session>();
         let next = session.log().next_tick();
@@ -185,8 +177,7 @@ impl Checkpoints {
         let mut snapshot = Vec::new();
         let record = world.checkpoint(&mut snapshot).expect("a checkpoint begun");
         snapshots.write(&snapshot)?;
-        let signature = signer.sign_checkpoint(&record, session.log().session_id());
-        Checkpoints::log(world, SignedCheckpoint { record, signature });
+        Checkpoints::log(world, record);
         Ok(())
     }
 
@@ -206,24 +197,23 @@ impl Checkpoints {
     ) -> Result<(), PathError<DurableError>> {
         match returned {
             None | Some(Returned::Applied) => Ok(()),
-            Some(Returned::Taken(signed)) => {
-                Checkpoints::log(world, signed);
+            Some(Returned::Taken(record)) => {
+                Checkpoints::log(world, record);
                 Ok(())
             }
             Some(Returned::Failed(error)) => Err(error),
         }
     }
 
-    /// Logs the record `signed` brings.
-    fn log(world: &mut World, signed: SignedCheckpoint) {
-        let SignedCheckpoint { record, signature } = signed;
+    /// Logs `record`, which the session signs.
+    fn log(world: &mut World, record: Checkpoint) {
         let taken = CheckpointTaken {
             segment: record.segment,
             tick: record.tick,
         };
         world
             .resource_mut::<Session>()
-            .record_checkpoint(record, &signature)
+            .record_checkpoint(record)
             .expect("the server's own checkpoint holds");
         taken.log();
     }

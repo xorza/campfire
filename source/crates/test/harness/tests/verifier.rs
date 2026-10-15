@@ -176,12 +176,10 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     fixed.game_mut().session_mut().begin_checkpoint().unwrap();
     let mut record = fixed.game().checkpoint(snapshot).unwrap();
     record.state_hash = hash.unwrap_or(record.state_hash);
-    let id = fixed.game().session().log().session_id();
-    let signature = FixedSession::checkpoint_signature(&record, id);
     fixed
         .game_mut()
         .session_mut()
-        .record_checkpoint(record, &signature)
+        .record_checkpoint(record)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
@@ -189,10 +187,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
         || game.session_result(),
         |outcome| game.session_result_as(outcome),
     );
-    let signature = FixedSession::result_signature(&result, id);
-    game.session_mut()
-        .record_result(result, &signature)
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
@@ -282,6 +277,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
             log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
             seeds: first,
             packages: &packages(),
+            signer: None,
         }),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
@@ -488,8 +484,7 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     // does not start it.
     let mut log = session.log();
     let to_bot = leave(AfterLeave::Bot);
-    let signature = FixedSession::server_signature(&to_bot, log.session_id(), log.next_place());
-    log.record_server(to_bot, &signature).unwrap();
+    log.serve(to_bot, &FixedSession::server_signer()).unwrap();
     log.reveal_seed(FixedSession::seed(0));
     let refused = refusal(log, &store());
     assert!(
@@ -695,6 +690,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
             log: session.log(),
             seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
             packages: &packages(),
+            signer: None,
         }),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
@@ -767,6 +763,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         log: thrown.log(),
         seeds: FixedSession::seeds(),
         packages: thrown.packages(),
+        signer: None,
     })
     .err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {

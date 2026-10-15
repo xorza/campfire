@@ -3,13 +3,14 @@ use std::num::NonZeroU32;
 use campfire_common::{Fingerprint, TlsKey, Version};
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{ConnectChallenge, InputHash, MainKey, Receipt, SeedChain, SlotPlan};
+use campfire_protocol::{
+    ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeedChain, SlotPlan,
+};
 use campfire_runner::{HostChoices, TermsError};
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
 use crate::match_start::ChainHead;
-use crate::os::Entropy;
 
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
 
@@ -162,7 +163,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     let check = |binding| {
         offer.challenge.check(
-            &Secp256k1::verification_only(),
+            &Verifier::new(),
             &offer.terms,
             &binding,
             &delegation,
@@ -354,7 +355,7 @@ fn signed(receipt: Receipt) -> SignedReceipt {
     let server = TestKey::of(8);
     SignedReceipt {
         receipt,
-        signature: receipt.sign(&Secp256k1::new(), &server, &[0; 32]),
+        signature: receipt.sign(&TestKey::signer(server)),
     }
 }
 
@@ -375,7 +376,7 @@ fn receipted() -> (JoinState, Signer, Vec<InputHash>, Delegation, Receipt) {
 
 #[test]
 fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
-    let verifier = Secp256k1::verification_only();
+    let verifier = Verifier::new();
     let (mut state, _, heads, _, receipt) = receipted();
     assert_eq!(
         waiting(TICK_HZ).take_receipt(&signed(receipt), &verifier),
@@ -443,7 +444,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
     // After a load, the server's chain stands at seq 1 with a head that is not the client's own
     // there, heads[1]: a local server's chain is taken, its 2 inputs after seq 1 never apply and
     // its receipt is dropped; any other server rewrote the chain.
-    let verifier = Secp256k1::verification_only();
+    let verifier = Verifier::new();
     for hosting in [Hosting::Local, Hosting::Remote] {
         let (mut state, mut signer, heads, _, receipt) = receipted();
         state.player.hosting = hosting;
@@ -478,7 +479,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
 
 #[test]
 fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
-    let verifier = Secp256k1::verification_only();
+    let verifier = Verifier::new();
     let (mut state, mut signer, heads, delegation, receipt) = receipted();
     // Seq 1 is kept; seq 1 again, as a restored server gives it at a later tick, is kept in its
     // place, and with another head refused; seq 0 is older; seq 2 replaces it.
@@ -591,7 +592,7 @@ fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
     // The player leaves after inputs a, b and c; the receipt of c, seq 2, which the server sent
     // before it took the leave, comes after it: the client keeps it, as the newest. Once the
     // link closes, it takes none.
-    let verifier = Secp256k1::verification_only();
+    let verifier = Verifier::new();
     let (mut state, _, heads, _, receipt) = receipted();
     state.take_receipt(&signed(receipt), &verifier).unwrap();
     state.leave();

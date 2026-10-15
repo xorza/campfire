@@ -64,7 +64,6 @@ bevy_ecs.workspace = true
 bevy_replicon.workspace = true
 bevy_state.workspace = true
 bevy_time.workspace = true
-getrandom.workspace = true
 lightyear.workspace = true
 lightyear_serde.workspace = true
 secp256k1.workspace = true

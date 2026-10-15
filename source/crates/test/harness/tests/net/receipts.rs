@@ -14,11 +14,10 @@ use campfire_net::{
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Controller, ServerInput, SignedReceipt};
+use campfire_protocol::{Controller, ServerInput, SignedReceipt, Verifier};
 use campfire_runner::Session;
 use campfire_store::internals::Scratch;
 use campfire_store::{EntryKind, InputFile};
-use secp256k1::Secp256k1;
 
 /// The most bytes a test reads of a receipt file: one receipt, a few hundred.
 const RECEIPT_LEN: usize = 4096;
@@ -48,7 +47,6 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
     let world = local.server().world();
     let id = world.resource::<Session>().log().session_id();
     let server = TestKey::server().x_only_public_key().0;
-    let secp = Secp256k1::verification_only();
     let mut kept = Vec::new();
     for client in 0..2 {
         let slot = world.link_slot(local.link(client)).unwrap();
@@ -61,7 +59,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
         assert!(
             receipt
                 .receipt
-                .signed_by(&secp, &server, &receipt.signature)
+                .signed_by(&Verifier::new(), &server, &receipt.signature)
         );
         let file = scratch
             .path("data")

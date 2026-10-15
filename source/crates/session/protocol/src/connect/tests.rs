@@ -47,28 +47,29 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
         expiration: EXPIRATION,
     };
     change(&mut granted);
-    Delegation::sign(
-        &Secp256k1::new(),
-        &TestKey::of(1),
-        &granted,
-        TestKey::NOW,
-        &[0; 32],
-    )
+    Delegation::sign(&TestKey::signer(TestKey::of(1)), &granted, TestKey::NOW)
 }
 
 #[test]
 fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
-    let secp = Secp256k1::new();
     let challenge = ConnectChallenge::new([9; 32]);
     let binding = ChannelBinding::new([7; 32]);
-    let answer = challenge.answer(&secp, &TestKey::of(2), &binding, &[0; 32]);
+    let answer = challenge.answer(&TestKey::signer(TestKey::of(2)), &binding);
     let good = delegation(|_| {});
-    let check =
-        |challenge: ConnectChallenge,
-         binding: ChannelBinding,
-         delegation: &Delegation,
-         answer: &Signature,
-         now: u64| { challenge.check(&secp, &terms(), &binding, delegation, answer, now) };
+    let check = |challenge: ConnectChallenge,
+                 binding: ChannelBinding,
+                 delegation: &Delegation,
+                 answer: &Signature,
+                 now: u64| {
+        challenge.check(
+            &Verifier::new(),
+            &terms(),
+            &binding,
+            delegation,
+            answer,
+            now,
+        )
+    };
     assert_eq!(
         check(challenge, binding, &good, &answer, TestKey::NOW),
         Ok(())
@@ -104,7 +105,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     // An answer given to another challenge, or over another TLS session's binding, as a relay
     // between two sessions gives, is refused.
     let relayed =
-        ConnectChallenge::new([10; 32]).answer(&secp, &TestKey::of(2), &binding, &[0; 32]);
+        ConnectChallenge::new([10; 32]).answer(&TestKey::signer(TestKey::of(2)), &binding);
     let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
         check(challenge, binding, &good, &relayed, TestKey::NOW),

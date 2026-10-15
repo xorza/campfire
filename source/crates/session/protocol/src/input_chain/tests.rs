@@ -1,4 +1,4 @@
-use secp256k1::schnorr;
+use secp256k1::{Secp256k1, schnorr};
 
 use super::*;
 use crate::harness::test_key::TestKey;
@@ -55,11 +55,11 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
 
     // The session key signs `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, the seq being
     // the last input's: the signature holds over that message as secp256k1 checks it.
-    let secp = Secp256k1::new();
+    let secp = Secp256k1::verification_only();
     let (session_key, session) = (TestKey::of(21), SessionId::new([41; 32]));
     let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(Tick::new(0), b"a");
-    let signature = chain.sign(&secp, &session_key, session, &[0; 32]);
+    let signature = chain.sign(&TestKey::signer(session_key), session);
     let message = [
         &b"campfire/input/v1"[..],
         session.as_bytes(),
@@ -73,10 +73,10 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     assert_eq!(secp.verify_schnorr(&schnorr, &message, &key), Ok(()));
 
     // Another session, key or head, and the signature does not hold.
-    assert!(chain.signed_by(&secp, &key, session, &signature));
-    assert!(!chain.signed_by(&secp, &key, SessionId::new([32; 32]), &signature));
+    assert!(chain.signed_by(&Verifier::new(), &key, session, &signature));
+    assert!(!chain.signed_by(&Verifier::new(), &key, SessionId::new([32; 32]), &signature));
     let other_key = TestKey::of(22).x_only_public_key().0;
-    assert!(!chain.signed_by(&secp, &other_key, session, &signature));
+    assert!(!chain.signed_by(&Verifier::new(), &other_key, session, &signature));
     chain.extend(Tick::new(0), b"b");
-    assert!(!chain.signed_by(&secp, &key, session, &signature));
+    assert!(!chain.signed_by(&Verifier::new(), &key, session, &signature));
 }

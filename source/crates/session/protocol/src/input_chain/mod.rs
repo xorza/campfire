@@ -1,12 +1,14 @@
 use blake3::Hasher;
 use campfire_common::{PlayerSlot, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
+use crate::signer::Signer;
+use crate::verifier::Verifier;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
 const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";
@@ -79,27 +81,21 @@ impl InputChain {
         }
     }
 
-    /// The session key's signature over the chain head, with BIP-340's auxiliary randomness
-    /// `aux`. The chain holds at least one input: a packet ends with one.
-    pub fn sign<C: Signing>(
-        &self,
-        secp: &Secp256k1<C>,
-        session_key: &Keypair,
-        session_id: SessionId,
-        aux: &[u8; 32],
-    ) -> Signature {
-        Signature::sign(secp, session_key, &self.head_message(session_id), aux)
+    /// The session key's signature over the chain head, `session`'s. The chain holds at least
+    /// one input: a packet ends with one.
+    pub fn sign(&self, session: &Signer, session_id: SessionId) -> Signature {
+        session.sign(&self.head_message(session_id))
     }
 
     /// Whether `signature` is `session_key`'s over the chain head.
-    pub(crate) fn signed_by<C: Verification>(
+    pub(crate) fn signed_by(
         &self,
-        secp: &Secp256k1<C>,
+        verifier: &Verifier,
         session_key: &XOnlyPublicKey,
         session_id: SessionId,
         signature: &Signature,
     ) -> bool {
-        signature.verifies(secp, session_key, &self.head_message(session_id))
+        verifier.verifies(*signature, session_key, &self.head_message(session_id))
     }
 
     /// `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, little-endian, where seq is the last

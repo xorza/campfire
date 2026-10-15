@@ -77,7 +77,7 @@ pub use crate::match_clock::MatchClock;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 pub use crate::order_script::{OrderScript, ScriptedInput, ScriptedOrder, ScriptedValue};
-pub use crate::os::{Clock, Entropy, Os};
+pub use crate::os::{Clock, Os};
 pub use crate::pace::{Pace, PaceSpeed};
 pub use crate::process_exit::ProcessExit;
 pub use crate::save_command::SaveCommand;

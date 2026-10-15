@@ -6,18 +6,17 @@ use campfire_common::ChannelBinding;
 use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
-    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, SeedContribution,
+    ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy, SeedContribution,
 };
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
-use secp256k1::{All, Secp256k1};
 
 use super::*;
 use crate::join::{Join, JoinRole};
 use crate::order_script::OrderScript;
-use crate::os::{Clock, Entropy, Os};
+use crate::os::{Clock, Os};
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
 use crate::sim_server::server_bots::SlotBot;
@@ -99,7 +98,6 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
 /// offered them over their links' channel binding, of bytes 3.
 #[derive(Debug)]
 struct Joining {
-    secp: Secp256k1<All>,
     granted: DelegationTerms,
     offered: Offered,
 }
@@ -114,7 +112,6 @@ impl Joining {
             expiration: TestKey::NOW + 60,
         };
         Joining {
-            secp: Secp256k1::new(),
             granted,
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),
@@ -131,13 +128,7 @@ impl Joining {
             session_key: TestKey::of(session).x_only_public_key().0,
             ..self.granted
         };
-        Delegation::sign(
-            &self.secp,
-            &TestKey::of(main),
-            &terms,
-            TestKey::NOW,
-            &[0; 32],
-        )
+        Delegation::sign(&TestKey::signer(TestKey::of(main)), &terms, TestKey::NOW)
     }
 
     /// A join of `json`, whose answer the session key of byte `session` signs over the
@@ -146,10 +137,8 @@ impl Joining {
         Join {
             delegation: json.to_owned(),
             answer: self.offered.challenge.answer(
-                &self.secp,
-                &TestKey::of(session),
+                &TestKey::signer(TestKey::of(session)),
                 &ChannelBinding::new([binding; 32]),
-                &[0; 32],
             ),
             role: JoinRole::Play,
         }

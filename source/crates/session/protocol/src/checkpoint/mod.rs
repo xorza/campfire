@@ -1,13 +1,15 @@
 use campfire_codec::{Binary, Taken};
 use campfire_common::{StateHash, Tick};
-use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarryWire, LogCarry};
 use crate::session_id::SessionId;
 use crate::signature::Signature;
+use crate::signer::Signer;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
+use crate::verifier::Verifier;
 
 pub(crate) mod checkpoint_begun;
 pub(crate) mod error;
@@ -70,36 +72,28 @@ impl Checkpoint {
         })
     }
 
-    /// The server key's signature over the record, with BIP-340's auxiliary randomness `aux`.
-    pub fn sign<C: Signing>(
-        &self,
-        secp: &Secp256k1<C>,
-        server_key: &Keypair,
-        session_id: SessionId,
-        aux: &[u8; 32],
-    ) -> Signature {
+    /// The server key's signature over the record, `server`'s.
+    pub fn sign(&self, server: &Signer, session_id: SessionId) -> Signature {
         let mut message = Vec::new();
         self.write_message(session_id, &mut message);
-        Signature::sign(secp, server_key, &message, aux)
+        server.sign(&message)
     }
 
-    /// Whether `signature` is `server_key`'s over the record, its message written into `message`.
-    pub(crate) fn signed_by<C: Verification>(
+    /// Whether `signature` is `server_key`'s over the record.
+    pub(crate) fn signed_by(
         &self,
-        secp: &Secp256k1<C>,
+        verifier: &mut Verifier,
         server_key: &XOnlyPublicKey,
         session_id: SessionId,
         signature: &Signature,
-        message: &mut Vec<u8>,
     ) -> bool {
-        self.write_message(session_id, message);
-        signature.verifies(secp, server_key, message)
+        verifier.verifies_written(*signature, server_key, |message| {
+            self.write_message(session_id, message);
+        })
     }
 
-    /// Writes `domain ‖ session id ‖ postcard of the record` into `message`, in place of what
-    /// it held.
+    /// Appends `domain ‖ session id ‖ postcard of the record` to `message`.
     fn write_message(&self, session_id: SessionId, message: &mut Vec<u8>) {
-        message.clear();
         message.extend_from_slice(SIGNATURE_DOMAIN);
         message.extend_from_slice(session_id.as_bytes());
         self.encode(message);

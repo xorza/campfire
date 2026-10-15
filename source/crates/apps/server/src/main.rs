@@ -32,6 +32,7 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
+use campfire_protocol::Signer;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, QuicEndpoint};
 use campfire_store::StopSignals;
 use campfire_visibility::HostVisibility;
@@ -170,11 +171,11 @@ fn open(
         error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
         ExitCode::from(ExitStatus::Failure)
     };
+    let signer = Signer::new(key, Os::SYSTEM.entropy);
     let publisher = Publisher {
         data,
         packages: &packages,
-        server_key: key,
-        entropy: Os::SYSTEM.entropy,
+        signer: &signer,
     };
     let found = Opening::find(waiting, times.restore_window, publisher).map_err(no_session)?;
     let setup = OpeningSetup {

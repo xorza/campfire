@@ -12,7 +12,6 @@ use crate::events::avatar_missing::AvatarMissing;
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::order_script::OrderScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
-use crate::sim_server::server_signer::ServerSigner;
 
 /// Plays the server's bots: before each tick, for each slot a bot plays, the orders and mode
 /// inputs its script has for that tick, each a payload as a client writes it, which the server
@@ -107,7 +106,6 @@ impl BotDriver {
     /// Logs what each bot's script has due by `tick` into `session`: its mode inputs, then its
     /// orders, for the slot's avatar.
     fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
-        let signer = world.resource::<ServerSigner>();
         let BotDriver {
             bots,
             payload,
@@ -123,7 +121,7 @@ impl BotDriver {
             for input in driven.script.due_inputs(script_tick) {
                 payload.clear();
                 input.write_payload(body, payload);
-                BotDriver::log(signer, session, driven.slot, payload);
+                BotDriver::log(session, driven.slot, payload);
             }
             let avatar = players.avatar(world, driven.slot).map(|avatar| avatar.id);
             for scripted in driven.script.due_orders(script_tick) {
@@ -137,15 +135,15 @@ impl BotDriver {
                 };
                 payload.clear();
                 Order::one(unit, scripted.action).write_payload(body, payload);
-                BotDriver::log(signer, session, driven.slot, payload);
+                BotDriver::log(session, driven.slot, payload);
             }
         }
     }
 
     /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, or
     /// past the ticks up to its max input lead, which the slot's inputs fill, is dropped.
-    fn log(signer: &ServerSigner, session: &mut Session, slot: PlayerSlot, payload: &[u8]) {
-        let cause = match signer.serve(session, ServerInput::Bot { slot, payload }) {
+    fn log(session: &mut Session, slot: PlayerSlot, payload: &[u8]) {
+        let cause = match session.serve(ServerInput::Bot { slot, payload }) {
             Ok(()) => return,
             Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
             Err(ServerInputRefused::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,

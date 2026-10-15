@@ -1,12 +1,13 @@
 use campfire_common::{Bytes32, ChannelBinding};
 use derive_more::Display;
-use secp256k1::{Keypair, Secp256k1, Signing, Verification};
 use serde::{Deserialize, Serialize};
 
 use crate::connect::error::ConnectError;
 use crate::delegation::Delegation;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
+use crate::signer::Signer;
+use crate::verifier::Verifier;
 
 pub(crate) mod error;
 
@@ -33,24 +34,18 @@ impl ConnectChallenge {
         self.0.as_bytes()
     }
 
-    /// `session_key`'s answer to the challenge, over `binding`, its TLS session's,
-    /// with BIP-340's auxiliary randomness `aux`.
-    pub fn answer<C: Signing>(
-        &self,
-        secp: &Secp256k1<C>,
-        session_key: &Keypair,
-        binding: &ChannelBinding,
-        aux: &[u8; 32],
-    ) -> Signature {
-        Signature::sign(secp, session_key, &self.answer_message(binding), aux)
+    /// The session key's answer to the challenge, `session`'s, over `binding`, its TLS
+    /// session's.
+    pub fn answer(&self, session: &Signer, binding: &ChannelBinding) -> Signature {
+        session.sign(&self.answer_message(binding))
     }
 
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
     /// delegation names the server and the session of `terms` and has not expired, and its
     /// session key signed the challenge over `binding`, the server's own end of the TLS session.
-    pub fn check<C: Verification>(
+    pub fn check(
         &self,
-        secp: &Secp256k1<C>,
+        verifier: &Verifier,
         terms: &SessionTerms,
         binding: &ChannelBinding,
         delegation: &Delegation,
@@ -64,7 +59,7 @@ impl ConnectChallenge {
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
-        if !answer.verifies(secp, &granted.session_key, &self.answer_message(binding)) {
+        if !verifier.verifies(*answer, &granted.session_key, &self.answer_message(binding)) {
             return Err(ConnectError::BadAnswer);
         }
         Ok(())

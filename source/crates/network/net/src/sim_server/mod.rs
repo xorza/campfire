@@ -11,7 +11,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use bevy_time::{Real, Time, Virtual};
 use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
@@ -19,7 +19,9 @@ use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::{MatchEnd, ModeWorld};
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms};
+use campfire_protocol::{
+    Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
+};
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError, TermsError};
 use campfire_sim::{SimTick, SimWorld, TickRate};
@@ -66,7 +68,6 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
@@ -97,7 +98,6 @@ pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
 pub(crate) mod server_setup;
-pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
@@ -262,12 +262,11 @@ pub(crate) struct SessionStart<'a> {
 }
 
 /// What a match runs with from the next fixed tick, as it starts or restores: the offering its
-/// door offers, the server's setup, the journal and the snapshots' directory when the server
-/// keeps them, its seats, and the server's bots.
+/// door offers, the journal and the snapshots' directory when the server keeps them, its seats,
+/// and the server's bots.
 #[derive(Debug)]
-struct MatchRun<'a> {
+struct MatchRun {
     offering: Offering,
-    server: &'a ServerSetup,
     journal: Option<SessionJournal>,
     snapshots: Option<SnapshotDir>,
     seats: Seats,
@@ -351,12 +350,12 @@ impl SimServer {
                 log,
                 seeds,
                 packages,
+                signer: Some(Signer::new(server.key, server.os.entropy)),
             },
         )?;
         let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
         let run = MatchRun {
             offering,
-            server,
             journal,
             snapshots,
             seats: Seats::new(slots, clients),
@@ -415,14 +414,13 @@ impl SimServer {
     }
 
     /// Runs the match of the world's session from the next fixed tick, as it starts or restores:
-    /// the door offers `run.offering`, the server signs what it logs, the log goes into the
-    /// journal, which `JournalWatch` watches, and the checkpoints into the snapshots' directory
-    /// when the server keeps them, and the server's bots play their slots. Gives the Lightyear
-    /// tick the session's next tick runs in.
-    fn run_match(world: &mut World, run: MatchRun<'_>) -> NetTick {
+    /// the door offers `run.offering`, the log goes into the journal, which `JournalWatch`
+    /// watches, and the checkpoints into the snapshots' directory when the server keeps them, and
+    /// the server's bots play their slots. Gives the Lightyear tick the session's next tick runs
+    /// in.
+    fn run_match(world: &mut World, run: MatchRun) -> NetTick {
         let MatchRun {
             offering,
-            server,
             journal,
             snapshots,
             seats,
@@ -434,11 +432,9 @@ impl SimServer {
                 .resource_mut::<Session>()
                 .keep_journal(Box::new(journal));
         }
-        world.insert_resource(ServerSigner::new(server.key, server.os.entropy));
         world.insert_resource(Door::new(offering));
         if let Some(snapshots) = snapshots {
-            let signer = ServerSigner::new(server.key, server.os.entropy);
-            Checkpoints::start(world, snapshots, signer);
+            Checkpoints::start(world, snapshots);
         }
         let log = world.resource::<Session>().log();
         let (slots, next) = (log.slot_count(), log.next_tick());
@@ -473,8 +469,8 @@ impl SimServer {
         SimServer::take_terms(world, &terms, packages)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         let slots = restored.log.slot_count();
-        let signer = ServerSigner::new(server.key, server.os.entropy);
-        let snapshots = restored.replay(world, packages, &signer, |world| {
+        let signer = Signer::new(server.key, server.os.entropy);
+        let snapshots = restored.replay(world, packages, signer, |world| {
             if world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }
@@ -483,7 +479,6 @@ impl SimServer {
         let now = world.resource::<Time<Real>>().elapsed();
         let run = MatchRun {
             offering: Offering::new(terms, server),
-            server,
             journal: None,
             snapshots: Some(snapshots),
             seats: Seats::gone(slots, players.iter().copied(), now),
@@ -493,14 +488,12 @@ impl SimServer {
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began.
         SimServer::begin_checkpoint(world);
-        world.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = world.resource::<ServerSigner>();
-            for &slot in &players {
-                signer
-                    .serve(&mut session, ServerInput::Disconnected { slot })
-                    .expect("the server's own input holds");
-            }
-        });
+        let mut session = world.resource_mut::<Session>();
+        for &slot in &players {
+            session
+                .serve(ServerInput::Disconnected { slot })
+                .expect("the server's own input holds");
+        }
         Ok(())
     }
 }

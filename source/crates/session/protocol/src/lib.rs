@@ -9,6 +9,7 @@ mod checkpoint;
 mod connect;
 mod controller;
 mod delegation;
+mod entropy;
 #[cfg(feature = "internals")]
 mod harness;
 mod input_chain;
@@ -31,12 +32,14 @@ mod session_private;
 mod session_result;
 mod session_terms;
 mod signature;
+mod signer;
 mod slot_change;
 mod slot_plan;
 mod slot_start;
 mod snapshot_fingerprint;
 mod spill;
 mod stamp_count;
+mod verifier;
 
 pub use crate::checkpoint::Checkpoint;
 pub use crate::checkpoint::checkpoint_begun::CheckpointBegun;
@@ -50,6 +53,7 @@ pub use crate::delegation::delegation_tag::DelegationTag;
 pub use crate::delegation::error::{DelegationError, EventError, ScopeError};
 pub use crate::delegation::seed_contribution::SeedContribution;
 pub use crate::delegation::{Delegation, DelegationTerms};
+pub use crate::entropy::Entropy;
 pub use crate::input_chain::InputChain;
 pub use crate::input_hash::InputHash;
 pub use crate::input_rules::InputRules;
@@ -81,11 +85,13 @@ pub use crate::session_private::SessionPrivate;
 pub use crate::session_result::{Outcome, SessionResult};
 pub use crate::session_terms::SessionTerms;
 pub use crate::signature::Signature;
+pub use crate::signer::Signer;
 pub use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 pub use crate::slot_plan::SlotPlan;
 pub use crate::slot_plan::error::NotSlotPlan;
 pub use crate::slot_start::SlotStart;
 pub use crate::snapshot_fingerprint::SnapshotFingerprint;
+pub use crate::verifier::Verifier;
 
 #[cfg(feature = "internals")]
 pub mod internals {
