@@ -1,11 +1,12 @@
 use campfire_actions::ActionsColumn;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet, Status,
-    Unit,
+    ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
+    RoleSet, Status, Unit,
 };
 use campfire_sim::Position;
 
 use crate::ai_data::AiData;
+use crate::error::OrdersRefusal;
 use crate::unit_order::UnitOrder;
 
 /// The script API of `orders`: the orders an AI gives the unit that thinks.
@@ -78,7 +79,7 @@ impl OrdersApi {
             target.read(|aimed| {
                 let relation = view.relation(ordered.team, aimed.team);
                 if !aimed.alive || !relation.may_attack() {
-                    return Err(ApiError::NotAnEnemy.fail());
+                    return Err(OrdersRefusal::NotAnEnemy.fail());
                 }
                 if !ActionsColumn::armed_against(view, unit.row_index(), ordered, aimed) {
                     return Err(ApiError::NoAttack.fail());
@@ -92,7 +93,7 @@ impl OrdersApi {
     /// Queues `order` for `unit`, which must be the unit that thinks.
     fn order(ctx: &Ctx, unit: &Unit, order: UnitOrder) -> Checked<()> {
         if ctx.acting() != Some(unit.id) {
-            return Err(ApiError::OtherUnit.fail().into());
+            return Err(OrdersRefusal::OtherUnit.fail().into());
         }
         ctx.queue(order)
     }

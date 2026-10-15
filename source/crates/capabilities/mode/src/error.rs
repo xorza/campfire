@@ -1,4 +1,6 @@
 use campfire_geometry::PolygonError;
+use campfire_script::CapabilityRefusal;
+use campfire_sim::Capability;
 use campfire_values::DeclaredName;
 use thiserror::Error;
 
@@ -88,4 +90,84 @@ pub enum ModeError {
         #[source]
         problem: PolygonError,
     },
+}
+
+campfire_common::enum_all! {
+    /// Why the mode capability refused a script call: a script gave it a value it does not take.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ModeRefusal {
+        /// A count of values other than the choice's.
+        ChoiceCount,
+        /// A value of a unique choice another player chose.
+        ChoiceTaken,
+        /// A second end of a match.
+        Ended,
+        /// An ability to learn that is at its last rank already.
+        MaxRank,
+        /// A slot the unit has no ability in.
+        NoAbilitySlot,
+        /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
+        NoEnemyTeam,
+        /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
+        /// stands.
+        NoRoom,
+        /// A `calc_damage` that returns no number.
+        NotAnAmount,
+        /// A point outside the map's bounds.
+        OutOfBounds,
+        /// A unit owned by a player of another team: a player's units play on its team, so its
+        /// vision group is theirs.
+        PlayerOffTeam,
+        /// A value chosen twice in one choice.
+        RepeatedChoiceValue,
+        /// A player's resource past what an integer holds.
+        ResourceOverflow,
+        /// A unit to respawn that is alive.
+        RespawnAlive,
+        /// A unit to respawn whose type despawns when it dies.
+        RespawnDespawns,
+        /// A relation of a team to itself, which is friendly.
+        SelfRelation,
+        /// An action whose ranks are not those of the slot kind it goes in.
+        SlotKindRanks,
+        /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a list of
+        /// units or a position.
+        TimerData,
+        /// More slots than a unit holds.
+        TooManySlots,
+        /// A value the choice does not offer.
+        UnknownChoiceValue,
+    }
+    const ALL;
+}
+
+impl CapabilityRefusal for ModeRefusal {
+    const OWNER: Capability = Capability::Mode;
+    const CASES: &'static [ModeRefusal] = &ModeRefusal::ALL;
+
+    fn message(self) -> &'static str {
+        match self {
+            ModeRefusal::ChoiceCount => "count of values is not the choice's",
+            ModeRefusal::ChoiceTaken => "value is another player's choice",
+            ModeRefusal::Ended => "the match has ended",
+            ModeRefusal::MaxRank => "ability is at its last rank",
+            ModeRefusal::NoAbilitySlot => "unit has no ability in that slot",
+            ModeRefusal::NoEnemyTeam => "team has no one enemy team",
+            ModeRefusal::NoRoom => {
+                "the box has no room there: past the bounds, or over a wall or a body that stands"
+            }
+            ModeRefusal::NotAnAmount => "calc_damage returns no number",
+            ModeRefusal::OutOfBounds => "point is outside the map's bounds",
+            ModeRefusal::PlayerOffTeam => "player is not on the unit's team",
+            ModeRefusal::RepeatedChoiceValue => "value is chosen twice",
+            ModeRefusal::ResourceOverflow => "player resource overflows",
+            ModeRefusal::RespawnAlive => "unit to respawn is alive",
+            ModeRefusal::RespawnDespawns => "unit to respawn despawns when it dies",
+            ModeRefusal::SelfRelation => "a team's relation to itself is friendly",
+            ModeRefusal::SlotKindRanks => "action's ranks are not its slot kind's",
+            ModeRefusal::TimerData => "timer data is not a value state can hold",
+            ModeRefusal::TooManySlots => "a unit holds at most 256 slots",
+            ModeRefusal::UnknownChoiceValue => "value is not one the choice offers",
+        }
+    }
 }

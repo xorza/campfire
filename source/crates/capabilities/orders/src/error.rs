@@ -1,3 +1,5 @@
+use campfire_script::CapabilityRefusal;
+use campfire_sim::Capability;
 use thiserror::Error;
 
 /// Why a unit type's AI does not load. Packages are untrusted, so each is an expected failure.
@@ -9,4 +11,28 @@ pub enum AiError {
     /// The script has no `on_think(ctx, unit)`.
     #[error("AI script has no on_think(ctx, unit)")]
     NoThink,
+}
+
+campfire_common::enum_all! {
+    /// Why the orders capability refused a script call: a script gave it a value it does not take.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum OrdersRefusal {
+        /// An attack order on a unit that is not a living enemy.
+        NotAnEnemy,
+        /// An AI order for another unit than the one that thinks.
+        OtherUnit,
+    }
+    const ALL;
+}
+
+impl CapabilityRefusal for OrdersRefusal {
+    const OWNER: Capability = Capability::Orders;
+    const CASES: &'static [OrdersRefusal] = &OrdersRefusal::ALL;
+
+    fn message(self) -> &'static str {
+        match self {
+            OrdersRefusal::NotAnEnemy => "target is not a living enemy",
+            OrdersRefusal::OtherUnit => "an AI orders only the unit that thinks",
+        }
+    }
 }

@@ -3,12 +3,13 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, StateField, StateSchema,
-    StateValue, View, plain_script_arg,
+    ApiBuilder, ApiError, ApiOwner, CapabilityRefusal, Checked, MemberSpec, ScriptValue,
+    StateField, StateSchema, StateValue, View, plain_script_arg,
 };
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, NameId};
 
+use crate::error::StatsRefusal;
 use crate::stats_effect::StatsEffect;
 
 /// A modifier as a script holds it, `Modifier` in scripts: its carrier and source, and its
@@ -146,7 +147,7 @@ impl ModifierHandle {
                 |handle: &mut ModifierHandle, stacks: i64| -> Checked<()> {
                     let stacks = u32::try_from(stacks)
                         .ok()
-                        .ok_or_else(|| ApiError::NegativeStacks.fail())?;
+                        .ok_or_else(|| StatsRefusal::NegativeStacks.fail())?;
                     let mut data = handle.data();
                     data.stacks = stacks;
                     data.written = true;

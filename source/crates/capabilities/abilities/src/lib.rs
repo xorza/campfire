@@ -21,11 +21,13 @@ mod abilities_api;
 mod abilities_effect;
 mod casts;
 mod channels;
+mod error;
 mod toggles;
 
 pub use crate::abilities_api::AbilitiesApi;
 pub use crate::casts::Casts;
 pub use crate::channels::Channels;
+pub use crate::error::AbilitiesRefusal;
 pub use crate::toggles::Toggles;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a

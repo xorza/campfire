@@ -19,6 +19,7 @@ use campfire_sim::{Capability, Position, StableId};
 use campfire_units::MapBook;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
+mod error;
 mod flight_state;
 mod flights;
 mod flying;
@@ -31,6 +32,7 @@ mod projectiles_api;
 mod projectiles_effect;
 mod struck_units;
 
+pub use crate::error::ProjectilesRefusal;
 pub use crate::flight_state::FlightState;
 pub use crate::flying::Flying;
 pub use crate::launches::{Launch, LaunchPayload, Launches};

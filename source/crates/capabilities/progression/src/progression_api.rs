@@ -1,10 +1,11 @@
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Hook, MemberSpec, Status,
-    Unit,
+    ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
+    Status, Unit,
 };
 use campfire_values::TrackId;
 
+use crate::error::ProgressionRefusal;
 use crate::progression_column::ProgressionColumn;
 use crate::progression_effect::ProgressionEffect;
 use crate::track_data::TrackData;
@@ -83,10 +84,10 @@ impl ProgressionApi {
     fn add_xp(ctx: &Ctx, unit: &Unit, track: TrackId, amount: Num) -> Checked<()> {
         let view = ctx.view();
         if amount < Num::ZERO {
-            return Err(ApiError::NegativeXp.fail().into());
+            return Err(ProgressionRefusal::NegativeXp.fail().into());
         }
         if !ProgressionColumn::has(view, unit.id, track) {
-            return Err(ApiError::NoTrack.fail().into());
+            return Err(ProgressionRefusal::NoTrack.fail().into());
         }
         ctx.queue(ProgressionEffect::AddXp {
             id: unit.id,

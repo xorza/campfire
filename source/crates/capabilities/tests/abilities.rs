@@ -19,24 +19,25 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{
-    Combat, CombatBook, Damage, DamageCause, OnDeath, PassQueue, RecentAttackers,
+    Combat, CombatBook, CombatRefusal, Damage, DamageCause, OnDeath, PassQueue, RecentAttackers,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
-use campfire_navigation::Navigation;
+use campfire_navigation::{Navigation, NavigationRefusal};
 use campfire_orders::{AiData, Orders, OrdersAction};
 use campfire_players::{Players, PlayersWorld};
 use campfire_progression::{
-    Experience, Points, Progression, ProgressionAction, Thresholds, TrackData, TrackSet,
+    Experience, Points, Progression, ProgressionAction, ProgressionRefusal, Thresholds, TrackData,
+    TrackSet,
 };
-use campfire_projectiles::{Projectile, ProjectileData, Projectiles};
+use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesRefusal};
 use campfire_script::internals::{FailedCall, FailureKind};
 use campfire_script::{
-    ApiError, Hook, NameKind, NumError, Pool, ScriptBudgets, ScriptLimits, StateDecl, StateDefault,
-    StateType, StateValue, SyncTo, SyncedStateDecl,
+    ApiError, CapabilityRefusal, Hook, NameKind, NumError, Pool, ScriptBudgets, ScriptLimits,
+    StateDecl, StateDefault, StateType, StateValue, SyncTo, SyncedStateDecl,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -421,13 +422,25 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     // A forced move of a unit that does not walk, a dash of no step, a knock back of no
     // distance or of no time, fails.
     let refused = [
-        (shover, "ctx.teleport(of, of.pos)", ApiError::NoWalker),
-        (caster, "ctx.dash(of, of.pos, 0)", ApiError::NotASpeed),
-        (caster, "ctx.dash(of, of.pos, -1)", ApiError::NotASpeed),
+        (
+            shover,
+            "ctx.teleport(of, of.pos)",
+            NavigationRefusal::NoWalker.refused(),
+        ),
+        (
+            caster,
+            "ctx.dash(of, of.pos, 0)",
+            NavigationRefusal::NotASpeed.refused(),
+        ),
+        (
+            caster,
+            "ctx.dash(of, of.pos, -1)",
+            NavigationRefusal::NotASpeed.refused(),
+        ),
         (
             caster,
             "ctx.knock_back(of, of.pos, 0, 100)",
-            ApiError::NotADistance,
+            NavigationRefusal::NotADistance.refused(),
         ),
         (
             caster,
@@ -536,7 +549,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     Abilities::cast(&mut game, caster, ActionTarget::Unit(still));
     let failed = Abilities::failed_calls(&game);
     assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoWalker));
+    assert_eq!(
+        failed[0].kind,
+        FailureKind::Api(NavigationRefusal::NoWalker.refused())
+    );
     // A dash a knock back cuts delivers nothing, as League of Legends' and Dota 2's cut dashes
     // deliver nothing: the knock back replaces it, and its end runs no `on_end`.
     let far = Abilities::spawn_combatant(&mut game, (12, 0, 0), enemy, walker());
@@ -1215,7 +1231,10 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     order(&mut game, 2);
     let failed = Abilities::failed_calls(&game);
     assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoCharges));
+    assert_eq!(
+        failed[0].kind,
+        FailureKind::Api(AbilitiesRefusal::NoCharges.refused())
+    );
     // A unit that holds Step unlearned has no charges for Refill to add to.
     let learner = Mode::spawn_named(
         &mut game,
@@ -1512,7 +1531,10 @@ fn on_resolve(ctx, caster, target) {
     Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
     let failed = Abilities::failed_calls(&game);
     assert_eq!(failed.len(), 1);
-    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NotCharged));
+    assert_eq!(
+        failed[0].kind,
+        FailureKind::Api(AbilitiesRefusal::NotCharged.refused())
+    );
 }
 
 #[test]
@@ -2166,7 +2188,7 @@ fn on_resolve(ctx, caster, target) {
     let failed = FailedCall {
         id: Some(caster),
         hook: Hook::OnResolve,
-        kind: FailureKind::Api(ApiError::NegativeHeal),
+        kind: FailureKind::Api(CombatRefusal::NegativeHeal.refused()),
     };
     assert_eq!(Abilities::failed_calls(&game), [failed]);
     assert_eq!(Abilities::pool(&game, caster), 100);
@@ -2256,7 +2278,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
     let failed = FailedCall {
         id: Some(second),
         hook: Hook::OnResolve,
-        kind: FailureKind::Api(ApiError::NoTrack),
+        kind: FailureKind::Api(ProgressionRefusal::NoTrack.refused()),
     };
     assert_eq!(Abilities::failed_calls(&game), [failed]);
     assert_eq!(
@@ -2317,7 +2339,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
     let hit = FailedCall {
         id: Some(caster),
         hook: Hook::OnHit,
-        kind: FailureKind::Api(ApiError::NoTrack),
+        kind: FailureKind::Api(ProgressionRefusal::NoTrack.refused()),
     };
     assert_eq!(failed, [hit]);
     assert_eq!(Stats::health(&game, enemy), 500);
@@ -3377,7 +3399,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             if homing == at_unit {
                 assert_eq!((launched, failed), (2, vec![]), "{homing} {call}");
             } else {
-                let other = FailureKind::Api(ApiError::OtherFlight);
+                let other = FailureKind::Api(ProjectilesRefusal::OtherFlight.refused());
                 assert_eq!((launched, failed), (0, vec![other]), "{homing} {call}");
             }
         }

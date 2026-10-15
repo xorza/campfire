@@ -17,14 +17,15 @@ use campfire_mode::Mode;
 use campfire_navigation::OnPath;
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList, ScriptValue, Unit, View,
+    ApiError, CapabilityRefusal, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList,
+    ScriptValue, Unit, View,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
-use campfire_stats::{Level, Life, StatRule, Stats};
+use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
 use campfire_values::{
     Block, PackageIndex, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType,
@@ -506,16 +507,24 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
             r#"of.stat("spirit")"#,
             ApiError::Unknown(NameKind::Stat),
         ),
-        (bare, "of.level", ApiError::NoStats),
-        (bare, r#"of.stat("armor")"#, ApiError::NoStats),
-        (of, r#"of.pool("mana")"#, ApiError::NoPool),
+        (bare, "of.level", StatsRefusal::NoStats.refused()),
+        (bare, r#"of.stat("armor")"#, StatsRefusal::NoStats.refused()),
+        (of, r#"of.pool("mana")"#, StatsRefusal::NoPool.refused()),
         (
             of,
             r#"of.pool_max("rage")"#,
             ApiError::Unknown(NameKind::Pool),
         ),
-        (shell, r#"of.pool("health")"#, ApiError::NoPool),
-        (shell, r#"of.pool_max("health")"#, ApiError::NoPool),
+        (
+            shell,
+            r#"of.pool("health")"#,
+            StatsRefusal::NoPool.refused(),
+        ),
+        (
+            shell,
+            r#"of.pool_max("health")"#,
+            StatsRefusal::NoPool.refused(),
+        ),
     ];
     for (unit, expression, refusal) in refusals {
         let error = read(&mut game, unit, expression).unwrap_err();

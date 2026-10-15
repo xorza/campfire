@@ -1,3 +1,4 @@
+use campfire_sim::Capability;
 use campfire_values::EngineEnum;
 use rhai::EvalAltResult;
 use thiserror::Error;
@@ -35,16 +36,9 @@ pub enum ApiError {
     /// A time too long to count in ticks.
     #[error("time is too long to count in ticks")]
     TimeTooLarge,
-    #[error("damage is negative")]
-    NegativeDamage,
-    /// Experience on a track the unit does not have.
-    #[error("the unit does not have the track")]
-    NoTrack,
     /// A projectile or an area of an action that delivers none of that kind.
     #[error("the action delivers no unit of that kind")]
     NoDelivery,
-    #[error("experience is negative")]
-    NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
     #[error("integer is beyond a Num")]
     IntegerBeyondNum,
@@ -52,15 +46,9 @@ pub enum ApiError {
     /// none of its weapons selects.
     #[error("unit has no attack for the target")]
     NoAttack,
-    /// A stat or level field of a unit that has no stats.
-    #[error("unit has no stats")]
-    NoStats,
     /// A hook at the depth of combat events no chain reaches.
     #[error("a chain of combat events {} deep", ScriptLimits::CHAIN_DEPTH)]
     ChainTooDeep,
-    /// A heal or restore of a negative amount.
-    #[error("amount to heal or restore is negative")]
-    NegativeHeal,
     /// A call of a role the running script does not serve.
     #[error("the call is not one of the script's role")]
     NotForRole,
@@ -70,138 +58,62 @@ pub enum ApiError {
     /// A change from a pure hook's `ctx`, which only reads.
     #[error("a pure hook changes nothing")]
     PureCall,
-    /// A `calc_damage` that returns no number.
-    #[error("calc_damage returns no number")]
-    NotAnAmount,
-    /// A modifier whose param, as the call's action at its rank or no action gives it, does not
-    /// hold for `problem`.
-    #[error("a param of the modifier, as the call applies it")]
-    ModifierParam(#[source] ParamProblem),
-    /// A negative count of a modifier's stacks.
-    #[error("a modifier's stacks are not negative")]
-    NegativeStacks,
-    /// A pool the unit does not have.
-    #[error("unit has no such pool")]
-    NoPool,
-    /// An AI order for another unit than the one that thinks.
-    #[error("an AI orders only the unit that thinks")]
-    OtherUnit,
-    /// An attack order on a unit that is not a living enemy.
-    #[error("target is not a living enemy")]
-    NotAnEnemy,
     /// A text that names no member of the engine enum, as its `named` reads it.
     #[error("text names no member of {0}")]
     UnknownMember(EngineEnum),
-    /// A relation of a team to itself, which is friendly.
-    #[error("a team's relation to itself is friendly")]
-    SelfRelation,
-    /// A point outside the map's bounds.
-    #[error("point is outside the map's bounds")]
-    OutOfBounds,
-    /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
-    /// stands.
-    #[error("the box has no room there: past the bounds, or over a wall or a body that stands")]
-    NoRoom,
-    /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
-    #[error("team has no one enemy team")]
-    NoEnemyTeam,
-    /// A second end of a match.
-    #[error("the match has ended")]
-    Ended,
     /// A player slot the session does not have.
     #[error("player is not in the session")]
     UnknownPlayer,
-    /// A unit owned by a player of another team: a player's units play on its team, so its
-    /// vision group is theirs.
-    #[error("player is not on the unit's team")]
-    PlayerOffTeam,
-    /// A count of values other than the choice's.
-    #[error("count of values is not the choice's")]
-    ChoiceCount,
-    /// A value the choice does not offer.
-    #[error("value is not one the choice offers")]
-    UnknownChoiceValue,
-    /// A value chosen twice in one choice.
-    #[error("value is chosen twice")]
-    RepeatedChoiceValue,
-    /// A value of a unique choice another player chose.
-    #[error("value is another player's choice")]
-    ChoiceTaken,
-    /// An action whose ranks are not those of the slot kind it goes in.
-    #[error("action's ranks are not its slot kind's")]
-    SlotKindRanks,
-    /// More slots than a unit holds.
-    #[error("a unit holds at most 256 slots")]
-    TooManySlots,
     /// A field of the mode's state it does not declare.
     #[error("state field is not declared")]
     UnknownState,
     /// A value not of its state field's type.
     #[error("value is not of the state field's type")]
     WrongStateType,
-    /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a list of
-    /// units or a position.
-    #[error("timer data is not a value state can hold")]
-    TimerData,
-    /// A player's resource past what an integer holds.
-    #[error("player resource overflows")]
-    ResourceOverflow,
-    /// A count of supply in a mode that counts none.
-    #[error("the mode counts no supply")]
-    NoSupply,
-    /// A unit to respawn that is alive.
-    #[error("unit to respawn is alive")]
-    RespawnAlive,
-    /// A unit to respawn whose type despawns when it dies.
-    #[error("unit to respawn despawns when it dies")]
-    RespawnDespawns,
-    /// A slot the unit has no ability in.
-    #[error("unit has no ability in that slot")]
-    NoAbilitySlot,
-    /// An ability to learn that is at its last rank already.
-    #[error("ability is at its last rank")]
-    MaxRank,
-    /// A projectile launched in the other form than its type flies: a homing type at a unit, a
-    /// line type along a direction.
-    #[error("a homing projectile flies at a unit, and a line projectile along a direction")]
-    OtherFlight,
     /// A probability below 0 or above 1.
     #[error("probability is below 0 or above 1")]
     NotAProbability,
     /// A pick from an empty list.
     #[error("pick from an empty list")]
     EmptyPick,
-    /// An ability the unit does not hold.
-    #[error("the unit does not hold the ability")]
-    NotHeld,
-    /// A fraction below 0 or above 1.
-    #[error("fraction is below 0 or above 1")]
-    NotAFraction,
-    /// An ability with no charges.
-    #[error("the ability has no charges")]
-    NoCharges,
-    /// A value of an action's start in a call of an action that did not start, such as a weapon's.
-    #[error("the call's action did not start")]
-    NoStart,
-    /// `ctx.charge` of an action that does not charge.
-    #[error("the call's action does not charge")]
-    NotCharged,
     /// A call that acts as its unit with no acting unit, as the mode's, or one that is gone.
     #[error("the call has no acting unit")]
     NoActingUnit,
     /// A time of 0 where something must last.
     #[error("time is 0")]
     ZeroTime,
-    /// A forced move of a unit that does not walk.
-    #[error("the unit does not walk")]
-    NoWalker,
-    /// A speed of no step a tick: 0, negative, or too small to move a bit.
-    #[error("speed moves less than a bit a tick")]
-    NotASpeed,
-    /// A distance that is not more than 0, or beyond the world's bound.
-    #[error("distance is not more than 0, or beyond the world's bound")]
-    NotADistance,
+    /// A capability's own refusal, which its own enum of refusals gives.
+    #[error("{0}")]
+    Refused(Refusal),
 }
+
+/// A capability's own refusal of a script call: the capability, the code of the case among its
+/// refusals, and the case's message. Two refusals of one capability and code are one case.
+#[derive(Debug, Clone, Copy, Error)]
+#[error("{message}")]
+pub struct Refusal {
+    owner: Capability,
+    code: u8,
+    message: &'static str,
+}
+
+impl Refusal {
+    pub(crate) const fn new(owner: Capability, code: u8, message: &'static str) -> Refusal {
+        Refusal {
+            owner,
+            code,
+            message,
+        }
+    }
+}
+
+impl PartialEq for Refusal {
+    fn eq(&self, other: &Refusal) -> bool {
+        (self.owner, self.code) == (other.owner, other.code)
+    }
+}
+
+impl Eq for Refusal {}
 
 /// A name that data gives of a kind the match does not declare: what a book refuses as it
 /// resolves the name.

@@ -12,10 +12,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 (sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. It waits for the user's next optimization session (D11), where each item's bench decides it. Goldens: none move.
 
-### H14. Sibling APIs
-
-(`values`, `geometry`, `actions`, `deliveries`, `players`, `units`, `script`, `stats`, `combat`, `abilities`, `net`, `quic`, the apps, `harness`; review RC10.) One shape for ids, sets, placed bodies and callback tables; flags become enums; wide signatures become parameter structs. Goldens: none move.
-
 ### H15. Design and code that disagree
 
 (design 02 and 12, the release's tests, `common`'s tests, the checks; review D5.) Guard: every crate has a layer, and the test checks "one above the highest dependency". Design 12 D7 stays, and the fingerprint comparison and the parity suite join this plan as open steps. Goldens: none move.

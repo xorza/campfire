@@ -1,12 +1,13 @@
 use bevy_ecs::world::World;
 use campfire_actions::CapabilityDoesSpec;
 use campfire_math::Num;
-use campfire_script::{ApiError, CallError, Effect, Frame, View};
+use campfire_script::{CallError, CapabilityRefusal, Effect, Frame, View};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_units::LevelRaised;
 use campfire_values::TrackId;
 
+use crate::error::ProgressionRefusal;
 use crate::experience::Experience;
 use crate::level_ups::{LevelUp, LevelUps};
 use crate::points::Points;
@@ -38,7 +39,7 @@ impl ProgressionEffect {
             unreachable!("progression queues only its own listed effects")
         };
         if !ProgressionColumn::has(view, id, track) {
-            return Err(CallError::Api(ApiError::NoTrack));
+            return Err(CallError::Api(ProgressionRefusal::NoTrack.refused()));
         }
         frame.queue(ProgressionEffect::AddXp {
             id,

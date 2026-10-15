@@ -1,7 +1,9 @@
 use campfire_common::Tick;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_stats::StatsRefusal;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
@@ -89,7 +91,7 @@ fn on_input(ctx, player, name, value) {
         &mut game,
         &[(0, input("probe", "unknown")), (0, input("probe", "rally"))],
     );
-    let missing = ApiError::ModifierParam(ParamProblem::Missing);
+    let missing = StatsRefusal::param(ParamProblem::Missing).refused();
     let refused = [ApiError::Unknown(NameKind::Modifier), missing];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
 }
@@ -166,12 +168,12 @@ fn on_mode_input(ctx, player, name, value) {
             (1, input("probe", "turncoat")),
         ],
     );
-    let missing = ApiError::ModifierParam(ParamProblem::Missing);
+    let missing = StatsRefusal::param(ParamProblem::Missing).refused();
     let refused = [
         ApiError::Unknown(NameKind::Modifier),
         ApiError::UnknownPlayer,
         missing,
-        ApiError::PlayerOffTeam,
+        ModeRefusal::PlayerOffTeam.refused(),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
     // The five units, then the match's entity and the three players'.

@@ -20,7 +20,7 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 - **D10. The units file's writer:** the import keeps its `UnitsToml`, and a test reads what it writes through `package`'s `UnitsFile`.
 - **D11. Change-driven passes:** Batch 11 moves whole to the user's next optimization session, where each item's bench decides it.
 - **D12. `JoinRefused`:** `JoinError` and the errors it wraps derive serde; `EventError` keeps nostr's error kind as a `Copy` enum of its own; `JoinRefused` carries the `JoinError`, and the link as its entity's bits, as the lobby's other lines then name links.
-- **D13. A capability's refusal in `ApiError`:** `ApiError::Refused(Refusal { owner: Capability, code: u8 })`, `Copy` and `PartialEq`. Each capability's refusal enum converts into it and back, and gives its message through a table its module declares.
+- **D13. A capability's refusal in `ApiError`:** `ApiError::Refused(Refusal { owner: Capability, code: u8 })`, `Copy` and `PartialEq` by the capability and the code. Each capability's refusal enum implements `CapabilityRefusal`, whose `refused` makes the `Refusal`, and the refusal carries its case's message: a failed call's report reads the error alone, with no world, so a table a module declares could not reach it. No code reads a refusal back into its enum, so no conversion back exists.
 - **D14. The guide items kept:** `book_builder`'s `mem::take` of the effects, `ModeMap::install_pathing`, `model_writer::path` and the client's clone of a due `ScriptedInput` stay as they are.
 
 ## 1. Proposal
@@ -122,12 +122,6 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 - [ ] `protocol/src/server_seeds.rs:24-33`, `runner/src/session/mod.rs:107-117,217-224`: test `segment <= last` and derive the seed once, and one restore target for each replay.
 - [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue.
 - [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
-
-### Batch 14. Sibling APIs (RC10)
-
-Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
-
-- [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal, as D13 says.
 
 ### Batch 15. Design and code that disagree
 

@@ -4,9 +4,9 @@ use campfire_math::Num;
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
 use campfire_players::PlayersCall;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, Checked, Ctx, DataTable, Hook, MemberSpec,
-    NameKind, RoleSet, ScriptList, ScriptText, ScriptValue, StateType, StateValue, Status, TextArg,
-    Unit,
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx, DataTable,
+    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptText, ScriptValue, StateType,
+    StateValue, Status, TextArg, Unit,
 };
 use campfire_sim::{Capability, Position, StableId};
 use campfire_units::{NewUnit, SpawnAt, Units};
@@ -14,6 +14,7 @@ use campfire_values::{NameId, PathId, Rank, Relation, ResourceId, Tag, Team, Uni
 
 use crate::choice_data::ChoiceData;
 use crate::choice_id::ChoiceId;
+use crate::error::ModeRefusal;
 use crate::game_map::GameMap;
 use crate::marker::Marker;
 use crate::marker_tag::MarkerTag;
@@ -160,7 +161,7 @@ impl ModeApi {
                 let enemy = book
                     .teams
                     .sole_enemy(team)
-                    .ok_or_else(|| ApiError::NoEnemyTeam.fail())?;
+                    .ok_or_else(|| ModeRefusal::NoEnemyTeam.fail())?;
                 let name = ctx.view().names().name(enemy);
                 Ok(ScriptValue::of(name.expect("a team of the match")))
             },
@@ -441,7 +442,7 @@ impl ModeApi {
         let mut frame = ctx.write()?;
         let call = ModeCall::of_mut(&mut frame);
         if call.ended {
-            return Err(ApiError::Ended.fail().into());
+            return Err(ModeRefusal::Ended.fail().into());
         }
         call.ended = true;
         frame.queue(ModeEffect::End(result));
@@ -454,7 +455,7 @@ impl ModeApi {
         let slot = book.teams.player(player)?;
         let choice = book.choices.get(choice);
         if values.len() != choice.count() {
-            return Err(ApiError::ChoiceCount.fail().into());
+            return Err(ModeRefusal::ChoiceCount.fail().into());
         }
         let mut offers = Vec::with_capacity(values.len());
         for value in values {
@@ -462,9 +463,9 @@ impl ModeApi {
                 .clone()
                 .into_text()
                 .and_then(|id| book.roster.offer(choice.offers, id.as_str()))
-                .ok_or_else(|| ApiError::UnknownChoiceValue.fail())?;
+                .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
             if offers.contains(&offer) {
-                return Err(ApiError::RepeatedChoiceValue.fail().into());
+                return Err(ModeRefusal::RepeatedChoiceValue.fail().into());
             }
             offers.push(offer);
         }
@@ -472,7 +473,7 @@ impl ModeApi {
         let call = ModeCall::of_mut(&mut frame);
         let taken = |&offer| call.choices.taken(&book.choices, slot, choice, offer);
         if choice.unique && offers.iter().any(taken) {
-            return Err(ApiError::ChoiceTaken.fail().into());
+            return Err(ModeRefusal::ChoiceTaken.fail().into());
         }
         call.choices.choose(&book.choices, slot, choice, &offers);
         Ok(())
@@ -515,7 +516,7 @@ impl ModeApi {
         let offer = book
             .roster
             .offer(choice.offers, value)
-            .ok_or_else(|| ApiError::UnknownChoiceValue.fail())?;
+            .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
         let taken = ModeCall::of(&ctx.frame())
             .choices
             .taken(&book.choices, slot, choice, offer);
@@ -541,7 +542,7 @@ impl ModeApi {
     ) -> Checked<NewUnit> {
         let book = ModeSpec::of_or_fail(ctx)?;
         if !ctx.view().bounds().contains(pos) {
-            return Err(ApiError::OutOfBounds.fail().into());
+            return Err(ModeRefusal::OutOfBounds.fail().into());
         }
         let unit_type = ModeApi::spawnable(book, unit_type)?;
         let boxed = book.body(unit_type).filter(|form| form.is_box());
@@ -553,12 +554,12 @@ impl ModeApi {
                 NavigationColumn::room_for(ctx.view(), pos, body, spawning)
             };
             if !room {
-                return Err(ApiError::NoRoom.fail().into());
+                return Err(ModeRefusal::NoRoom.fail().into());
             }
         }
         let owner = player.map(|player| book.teams.player(player)).transpose()?;
         if owner.is_some_and(|slot| book.teams.of(slot) != Some(team)) {
-            return Err(ApiError::PlayerOffTeam.fail().into());
+            return Err(ModeRefusal::PlayerOffTeam.fail().into());
         }
         let id = ctx.write()?.take_id();
         if let Some(body) = body {
@@ -589,7 +590,7 @@ impl ModeApi {
         let book = ModeSpec::of_or_fail(ctx)?;
         let view = ctx.view();
         if ActionsColumn::kind_ranks(view, kind) != book.loadout_ranks {
-            return Err(ApiError::SlotKindRanks.fail().into());
+            return Err(ModeRefusal::SlotKindRanks.fail().into());
         }
         let rank = ActionsColumn::first_rank(view, kind);
         let abilities = ids
@@ -613,7 +614,7 @@ impl ModeApi {
             })
             .sum();
         if slots + queued + abilities.len() > ActionSlots::LIMIT {
-            return Err(ApiError::TooManySlots.fail().into());
+            return Err(ModeRefusal::TooManySlots.fail().into());
         }
         frame.queue(ModeEffect::Grant {
             id,
@@ -675,10 +676,10 @@ impl ModeApi {
     /// rounded up, at least one.
     fn respawn(ctx: &Ctx, unit: &Unit, ms: i64) -> Checked<()> {
         if unit.read(|row| row.alive) {
-            return Err(ApiError::RespawnAlive.fail().into());
+            return Err(ModeRefusal::RespawnAlive.fail().into());
         }
         if !CombatColumn::stays(unit) {
-            return Err(ApiError::RespawnDespawns.fail().into());
+            return Err(ModeRefusal::RespawnDespawns.fail().into());
         }
         let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(ModeEffect::Respawn { id: unit.id, ticks })
@@ -689,9 +690,9 @@ impl ModeApi {
     fn learn(ctx: &Ctx, unit: &Unit, slot: i64) -> Checked<()> {
         let slot = u8::try_from(slot)
             .ok()
-            .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
+            .ok_or_else(|| ModeRefusal::NoAbilitySlot.fail())?;
         let slot_row = ActionsColumn::slot(ctx.view(), unit.row_index(), slot)
-            .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
+            .ok_or_else(|| ModeRefusal::NoAbilitySlot.fail())?;
         let effect = ModeEffect::Learn { id: unit.id, slot };
         let mut frame = ctx.write()?;
         let queued = frame
@@ -699,7 +700,7 @@ impl ModeApi {
             .filter(|&queued| *queued == effect)
             .count();
         if usize::from(Rank::count(slot_row.rank)) + queued >= usize::from(slot_row.ranks) {
-            return Err(ApiError::MaxRank.fail().into());
+            return Err(ModeRefusal::MaxRank.fail().into());
         }
         frame.queue(effect);
         Ok(())
@@ -708,7 +709,7 @@ impl ModeApi {
     /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
     fn set_relation(ctx: &Ctx, a: Team, b: Team, relation: Relation) -> Checked<()> {
         if a == b {
-            return Err(ApiError::SelfRelation.fail().into());
+            return Err(ModeRefusal::SelfRelation.fail().into());
         }
         ctx.queue(ModeEffect::SetRelation { a, b, relation })
     }
@@ -732,7 +733,7 @@ impl ModeApi {
             .expect("a mode that names a resource keeps each player's resources");
         resources
             .add(resource, amount)
-            .ok_or_else(|| ApiError::ResourceOverflow.fail().into())
+            .ok_or_else(|| ModeRefusal::ResourceOverflow.fail().into())
     }
 
     /// Timer data as state holds it: `None` for `()`, or the value of the first type that takes
@@ -754,6 +755,6 @@ impl ModeApi {
         .into_iter()
         .find_map(|kind| StateValue::from_value(kind, data))
         .map(Some)
-        .ok_or(ApiError::TimerData)
+        .ok_or_else(|| ModeRefusal::TimerData.refused())
     }
 }

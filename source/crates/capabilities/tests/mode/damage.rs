@@ -2,6 +2,7 @@ use campfire_common::Tick;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
@@ -118,7 +119,7 @@ fn calc_heal(ctx, h) {
         Mode::failures(&game),
         [
             FailureKind::Api(ApiError::PureCall),
-            FailureKind::Api(ApiError::NotAnAmount)
+            FailureKind::Api(ModeRefusal::NotAnAmount.refused())
         ]
     );
     assert_eq!(game.part::<Life>(target).current(), Num::int(950));

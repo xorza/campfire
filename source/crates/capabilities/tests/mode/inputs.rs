@@ -1,4 +1,5 @@
 use super::*;
+use campfire_script::CapabilityRefusal;
 use campfire_values::NameId;
 
 #[test]
@@ -45,8 +46,8 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(
         Mode::failures(&game),
         [
-            FailureKind::Api(ApiError::ChoiceTaken),
-            FailureKind::Api(ApiError::ChoiceCount),
+            FailureKind::Api(ModeRefusal::ChoiceTaken.refused()),
+            FailureKind::Api(ModeRefusal::ChoiceCount.refused()),
             FailureKind::Raised(None),
             FailureKind::Api(ApiError::WrongStateType)
         ]
@@ -140,7 +141,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     assert_eq!(
         Mode::failures(&game),
         [
-            FailureKind::Api(ApiError::ResourceOverflow),
+            FailureKind::Api(ModeRefusal::ResourceOverflow.refused()),
             FailureKind::Api(ApiError::Unknown(NameKind::Resource)),
             FailureKind::Api(ApiError::Unknown(NameKind::MarkerTag)),
         ]
@@ -257,9 +258,9 @@ fn on_input(ctx, player, name, value) {
         ],
     );
     let refused = [
-        ApiError::ChoiceCount,
-        ApiError::RepeatedChoiceValue,
-        ApiError::UnknownChoiceValue,
+        ModeRefusal::ChoiceCount.refused(),
+        ModeRefusal::RepeatedChoiceValue.refused(),
+        ModeRefusal::UnknownChoiceValue.refused(),
         ApiError::Unknown(NameKind::Choice),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
@@ -279,7 +280,7 @@ fn on_input(ctx, player, name, value) {
         ],
     );
     let refused = [
-        ApiError::SlotKindRanks,
+        ModeRefusal::SlotKindRanks.refused(),
         ApiError::Unknown(NameKind::SlotKind),
         ApiError::Unknown(NameKind::Ability),
     ];
@@ -316,7 +317,7 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("probe", "two"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::TooManySlots)]
+        [FailureKind::Api(ModeRefusal::TooManySlots.refused())]
     );
     assert!(owned(&mut game).is_empty());
     Mode::tick_inputs(&mut game, &[(0, input("probe", "one"))]);

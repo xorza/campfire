@@ -81,7 +81,7 @@ pub use crate::application::{Application, NewInstance};
 pub use crate::applier::Applier;
 pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
-pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError};
+pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal};
 pub use crate::grant_pass::GrantPass;
 pub use crate::grants::{Grant, GrantChange, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};

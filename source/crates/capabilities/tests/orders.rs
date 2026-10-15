@@ -23,8 +23,8 @@ use campfire_orders::*;
 use campfire_players::{OutOfPlay, Players, PlayersWorld};
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, CallError, Filter, Hook, ScriptBudgets, ScriptError, ScriptFailures, ScriptLimits,
-    TagNames,
+    ApiError, CallError, CapabilityRefusal, Filter, Hook, ScriptBudgets, ScriptError,
+    ScriptFailures, ScriptLimits, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
@@ -837,7 +837,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     );
     assert!(matches!(
         failures[0].error,
-        CallError::Api(ApiError::OtherUnit)
+        CallError::Api(api) if api == OrdersRefusal::OtherUnit.refused()
     ));
     assert_eq!(game.part::<ActionSlots>(ally).attack_target(), Some(enemy));
 
@@ -885,7 +885,10 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     // spawn place, as of any.
     let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), ());
     let reset = Units::read(&mut game, "ctx.order_reset(of)", delivery).unwrap_err();
-    assert_eq!(reset.kind(), FailureKind::Api(ApiError::OtherUnit));
+    assert_eq!(
+        reset.kind(),
+        FailureKind::Api(OrdersRefusal::OtherUnit.refused())
+    );
 }
 
 #[test]

@@ -1,3 +1,5 @@
+use campfire_script::CapabilityRefusal;
+use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
 use thiserror::Error;
 
@@ -10,4 +12,27 @@ pub enum TrackError {
     /// More than one track is the `level` track.
     #[error("more than one `level` track")]
     LevelTracks,
+}
+
+campfire_common::enum_all! {
+    /// Why the progression capability refused a script call: a script gave it a value it does not take.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum ProgressionRefusal {
+        NegativeXp,
+        /// Experience on a track the unit does not have.
+        NoTrack,
+    }
+    const ALL;
+}
+
+impl CapabilityRefusal for ProgressionRefusal {
+    const OWNER: Capability = Capability::Progression;
+    const CASES: &'static [ProgressionRefusal] = &ProgressionRefusal::ALL;
+
+    fn message(self) -> &'static str {
+        match self {
+            ProgressionRefusal::NegativeXp => "experience is negative",
+            ProgressionRefusal::NoTrack => "the unit does not have the track",
+        }
+    }
 }

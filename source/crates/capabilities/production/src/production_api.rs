@@ -1,8 +1,11 @@
 use campfire_actions::{ActionDataField, RequiresData};
-use campfire_script::{ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, Unit};
+use campfire_script::{
+    ApiBuilder, ApiOwner, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, Unit,
+};
 use campfire_sim::Capability;
 
 use crate::drop_off_data::DropOffData;
+use crate::error::ProductionRefusal;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node_data::NodeData;
 use crate::production_column::ProductionColumn;
@@ -56,8 +59,8 @@ impl ProductionApi {
     fn supply(ctx: &Ctx, player: i64, cap: bool) -> Checked<i64> {
         let view = ctx.view();
         let slot = view.names().player(player)?;
-        let supply =
-            ProductionColumn::supply(view, slot).ok_or_else(|| ApiError::NoSupply.fail())?;
+        let supply = ProductionColumn::supply(view, slot)
+            .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;
         let count = if cap { supply.cap } else { supply.used };
         Ok(i64::try_from(count).expect("a supply count fits an integer"))
     }

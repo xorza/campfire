@@ -30,7 +30,7 @@ mod unit_order;
 pub use crate::ai::Ai;
 pub use crate::ai_data::AiData;
 pub use crate::destinations::Destinations;
-pub use crate::error::AiError;
+pub use crate::error::{AiError, OrdersRefusal};
 pub use crate::next_think::NextThink;
 pub use crate::order_inputs::{OrderInputs, PlayerOrders};
 pub use crate::orders_action::OrdersAction;

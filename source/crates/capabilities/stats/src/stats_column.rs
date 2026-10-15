@@ -5,12 +5,13 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue, View,
-    ViewColumn,
+    AnyKeptRows, CapabilityRefusal, Checked, ColumnRows, KeptRows, RowFill, RunMove, StateValue,
+    View, ViewColumn,
 };
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
+use crate::error::StatsRefusal;
 use crate::level::Level;
 use crate::life::Life;
 use crate::meter::Meter;
@@ -212,7 +213,7 @@ impl StatsColumn {
     /// What `read` gives of the column; an error for a match with no stats.
     fn read<R>(view: &View, read: impl FnOnce(&StatsColumn) -> Checked<R>) -> Checked<R> {
         view.column(read)
-            .unwrap_or_else(|| Err(ApiError::NoStats.fail().into()))
+            .unwrap_or_else(|| Err(StatsRefusal::NoStats.fail().into()))
     }
 
     /// The level of the unit in row `row`; an error for a unit with no stats.
@@ -220,7 +221,7 @@ impl StatsColumn {
         StatsColumn::read(view, |column| {
             Ok(column.rows.now().rows[row]
                 .level
-                .ok_or_else(|| ApiError::NoStats.fail())?)
+                .ok_or_else(|| StatsRefusal::NoStats.fail())?)
         })
     }
 
@@ -233,7 +234,7 @@ impl StatsColumn {
                 .stats(row)
                 .get(stat.index())
                 .copied()
-                .ok_or_else(|| ApiError::NoStats.fail().into())
+                .ok_or_else(|| StatsRefusal::NoStats.fail().into())
         })
     }
 
@@ -251,7 +252,7 @@ impl StatsColumn {
             pools
                 .meter(pool)
                 .map(read)
-                .ok_or_else(|| ApiError::NoPool.fail().into())
+                .ok_or_else(|| StatsRefusal::NoPool.fail().into())
         })
     }
 
@@ -269,7 +270,7 @@ impl StatsColumn {
             let checked = column
                 .modifier_book
                 .check_way(id, action, rank, call.params(), rate);
-            Ok(checked.map_err(|problem| ApiError::ModifierParam(problem).fail())?)
+            Ok(checked.map_err(|problem| StatsRefusal::param(problem).fail())?)
         })
     }
 

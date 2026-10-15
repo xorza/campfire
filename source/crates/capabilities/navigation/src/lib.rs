@@ -64,7 +64,7 @@ use crate::terrain::Terrain;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
-pub use crate::error::MapProblem;
+pub use crate::error::{MapProblem, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::group_box::GroupBox;
 pub use crate::mode_navigation_data::ModeNavigationData;

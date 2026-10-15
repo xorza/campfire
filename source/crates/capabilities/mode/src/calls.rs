@@ -5,11 +5,12 @@ use campfire_combat::{Damage, DamageHandle, Heal, HealHandle};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{
-    ApiError, CallError, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptError, ScriptValue,
-    ScriptsWorld,
+    CallError, CapabilityRefusal, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptError,
+    ScriptValue, ScriptsWorld,
 };
 use campfire_sim::{SimTick, StableId};
 
+use crate::error::ModeRefusal;
 use crate::mode_spec::ModeSpec;
 
 /// The mode calls of one batch, at one time.
@@ -137,7 +138,7 @@ impl Calls<'_, '_> {
             Some(int) => Num::from_int(int),
             None => value.try_cast::<Num>(),
         };
-        amount.ok_or(CallError::Api(ApiError::NotAnAmount))
+        amount.ok_or_else(|| CallError::Api(ModeRefusal::NotAnAmount.refused()))
     }
 
     /// Starts a mode call on the mode's state as it stands; `pure` for a hook whose `ctx` only

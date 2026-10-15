@@ -1,4 +1,4 @@
-use campfire_script::{ScriptList, ScriptValue};
+use campfire_script::{CapabilityRefusal, ScriptList, ScriptValue};
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
@@ -139,7 +139,7 @@ fn probe(ctx, unit) {
         ),
         (
             r#"ctx.set_relation("b", "b", Relation::Neutral)"#,
-            ApiError::SelfRelation,
+            ModeRefusal::SelfRelation.refused(),
         ),
         (
             r#"ctx.set_relation("a", "c", Relation::Neutral)"#,

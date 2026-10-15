@@ -8,6 +8,7 @@ pub(crate) mod applies;
 pub(crate) mod arg_ctx;
 pub(crate) mod call_part;
 pub(crate) mod call_start;
+pub(crate) mod capability_refusal;
 pub(crate) mod core_api;
 pub(crate) mod ctx;
 pub(crate) mod ctx_fn;

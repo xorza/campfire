@@ -16,13 +16,14 @@ pub use crate::scripts::applies::Applies;
 pub use crate::scripts::arg_ctx::ArgCtx;
 pub use crate::scripts::call_part::{CallParams, CallPart, Commit};
 pub use crate::scripts::call_start::CallStart;
+pub use crate::scripts::capability_refusal::CapabilityRefusal;
 pub use crate::scripts::core_api::CoreApi;
 pub use crate::scripts::ctx::{Ctx, Params};
 pub use crate::scripts::ctx_fn::{CtxFn, Fallible, GetFn, MethodFn, Plain, WithCtx, WithoutCtx};
 pub use crate::scripts::data_section::DataSection;
 pub use crate::scripts::data_table::DataTable;
 pub use crate::scripts::error::{
-    ApiError, CallError, Checked, CtxMisuse, ParamProblem, UnknownName,
+    ApiError, CallError, Checked, CtxMisuse, ParamProblem, Refusal, UnknownName,
 };
 pub use crate::scripts::frame::Frame;
 pub use crate::scripts::frame::effects::{Effect, Effects};

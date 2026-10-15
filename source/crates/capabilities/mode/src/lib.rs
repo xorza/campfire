@@ -75,7 +75,7 @@ mod unanswered_slot_events;
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
-pub use crate::error::{ModeError, ModeList, ModeNamesError};
+pub use crate::error::{ModeError, ModeList, ModeNamesError, ModeRefusal};
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{

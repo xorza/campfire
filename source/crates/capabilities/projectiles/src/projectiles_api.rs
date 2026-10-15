@@ -1,10 +1,13 @@
 use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
-use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit};
+use campfire_script::{
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit,
+};
 use campfire_sim::{Capability, Position};
 use campfire_units::NewUnit;
 
+use crate::error::ProjectilesRefusal;
 use crate::projectile_data::ProjectileData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};
 
@@ -58,7 +61,7 @@ impl ProjectilesApi {
             DeliveryShape::Projectile { homes: true, .. }
         );
         if homes != matches!(toward, Toward::Unit(_)) {
-            return Err(ApiError::OtherFlight.fail().into());
+            return Err(ProjectilesRefusal::OtherFlight.fail().into());
         }
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;

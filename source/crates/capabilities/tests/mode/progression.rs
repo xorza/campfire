@@ -1,6 +1,8 @@
 use campfire_common::Tick;
+use campfire_progression::ProgressionRefusal;
 
 use super::*;
+use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_nothing() {
@@ -42,19 +44,31 @@ fn on_mode_input(ctx, player, name, value) {
     // first queued, and reach the last rank; then neither slot has a rank more, and two slots do
     // not exist.
     let steps = [
-        ("thrice", [0, 1], Some(FailureKind::Api(ApiError::MaxRank))),
+        (
+            "thrice",
+            [0, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
         ("twice", [2, 1], None),
-        ("once", [2, 1], Some(FailureKind::Api(ApiError::MaxRank))),
-        ("spell", [2, 1], Some(FailureKind::Api(ApiError::MaxRank))),
+        (
+            "once",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
+        (
+            "spell",
+            [2, 1],
+            Some(FailureKind::Api(ModeRefusal::MaxRank.refused())),
+        ),
         (
             "none",
             [2, 1],
-            Some(FailureKind::Api(ApiError::NoAbilitySlot)),
+            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
         ),
         (
             "negative",
             [2, 1],
-            Some(FailureKind::Api(ApiError::NoAbilitySlot)),
+            Some(FailureKind::Api(ModeRefusal::NoAbilitySlot.refused())),
         ),
     ];
     for (value, expected, failure) in steps {
@@ -143,9 +157,9 @@ fn on_level_up(ctx, unit, track, level) {
     // A unit without the track, a track the mode does not declare, and a negative amount fail
     // the call, and change nothing.
     let refused = [
-        ("tower", ApiError::NoTrack),
+        ("tower", ProgressionRefusal::NoTrack.refused()),
         ("fame", ApiError::Unknown(NameKind::Track)),
-        ("negative", ApiError::NegativeXp),
+        ("negative", ProgressionRefusal::NegativeXp.refused()),
     ];
     for (value, error) in refused {
         Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
@@ -163,8 +177,8 @@ fn on_level_up(ctx, unit, track, level) {
     assert_eq!(Mode::failures(&game), []);
     assert_eq!(kind(&game), StateValue::Text("3 50 3 2".into()));
     let unread = [
-        ("tower points", ApiError::NoTrack),
-        ("tower level", ApiError::NoTrack),
+        ("tower points", ProgressionRefusal::NoTrack.refused()),
+        ("tower level", ProgressionRefusal::NoTrack.refused()),
         ("fame level", ApiError::Unknown(NameKind::Track)),
     ];
     for (value, error) in unread {

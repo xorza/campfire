@@ -4,12 +4,14 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, View, ViewColumn,
+    AnyKeptRows, CapabilityRefusal, Checked, ColumnRows, KeptRows, RowFill, RunMove, View,
+    ViewColumn,
 };
 use campfire_sim::StableId;
 use campfire_stats::Level;
 use campfire_values::TrackId;
 
+use crate::error::ProgressionRefusal;
 use crate::experience::{Experience, TrackXp};
 use crate::points::Points;
 use crate::track_book::TrackBook;
@@ -130,12 +132,16 @@ impl ProgressionColumn {
     /// track.
     pub(crate) fn points(view: &View, row: usize) -> Checked<Points> {
         let points = view.column(|column: &ProgressionColumn| column.rows.now().rows[row].points);
-        Ok(points.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
+        Ok(points
+            .flatten()
+            .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
     }
 
     fn held(view: &View, row: usize, track: TrackId) -> Checked<TrackXp> {
         let held = view.column(|column: &ProgressionColumn| column.find(row, track));
-        Ok(held.flatten().ok_or_else(|| ApiError::NoTrack.fail())?)
+        Ok(held
+            .flatten()
+            .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
     }
 
     /// The unit in row `row`'s progress on `track`, when it has the track.

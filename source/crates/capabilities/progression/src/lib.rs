@@ -26,7 +26,7 @@ mod track_book;
 mod track_data;
 mod track_set;
 
-pub use crate::error::TrackError;
+pub use crate::error::{ProgressionRefusal, TrackError};
 pub use crate::experience::{Experience, Raised, TrackXp};
 pub use crate::learn_orders::LearnOrders;
 pub use crate::learning::Learning;
