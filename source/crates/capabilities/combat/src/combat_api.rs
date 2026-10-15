@@ -63,7 +63,7 @@ impl CombatApi {
             restore,
             |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
                 CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-                    id: unit.id,
+                    unit: unit.id,
                     pool,
                     amount,
                 })
@@ -126,9 +126,8 @@ impl CombatApi {
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }
-        let target = target.id;
         ctx.queue(CombatEffect::Damage {
-            target,
+            unit: target.id,
             amount,
             kind,
         })
@@ -152,6 +151,6 @@ impl CombatApi {
         if !attacks {
             return Err(ApiError::NoAttack.fail().into());
         }
-        ctx.queue(CombatEffect::AttackHit { target: target.id })
+        ctx.queue(CombatEffect::AttackHit { unit: target.id })
     }
 }

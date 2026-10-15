@@ -245,8 +245,15 @@ impl DamagePass {
                 },
             );
         }
-        for id in killer.into_iter().chain(assisters.iter().copied()) {
-            events.call(batch, CombatEvent::Takedown { id, victim, depth });
+        for unit in killer.into_iter().chain(assisters.iter().copied()) {
+            events.call(
+                batch,
+                CombatEvent::Takedown {
+                    unit,
+                    victim,
+                    depth,
+                },
+            );
         }
     }
 

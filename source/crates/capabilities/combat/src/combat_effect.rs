@@ -14,9 +14,9 @@ use crate::pass_queue::PassQueue;
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CombatEffect {
-    /// `amount` of `kind` damage to `target`, which joins the damage pass.
+    /// `amount` of `kind` damage to `unit`, which joins the damage pass.
     Damage {
-        target: StableId,
+        unit: StableId,
         amount: Num,
         kind: DamageKind,
     },
@@ -24,12 +24,12 @@ pub enum CombatEffect {
     Heal { unit: StableId, amount: Num },
     /// `amount` of `unit`'s `pool` back.
     Restore {
-        id: StableId,
+        unit: StableId,
         pool: PoolId,
         amount: Num,
     },
-    /// An extra attack of the acting unit on `target`.
-    AttackHit { target: StableId },
+    /// An extra attack of the acting unit on `unit`.
+    AttackHit { unit: StableId },
 }
 
 impl CombatEffect {
@@ -47,7 +47,7 @@ impl CombatEffect {
     ) -> Result<(), CallError> {
         let effect = match does {
             CapabilityDoesSpec::Damage { amount, kind } => CombatEffect::Damage {
-                target: id,
+                unit: id,
                 amount: amount.number(frame),
                 kind,
             },
@@ -56,7 +56,7 @@ impl CombatEffect {
                 amount: amount.number(frame),
             },
             CapabilityDoesSpec::Restore { pool, amount } => CombatEffect::Restore {
-                id,
+                unit: id,
                 pool,
                 amount: amount.number(frame),
             },
@@ -86,12 +86,8 @@ impl Effect for CombatEffect {
             hit: frame.hit(),
         };
         match self {
-            CombatEffect::Damage {
-                target,
-                amount,
-                kind,
-            } => {
-                let damage = damage(target, amount, kind, DamageCause::Effect);
+            CombatEffect::Damage { unit, amount, kind } => {
+                let damage = damage(unit, amount, kind, DamageCause::Effect);
                 world.resource_mut::<PassQueue>().push_damage(damage);
             }
             CombatEffect::Heal { unit, amount } => {
@@ -104,10 +100,10 @@ impl Effect for CombatEffect {
                     depth,
                 });
             }
-            CombatEffect::Restore { id, pool, amount } => {
-                DamagePass::restore(world, id, pool, amount);
+            CombatEffect::Restore { unit, pool, amount } => {
+                DamagePass::restore(world, unit, pool, amount);
             }
-            CombatEffect::AttackHit { target } => {
+            CombatEffect::AttackHit { unit: target } => {
                 let index = world.resource::<EntityIndex>();
                 let Some(unit) = source.and_then(|source| index.get(source)) else {
                     return;

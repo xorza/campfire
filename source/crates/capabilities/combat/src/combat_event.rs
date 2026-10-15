@@ -30,7 +30,7 @@ pub enum CombatEvent {
     },
     /// `unit`, the killer or an assister, took part in the kill of `victim`.
     Takedown {
-        id: StableId,
+        unit: StableId,
         victim: StableId,
         depth: u8,
     },

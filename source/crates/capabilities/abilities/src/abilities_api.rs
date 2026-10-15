@@ -108,7 +108,7 @@ impl AbilitiesApi {
         let action = AbilitiesApi::held(ctx, unit, id)?;
         let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
-            id: unit.id,
+            unit: unit.id,
             action,
             cut,
         })
@@ -141,7 +141,7 @@ impl AbilitiesApi {
             return Err(ApiError::NotAFraction.fail().into());
         }
         ctx.queue(AbilitiesEffect::ReduceCooldowns {
-            id: unit.id,
+            unit: unit.id,
             kind,
             fraction,
         })

@@ -85,7 +85,7 @@ impl ModifierHooks {
                 depth,
             } => self.run(batch, killer, Hook::OnKill, next(depth), || unit(victim)),
             CombatEvent::Takedown {
-                id: taker,
+                unit: taker,
                 victim,
                 depth,
             } => self.run(batch, taker, Hook::OnTakedown, next(depth), || unit(victim)),
