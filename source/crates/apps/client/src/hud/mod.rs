@@ -50,6 +50,13 @@ pub(crate) struct Hud;
 #[derive(Component, Debug)]
 struct GaugeStand;
 
+/// Whether a unit is of the client's team.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Allegiance {
+    Own,
+    Other,
+}
+
 /// The meshes and materials of the gauges and rings.
 #[derive(Resource, Debug)]
 struct HudPalette {
@@ -325,7 +332,11 @@ impl Hud {
                 continue;
             };
             let mine = Some(unit) == avatar;
-            let friend = *team == own_team;
+            let allegiance = if *team == own_team {
+                Allegiance::Own
+            } else {
+                Allegiance::Other
+            };
             scratch.kinds.clear();
             if let Some(life) = life {
                 scratch.kinds.push(GaugeKind::Life {
@@ -378,7 +389,7 @@ impl Hud {
                 let fill = commands
                     .spawn((
                         Mesh3d(palette.quad.clone()),
-                        MeshMaterial3d(palette.fill(kind, friend).clone()),
+                        MeshMaterial3d(palette.fill(kind, allegiance).clone()),
                         layout.fill(0.0),
                     ))
                     .id();
@@ -667,14 +678,14 @@ impl Hud {
 }
 
 impl HudPalette {
-    /// The material a gauge of `kind` fills with, for a unit of the client's team if `friend`.
-    const fn fill(&self, kind: GaugeKind, friend: bool) -> &Handle<StandardMaterial> {
-        match kind {
-            GaugeKind::Life { .. } if friend => &self.friend,
-            GaugeKind::Life { .. } => &self.foe,
-            GaugeKind::Pool { .. } => &self.resource,
-            GaugeKind::Learnable { .. } => &self.learnable,
-            GaugeKind::Cooldown { .. } | GaugeKind::Rank { .. } | GaugeKind::Charge { .. } => {
+    /// The material a gauge of `kind` fills with, for a unit of `allegiance`.
+    const fn fill(&self, kind: GaugeKind, allegiance: Allegiance) -> &Handle<StandardMaterial> {
+        match (kind, allegiance) {
+            (GaugeKind::Life { .. }, Allegiance::Own) => &self.friend,
+            (GaugeKind::Life { .. }, Allegiance::Other) => &self.foe,
+            (GaugeKind::Pool { .. }, _) => &self.resource,
+            (GaugeKind::Learnable { .. }, _) => &self.learnable,
+            (GaugeKind::Cooldown { .. } | GaugeKind::Rank { .. } | GaugeKind::Charge { .. }, _) => {
                 &self.cooldown
             }
         }

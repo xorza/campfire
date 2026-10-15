@@ -41,9 +41,9 @@ use crate::view::client_data::ClientData;
 use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::float_num::FloatNum;
 use crate::view::footing::Footing;
-use crate::view::glide::{Glide, Spot, TickClock};
+use crate::view::glide::{Follows, Glide, Spot, TickClock};
 use crate::view::ground_heights::GroundHeights;
-use crate::view::look::{Look, Pose, Shape};
+use crate::view::look::{Condition, Look, Pose, Shape, ShapeKind};
 use crate::view::scene_lights::{SceneLights, Sun};
 use crate::view::unit_looks::UnitLooks;
 
@@ -342,8 +342,8 @@ impl View {
                         Transform::from_translation(at)
                             .with_rotation(Quat::from_rotation_y(spot.yaw)),
                         Visibility::default(),
-                        View::rest(spot, received, &time),
-                        Shape::of(avatar, walks, body),
+                        Glide::rest(spot, Follows::of(received), time.elapsed()),
+                        Shape::of(ShapeKind::of(avatar, walks), body),
                         FitsModel,
                     ))
                     .id();
@@ -357,7 +357,7 @@ impl View {
                 }
                 continue;
             }
-            let shape = Shape::of(avatar, walks, body);
+            let shape = Shape::of(ShapeKind::of(avatar, walks), body);
             let mesh = match shape.footing {
                 Footing::Circle(_) => capsules
                     .entry([shape.radius.to_bits(), shape.length().to_bits()])
@@ -384,20 +384,20 @@ impl View {
             let Pose {
                 material,
                 transform,
-            } = look.pose(shape, dead, &palette.dead);
+            } = look.pose(shape, Condition::of(dead), &palette.dead);
             commands.entity(figure).insert((material, transform));
             commands
                 .spawn((
                     DrawingOf(unit),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(
+                    Glide::rest(
                         Spot {
                             point: at,
                             yaw: 0.0,
                         },
-                        received,
-                        &time,
+                        Follows::of(received),
+                        time.elapsed(),
                     ),
                     look,
                     shape,
@@ -430,13 +430,13 @@ impl View {
                     DrawingOf(shot),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(
+                    Glide::rest(
                         Spot {
                             point: at,
                             yaw: 0.0,
                         },
-                        received,
-                        &time,
+                        Follows::of(received),
+                        time.elapsed(),
                     ),
                 ))
                 .add_child(ball);
@@ -474,13 +474,13 @@ impl View {
                     DrawingOf(area),
                     Transform::from_translation(at),
                     Visibility::default(),
-                    View::rest(
+                    Glide::rest(
                         Spot {
                             point: at,
                             yaw: 0.0,
                         },
-                        received,
-                        &time,
+                        Follows::of(received),
+                        time.elapsed(),
                     ),
                 ))
                 .add_child(disc);
@@ -598,19 +598,9 @@ impl View {
             let Ok((mut material, mut transform)) = figures.get_mut(look.figure) else {
                 continue;
             };
-            let pose = look.pose(shape, dead, &palette.dead);
+            let pose = look.pose(shape, Condition::of(dead), &palette.dead);
             *material = pose.material;
             *transform = pose.transform;
-        }
-    }
-
-    /// A drawing at rest at `spot`: one that follows the ticks the client runs, or one that glides
-    /// to each spot the client receives, if `received`.
-    fn rest(spot: Spot, received: bool, time: &Time) -> Glide {
-        if received {
-            Glide::timed(spot, time.elapsed())
-        } else {
-            Glide::ticked(spot)
         }
     }
 

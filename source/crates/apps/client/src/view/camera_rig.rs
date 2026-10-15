@@ -36,6 +36,20 @@ struct Drag {
     kind: DragKind,
 }
 
+/// Which way a key zooms the camera.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Zoom {
+    In,
+    Out,
+}
+
+/// Which way a key turns the camera, seen from above.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Turn {
+    Clockwise,
+    Counterclockwise,
+}
+
 /// What a drag does: a pan, of the camera as it stood as the drag began, a screen of `screen`
 /// pixels, the ground's height at its pivot, and the point of that ground the cursor grabbed,
 /// none when the cursor was above the horizon; or an orbit, from the yaw and the pitch it began
@@ -135,17 +149,23 @@ impl CameraRig {
         self.zoom(-notches * self.file.zoom_notch);
     }
 
-    /// Zooms for `seconds` of a key, `out` or in.
-    pub(crate) fn zoom_key(&mut self, out: bool, seconds: f32) {
+    /// Zooms `zoom` for `seconds` of a key.
+    pub(crate) fn zoom_key(&mut self, zoom: Zoom, seconds: f32) {
         let by = self.file.zoom_key * seconds;
-        self.zoom(if out { by } else { -by });
+        self.zoom(match zoom {
+            Zoom::Out => by,
+            Zoom::In => -by,
+        });
     }
 
-    /// Turns for `seconds` of a key, `clockwise` seen from above or counter-clockwise: the
-    /// game's left key turns the camera clockwise, so the world turns left on the screen.
-    pub(crate) fn turn_key(&mut self, clockwise: bool, seconds: f32) {
+    /// Turns `turn`, seen from above, for `seconds` of a key: the game's left key turns the
+    /// camera clockwise, so the world turns left on the screen.
+    pub(crate) fn turn_key(&mut self, turn: Turn, seconds: f32) {
         let by = self.file.turn * seconds;
-        self.turn_to(self.yaw + if clockwise { -by } else { by });
+        self.turn_to(match turn {
+            Turn::Clockwise => self.yaw - by,
+            Turn::Counterclockwise => self.yaw + by,
+        });
     }
 
     /// Begins a pan at `cursor`, `now` seconds, on a screen of `screen` pixels, the ground at
@@ -317,7 +337,7 @@ mod tests {
         // The forward is (0, −sin 37.5°, −cos 37.5°): looking north and down.
         // A quarter turn counter-clockwise from above, looking west: back is now east, +x.
         let mut turned = rig.clone();
-        turned.turn_key(false, PI / 2.0 / 3.0);
+        turned.turn_key(Turn::Counterclockwise, PI / 2.0 / 3.0);
         let eye = turned.transform(20.0);
         assert!(near(
             eye.translation,
@@ -341,7 +361,7 @@ mod tests {
         rig.wheel(20.0);
         assert_eq!(rig.height, 120.0);
         // A key zooms 300 m a second: half a second out from 120 is 270.
-        rig.zoom_key(true, 0.5);
+        rig.zoom_key(Zoom::Out, 0.5);
         assert_eq!(rig.height, 270.0);
         // An orbit of 50 pixels right turns 0.01 rad a pixel, 0.5 rad counter-clockwise, and of
         // 30 down tilts 0.3 rad more, from 37.5°; a still click sets it all back.

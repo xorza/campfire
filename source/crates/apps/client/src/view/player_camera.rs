@@ -14,7 +14,7 @@ use bevy::transform::components::Transform;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 
 use crate::view::ViewSystems;
-use crate::view::camera_rig::CameraRig;
+use crate::view::camera_rig::{CameraRig, Turn, Zoom};
 use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
@@ -130,15 +130,15 @@ impl PlayerCamera {
         let zoom_in = held(KeyCode::Numpad8) || alt_arrow(KeyCode::ArrowUp);
         let zoom_out = held(KeyCode::Numpad2) || alt_arrow(KeyCode::ArrowDown);
         match (zoom_in, zoom_out) {
-            (true, false) => rig.zoom_key(false, seconds),
-            (false, true) => rig.zoom_key(true, seconds),
+            (true, false) => rig.zoom_key(Zoom::In, seconds),
+            (false, true) => rig.zoom_key(Zoom::Out, seconds),
             _ => {}
         }
         let turn_left = held(KeyCode::Numpad4) || alt_arrow(KeyCode::ArrowLeft);
         let turn_right = held(KeyCode::Numpad6) || alt_arrow(KeyCode::ArrowRight);
         match (turn_left, turn_right) {
-            (true, false) => rig.turn_key(true, seconds),
-            (false, true) => rig.turn_key(false, seconds),
+            (true, false) => rig.turn_key(Turn::Clockwise, seconds),
+            (false, true) => rig.turn_key(Turn::Counterclockwise, seconds),
             _ => {}
         }
         if keys.just_pressed(KeyCode::Numpad5) || alt && keys.just_pressed(KeyCode::Backspace) {

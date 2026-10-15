@@ -31,6 +31,22 @@ pub(crate) struct Shape {
     pub(crate) footing: Footing,
 }
 
+/// What a unit is drawn as when no model draws it: a player's avatar, a creep that walks, or a
+/// structure that does not, each with its own shape.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ShapeKind {
+    Avatar,
+    Creep,
+    Structure,
+}
+
+/// Whether a figure's unit lives or lies dead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Condition {
+    Alive,
+    Dead,
+}
+
 /// What a figure wears and how it stands over its root.
 #[derive(Debug, Clone)]
 pub(crate) struct Pose {
@@ -54,14 +70,45 @@ const STRUCTURE: Shape = Shape {
     footing: Footing::Circle(0.9),
 };
 
+impl ShapeKind {
+    /// The kind of a unit that is a player's avatar if `avatar`, and walks if `walks`.
+    pub(crate) const fn of(avatar: bool, walks: bool) -> ShapeKind {
+        match (avatar, walks) {
+            (true, _) => ShapeKind::Avatar,
+            (false, true) => ShapeKind::Creep,
+            (false, false) => ShapeKind::Structure,
+        }
+    }
+
+    /// Its shape with no body.
+    const fn shape(self) -> Shape {
+        match self {
+            ShapeKind::Avatar => AVATAR,
+            ShapeKind::Creep => CREEP,
+            ShapeKind::Structure => STRUCTURE,
+        }
+    }
+}
+
+impl Condition {
+    /// The condition of a unit that is dead if `dead`.
+    pub(crate) const fn of(dead: bool) -> Condition {
+        if dead {
+            Condition::Dead
+        } else {
+            Condition::Alive
+        }
+    }
+}
+
 impl Look {
-    /// The figure's material and its pose over the root for a unit of `shape` that is `dead` or
-    /// alive, `dead_material` the one a dead unit wears. A capsule lies down when its unit dies; a
-    /// box stands where it stood, as a ruin.
+    /// The figure's material and its pose over the root for a unit of `shape` in `condition`,
+    /// `dead_material` the one a dead unit wears. A capsule lies down when its unit dies; a box
+    /// stands where it stood, as a ruin.
     pub(crate) fn pose(
         &self,
         shape: Shape,
-        dead: bool,
+        condition: Condition,
         dead_material: &Handle<StandardMaterial>,
     ) -> Pose {
         let Shape {
@@ -69,6 +116,7 @@ impl Look {
             height,
             footing,
         } = shape;
+        let dead = condition == Condition::Dead;
         let material = if dead { dead_material } else { &self.alive };
         let transform = if dead && matches!(footing, Footing::Circle(_)) {
             Transform::from_translation(Vec3::Y * radius)
@@ -84,15 +132,10 @@ impl Look {
 }
 
 impl Shape {
-    /// The shape of a unit that is a player's avatar if `avatar`, walks if `walks`, and has
-    /// `body`: its kind's, at its body's radius, its kind's length between the caps, or on its
-    /// box, or its kind's own with no body.
-    pub(crate) fn of(avatar: bool, walks: bool, body: Option<&Body>) -> Shape {
-        let kind = match (avatar, walks) {
-            (true, _) => AVATAR,
-            (false, true) => CREEP,
-            (false, false) => STRUCTURE,
-        };
+    /// The shape of a unit of `kind` that has `body`: its kind's, at its body's radius, its
+    /// kind's length between the caps, or on its box, or its kind's own with no body.
+    pub(crate) fn of(kind: ShapeKind, body: Option<&Body>) -> Shape {
+        let kind = kind.shape();
         let footing = match (
             body.and_then(|body| body.radius()),
             body.and_then(|body| body.half_edges()),
@@ -147,13 +190,13 @@ mod tests {
             height: 2.5,
             footing: Footing::Circle(0.75),
         };
-        assert_eq!(Shape::of(true, true, Some(&body)), avatar);
-        assert_eq!(Shape::of(false, true, None), CREEP);
-        assert_eq!(Shape::of(false, false, None), STRUCTURE);
+        assert_eq!(Shape::of(ShapeKind::Avatar, Some(&body)), avatar);
+        assert_eq!(Shape::of(ShapeKind::Creep, None), CREEP);
+        assert_eq!(Shape::of(ShapeKind::Structure, None), STRUCTURE);
         // A box of 4 × 2 m turned a quarter: its first half edge points along +z, which Bevy's
         // turn of -π/2 about y takes x to; it stands as tall as a structure, and reaches √5 m.
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
-        let boxed = Shape::of(false, false, Some(&form.at(Num::int(90))));
+        let boxed = Shape::of(ShapeKind::Structure, Some(&form.at(Num::int(90))));
         let expected = Footing::Box {
             half: [2.0, 1.0],
             yaw: -FRAC_PI_2,
@@ -177,16 +220,16 @@ mod tests {
         // The avatar's capsule stands its half length over its radius, 0.75 + 0.5; dead, it lies
         // on its side, its axis its radius over the ground. The box stands as it stood.
         let dead = Handle::default();
-        let standing = look.pose(avatar, false, &dead).transform;
-        let lying = look.pose(avatar, true, &dead).transform;
+        let standing = look.pose(avatar, Condition::Alive, &dead).transform;
+        let lying = look.pose(avatar, Condition::Dead, &dead).transform;
         assert_eq!(standing.translation, Vec3::Y * 1.25);
         assert_eq!(
             (lying.translation, lying.rotation),
             (Vec3::Y * 0.75, Quat::from_rotation_z(FRAC_PI_2))
         );
         assert_eq!(
-            look.pose(boxed, true, &dead).transform,
-            look.pose(boxed, false, &dead).transform
+            look.pose(boxed, Condition::Dead, &dead).transform,
+            look.pose(boxed, Condition::Alive, &dead).transform
         );
     }
 }

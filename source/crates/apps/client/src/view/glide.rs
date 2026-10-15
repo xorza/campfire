@@ -21,6 +21,14 @@ pub(crate) enum Glide {
     },
 }
 
+/// What a unit's drawing follows: the ticks the client runs, for a unit it predicts, or each spot
+/// the client receives, for one it only receives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Follows {
+    Ticks,
+    Receipts,
+}
+
 /// A drawing's place and the way it turns about the vertical, in radians.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Spot {
@@ -34,6 +42,17 @@ pub(crate) struct Spot {
 pub(crate) struct TickClock {
     pub(crate) timestep: Duration,
     pub(crate) fraction: f32,
+}
+
+impl Follows {
+    /// What a drawing follows of a unit the client only receives, if `received`.
+    pub(crate) const fn of(received: bool) -> Follows {
+        if received {
+            Follows::Receipts
+        } else {
+            Follows::Ticks
+        }
+    }
 }
 
 impl Spot {
@@ -50,6 +69,14 @@ impl Spot {
 
 impl Glide {
     /// A predicted unit's drawing at rest at `spot`.
+    /// A drawing at rest at `spot`, which `follows` what it follows.
+    pub(crate) const fn rest(spot: Spot, follows: Follows, time: Duration) -> Glide {
+        match follows {
+            Follows::Ticks => Glide::ticked(spot),
+            Follows::Receipts => Glide::timed(spot, time),
+        }
+    }
+
     pub(crate) const fn ticked(spot: Spot) -> Glide {
         Glide::Ticked {
             before: spot,

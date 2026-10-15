@@ -104,8 +104,14 @@ impl Orders {
             .and_then(|point| pointer.unit_at(point, slice::from_ref(&avatar.id)))
             .map(|unit| unit.id);
         let point = ground.and_then(position);
-        let learn = keys.any_pressed(LEARN_KEYS);
-        let abilities = (0..).zip(&CAST_KEYS).map(|(slot, key)| (slot, key, learn));
+        let ability_use = if keys.any_pressed(LEARN_KEYS) {
+            KeyUse::Learn
+        } else {
+            KeyUse::Cast
+        };
+        let abilities = (0..)
+            .zip(&CAST_KEYS)
+            .map(|(slot, key)| (slot, key, ability_use));
         // An item key past the inventory's slots casts nothing.
         let inventory = group.map(|group| {
             let kind = group.kind();
@@ -115,9 +121,9 @@ impl Orders {
         let items = inventory.into_iter().flat_map(|(first, count)| {
             (first..)
                 .zip(&ITEM_KEYS[..count])
-                .map(|(slot, key)| (slot, key, false))
+                .map(|(slot, key)| (slot, key, KeyUse::Cast))
         });
-        for (slot, &key, learn) in abilities.chain(items) {
+        for (slot, &key, key_use) in abilities.chain(items) {
             if !keys.just_pressed(key) {
                 continue;
             }
@@ -128,7 +134,7 @@ impl Orders {
             let target = Takes::of(aim).target(under, point);
             orders.push(Order::one(
                 avatar.id,
-                Orders::slot_action(slot, learn, target),
+                Orders::slot_action(slot, key_use, target),
             ));
         }
     }
@@ -163,14 +169,20 @@ impl Orders {
         keys.any_just_pressed(CAST_KEYS) || keys.any_just_pressed(ITEM_KEYS)
     }
 
-    /// What a cast key orders of `slot`: with Ctrl held, a learn, and else a cast at `target`.
-    const fn slot_action(slot: u8, learn: bool, target: ActionTarget) -> Action {
-        if learn {
-            Action::Progression(ProgressionAction::Learn { slot })
-        } else {
-            Action::Orders(OrdersAction::Slot { slot, target })
+    /// What a key of `slot` orders as `key_use` says: a learn, or a cast at `target`.
+    const fn slot_action(slot: u8, key_use: KeyUse, target: ActionTarget) -> Action {
+        match key_use {
+            KeyUse::Learn => Action::Progression(ProgressionAction::Learn { slot }),
+            KeyUse::Cast => Action::Orders(OrdersAction::Slot { slot, target }),
         }
     }
+}
+
+/// What a slot's key does: with Ctrl held, an ability key learns its ability; else a key casts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum KeyUse {
+    Learn,
+    Cast,
 }
 
 /// What a key's action takes as its target: a unit, a point, a direction's among them, or
@@ -260,11 +272,11 @@ mod tests {
     fn a_cast_key_casts_at_its_target_and_with_ctrl_learns() {
         let target = ActionTarget::None;
         assert_eq!(
-            Orders::slot_action(2, false, target),
+            Orders::slot_action(2, KeyUse::Cast, target),
             Action::Orders(OrdersAction::Slot { slot: 2, target })
         );
         assert_eq!(
-            Orders::slot_action(2, true, target),
+            Orders::slot_action(2, KeyUse::Learn, target),
             Action::Progression(ProgressionAction::Learn { slot: 2 })
         );
     }
