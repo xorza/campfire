@@ -17,13 +17,14 @@ use crate::units::owner::Owner;
 /// avatar.
 #[derive(SystemParam)]
 pub struct PlayerUnits<'w, 's> {
-    avatars: Query<
-        'w,
-        's,
-        (Entity, &'static StableId, &'static Owner),
-        (With<Avatar>, Allow<Unpredicted>),
-    >,
+    avatars: Query<'w, 's, AvatarData, AvatarFilter>,
 }
+
+/// What a lookup of an avatar reads of each: its entity, its stable id and its owner.
+pub(crate) type AvatarData = (Entity, &'static StableId, &'static Owner);
+
+/// The units a lookup of an avatar visits: the avatars, the ones the client only receives too.
+pub(crate) type AvatarFilter = (With<Avatar>, Allow<Unpredicted>);
 
 /// `PlayerUnits` for code that holds the world itself, as an exclusive system does, its query
 /// kept between reads.
@@ -40,8 +41,17 @@ impl PlayerUnits<'_, '_> {
     /// The avatar of `slot`; the lowest stable id should it own several, none before it spawns
     /// or in a mode with no avatars.
     pub fn avatar(&self, slot: PlayerSlot) -> Option<Commanded> {
-        self.avatars
-            .iter()
+        Commanded::avatar_among(self.avatars.iter(), slot)
+    }
+}
+
+impl Commanded {
+    /// The avatar of `slot` among `avatars`: the lowest stable id should it own several.
+    pub(crate) fn avatar_among<'a>(
+        avatars: impl Iterator<Item = (Entity, &'a StableId, &'a Owner)>,
+        slot: PlayerSlot,
+    ) -> Option<Commanded> {
+        avatars
             .filter(|&(_, _, owner)| owner.slot() == slot)
             .map(|(entity, &id, _)| Commanded { entity, id })
             .min_by_key(|unit| unit.id)

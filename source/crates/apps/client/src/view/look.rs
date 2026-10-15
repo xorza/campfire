@@ -20,13 +20,14 @@ pub(crate) struct Look {
 }
 
 /// On every unit's drawing root, the shape of the unit, which the pointer picks it by and the HUD
-/// stands over, whether its figure or its models draw it: an avatar is under a player's control,
-/// a structure does not walk. A capsule of `radius` and `length`, or, for a box body, a cuboid as
-/// tall standing on its `footing`.
+/// stands over, whether its figure or its models draw it: a player's avatar, a creep that walks,
+/// or a structure that does not, each as tall as its kind, and a model drawing as tall as its
+/// models. A capsule of `radius`, `height` tall, or, for a box body, a cuboid as tall standing on
+/// its `footing`.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Shape {
     pub(crate) radius: f32,
-    pub(crate) length: f32,
+    pub(crate) height: f32,
     pub(crate) footing: Footing,
 }
 
@@ -39,17 +40,17 @@ pub(crate) struct Pose {
 
 const AVATAR: Shape = Shape {
     radius: 0.5,
-    length: 1.0,
+    height: 2.0,
     footing: Footing::Circle(0.5),
 };
 const CREEP: Shape = Shape {
     radius: 0.35,
-    length: 0.5,
+    height: 1.2,
     footing: Footing::Circle(0.35),
 };
 const STRUCTURE: Shape = Shape {
     radius: 0.9,
-    length: 2.0,
+    height: 3.8,
     footing: Footing::Circle(0.9),
 };
 
@@ -65,7 +66,7 @@ impl Look {
     ) -> Pose {
         let Shape {
             radius,
-            length,
+            height,
             footing,
         } = shape;
         let material = if dead { dead_material } else { &self.alive };
@@ -73,8 +74,7 @@ impl Look {
             Transform::from_translation(Vec3::Y * radius)
                 .with_rotation(Quat::from_rotation_z(FRAC_PI_2))
         } else {
-            Transform::from_translation(Vec3::Y * (radius + length / 2.0))
-                .with_rotation(footing.upright())
+            Transform::from_translation(Vec3::Y * (height / 2.0)).with_rotation(footing.upright())
         };
         Pose {
             material: MeshMaterial3d(material.clone()),
@@ -84,11 +84,11 @@ impl Look {
 }
 
 impl Shape {
-    /// The shape of a unit that is under a player's control if `owned`, walks if `walks`, and has
-    /// `body`: its kind's height, at its body's radius, or on its box, or its kind's own with no
-    /// body.
-    pub(crate) fn of(owned: bool, walks: bool, body: Option<&Body>) -> Shape {
-        let kind = match (owned, walks) {
+    /// The shape of a unit that is a player's avatar if `avatar`, walks if `walks`, and has
+    /// `body`: its kind's, at its body's radius, its kind's length between the caps, or on its
+    /// box, or its kind's own with no body.
+    pub(crate) fn of(avatar: bool, walks: bool, body: Option<&Body>) -> Shape {
+        let kind = match (avatar, walks) {
             (true, _) => AVATAR,
             (false, true) => CREEP,
             (false, false) => STRUCTURE,
@@ -113,14 +113,14 @@ impl Shape {
         };
         Shape {
             radius,
+            height: kind.length() + 2.0 * radius,
             footing,
-            ..kind
         }
     }
 
-    /// How tall it stands while its unit lives.
-    pub(crate) fn height(&self) -> f32 {
-        self.length + 2.0 * self.radius
+    /// The length of its capsule between the caps.
+    pub(crate) fn length(&self) -> f32 {
+        (self.height - 2.0 * self.radius).max(0.0)
     }
 
     /// How far it reaches from its axis: the radius of the least circle that holds what it covers
@@ -141,10 +141,11 @@ mod tests {
     #[test]
     fn a_unit_is_drawn_at_its_bodys_radius_and_its_kinds_height_and_lies_down_dead() {
         let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
+        // A radius of 0.75 m, and the avatar's length of 1 m between the caps: 2.5 m tall.
         let avatar = Shape {
             radius: 0.75,
+            height: 2.5,
             footing: Footing::Circle(0.75),
-            ..AVATAR
         };
         assert_eq!(Shape::of(true, true, Some(&body)), avatar);
         assert_eq!(Shape::of(false, true, None), CREEP);
@@ -158,7 +159,7 @@ mod tests {
             yaw: -FRAC_PI_2,
         };
         assert_eq!(boxed.footing, expected);
-        assert_eq!(boxed.height(), STRUCTURE.height());
+        assert_eq!(boxed.height, STRUCTURE.height);
         let figure = World::new().spawn_empty().id();
         let look = Look {
             figure,

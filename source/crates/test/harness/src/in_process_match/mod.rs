@@ -29,7 +29,7 @@ use campfire_protocol::{SeedChain, ServerInput};
 use campfire_quic::{LINK_MIN_MTU, LinkBinding};
 use campfire_runner::{InputRules, Session};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{Body, MoveStep, Owner};
+use campfire_units::{Body, MoveStep, Owner, UnitsWorld};
 use campfire_values::Team;
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
@@ -728,14 +728,7 @@ impl InProcessMatch {
             .get::<PlayerLink>(self.links[client])
             .expect("the match started, with the client's slot")
             .slot();
-        let mut avatars = world.resource::<EntityIndex>().iter();
-        avatars
-            .find(|&(_, unit)| {
-                world
-                    .get::<Owner>(unit)
-                    .is_some_and(|owner| owner.slot() == slot)
-            })
-            .map(|(id, _)| id)
+        world.avatar_of(slot).map(|avatar| avatar.id)
     }
 
     /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives

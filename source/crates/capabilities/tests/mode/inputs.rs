@@ -352,6 +352,12 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
     assert_eq!(avatar(&mut players, 0), Some(hero));
     assert_eq!(avatar(&mut players, 1), None);
     assert_eq!(avatar(&mut players, 2), None);
+    // The world's own read, for code that holds it shared, finds each the same.
+    let shared = (0..3).map(|slot| {
+        game.avatar_of(PlayerSlot::new(slot))
+            .map(|avatar| avatar.entity)
+    });
+    assert_eq!(shared.collect::<Vec<_>>(), [Some(hero), None, None]);
 
     // Out of play, as each tick ends: player 0 while both its heroes are dead, and no more as one
     // lives again; player 1, whose grunt is no avatar, never by a death, and while the script

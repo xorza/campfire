@@ -337,7 +337,7 @@ impl Hud {
                 commands.entity(unit).insert(Gauged { stand: None });
                 continue;
             }
-            let top = Vec3::Y * (shape.height() + ABOVE);
+            let top = Vec3::Y * (shape.height + ABOVE);
             let stand = commands
                 .spawn((
                     GaugeStand,

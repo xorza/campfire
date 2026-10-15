@@ -6,7 +6,7 @@ use campfire_orders::NextThink;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState, UnitsWorld};
+use campfire_units::{MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
 
 use super::*;
 

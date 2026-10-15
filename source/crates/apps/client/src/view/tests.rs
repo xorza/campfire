@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use bevy::asset::{AssetApp, AssetPlugin, AssetServer};
-use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
@@ -10,7 +9,6 @@ use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::HeightGrid;
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
-use campfire_common::PlayerSlot;
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
 use campfire_units::{TypeOrigin, TypeOriginBook};
@@ -309,6 +307,40 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let transform = model.get::<Transform>().unwrap();
     assert_eq!(transform.rotation, Quat::IDENTITY);
     assert_eq!(transform.scale, Vec3::splat(1.25));
+
+    // Until its meshes have their bounds, it is as tall as a structure, of no walk and no avatar.
+    let model = children[0];
+    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.8);
+    // Its scene spawns: a hull 1 m up whose bounds reach 0.5 + 1.5 m over their center, 3 m in
+    // the model's space; on the hull, a barrel turned a quarter about z, whose 4 m along x then
+    // rise, 1 + 4 = 5 m; and a flash its look hides, higher still. At its scale of 1.25, the tank
+    // stands 6.25 m tall.
+    let bounds = |center: [f32; 3], half: [f32; 3]| Aabb {
+        center: Vec3A::from_array(center),
+        half_extents: Vec3A::from_array(half),
+    };
+    let world = app.world_mut();
+    let hull = world
+        .spawn((
+            Transform::from_xyz(0.0, 1.0, 0.0),
+            bounds([0.0, 0.5, 0.0], [1.0, 1.5, 1.0]),
+            ChildOf(model),
+        ))
+        .id();
+    world.spawn((
+        Transform::from_rotation(Quat::from_rotation_z(FRAC_PI_2)),
+        bounds([0.0; 3], [4.0, 0.1, 0.1]),
+        ChildOf(hull),
+    ));
+    world.spawn((
+        Transform::from_xyz(0.0, 10.0, 0.0),
+        bounds([0.0; 3], [1.0; 3]),
+        Visibility::Hidden,
+        ChildOf(model),
+    ));
+    app.update();
+    let shape = app.world().get::<Shape>(root).unwrap();
+    assert!((shape.height - 6.25).abs() < 1e-5, "{}", shape.height);
 }
 
 #[test]
@@ -385,8 +417,8 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
         .pick(&[tower_id, hero_id]);
     app.update();
     assert_eq!(rings(app.world(), tower), [Vec3::splat(0.9)]);
-    // The hero arrives, a player's, of reach 0.5 m: ringed as it is drawn, with no change of the
-    // selection.
+    // The hero arrives, a player's avatar, of reach 0.5 m: ringed as it is drawn, with no change
+    // of the selection.
     let hero = app
         .world_mut()
         .spawn((
@@ -395,7 +427,7 @@ fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selecti
             Position::from((4, 0, 0)),
             team,
             UNDRAWN,
-            Owner::new(PlayerSlot::new(0)),
+            Avatar,
         ))
         .id();
     app.update();

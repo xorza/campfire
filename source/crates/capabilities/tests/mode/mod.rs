@@ -47,7 +47,7 @@ use campfire_stats::{
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units,
+    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,

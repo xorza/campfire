@@ -4,12 +4,13 @@ use std::f32::consts::FRAC_PI_2;
 use bevy::app::{App, FixedPostUpdate, Plugin, Startup, Update};
 use bevy::asset::{Assets, Handle};
 use bevy::camera::ClearColor;
+use bevy::camera::primitives::Aabb;
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy::ecs::resource::Resource;
@@ -18,7 +19,7 @@ use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
 use bevy::material::AlphaMode;
 use bevy::math::primitives::{Annulus, Capsule3d, Cuboid, Cylinder, Plane3d, Sphere};
-use bevy::math::{EulerRot, Quat, Vec3};
+use bevy::math::{Affine3A, EulerRot, Quat, Vec3, Vec3A};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::{Fixed, Time};
@@ -31,7 +32,7 @@ use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
 use campfire_projectiles::Projectile;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_units::{Body, BodyUnit, Dead, Facing, MoveStep, Owner};
+use campfire_units::{Avatar, Body, BodyUnit, Dead, Facing, MoveStep};
 use campfire_values::{Team, UnitType};
 use lightyear::prelude::Predicted;
 
@@ -101,6 +102,24 @@ struct Ringed {
     ring: Entity,
 }
 
+/// On the root of a model drawing whose shape's height waits for its models' bounds, which their
+/// meshes get once their scenes spawn.
+#[derive(Component, Debug)]
+struct FitsModel;
+
+/// What the walk of a model drawing's tree reads of each node: its place in its parent, its
+/// children, the bounds of its mesh, and whether its look hides it.
+type ModelNodes<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static Transform,
+        Option<&'static Children>,
+        Option<&'static Aabb>,
+        Option<&'static Visibility>,
+    ),
+>;
+
 /// On a drawing's root that turns as its unit faces: one of models, which turn whole; a figure
 /// leans by its own rotation, and turns none.
 #[derive(Component, Debug)]
@@ -123,7 +142,7 @@ enum Standing {
 struct Figure;
 
 /// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
-/// walks, whether a player controls it, whether it is the client's own, whether it is dead,
+/// walks, whether it is a player's avatar, whether it is the client's own, whether it is dead,
 /// whether the client only receives it, its body, its type and the way it faces.
 type NewUnits<'w, 's> = Query<
     'w,
@@ -133,7 +152,7 @@ type NewUnits<'w, 's> = Query<
         &'static Position,
         &'static Team,
         Has<MoveStep>,
-        Has<Owner>,
+        Has<Avatar>,
         Has<Predicted>,
         Has<Dead>,
         Has<Unpredicted>,
@@ -206,6 +225,7 @@ impl Plugin for View {
             Update,
             (
                 View::draw_new,
+                View::fit_models,
                 View::draw_shots,
                 View::draw_areas,
                 View::mourn,
@@ -303,7 +323,7 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.as_deref().and_then(|data| data.heights.as_ref());
-        for (unit, &pos, team, walks, owned, own, dead, received, body, &unit_type, facing) in
+        for (unit, &pos, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
             &units
         {
             let at = ground(pos, heights);
@@ -323,7 +343,8 @@ impl View {
                             .with_rotation(Quat::from_rotation_y(spot.yaw)),
                         Visibility::default(),
                         View::rest(spot, received, &time),
-                        Shape::of(owned, walks, body),
+                        Shape::of(avatar, walks, body),
+                        FitsModel,
                     ))
                     .id();
                 for model in models {
@@ -336,15 +357,15 @@ impl View {
                 }
                 continue;
             }
-            let shape = Shape::of(owned, walks, body);
+            let shape = Shape::of(avatar, walks, body);
             let mesh = match shape.footing {
                 Footing::Circle(_) => capsules
-                    .entry([shape.radius.to_bits(), shape.length.to_bits()])
+                    .entry([shape.radius.to_bits(), shape.length().to_bits()])
                     .or_insert_with(|| {
-                        meshes.add(Capsule3d::new(shape.radius, shape.length).mesh())
+                        meshes.add(Capsule3d::new(shape.radius, shape.length()).mesh())
                     }),
                 Footing::Box { half, .. } => {
-                    let size = [2.0 * half[0], shape.height(), 2.0 * half[1]];
+                    let size = [2.0 * half[0], shape.height, 2.0 * half[1]];
                     cuboids.entry(size.map(f32::to_bits)).or_insert_with(|| {
                         meshes.add(Cuboid::new(size[0], size[1], size[2]).mesh())
                     })
@@ -464,6 +485,55 @@ impl View {
                 ))
                 .add_child(disc);
         }
+    }
+
+    /// Gives each model drawing's shape the height of its models' top over its root, once their
+    /// meshes have their bounds: a model is as tall as it is drawn, whatever its unit's kind. A
+    /// node its look hides counts for nothing, nor do the nodes under it.
+    fn fit_models(
+        mut roots: Query<'_, '_, (Entity, &mut Shape), With<FitsModel>>,
+        nodes: ModelNodes<'_, '_>,
+        mut walk: Local<'_, Vec<(Entity, Affine3A)>>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (root, mut shape) in &mut roots {
+            walk.clear();
+            if let Ok((_, Some(children), ..)) = nodes.get(root) {
+                walk.extend(children.iter().map(|&child| (child, Affine3A::IDENTITY)));
+            }
+            let mut top = None::<f32>;
+            while let Some((node, parent)) = walk.pop() {
+                let Ok((transform, children, bounds, visibility)) = nodes.get(node) else {
+                    continue;
+                };
+                if visibility == Some(&Visibility::Hidden) {
+                    continue;
+                }
+                let at = parent * transform.compute_affine();
+                if let Some(bounds) = bounds {
+                    let reach = View::bounds_top(at, bounds);
+                    top = Some(top.map_or(reach, |top| top.max(reach)));
+                }
+                if let Some(children) = children {
+                    walk.extend(children.iter().map(|&child| (child, at)));
+                }
+            }
+            if let Some(top) = top {
+                shape.height = top.max(0.0);
+                commands.entity(root).remove::<FitsModel>();
+            }
+        }
+    }
+
+    /// The highest point of `bounds` placed by `at`, exactly: the height of its center, and each
+    /// half extent times how far its axis rises.
+    fn bounds_top(at: Affine3A, bounds: &Aabb) -> f32 {
+        let rise = Vec3A::new(
+            at.matrix3.x_axis.y,
+            at.matrix3.y_axis.y,
+            at.matrix3.z_axis.y,
+        );
+        at.translation.y + rise.dot(bounds.center) + rise.abs().dot(bounds.half_extents)
     }
 
     /// Leans each living unit in its attack's windup towards its target, and stands every other

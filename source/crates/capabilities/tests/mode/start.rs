@@ -1,4 +1,4 @@
-use campfire_units::{MapBook, UnitsWorld};
+use campfire_units::MapBook;
 use campfire_vision::VisionBook;
 
 use super::*;

@@ -101,7 +101,6 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `apps/client/src/{hud/mod.rs,hud/gauge.rs,view/look.rs,view/mod.rs,main.rs}`, `test/harness/src/{in_process_match,moba_3v3}/mod.rs`, `source/checks/lan-check/src/{main,error}.rs`. Goldens: none move.
 
-- [ ] Who a player commands: `view/look.rs:90` and `view/mod.rs:136,326,339` take `Has<Avatar>`, and a model drawing's height comes from its bounds. `harness/src/in_process_match/mod.rs:725` asks `HeldPlayerUnits::avatar`.
 - [ ] `hud/mod.rs:289`: the avatar's gauge rows are rebuilt when `Changed<ActionSlots>` changes the slot layout.
 - [ ] `hud/gauge.rs:94`: the row centres on its own count of the ability kind's slots.
 - [ ] `view/mod.rs:471` (`lean`): test `Look` first.

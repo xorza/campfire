@@ -1,7 +1,10 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
+use campfire_common::PlayerSlot;
 use campfire_sim::{SimWorld, StableId};
 use campfire_values::Relations;
+
+use crate::units::player_units::{AvatarData, AvatarFilter, Commanded};
 
 /// What the units module gives a world, for every crate.
 pub trait UnitsWorld {
@@ -10,6 +13,10 @@ pub trait UnitsWorld {
 
     /// The relations of the match, once its entity spawned, or reached a client.
     fn held_relations(&self) -> Option<&Relations>;
+
+    /// The avatar of `slot`, as `PlayerUnits::avatar` finds it, for code that holds the world
+    /// shared, as a test does: its query is made for each read.
+    fn avatar_of(&self, slot: PlayerSlot) -> Option<Commanded>;
 }
 
 impl UnitsWorld for World {
@@ -19,6 +26,11 @@ impl UnitsWorld for World {
 
     fn held_relations(&self) -> Option<&Relations> {
         self.get(self.match_entity()?)
+    }
+
+    fn avatar_of(&self, slot: PlayerSlot) -> Option<Commanded> {
+        let mut avatars = self.try_query_filtered::<AvatarData, AvatarFilter>()?;
+        Commanded::avatar_among(avatars.iter(self), slot)
     }
 }
 
