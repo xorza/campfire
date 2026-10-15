@@ -6,8 +6,8 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
-use crate::zero_hour::armor_ini::DAMAGE_TYPES;
 use crate::zero_hour::combat_import::{CombatImport, WEAPON};
+use crate::zero_hour::damage_type::DamageType;
 use crate::zero_hour::imported_type::{LIFE, VICTORY};
 use crate::zero_hour::map_import::START;
 use crate::zero_hour::production_import::{COMMAND, MONEY, ProductionImport};
@@ -89,9 +89,9 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .iter()
         .map(|unit| format!("\"{unit}\""))
         .collect();
-    let kinds: Vec<String> = DAMAGE_TYPES
-        .iter()
-        .map(|kind| format!("\"{}\"", CombatImport::kind(kind)))
+    let kinds: Vec<String> = DamageType::ALL
+        .into_iter()
+        .map(|kind| format!("\"{}\"", kind.kind()))
         .collect();
     let mut teams = String::new();
     for player in 1..=PLAYERS {

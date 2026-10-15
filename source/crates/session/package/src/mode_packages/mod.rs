@@ -5,7 +5,7 @@ use campfire_actions::ActionData;
 use campfire_capabilities::{
     BookInput, BookKind, BookPackage, Books, PackageContent, Release, UnitTypeData,
 };
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{MapName, PackageFingerprint};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::{Capability, TickRate};
@@ -82,12 +82,14 @@ impl ModePackages {
         }
     }
 
-    pub const fn fingerprint(&self) -> Fingerprint {
+    pub const fn fingerprint(&self) -> PackageFingerprint {
         self.mode.fingerprint()
     }
 
     /// The fingerprints of its dependencies, in the order of their names in its manifest.
-    pub fn dependency_fingerprints(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
+    pub fn dependency_fingerprints(
+        &self,
+    ) -> impl ExactSizeIterator<Item = PackageFingerprint> + '_ {
         self.dependencies
             .iter()
             .map(|dependent| dependent.package.fingerprint())

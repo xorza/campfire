@@ -1,11 +1,10 @@
-use blake3::Hasher;
-use campfire_common::Secret;
+use campfire_common::{DomainHasher, HashDomain, Secret};
 use serde::{Deserialize, Serialize};
 
 use crate::seed_commitment::SeedCommitment;
 
 /// Starts each link of the seed chain, so no other BLAKE3 use can produce one.
-const CHAIN_DOMAIN: &[u8] = b"campfire/seed-chain/v1";
+const CHAIN_DOMAIN: HashDomain = HashDomain::new("campfire/seed-chain/v1");
 
 /// A segment's server seed, `s_k` of the session's `SeedChain`. It predicts every hidden random
 /// outcome of its segment, so it stays secret until the segment is published.
@@ -34,17 +33,19 @@ impl ServerSeed {
 
     /// `C(s_k) = s_(k−1)`, where `C(x) = BLAKE3(domain ‖ x)`.
     pub(crate) fn earlier(&self) -> ServerSeed {
-        ServerSeed(Secret::new(self.link()))
+        ServerSeed(Secret::new(self.link().get()))
     }
 
     /// `C(s_0)`, when this is the first segment's seed.
     pub(crate) fn commitment(&self) -> SeedCommitment {
-        SeedCommitment::new(self.link())
+        self.link()
     }
 
-    fn link(&self) -> [u8; 32] {
-        let mut hasher = Hasher::new();
-        hasher.update(CHAIN_DOMAIN).update(self.0.as_bytes());
-        *hasher.finalize().as_bytes()
+    /// `C(s_k)`, which commits to the seed: its commitment, as the first's, or the seed before
+    /// it.
+    fn link(&self) -> SeedCommitment {
+        let mut hasher = DomainHasher::new(CHAIN_DOMAIN);
+        hasher.update(self.0.as_bytes());
+        SeedCommitment::new(hasher.finish())
     }
 }

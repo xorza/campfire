@@ -1,9 +1,9 @@
-//! The MOBA 3v3's late rules, which no short match reaches at level 1: an inhibitor's fall
-//! and its respawn, the super creep of the next wave on its lane, the warden's blessing and its
-//! respawn, a hero's kill that a tower assisted, and the core's fall, which ends the match. A
-//! hero deals each fatal blow through the runner's world, as no input can at level 1, so the
-//! test pins rules, not a log: it has no golden and no replay. The test pins the content's values, so a change to the content changes
-//! it, by design.
+//! The MOBA 3v3's late rules, which no short match reaches at level 1: an inhibitor's fall and its
+//! respawn, the super creep of the next wave on its lane, the warden's blessing and its respawn, a
+//! hero's kill that a tower assisted, and the core's fall, which ends the match, a draw when both
+//! cores fall in one tick. A hero deals each fatal blow through the runner's world, as no input can
+//! at level 1, so the tests pin rules, not a log: it has no golden and no replay. They pin the
+//! content's values, so a change to the content changes it, by design.
 
 use campfire_combat::{Combat, Respawn};
 use campfire_common::Tick;
@@ -126,5 +126,25 @@ fn the_3v3s_late_rules_follow_each_fall() {
     assert_eq!(
         (end.tick(), end.result()),
         (Tick::new(2402), MatchResult::Won(Team::new(1)))
+    );
+}
+
+#[test]
+fn both_cores_falling_in_one_tick_end_the_3v3_in_a_draw() {
+    // Each core takes its whole life in tick 1: each death is heard after both, so the first
+    // heard finds no core standing, ends the match a draw, and the second ends nothing more.
+    let moba = Moba3v3::load();
+    let mut fixed = moba.start();
+    run_to(&mut fixed, 1);
+    let units = MatchUnits::of(fixed.game());
+    let cores = [(0, 0, -54), (0, 0, 54)].map(|at| units.spawned_at(at));
+    for core in cores {
+        Combat::queue_damage(fixed.game_mut(), None, core, Num::int(5500), "true");
+    }
+    run_to(&mut fixed, 2);
+    let end = fixed.game().match_end().expect("the match ended");
+    assert_eq!(
+        (end.tick(), end.result()),
+        (Tick::new(1), MatchResult::Draw)
     );
 }

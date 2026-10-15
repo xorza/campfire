@@ -883,21 +883,24 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A `gather` of `production`, `id`: aimed at a unit.
+    /// A `gather` of `production` and `navigation`, whose worker walks, `id`: aimed at a unit.
     fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
+        self.require(Capability::Navigation, &at)?;
         if !matches!(action.targeting, Targeting::Unit(_)) {
             return Err(LoadProblem::Gather(GatherProblem::Aims(id.to_owned())));
         }
         Ok(())
     }
 
-    /// A `build` of `production`, `id`: aimed at a point. That it builds a unit type of its
-    /// package that stands, the book build holds.
+    /// A `build` of `production` and `navigation`, which tests its box for room and walks its
+    /// worker, `id`: aimed at a point. That it builds a unit type of its package that stands, the
+    /// book build holds.
     fn build(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
         self.require(Capability::Production, &at)?;
+        self.require(Capability::Navigation, &at)?;
         if action.targeting != Targeting::Point {
             return Err(LoadProblem::Build(BuildProblem::Aims(id.to_owned())));
         }

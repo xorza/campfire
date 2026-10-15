@@ -8,8 +8,8 @@ autotests = false
 
 # The match harness and the tests and benches that play matches through it: the top crate of the
 # session's and the network's tests, as `campfire-capabilities` is of the capabilities'. All of it
-# is test code, so it has no `internals` of its own, and it depends, with their `internals`, on
-# every crate its tests read.
+# is test code, so it has no `internals` of its own: it depends, with their `internals`, on every
+# crate its library reads, and dev-depends so on each crate that only its tests read.
 [dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }

@@ -1,53 +1,8 @@
 use std::collections::BTreeMap;
 
+use crate::zero_hour::damage_type::DamageType;
 use crate::zero_hour::error::IniError;
 use crate::zero_hour::ini_text::{IniLine, IniText};
-
-/// Zero Hour's damage types, in the order of `DamageTypeFlags`' names, as the game's INI writes
-/// them: Generals' `FLESHY_SNIPER` is not among them.
-pub(crate) const DAMAGE_TYPES: [&str; 38] = [
-    "EXPLOSION",
-    "CRUSH",
-    "ARMOR_PIERCING",
-    "SMALL_ARMS",
-    "GATTLING",
-    "RADIATION",
-    "FLAME",
-    "LASER",
-    "SNIPER",
-    "POISON",
-    "HEALING",
-    "UNRESISTABLE",
-    "WATER",
-    "DEPLOY",
-    "SURRENDER",
-    "HACK",
-    "KILL_PILOT",
-    "PENALTY",
-    "FALLING",
-    "MELEE",
-    "DISARM",
-    "HAZARD_CLEANUP",
-    "PARTICLE_BEAM",
-    "TOPPLING",
-    "INFANTRY_MISSILE",
-    "AURORA_BOMB",
-    "LAND_MINE",
-    "JET_MISSILES",
-    "STEALTHJET_MISSILES",
-    "MOLOTOV_COCKTAIL",
-    "COMANCHE_VULCAN",
-    "SUBDUAL_MISSILE",
-    "SUBDUAL_VEHICLE",
-    "SUBDUAL_BUILDING",
-    "SUBDUAL_UNRESISTABLE",
-    "MICROWAVE",
-    "KILL_GARRISONED",
-    "STATUS",
-];
-
-/// The damage types `ArmorTemplate::adjustDamage` passes whole, whatever an armor says of them.
-const UNRESISTED: [usize; 2] = [11, 34];
 
 /// The armors of Zero Hour's `Armor.ini` files, as `ArmorStore` reads them, by their names, of
 /// their case.
@@ -56,18 +11,18 @@ pub(crate) struct ArmorIni {
     armors: BTreeMap<String, IniArmor>,
 }
 
-/// An armor's share of each damage type's damage, by the type's place in `DAMAGE_TYPES`, as its
+/// An armor's share of each damage type's damage, by the type's place in `DamageType::ALL`, as its
 /// lines set them in order: 1 for a type no line names, and a line of `DEFAULT` setting every
 /// type at once (`ArmorTemplate::parseArmorCoefficients`).
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct IniArmor {
-    shares: [f32; DAMAGE_TYPES.len()],
+    shares: [f32; DamageType::ALL.len()],
 }
 
 impl Default for IniArmor {
     fn default() -> IniArmor {
         IniArmor {
-            shares: [1.0; DAMAGE_TYPES.len()],
+            shares: [1.0; DamageType::ALL.len()],
         }
     }
 }
@@ -121,13 +76,12 @@ impl ArmorIni {
 }
 
 impl IniArmor {
-    /// Its share of the damage type at `at` in `DAMAGE_TYPES`: 1 for a type the game passes
-    /// whole.
-    pub(crate) fn share(&self, at: usize) -> f32 {
-        if UNRESISTED.contains(&at) {
-            1.0
+    /// Its share of the damage type `kind`: 1 for a type the game passes whole.
+    pub(crate) const fn share(&self, kind: DamageType) -> f32 {
+        if kind.resisted() {
+            self.shares[kind.index()]
         } else {
-            self.shares[at]
+            1.0
         }
     }
 
@@ -138,21 +92,13 @@ impl IniArmor {
         let name = at.value()?;
         let percent = at.real_at(2)? / 100.0;
         if name.eq_ignore_ascii_case("default") {
-            self.shares = [percent; DAMAGE_TYPES.len()];
+            self.shares = [percent; DamageType::ALL.len()];
             return Ok(());
         }
-        let place = damage_type(name).ok_or(IniError::NotListed { line: at.number })?;
-        self.shares[place] = percent;
+        let kind = DamageType::of(name).ok_or(IniError::NotListed { line: at.number })?;
+        self.shares[kind.index()] = percent;
         Ok(())
     }
-}
-
-/// The place in `DAMAGE_TYPES` of the type `name`, of either case, as `INI::scanIndexList` finds
-/// it.
-pub(crate) fn damage_type(name: &str) -> Option<usize> {
-    DAMAGE_TYPES
-        .iter()
-        .position(|known| name.eq_ignore_ascii_case(known))
 }
 
 #[cfg(test)]
@@ -180,26 +126,20 @@ mod tests {
     fn an_armor_shares_each_type_by_its_lines_in_order_and_passes_the_unresisted_whole() {
         let mut ini = ArmorIni::default();
         ini.read(internals::ARMORS.as_bytes()).unwrap();
-        let place = |name| damage_type(name).unwrap();
         let get = |name| ini.get(name).unwrap();
         let human = get("HumanArmor");
-        assert_eq!(human.share(place("CRUSH")), 2.0);
-        assert_eq!(human.share(place("SMALL_ARMS")), 1.0);
+        assert_eq!(human.share(DamageType::Crush), 2.0);
+        assert_eq!(human.share(DamageType::SmallArms), 1.0);
         // `DEFAULT` sets every type, then small arms, of either case, a quarter; `UNRESISTABLE`
         // and `SUBDUAL_UNRESISTABLE` pass whole whatever the armor says.
         let building = get("StructureArmor");
-        assert_eq!(building.share(place("EXPLOSION")), 0.5);
-        assert_eq!(building.share(place("small_arms")), 0.25);
-        assert_eq!(building.share(place("UNRESISTABLE")), 1.0);
-        assert_eq!(building.share(place("SUBDUAL_UNRESISTABLE")), 1.0);
-        assert_eq!(
-            [UNRESISTED[0], UNRESISTED[1]],
-            [place("UNRESISTABLE"), place("SUBDUAL_UNRESISTABLE")]
-        );
+        assert_eq!(building.share(DamageType::Explosion), 0.5);
+        assert_eq!(building.share(DamageType::SmallArms), 0.25);
+        assert_eq!(building.share(DamageType::Unresistable), 1.0);
+        assert_eq!(building.share(DamageType::SubdualUnresistable), 1.0);
         assert!(ini.get("humanarmor").is_none());
         // A type the game does not name is refused.
         let unknown = b"Armor Odd\r\n  Armor = FROST 50%\r\nEnd\r\n";
         assert!(ArmorIni::default().read(unknown).is_err());
-        assert_eq!(DAMAGE_TYPES.len(), 38);
     }
 }

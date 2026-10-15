@@ -15,7 +15,6 @@ internals = [
 campfire-codec.workspace = true
 campfire-common.workspace = true
 
-blake3.workspace = true
 criterion = { workspace = true, optional = true }
 getrandom.workspace = true
 nostr.workspace = true
@@ -25,6 +24,8 @@ thiserror.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+# The tests compute each hash by hand, BLAKE3 of its exact bytes, as the protocol spells them.
+blake3.workspace = true
 campfire-protocol = { workspace = true, features = ["internals"] }
 # A test reads and writes the pinned log files.
 campfire-store = { workspace = true, features = ["internals"] }

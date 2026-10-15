@@ -7,7 +7,7 @@ use campfire_client_files::{
     MapLights, ModelScale, TerrainFile,
 };
 use campfire_codec::Toml;
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{MapName, PackageFingerprint};
 use campfire_math::Num;
 use campfire_package_disk::{PackageWriter, WriteError};
 use campfire_store::DurableDir;
@@ -52,6 +52,7 @@ pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
 pub(crate) mod command_button_ini;
 pub(crate) mod command_set_ini;
+pub(crate) mod damage_type;
 pub(crate) mod error;
 pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
@@ -99,9 +100,9 @@ pub(crate) mod weapon_ini;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The imported package's.
-    pub fingerprint: Fingerprint,
+    pub fingerprint: PackageFingerprint,
     /// The rules package's, beside it.
-    pub rules: Fingerprint,
+    pub rules: PackageFingerprint,
     pub skipped_models: Vec<SkippedModel>,
     pub missing_textures: Vec<String>,
     pub untextured_cells: BTreeMap<MapName, usize>,
@@ -453,7 +454,7 @@ impl ZeroHour<'_> {
     pub const GAME: &'static str = "game";
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
-    fn write_rules(dir: &Path) -> Result<Fingerprint, ZeroHourError> {
+    fn write_rules(dir: &Path) -> Result<PackageFingerprint, ZeroHourError> {
         let mut writer = PackageWriter::create(dir)?;
         for (path, bytes) in RULES_FILES {
             let path =

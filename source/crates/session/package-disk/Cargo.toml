@@ -28,7 +28,6 @@ toml = { workspace = true, optional = true }
 [dev-dependencies]
 campfire-package-disk = { workspace = true, features = ["internals"] }
 serde.workspace = true
-sha2.workspace = true
 
 [lints]
 workspace = true

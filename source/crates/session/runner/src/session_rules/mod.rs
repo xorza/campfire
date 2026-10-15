@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, Version};
+use campfire_common::{MapName, PackageFingerprint, Version};
 use campfire_package::{ModePackages, TickRange};
 use campfire_protocol::{InputRules, SeedCommitment, SessionTerms, SlotPlan};
 use campfire_visibility::{ModeVisibility, Visibility};
@@ -30,9 +30,9 @@ pub struct HostChoices<'a> {
 /// the three agree on what a session of the packages is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionRules {
-    mode: Fingerprint,
+    mode: PackageFingerprint,
     map: MapName,
-    dependencies: Box<[Fingerprint]>,
+    dependencies: Box<[PackageFingerprint]>,
     tick_hz: TickRange,
     /// The player slots the mode's teams have.
     slots: u64,

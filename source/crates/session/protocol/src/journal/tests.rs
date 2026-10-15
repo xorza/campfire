@@ -123,6 +123,6 @@ fn a_flipped_byte_or_a_length_past_the_bound_stops_the_read_at_its_frame() {
     long.resize(long.len() + MAX_RECORD + 1, 0);
     let len = u32::try_from(MAX_RECORD + 1).unwrap();
     long[start..start + 4].copy_from_slice(&len.to_le_bytes());
-    long.extend_from_slice(&JournalFrames::hash(&long[start + 4..]));
+    long.extend_from_slice(JournalFrames::hash(&long[start + 4..]).as_bytes());
     assert_eq!(read(&long), Some((Vec::new(), JournalFrames::TAG.len())));
 }

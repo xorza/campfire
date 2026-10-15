@@ -195,8 +195,9 @@ pub(crate) mod internals {
     /// mortar of a minimum range, a pistol of a random delay, a marker of no delay, a shotgun of a
     /// second radius, a gatling that scatters at infantry, a bolt of a set speed, which may delay its
     /// damage, a stinger that hits no ground, a blast that kills its own unit, a pulse dealt at
-    /// its own place, a minigun that fires faster as it keeps firing, and a beam of the bolt's
-    /// speed, a laser, which does not delay its damage.
+    /// its own place, a minigun that fires faster as it keeps firing, a disabler of subdual
+    /// damage, a mender of healing damage, and a beam of the bolt's speed, a laser, which does not
+    /// delay its damage.
     pub(crate) const WEAPONS: &str = "Weapon RangerRifle\r
   PrimaryDamage = 5.0\r
   PrimaryDamageRadius = 0.0\r
@@ -287,6 +288,18 @@ Weapon Minigun\r
   AttackRange = 150\r
   DelayBetweenShots = 200\r
   ContinuousFireOne = 10\r
+End\r
+Weapon Disabler\r
+  PrimaryDamage = 100\r
+  AttackRange = 150\r
+  DamageType = SUBDUAL_VEHICLE\r
+  DelayBetweenShots = 100\r
+End\r
+Weapon Mender\r
+  PrimaryDamage = 5\r
+  AttackRange = 50\r
+  DamageType = HEALING\r
+  DelayBetweenShots = 1000\r
 End\r
 Weapon Beam\r
   PrimaryDamage = 30\r

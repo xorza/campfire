@@ -1,8 +1,6 @@
 use campfire_codec::Toml;
-use campfire_common::{ContentHash, Fingerprint};
+use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
-
-use sha2::{Digest, Sha256};
 
 use super::*;
 use crate::package_store::PackageStore;
@@ -29,7 +27,7 @@ fn a_package_is_its_index_and_reads_through_it() {
         hex(b"m")
     )
     .into_bytes();
-    let expected = Fingerprint::new(Sha256::digest(&list).into());
+    let expected = PackageFingerprint::of(&list);
     let dir = PackageDir::new(&package);
     // With no index, no package.
     assert!(matches!(
@@ -267,7 +265,7 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         hex(&asset)
     )
     .into_bytes();
-    let expected = Fingerprint::new(Sha256::digest(&list).into());
+    let expected = PackageFingerprint::of(&list);
     let tree = Arc::new(PackageDir::reindexed(tree));
     let read = PackageDir::in_memory(Arc::clone(&tree), "one")
         .files()

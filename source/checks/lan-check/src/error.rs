@@ -8,26 +8,17 @@ use campfire_store::{DurableError, PathError, ReadError};
 use thiserror::Error;
 
 use crate::process::Process;
-use crate::target_name::TargetName;
 
 /// Why the check could not run to a verdict.
 #[derive(Debug, Error)]
 pub(crate) enum CheckError {
-    /// It runs only with `CARGO`, the cargo that builds the processes, as `./drive.py lan` gives
-    /// it, unless it verifies with a verifier it is given.
-    #[error("run the check with `./drive.py lan`, or give `verify` a `--verifier`")]
-    NotUnderCargo,
-    #[error("cargo did not start")]
-    CargoStart(#[source] io::Error),
+    /// The path of the check's own executable, beside which it finds the processes, could not
+    /// be read.
+    #[error("the check's own executable could not be found")]
+    OwnExecutable(#[source] io::Error),
     /// The working directory, against which a relative path resolves, could not be read.
     #[error("the working directory could not be read")]
     WorkingDir(#[source] io::Error),
-    /// Cargo did not build the processes.
-    #[error("cargo did not build the processes")]
-    Build,
-    /// Cargo built no executable of this target.
-    #[error("cargo built no executable of {0}")]
-    NoExecutable(TargetName),
     #[error("a file of the run does not read")]
     Read(#[source] PathError<ReadError>),
     #[error("a file of the run is not written")]

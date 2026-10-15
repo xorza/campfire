@@ -1,13 +1,24 @@
-use blake3::Hasher;
+use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 
 use crate::journal::error::NotJournal;
 
 /// Starts the hash of every frame, so no other BLAKE3 use can produce one.
-const FRAME_DOMAIN: &[u8] = b"campfire/journal-frame/v1";
+const FRAME_DOMAIN: HashDomain = HashDomain::new("campfire/journal-frame/v1");
 /// The longest record a frame holds: a longer length is a torn or corrupted frame.
 pub(crate) const MAX_RECORD: usize = 16 << 20;
 const LEN_BYTES: usize = size_of::<u32>();
 const HASH_BYTES: usize = 32;
+
+/// A frame's hash: the BLAKE3 of the frame domain and its record.
+pub(crate) type FrameHash = Value32<FrameHashMeaning>;
+
+/// The meaning of a `FrameHash`.
+#[derive(Debug)]
+pub(crate) enum FrameHashMeaning {}
+
+impl Meaning for FrameHashMeaning {
+    const NAME: &'static str = "FrameHash";
+}
 
 /// The whole frames of a journal's bytes, read in order: each a `u32` length, the record's bytes,
 /// and the 32-byte BLAKE3 of `domain ‖ record`, as `LevelDB` frames its log with a hash in place of
@@ -52,7 +63,7 @@ impl<'a> JournalFrames<'a> {
         let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
         out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
         let hash = JournalFrames::hash(&out[start + LEN_BYTES..]);
-        out.extend_from_slice(&hash);
+        out.extend_from_slice(hash.as_bytes());
     }
 
     /// Where a frame's record starts in `out`: its length's place is held first.
@@ -62,10 +73,10 @@ impl<'a> JournalFrames<'a> {
         start
     }
 
-    pub(crate) fn hash(record: &[u8]) -> [u8; HASH_BYTES] {
-        let mut hasher = Hasher::new();
-        hasher.update(FRAME_DOMAIN).update(record);
-        *hasher.finalize().as_bytes()
+    pub(crate) fn hash(record: &[u8]) -> FrameHash {
+        let mut hasher = DomainHasher::new(FRAME_DOMAIN);
+        hasher.update(record);
+        FrameHash::new(hasher.finish())
     }
 }
 
@@ -80,7 +91,7 @@ impl<'a> Iterator for JournalFrames<'a> {
             return None;
         }
         let (record, rest) = rest.split_at(len);
-        if rest[..HASH_BYTES] != JournalFrames::hash(record) {
+        if rest[..HASH_BYTES] != *JournalFrames::hash(record).as_bytes() {
             return None;
         }
         self.at += LEN_BYTES + len + HASH_BYTES;

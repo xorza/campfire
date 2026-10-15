@@ -2,6 +2,8 @@ use arrayvec::ArrayVec;
 use blake3::Hasher;
 use campfire_codec::Sink;
 
+use crate::state_registry::PartHash;
+
 /// A BLAKE3 hasher fed through a buffer. Postcard writes a value at a time, and from small pieces
 /// BLAKE3 hashes one block at a time; from a piece of many chunks it hashes several at once with
 /// SIMD. The buffer is its own, so a hash allocates nothing.
@@ -23,11 +25,17 @@ impl HashSink {
         }
     }
 
+    /// The hash of `bytes` taken whole, as a sink that took them in pieces gives it: in place, so
+    /// a body already in one buffer is not copied through a sink's.
+    pub(crate) fn of(bytes: &[u8]) -> PartHash {
+        PartHash::new(*blake3::hash(bytes).as_bytes())
+    }
+
     /// The hash of the bytes it took since it was made or last finished, and a fresh start.
-    pub(crate) fn finish(&mut self) -> [u8; 32] {
+    pub(crate) fn finish(&mut self) -> PartHash {
         self.hasher.update(&self.buffer);
         self.buffer.clear();
-        let hash = *self.hasher.finalize().as_bytes();
+        let hash = PartHash::new(*self.hasher.finalize().as_bytes());
         self.hasher.reset();
         hash
     }
@@ -56,7 +64,8 @@ mod tests {
     #[test]
     fn a_hash_sink_hashes_its_bytes_as_one_piece_does_and_starts_again_when_it_finishes() {
         // 40 000 bytes in pieces of 1 to 997, which cross the 16 KiB flush twice and leave a
-        // tail: the hash of the whole in one piece. A finished sink hashes the next bytes alone.
+        // tail: the hash of the whole in one piece, as `of` gives it in place. A finished sink
+        // hashes the next bytes alone.
         let bytes: Vec<u8> = (0..40_000_u32)
             .map(|at| u8::try_from(at * 7 % 251).unwrap())
             .collect();
@@ -67,12 +76,17 @@ mod tests {
             sink.put(&bytes[at..end]);
             (at, piece) = (end, piece * 31 % 997 + 1);
         }
-        assert_eq!(sink.finish(), *blake3::hash(&bytes).as_bytes());
-        // The same bytes in one piece, past two buffers' worth.
+        let pieces = sink.finish();
+        assert_eq!(pieces, PartHash::new(*blake3::hash(&bytes).as_bytes()));
+        // The same bytes in one piece, past two buffers' worth, and taken whole in place.
         sink.put(&bytes);
-        assert_eq!(sink.finish(), *blake3::hash(&bytes).as_bytes());
+        assert_eq!(sink.finish(), pieces);
+        assert_eq!(HashSink::of(&bytes), pieces);
         sink.put(b"next");
-        assert_eq!(sink.finish(), *blake3::hash(b"next").as_bytes());
-        assert_eq!(sink.finish(), *blake3::hash(b"").as_bytes());
+        assert_eq!(
+            sink.finish(),
+            PartHash::new(*blake3::hash(b"next").as_bytes())
+        );
+        assert_eq!(sink.finish(), PartHash::new(*blake3::hash(b"").as_bytes()));
     }
 }

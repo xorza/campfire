@@ -87,6 +87,7 @@ spells = "string_list"
 [state]
 phase = { type = "string", default = "pick", sync = "all" }
 first_blood = { type = "bool", default = false, sync = "all" }
+ended = { type = "bool", default = false }
 
 [params]
 pick_ms = 60000

@@ -30,7 +30,7 @@ use std::process::ExitCode;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
 use campfire_codec::{Binary, Toml, TomlError};
-use campfire_common::{ExitStatus, Fingerprint, MapName};
+use campfire_common::{ExitStatus, MapName, PackageFingerprint};
 use campfire_import::{DropCause, DroppedButton, GameVersion, WeaponDrop, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_math::Num;
@@ -64,8 +64,12 @@ const MAP: &str = "tournament_desert";
 /// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
 /// again.
 const FINGERPRINTS: Fingerprints = Fingerprints {
-    game: Fingerprint::of_hex("f5c57357cb7ec525f8b2bdbe62620f4e24792303956bd38e224541565e4c376b"),
-    rules: Fingerprint::of_hex("d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874"),
+    game: PackageFingerprint::of_hex(
+        "66b625667c81ebd360d2aa3e7318d86c1512d6fc158296e621b4d445ebc30c23",
+    ),
+    rules: PackageFingerprint::of_hex(
+        "d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874",
+    ),
 };
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
@@ -125,11 +129,12 @@ const FIGHT: FightSteps = FightSteps {
 /// in the order of `WeaponDrop::ALL`: no weapon, a projectile 70, a radius 6, a scatter, a speed
 /// that may delay the damage 7, no hit on the ground 7, a suicide, damage at its own place, a
 /// fire that speeds up 3, a delay before the attack 4, a minimum range, a random delay, no delay
-/// 3, no damage type, a bad number; its armors, `Armor.ini`'s 53, and damage kinds, the game's
-/// 38; and the unit types' objects of no life, 38, and of a wounded start (design 19, D5, D6).
+/// 3, no damage type, no damage to life 4, healing, a bad number; its armors, `Armor.ini`'s 53,
+/// and damage kinds, the game's 38; and the unit types' objects of no life, 38, and of a wounded
+/// start (design 19, D5, D6).
 const FOUGHT: FoughtCounts = FoughtCounts {
-    weapons: 21,
-    dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 0, 0],
+    weapons: 17,
+    dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 0, 4, 0, 0],
     armors: 53,
     kinds: 38,
     unliving: 38,

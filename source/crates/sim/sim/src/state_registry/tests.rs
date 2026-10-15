@@ -4,6 +4,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
+use blake3::Hasher;
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use serde::de::Error;
@@ -605,7 +606,7 @@ fn assert_hashed_as_encoded<T: Serialize>(value: &T) {
     Binary::encode_to(value, &mut sink);
     assert_eq!(
         sink.finish(),
-        *blake3::hash(&Binary::encode(value)).as_bytes()
+        PartHash::new(*blake3::hash(&Binary::encode(value)).as_bytes())
     );
 }
 

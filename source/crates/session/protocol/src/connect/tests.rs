@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, Ticks, Version};
+use campfire_common::{MapName, PackageFingerprint, Ticks, Version};
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
@@ -27,9 +27,9 @@ fn terms() -> SessionTerms {
         },
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         release: Version::new(0, 1, 0),
-        mode: Fingerprint::new([5; 32]),
+        mode: PackageFingerprint::new([5; 32]),
         map: MapName::new("lane").unwrap(),
-        dependencies: vec![Fingerprint::new([4; 32])],
+        dependencies: vec![PackageFingerprint::new([4; 32])],
         slots: vec![SlotPlan::Player],
         visibility: Vec::new(),
     }

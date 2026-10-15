@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
+use campfire_common::{ContentHash, ContentHasher};
 use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
-use sha2::{Digest, Sha256};
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::big_archive::BigArchive;
@@ -66,7 +66,7 @@ pub(crate) enum TextureKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HashedArchive {
     pub(crate) name: String,
-    pub(crate) sha256: [u8; 32],
+    pub(crate) sha256: ContentHash,
 }
 
 /// An archive the install holds: its path in the install, with `/` between names, and its path on
@@ -236,18 +236,18 @@ impl Install {
             .iter()
             .map(|archive| {
                 let mut file = archive.open()?;
-                let mut hasher = Sha256::new();
+                let mut hasher = ContentHasher::default();
                 let mut at = 0;
                 while at < file.len() {
                     let len = (file.len() - at).min(HASH_CHUNK);
                     let chunk = usize::try_from(len).expect("a chunk fits usize");
                     let bytes = file.read_at(at, chunk)?;
-                    hasher.update(bytes);
+                    hasher.update(&bytes);
                     at += len;
                 }
                 Ok(HashedArchive {
                     name: archive.name.clone(),
-                    sha256: hasher.finalize().into(),
+                    sha256: hasher.finish(),
                 })
             })
             .collect()
@@ -465,7 +465,7 @@ mod tests {
         .zip(&names)
         .map(|(file, name)| HashedArchive {
             name: name.clone(),
-            sha256: Sha256::digest(scratch.read(file)).into(),
+            sha256: ContentHash::of(&scratch.read(file)),
         })
         .collect();
         assert_eq!(hashed, expected);

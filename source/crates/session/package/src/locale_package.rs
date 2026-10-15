@@ -26,7 +26,7 @@ impl LocalePackage {
     pub fn read(files: &PackageFiles) -> Result<LocalePackage, LoadError> {
         let fail = LoadError::new;
         let manifest_path = PackagePath::parse(PackageFiles::MANIFEST).expect("a package path");
-        let unnamed = || PackageRef::Fingerprint(files.fingerprint());
+        let unnamed = || PackageRef::PackageFingerprint(files.fingerprint());
         let manifest = files
             .read_data(&manifest_path)
             .map_err(|error| fail(unnamed(), LoadProblem::Content(error)))?;

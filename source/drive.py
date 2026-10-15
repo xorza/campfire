@@ -27,9 +27,11 @@ from pathlib import Path
 from typing import IO
 
 SOURCE = Path(__file__).resolve().parent
-# The one folder outside the workspace that its tests read: the design documents, which tests of
-# `common` and `capabilities` compare to the code.
+# The one folder outside the workspace that its tests read: the design documents, which tests
+# compare to the code.
 DOCS = SOURCE.parent / "docs"
+# How code names the design documents' folder: in a path, `docs/`, or as a part, `"docs"`.
+DOCS_NAMED = re.compile(r'docs/|"docs"')
 OWN = SOURCE / "target" / "drive"
 LOGS = OWN / "log"
 # One JSON line for each step a command ran, so the checks' times are measured, not assumed.
@@ -72,7 +74,8 @@ INDEX_TEST = (
 # The crates whose tests read the files of every crate, the workspace's rules: a change in any
 # crate reaches them. A new test that reads other crates' files goes in one of them.
 WORKSPACE_READERS = frozenset(("campfire-common", "campfire-log"))
-LAN_PACKAGES = (
+# The LAN check and the binaries it runs, its `Binaries::NAMES`, which its test holds the same.
+LAN_BINARIES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
 )
 
@@ -98,6 +101,10 @@ STEP_ENV = re.compile(r"^(RUST\w*|CARGO\w*|CAMPFIRE_\w+)$")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
 # Rustc's code of an error that is no lint; a lint's code is its name.
 ERROR_CODE = re.compile(r"^E\d{4}$")
+# The note that ends a warning of one of cargo's own lints, as `unused_dependencies`, which cargo
+# prints as text and `-D warnings` does not reach. One lane may print a warning another does not,
+# so each lane that builds counts it.
+CARGO_LINT = re.compile(r"^\s*= note: `cargo::[\w-]+` is set to `warn`")
 
 
 @dataclass(frozen=True)
@@ -147,10 +154,14 @@ class Step:
     env: Mapping[str, str] = field(default_factory=dict)
     # It runs what the step before it made, so it is skipped when that one did not pass.
     needs_previous: bool = False
-    # The command asks for a run each time: no pass is reused, and no nextest run narrowed.
+    # The command asks for a run each time: no pass is reused, and no nextest run narrowed, but
+    # the pass it makes is kept, so a later command on the same tree reuses it.
     always_runs: bool = False
     # The members whose tests a nextest step runs, None for every member.
     scope: frozenset[str] | None = None
+    # The step whose kept pass this one's reuse follows: it runs whenever that one would run, and
+    # keeps no pass of its own.
+    follows: Step | None = None
 
     def narrowed(self, members: Iterable[str]) -> Step:
         # Nextest unites its filters, so a narrowed step can hold no filter of its own.
@@ -210,14 +221,24 @@ class Workspace:
     def reach(self, changed: Iterable[str]) -> frozenset[str]:
         """The members whose tests a change in `changed` can change: they and every member that
         depends on them, and `WORKSPACE_READERS`."""
-        found = set(changed)
-        queue = list(found)
-        while queue:
-            for dependent in self.dependents[queue.pop()]:
-                if dependent not in found:
-                    found.add(dependent)
-                    queue.append(dependent)
-        return frozenset(found | WORKSPACE_READERS)
+        return frozenset(closure(changed, self.dependents) | WORKSPACE_READERS)
+
+    def holder(self, path: Path) -> str | None:
+        """The member that holds `path`: the deepest whose folder holds it; None for none."""
+        holders = [name for name, folder in self.folders.items() if path.is_relative_to(folder)]
+        return max(holders, key=lambda name: len(self.folders[name].parts), default=None)
+
+
+def closure(start: Iterable[str], edges: Mapping[str, Iterable[str]]) -> set[str]:
+    """`start` and every name its `edges` reach."""
+    found = set(start)
+    queue = list(found)
+    while queue:
+        for next_name in edges[queue.pop()]:
+            if next_name not in found:
+                found.add(next_name)
+                queue.append(next_name)
+    return found
 
 
 @functools.cache
@@ -246,12 +267,6 @@ def workspace() -> Workspace:
                 normal_dependents[dependency["name"]].add(package["name"])
                 if "internals" in dependency["features"]:
                     unifying.add(package["name"])
-    queue = list(unifying)
-    while queue:
-        for dependent in normal_dependents[queue.pop()]:
-            if dependent not in unifying:
-                unifying.add(dependent)
-                queue.append(dependent)
     return Workspace(
         folders={package["name"]: Path(package["manifest_path"]).parent for package in packages},
         dependents={name: frozenset(found) for name, found in dependents.items()},
@@ -263,7 +278,7 @@ def workspace() -> Workspace:
         internals=frozenset(
             package["name"] for package in packages if "internals" in package["features"]
         ),
-        unifies_internals=tuple(sorted(unifying)),
+        unifies_internals=tuple(sorted(closure(unifying, normal_dependents))),
         target=Path(metadata["target_directory"]),
     )
 
@@ -310,13 +325,6 @@ def tests_step(
     return Step("tests", Kind.TESTS, argv, env or {}, always_runs=always_runs)
 
 
-def bench_cases_step() -> Step:
-    return Step(
-        "bench cases", Kind.TESTS, cargo(*TESTS, *nextest_output(), "--bench", "*"),
-        scope=workspace().benches,
-    )
-
-
 def rustdoc_step() -> Step:
     return Step(
         "rustdoc", Kind.CHECK,
@@ -330,20 +338,23 @@ def cross_step(target: str) -> Step:
 
 
 def lan_build_step() -> Step:
-    # One build of the check and the processes it starts, which then share every feature: the
-    # check builds them again with the `CARGO` it is given, and finds every crate fresh. It runs
-    # each time, as the tests' build writes the same binaries with every feature.
-    packages = [arg for package in LAN_PACKAGES for arg in ("-p", package)]
+    # The check and the processes it starts, beside it, in the tests' build: the workspace with
+    # every feature and its tests, whose dev-dependencies unify the same features, so each unit but
+    # the binaries the tests' build does not write is fresh after it, and the tests' build after
+    # this one. It runs whenever the check runs, as the tests' build writes the server and the
+    # verifier too.
+    binaries = [arg for package in LAN_BINARIES for arg in ("--bin", package)]
     return Step(
-        "lan build", Kind.CHECK, cargo("build", "--locked", JSON, *packages), always_runs=True,
+        "lan build", Kind.CHECK,
+        cargo("build", "--workspace", "--all-features", "--locked", "--tests", *binaries, JSON),
+        follows=lan_run_step(),
     )
 
 
 def lan_run_step() -> Step:
     check = workspace().target / "debug" / f"campfire-lan-check{PLATFORM.exe_suffix}"
     return Step(
-        "lan", Kind.PROGRAM, (str(check), str(LAN_ROOT)), {"CARGO": "cargo"},
-        needs_previous=True, always_runs=True,
+        "lan", Kind.PROGRAM, (str(check), str(LAN_ROOT)), needs_previous=True,
     )
 
 
@@ -443,6 +454,8 @@ class StepOutput:
             self.file.write(line + "\n")
             if BUILT.match(line):
                 self.built += 1
+            if self.kind.diagnoses() and CARGO_LINT.match(line):
+                self.errors += 1
             summary = NEXTEST_SUMMARY.match(line)
             if summary:
                 self.summary = summary[1]
@@ -517,12 +530,12 @@ def run_step(step: Step, shown: set[str], note: str = "") -> Outcome:
     if IN_CI:
         print("::endgroup::")
     output.finish(log)
-    status = Status.OK if code == 0 else Status.FAIL
+    status = Status.OK if code == 0 and not output.errors else Status.FAIL
     # A lint that fails with no diagnostic failed before rustc ran: no build gets further.
     broken = output.hard > 0 or (
         status is Status.FAIL and step.kind is Kind.CHECK and not output.errors
     )
-    notes = [note, *output.notes()] if note else output.notes()
+    notes = [text for text in (note, *output.notes()) if text]
     return Outcome(
         step.name, status, time.monotonic() - start, log, output.printed, output.built,
         "; ".join(notes), broken,
@@ -543,7 +556,7 @@ def run_steps(command: str, steps: list[Step], reuse: bool = False) -> int:
             outcome = Outcome(step.name, Status.SKIP, note=note)
         elif step.needs_previous and outcomes and outcomes[-1].status is not Status.OK:
             outcome = Outcome(step.name, Status.SKIP, note=f"{outcomes[-1].name} did not pass")
-        elif passes is not None and not step.always_runs:
+        elif passes is not None:
             outcome = passes.run(step, shown)
         else:
             outcome = run_step(step, shown)
@@ -552,9 +565,10 @@ def run_steps(command: str, steps: list[Step], reuse: bool = False) -> int:
         print(outcome.line())
         record(command, outcome)
         outcomes.append(outcome)
-    # Diagnostics between the status lines leave them apart: gather them again at the end.
+    # Diagnostics between the status lines leave them apart: gather them again at the end, under a
+    # heading, so no one reads them as a second run.
     if len(outcomes) > 1 and any(outcome.printed for outcome in outcomes):
-        print()
+        print("\nsummary")
         for outcome in outcomes:
             print(outcome.line())
     return 0 if all(outcome.status is Status.OK for outcome in outcomes) else 1
@@ -645,16 +659,37 @@ class Change:
 
     @staticmethod
     def reach_of(inputs: tuple[Path, ...]) -> frozenset[str] | None:
-        folders = workspace().folders
         owners = set()
+        documents = False
         for path in inputs:
-            if path.name == "Cargo.toml":
+            if path.is_relative_to(DOCS):
+                documents = True
+                continue
+            holder = workspace().holder(path)
+            if path.name == "Cargo.toml" or holder is None:
                 return None
-            holders = [name for name, folder in folders.items() if path.is_relative_to(folder)]
-            if not holders:
-                return None
-            owners.add(max(holders, key=lambda name: len(folders[name].parts)))
-        return workspace().reach(owners)
+            owners.add(holder)
+        reach = workspace().reach(owners)
+        return reach | Change.documents_reach() if documents else reach
+
+    @staticmethod
+    @functools.cache
+    def documents_reach() -> frozenset[str]:
+        """The members whose tests a change of a design document can change: each member whose
+        tests name the documents' folder, and each member whose other code names it, with every
+        member that depends on it."""
+        folders = workspace().folders
+        tests: set[str] = set()
+        code: set[str] = set()
+        paths = {path for folder in folders.values() for path in folder.rglob("*.rs")}
+        for path in sorted(paths):
+            if not DOCS_NAMED.search(path.read_text(errors="replace")):
+                continue
+            holder = workspace().holder(path)
+            assert holder is not None, f"{path} is in a member's folder"
+            within = path.relative_to(folders[holder]).parts
+            (tests if "tests" in within or path.name == "tests.rs" else code).add(holder)
+        return frozenset(tests) | (workspace().reach(code) if code else frozenset())
 
 
 class Passes:
@@ -680,13 +715,15 @@ class Passes:
         tree = self.tree
         if tree is None:
             return run_step(step, shown)
-        key = step_key(step)
+        followed = step.follows or step
+        key = step_key(followed)
         last = self.trees.get(key)
         change = None if last is None else Change.between(last, tree)
         run, note = step, ""
-        if change is not None:
+        if change is not None and not step.always_runs:
             if not change.inputs:
-                return self.reuse(step, key, tree, "no input changed since it passed")
+                since = "it" if step.follows is None else followed.name
+                return self.reuse(step, key, tree, f"no input changed since {since} passed")
             if step.kind is Kind.TESTS and change.reach is not None:
                 scope = step.scope if step.scope is not None else frozenset(workspace().folders)
                 reached = scope & change.reach
@@ -697,12 +734,13 @@ class Passes:
                     note = f"the tests of {len(reached)} of {len(scope)} crates"
         outcome = run_step(run, shown, note)
         self.tree = working_tree()
-        if outcome.status is Status.OK and self.tree == tree:
+        if outcome.status is Status.OK and self.tree == tree and step.follows is None:
             self.keep(key, tree)
         return outcome
 
     def reuse(self, step: Step, key: str, tree: str, note: str) -> Outcome:
-        self.keep(key, tree)
+        if step.follows is None:
+            self.keep(key, tree)
         return Outcome(step.name, Status.OK, note=note, reused=True)
 
     def keep(self, key: str, tree: str) -> None:
@@ -755,7 +793,9 @@ def test(args: list[str]) -> int:
     own, rest = args[:split], args[split:]
     env = {"CAMPFIRE_BLESS": "1"} if "--bless" in own else {}
     own = [arg for arg in own if arg != "--bless"]
-    return run_steps("test", [tests_step(own + rest, env, always_runs=True)])
+    # A run of the whole suite keeps its pass for the checks; a filtered one is a step of its own.
+    whole = not own and not rest
+    return run_steps("test", [tests_step(own + rest, env, always_runs=True)], reuse=whole)
 
 
 def index(args: list[str]) -> int:
@@ -774,7 +814,8 @@ def bench(args: list[str]) -> int:
 
 def lan(args: list[str]) -> int:
     refuse_arguments("lan", args)
-    return run_steps("lan", [lan_build_step(), lan_run_step()])
+    steps = [replace(step, always_runs=True) for step in (lan_build_step(), lan_run_step())]
+    return run_steps("lan", steps, reuse=True)
 
 
 # Where the Zero Hour check writes its packages, each run in place of the last.
@@ -783,13 +824,10 @@ ZERO_HOUR_OUT = Path.home() / "zh-package"
 
 def zero_hour(args: list[str]) -> int:
     out = args or [str(ZERO_HOUR_OUT)]
-    return run_steps("zero-hour", [
-        Step(
-            "zero hour", Kind.PROGRAM,
-            cargo("run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *out),
-            always_runs=True,
-        )
-    ])
+    argv = cargo(
+        "run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *out,
+    )
+    return run_steps("zero-hour", [Step("zero hour", Kind.PROGRAM, argv, always_runs=True)])
 
 
 def gate(args: list[str]) -> int:
@@ -797,7 +835,7 @@ def gate(args: list[str]) -> int:
     steps = []
     if not IN_CI or PLATFORM.formats_in_ci:
         steps.append(fmt_check_step())
-    steps += [lint_step(), ship_step(), tests_step(), bench_cases_step(), rustdoc_step()]
+    steps += [lint_step(), ship_step(), tests_step()]
     # After the tests, so target/debug holds the LAN check's build of each binary, which CI keeps.
     steps += [lan_build_step(), lan_run_step()]
     # CI checks Windows on Windows itself.
@@ -813,7 +851,9 @@ COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
     "doc": (doc, "", "rustdoc with -D warnings"),
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
     "lan": (lan, "", "the LAN check"),
-    "zero-hour": (zero_hour, "[out]", "the Zero Hour check, which needs GENERALSZH_DATA; writes ~/zh-package"),
+    "zero-hour": (
+        zero_hour, "[out]", "the Zero Hour check, which needs GENERALSZH_DATA; writes ~/zh-package",
+    ),
     "gate": (gate, "", "every step CI runs"),
 }
 

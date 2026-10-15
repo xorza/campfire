@@ -14,12 +14,12 @@
 //! bot started again sending each order of its script, late or not; each
 //! verifier gives its host's final hash; and the third bot exited with failure and logged why.
 //!
-//! Run it with `./drive.py lan`, which builds it and the processes it starts, and gives it the
-//! run root `target/drive/lan-check`; each run's logs and session log go into a new directory
-//! below the run root, named for the run's start. `campfire-lan-check verify <run directory>`
-//! verifies the session log of a run, perhaps from another machine, with this machine's
-//! verifier, which the cargo in `CARGO` builds, and compares the server's final hash; with
-//! `--verifier <verifier>`, it runs that verifier and needs no cargo.
+//! Run it with `./drive.py lan`, which builds it and the processes it starts in one build, beside
+//! it, and gives it the run root `target/drive/lan-check`; each run's logs and session log go
+//! into a new directory below the run root, named for the run's start.
+//! `campfire-lan-check verify <run directory>` verifies the session log of a run, perhaps from
+//! another machine, with the verifier beside the check, and compares the server's final hash;
+//! with `--verifier <verifier>`, it runs that verifier.
 
 use std::env;
 use std::path::{self, Path, PathBuf};
@@ -56,13 +56,11 @@ mod process_group;
 mod process_log;
 mod process_outcome;
 mod session_kind;
-mod target_name;
 mod verdict;
 
 /// The workspace's `packages` directory, where the check finds the test packages. It is not
-/// `campfire-package`'s `PackageDir::workspace`: that one's `internals` feature would set the
-/// check's build apart from the build of the processes it starts, and the workspace would compile
-/// twice.
+/// `campfire-package-disk`'s `PackageDir::workspace`, which only its `internals` feature has, and
+/// the build that ships, which `ship` lints, has no `internals`.
 const PACKAGES_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
 /// The test lane mode, a hero a side, 30 ticks a second, within the workspace's packages.
 const MODE: &str = "test/modes/lane";
@@ -132,7 +130,7 @@ fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
 
 /// Plays a LAN match with its logs in `dir`, a new run's directory, and checks it.
 fn play(dir: &Path) -> Result<Verdict, CheckError> {
-    let binaries = build()?;
+    let binaries = Binaries::beside_check()?;
     info!(dir = %dir.display(), "the run's logs go here");
     let mut scripts = Vec::with_capacity(SCRIPTS.len());
     let mut scripted = Vec::with_capacity(SCRIPTS.len());
@@ -230,13 +228,13 @@ fn host_layout(dir: &Path, session: SessionKind) -> ServerLayout {
     }
 }
 
-/// Verifies the session logs of the matches played in `dir` with `verifier`, or the one cargo
-/// builds with the processes when none is given, and compares each host's final hash.
+/// Verifies the session logs of the matches played in `dir` with `verifier`, or the one beside
+/// the check when none is given, and compares each host's final hash.
 fn verify_run(dir: &Path, verifier: Option<PathBuf>) -> Result<Verdict, CheckError> {
     let verifier = match verifier {
         // The verifier runs in the run's directory, where a relative path would name another file.
         Some(verifier) => path::absolute(verifier).map_err(CheckError::WorkingDir)?,
-        None => build()?.verifier,
+        None => Binaries::beside_check()?.verifier,
     };
     let mut verdict = Verdict::default();
     let verifier = RunVerifier {
@@ -247,12 +245,6 @@ fn verify_run(dir: &Path, verifier: Option<PathBuf>) -> Result<Verdict, CheckErr
         verifier.verify(session, &mut verdict)?;
     }
     Ok(verdict)
-}
-
-/// The processes, built by the cargo that runs the check.
-fn build() -> Result<Binaries, CheckError> {
-    let cargo = env::var_os("CARGO").ok_or(CheckError::NotUnderCargo)?;
-    Binaries::build(&cargo)
 }
 
 /// The verifier `executable`, which checks the logs of the run in `dir`.

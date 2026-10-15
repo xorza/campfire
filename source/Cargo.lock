@@ -2503,7 +2503,6 @@ dependencies = [
  "derive_more",
  "miniz_oxide 0.9.1",
  "serde",
- "sha2 0.11.0",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -2560,7 +2559,6 @@ dependencies = [
  "campfire-verifier",
  "clap",
  "derive_more",
- "serde",
  "thiserror 2.0.21",
  "tracing",
 ]
@@ -2757,7 +2755,6 @@ dependencies = [
  "campfire-store",
  "campfire-values",
  "serde",
- "sha2 0.11.0",
  "thiserror 2.0.21",
  "toml",
 ]

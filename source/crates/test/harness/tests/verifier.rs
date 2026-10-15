@@ -9,7 +9,9 @@ use std::path::Path;
 
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Match, Order};
-use campfire_common::{AfterLeave, Fingerprint, PlayerSlot, StateHash, Tick, Ticks, Version};
+use campfire_common::{
+    AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
+};
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
@@ -286,7 +288,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     *other.last_mut().unwrap() ^= 1;
     assert_eq!(
         replay.check_snapshot(&record, &other),
-        Err(SnapshotCheckError::Fingerprint)
+        Err(SnapshotCheckError::PackageFingerprint)
     );
 
     // The record's state hash changed: the replay stops at the checkpoint, and the snapshot
@@ -708,10 +710,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         // Another release first: its packages need not read in this one.
         other(|terms| {
             terms.release = Version::new(0, 0, 9);
-            terms.mode = Fingerprint::new([0; 32]);
+            terms.mode = PackageFingerprint::new([0; 32]);
         }),
-        other(|terms| terms.mode = Fingerprint::new([0; 32])),
-        other(|terms| terms.dependencies[0] = Fingerprint::new([0; 32])),
+        other(|terms| terms.mode = PackageFingerprint::new([0; 32])),
+        other(|terms| terms.dependencies[0] = PackageFingerprint::new([0; 32])),
         other(|terms| terms.dependencies.clear()),
         other(|terms| terms.tick_hz = NonZeroU32::new(60).unwrap()),
     ];
@@ -823,7 +825,9 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     scratch.write(&named, "other");
     assert!(matches!(
         verify(&packages, "match.log", Some("snapshots")),
-        Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
+        Err(VerifyError::Snapshot(
+            SnapshotCheckError::PackageFingerprint
+        ))
     ));
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);

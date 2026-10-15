@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display, Write};
 use std::str::FromStr;
 
 use campfire_codec::Binary;
-use campfire_common::{Fingerprint, NotHex, SegmentSeed, StateHash, TlsKey};
+use campfire_common::{NotHex, PackageFingerprint, SegmentSeed, StateHash, TlsKey};
 use serde::Serialize;
 
 use crate::connect::ConnectChallenge;
@@ -67,7 +67,7 @@ fn each_32_byte_value_encodes_its_bytes_and_a_public_one_writes_them_as_hex() {
     let contribution = SeedContribution::new(sample);
     reads_hex(&contribution, contribution.as_bytes());
 
-    let fingerprint = Fingerprint::new(sample);
+    let fingerprint = PackageFingerprint::new(sample);
     writes_hex(&fingerprint, fingerprint.as_bytes());
     let snapshot = SnapshotFingerprint::new(sample);
     writes_hex(&snapshot, snapshot.as_bytes());

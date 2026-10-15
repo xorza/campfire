@@ -26,7 +26,7 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     assert_eq!(&a[62..], "1a 2 data/a.toml");
     let index = FileIndex::decode(&bytes).unwrap();
     assert_eq!(index.bytes(), bytes);
-    assert_eq!(index.fingerprint(), Fingerprint::of(&bytes));
+    assert_eq!(index.fingerprint(), PackageFingerprint::of(&bytes));
     let data = PackagePath::parse("data/a.toml").unwrap();
     assert_eq!(
         index.row(&data),

@@ -46,19 +46,10 @@ use crate::view::unit_looks::UnitLooks;
 #[derive(Debug, Clone)]
 pub(crate) struct CommandPanel {
     pub(crate) resources: Vec<ResourceId>,
-    pub(crate) builds: BuildButtons,
-}
-
-/// Whether the panel shows build buttons: a mode of no navigation starts no build, and the
-/// client has no preview of one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BuildButtons {
-    Shown,
-    Hidden,
 }
 
 /// What the panel shows of the mode: the player resources whose amounts it shows, in the mode's
-/// order, and whether it shows build buttons.
+/// order.
 #[derive(Resource, Debug)]
 struct PanelSetup(CommandPanel);
 
@@ -220,7 +211,7 @@ impl CommandPanel {
                 continue;
             }
             let held = PanelUnit { slots, queue, site };
-            if next.fill(unit, held, &book, setup.0.builds) {
+            if next.fill(unit, held, &book) {
                 break;
             }
         }
@@ -408,16 +399,10 @@ impl Shown {
         self.site = None;
     }
 
-    /// Shows `unit`, as `held` and `book` give it, its builds as `builds` says, unless it is no
-    /// site and has no button: then it shows nothing. Whether it shows the unit. A site shows its
-    /// own row alone, as its actions wait for it to complete.
-    fn fill(
-        &mut self,
-        unit: StableId,
-        held: PanelUnit<'_>,
-        book: &ActionBook,
-        builds: BuildButtons,
-    ) -> bool {
+    /// Shows `unit`, as `held` and `book` give it, unless it is no site and has no button: then
+    /// it shows nothing. Whether it shows the unit. A site shows its own row alone, as its actions
+    /// wait for it to complete.
+    fn fill(&mut self, unit: StableId, held: PanelUnit<'_>, book: &ActionBook) -> bool {
         self.clear();
         if let Some(site) = held.site {
             self.unit = Some(unit);
@@ -429,9 +414,7 @@ impl Shown {
             let action = held.action?;
             let making = match book.get(action)?.kind {
                 KindSpec::Train(_) => Making::Train,
-                KindSpec::Build(building) if builds == BuildButtons::Shown => {
-                    Making::Build(building)
-                }
+                KindSpec::Build(building) => Making::Build(building),
                 _ => return None,
             };
             Some(Button {
@@ -557,7 +540,7 @@ mod tests {
             queue: Some(&queue),
             site: None,
         };
-        assert!(shown.fill(center, held, book, BuildButtons::Shown));
+        assert!(shown.fill(center, held, book));
         assert_eq!(
             shown,
             Shown {
@@ -578,22 +561,6 @@ mod tests {
                 site: None,
             }
         );
-        // With build buttons hidden, the train alone.
-        let held = PanelUnit {
-            slots: Some(&slots),
-            queue: None,
-            site: None,
-        };
-        assert!(shown.fill(center, held, book, BuildButtons::Hidden));
-        assert_eq!(
-            shown.buttons,
-            [Button {
-                slot: 1,
-                action: train,
-                making: Making::Train
-            }]
-        );
-        assert!(shown.queue.is_empty());
         // A unit of no train or build shows nothing.
         let none = ActionSlots::new([]);
         let held = PanelUnit {
@@ -601,7 +568,7 @@ mod tests {
             queue: None,
             site: None,
         };
-        assert!(!shown.fill(wall, held, book, BuildButtons::Shown));
+        assert!(!shown.fill(wall, held, book));
         assert_eq!(shown, Shown::default());
         // A site shows its row alone, though its type trains.
         let site = Site::new(build, Rank::FIRST, Num::ZERO, &[], None);
@@ -610,7 +577,7 @@ mod tests {
             queue: Some(&queue),
             site: Some(&site),
         };
-        assert!(shown.fill(wall, held, book, BuildButtons::Shown));
+        assert!(shown.fill(wall, held, book));
         assert_eq!(
             shown,
             Shown {

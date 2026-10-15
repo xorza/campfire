@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, MapName, SegmentSeed, StateHash, Ticks, Version};
+use campfire_common::{MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -32,8 +32,11 @@ const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
 const RELEASE: Version = Version::new(0, 1, 0);
 /// What the terms carry of the visibility, which the protocol does not read.
 const VISIBILITY: [u8; 3] = [7, 0, 1];
-const MODE: Fingerprint = Fingerprint::new([51; 32]);
-const DEPENDENCIES: [Fingerprint; 2] = [Fingerprint::new([52; 32]), Fingerprint::new([53; 32])];
+const MODE: PackageFingerprint = PackageFingerprint::new([51; 32]);
+const DEPENDENCIES: [PackageFingerprint; 2] = [
+    PackageFingerprint::new([52; 32]),
+    PackageFingerprint::new([53; 32]),
+];
 
 /// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.
 fn x_only(byte: u8) -> XOnlyPublicKey {
@@ -640,9 +643,9 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.inputs.max_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         |terms| terms.release = Version::new(0, 1, 1),
-        |terms| terms.mode = Fingerprint::new([50; 32]),
+        |terms| terms.mode = PackageFingerprint::new([50; 32]),
         |terms| terms.map = MapName::new("lanes").unwrap(),
-        |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),
+        |terms| terms.dependencies[1] = PackageFingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
         |terms| terms.slots[1] = SlotPlan::Bot,
         |terms| terms.visibility[1] = 1,

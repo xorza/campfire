@@ -37,7 +37,6 @@ clap.workspace = true
 derive_more.workspace = true
 miniz_oxide.workspace = true
 serde.workspace = true
-sha2.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
