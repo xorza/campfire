@@ -127,5 +127,4 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 
 D5 shapes it. Files: `docs/design/02-engine-core.md`, `docs/design/12-zero-hour.md`, `capabilities/src/{lib.rs,release/tests/mod.rs}`, `capabilities/areas/src/lib.rs`, `base/common/src/tests.rs`, `source/checks/*`.
 
-- [ ] D5: design 12 D7 stays. `PLAN.md` holds the fingerprint comparison and the parity suite as open steps, and design 02's dependency list of `zero-hour-check` follows the code.
 - [ ] `checks/zero-hour-check/src/main.rs`, `lan-check/src/run_dir.rs`: one run-root helper, in a home the design names.

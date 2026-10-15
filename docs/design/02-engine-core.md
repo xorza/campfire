@@ -43,6 +43,8 @@ flowchart TB
     import --> store
     lancheck --> verifier
     lancheck --> net
+    zerohourcheck --> import
+    zerohourcheck --> harness
     server --> store
     net --> store
     runner --> package
@@ -120,7 +122,7 @@ A module is built when the workspace has its crate, `campfire-<module>`, in a fo
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-**Dependencies.** `server` and `client` → `net` → `runner` → `package` → `capabilities` → `script`, `sim` → `math` → `common`; `sim` → `schedule`; `runner` → `protocol` → `common`; `net` → `quic` → `common`, `store`, `log`; every crate that serializes → `codec`; `verifier` → `runner`; `package-disk` → `package`, `store`; `server`, `client`, `import`, `verifier` → `package-disk`; `import`, `client` → `client-files` → `sim`. `server`, `client`, `net`, `package-disk`, `verifier` and `lan-check` use `store`; `harness` uses every crate below it, with its `internals`; `zero-hour-check` uses `import`, `package-disk`, `store` and `harness`. `runner` and `net` take `package-disk` only under their `internals`, for their tests' packages. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate. `log` depends on `common`, and on `store` only under its `start` feature, which only the binaries turn on. A type enters `common` only when two crates that do not depend on each other both name it, as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` and `derive_more` alone, and, for the allocation audit behind `internals`, `backtrace`.
+**Dependencies.** `server` and `client` → `net` → `runner` → `package` → `capabilities` → `script`, `sim` → `math` → `common`; `sim` → `schedule`; `runner` → `protocol` → `common`; `net` → `quic` → `common`, `store`, `log`; every crate that serializes → `codec`; `verifier` → `runner`; `package-disk` → `package`, `store`; `server`, `client`, `import`, `verifier` → `package-disk`; `import`, `client` → `client-files` → `sim`. `server`, `client`, `net`, `package-disk`, `verifier` and `lan-check` use `store`; `harness` uses every crate below it, with its `internals`; `zero-hour-check` uses `import`, `client-files`, `package`, `package-disk`, `runner`, `values`, `common`, `store` and `harness`. `runner` and `net` take `package-disk` only under their `internals`, for their tests' packages. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate. `log` depends on `common`, and on `store` only under its `start` feature, which only the binaries turn on. A type enters `common` only when two crates that do not depend on each other both name it, as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` and `derive_more` alone, and, for the allocation audit behind `internals`, `backtrace`.
 
 ### The capabilities' crates
 
