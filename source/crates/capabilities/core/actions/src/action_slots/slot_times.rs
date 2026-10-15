@@ -273,13 +273,23 @@ impl SlotTimes {
             .indexed()
             .zip(times)
             .filter_map(move |((at, slot), time)| {
-                let rule = slot.action.and_then(|action| {
-                    let action = book.get(action).expect("a slot's action is in the book");
-                    action.values_at(slot.rank?)?.charges
-                });
-                let charges = time.charges_at(rule, now);
+                let charges = time.charges_at(slot.charge_rule(book), now);
                 (charges != time.charges).then_some((at, charges))
             })
+    }
+
+    /// The tick the next charge of a slot of `slots` comes back, as `book` gives its action's
+    /// rule at its rank: the earliest of the slots that hold fewer than their most; none when
+    /// each holds its most, or holds none.
+    pub(crate) fn next_charge(&self, slots: &ActionSlots, book: &ActionBook) -> Option<Tick> {
+        slots
+            .iter()
+            .zip(&self.0)
+            .filter_map(|(slot, time)| {
+                let (rule, charges) = (slot.charge_rule(book)?, time.charges?);
+                (charges.count < rule.max.get()).then_some(charges.next)
+            })
+            .min()
     }
 
     /// Sets the charges of `slot`.
