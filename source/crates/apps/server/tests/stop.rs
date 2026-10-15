@@ -18,7 +18,7 @@ use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
 use lightyear::link::{LinkStart, Linked};
 
-/// The longest each step waits, inside a test's bound of 1 s.
+/// The longest each step after the server's start waits, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
 
 /// Far more than the few lines of the server's start.
@@ -67,7 +67,18 @@ fn a_stop_closes_each_link_and_exits_with_its_code() {
             .spawn()
             .unwrap(),
     );
-    let listening = until("the server's start", || listening(&log));
+    // The start has no bound of its own: on macOS, the first start of a new binary waits for
+    // XProtect's scan of it, which scans one executable at a time, after the test binaries that
+    // nextest starts. Nextest's bound of the test ends a start that hangs.
+    let listening = loop {
+        if let Some(listening) = listening(&log) {
+            break listening;
+        }
+        if let Some(status) = server.0.try_wait().unwrap() {
+            panic!("the server exited before it listened: {status}");
+        }
+        thread::sleep(Duration::from_millis(1));
+    };
 
     let mut client = ClientApp::connect(&listening);
     until("the link", || client.update().linked.then_some(()));
