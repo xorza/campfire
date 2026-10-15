@@ -106,8 +106,6 @@ Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry
 
 Files: `sim/sim/src/{sim_world,state_registry/mod}.rs`, `test/harness/tests/runner/resume.rs`, `capabilities/combat/src/{dying,attacks}.rs`, `capabilities/core/declare/src/declare/{install_cx,role}.rs`, every module's `install`, `capabilities/abilities/src/lib.rs`, `capabilities/items/src/lib.rs`, `capabilities/vision/src/lib.rs`, `sim/sim/src/{capability,sim_rng}.rs`, `capabilities/src/release/*`, `capabilities/core/script/src/scripts/script_call.rs`, `capabilities/production/src/{trains,lib,production_orders}.rs`, `docs/design/14-replication-audiences.md`. Goldens: they move for the RNG key, and maybe for the order of deaths.
 
-- [ ] Guard: a restore target that spawns in reverse order, and the resume test compares its hashes.
-- [ ] `combat/src/dying.rs:42-52`: the deaths with no killer walk through `Ordered`.
 - [ ] `InstallCx`: install methods `systems`, `server` and `scripted`, and no `role()`. Then `abilities/src/lib.rs:83-98` (`run_toggles`) and `items/src/lib.rs:101-108` (`trade_items`) install through `server`, so an unscripted server runs them.
 - [ ] `vision/src/lib.rs:95`: `SeenBy`'s default is fixed at install by role. This removes the issue log's **Combat** item for vision. The other cases of that item (`Attacks::strike`, the held pass) take the same change.
 - [ ] `combat/src/attacks.rs:186-197`: toggles pay only for the attacks that strike, by `Wielded::strikes`.

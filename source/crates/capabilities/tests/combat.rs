@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
+use bevy_ecs::component::Component;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
 use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
@@ -807,6 +808,10 @@ fn shield_data() -> ModifierData {
     }
 }
 
+/// A part of no meaning, which moves the unit that takes it to another archetype.
+#[derive(Component, Debug)]
+struct Apart;
+
 const ATTACK: DamageCause = DamageCause::Attack {
     roll: Num::ZERO,
     rank: Rank::FIRST,
@@ -859,6 +864,24 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     );
     let attackers = game.try_part::<RecentAttackers>(guarded).unwrap();
     assert_eq!(attackers.iter().count(), 0);
+    // Two units at zero health that no strike took there die with no killer, in stable-id order,
+    // though the lower id's part, inserted after the higher id's spawn, puts it in a later
+    // archetype, which a query meets after.
+    let first = Mode::spawn(&mut game, dummy, (6, 0, 0), Team::new(0), ());
+    let second = Mode::spawn(&mut game, dummy, (7, 0, 0), Team::new(0), ());
+    assert!(first < second);
+    for id in [second, first] {
+        let spent = game.part::<Life>(id).spent(Num::int(100));
+        game.insert_parts(id, spent);
+    }
+    game.insert_parts(first, Apart);
+    game.run_until(4);
+    let died: Vec<_> = game
+        .resource::<Deaths>()
+        .iter()
+        .map(|death| (death.fallen.id, death.killer))
+        .collect();
+    assert_eq!(died, [(first, None), (second, None)]);
 }
 
 #[test]

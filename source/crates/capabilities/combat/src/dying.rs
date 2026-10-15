@@ -1,8 +1,8 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::ActionSlots;
-use campfire_sim::{Position, SimTick, StableId};
+use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
 use campfire_units::{Dead, Owner, SpawnPoint};
 use campfire_values::Team;
@@ -20,7 +20,8 @@ pub struct Dying;
 impl Dying {
     /// A unit at zero life dies: its attack target, and the action it ordered or has under way,
     /// end, so nothing it began goes on after a respawn, and the Mode stage learns of it; one no
-    /// strike took there died with no killer.
+    /// strike took there died with no killer. They die in stable-id order, which the record of
+    /// deaths keeps for the hooks the mode runs and the deaths it carries to the next tick.
     pub(super) fn die(
         mut commands: Commands<'_, '_>,
         mut deaths: ResMut<'_, Deaths>,
@@ -37,12 +38,16 @@ impl Dying {
             ),
             (With<OnDeath>, Without<Dead>),
         >,
+        mut order: Local<'_, Ordered>,
     ) {
         deaths.index_killed();
-        for (entity, &id, life, slots, team, owner) in &mut units {
-            if life.above_zero() {
-                continue;
-            }
+        let dying = units
+            .iter()
+            .filter(|(_, _, life, ..)| !life.above_zero())
+            .map(|(entity, &id, ..)| Keyed { id, entity });
+        for &Keyed { entity, id } in order.sort(dying) {
+            let (_, _, _, slots, team, owner) =
+                units.get_mut(entity).expect("a dying unit of the order");
             if let Some(mut slots) = slots {
                 slots.set_attack_target(None);
                 slots.stop();
