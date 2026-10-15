@@ -1,9 +1,6 @@
 use std::ops::Neg;
 
-#[cfg(not(target_arch = "x86_64"))]
-use crate::direction::unit_divisor::aarch64::UnitDivisor;
-#[cfg(target_arch = "x86_64")]
-use crate::direction::unit_divisor::x86_64::UnitDivisor;
+use crate::direction::unit_divisor::UnitDivisor;
 use crate::root;
 use crate::root::{RoundedRoot, WideRoot};
 use crate::rounding::Rounding;

@@ -4,9 +4,17 @@
 //! which integer steps correct exactly.
 
 #[cfg(any(test, not(target_arch = "x86_64")))]
-pub(super) mod aarch64;
+mod aarch64;
 #[cfg(target_arch = "x86_64")]
-pub(super) mod x86_64;
+mod x86_64;
+
+#[cfg(not(target_arch = "x86_64"))]
+use crate::direction::unit_divisor::aarch64 as platform;
+#[cfg(target_arch = "x86_64")]
+use crate::direction::unit_divisor::x86_64 as platform;
+
+/// The divisor of the platform the crate builds for.
+pub(super) type UnitDivisor = platform::UnitDivisor;
 
 #[cfg(test)]
 mod tests;

@@ -10,7 +10,6 @@ pub struct JsonText<'a, T>(pub &'a T);
 
 impl<T: Serialize> fmt::Display for JsonText<'_, T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let text = Json::write(self.0);
-        f.write_str(&text)
+        Json::write_into(self.0, f)
     }
 }
