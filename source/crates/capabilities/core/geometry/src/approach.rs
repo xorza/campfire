@@ -20,17 +20,17 @@ enum Stretch {
 }
 
 impl Approach {
-    /// The approach of the path `path` to a circle of `radius` centred `centre` from its start,
-    /// against `reach`: to the centre against the sum, which past every number reaches every
+    /// The approach of the path `path` to a circle of `radius` centered `center` from its start,
+    /// against `reach`: to the center against the sum, which past every number reaches every
     /// distance.
-    pub(crate) fn of_circle(path: Vec3, centre: Vec3, reach: Num, radius: Num) -> Approach {
-        Approach::of(path, centre, Approach::circle_reach(reach, radius))
+    pub(crate) fn of_circle(path: Vec3, center: Vec3, reach: Num, radius: Num) -> Approach {
+        Approach::of(path, center, Approach::circle_reach(reach, radius))
     }
 
     /// `of_circle`'s order alone, which takes no direction where the path comes nearest at an
     /// end.
-    pub(crate) fn nearest_of_circle(path: Vec3, centre: Vec3, reach: Num, radius: Num) -> Ordering {
-        Approach::nearest_of(path, centre, Approach::circle_reach(reach, radius))
+    pub(crate) fn nearest_of_circle(path: Vec3, center: Vec3, reach: Num, radius: Num) -> Ordering {
+        Approach::nearest_of(path, center, Approach::circle_reach(reach, radius))
     }
 
     /// The approach of the path `path`, the offset from its start to its end, to the point `off`

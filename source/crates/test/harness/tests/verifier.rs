@@ -616,7 +616,7 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     //
     // The hero walks ¼ m a tick from (0, −2) in tick 0 and stands at (1, −2) from tick 3. Tower 1
     // takes the nearest hero that 6.25 m from the edge of its body reaches, 6.25 + 0.9 + 0.5 =
-    // 7.65 m between centres: in tick 1 the hero at 0.25 is √(7.75² + 1) ≈ 7.81 m away, beyond; in
+    // 7.65 m between centers: in tick 1 the hero at 0.25 is √(7.75² + 1) ≈ 7.81 m away, beyond; in
     // tick 9, at 1, √(7² + 1) ≈ 7.07 m, within: no creep is in reach, so it takes the hero. Its
     // weapon's reach is the same 7.65 m, so its attacks start in ticks 9 and 46, and fire 5 ticks
     // later, from (8, −3), at the hero 7.07 m away. A projectile of no width flies 12 m/s ÷ 30,
@@ -626,7 +626,7 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     //
     // The east creeps walk ⅛ m a tick from tick 1, where their bodies, both at 15.875, part to
     // 15.525 and 16.225; each thinks in tick t where the tick before left it, and takes the hero
-    // that its 6 m aggro range reaches from its edge, 6 + 0.35 + 0.5 = 6.85 m between centres.
+    // that its 6 m aggro range reaches from its edge, 6 + 0.35 + 0.5 = 6.85 m between centers.
     // Creep 5 thinks in tick 69 at 15.525 − 67/8 ≈ 7.15, √(6.15² + 2²) ≈ 6.47 m from the hero,
     // within, and in tick 61 at 8.15, √(7.15² + 4) ≈ 7.42 m, beyond: it takes the hero in tick 69.
     // Creep 6 thinks in tick 70 at 16.225 − 68/8 = 7.725, √(6.725² + 4) ≈ 7.02 m, beyond: it takes

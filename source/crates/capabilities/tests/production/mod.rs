@@ -49,13 +49,16 @@ fn shop_match_of(declared: &[Capability]) -> Match {
     Match::unscripted(declared)
 }
 
-/// A shop's match: a grunt type to train, a circle of 0.5 m that walks 1 m a tick, a producer type of a queue of 3,
-/// a depot and a forge type for supply and requirements to count, and the gold its players hold;
-/// the mode spawns each type.
+/// A shop's match: a grunt type to train, a circle of 0.5 m that walks 1 m a tick; a producer
+/// type of a queue of 3, and a gate, a box of 4 by 2 m that trains as the barracks does, out of
+/// its exit 3 m along its frame's x, and to its default rally point 3 m back; a depot and a forge
+/// type for supply and requirements to count; and the gold its players hold. The mode spawns each
+/// type.
 #[derive(Debug, Clone, Copy)]
 struct Shop {
     grunt: UnitType,
     barracks: UnitType,
+    gate: UnitType,
     depot: UnitType,
     forge: UnitType,
     gold: ResourceId,
@@ -69,10 +72,25 @@ impl Shop {
         let barracks = Units::load_type(game, TypeScope::Mode, "barracks", &data);
         let depot = Units::load_type(game, TypeScope::Mode, "depot", &data);
         let forge = Units::load_type(game, TypeScope::Mode, "forge", &data);
+        let gate = Units::load_type(game, TypeScope::Mode, "gate", &data);
         let production = ProductionData {
             queue: NonZeroU8::new(3).unwrap(),
+            exit: None,
+            rally: None,
         };
         Shop::give(game, barracks, production);
+        let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
+        let gated = ProductionData {
+            exit: frame(3),
+            rally: frame(-3),
+            ..production
+        };
+        Shop::give(game, gate, gated);
+        Shop::give(
+            game,
+            gate,
+            BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+        );
         Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
         Mode::load_test_units(game);
@@ -80,6 +98,7 @@ impl Shop {
         Shop {
             grunt,
             barracks,
+            gate,
             depot,
             forge,
             gold,

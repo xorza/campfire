@@ -76,7 +76,7 @@ impl VisionApi {
         let nearest = MemberSpec::call(
             "nearest_visible",
             &[&["of", "radius", "filter"]],
-            "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
+            "the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
         );
         api.call(
             nearest,

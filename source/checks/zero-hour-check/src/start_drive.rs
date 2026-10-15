@@ -97,14 +97,14 @@ impl StartDrive {
             });
             return None;
         };
-        let centre = units.pos(building);
-        if [centre.x, centre.z] != [start.x, start.z] {
-            failures.push(Failure::BuildingPlace(centre));
+        let center = units.pos(building);
+        if [center.x, center.z] != [start.x, start.z] {
+            failures.push(Failure::BuildingPlace(center));
         }
         let shape = |id| Body::shape_of(units.unit(id).get::<Body>());
         let clear = match (shape(building), shape(dozer)) {
             (Shape::Box(body), Shape::Circle(radius)) => {
-                body.nearest(centre, units.pos(dozer), radius.get()) != Ordering::Less
+                body.nearest(center, units.pos(dozer), radius.get()) != Ordering::Less
             }
             _ => false,
         };

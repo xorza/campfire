@@ -120,7 +120,7 @@ fn overlapping_bodies_part_to_the_sum_of_their_radii() {
     ];
     assert_eq!(places(&slant), expected);
 
-    // Centres 1 bit apart along each axis are √2 bits apart. That offset made 33 554 432 bits
+    // Centers 1 bit apart along each axis are √2 bits apart. That offset made 33 554 432 bits
     // long is 2²⁴·√2 = 23 726 566.41 bits along each axis, rounded up 23 726 567: a change of
     // 23 726 566, split 11 863 283 each way. The pair ends 23 726 567·√2 = 33 554 432.84 bits
     // apart.

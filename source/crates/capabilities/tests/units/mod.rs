@@ -133,8 +133,8 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
         [high]
     );
 
-    // The nearest in turn as each despawns, by distance between centres: east and west tie at
-    // 4 m, and east has the lower id; far, its body's edge at 5 m as edge's centre is, is 6 m
+    // The nearest in turn as each despawns, by distance between centers: east and west tie at
+    // 4 m, and east has the lower id; far, its body's edge at 5 m as edge's center is, is 6 m
     // away.
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;
     let mut order = Vec::new();

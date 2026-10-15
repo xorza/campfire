@@ -38,6 +38,15 @@ pub(crate) struct Shader {
     pub(crate) texturing: bool,
 }
 
+/// What a shader's first stage draws of a stage of no texture: the vertices' light; nothing, of
+/// color and alpha 0; or the vertices' light of alpha 0.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum NullTexture {
+    Light,
+    Clear,
+    ClearLight,
+}
+
 /// A vertex material's colors: ambient, diffuse and emissive, each red, green and blue, and its
 /// opacity.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -120,6 +129,9 @@ const CUTOFF: f32 = 96.0 / 255.0;
 
 /// `GRADIENT_DISABLE`: the texture alone, its color and its alpha, as OpenGL's decal.
 const GRADIENT_DISABLE: u8 = 0;
+
+/// `GRADIENT_ADD`: the texture's color plus the vertices' light, its alpha times their opacity.
+const GRADIENT_ADD: u8 = 2;
 
 /// The detail color functions the install's shaders use: none, the first stage alone; scale, it
 /// times the detail; add, it plus the detail.
@@ -517,6 +529,18 @@ impl Shader {
     /// (`ShaderClass::Apply`); with no texture, the game draws the vertices' light.
     pub(crate) const fn unlit(self) -> bool {
         self.texturing && self.primary_gradient == GRADIENT_DISABLE
+    }
+
+    /// What its first stage draws of a stage that holds no texture (`TextureBaseClass::Apply_Null`),
+    /// which native Direct3D samples as the null vector, `(0, 0, 0, 0)`: with texturing off, the
+    /// vertices' light, as of any triangle; with it on, an alpha of 0, and a color of 0, but the
+    /// vertices' light under `GRADIENT_ADD`, which adds it to the texture's.
+    pub(crate) const fn null_texture(self) -> NullTexture {
+        match (self.texturing, self.primary_gradient) {
+            (false, _) => NullTexture::Light,
+            (true, GRADIENT_ADD) => NullTexture::ClearLight,
+            (true, _) => NullTexture::Clear,
+        }
     }
 
     /// Its blend, as a material file names it; `None` for a pair of factors no shipped shader

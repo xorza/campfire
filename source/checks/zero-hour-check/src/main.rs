@@ -57,10 +57,12 @@ const WALLS: usize = 286;
 /// ticks a second, which the check pins: what it took, 57.2 s.
 const DRIVE_TICKS: u64 = 1717;
 
-/// The looks the import gives night or snow variants, of unit types and of client objects, and
-/// the maps of night and of snow among the 150.
+/// The looks the import gives night or snow variants, of unit types and of client objects; the
+/// unit types' looks of no models, of objects that draw nothing; and the maps of night and of
+/// snow among the 150.
 const LOOKS: LookCounts = LookCounts {
     varied: 382,
+    empty: 273,
     night: 15,
     snowy: 17,
 };
@@ -163,7 +165,8 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     if markers != 28 {
         failures.push(Failure::Markers(markers));
     }
-    // The looks that draw other models on a night or snowy map, and the maps of each.
+    // The looks that draw other models on a night or snowy map, those that draw nothing, and the
+    // maps of night and of snow.
     let unit_looks: ClientUnits = read_toml(files, "client/units.toml", Toml::parse)?;
     let varied = unit_looks
         .units
@@ -171,9 +174,15 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         .chain(unit_looks.objects.values())
         .filter(|look| !look.variants.is_empty())
         .count();
+    let empty = unit_looks
+        .units
+        .values()
+        .filter(|look| look.models.is_empty() && look.variants.is_empty())
+        .count();
     let [night, snow] = ["night", "snow"].map(|name| DeclaredName::new(name).expect("a name"));
     let mut drawn = LookCounts {
         varied,
+        empty,
         night: 0,
         snowy: 0,
     };
@@ -188,6 +197,7 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     }
     info!(
         varied = drawn.varied,
+        empty = drawn.empty,
         night = drawn.night,
         snowy = drawn.snowy,
         "the looks of night and snow"

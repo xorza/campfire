@@ -33,7 +33,7 @@ impl Shape {
 
     /// The point of the shape at `pos` nearest `to` on the ground plane, at `pos`'s height: `to`
     /// itself inside; a box's nearest point, each coordinate rounded to the nearest bit; a
-    /// circle's, a step of its radius from its centre toward `to`, as a walker steps.
+    /// circle's, a step of its radius from its center toward `to`, as a walker steps.
     pub fn nearest_point(&self, pos: Vec3, to: Vec3) -> Vec3 {
         let ground = Vec3::new(to.x, pos.y, to.z);
         match self {

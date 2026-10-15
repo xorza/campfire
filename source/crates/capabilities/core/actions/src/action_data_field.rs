@@ -35,6 +35,7 @@ campfire_common::enum_all! {
         UnitType,
         Requires,
         Construct,
+        Start,
         StartLife,
         CancelRefund,
         Placement,
@@ -242,6 +243,13 @@ const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
         capability: Some(Production),
         uses: [Refuses, Refuses, Refuses, Refuses, Needs, Refuses],
         given: |data| data.construct.is_some(),
+    },
+    FieldRule {
+        field: ActionDataField::Start,
+        name: "start",
+        capability: Some(Production),
+        uses: [Refuses, Refuses, Refuses, Refuses, Takes, Refuses],
+        given: |data| data.start.is_some(),
     },
     FieldRule {
         field: ActionDataField::StartLife,

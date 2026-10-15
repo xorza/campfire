@@ -214,3 +214,22 @@ fn a_wide_value_rounds_to_the_nearest_num_ties_to_even() {
         assert_eq!(to_num_narrow(value), Num::from_bits(bits), "{value}");
     }
 }
+
+#[test]
+fn a_turn_in_degrees_is_exact_at_each_quarter_and_whole_turns_turn_alike() {
+    let at = |degrees: i64| SinCos::of_degrees(Num::int(degrees));
+    let exact = |sin: i64, cos: i64| SinCos {
+        sin: Num::int(sin),
+        cos: Num::int(cos),
+    };
+    assert_eq!(at(0), exact(0, 1));
+    assert_eq!(at(90), exact(1, 0));
+    assert_eq!(at(180), exact(0, -1));
+    assert_eq!(at(270), exact(-1, 0));
+    assert_eq!(at(-90), at(270));
+    assert_eq!(at(450), at(90));
+    // 30° is π/6 radians, 30 × π / 180 rounded once, whose `sin_cos` it gives.
+    let sixth = Num::int(30).checked_mul_div_int(Num::PI, 180).unwrap();
+    assert_eq!(at(30), sixth.sin_cos());
+    assert_eq!(at(-330), at(30));
+}

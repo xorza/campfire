@@ -44,6 +44,8 @@ fn on_mode_input(ctx, player, name, value) {
     let hero_type = *game.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
+        exit: None,
+        rally: None,
     };
     let mut producers = game.resource_mut::<ByType<ProductionData>>();
     producers.set(hero_type, production);

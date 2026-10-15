@@ -12,20 +12,31 @@ use campfire_navigation::{Navigation, Walker};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
-use campfire_units::{Body, Dead, Destination, MapBook, Owner, SpawnAt, Spawner};
+use campfire_units::{Body, Dead, Destination, Facing, MapBook, Owner, SpawnAt, Spawner};
 use campfire_values::{Relation, Team, UnitType};
 
+use crate::frame_point::FramePoint;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::held::Held;
 use crate::holdings::Holdings;
 use crate::node_book::NodeBook;
 use crate::production_books::ProductionBooks;
+use crate::production_data::ProductionData;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
 use crate::supply::{CountedUnit, Supply};
 use crate::supply_cost_book::SupplyUnit;
 use crate::train_queue::{Queued, TrainQueue};
+
+/// Where a producer's trained units come out and where they go, on the ground plane: its exit
+/// point, and the rally point its player set, else its default one; none of a producer that
+/// names neither.
+#[derive(Debug, Clone, Copy)]
+struct TrainPlaces {
+    exit: Option<Vec3>,
+    rally: Option<Vec3>,
+}
 
 /// The parts of a unit supply counts, dead or not.
 pub(super) type Counted = (
@@ -223,8 +234,8 @@ impl Trains {
                 let producer = world.entity(entity);
                 let team = *producer.get::<Team>().expect("a producer has a team");
                 let owner = producer.get::<Owner>().map(|owner| owner.slot());
-                let rally = Self::rally_point(world, entity);
-                let pos = Self::spawn_place(world, entity, unit_type, rally);
+                let places = TrainPlaces::of(world, entity);
+                let pos = places.spawn_place(world, entity, unit_type);
                 let id = world.resource_mut::<IdAllocator>().allocate();
                 let at = SpawnAt {
                     id,
@@ -237,7 +248,7 @@ impl Trains {
                 let trained = spawner.spawn(world, at, ());
                 let gathers = Self::gather_at_rally(world, entity, trained);
                 if gathers.is_none()
-                    && let Some(to) = rally
+                    && let Some(to) = places.rally
                     && let Some(mut destination) = world.get_mut::<Destination>(trained)
                 {
                     let to = Vec3::new(to.x, pos.y, to.z);
@@ -301,27 +312,52 @@ impl Trains {
             }
         }
     }
+}
+
+impl TrainPlaces {
+    /// The places of the producer of `entity`: its exit point and its default rally point, of
+    /// its type's `production`, each turned with it and taken into the bounds; and its rally
+    /// point, where one is set to a point or a living unit, in place of the default.
+    fn of(world: &World, entity: Entity) -> TrainPlaces {
+        let producer = world.entity(entity);
+        let pos = producer.get::<Position>().expect("a producer stands").get();
+        let angle = producer
+            .get::<Facing>()
+            .map_or(Num::ZERO, |facing| facing.degrees());
+        let unit_type = *producer.get::<UnitType>().expect("a producer has a type");
+        let data = world.resource::<ByType<ProductionData>>().get(unit_type);
+        let bounds = &world.resource::<MapBook>().bounds;
+        let place = |point: Option<FramePoint>| {
+            let at = point?.placed(pos, angle);
+            Some(bounds.ground_point([at.x, at.z], at))
+        };
+        TrainPlaces {
+            exit: place(data.and_then(|data| data.exit)),
+            rally: Trains::rally_point(world, entity).or_else(|| place(data?.rally)),
+        }
+    }
 
     /// Where a unit of `unit_type` the producer of `entity` trains spawns: at the center of the
-    /// cell nearest the point of the producer's body nearest `rally`, among the cells its walker
-    /// may stand in, as a teleport finds its cell; at the producer's position with no rally
-    /// point, or no such cell. A box's nearest point rounds to the nearest bit; a circle's is a
-    /// step of its radius toward the rally point, as a walker steps.
-    fn spawn_place(
-        world: &World,
-        entity: Entity,
-        unit_type: UnitType,
-        rally: Option<Vec3>,
-    ) -> Vec3 {
+    /// cell nearest the exit point, or with none the point of the producer's body nearest the
+    /// rally point, among the cells its walker may stand in, as a teleport finds its cell; with
+    /// no such cell, or a unit that does not walk, at the exit point, or the producer's
+    /// position. With neither point, at the producer's position. A box's nearest point rounds to
+    /// the nearest bit; a circle's is a step of its radius toward the rally point, as a walker
+    /// steps.
+    fn spawn_place(self, world: &World, entity: Entity, unit_type: UnitType) -> Vec3 {
         let producer = world.entity(entity);
         let pos = producer.get::<Position>().expect("a producer stands").get();
         let walker = world
             .get_resource::<ByType<Walker>>()
             .and_then(|walkers| walkers.get(unit_type).copied());
-        let (Some(to), Some(walker)) = (rally, walker) else {
-            return pos;
+        let near = match (self.exit, self.rally) {
+            (Some(exit), _) => exit,
+            (None, Some(to)) => Body::shape_of(producer.get::<Body>()).nearest_point(pos, to),
+            (None, None) => return pos,
         };
-        let near = Body::shape_of(producer.get::<Body>()).nearest_point(pos, to);
-        Navigation::open_cell(world, walker, near).unwrap_or(pos)
+        let fallback = self.exit.unwrap_or(pos);
+        walker
+            .and_then(|walker| Navigation::open_cell(world, walker, near))
+            .unwrap_or(fallback)
     }
 }

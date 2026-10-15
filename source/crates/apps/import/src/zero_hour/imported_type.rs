@@ -44,7 +44,7 @@ enum TypeBody {
 }
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
-/// cells of 10 m on each side of a centre cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
+/// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
 /// one body for collision and pathfinding takes (design 17, D4).
 const MAX_WALKER: f32 = 25.0;
 

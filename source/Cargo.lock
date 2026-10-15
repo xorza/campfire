@@ -2782,6 +2782,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
+ "campfire-codec",
  "campfire-common",
  "campfire-declare",
  "campfire-geometry",

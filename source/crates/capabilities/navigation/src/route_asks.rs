@@ -231,9 +231,9 @@ impl RouteAsks {
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
-        let centre = GroupBox::of(self.members.iter().map(|member| member.pos))
+        let center = GroupBox::of(self.members.iter().map(|member| member.pos))
             .expect("a party has members")
-            .centre();
+            .center();
         self.shared.clear();
         self.layers.clear();
         for index in 0..self.members.len() {
@@ -243,7 +243,7 @@ impl RouteAsks {
                 .iter()
                 .any(|shared| shared.layer == member.walker.layer);
             if searched {
-                self.search(grid, statics, planner, party, member.walker.layer, centre);
+                self.search(grid, statics, planner, party, member.walker.layer, center);
             } else if planner.spent() {
                 return Planning::Spent;
             }
@@ -253,7 +253,7 @@ impl RouteAsks {
     }
 
     /// Plans the shared route of the members on `layer` to the party's goal, for the widest of
-    /// their walkers, from the member of that walker nearest `centre`, the lower stable id on a
+    /// their walkers, from the member of that walker nearest `center`, the lower stable id on a
     /// tie.
     fn search(
         &mut self,
@@ -262,7 +262,7 @@ impl RouteAsks {
         planner: &mut RoutePlanner,
         party: Party,
         layer: Layer,
-        centre: [Num; 2],
+        center: [Num; 2],
     ) {
         let on_layer = self
             .members
@@ -274,7 +274,7 @@ impl RouteAsks {
             .max()
             .expect("a layer of a member");
         let squared = |value: Num| u128::from(value.to_bits().unsigned_abs()).pow(2);
-        let distance = |pos: Vec3| squared(pos.x - centre[0]) + squared(pos.z - centre[1]);
+        let distance = |pos: Vec3| squared(pos.x - center[0]) + squared(pos.z - center[1]);
         let leader = on_layer
             .filter(|member| member.walker == widest)
             .min_by_key(|member| (distance(member.pos), member.id))

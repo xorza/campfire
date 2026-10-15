@@ -15,6 +15,7 @@ use serde::Deserialize;
 use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
+use crate::build_start::BuildStart;
 use crate::construct_data::ConstructData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
@@ -76,6 +77,8 @@ pub struct ActionData {
     pub requires: Option<RequiresData>,
     /// How a `build`'s site grows.
     pub construct: Option<ConstructData>,
+    /// When a `build` starts, as its builder arrives when absent.
+    pub start: Option<BuildStart>,
     /// The share of its life pool's maximum a `build`'s site starts with.
     pub start_life: Option<Share>,
     /// The share of the player resources a `build` paid that a cancel of its site returns, all
@@ -492,6 +495,7 @@ pub(crate) mod internals {
                 unit_type: None,
                 requires: None,
                 construct: None,
+                start: None,
                 start_life: None,
                 cancel_refund: None,
                 placement: None,

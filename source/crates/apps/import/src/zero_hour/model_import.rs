@@ -16,7 +16,7 @@ use crate::zero_hour::hlod::SubObject;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_parts::{ModelParts, Part, PivotName};
 use crate::zero_hour::pose::Pose;
-use crate::zero_hour::w3d_mesh::{Pass, Shader, Stage, VertexMaterial, W3dMesh};
+use crate::zero_hour::w3d_mesh::{NullTexture, Pass, Shader, Stage, VertexMaterial, W3dMesh};
 
 /// A model the objects name, converted: its glTF, the material files its shaders need, the
 /// parts its default look reads, and the textures its meshes name that no archive holds, which
@@ -548,8 +548,9 @@ impl ModelBuilder {
     /// The glTF material of `key`, the model's `<name>_<index>`, made at its first use; a material
     /// file beside it if its shader is more than glTF's material says. It is rough, not metallic,
     /// and of no specular, as no shader of the game turns its specular on; unlit, white and of no
-    /// emissive light, when its shader draws its texture alone; and of `MissingTexture`'s color
-    /// times its own in place of a texture no archive holds (design 12, D13).
+    /// emissive light, when its shader draws its texture alone; of `MissingTexture`'s color
+    /// times its own in place of a texture no archive holds (design 12, D13); and, for a triangle
+    /// of no texture under a shader that textures, of what its shader draws of the null vector.
     fn material(&mut self, key: MaterialKey) -> Result<usize, ModelError> {
         if let Some(at) = self.keys.iter().position(|known| *known == key) {
             return Ok(at);
@@ -570,7 +571,7 @@ impl ModelBuilder {
         };
         let name = format!("{}_{}", self.name, self.keys.len());
         let unlit = colors.is_none();
-        let (lit_color, emissive) = match colors {
+        let (lit_color, lit_emissive) = match colors {
             None => ([1.0; 4], [0.0; 3]),
             Some(material) => {
                 let [r, g, b] = material.diffuse.map(ModelBuilder::linear);
@@ -578,9 +579,23 @@ impl ModelBuilder {
                 ([r, g, b, material.opacity], emissive)
             }
         };
-        let base_color = match key.surface {
-            Surface::Missing => [0, 1, 2, 3].map(|at| lit_color[at] * MISSING[at]),
-            Surface::Untextured | Surface::Texture { .. } => lit_color,
+        // A detail stage of no texture samples the null vector too, which its scale makes black
+        // and its add leaves as it was.
+        let null = match key.source {
+            Source::Pass { shader, .. } => shader.null_texture(),
+            Source::Detail { .. } => NullTexture::Clear,
+        };
+        let [r, g, b, _] = lit_color;
+        let (base_color, emissive) = match (&key.surface, null) {
+            (Surface::Missing, _) => (
+                [0, 1, 2, 3].map(|at| lit_color[at] * MISSING[at]),
+                lit_emissive,
+            ),
+            (Surface::Untextured, NullTexture::Clear) => ([0.0; 4], [0.0; 3]),
+            (Surface::Untextured, NullTexture::ClearLight) => ([r, g, b, 0.0], lit_emissive),
+            (Surface::Untextured, NullTexture::Light) | (Surface::Texture { .. }, _) => {
+                (lit_color, lit_emissive)
+            }
         };
         let texture = match &key.surface {
             Surface::Texture { path, flags } => Some(MaterialTexture {
@@ -995,7 +1010,8 @@ mod tests {
             glb.floats_of(skin.attributes.normal),
             [0.0, 1.0, 0.0].repeat(3)
         );
-        // The turret and the skin share the default material, white and opaque.
+        // The turret and the skin share one material: of no texture, under the default shader,
+        // which textures.
         assert_eq!((turret.material, skin.material, flash.material), (2, 2, 3));
     }
 
@@ -1027,14 +1043,7 @@ mod tests {
         assert_eq!(
             rows,
             [
-                (
-                    "tank_0",
-                    [1.0, half, 0.0, 1.0],
-                    None,
-                    "OPAQUE",
-                    false,
-                    [0.0; 3]
-                ),
+                ("tank_0", [0.0; 4], None, "OPAQUE", false, [0.0; 3]),
                 (
                     "tank_1",
                     [1.0, half, 0.0, 1.0],
@@ -1043,7 +1052,7 @@ mod tests {
                     false,
                     [0.0; 3]
                 ),
-                ("tank_2", [1.0; 4], None, "OPAQUE", false, [0.0; 3]),
+                ("tank_2", [0.0; 4], None, "OPAQUE", false, [0.0; 3]),
                 (
                     "tank_3",
                     [1.0, 0.0, 1.0, 127.0 / 255.0],
@@ -1356,6 +1365,113 @@ mod tests {
     }
 
     #[test]
+    fn a_triangle_of_no_texture_draws_what_its_shader_makes_of_the_null_vector() {
+        let scratch = Scratch::new();
+        fixture(&scratch);
+        let install = Install::open(&scratch.path("zh")).unwrap();
+        let assets = ModelAssets::new(&install).unwrap();
+        // Seven triangles of no texture, a diffuse of (255, 128, 0) and red emissive light, each
+        // under its shader: texturing off; texturing on, opaque, by an alpha test and by alpha,
+        // each modulating; adding, opaque; and two whose detail stages, of no texture either,
+        // scale and add.
+        let shaders = [
+            Shader {
+                texturing: false,
+                ..Shader::DEFAULT
+            },
+            Shader::DEFAULT,
+            Shader {
+                alpha_test: true,
+                ..Shader::DEFAULT
+            },
+            Shader {
+                src_blend: 2,
+                dest_blend: 5,
+                depth_write: false,
+                ..Shader::DEFAULT
+            },
+            // `GRADIENT_ADD`.
+            Shader {
+                primary_gradient: 2,
+                ..Shader::DEFAULT
+            },
+            // `DETAILCOLOR_SCALE` and `DETAILCOLOR_ADD`.
+            Shader {
+                detail_color: 2,
+                ..Shader::DEFAULT
+            },
+            Shader {
+                detail_color: 4,
+                ..Shader::DEFAULT
+            },
+        ];
+        let mesh = W3dMesh {
+            positions: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+            normals: vec![[0.0, 0.0, 1.0]; 3],
+            triangles: vec![[0, 1, 2]; 7],
+            shaders: shaders.into(),
+            materials: vec![VertexMaterial {
+                diffuse: [255, 128, 0],
+                emissive: [255, 0, 0],
+                ..VertexMaterial::DEFAULT
+            }],
+            passes: vec![Pass {
+                materials: Ids::One(0),
+                shaders: Ids::Each(vec![0, 1, 2, 3, 4, 5, 6]),
+                colors: None,
+                stage: None,
+                detail: Some(Stage {
+                    textures: Ids::One(Stage::NONE),
+                    coordinates: vec![[0.0; 2]; 3],
+                }),
+            }],
+            ..W3dMesh::named("null")
+        };
+        let mut builder = ModelBuilder {
+            name: "null".to_owned(),
+            glb: GlbBuilder::new(),
+            keys: Vec::new(),
+            materials: Vec::new(),
+            missing_textures: BTreeSet::new(),
+        };
+        builder.mesh(&mesh, None, &assets).unwrap();
+        let document = &builder.glb.document;
+        let rows: Vec<([f32; 4], &str, [f32; 3])> = document.meshes[0]
+            .primitives
+            .iter()
+            .map(|primitive| {
+                let material = &document.materials[primitive.material];
+                (
+                    material.pbr.base_color,
+                    material.alpha_mode,
+                    material.emissive,
+                )
+            })
+            .collect();
+        // Texturing off draws the vertices' light, as ever. Modulation draws the null vector:
+        // black and clear, which an opaque shader shows black, an alpha test discards and a
+        // blend by alpha shows as nothing. Addition keeps the light, of alpha 0, which an opaque
+        // shader shows whole. The two detail layers are the null vector, blended over their
+        // first passes, so the scale makes them black and the add leaves them as they were.
+        let half = f32::from(u16::try_from(Srgb::light(128)).unwrap()) / 65_536.0;
+        let lit = [1.0, half, 0.0, 1.0];
+        assert_eq!(
+            rows,
+            [
+                (lit, "OPAQUE", [1.0, 0.0, 0.0]),
+                ([0.0; 4], "OPAQUE", [0.0; 3]),
+                ([0.0; 4], "MASK", [0.0; 3]),
+                ([0.0; 4], "BLEND", [0.0; 3]),
+                ([1.0, half, 0.0, 0.0], "OPAQUE", [1.0, 0.0, 0.0]),
+                ([0.0; 4], "OPAQUE", [0.0; 3]),
+                ([0.0; 4], "OPAQUE", [0.0; 3]),
+                ([0.0; 4], "BLEND", [0.0; 3]),
+                ([0.0; 4], "BLEND", [0.0; 3]),
+            ]
+        );
+    }
+
+    #[test]
     fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         let scratch = Scratch::new();
         fixture(&scratch);
@@ -1413,18 +1529,23 @@ mod tests {
             ..W3dMesh::named("glow")
         };
         // A fade of one triangle: an opaque first pass of no texture, and a second by alpha,
-        // writing no depth, of its own vertex colors and alphas.
+        // writing no depth, of its own vertex colors and alphas, both of their shaders' texturing
+        // off.
+        let untextured = Shader {
+            texturing: false,
+            ..Shader::DEFAULT
+        };
         let blended = Shader {
             src_blend: 2,
             dest_blend: 5,
             depth_write: false,
-            ..Shader::DEFAULT
+            ..untextured
         };
         let fade_mesh = W3dMesh {
             positions: vec![[0.0; 3], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
             normals: vec![[0.0, 0.0, 1.0]; 3],
             triangles: vec![[0, 1, 2]],
-            shaders: vec![Shader::DEFAULT, blended],
+            shaders: vec![untextured, blended],
             passes: vec![
                 pass(Ids::One(0), None, None, None),
                 pass(Ids::One(1), Some(vec![[255, 255, 255, 64]; 3]), None, None),

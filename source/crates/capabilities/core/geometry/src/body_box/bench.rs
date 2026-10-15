@@ -59,23 +59,23 @@ pub(crate) fn body_box(c: &mut Criterion) {
     let reach = Num::int(3);
     group.bench_function("reach", |bench| {
         bench.iter(|| {
-            for (body, centre, at) in &points {
-                black_box(body.nearest(*centre, black_box(*at), reach));
+            for (body, center, at) in &points {
+                black_box(body.nearest(*center, black_box(*at), reach));
             }
         });
     });
     let others = scene(2);
     group.bench_function("overlap", |bench| {
         bench.iter(|| {
-            for ((body, centre, _), (other, other_centre, _)) in points.iter().zip(&others) {
-                black_box(body.overlaps(*centre, other, black_box(*other_centre)));
+            for ((body, center, _), (other, other_center, _)) in points.iter().zip(&others) {
+                black_box(body.overlaps(*center, other, black_box(*other_center)));
             }
         });
     });
     group.bench_function("reach_box", |bench| {
         bench.iter(|| {
-            for ((body, centre, _), (other, other_centre, _)) in points.iter().zip(&others) {
-                black_box(body.nearest_box(*centre, other, black_box(*other_centre), reach));
+            for ((body, center, _), (other, other_center, _)) in points.iter().zip(&others) {
+                black_box(body.nearest_box(*center, other, black_box(*other_center), reach));
             }
         });
     });

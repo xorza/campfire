@@ -163,13 +163,13 @@ pub(crate) mod internals {
             Metric::Planar.reaches(Placed::new(from, Body::shape_of(from_body)), range, bound)
         }
 
-        /// Whether this circle at `pos` overlaps the box `body` at `centre`: a body collision
+        /// Whether this circle at `pos` overlaps the box `body` at `center`: a body collision
         /// left inside the box.
-        pub fn sinks_into(&self, pos: Vec3, body: &Body, centre: Vec3) -> bool {
+        pub fn sinks_into(&self, pos: Vec3, body: &Body, center: Vec3) -> bool {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };
-            boxed.nearest(centre, pos, radius.get()) == Ordering::Less
+            boxed.nearest(center, pos, radius.get()) == Ordering::Less
         }
     }
 }

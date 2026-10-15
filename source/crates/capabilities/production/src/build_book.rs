@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use campfire_actions::BuildStart;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{Filter, View};
@@ -8,8 +9,8 @@ use campfire_sim::Capability;
 use campfire_units::BodyForm;
 use campfire_values::{ActionId, Share};
 
-/// What each build places and how its site grows, by action, its rates and its placement's
-/// rules one run after another: package data, not state.
+/// What each build places, when it starts and how its site grows, by action, its rates and its
+/// placement's rules one run after another: package data, not state.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct BuildBook {
     /// By action, as the book loads them in order.
@@ -22,6 +23,7 @@ pub struct BuildBook {
 struct Stored {
     action: ActionId,
     form: BodyForm,
+    start: BuildStart,
     style: StoredStyle,
     start_life: Option<Share>,
     refund: Share,
@@ -59,6 +61,7 @@ pub struct PlacementCheck {
 pub struct BuildSpec<'a> {
     /// The building's box, before its angle turns it.
     pub(crate) form: BodyForm,
+    pub(crate) start: BuildStart,
     pub(crate) style: Style<'a>,
     /// The share of its life pool's maximum a site starts with, none for a type without it.
     pub(crate) start_life: Option<Share>,
@@ -72,6 +75,7 @@ pub struct BuildSpec<'a> {
 #[derive(Debug, Clone)]
 pub struct NewBuild<'a> {
     pub form: BodyForm,
+    pub start: BuildStart,
     pub style: Style<'a>,
     pub start_life: Option<Share>,
     pub refund: Share,
@@ -101,6 +105,7 @@ impl BuildBook {
         self.specs.push(Stored {
             action,
             form: build.form,
+            start: build.start,
             style,
             start_life: build.start_life,
             refund: build.refund,
@@ -124,6 +129,7 @@ impl BuildBook {
         };
         Some(BuildSpec {
             form: spec.form,
+            start: spec.start,
             style,
             start_life: spec.start_life,
             refund: spec.refund,
@@ -168,6 +174,7 @@ mod tests {
         {
             let build = NewBuild {
                 form: BodyForm::box_sized([Num::ONE, Num::ONE]).unwrap(),
+                start: BuildStart::Arrival,
                 style,
                 start_life: None,
                 refund: Share::ALL,

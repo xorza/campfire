@@ -1,6 +1,6 @@
 use std::env;
 use std::fmt::{self, Write as _};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use campfire_capabilities::Match;
 use campfire_combat::Deaths;
@@ -137,19 +137,40 @@ impl Golden {
     /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in.
     pub(crate) fn check(&self, name: &str) {
         let path = Golden::path(name);
+        let lines = self.lines();
+        let blessed = PinnedFile::new(&path)
+            .bless(lines.as_bytes())
+            .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
+        if !blessed {
+            self.compare_lines(name, &path, &lines);
+        }
+    }
+
+    /// Compares the record with the golden file `name`, which another test of the same match
+    /// writes, and never writes it, so no two tests write one file at once: with
+    /// `CAMPFIRE_BLESS=1` it compares nothing, as the file it reads is being written again.
+    pub(crate) fn compare(&self, name: &str) {
+        if !PinnedFile::blessing() {
+            self.compare_lines(name, &Golden::path(name), &self.lines());
+        }
+    }
+
+    /// The record's lines as its golden file holds them: each tick, its state hash and its
+    /// behaviour digest, each cut to its first digits.
+    fn lines(&self) -> String {
         let mut lines = String::new();
         for (tick, at) in self.ticks.iter().enumerate() {
             let state = &at.state_hash.to_string()[..DIGITS];
             let behaviour = &at.behaviour.to_string()[..DIGITS];
             writeln!(lines, "{tick} {state} {behaviour}").expect("text writes into a string");
         }
-        let blessed = PinnedFile::new(&path)
-            .bless(lines.as_bytes())
-            .unwrap_or_else(|error| panic!("{}", ErrorReport::of(&error)));
-        if blessed {
-            return;
-        }
-        let pinned = InputFile::read_text(&path, Golden::MAX_LEN).unwrap_or_else(|error| {
+        lines
+    }
+
+    /// Asserts that the golden file `name` at `path` holds `lines`, naming the first tick each
+    /// column differs in.
+    fn compare_lines(&self, name: &str, path: &Path, lines: &str) {
+        let pinned = InputFile::read_text(path, Golden::MAX_LEN).unwrap_or_else(|error| {
             panic!(
                 "{}; run with CAMPFIRE_BLESS=1 to write it",
                 ErrorReport::of(&error)

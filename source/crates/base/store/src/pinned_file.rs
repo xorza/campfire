@@ -34,7 +34,7 @@ impl<'a> PinnedFile<'a> {
     }
 
     /// Whether the run writes the pinned files again, by `CAMPFIRE_BLESS`.
-    fn blessing() -> bool {
+    pub fn blessing() -> bool {
         let value = env::var_os(PinnedFile::BLESS);
         let value = match value.as_deref().map(OsStr::to_str) {
             None => BlessValue::Unset,

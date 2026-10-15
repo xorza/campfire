@@ -81,7 +81,7 @@ impl BodyBox {
         if square(width) + square(height) > square(BodyBox::MAX_DIAGONAL) {
             return None;
         }
-        let SinCos { sin, cos } = BodyBox::turn(angle);
+        let SinCos { sin, cos } = SinCos::of_degrees(angle);
         let half = |size: Num, by: Num| {
             size.checked_mul_div_int(by, 2)
                 .expect("half a size within 4,094 m times at most 1 fits")
@@ -115,37 +115,6 @@ impl BodyBox {
         (bound <= MAX_BOUND).then_some(BodyBox { half, bound })
     }
 
-    /// The sine and the cosine of `angle` degrees, exact at each multiple of 90°.
-    fn turn(angle: Num) -> SinCos {
-        const FULL: i64 = 360 << Num::FRAC_BITS;
-        const QUARTER: i64 = 90 << Num::FRAC_BITS;
-        let degrees = angle.to_bits().rem_euclid(FULL);
-        if degrees % QUARTER == 0 {
-            return match degrees / QUARTER {
-                0 => SinCos {
-                    sin: Num::ZERO,
-                    cos: Num::ONE,
-                },
-                1 => SinCos {
-                    sin: Num::ONE,
-                    cos: Num::ZERO,
-                },
-                2 => SinCos {
-                    sin: Num::ZERO,
-                    cos: -Num::ONE,
-                },
-                _ => SinCos {
-                    sin: -Num::ONE,
-                    cos: Num::ZERO,
-                },
-            };
-        }
-        let radians = Num::from_bits(degrees)
-            .checked_mul_div_int(Num::PI, 180)
-            .expect("an angle below 360° fits in radians");
-        radians.sin_cos()
-    }
-
     pub const fn half_edges(&self) -> [[Num; 2]; 2] {
         self.half
     }
@@ -169,11 +138,11 @@ impl BodyBox {
         })
     }
 
-    /// How the distance from `pos` to the box at `centre` lies against `reach`: past it when `pos`
+    /// How the distance from `pos` to the box at `center` lies against `reach`: past it when `pos`
     /// lies past the box's extent and the reach along an axis, as the distance is at least that
     /// gap; else as the nearest of the box's features lies against it.
-    pub fn nearest(&self, centre: Vec3, pos: Vec3, reach: Num) -> Ordering {
-        let off = flat(pos) - flat(centre);
+    pub fn nearest(&self, center: Vec3, pos: Vec3, reach: Num) -> Ordering {
+        let off = flat(pos) - flat(center);
         let extent = self.extent();
         let reach_bits = reach.to_bits();
         let far = |axis: usize| {
@@ -190,11 +159,11 @@ impl BodyBox {
         edges.against(off, &mut lines)
     }
 
-    /// The point of the box at `centre` nearest `pos`, each coordinate rounded to the nearest bit:
+    /// The point of the box at `center` nearest `pos`, each coordinate rounded to the nearest bit:
     /// `pos` itself inside.
-    pub fn nearest_point(&self, centre: Vec3, pos: Vec3) -> Vec3 {
+    pub fn nearest_point(&self, center: Vec3, pos: Vec3) -> Vec3 {
         let frame = self.frame();
-        let off = flat(pos) - flat(centre);
+        let off = flat(pos) - flat(center);
         let corners = frame.corners();
         let point = match frame
             .nearest_to(off, &mut HalfDirections::new(frame))
@@ -210,17 +179,17 @@ impl BodyBox {
                 start + along_edge.map(|axis| Rounding::NearestEven.divide(axis * along, length))
             }
         };
-        let ground = point + flat(centre);
+        let ground = point + flat(center);
         Vec3::new(Num::from_bits(ground[0]), pos.y, Num::from_bits(ground[1]))
     }
 
-    /// How the straight path from `from` to `to` comes to the box at `centre`, against `reach`:
+    /// How the straight path from `from` to `to` comes to the box at `center`, against `reach`:
     /// a path that meets the box comes nearest where it enters it, or at its start inside it;
     /// one that does not, at its nearest point, the first of them along the path where a stretch
     /// is nearest. Each distance and place is to the nearest bit.
-    pub(crate) fn approach(&self, centre: Vec3, from: Vec3, to: Vec3, reach: Num) -> Approach {
+    pub(crate) fn approach(&self, center: Vec3, from: Vec3, to: Vec3, reach: Num) -> Approach {
         let frame = self.frame();
-        let start = flat(from) - flat(centre);
+        let start = flat(from) - flat(center);
         let path = flat(to) - flat(from);
         let reach = i128::from(reach.to_bits());
         let direction = Direction::of(path.to_array());
@@ -258,15 +227,15 @@ impl BodyBox {
     }
 
     /// Whether the straight path from `from` to `to` comes closer than `reach` to the box at
-    /// `centre`, as `approach` finds it, with no place: a path that meets the closed box is at 0,
+    /// `center`, as `approach` finds it, with no place: a path that meets the closed box is at 0,
     /// and one that does not comes nearest at an end, or where a corner's nearest point lies
     /// inside it, so it is closer when one of these is.
-    pub(crate) fn comes_closer(&self, centre: Vec3, from: Vec3, to: Vec3, reach: Num) -> bool {
+    pub(crate) fn comes_closer(&self, center: Vec3, from: Vec3, to: Vec3, reach: Num) -> bool {
         if reach <= Num::ZERO {
             return false;
         }
         let frame = self.frame();
-        let start = flat(from) - flat(centre);
+        let start = flat(from) - flat(center);
         let path = flat(to) - flat(from);
         let reach = i128::from(reach.to_bits());
         let edges = Edges::of(frame);
@@ -305,15 +274,15 @@ impl BodyBox {
         })
     }
 
-    /// `point` moved out of the box at `centre` when a body of `radius` there overlaps it, as a box
+    /// `point` moved out of the box at `center` when a body of `radius` there overlaps it, as a box
     /// leaves all of an overlap to the body: from the box's nearest point straight away until
     /// the body's edge touches the box, or, from inside, out through the nearest edge, the first
     /// edge on a tie; the move goes `PUSH_SLACK` past touching, each coordinate rounded away from
     /// the box, so the body ends apart, and the next measure sees it so. `None` when it does not
     /// overlap, each distance to the nearest bit: touching is not overlap.
-    pub fn push_out(&self, centre: Vec3, point: Vec3, radius: Num) -> Option<Vec3> {
+    pub fn push_out(&self, center: Vec3, point: Vec3, radius: Num) -> Option<Vec3> {
         let frame = self.frame();
-        let off = Flat::ground(point) - flat(centre);
+        let off = Flat::ground(point) - flat(center);
         // A point outside the box at least `radius` away is not overlapped: most points a search
         // finds lie so, and the lines' bounds decide it, as `nearest_to`'s distance would, with
         // no direction.
@@ -342,7 +311,7 @@ impl BodyBox {
                 touching(off, away, corner, radius)
             }
         };
-        let ground = moved + flat(centre);
+        let ground = moved + flat(center);
         Some(Vec3::new(
             Num::from_bits(ground[0]),
             point.y,
@@ -350,23 +319,23 @@ impl BodyBox {
         ))
     }
 
-    /// Whether the insides of the box at `centre` and `other` at `other_centre` share a point:
+    /// Whether the insides of the box at `center` and `other` at `other_center` share a point:
     /// touching is not overlap.
-    pub fn overlaps(&self, centre: Vec3, other: &BodyBox, other_centre: Vec3) -> bool {
-        let apart = flat(other_centre) - flat(centre);
+    pub fn overlaps(&self, center: Vec3, other: &BodyBox, other_center: Vec3) -> bool {
+        let apart = flat(other_center) - flat(center);
         self.frame().meets(apart, other.frame(), Closure::Open)
     }
 
-    /// How the distance between the box at `centre` and `other` at `other_centre` lies against
+    /// How the distance between the box at `center` and `other` at `other_center` lies against
     /// `reach`; 0 when they touch or overlap.
     pub(crate) fn nearest_box(
         &self,
-        centre: Vec3,
+        center: Vec3,
         other: &BodyBox,
-        other_centre: Vec3,
+        other_center: Vec3,
         reach: Num,
     ) -> Ordering {
-        let apart = flat(other_centre) - flat(centre);
+        let apart = flat(other_center) - flat(center);
         // A gap along an axis past both extents and the reach is at least a unit past the
         // reach, so is every distance between the boxes, and so their order: most boxes a
         // search finds lie so.
@@ -406,23 +375,23 @@ impl BodyBox {
         nearest
     }
 
-    /// Whether the insides of the box at `centre` and `polygon` share a point: an edge of the
+    /// Whether the insides of the box at `center` and `polygon` share a point: an edge of the
     /// polygon passes through the open box, or the box lies inside the polygon, which its
-    /// centre then tells. Touching is not overlap.
-    pub fn overlaps_polygon(&self, centre: Vec3, polygon: &Polygon) -> bool {
+    /// center then tells. Touching is not overlap.
+    pub fn overlaps_polygon(&self, center: Vec3, polygon: &Polygon) -> bool {
         let frame = self.frame();
         let points = polygon.points();
         let crosses = (0..points.len()).any(|at| {
             let next = points[(at + 1) % points.len()];
-            let start = Flat::from_nums(points[at]) - flat(centre);
+            let start = Flat::from_nums(points[at]) - flat(center);
             let path = Flat::from_nums(next) - Flat::from_nums(points[at]);
             frame.meets_path(start, path, Closure::Open)
         });
-        crosses || polygon.holds_point([centre.x, centre.z])
+        crosses || polygon.holds_point([center.x, center.z])
     }
 
     /// The test of whether a point, from the box's position in halves of a bit, comes closer
-    /// than `reach` to the box, exactly: as a grid's cell centres, whole only in halves, see it.
+    /// than `reach` to the box, exactly: as a grid's cell centers, whole only in halves, see it.
     pub(crate) fn closer_twice(&self, reach: Num) -> Closer {
         let reach = reach
             .checked_mul_int(2)
@@ -431,7 +400,7 @@ impl BodyBox {
     }
 
     /// The test of whether the insides of the box and of a square share a point, from the
-    /// square's centre: its offset from the box's position, and the half side `half`, both in
+    /// square's center: its offset from the box's position, and the half side `half`, both in
     /// halves of a bit, as a grid's cells lie. Touching is not overlap.
     pub(crate) fn overlaps_square_twice(&self, half: i128) -> impl Fn(Flat) -> bool {
         let square = Frame {
@@ -578,10 +547,10 @@ impl Frame {
     fn separates(&self, apart: Flat, other: Frame, closure: Closure) -> bool {
         let area = self.quarter_area();
         let [their_a, their_b] = other.halves;
-        let centre = self.slabs(apart);
+        let center = self.slabs(apart);
         let (a_spread, b_spread) = (self.slabs(their_a), self.slabs(their_b));
-        // `|centre| > bound` exactly when `centre + bound`, unsigned, passes twice the bound,
-        // where a centre below `−bound` wraps past it. A box and an offset within the world's
+        // `|center| > bound` exactly when `center + bound`, unsigned, passes twice the bound,
+        // where a center below `−bound` wraps past it. A box and an offset within the world's
         // bound keep each value below 2¹⁰⁰, so no sum wraps.
         (0..2).any(|slab| {
             let limit = area
@@ -589,7 +558,7 @@ impl Frame {
                 .wrapping_add(a_spread[slab].unsigned_abs())
                 .wrapping_add(b_spread[slab].unsigned_abs());
             let bound = closure.bound(limit);
-            centre[slab].cast_unsigned().wrapping_add(bound) > bound << 1
+            center[slab].cast_unsigned().wrapping_add(bound) > bound << 1
         })
     }
 

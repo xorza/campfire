@@ -16,7 +16,17 @@ use crate::zero_hour::{SkipReason, SkippedModel};
 #[derive(Debug)]
 pub(crate) struct ModelWriter<'i, W> {
     converter: Converter<'i, W>,
-    parts: BTreeMap<String, Option<ModelParts>>,
+    written: BTreeMap<String, WrittenModel>,
+}
+
+/// What a model the objects name gives their looks: the parts its looks read; nothing, as it
+/// draws nothing, as a `NULL` or a collision box; or nothing, as the package lacks it, which the
+/// report names.
+#[derive(Debug)]
+pub(crate) enum WrittenModel {
+    Parts(ModelParts),
+    Nothing,
+    Skipped,
 }
 
 /// What converts a model and writes its files: the assets it reads, the writer, and what the
@@ -46,19 +56,17 @@ impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> 
                 skipped: Vec::new(),
                 missing_textures: BTreeSet::new(),
             },
-            parts: BTreeMap::new(),
+            written: BTreeMap::new(),
         }
     }
 
-    /// The parts of the model `name`, in lowercase, which it converts and writes the first time
-    /// it is named; none for one that draws nothing, or that the package lacks, which the report
-    /// names.
-    pub(crate) fn parts(&mut self, name: &str) -> Result<Option<&ModelParts>, ZeroHourError> {
-        let parts = match self.parts.entry(name.to_owned()) {
+    /// What the model `name`, in lowercase, gives its looks, which it converts and writes the
+    /// first time it is named.
+    pub(crate) fn model(&mut self, name: &str) -> Result<&WrittenModel, ZeroHourError> {
+        Ok(match self.written.entry(name.to_owned()) {
             Entry::Occupied(known) => known.into_mut(),
             Entry::Vacant(new) => new.insert(self.converter.convert(name)?),
-        };
-        Ok(parts.as_ref())
+        })
     }
 
     /// Writes the package's file at `path`.
@@ -75,9 +83,9 @@ impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> 
 }
 
 impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
-    /// Converts the model `name` and writes its files; its parts, or `None` if it draws nothing
-    /// or is skipped, which `skipped` gains.
-    fn convert(&mut self, name: &str) -> Result<Option<ModelParts>, ZeroHourError> {
+    /// Converts the model `name` and writes its files; what it gives its looks, `skipped` gaining
+    /// a model the package lacks.
+    fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {
         let reason = match ModelImport::convert(name, &mut self.assets)? {
             Converted::Model(import) => {
                 (self.write)(path(name).as_str(), &import.glb.encode())?;
@@ -89,9 +97,9 @@ impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
                     )?;
                 }
                 self.missing_textures.extend(import.missing_textures);
-                return Ok(Some(import.parts));
+                return Ok(WrittenModel::Parts(import.parts));
             }
-            Converted::Nothing => return Ok(None),
+            Converted::Nothing => return Ok(WrittenModel::Nothing),
             Converted::Emitter => SkipReason::Emitter,
             Converted::Missing => SkipReason::Missing,
         };
@@ -99,7 +107,7 @@ impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
             name: name.to_owned(),
             reason,
         });
-        Ok(None)
+        Ok(WrittenModel::Skipped)
     }
 }
 

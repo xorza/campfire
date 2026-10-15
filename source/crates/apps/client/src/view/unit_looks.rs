@@ -13,10 +13,11 @@ use crate::view::client_data::ClientData;
 use crate::view::package_source::PackageSource;
 
 /// Each unit type's models, as its package's client data lists them, by type: none for a type
-/// drawn as the engine's own shapes are.
+/// of no look, drawn as the engine's own shapes are, and an empty list for a look of no models,
+/// drawn as nothing.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct UnitLooks {
-    looks: Vec<Vec<LookModel>>,
+    looks: Vec<Option<Vec<LookModel>>>,
 }
 
 /// A model a look is drawn with: its glTF's first scene, its parts, and the factor it is drawn
@@ -50,15 +51,15 @@ impl UnitLooks {
                 data.units_of(package)
                     .units
                     .get(&*origin.name)
-                    .map_or_else(Vec::new, |unit| LookModel::all(package, unit, assets))
+                    .map(|unit| LookModel::all(package, unit, assets))
             })
             .collect();
         UnitLooks { looks }
     }
 
-    /// The models of `unit_type`; none for a type the client data does not draw.
-    pub(crate) fn models(&self, unit_type: UnitType) -> &[LookModel] {
-        self.looks.get(unit_type.index()).map_or(&[], Vec::as_slice)
+    /// The models of `unit_type`'s look; `None` for a type of no look in the client data.
+    pub(crate) fn look(&self, unit_type: UnitType) -> Option<&[LookModel]> {
+        self.looks.get(unit_type.index())?.as_deref()
     }
 }
 
@@ -120,18 +121,22 @@ mod tests {
         };
         let data = ClientData {
             units: vec![
-                units(vec![(
-                    "tank",
-                    vec![
-                        model("client/models/tank.glb", &["tank.flash"]),
-                        model("client/models/tread.glb", &[]),
-                    ],
-                )]),
+                units(vec![
+                    (
+                        "tank",
+                        vec![
+                            model("client/models/tank.glb", &["tank.flash"]),
+                            model("client/models/tread.glb", &[]),
+                        ],
+                    ),
+                    ("sound", Vec::new()),
+                ]),
                 units(vec![("tank", vec![model("client/models/other.glb", &[])])]),
             ],
             ..ClientData::default()
         };
-        // The mode's tank, package 1's tank, and a type no package's units name.
+        // The mode's tank, package 1's tank, a type no package's units name, and the mode's
+        // sound, of a look of no models.
         let origin = |package, name: &str| TypeOrigin {
             package,
             name: name.into(),
@@ -140,16 +145,20 @@ mod tests {
             origin(PackageIndex::MODE, "tank"),
             origin(PackageIndex::new(1), "tank"),
             origin(PackageIndex::MODE, "tower"),
+            origin(PackageIndex::MODE, "sound"),
         ]
         .into_iter()
         .collect();
         let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
-        let paths = |unit_type: UnitType| -> Vec<(String, ModelParts)> {
-            looks
-                .models(unit_type)
-                .iter()
-                .map(|model| (model.scene.path().unwrap().to_string(), model.parts.clone()))
-                .collect()
+        let paths = |unit_type: UnitType| -> Option<Vec<(String, ModelParts)>> {
+            let models = looks.look(unit_type)?;
+            let path = |model: &LookModel| model.scene.path().unwrap().to_string();
+            Some(
+                models
+                    .iter()
+                    .map(|model| (path(model), model.parts.clone()))
+                    .collect(),
+            )
         };
         let types: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
         let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
@@ -157,7 +166,7 @@ mod tests {
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
         };
         assert_eq!(
-            paths(types[0]),
+            paths(types[0]).unwrap(),
             [
                 (
                     "package://0/client/models/tank.glb#Scene0".to_owned(),
@@ -170,12 +179,13 @@ mod tests {
             ]
         );
         assert_eq!(
-            paths(types[1]),
+            paths(types[1]).unwrap(),
             [(
                 "package://1/client/models/other.glb#Scene0".to_owned(),
                 parts(PackageIndex::new(1), &[])
             )]
         );
-        assert!(paths(types[2]).is_empty());
+        assert_eq!(paths(types[2]), None);
+        assert_eq!(paths(types[3]), Some(Vec::new()));
     }
 }

@@ -842,7 +842,7 @@ mod tests {
             ..GaugeScratch::default()
         };
         scratch.ability_rows(1);
-        // Each of the three slots' gauges knows the row of three it centres on.
+        // Each of the three slots' gauges knows the row of three it centers on.
         let at = |slot| SlotPlace { slot, of: 3 };
         let cooldown = |slot| GaugeKind::Cooldown {
             at: at(slot),
@@ -876,7 +876,7 @@ mod tests {
             ]
         );
         // With no ability that ranks up, the cooldowns take the first row and the charges the
-        // next; the two slots centre on a row of two.
+        // next; the two slots center on a row of two.
         let mut scratch = GaugeScratch {
             slots: slots[1..].to_vec(),
             ..GaugeScratch::default()

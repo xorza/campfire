@@ -791,7 +791,7 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     let kindle = arena.modifier(&game, "hero-cinder", "kindle");
     let caster = caster(&arena, &mut game, eruption, 1, Kit::Mana100, ());
     // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
-    // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
+    // center and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
     let enemy = |game: &mut Match, at| spawn_at(&arena, game, at, Team::new(1), Kit::Bare, ());
     let center = enemy(&mut game, milli(6000, 0));
     let edge = enemy(&mut game, milli(8400, 0));

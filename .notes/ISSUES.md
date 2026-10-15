@@ -17,10 +17,3 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Runner.** `proving_match::a_snapshot_restores_and_a_flawed_one_never_panics` runs at the bound of 1 s for a test alone: on an i9-13980HX, with `--test-threads 1`, 1.11 s at commit e43f95af, and 0.87 s in a later run.
 
 ## Ready
-
-- **Client.** **Plan: I1.** A model drawing whose models never get bounds keeps `FitsModel`, so `View::fit_models` (`client/src/view/mod.rs`) walks its tree again in every frame for as long as it lives: a model whose nodes its look hides all, or one whose file does not load.
-- **Geometry.** **Plan: I5.** The engine spells the middle of a shape two ways: `centre` 203 times and `center` 138 times outside the client, as `Grid::center` and its cells' centers beside `BodyBox`'s `centre` arguments; Bevy's own names, which the client calls, are `center`.
-- **Harness.** **Plan: I2.** Two tests of `runner/proving_match.rs` pin one record file, `golden/proving.txt`: under `./drive.py test --bless` both write it at once, and one fails as its temporary file is renamed away.
-- **Zero Hour.** **Plan: I3.** The import draws a triangle of no texture, under a shader that textures, as if its texture were white: by its vertex colors and diffuse color when its shader lights it, and white when its shader draws its texture alone. The game binds no texture to the stage (`TextureBaseClass::Apply_Null`), and native Direct3D's fixed function samples such a stage as the null vector, as DXVK, which GeneralsX draws through, does.
-- **Zero Hour.** **Plan: I4.** The import places a map's object that draws nothing in the original, a `W3DDefaultDraw` of no model, as a unit of a type with no look, so the client draws it as the engine's capsule: Tournament Desert's 69 sound objects of 15 types (`Amb_*`, `SoundAmbient`).
-

@@ -33,7 +33,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `knock_back` | `(unit, from, distance, ms)` | every role | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
-| `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
+| `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, center to center, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
 | `offers` | `(choice)`, `choice` a choice | mode | core | since 1.0 | the values `choice` offers, in order: the avatars in the order of the mode's dependencies, or the loadout entries by id |
 | `order_attack` | `(unit, target)` | AI | orders | since 1.0 | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
@@ -387,6 +387,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
 | `construct` | production | since 1.0 |
+| `start` | production | since 1.0 |
 | `start_life` | production | since 1.0 |
 | `cancel_refund` | production | since 1.0 |
 | `placement` | production | since 1.0 |
@@ -495,6 +496,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Capability | Status |
 | --- | --- | --- |
 | `queue` | production | since 1.0 |
+| `exit` | production | since 1.0 |
+| `rally` | production | since 1.0 |
 
 ### A unit type's `supply`
 
