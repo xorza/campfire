@@ -257,7 +257,11 @@ impl Mode {
             teams,
             placed,
             relations,
-            map: GameMap::new(path_names.map(ScriptText::from), &markers),
+            map: GameMap::new(
+                path_names.map(ScriptText::from),
+                &markers,
+                &setup.data.navigation.spawn_tags,
+            ),
         };
         view.names_mut().set_table(Arc::clone(start.map.tags()));
         Mode::load_units(world, &setup.units);

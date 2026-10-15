@@ -298,6 +298,7 @@ pub(crate) mod internals {
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
+    use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
     use crate::zero_hour::ref_pack::internals::literal;
 
     /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
@@ -339,6 +340,7 @@ pub(crate) mod internals {
                 ("Data\\INI\\Terrain.ini", TERRAIN_TYPES),
                 ("Data\\INI\\GameData.ini", GAME_DATA),
                 ("Data\\INI\\Locomotor.ini", LOCOMOTORS.as_bytes()),
+                ("Data\\INI\\PlayerTemplate.ini", PLAYER_TEMPLATES.as_bytes()),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),
                 ("Data\\INI\\Object\\Deep\\More.ini", b""),
                 ("Data\\INI\\Object\\Misc.ini", MORE_OBJECTS.as_bytes()),

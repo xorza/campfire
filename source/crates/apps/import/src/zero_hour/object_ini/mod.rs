@@ -365,6 +365,20 @@ impl Geometry {
         }
     }
 
+    /// The radius of the sphere round it, as `calcBoundingStuff` computes it: a box's
+    /// `√(major² + minor² + (height / 2)²)`, a cylinder's larger of half its height and its
+    /// radius, a sphere's radius; each step in the game's `f32`.
+    pub(crate) fn bounding_sphere(&self) -> f32 {
+        let half = self.height * 0.5;
+        match self.shape {
+            GeometryShape::Sphere => self.major,
+            GeometryShape::Cylinder => half.max(self.major),
+            GeometryShape::Box => {
+                (self.major * self.major + self.minor * self.minor + half * half).sqrt()
+            }
+        }
+    }
+
     /// Takes a geometry field of `word`; whether `word` is one.
     fn field(&mut self, word: &str, at: &IniLine<'_>) -> Result<bool, IniError> {
         match word {
@@ -717,7 +731,9 @@ End
     /// draw module, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
     /// reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a box of half
     /// extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of half
-    /// extents 4 and 3, and its fence.
+    /// extents 4 and 3, and its fence; and America's start objects, which no map places: a
+    /// command center of a box of half extents 12 and 9 and height 40, whose sphere's radius is
+    /// √(144 + 81 + 400) = 25, and a dozer on treads.
     pub(crate) const OBJECTS: &str = "ObjectReskin TankCamo Tank\r
 End\r
 ObjectReskin TankRed Tank\r
@@ -783,6 +799,19 @@ End\r
 Object Rocks1\r
   KindOf = CLEARED_BY_BUILD\r
   FenceWidth = 10.0\r
+End\r
+Object AmericaCommandCenter\r
+  KindOf = STRUCTURE\r
+  Geometry = BOX\r
+  GeometryMajorRadius = 12.0\r
+  GeometryMinorRadius = 9.0\r
+  GeometryHeight = 40.0\r
+End\r
+Object AmericaVehicleDozer\r
+  KindOf = VEHICLE\r
+  Locomotor = SET_NORMAL TankTreads\r
+  Geometry = SPHERE\r
+  GeometryMajorRadius = 2.0\r
 End\r
 ";
 }

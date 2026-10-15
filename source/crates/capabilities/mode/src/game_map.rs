@@ -29,11 +29,18 @@ struct MapParts {
 }
 
 impl GameMap {
-    /// The map of `paths`, by name, and `markers`, their params as scripts read them.
-    pub fn new(paths: impl Iterator<Item = ScriptText>, markers: &[MarkerSpec]) -> GameMap {
+    /// The map of `paths`, by name, and `markers`, their params as scripts read them; its tags
+    /// are its markers' and the mode's `spawn_tags`, which a script may name on a map with no
+    /// marker of one, as a mode names the markers it spawns at whatever map it plays.
+    pub fn new(
+        paths: impl Iterator<Item = ScriptText>,
+        markers: &[MarkerSpec],
+        spawn_tags: &[DeclaredName],
+    ) -> GameMap {
         let names: BTreeSet<&str> = markers
             .iter()
             .flat_map(|marker| marker.tags.iter().map(DeclaredName::as_str))
+            .chain(spawn_tags.iter().map(DeclaredName::as_str))
             .collect();
         let tags = Names::all_of(names).expect("each tag once, below the limit");
         let mut held: Vec<(MarkerTag, u32)> = Vec::new();
@@ -129,9 +136,15 @@ mod tests {
             marker("d", &["exit", "exit"]),
             marker("e", &[]),
         ];
-        let map = GameMap::new(std::iter::empty::<ScriptText>(), &markers);
+        // `start`, a spawn tag no marker holds, is a tag too, of no marker.
+        let spawn_tags = ["spawn", "start"].map(|tag| DeclaredName::new(tag).unwrap());
+        let map = GameMap::new(std::iter::empty::<ScriptText>(), &markers, &spawn_tags);
         let tags = map.tags();
-        assert_eq!(tags.texts().collect::<Vec<_>>(), ["camp", "exit", "spawn"]);
+        assert_eq!(
+            tags.texts().collect::<Vec<_>>(),
+            ["camp", "exit", "spawn", "start"]
+        );
+        assert!(map.held(tags.named("start").unwrap()).is_empty());
         let held = |tag: &str| map.held(tags.named(tag).unwrap());
         assert_eq!(held("camp"), [1, 2]);
         assert_eq!(held("exit"), [3]);

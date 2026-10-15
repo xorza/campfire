@@ -8,7 +8,10 @@
 //! terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and border
 //! wraps, each logged for review; that the import reports no cell of its terrain whose tile has
 //! no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
-//! mode, which plays a tick. Every other map the game lists loads in the imported mode. It fails
+//! mode, where player 1 starts with America's command center at `Player_1_Start` and its dozer
+//! clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets there within
+//! `DRIVE_TICKS`, in no wall's cell in any tick. Every other map the game lists loads in the
+//! imported mode. It fails
 //! when `GENERALSZH_DATA` names no install, so a machine with no copy never passes as one that
 //! checked.
 //!
@@ -24,12 +27,11 @@ use std::process::ExitCode;
 use campfire_client_files::{ClientObjects, HeightGrid, TerrainFile};
 use campfire_codec::{Binary, Toml};
 use campfire_common::{ExitStatus, MapName};
-use campfire_harness::FixedSession;
 use campfire_import::{GameVersion, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
+use campfire_math::Num;
 use campfire_package::{ContentError, PackageReader};
 use campfire_package_disk::PackageDir;
-use campfire_runner::SessionWorld;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use campfire_values::PackagePath;
 use tracing::{error, info};
@@ -37,10 +39,12 @@ use tracing::{error, info};
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
 use crate::failure::{Failure, TerrainDrawn};
+use crate::start_drive::StartDrive;
 
 mod command_line;
 mod error;
 mod failure;
+mod start_drive;
 
 /// The map the check plays.
 const MAP: &str = "tournament_desert";
@@ -48,6 +52,10 @@ const MAP: &str = "tournament_desert";
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
 /// (design 17, D3).
 const WALLS: usize = 286;
+
+/// The most ticks player 1's dozer takes from its start to player 2's on Tournament Desert, at 30
+/// ticks a second, which the check pins: what it took, 57.2 s.
+const DRIVE_TICKS: u64 = 1717;
 
 /// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
 /// its overlays; a copy for each tile its classes' textures load; and a border wrap for each
@@ -215,14 +223,20 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         );
     }
     let rate = NonZeroU32::new(30).expect("a rate");
-    // A fixed match takes the log's events while it lives, as its harness checks them, so it
-    // ends before the check logs again.
-    let tick = {
-        let mut fixed = FixedSession::new(packages, rate, 1).start();
-        fixed.game_mut().run_tick_alone();
-        fixed.end().tick
-    };
-    info!(%tick, "Tournament Desert played a tick");
+    if let Some(drive) = StartDrive::run(packages, rate, &mut failures) {
+        if drive.ticks > DRIVE_TICKS {
+            failures.push(Failure::DriveTicks(drive.ticks));
+        }
+        if drive.left != Num::ZERO {
+            failures.push(Failure::DriveShort(drive.left));
+        }
+        info!(
+            ticks = drive.ticks,
+            end = %format!("({}, {})", drive.end.x, drive.end.z),
+            left = %drive.left,
+            "the dozer drove from player 1's start to player 2's"
+        );
+    }
     Ok(failures)
 }
 

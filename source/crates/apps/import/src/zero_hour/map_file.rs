@@ -562,7 +562,7 @@ pub(crate) mod internals {
                 0.0,
                 0,
                 "*Waypoints/Waypoint",
-                Some((3, "Player_1_Start")),
+                Some((3, "Fixture_Center")),
             ),
             object(&mut writer, [0.0, 0.0, 0.0], 0.0, 0x4, "GravelRoad", None),
             object(&mut writer, [50.0, 0.0, 0.0], 0.0, 0, "Oak", None),
@@ -727,7 +727,7 @@ mod tests {
             read.objects[2].waypoint,
             Some(Waypoint {
                 id: 3,
-                name: b"Player_1_Start".to_vec()
+                name: b"Fixture_Center".to_vec()
             })
         );
         assert_eq!(read.objects[0].waypoint, None);

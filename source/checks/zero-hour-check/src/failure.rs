@@ -1,9 +1,10 @@
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
+use campfire_math::{Num, Vec3};
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{TERRAIN, WALLS};
+use crate::{DRIVE_TICKS, TERRAIN, WALLS};
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
@@ -37,6 +38,32 @@ pub(crate) enum Failure {
     /// A map of the import does not load in the imported mode.
     #[display("map {map} does not load: {}", ErrorReport::of(error))]
     MapLoad { map: MapName, error: LoadError },
+    /// Tournament Desert lacks a start of player 1 or 2.
+    #[display("it has no start of player 1 or of player 2")]
+    NoStarts,
+    /// Player 1 starts with other than one command center and one dozer.
+    #[display(
+        "player 1 starts with {buildings} command centers and {dozers} dozers, not one of each"
+    )]
+    StartUnits { buildings: usize, dozers: usize },
+    /// Player 1's command center stands elsewhere than its start, at this place.
+    #[display("player 1's command center stands at ({}, {}), not at its start", _0.x, _0.z)]
+    BuildingPlace(Vec3),
+    /// Player 1's dozer stands in its command center's box, at this place.
+    #[display("player 1's dozer stands in its command center's box, at ({}, {})", _0.x, _0.z)]
+    DozerInBuilding(Vec3),
+    /// The dozer stood in a wall's cell in this tick, at this place.
+    #[display("the dozer stood in a wall's cell in tick {tick}, at ({}, {})", pos.x, pos.z)]
+    DozerInWall { tick: u64, pos: Vec3 },
+    /// The dozer's walk did not end within the check's limit of ticks.
+    #[display("the dozer's walk did not end")]
+    NeverArrived,
+    /// The dozer's walk ended this far short of the other start.
+    #[display("the dozer's walk ended {_0} m short of the other start")]
+    DriveShort(Num),
+    /// The dozer took more ticks to the other start than the check pins.
+    #[display("the dozer took {_0} ticks to the other start, not at most {DRIVE_TICKS}")]
+    DriveTicks(u64),
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

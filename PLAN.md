@@ -10,10 +10,6 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 `import`: `zero_hour`; `source/packages/zero-hour`; `checks/zero-hour-check`. It needs the turn rate, the load's rules and the selection to play.
 
-### U8. The skirmish's start
-
-(`import`, the rules package; Units that drive D6.) The import reads `PlayerTemplate.ini`, tags each `Player_<n>_Start` and `Player_<n>_Rally` waypoint `start`, and gives the mode `[navigation] spawn_tags = ["start"]` and the `[params]` of America's start; the rules package's mode script spawns, for the player at start position `n`, the building at `Player_<n>_Start` and each starting unit at `Player_<n>_Rally`, or at the building's point moved `start_offset` along `+z`, as `marker.pos + vector(0, 0, ctx.p.start_offset)`, owned by the player. Check: the import's fixture install's params and tags; the Zero Hour check finds the command center at `Player_1_Start` and the dozer clear of its box, owned by the player; the dozer, ordered to `Player_2_Start`, arrives within a bound of ticks the check pins and logs, and never stands in a wall's cell; the user drives it in the client.
-
 ### U9. The Zero Hour check compares fingerprints and plays the parity suite
 
 (`checks/zero-hour-check`, the parity oracle; Zero Hour D5, D7, D8.) The Zero Hour check compares the fingerprint of its import with the one the other OS gave, and plays the parity suite against the oracle's frames, as design 12 D7 says. It waits for the oracle, the fork of GeneralsX that writes each logic frame. Check: a run that names no install fails; a run on Linux and one on macOS give one fingerprint; the suite's replays meet the measure.

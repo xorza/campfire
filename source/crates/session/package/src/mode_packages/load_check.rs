@@ -834,11 +834,15 @@ impl<'a> LoadCheck<'a> {
             NameKind::Choice => declares(data.choices.keys(), name),
             NameKind::Item => packages.content.items.contains_key(name),
             NameKind::Cost => self.names.cost_target(name).is_some(),
-            NameKind::MarkerTag => packages
-                .map
-                .markers
-                .iter()
-                .any(|marker| declares(marker.tags.iter(), name)),
+            NameKind::MarkerTag => {
+                let spawns = declares(data.navigation.spawn_tags.iter(), name);
+                spawns
+                    || packages
+                        .map
+                        .markers
+                        .iter()
+                        .any(|marker| declares(marker.tags.iter(), name))
+            }
             NameKind::Resource => table(TableKind::Resource),
             NameKind::Pool => table(TableKind::Pool),
             NameKind::DamageKind => table(TableKind::DamageKind),

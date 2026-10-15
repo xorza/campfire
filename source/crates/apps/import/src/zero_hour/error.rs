@@ -85,6 +85,20 @@ pub enum ZeroHourError {
     Languages(Vec<String>),
     #[error(transparent)]
     NameClash(#[from] NameClash),
+    /// The player template a skirmish starts with, by its name, is none the install defines, or
+    /// names no starting building.
+    #[error("player template {0} names no starting building")]
+    NoStart(String),
+    /// A start object of the player template, by its name, is no object of the INI files.
+    #[error("start object {0} is no object of the INI files")]
+    NoStartObject(String),
+    /// A start object of the player template gives no unit type.
+    #[error("start object {object}")]
+    StartType {
+        object: String,
+        #[source]
+        error: TypeError,
+    },
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },

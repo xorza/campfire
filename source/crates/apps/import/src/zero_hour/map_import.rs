@@ -46,6 +46,35 @@ struct Waypoint {
     pos: [Num; 2],
 }
 
+/// A waypoint a skirmish starts a slot's player at, by the slot's number from 1: its start, or
+/// its rally.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SkirmishPoint {
+    Start(u8),
+    Rally(u8),
+}
+
+impl Waypoint {
+    /// The skirmish's point it is, as `placeNetworkBuildingsForPlayer` finds them by name:
+    /// `Player_<n>_Start` or `Player_<n>_Rally`, `n` from 1 to `SLOTS`, of that case.
+    fn skirmish(&self) -> Option<SkirmishPoint> {
+        let rest = self.name.strip_prefix("Player_")?;
+        let (slot, point): (&str, fn(u8) -> SkirmishPoint) = match rest.strip_suffix("_Start") {
+            Some(slot) => (slot, SkirmishPoint::Start),
+            None => (rest.strip_suffix("_Rally")?, SkirmishPoint::Rally),
+        };
+        (1..=SLOTS).find(|n| n.to_string() == slot).map(point)
+    }
+}
+
+impl SkirmishPoint {
+    /// Whether it is a point of one of the slots `1..=slots`.
+    const fn of_slots(self, slots: u8) -> bool {
+        let (SkirmishPoint::Start(n) | SkirmishPoint::Rally(n)) = self;
+        n <= slots
+    }
+}
+
 /// What a map import reads and adds to beside its file: the object INI and the locomotors its
 /// objects name, the names the objects took so far, with the unit types of the maps, the looks of
 /// the package's `client/units.toml`, how many of the map's lights the game draws, and the
@@ -86,6 +115,13 @@ const WAYPOINT: &str = "waypoint";
 
 /// The param of a marker made from a waypoint that holds the waypoint's name.
 const WAYPOINT_NAME: &str = "name";
+
+/// The tag beside `waypoint` of a skirmish's start and rally waypoints, which the mode spawns its
+/// players' start objects at (design 17, D6).
+pub(crate) const START: &str = "start";
+
+/// The player slots of a game, `MAX_SLOTS`: the starts a map may name, from `Player_1_Start`.
+const SLOTS: u8 = 8;
 
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
@@ -138,10 +174,11 @@ impl MapImport {
         };
         let declared =
             |name: &str| DeclaredName::new(name).expect("the import's own names are declared");
-        let (neutral, waypoint_tag, waypoint_name) = (
+        let (neutral, waypoint_tag, waypoint_name, start_tag) = (
             declared(NEUTRAL),
             declared(WAYPOINT),
             declared(WAYPOINT_NAME),
+            declared(START),
         );
         let mut bridges = Vec::new();
         let mut units = Vec::new();
@@ -223,16 +260,34 @@ impl MapImport {
         let bounds = Bounds::new(low, high).ok_or(MapError::Bounds)?;
         // A waypoint past the heights and the placed bodies marks no place of the map, as a
         // camera's point far off does: it is dropped, and reported.
+        // The original lists a map as a skirmish's of as many players as it has starts from
+        // `Player_1_Start` on in a row, two or more (`WaypointMap::update`), and starts each
+        // player at its slot's: those are its markers of `start`.
+        let starts = (1..=SLOTS).take_while(|&n| {
+            let start = Some(SkirmishPoint::Start(n));
+            waypoints
+                .iter()
+                .any(|waypoint| waypoint.skirmish() == start)
+        });
+        let slots = starts.last().filter(|&slots| slots >= 2).unwrap_or(0);
         let mut markers = Vec::new();
         let mut dropped_waypoints = Vec::new();
-        for Waypoint { id, name, pos } in waypoints {
+        for waypoint in waypoints {
+            let mut tags = vec![waypoint_tag.clone()];
+            if waypoint
+                .skirmish()
+                .is_some_and(|point| point.of_slots(slots))
+            {
+                tags.push(start_tag.clone());
+            }
+            let Waypoint { id, name, pos } = waypoint;
             if bounds.clamp_ground(pos) != pos {
                 dropped_waypoints.push(name);
                 continue;
             }
             markers.push(MarkerData {
                 name: declared(&format!("w{id}")),
-                tags: vec![waypoint_tag.clone()],
+                tags,
                 pos: Some(MapPoint::Ground(pos)),
                 region: None,
                 team: None,
@@ -521,7 +576,7 @@ box = ["20", "5"]
                 team: None,
                 params: [(
                     DeclaredName::new("name").unwrap(),
-                    ModeParam::Text("Player_1_Start".to_owned()),
+                    ModeParam::Text("Fixture_Center".to_owned()),
                 )]
                 .into(),
             }]
@@ -594,9 +649,58 @@ box = ["20", "5"]
             let map = Toml::parse::<MapData>(&moved.map).unwrap();
             assert_eq!(map.bounds, bounds);
             assert_eq!(map.markers.len(), usize::from(kept));
-            let dropped: &[&str] = if kept { &[] } else { &["Player_1_Start"] };
+            let dropped: &[&str] = if kept { &[] } else { &["Fixture_Center"] };
             assert_eq!(moved.dropped_waypoints, dropped);
         }
+
+        // A map of starts from `Player_1_Start` on in a row, two or more, is a skirmish's: each
+        // start and rally of those slots is tagged `start` too, the count of tags 2. One past a
+        // gap in the row, a map of one start or none of slot 1, and another slot's, case's or
+        // name's waypoint are not: 1.
+        file.objects[waypoint].pos[0] = 12.5;
+        let base = file.objects[waypoint].clone();
+        let tags = |names: &[&str]| {
+            let mut placed = file.clone();
+            placed.objects.retain(|object| object.waypoint.is_none());
+            for (id, name) in (10..).zip(names) {
+                let mut object = base.clone();
+                let point = object.waypoint.as_mut().unwrap();
+                (point.id, point.name) = (id, name.as_bytes().to_vec());
+                placed.objects.push(object);
+            }
+            let markers = Toml::parse::<MapData>(
+                &import(&placed, &mut ImportNames::default(), 3).unwrap().map,
+            )
+            .unwrap()
+            .markers;
+            markers
+                .iter()
+                .map(|marker| marker.tags.len())
+                .collect::<Vec<_>>()
+        };
+        let row = [
+            "Player_1_Start",
+            "Player_2_Start",
+            "Player_2_Rally",
+            "Player_4_Start",
+        ];
+        assert_eq!(tags(&row), [2, 2, 2, 1]);
+        assert_eq!(tags(&["Player_1_Start", "Player_1_Rally"]), [1, 1]);
+        assert_eq!(tags(&["Player_2_Start", "Player_3_Start"]), [1, 1]);
+        let eight: Vec<String> = (1..=8).map(|n| format!("Player_{n}_Start")).collect();
+        let mut all: Vec<&str> = eight.iter().map(String::as_str).collect();
+        all.push("Player_8_Rally");
+        assert_eq!(tags(&all), [2; 9]);
+        let others = [
+            "Player_1_Start",
+            "Player_2_Start",
+            "Player_02_Rally",
+            "player_1_rally",
+            "Player_1_Spawn",
+            "Player_9_Start",
+            "Player_0_Start",
+        ];
+        assert_eq!(tags(&others), [2, 2, 1, 1, 1, 1, 1]);
     }
 
     #[test]
