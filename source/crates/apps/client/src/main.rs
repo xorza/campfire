@@ -60,6 +60,7 @@ use crate::orders::Orders;
 use crate::selecting::Selecting;
 use crate::shop_panel::ShopPanel;
 use crate::view::View;
+use crate::view::client_data::ClientFiles;
 use crate::view::package_source::PackageSource;
 use crate::view::player_camera::PlayerCamera;
 use crate::view::terrain_view::TerrainView;
@@ -219,11 +220,12 @@ fn add_ends(
                 ..WindowPlugin::default()
             })
             .disable::<LogPlugin>(),
-        View,
-        PlayerCamera,
-        UnitModels {
+        ClientFiles {
             packages: Arc::clone(packages),
         },
+        View,
+        PlayerCamera,
+        UnitModels,
         TerrainView {
             packages: Arc::clone(packages),
         },

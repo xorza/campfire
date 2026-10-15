@@ -35,8 +35,8 @@ double_sided = true
     );
     let none = package(&scratch, "bare", &[("data/units.toml", b"")]);
     let mut data = ClientData::default();
-    data.read_package(0, &files);
-    data.read_package(1, &none);
+    data.read_package(PackageIndex::MODE, &files);
+    data.read_package(PackageIndex::from(1), &none);
     // The tank's model, with the node it hides; a package with no units has none.
     let tank = &data.units[0].units["tank"].models[0];
     assert_eq!(
@@ -46,9 +46,10 @@ double_sided = true
     assert!(data.units[1].units.is_empty());
     // The material file by its package and name; the one that does not read, and the file
     // that is no TOML, are not there.
-    let keys: Vec<&(u16, String)> = data.materials.keys().collect();
-    assert_eq!(keys, [&(0, "tank_3".to_owned())]);
-    assert_eq!(data.materials[&(0, "tank_3".to_owned())].blend, Blend::Add);
+    let key = (PackageIndex::MODE, "tank_3".to_owned());
+    let keys: Vec<&(PackageIndex, String)> = data.materials.keys().collect();
+    assert_eq!(keys, [&key]);
+    assert_eq!(data.materials[&key].blend, Blend::Add);
 }
 
 #[test]

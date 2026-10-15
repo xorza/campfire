@@ -125,7 +125,7 @@ const fn stamp(index: u64) -> u64 {
 
 /// The item `name` of the 3v3.
 fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
-    let mode = moba.packages().packages().next().unwrap();
+    let mode = moba.packages().mode();
     let items: Names<ItemId> = mode
         .content
         .items

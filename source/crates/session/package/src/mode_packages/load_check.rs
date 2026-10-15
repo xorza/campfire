@@ -230,7 +230,7 @@ impl<'a> LoadCheck<'a> {
         let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
         self.actions(&content.actions, units, &mut names)?;
-        let view = packages.packages().next().expect("the mode, first");
+        let view = packages.mode();
         let ways = packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, &content.actions, ranks)?;
         self.scripts(&names)

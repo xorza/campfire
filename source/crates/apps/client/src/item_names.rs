@@ -38,7 +38,7 @@ impl ItemNames {
     ) {
         let packages = &packages.0;
         let texts = Texts::new(packages, &[]).expect("a mode's own text, with no translation");
-        let mode = packages.packages().next().expect("the mode, first").package;
+        let mode = packages.mode().package;
         let header = &mode.header;
         let mut names = vec![String::new(); book.names().len()];
         for (id, item) in &packages.content().items {

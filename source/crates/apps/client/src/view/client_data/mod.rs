@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::error::Error;
+use std::sync::Arc;
 
+use bevy::app::{App, Plugin};
 use bevy::ecs::resource::Resource;
 use campfire_client_files::HeightGrid;
 use campfire_client_files::{
@@ -9,7 +11,7 @@ use campfire_client_files::{
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
-use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_package::{ContentError, ModePackages, PackageIndex, PackageReader};
 use campfire_values::PackagePath;
 use tracing::error;
 
@@ -27,8 +29,8 @@ use crate::view::ground_heights::GroundHeights;
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ClientData {
     pub(crate) units: Vec<ClientUnits>,
-    pub(crate) materials: BTreeMap<(u16, String), MaterialFile>,
-    pub(crate) grid: Option<HeightGrid>,
+    pub(crate) materials: BTreeMap<(PackageIndex, String), MaterialFile>,
+    /// The ground's heights from the map's heightmap; none for a map of no heightmap.
     pub(crate) heights: Option<GroundHeights>,
     /// The map's terrain over its heights; none for a map of no heights, of no terrain file, or
     /// of one that does not read or is not the heights' shape.
@@ -41,23 +43,29 @@ pub(crate) struct ClientData {
     pub(crate) objects: ClientObjects,
 }
 
+/// Reads the mode's client data as the client starts: the one source of `ClientData`, which the
+/// view, the camera, the models, the terrain and the pointer read.
+#[derive(Debug)]
+pub(crate) struct ClientFiles {
+    pub(crate) packages: Arc<ModePackages>,
+}
+
+impl Plugin for ClientFiles {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(ClientData::read(&self.packages));
+    }
+}
+
 const UNITS: &str = "client/units.toml";
 const MATERIALS: &str = "client/materials";
 
 impl ClientData {
     pub(crate) fn read(packages: &ModePackages) -> ClientData {
         let mut data = ClientData::default();
-        for (place, view) in packages.packages().enumerate() {
-            let place = u16::try_from(place).expect("a mode's packages fit u16");
-            data.read_package(place, &view.package.files);
+        for view in packages.packages() {
+            data.read_package(view.index, &view.package.files);
         }
-        let mode = &packages
-            .packages()
-            .next()
-            .expect("a mode has its own package")
-            .package
-            .files;
-        data.read_map(mode, packages.map_name());
+        data.read_map(&packages.mode().package.files, packages.map_name());
         data
     }
 
@@ -66,11 +74,11 @@ impl ClientData {
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         let heights = format!("map/{map}/heights.bin");
         let heights = PackagePath::parse(&heights).expect("a map's name is a package path's");
-        self.grid = ClientData::read_file(mode, &heights)
+        let grid = ClientData::read_file(mode, &heights)
             .and_then(|bytes| ClientData::logged(&heights, Binary::decode::<HeightGrid>(&bytes)));
         let terrain = PackagePath::parse(&TerrainFile::path(map.as_str()))
             .expect("a map's name is a package path's");
-        self.terrain = self.grid.as_ref().and_then(|grid| {
+        self.terrain = grid.as_ref().and_then(|grid| {
             let bytes = ClientData::read_file(mode, &terrain)?;
             let file = ClientData::logged(&terrain, Binary::decode::<TerrainFile>(&bytes))?;
             let fits = file.quads().fits(grid);
@@ -80,17 +88,14 @@ impl ClientData {
             fits.then_some(file)
         });
         let quads = self.terrain.as_ref().map(TerrainFile::quads);
-        self.heights = self
-            .grid
-            .as_ref()
-            .map(|grid| GroundHeights::of(grid, quads));
+        self.heights = grid.map(|grid| GroundHeights::of(grid, quads));
         self.camera = ClientData::toml(mode, CameraFile::PATH, Toml::parse);
         self.lights = ClientData::toml(mode, &MapLights::path(map.as_str()), Toml::parse);
         let objects = ClientObjects::path(map.as_str());
         self.objects = ClientData::toml(mode, &objects, Toml::parse).unwrap_or_default();
     }
 
-    fn read_package(&mut self, place: u16, files: &PackageReader) {
+    fn read_package(&mut self, place: PackageIndex, files: &PackageReader) {
         let units = ClientData::toml::<ClientUnits>(files, UNITS, Toml::parse);
         self.units.push(units.unwrap_or_default());
         for path in files.files_under(MATERIALS) {
@@ -107,6 +112,11 @@ impl ClientData {
                 self.materials.insert((place, name.to_owned()), file);
             }
         }
+    }
+
+    /// The unit looks of the package at `place`.
+    pub(crate) fn units_of(&self, place: PackageIndex) -> &ClientUnits {
+        &self.units[usize::from(place.get())]
     }
 
     /// The bytes of the file at `path`; none for a file the package lacks, and none, logged, for

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
 use bevy::app::{App, Plugin, Startup};
 use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
@@ -22,7 +21,7 @@ use bevy::transform::components::Transform;
 use bevy::world_serialization::WorldAssetRoot;
 use bevy::world_serialization::WorldInstanceReady;
 use campfire_client_files::{ClientObject, MaterialFile};
-use campfire_package::ModePackages;
+use campfire_package::PackageIndex;
 use campfire_units::TypeOriginBook;
 
 use tracing::error;
@@ -34,14 +33,11 @@ use crate::view::ground_heights::GroundHeights;
 use crate::view::package_source::PackageSource;
 use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
 
-/// Draws units and the map's client objects with their packages' models: reads the mode's client
-/// data as it starts, loads each unit type's models, places each client object still, and dresses
+/// Draws units and the map's client objects with their packages' models: loads each unit type's models, places each client object still, and dresses
 /// each model once its scene spawns: the nodes its default look hides hidden, and each primitive
 /// whose glTF material has a material file in that file's material.
 #[derive(Debug)]
-pub(crate) struct UnitModels {
-    pub(crate) packages: Arc<ModePackages>,
-}
+pub(crate) struct UnitModels;
 
 /// The root of a client object's drawing, which stands still where the map places it, of no unit.
 #[derive(Component, Debug)]
@@ -50,14 +46,13 @@ pub(crate) struct StillObject;
 /// The material of each material file once a primitive takes it, by its package's place and name.
 #[derive(Resource, Debug, Default)]
 struct FileMaterials {
-    made: BTreeMap<(u16, String), Handle<FileMaterial>>,
+    made: BTreeMap<(PackageIndex, String), Handle<FileMaterial>>,
 }
 
 impl Plugin for UnitModels {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "file_material.wgsl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
-        app.insert_resource(ClientData::read(&self.packages));
         app.init_resource::<FileMaterials>();
         app.add_systems(Startup, (UnitModels::load_looks, UnitModels::place_objects));
         app.add_observer(UnitModels::dress);
@@ -101,7 +96,7 @@ impl UnitModels {
                     Visibility::default(),
                 ))
                 .id();
-            for model in LookModel::all(0, look, &assets) {
+            for model in LookModel::all(PackageIndex::MODE, look, &assets) {
                 commands.spawn((
                     WorldAssetRoot(model.scene),
                     model.parts,
@@ -171,7 +166,7 @@ impl UnitModels {
 
     /// The material of `file` of the package at `package`, its texture loaded as the glTF loads a
     /// base color: sRGB, wrapped as the file says.
-    fn material(package: u16, file: &MaterialFile, assets: &AssetServer) -> FileMaterial {
+    fn material(package: PackageIndex, file: &MaterialFile, assets: &AssetServer) -> FileMaterial {
         let texture = file.texture.as_ref().map(|texture| {
             let wrap = |clamp: bool| {
                 if clamp {
@@ -210,7 +205,7 @@ struct Node<'a> {
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Dressing {
     hidden: Vec<Entity>,
-    files: Vec<(Entity, (u16, String))>,
+    files: Vec<(Entity, (PackageIndex, String))>,
 }
 
 impl Dressing {
@@ -219,7 +214,7 @@ impl Dressing {
     fn of<'a>(
         parts: &ModelParts,
         nodes: impl Iterator<Item = Node<'a>>,
-        files: &BTreeMap<(u16, String), MaterialFile>,
+        files: &BTreeMap<(PackageIndex, String), MaterialFile>,
     ) -> Dressing {
         let mut dressing = Dressing::default();
         for node in nodes {
@@ -374,7 +369,7 @@ mod tests {
         };
         let data = ClientData {
             units: vec![looks],
-            heights: Some(GroundHeights::of(&grid, None)),
+            heights: Some(GroundHeights::of(grid, None)),
             objects: ClientObjects {
                 objects: vec![
                     object("oak", 3, -2, 1, 90),
@@ -410,7 +405,7 @@ mod tests {
         // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
         // y; each model at its own scale, with the nodes its look hides; the ghost is none.
         let parts = |hide: &[&str]| ModelParts {
-            package: 0,
+            package: PackageIndex::MODE,
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
         };
         let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
@@ -451,11 +446,11 @@ mod tests {
         };
         // Files for the tank's `tank_3` in package 1, and for `tank_0` in package 0 alone.
         let files = BTreeMap::from([
-            ((1, "tank_3".to_owned()), file.clone()),
-            ((0, "tank_0".to_owned()), file),
+            ((PackageIndex::from(1), "tank_3".to_owned()), file.clone()),
+            ((PackageIndex::MODE, "tank_0".to_owned()), file),
         ]);
         let parts = ModelParts {
-            package: 1,
+            package: PackageIndex::from(1),
             hide: vec!["tank.turret".to_owned(), "tank.flash".to_owned()],
         };
         let nodes = [
@@ -485,8 +480,8 @@ mod tests {
             Dressing {
                 hidden: vec![turret, flash],
                 files: vec![
-                    (flash, (1, "tank_3".to_owned())),
-                    (other, (1, "tank_3".to_owned()))
+                    (flash, (PackageIndex::from(1), "tank_3".to_owned())),
+                    (other, (PackageIndex::from(1), "tank_3".to_owned()))
                 ],
             }
         );

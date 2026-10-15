@@ -696,6 +696,7 @@ mod tests {
     use super::*;
     use crate::selection::Selection;
     use crate::view::View;
+    use crate::view::client_data::ClientData;
 
     #[test]
     fn a_ring_marks_each_drop_of_life_where_the_unit_is_drawn() {
@@ -708,6 +709,7 @@ mod tests {
         app.init_resource::<Selection>();
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
         Unpredicted::register(app.world_mut());
+        app.init_resource::<ClientData>();
         app.add_plugins((View, Hud));
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());

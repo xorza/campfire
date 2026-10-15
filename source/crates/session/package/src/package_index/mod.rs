@@ -18,5 +18,13 @@ impl PackageIndex {
     }
 }
 
+/// The place `place`, as the books name a unit type's package by its place; a lookup among a
+/// mode's packages checks it.
+impl From<u16> for PackageIndex {
+    fn from(place: u16) -> PackageIndex {
+        PackageIndex(place)
+    }
+}
+
 #[cfg(test)]
 mod tests;

@@ -10,6 +10,7 @@ use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::HeightGrid;
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 use campfire_math::Num;
+use campfire_package::PackageIndex;
 use campfire_sim::IdAllocator;
 use campfire_units::{TypeOrigin, TypeOriginBook};
 use campfire_values::{DeclaredName, PackagePath};
@@ -31,6 +32,7 @@ fn view() -> App {
     app.init_resource::<Selection>();
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
     Unpredicted::register(app.world_mut());
+    app.init_resource::<ClientData>();
     app.add_plugins(View);
     app.update();
     app
@@ -255,7 +257,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
                 .collect(),
             ..ClientUnits::default()
         }],
-        heights: Some(GroundHeights::of(&grid, None)),
+        heights: Some(GroundHeights::of(grid, None)),
         ..ClientData::default()
     };
     let origins: TypeOriginBook = [TypeOrigin {
@@ -300,7 +302,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     assert_eq!(
         model.get::<ModelParts>(),
         Some(&ModelParts {
-            package: 0,
+            package: PackageIndex::MODE,
             hide: vec!["tank.flash".to_owned()],
         })
     );

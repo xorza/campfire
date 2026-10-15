@@ -107,15 +107,20 @@ impl ModePackages {
         &self.content
     }
 
-    /// Every one of its packages, the mode's first, then each it depends on, in the order of
-    /// their names in its manifest.
-    pub fn packages(&self) -> impl Iterator<Item = PackageView<'_>> {
-        let mode = PackageView {
+    /// The mode's own package.
+    pub const fn mode(&self) -> PackageView<'_> {
+        PackageView {
             index: PackageIndex::MODE,
             package: &self.mode,
             content: &self.content,
             kind: ViewKind::Mode,
-        };
+        }
+    }
+
+    /// Every one of its packages, the mode's first, then each it depends on, in the order of
+    /// their names in its manifest.
+    pub fn packages(&self) -> impl Iterator<Item = PackageView<'_>> {
+        let mode = self.mode();
         let dependents = self
             .dependencies
             .iter()

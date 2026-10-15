@@ -250,13 +250,13 @@ impl View {
     /// Sets the background, the map's lights or one plain sun, the view's own ground unless the
     /// map has a terrain, and the palette.
     fn set_scene(
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut materials: ResMut<'_, Assets<StandardMaterial>>,
     ) {
         commands.insert_resource(ClearColor(Color::srgb(0.08, 0.09, 0.11)));
-        match data.as_deref().and_then(|data| data.lights.as_ref()) {
+        match &data.lights {
             Some(lights) => {
                 let SceneLights { ambient, suns } = SceneLights::of(lights);
                 commands.insert_resource(ambient);
@@ -271,7 +271,7 @@ impl View {
                 ));
             }
         }
-        if data.as_deref().is_none_or(|data| data.terrain.is_none()) {
+        if data.terrain.is_none() {
             commands.spawn((
                 Ground,
                 Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),
@@ -316,13 +316,13 @@ impl View {
         time: Res<'_, Time>,
         units: NewUnits<'_, '_>,
         looks: Option<Res<'_, UnitLooks>>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut capsules: Local<'_, BTreeMap<[u32; 2], Handle<Mesh>>>,
         mut cuboids: Local<'_, BTreeMap<[u32; 3], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        let heights = data.heights.as_ref();
         for (unit, &pos, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
             &units
         {
@@ -412,10 +412,10 @@ impl View {
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        let heights = data.heights.as_ref();
         for (shot, &pos, received) in &shots {
             let at = ground(pos, heights);
             let ball = commands
@@ -450,10 +450,10 @@ impl View {
         time: Res<'_, Time>,
         areas: NewAreas<'_, '_>,
         reach: Option<AreaReach<'_>>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        let heights = data.heights.as_ref();
         for (area, &pos, &unit_type, received) in &areas {
             let radius = reach
                 .as_ref()
@@ -619,10 +619,10 @@ impl View {
     /// the ones that hold now.
     fn step(
         units: Query<'_, '_, (&Position, Option<&Facing>, &Drawing)>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut roots: Query<'_, '_, &mut Glide>,
     ) {
-        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        let heights = data.heights.as_ref();
         for (&pos, facing, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
                 glide.tick(Spot {
@@ -637,10 +637,10 @@ impl View {
     fn follow(
         time: Res<'_, Time>,
         units: MovedUnits<'_, '_>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
-        let heights = data.as_deref().and_then(|data| data.heights.as_ref());
+        let heights = data.heights.as_ref();
         for (&pos, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
                 let drawn = Spot {

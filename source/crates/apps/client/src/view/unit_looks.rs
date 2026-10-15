@@ -4,6 +4,7 @@ use bevy::ecs::resource::Resource;
 use bevy::gltf::GltfAssetLabel;
 use bevy::world_serialization::WorldAsset;
 use campfire_client_files::ClientUnit;
+use campfire_package::PackageIndex;
 use campfire_units::TypeOriginBook;
 use campfire_values::UnitType;
 
@@ -30,7 +31,7 @@ pub(crate) struct LookModel {
 /// its materials take, and the names of the nodes its default look hides.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelParts {
-    pub(crate) package: u16,
+    pub(crate) package: PackageIndex,
     pub(crate) hide: Vec<String>,
 }
 
@@ -44,13 +45,11 @@ impl UnitLooks {
         let looks = origins
             .iter()
             .map(|(_, origin)| {
-                let units = &data.units[usize::from(origin.package)];
-                units
+                let package = PackageIndex::from(origin.package);
+                data.units_of(package)
                     .units
                     .get(&*origin.name)
-                    .map_or_else(Vec::new, |unit| {
-                        LookModel::all(origin.package, unit, assets)
-                    })
+                    .map_or_else(Vec::new, |unit| LookModel::all(package, unit, assets))
             })
             .collect();
         UnitLooks { looks }
@@ -64,7 +63,11 @@ impl UnitLooks {
 
 impl LookModel {
     /// The models of `look`, a look of the package at `package`, each loading.
-    pub(crate) fn all(package: u16, look: &ClientUnit, assets: &AssetServer) -> Vec<LookModel> {
+    pub(crate) fn all(
+        package: PackageIndex,
+        look: &ClientUnit,
+        assets: &AssetServer,
+    ) -> Vec<LookModel> {
         look.models
             .iter()
             .map(|model| LookModel {
@@ -144,8 +147,8 @@ mod tests {
                 .collect()
         };
         let types: Vec<UnitType> = origins.iter().map(|(unit_type, _)| unit_type).collect();
-        let parts = |package, hide: &[&str]| ModelParts {
-            package,
+        let parts = |package: u16, hide: &[&str]| ModelParts {
+            package: PackageIndex::from(package),
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
         };
         assert_eq!(

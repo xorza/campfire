@@ -14,7 +14,7 @@ use bevy::asset::io::{
 use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
 use campfire_log::ErrorReport;
-use campfire_package::{ContentError, ModePackages, PackageReader};
+use campfire_package::{ContentError, ModePackages, PackageIndex, PackageReader};
 use campfire_values::PackagePath;
 use tracing::error;
 
@@ -73,7 +73,8 @@ impl PackageSource {
     }
 
     /// The asset path of the file at `path` in the package at `place`.
-    pub(crate) fn asset_path(place: u16, path: &PackagePath) -> String {
+    pub(crate) fn asset_path(place: PackageIndex, path: &PackagePath) -> String {
+        let place = place.get();
         format!("{}://{place}/{}", PackageSource::NAME, path.as_str())
     }
 

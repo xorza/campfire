@@ -17,6 +17,7 @@ use crate::view::ViewSystems;
 use crate::view::camera_rig::CameraRig;
 use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
+use crate::view::ground_heights::GroundHeights;
 use crate::view::scene_lights::EXPOSURE;
 
 /// The player's camera, as its package's camera file and the client's controls move it: the
@@ -58,12 +59,9 @@ impl Plugin for PlayerCamera {
 }
 
 impl PlayerCamera {
-    fn spawn(data: Option<Res<'_, ClientData>>, mut commands: Commands<'_, '_>) {
-        let data = data.as_deref();
-        let file = data
-            .and_then(|data| data.camera)
-            .unwrap_or(CameraRig::DEFAULT);
-        let grid = data.and_then(|data| data.grid.as_ref());
+    fn spawn(data: Res<'_, ClientData>, mut commands: Commands<'_, '_>) {
+        let file = data.camera.unwrap_or(CameraRig::DEFAULT);
+        let grid = data.heights.as_ref().map(GroundHeights::grid);
         let bounds = grid.map(|grid| {
             let [x, z] = grid.origin().map(FloatNum::float);
             let [far_x, far_z] = grid.far_corner().map(FloatNum::float);
@@ -91,7 +89,7 @@ impl PlayerCamera {
         mut wheel: MessageReader<'_, '_, MouseWheel>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         time: Res<'_, Time>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         mut rig: ResMut<'_, CameraRig>,
     ) {
         let seconds = time.delta_secs();
@@ -153,8 +151,8 @@ impl PlayerCamera {
                 } else {
                     let pivot = rig.pivot();
                     let ground = data
-                        .as_deref()
-                        .and_then(|data| data.heights.as_ref())
+                        .heights
+                        .as_ref()
                         .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
                     let screen = Vec2::new(window.width(), window.height());
                     rig.press_pan(cursor, screen, ground, now);
@@ -186,14 +184,14 @@ impl PlayerCamera {
     /// window's shape.
     fn place(
         rig: Res<'_, CameraRig>,
-        data: Option<Res<'_, ClientData>>,
+        data: Res<'_, ClientData>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
         camera: Single<'_, '_, (&mut Transform, &mut Projection), With<Camera3d>>,
     ) {
         let pivot = rig.pivot();
         let ground = data
-            .as_deref()
-            .and_then(|data| data.heights.as_ref())
+            .heights
+            .as_ref()
             .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
         let (mut transform, mut projection) = camera.into_inner();
         let placed = rig.transform(ground);
