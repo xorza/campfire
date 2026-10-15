@@ -5,7 +5,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
@@ -343,12 +343,10 @@ impl SlotTimes {
         let keep = Num::ONE - fraction;
         let cut = |at: Tick| {
             let left = at.since(now).unwrap_or(Ticks::ZERO);
-            let kept = Num::from_int(i64::try_from(left.get()).expect("a cooldown fits i64"))
-                .and_then(|left| left.checked_mul(keep))
-                .expect("a cooldown within the tick limit scales within a number");
-            now.after(Ticks::new(
-                u64::try_from(kept.ceil()).expect("what is kept is not negative"),
-            ))
+            let kept = keep
+                .scale_count(left.get(), Rounding::Ceiling)
+                .expect("a share of 0 to 1 of a time is a time");
+            now.after(Ticks::new(kept))
         };
         for (held, time) in slots.iter().zip(&mut self.0) {
             if held.kind != kind {
@@ -404,4 +402,36 @@ impl SimComponent for SlotTimes {
 impl Replication for SlotTimes {
     const KIND: DataKind = DataKind::Cooldowns;
     type Sending = SentPredicted;
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_values::Rank;
+
+    use super::*;
+
+    #[test]
+    fn a_cut_of_any_cooldown_keeps_its_share_rounded_up_to_a_tick() {
+        let kind = SlotKind::new(0);
+        let slots = ActionSlots::new([(ActionId::new(0), kind, Some(Rank::FIRST))]);
+        let mut times = SlotTimes::ready(&slots);
+        // From tick 0, a cooldown to the tick limit, 2⁶² ticks, past what a number holds whole,
+        // and a charge 3 ticks off. A quarter cut keeps 3 · 2⁶⁰ ticks of the first exactly, and
+        // 2.25 of the second, which rounds up to 3.
+        times.cool_down(0, Tick::LIMIT);
+        let charges = SlotCharges {
+            count: 0,
+            next: Tick::new(3),
+        };
+        times.set_charges(0, Some(charges));
+        times.cut_cooldowns(&slots, kind, Num::QUARTER, Tick::ZERO);
+        let time = times.slot(0).unwrap();
+        assert_eq!(time.ready_at, Tick::new(3 << 60));
+        assert_eq!(time.charges.map(|charges| charges.next), Some(Tick::new(3)));
+        // A whole cut leaves none; a cut of another kind's slots none of these.
+        times.cut_cooldowns(&slots, SlotKind::new(1), Num::ONE, Tick::ZERO);
+        assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(3 << 60));
+        times.cut_cooldowns(&slots, kind, Num::ONE, Tick::ZERO);
+        assert_eq!(times.slot(0).unwrap().ready_at, Tick::ZERO);
+    }
 }

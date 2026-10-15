@@ -170,6 +170,22 @@ fn each_rounding_takes_its_own_way() {
     );
     assert_eq!(Num::ONE.checked_mul_ratio(1, 0, Rounding::Floor), None);
     assert_eq!(Num::MAX.checked_mul_ratio(2, 1, Rounding::Floor), None);
+    // A count scales to a count: 3 × 0.5 = 1.5 gives 2, 1 and 2; a count of 2⁶² whole times 1 is
+    // itself, and times 0.75 is 3 · 2⁶⁰ exactly, past what a `Num` holds; ε of 2⁶⁴ − 1 is
+    // 2⁴⁰ − 2⁻²⁴, 2⁴⁰ up and 2⁴⁰ − 1 down. Below 0 and past `u64` give none.
+    let counts = modes.map(|mode| Num::HALF.scale_count(3, mode));
+    assert_eq!(counts, [Some(2), Some(1), Some(2)]);
+    assert_eq!(
+        Num::ONE.scale_count(1 << 62, Rounding::Floor),
+        Some(1 << 62)
+    );
+    let quarters = n(HALF + QUARTER).scale_count(1 << 62, Rounding::Ceiling);
+    assert_eq!(quarters, Some(3 << 60));
+    let tiny =
+        [Rounding::Ceiling, Rounding::Floor].map(|mode| Num::EPSILON.scale_count(u64::MAX, mode));
+    assert_eq!(tiny, [Some(1 << 40), Some((1 << 40) - 1)]);
+    assert_eq!((-Num::ONE).scale_count(1, Rounding::Floor), None);
+    assert_eq!(Num::MAX.scale_count(u64::MAX, Rounding::Floor), None);
 }
 
 #[test]
