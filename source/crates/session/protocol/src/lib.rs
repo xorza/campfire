@@ -59,7 +59,6 @@ pub use crate::nsec::Nsec;
 pub use crate::nsec::error::NsecError;
 pub use crate::player_input::PlayerInput;
 pub use crate::random_key::RandomKey;
-pub use crate::receipt::error::ReceiptFileError;
 pub use crate::receipt::{Receipt, SignedReceipt};
 pub use crate::seed_chain::SeedChain;
 pub use crate::seed_commitment::SeedCommitment;
@@ -77,7 +76,6 @@ pub use crate::session_log::error::{
 };
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;
-pub use crate::session_private::error::SessionPrivateError;
 pub use crate::session_result::{Outcome, SessionResult};
 pub use crate::session_terms::SessionTerms;
 pub use crate::signature::Signature;

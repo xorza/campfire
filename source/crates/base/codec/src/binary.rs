@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::batch::Batch;
 use crate::compare::Compare;
 use crate::drop_option::{DropOption, OptionCount};
-use crate::error::BinaryError;
+use crate::error::{BinaryError, TaggedError};
 use crate::sink::Sink;
 
 /// Postcard 1.x, the format of every binary encoding of the engine. A value encodes one way,
@@ -99,6 +99,24 @@ impl Binary {
         Ok(taken.value)
     }
 
+    /// The bytes of a file of `value` into `out`, in place of what it held: `tag`, which names
+    /// the kind of file and its version, then the value.
+    pub fn encode_tagged<T: Serialize + ?Sized>(tag: &[u8], value: &T, out: &mut Vec<u8>) {
+        out.clear();
+        out.extend_from_slice(tag);
+        Binary::encode_into(value, out);
+    }
+
+    /// The value of a file's `bytes` that `encode_tagged` wrote with `tag`: an error for bytes of
+    /// another tag, and for any other value's bytes after it.
+    pub fn decode_tagged<'a, T: Deserialize<'a> + Serialize>(
+        tag: &[u8],
+        bytes: &'a [u8],
+    ) -> Result<T, TaggedError> {
+        let value = bytes.strip_prefix(tag).ok_or(TaggedError::OtherTag)?;
+        Ok(Binary::decode(value)?)
+    }
+
     /// The value at the front of `bytes`, and the bytes after it.
     pub fn take<'a, T: Deserialize<'a> + Serialize>(
         bytes: &'a [u8],
@@ -162,6 +180,30 @@ mod tests {
         assert_eq!(
             Binary::take::<u32>(&[0x80, 0x00, 0x05]),
             Err(BinaryError::NotCanonical)
+        );
+    }
+
+    #[test]
+    fn a_tagged_file_reads_back_only_under_its_tag_and_whole() {
+        // The tag `t/v1`, then 300, `0xAC 0x02`, written in place of what `out` held.
+        let mut out = vec![9; 4];
+        Binary::encode_tagged(b"t/v1", &300_u32, &mut out);
+        assert_eq!(out, b"t/v1\xAC\x02");
+        assert_eq!(Binary::decode_tagged::<u32>(b"t/v1", &out), Ok(300));
+        assert_eq!(
+            Binary::decode_tagged::<u32>(b"t/v2", &out),
+            Err(TaggedError::OtherTag)
+        );
+        let short = &out[..out.len() - 1];
+        assert_eq!(
+            Binary::decode_tagged::<u32>(b"t/v1", short),
+            Err(TaggedError::Value(BinaryError::Truncated))
+        );
+        let mut long = out.clone();
+        long.push(0);
+        assert_eq!(
+            Binary::decode_tagged::<u32>(b"t/v1", &long),
+            Err(TaggedError::Value(BinaryError::NotCanonical))
         );
     }
 

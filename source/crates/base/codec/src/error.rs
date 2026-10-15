@@ -26,6 +26,16 @@ impl From<postcard::Error> for BinaryError {
     }
 }
 
+/// Why a file's bytes are no tagged file of a value, as `Binary::encode_tagged` writes one.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum TaggedError {
+    /// They do not start with the file's tag: another kind of file, or another version of it.
+    #[error("not this kind of file, or another version of it")]
+    OtherTag,
+    #[error(transparent)]
+    Value(#[from] BinaryError),
+}
+
 /// Why a text is no TOML of the type asked for, as `Toml::parse` gives it: TOML's own error,
 /// which names the place in the text.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

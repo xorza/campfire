@@ -1,5 +1,6 @@
 use super::*;
 use crate::harness::test_key::TestKey;
+use campfire_codec::BinaryError;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
@@ -24,17 +25,17 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     assert_eq!(SignedReceipt::decode(&bytes), Ok(signed));
     assert_eq!(
         SignedReceipt::decode(&bytes[1..]),
-        Err(ReceiptFileError::NotReceipt)
+        Err(TaggedError::OtherTag)
     );
     let mut trailing = bytes.clone();
     trailing.push(0);
     assert_eq!(
         SignedReceipt::decode(&trailing),
-        Err(ReceiptFileError::Trailing)
+        Err(TaggedError::Value(BinaryError::NotCanonical))
     );
     assert!(matches!(
         SignedReceipt::decode(&bytes[..bytes.len() - 1]),
-        Err(ReceiptFileError::Malformed(_))
+        Err(TaggedError::Value(_))
     ));
     assert!(receipt.signed_by(&secp, &key, &signed.signature));
     let stranger = TestKey::of(42);

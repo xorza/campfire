@@ -1,7 +1,8 @@
 use std::ffi::OsString;
 
+use campfire_codec::TaggedError;
 use campfire_common::Version;
-use campfire_protocol::{JournalReplayError, NotJournal, SessionPrivateError};
+use campfire_protocol::{JournalReplayError, NotJournal};
 use campfire_store::{AppendOpenError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
@@ -26,7 +27,7 @@ pub enum RestoreError {
     #[error("could not read the session")]
     Read(#[source] PathError<ReadError>),
     #[error("the private record")]
-    Private(#[source] SessionPrivateError),
+    Private(#[source] TaggedError),
     /// The session runs on another engine release than this one, which restores it.
     #[error("the session runs on release {0}, which restores it")]
     OtherRelease(Version),

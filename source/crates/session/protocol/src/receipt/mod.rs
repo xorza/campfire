@@ -1,15 +1,12 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, TaggedError};
 use campfire_common::{PlayerSlot, Tick};
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey};
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
-use crate::receipt::error::ReceiptFileError;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
-
-pub(crate) mod error;
 
 /// Starts every receipt file and states its version, so other bytes are refused at once.
 const FILE_TAG: &[u8] = b"campfire/receipt-file/v1";
@@ -84,24 +81,12 @@ impl Receipt {
 impl SignedReceipt {
     /// The file's bytes: the tag, then the receipt and its signature in postcard.
     pub fn encode(&self, out: &mut Vec<u8>) {
-        out.clear();
-        out.extend_from_slice(FILE_TAG);
-        Binary::encode_into(self, out);
+        Binary::encode_tagged(FILE_TAG, self, out);
     }
 
     /// The receipt of a file's `bytes`; an error for bytes that `encode` did not write.
-    pub fn decode(bytes: &[u8]) -> Result<SignedReceipt, ReceiptFileError> {
-        let rest = bytes
-            .strip_prefix(FILE_TAG)
-            .ok_or(ReceiptFileError::NotReceipt)?;
-        let Taken {
-            value: receipt,
-            rest,
-        } = Binary::take::<SignedReceipt>(rest).map_err(ReceiptFileError::Malformed)?;
-        if !rest.is_empty() {
-            return Err(ReceiptFileError::Trailing);
-        }
-        Ok(receipt)
+    pub fn decode(bytes: &[u8]) -> Result<SignedReceipt, TaggedError> {
+        Binary::decode_tagged(FILE_TAG, bytes)
     }
 }
 

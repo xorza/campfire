@@ -1,11 +1,8 @@
-use campfire_codec::{Binary, Taken};
+use campfire_codec::{Binary, TaggedError};
 use serde::{Deserialize, Serialize};
 
 use crate::seed_chain::SeedChain;
-use crate::session_private::error::SessionPrivateError;
 use crate::session_terms::SessionTerms;
-
-pub(crate) mod error;
 
 /// Starts every private record and states its version, so other bytes are refused at once.
 const PRIVATE_TAG: &[u8] = b"campfire/session-private/v2";
@@ -27,24 +24,12 @@ impl SessionPrivate {
 
     /// The file's bytes: the tag, then the record in postcard.
     pub fn encode(&self, out: &mut Vec<u8>) {
-        out.clear();
-        out.extend_from_slice(PRIVATE_TAG);
-        Binary::encode_into(self, out);
+        Binary::encode_tagged(PRIVATE_TAG, self, out);
     }
 
     /// The record of a file's `bytes`; an error for bytes that `encode` did not write.
-    pub fn decode(bytes: &[u8]) -> Result<SessionPrivate, SessionPrivateError> {
-        let rest = bytes
-            .strip_prefix(PRIVATE_TAG)
-            .ok_or(SessionPrivateError::NotPrivate)?;
-        let Taken {
-            value: private,
-            rest,
-        } = Binary::take::<SessionPrivate>(rest).map_err(SessionPrivateError::Malformed)?;
-        if !rest.is_empty() {
-            return Err(SessionPrivateError::Trailing);
-        }
-        Ok(private)
+    pub fn decode(bytes: &[u8]) -> Result<SessionPrivate, TaggedError> {
+        Binary::decode_tagged(PRIVATE_TAG, bytes)
     }
 }
 

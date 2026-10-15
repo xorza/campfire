@@ -20,7 +20,7 @@ mod sink;
 mod toml;
 
 pub use crate::binary::{Binary, Taken};
-pub use crate::error::{BinaryError, JsonError, TomlError};
+pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
 pub use crate::json::Json;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;

@@ -38,3 +38,17 @@ Blocked: this item only.
 | --- | --- | --- |
 | **A. Keep the derivation (recommended)** | Both readers derive the group from the relations they read, so it is never stale. `Relations::vision_lowest` stays the one derivation that both `vision_group` and `VisionGroups` use. | A derivation of at most 256 steps for each check of a new unit. |
 | B. A shared `VisionGroups` | `VisionGroups` becomes a resource, rebuilt as the relations change, and the readers read it. | A mode script changes the relations in Mode, and an order check or a view refill that runs before the rebuild reads stale groups. A stale group shows a new unit to a team that no longer shares vision. Each reader then needs a rebuild ordered before it. |
+
+## Batch 9: the protocol's signer
+
+The item: "Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes."
+
+Blocked: this item only.
+
+Each signature takes BIP-340's auxiliary randomness. Now `net`'s `ServerSigner` holds the key, the signing context and `net`'s `Entropy`, and fills the randomness for each signature. A `Signer { secp, key }` in protocol has no randomness, and protocol has no `bevy`, so it cannot be a resource. The verification context with its scratch message has no open decision.
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| **A. The session signs (recommended)** | `Entropy` moves to `common`. Protocol's `Signer` holds the key, the context and the entropy. The runner's `Session`, a resource, holds the server's `Signer` and signs its own inputs, checkpoints and result, and `ServerSigner` goes. The client's `Signer` becomes protocol's too. | `Session::serve` and the checkpoint and result paths change in `runner` and `net`. A replay or a verifier holds no signer, so the session's signer is an `Option` that a server alone fills. |
+| B. A plain `Signer`, and `net` fills the randomness | Protocol's `Signer { secp, key }` replaces each `(secp, key)` pair. `ServerSigner` stays, as the resource that pairs the `Signer` with `net`'s `Entropy`. | The item's "`ServerSigner` goes" is not met: a wrapper stays. |
+| C. Fixed auxiliary randomness | The signatures take no fresh randomness, as BIP-340 permits, and `ServerSigner` goes. | BIP-340 recommends fresh randomness against side channels. Every pinned signature moves. |
