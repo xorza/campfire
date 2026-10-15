@@ -5,7 +5,8 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
-use crate::zero_hour::armor_ini::{ArmorIni, DAMAGE_TYPES, damage_type};
+use crate::zero_hour::armor_ini::ArmorIni;
+use crate::zero_hour::damage_type::DamageType;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::object_ini::ObjectIni;
@@ -96,6 +97,10 @@ pub enum WeaponDrop {
     NoDelay,
     /// Its `DamageType` is none of the game's.
     NoDamageType,
+    /// Its `DamageType` takes no life: a status, a subdual, or the kill of a pilot or a garrison.
+    NoLife,
+    /// Its `DamageType` is `HEALING`, which gives its target life.
+    Healing,
     /// A number of it is below 0, not finite, or past what the engine holds.
     BadNumber,
 }
@@ -121,8 +126,8 @@ impl CombatImport {
             let id = DeclaredName::new(&name.to_ascii_lowercase())
                 .ok_or_else(|| ZeroHourError::ArmorName(name.to_owned()))?;
             let mut shares = BTreeMap::new();
-            for (at, kind) in DAMAGE_TYPES.iter().enumerate() {
-                let share = armor.share(at);
+            for kind in DamageType::ALL {
+                let share = armor.share(kind);
                 if share == 1.0 {
                     continue;
                 }
@@ -130,7 +135,7 @@ impl CombatImport {
                     .ok()
                     .filter(|share| *share >= Num::ZERO)
                     .ok_or_else(|| ZeroHourError::ArmorShare(name.to_owned()))?;
-                shares.insert(CombatImport::kind(kind), share);
+                shares.insert(kind.kind(), share);
             }
             if armors.insert(id, shares).is_some() {
                 return Err(ZeroHourError::ArmorName(name.to_owned()));
@@ -202,11 +207,6 @@ impl CombatImport {
         import.armors = armors;
         Ok(import)
     }
-
-    /// The mode's damage kind of the game's damage type `name`, as it writes it in lowercase.
-    pub(crate) fn kind(name: &str) -> DeclaredName {
-        DeclaredName::new(&name.to_ascii_lowercase()).expect("a damage type is a declared name")
-    }
 }
 
 impl ImportedWeapon {
@@ -250,8 +250,16 @@ impl ImportedWeapon {
             0 => return Err(WeaponDrop::NoDelay),
             ms => ms,
         };
-        let named = weapon.damage_type.as_deref().unwrap_or(DAMAGE_TYPES[0]);
-        let place = damage_type(named).ok_or(WeaponDrop::NoDamageType)?;
+        let damage_kind = match weapon.damage_type.as_deref() {
+            None => DamageType::Explosion,
+            Some(named) => DamageType::of(named).ok_or(WeaponDrop::NoDamageType)?,
+        };
+        if !damage_kind.takes_life() {
+            return Err(WeaponDrop::NoLife);
+        }
+        if damage_kind == DamageType::Healing {
+            return Err(WeaponDrop::Healing);
+        }
         let number = |value: f32| {
             let value = Num::try_from(value).map_err(|_| WeaponDrop::BadNumber)?;
             if value < Num::ZERO {
@@ -272,7 +280,7 @@ impl ImportedWeapon {
             targeting: "enemies",
             range: number(weapon.range)?,
             amount: number(weapon.damage)?,
-            damage_kind: CombatImport::kind(DAMAGE_TYPES[place]),
+            damage_kind: damage_kind.kind(),
             period_ms,
             clip,
         })
@@ -315,7 +323,7 @@ mod tests {
             targeting: "enemies",
             range: Num::int(100),
             amount: Num::int(5),
-            damage_kind: CombatImport::kind("SMALL_ARMS"),
+            damage_kind: DamageType::SmallArms.kind(),
             period_ms: 100,
             clip: Some(ImportedClip {
                 shots: 3,
@@ -338,6 +346,8 @@ mod tests {
         assert_eq!(of("Blast"), Err(WeaponDrop::Suicide));
         assert_eq!(of("Pulse"), Err(WeaponDrop::AtSelf));
         assert_eq!(of("Minigun"), Err(WeaponDrop::ContinuousFire));
+        assert_eq!(of("Disabler"), Err(WeaponDrop::NoLife));
+        assert_eq!(of("Mender"), Err(WeaponDrop::Healing));
         assert_eq!(of("Beam").map(|beam| beam.amount), Ok(Num::int(30)));
         // 1 ms is ⌈0.03⌉ = 1 frame, 33 ms; a time below 0 is no number.
         assert_eq!(ImportedWeapon::ms(1), Ok(33));

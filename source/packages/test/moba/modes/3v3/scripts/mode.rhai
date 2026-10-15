@@ -42,7 +42,7 @@ fn on_timer(ctx, name, data) {
 
 fn on_unit_died(ctx, unit, killer, assisters) {
     if unit.has_tag("core") {
-        ctx.end(ctx.enemy_team(unit.team));
+        core_fell(ctx, unit);
         return;
     }
     if unit.has_tag("ward") {
@@ -210,4 +210,22 @@ fn calc_damage(ctx, d) {
         amount = (amount - d.target.stat("physical_block")).max(0);
     }
     amount
+}
+
+// A core's fall ends the match, its enemy the winner while the enemy's core stands, else a draw,
+// as when both fall in one tick. Each death of a tick is heard after all of them, so the first
+// core heard ends the match, and the state `ended` keeps the other from a second `ctx.end`.
+fn core_fell(ctx, core) {
+    if ctx.state.ended {
+        return;
+    }
+    ctx.state.ended = true;
+    let enemy = ctx.enemy_team(core.team);
+    for other in ctx.units_tagged("core") {
+        if other.alive && other.team == enemy {
+            ctx.end(enemy);
+            return;
+        }
+    }
+    ctx.end(());
 }

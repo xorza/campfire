@@ -52,6 +52,7 @@ pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
 pub(crate) mod command_button_ini;
 pub(crate) mod command_set_ini;
+pub(crate) mod damage_type;
 pub(crate) mod error;
 pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
