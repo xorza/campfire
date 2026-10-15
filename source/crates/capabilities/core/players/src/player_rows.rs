@@ -38,7 +38,12 @@ pub struct PlayerRowsMut<'w, 's, C: Component<Mutability = Mutable>> {
 impl<C: Component<Mutability = Mutable>> PlayerRowsMut<'_, '_, C> {
     /// The `C` of the player that owns a unit of `owner`, as `PlayerRows::of` finds it.
     pub fn of(&self, owner: Option<&Owner>) -> Option<&C> {
-        let entity = self.index.get(StableId::of_player(owner?.slot()))?;
+        self.of_slot(owner?.slot())
+    }
+
+    /// The `C` of player `slot`.
+    pub fn of_slot(&self, slot: PlayerSlot) -> Option<&C> {
+        let entity = self.index.get(StableId::of_player(slot))?;
         self.rows.get(entity).ok()
     }
 

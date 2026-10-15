@@ -54,11 +54,18 @@ impl PlayerResources {
         Some(())
     }
 
+    /// Whether it holds each of `costs`.
+    pub fn affords(&self, costs: &[ResourceAmount]) -> bool {
+        costs
+            .iter()
+            .all(|cost| self.amount(cost.resource) >= cost.amount)
+    }
+
     /// Takes `costs`, which it affords.
     pub fn pay(&mut self, costs: &[ResourceAmount]) {
+        debug_assert!(self.affords(costs), "the player affords the cost");
         for cost in costs {
             let at = self.at(cost.resource);
-            debug_assert!(self.0[at] >= cost.amount, "the player affords the cost");
             self.0[at] -= cost.amount;
         }
     }
@@ -88,4 +95,27 @@ impl SimComponent for PlayerResources {
 impl Replication for PlayerResources {
     const KIND: DataKind = DataKind::Resources;
     type Sending = SentOnChange;
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_values::ResourceId;
+
+    use crate::player_resources::PlayerResources;
+    use crate::resource_amount::ResourceAmount;
+
+    #[test]
+    fn a_player_affords_a_cost_of_each_resource_it_holds_enough_of() {
+        let [gold, gems] = [0, 1].map(ResourceId::new);
+        let cost = |resource, amount| ResourceAmount { resource, amount };
+        let mut held = PlayerResources::new(2);
+        held.add(gold, 5).unwrap();
+        // 5 gold and no gems: 5 gold is held, 6 is not, and a gem of the two is not either.
+        assert!(held.affords(&[]));
+        assert!(held.affords(&[cost(gold, 5)]));
+        assert!(!held.affords(&[cost(gold, 6)]));
+        assert!(!held.affords(&[cost(gold, 5), cost(gems, 1)]));
+        held.pay(&[cost(gold, 5)]);
+        assert_eq!([held.amount(gold), held.amount(gems)], [0, 0]);
+    }
 }

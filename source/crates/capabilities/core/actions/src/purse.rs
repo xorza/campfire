@@ -20,11 +20,9 @@ impl<'a> Purse<'a> {
     /// cost in a pool it lacks, and one no player owns none in resources.
     pub fn affords(&self, cost: &PoolCost, resources: &[ResourceAmount]) -> bool {
         let pools = self.pools.affords(cost);
-        let player = self.resources.map_or(resources.is_empty(), |held| {
-            resources
-                .iter()
-                .all(|cost| held.amount(cost.resource) >= cost.amount)
-        });
+        let player = self
+            .resources
+            .map_or(resources.is_empty(), |held| held.affords(resources));
         pools && player
     }
 }

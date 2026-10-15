@@ -145,7 +145,6 @@ Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mod
 
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
 
-- [ ] `PlayerRowsMut` gains `of_slot`. `PlayerResources::affords` replaces `Purse`'s copy, and the `Payer` doc is corrected.
 - [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal type. The validators move to the argument code.
 - [ ] `units` `SyncTo`: one dispatch. `net` `FaultSource` and `PaceSpeed::place` go. `quic`: one constructor for the server endpoint with its `AddressLimit`, and one for the minimum-MTU link.
 - [ ] Flag parameters become enums, and wide signatures become parameter structs with the world first. The full list is in Section 3.

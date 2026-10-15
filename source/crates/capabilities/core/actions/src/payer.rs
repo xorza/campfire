@@ -19,8 +19,9 @@ impl<'a> Payer<'a> {
         Payer { pools, resources }
     }
 
-    /// Pays `cost` from its pools and `resources` from its player's, which its purse affords:
-    /// every action's cost is paid here.
+    /// Pays `cost` from its pools and `resources` from its player's, which its purse affords: an
+    /// attack's cost and a train's. A cast pays its parts apart, its resources before its call
+    /// runs and its pools as it applies, and a toggle its pools alone.
     pub fn pay(mut self, cost: &PoolCost, resources: &[ResourceAmount]) {
         self.pools.pay(cost);
         if let Some(held) = self.resources {
