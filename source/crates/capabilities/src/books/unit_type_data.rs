@@ -86,34 +86,9 @@ impl UnitTypeData {
         self.projectile.is_some() || self.area.is_some()
     }
 
-    /// The fields of its table, by name, in the order `given` gives them.
-    pub const FIELDS: [&str; 22] = [
-        "tags",
-        "params",
-        "state",
-        "pools",
-        "slots",
-        "passive",
-        "stats",
-        "combat",
-        "orders",
-        "vision",
-        "collision",
-        "tracks",
-        "production",
-        "supply",
-        "node",
-        "drop_off",
-        "projectile",
-        "area",
-        "inventory",
-        "shop",
-        "use",
-        "uses",
-    ];
-
-    /// The name of each field its table gives, a list or map one only when it is not empty.
-    pub fn given(&self) -> impl Iterator<Item = &'static str> {
+    /// Each field of its table by name, in the table's order, and whether it gives it: a list or
+    /// a map only when it is not empty.
+    pub fn fields(&self) -> [(&'static str, bool); 22] {
         let UnitTypeData {
             tags,
             params,
@@ -138,33 +113,36 @@ impl UnitTypeData {
             usable,
             uses,
         } = self;
-        let given = [
-            !tags.is_empty(),
-            !params.is_empty(),
-            !state.is_empty(),
-            !pools.is_empty(),
-            !slots.is_empty(),
-            passive.is_some(),
-            stats.is_some(),
-            combat.is_some(),
-            orders.is_some(),
-            vision.is_some(),
-            collision.is_some(),
-            !tracks.is_empty(),
-            production.is_some(),
-            supply.is_some(),
-            node.is_some(),
-            drop_off.is_some(),
-            projectile.is_some(),
-            area.is_some(),
-            inventory.is_some(),
-            shop.is_some(),
-            usable.is_some(),
-            uses.is_some(),
-        ];
-        UnitTypeData::FIELDS
+        [
+            ("tags", !tags.is_empty()),
+            ("params", !params.is_empty()),
+            ("state", !state.is_empty()),
+            ("pools", !pools.is_empty()),
+            ("slots", !slots.is_empty()),
+            ("passive", passive.is_some()),
+            ("stats", stats.is_some()),
+            ("combat", combat.is_some()),
+            ("orders", orders.is_some()),
+            ("vision", vision.is_some()),
+            ("collision", collision.is_some()),
+            ("tracks", !tracks.is_empty()),
+            ("production", production.is_some()),
+            ("supply", supply.is_some()),
+            ("node", node.is_some()),
+            ("drop_off", drop_off.is_some()),
+            ("projectile", projectile.is_some()),
+            ("area", area.is_some()),
+            ("inventory", inventory.is_some()),
+            ("shop", shop.is_some()),
+            ("use", usable.is_some()),
+            ("uses", uses.is_some()),
+        ]
+    }
+
+    /// The name of each field its table gives, as `fields` tells.
+    pub fn given(&self) -> impl Iterator<Item = &'static str> {
+        self.fields()
             .into_iter()
-            .zip(given)
             .filter_map(|(name, given)| given.then_some(name))
     }
 

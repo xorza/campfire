@@ -1,10 +1,10 @@
-use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots};
+use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots, ListHook};
 use campfire_capabilities::UnitStartError;
 use campfire_common::MapName;
 use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
 use campfire_orders::AiError;
-use campfire_script::{ApiVersion, Hook, NameKind, ParamProblem};
+use campfire_script::{ApiVersion, NameKind, ParamProblem};
 use campfire_sim::Capability;
 use campfire_stats::ModifierProblem;
 use campfire_values::{DeclaredName, EngineTag, PackagePath, Stat, TimeTooLarge};
@@ -216,7 +216,7 @@ pub enum LoadProblem {
     #[error("action \"{action}\", `{}`", .list.name())]
     Effect {
         action: DeclaredName,
-        list: Hook,
+        list: ListHook,
         #[source]
         problem: EffectProblem,
     },

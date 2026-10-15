@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 
 use campfire_actions::{
     ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
-    LaunchFields, PlannedEffect, PurgeFields,
+    LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
 use campfire_capabilities::{Release, UnitStartError};
 use campfire_codec::Toml;
@@ -22,7 +22,7 @@ use campfire_package::{
 use campfire_package_disk::PackageDir;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_script::internals::Undefined;
-use campfire_script::{CtxMisuse, Hook, NameKind, ParamProblem, Status, SyncTo};
+use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
 use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
@@ -854,7 +854,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "eruption", on_end = [{ heal = { amount = 1 } }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
     // An action spawns a unit type of its own package that stands, an avatar's summon among
     // them, for a whole number of milliseconds: Rime's arrow, a projectile, is none. A summon of
@@ -882,7 +882,7 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(SLOWS, r#"{ loot = { table = "chest", level = 1 } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Loot) } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Loot) } if action == "fan_of_frost"),
     ),
     flaw(
         MODE_DATA,
@@ -900,7 +900,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ spawn = { unit_type = "melee_creep", duration_ms = "1.5" } }]"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Duration } if action == "tower_attack"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Duration } if action == "tower_attack"),
     ),
     // A move is a dash's `to` and `speed`, or a knock back's `from`, `distance` and whole `ms`;
     // its other unit, as its own, is one its list reaches.
@@ -917,7 +917,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"{ move = { from = "source", distance = 1, ms = "0.5" } },"#,
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Duration } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Duration } if action == "fan_of_frost"),
     ),
     flaw(
         CINDER,
@@ -926,7 +926,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "eruption", on_end = [{ move = { to = "reached", speed = 5 }, to = "source" }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
     flaw(
         RIME,
@@ -957,7 +957,7 @@ static DATA_FLAWS: &[Flaw] = &[
             matches!(
                 problem,
                 LoadProblem::Effect {
-                    list: Hook::OnEnd,
+                    list: ListHook::OnEnd,
                     problem: EffectProblem::NoUnit,
                     ..
                 }
@@ -972,7 +972,7 @@ static DATA_FLAWS: &[Flaw] = &[
             matches!(
                 problem,
                 LoadProblem::Effect {
-                    list: Hook::OnResolve,
+                    list: ListHook::OnResolve,
                     problem: EffectProblem::NoUnit,
                     ..
                 }
@@ -987,7 +987,7 @@ static DATA_FLAWS: &[Flaw] = &[
             matches!(
                 problem,
                 LoadProblem::Effect {
-                    list: Hook::OnHit,
+                    list: ListHook::OnHit,
                     problem: EffectProblem::NoDelivery,
                     ..
                 }
@@ -1029,7 +1029,7 @@ static SCRIPT_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Effect {
                     action,
-                    list: Hook::OnHit,
+                    list: ListHook::OnHit,
                     problem: EffectProblem::Overflow,
                 } if action == "fan_of_frost"
             )

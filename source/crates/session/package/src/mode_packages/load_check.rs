@@ -4,9 +4,9 @@ use std::slice;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, MeteredKind,
-    ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields, Targeting,
-    XpFields,
+    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ListHook,
+    MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields,
+    Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
@@ -989,7 +989,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         for (list, effects) in action.effect_lists() {
             let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
-            if !effects.is_empty() && list != Hook::OnResolve && !delivers {
+            if !effects.is_empty() && list != ListHook::OnResolve && !delivers {
                 return Err(LoadProblem::Effect {
                     action: id.clone(),
                     list,
@@ -997,8 +997,9 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             let reaches = match list {
-                Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
-                _ => list == Hook::OnHit,
+                ListHook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
+                ListHook::OnHit => true,
+                ListHook::OnEnd => false,
             };
             self.effect_list(id, action, scope, list, effects, reaches)?;
         }
@@ -1035,7 +1036,7 @@ impl<'a> LoadCheck<'a> {
         id: &DeclaredName,
         action: &ActionData,
         scope: EffectScope<'_>,
-        list: Hook,
+        list: ListHook,
         effects: &[EffectData],
         reaches: bool,
     ) -> Result<(), LoadProblem> {
@@ -1046,7 +1047,7 @@ impl<'a> LoadCheck<'a> {
             problem,
         };
         // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
-        let aims_point = list == Hook::OnResolve
+        let aims_point = list == ListHook::OnResolve
             && matches!(action.targeting, Targeting::Point | Targeting::Direction);
         for effect in effects {
             let placed = aims_point && matches!(effect.does, DoesData::Spawn(SpawnFields { .. }));
@@ -1090,8 +1091,8 @@ impl<'a> LoadCheck<'a> {
                             unit_type: area.clone(),
                         }));
                     }
-                    self.effect_list(id, action, scope, Hook::OnHit, on_hit, true)?;
-                    self.effect_list(id, action, scope, Hook::OnEnd, on_end, false)?;
+                    self.effect_list(id, action, scope, ListHook::OnHit, on_hit, true)?;
+                    self.effect_list(id, action, scope, ListHook::OnEnd, on_end, false)?;
                 }
                 DoesData::Spawn(SpawnFields { unit_type, .. }) => {
                     scope.spawn(unit_type, &at, fail)?;

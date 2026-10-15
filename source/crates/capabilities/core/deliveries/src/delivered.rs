@@ -1,4 +1,4 @@
-use campfire_script::Hook;
+use campfire_actions::ListHook;
 use campfire_sim::StableId;
 use campfire_values::Hit;
 
@@ -21,11 +21,11 @@ pub enum Reached {
 }
 
 impl Reached {
-    /// The hook that runs for it.
-    pub(crate) const fn hook(self) -> Hook {
+    /// The list that runs for it.
+    pub(crate) const fn list(self) -> ListHook {
         match self {
-            Reached::Hit(_) => Hook::OnHit,
-            Reached::End => Hook::OnEnd,
+            Reached::Hit(_) => ListHook::OnHit,
+            Reached::End => ListHook::OnEnd,
         }
     }
 

@@ -182,11 +182,12 @@ impl<'a> ApiBuilder<'a> {
     ) -> &mut Self {
         let spec = self.owned(spec);
         debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
-        assert!(
-            !V::NUMBER,
-            "`{}` takes a `Num`, whose integer form a setter does not bind",
-            spec.name
-        );
+        const {
+            assert!(
+                !V::NUMBER,
+                "a setter takes no `Num`, whose integer form it does not bind"
+            );
+        }
         self.host.engine_mut().register_fn(
             format!("{SETTER}{}", spec.name),
             move |call: NativeCallContext<'_>, handle: &mut H, value: V::Raw| {

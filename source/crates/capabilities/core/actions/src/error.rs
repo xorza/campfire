@@ -1,10 +1,11 @@
-use campfire_script::{Hook, UnknownName};
+use campfire_script::UnknownName;
 use campfire_values::{DeclaredName, TimeTooLarge};
 use thiserror::Error;
 
 use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_data_field::ActionDataField;
 use crate::action_kind::MeteredKind;
+use crate::list_hook::ListHook;
 
 /// Why an action's data makes no action of a match: a rule of design 08's checks that its data
 /// breaks, which the action's book holds as it builds. Packages are untrusted, so each is an
@@ -44,7 +45,7 @@ pub enum ActionProblem {
     StartLife,
     /// A number or a duration of an effect of its list `list` breaks `rule`.
     #[error("its {list:?} list: {rule}")]
-    Effect { list: Hook, rule: EffectRule },
+    Effect { list: ListHook, rule: EffectRule },
 }
 
 /// Why the mode's slot kinds do not load. Packages are untrusted, so each is an expected failure.

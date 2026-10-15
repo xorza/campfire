@@ -1,8 +1,6 @@
 use std::alloc::Layout;
 use std::any::TypeId;
 use std::fmt;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 use bevy_ecs::bundle::BundleWriter;
 use bevy_ecs::component::{Component, ComponentId};
@@ -29,16 +27,12 @@ struct Part<H> {
 /// each entity of the host holds each part its spawn would give it.
 #[derive(Resource)]
 pub struct EntityParts<H: Send + Sync + 'static> {
-    parts: Arc<Vec<Part<H>>>,
-    host: PhantomData<H>,
+    parts: Vec<Part<H>>,
 }
 
 impl<H: Send + Sync + 'static> Default for EntityParts<H> {
     fn default() -> EntityParts<H> {
-        EntityParts {
-            parts: Arc::default(),
-            host: PhantomData,
-        }
+        EntityParts { parts: Vec::new() }
     }
 }
 
@@ -51,7 +45,7 @@ impl<H: Component> EntityParts<H> {
         id: ComponentId,
         start: fn(&KindSpawn<'_, H>) -> Option<C>,
     ) {
-        let parts = Arc::get_mut(&mut self.parts).expect("the install adds parts before a spawn");
+        let parts = &mut self.parts;
         let ty = TypeId::of::<C>();
         assert!(
             parts.iter().all(|part| part.ty != ty),
@@ -98,7 +92,7 @@ impl<H: Component> EntityParts<H> {
             return;
         };
         let at = KindSpawn::of(world, entity);
-        for part in parts.parts.iter() {
+        for part in &parts.parts {
             (part.push)(&at, writer);
         }
     }

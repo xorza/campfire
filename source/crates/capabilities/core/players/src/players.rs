@@ -57,7 +57,7 @@ impl Players {
 
     /// Spawns the match's entity, then each player's, in slot order, `teams` giving each slot's
     /// team, each with its named id and the parts the installed modules declare for its kind.
-    pub fn spawn_match(world: &mut World, teams: impl Iterator<Item = Team>) {
+    pub fn spawn_match(world: &mut World, teams: impl IntoIterator<Item = Team>) {
         EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
         for (slot, team) in (0..).map(PlayerSlot::new).zip(teams) {
             Players::spawn_player(world, slot, team);

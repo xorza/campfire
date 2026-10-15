@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{CallError, Ctx, Frame, Hook, View};
+use campfire_script::{CallError, Ctx, Frame, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::StatsEffect;
 use campfire_units::SpawnAt;
@@ -25,6 +25,7 @@ use crate::effect_names::EffectNames;
 use crate::effect_queues::EffectQueues;
 use crate::error::{ActionError, ActionProblem};
 use crate::launch_id::LaunchId;
+use crate::list_hook::ListHook;
 use crate::lists_of::ListsOf;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, by
@@ -49,7 +50,7 @@ pub struct EffectSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListCall {
     pub of: ListsOf,
-    pub hook: Hook,
+    pub hook: ListHook,
     pub reached: ActionTarget,
 }
 
@@ -68,11 +69,7 @@ impl EffectListBook {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
         }
         let mut runs = [0..0, 0..0, 0..0];
-        let lists = [
-            (Hook::OnResolve, &data.on_resolve),
-            (Hook::OnHit, &data.on_hit),
-            (Hook::OnEnd, &data.on_end),
-        ];
+        let lists = data.effect_lists();
         for (run, (hook, list)) in runs.iter_mut().zip(lists) {
             *run = self.append(data, hook, list, names)?;
         }
@@ -85,7 +82,7 @@ impl EffectListBook {
     fn append(
         &mut self,
         data: &ActionData,
-        hook: Hook,
+        hook: ListHook,
         list: &[EffectData],
         names: &impl EffectNames,
     ) -> Result<Range<u32>, ActionError> {
@@ -106,7 +103,7 @@ impl EffectListBook {
 
     /// Whether the numbers of `does`, an effect of the action `data`'s list `hook`, hold their
     /// rules: its duration whole milliseconds, then each number a sim number at least 0.
-    fn holds(data: &ActionData, hook: Hook, does: &DoesData) -> Result<(), ActionProblem> {
+    fn holds(data: &ActionData, hook: ListHook, does: &DoesData) -> Result<(), ActionProblem> {
         let broken = |rule| ActionProblem::Effect { list: hook, rule };
         let duration = match does {
             DoesData::Modifier(ModifierFields { duration_ms, .. })
@@ -128,7 +125,7 @@ impl EffectListBook {
     fn resolve(
         &mut self,
         data: &ActionData,
-        hook: Hook,
+        hook: ListHook,
         does: &DoesData,
         names: &impl EffectNames,
     ) -> Result<DoesSpec, ActionError> {
@@ -186,8 +183,8 @@ impl EffectListBook {
             }) => {
                 let area = names.package_type(area)?;
                 let lists = [
-                    self.append(data, Hook::OnHit, on_hit, names)?,
-                    self.append(data, Hook::OnEnd, on_end, names)?,
+                    self.append(data, ListHook::OnHit, on_hit, names)?,
+                    self.append(data, ListHook::OnEnd, on_end, names)?,
                 ];
                 let launch = LaunchId(position(self.launches.len()));
                 self.launches.push(lists);
@@ -214,22 +211,19 @@ impl EffectListBook {
 
     /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or
     /// `on_end`, or a launch's `on_hit` or `on_end`.
-    pub fn of(&self, of: ListsOf, hook: Hook) -> &[EffectSpec] {
+    pub fn of(&self, of: ListsOf, hook: ListHook) -> &[EffectSpec] {
         let run = match (of, hook) {
-            (ListsOf::Action(action), _) => {
-                let list = match hook {
-                    Hook::OnResolve => 0,
-                    Hook::OnHit => 1,
-                    Hook::OnEnd => 2,
-                    _ => unreachable!("only a resolve and a delivery's hit and end have lists"),
-                };
-                self.runs.get(action.index()).map(|runs| &runs[list])
-            }
-            (ListsOf::Launch(launch), Hook::OnHit | Hook::OnEnd) => {
-                let list = usize::from(hook == Hook::OnEnd);
+            (ListsOf::Action(action), _) => self
+                .runs
+                .get(action.index())
+                .map(|runs| &runs[hook.index()]),
+            (ListsOf::Launch(launch), ListHook::OnHit | ListHook::OnEnd) => {
+                let list = usize::from(hook == ListHook::OnEnd);
                 Some(&self.launches[launch.0 as usize][list])
             }
-            (ListsOf::Launch(_), _) => unreachable!("a launch's area has a hit and an end alone"),
+            (ListsOf::Launch(_), ListHook::OnResolve) => {
+                unreachable!("a launch's area has a hit and an end alone")
+            }
         };
         run.map_or(&[], |run| {
             &self.effects[run.start as usize..run.end as usize]

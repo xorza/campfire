@@ -9,6 +9,7 @@ use std::{env, fmt};
 use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotKindData};
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::{Release, UnitTypeData};
+use campfire_codec::Toml;
 use campfire_combat::{CombatData, LeechData, ModeCombatData};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
@@ -374,7 +375,8 @@ fn the_data_fields_are_the_schemas() {
     let mut mode = serde_fields::<ModeData>();
     mode.extend(["actions", "modifiers", "items", "script"]);
     mode.sort_unstable();
-    let mut unit_type = UnitTypeData::FIELDS.to_vec();
+    let empty = Toml::parse::<UnitTypeData>("").unwrap();
+    let mut unit_type = empty.fields().map(|(name, _)| name).to_vec();
     unit_type.sort_unstable();
     // Its fields as `given` names them are those its table reads.
     assert_eq!(unit_type, serde_fields::<UnitTypeData>());
