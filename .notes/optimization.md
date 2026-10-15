@@ -39,16 +39,12 @@ The share of each pass in a tick, inclusive, in the mean 3v3 tick and the 1,000-
 - **The static bodies' item is in the code.** `BodyIndex::update` and `PathingGrid::update` take only the bodies that came and went, and label again only the regions they touch: `pathing_grid/enter` is 13.8 µs.
 - **Steering's walking grid, built only for a stuck walker, does not pay.** Pinned A/B: `battle/crowded_move` 6.69 ms before and after; `server_stage/worst_3v3_move` 149 µs and 170 µs before, 149 µs and 156 µs after, within its noise. The change was dropped.
 
+## What the second session did
+
+The session on branch `perf-change-driven-passes`, on 2026-10-15, took every item; its journal, [PERF](PERF.md), holds each idea with its numbers and its verdict. Kept: each segment's seed derived once; `BodyBox::push_out` with one probe; `DueRun` in `sim`, which `hold_charges` uses; `run_toggles` over the set of units with a toggle on; `route_units` over the walkers that changed; the gather loop's relations read once for each read of its view. Dropped, as no case can show them or they cost more than they save: `DueRun` for the thinkers, `keep_in_bounds` over changed positions, the held pass's player modifiers, `want_passives` past its scan, `plan_routes`' list of waiting asks, the waiting workers by node, homing projectiles by target, `room_for` near the box, and one restore target for each replay.
+
 ## Items
 
-Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `capabilities/stats/src/held_pass.rs`, `capabilities/core/actions/src/holds.rs`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/gather_loop/mod.rs`, `capabilities/projectiles/src/flying.rs`, `capabilities/abilities/src/toggles.rs`, `session/{runner,protocol}/src/**`, `network/quic/src/admission.rs`, `capabilities/core/geometry/src/body_box/mod.rs`. Goldens: none move. A pass visits fewer units with the same result.
+Files: `network/quic/src/admission.rs`. Goldens: none move.
 
-- [ ] `DueRun` in `sim`, a cache that each restore rebuilds. `orders/src/thinking.rs:74-93`, `actions/src/holds.rs:22-36` and `abilities/src/toggles.rs:20-64` use it.
-- [ ] `navigation/src/routing.rs:325-403`, `route_asks.rs:127-152`: `Changed<Destination>`, every walker only on a static change, and a list of waiting asks.
-- [ ] `navigation/src/walking.rs:320-327`, `navigation_column.rs:78-94`: `keep_in_bounds` over `Changed<Position>`, and `room_for` near the box.
-- [ ] `stats/src/held_pass.rs:105-208`: re-derive the holds on a change of owner, tags or `PlayerModifiers`.
-- [ ] `actions/src/holds.rs:45-106`: `want_passives` over `Changed` filters and `ReadyWaits`.
-- [ ] `production/src/gather_loop/mod.rs:176-190,331`, `projectiles/src/flying.rs:26-35`: waiting workers by node, `Changed<Node>`, and homing projectiles by target.
-- [ ] `protocol/src/server_seeds.rs:24-33`, `runner/src/session/mod.rs:107-117,217-224`: test `segment <= last` and derive the seed once, and one restore target for each replay.
-- [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue.
-- [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
+- [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue. It waits for a bench of a flood of handshakes, and so for `criterion` as a dependency of `quic`, which the user decides.

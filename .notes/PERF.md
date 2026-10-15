@@ -24,8 +24,22 @@ Self time, `perf record` at 2 kHz on core 12, frame pointers. `mean_3v3`, inclus
 
 ## Current numbers
 
-| Case | local |
-| --- | --- |
+The tip, `f5989a97`, against the master it merged, `91d5f2ba`, four rounds, clock-scaled megacycles per iteration on `local`; the seeds and `push_out` cases, which master lacks, from their commit.
+
+| Case | Master | Tip | Change |
+| --- | --- | --- | --- |
+| `server_stage/mean_3v3_inputs` | 156.94 | 138.39 | −11.8 % |
+| `battle/crowded_inputs` | 24.027 | 21.412 | −10.9 % |
+| `gather/two_fields` | 0.1476 | 0.1419 | −3.9 % |
+| `collision/boxes` | 3.5920 | 3.5547 | −1.0 % |
+| `body_box/reach_box` | 0.3173 | 0.3134 | −1.2 % |
+| `battle/crowded_move` | 33.636 | 33.278 | −1.1 %, one pair of four the other way |
+| `server_stage/mean_3v3_move` | 234.69 | 237.37 | +1.1 %, at its floor |
+| `server_tick/mean_3v3` | 3386.3 | 3390.5 | +0.1 %, inside its floor |
+| `server_tick/worst_3v3` | 2.2839 | 2.3014 | +0.8 %, pairs on both sides |
+| `collision/crowded`, `body_box/reach`, `body_box/overlap` | | | −0.2 %, −0.3 %, +0.4 %: inside their floors |
+| `server_seeds/segment_starts` | 167.01 | 0.0059 | 36.0 ms → 1.26 µs |
+| `body_box/push_out` | 2.1746 | 1.4531 | −33.2 % |
 
 ## Ideas
 
