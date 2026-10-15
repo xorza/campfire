@@ -6,6 +6,7 @@ use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_actions::{ActionBook, ActionSlots, Aim, KindSpec};
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_geometry::Placed;
+use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner};
@@ -103,7 +104,7 @@ impl GatherView<'_, '_> {
         ours.then_some(FoundNode {
             entity,
             place: Place {
-                pos: at,
+                pos: at.get(),
                 body: body.copied(),
             },
         })
@@ -114,7 +115,7 @@ impl GatherView<'_, '_> {
     /// body, the lower stable id on a tie.
     fn free_node_near(
         &self,
-        from: Position,
+        from: Vec3,
         team: Team,
         gather: Gather,
         near: Place,
@@ -161,7 +162,7 @@ impl GatherView<'_, '_> {
             self.drop_offs.get(self.index.get(id)?).ok()?;
         self.takes(*drop_owner, unit_type, owner, resource)
             .then_some(Place {
-                pos: at,
+                pos: at.get(),
                 body: body.copied(),
             })
     }
@@ -170,7 +171,7 @@ impl GatherView<'_, '_> {
     /// `from`: by the distance to its body, the lower stable id on a tie.
     pub(super) fn drop_off(
         &self,
-        from: Position,
+        from: Vec3,
         owner: PlayerSlot,
         resource: ResourceId,
     ) -> Option<StableId> {
@@ -181,7 +182,7 @@ impl GatherView<'_, '_> {
             })
             .map(|(&id, &at, body, ..)| {
                 let place = Place {
-                    pos: at,
+                    pos: at.get(),
                     body: body.copied(),
                 };
                 (place.distance_from(from), id)
@@ -205,7 +206,7 @@ impl GatherView<'_, '_> {
     /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `at`.
     pub(super) fn reaches(
         &self,
-        from: Position,
+        from: Vec3,
         body: Option<&Body>,
         gather: Gather,
         at: Place,
@@ -243,7 +244,7 @@ impl GatherView<'_, '_> {
             pos: order.node.pos,
             body: None,
         };
-        let search = || match self.free_node_near(from, team, gather, gone) {
+        let search = || match self.free_node_near(from.get(), team, gather, gone) {
             Some(next) => Step::Retarget(next),
             None => Step::Stop,
         };
@@ -253,14 +254,14 @@ impl GatherView<'_, '_> {
                 let Some(FoundNode { entity, place }) = node else {
                     return search();
                 };
-                if !self.reaches(from, body, gather, place) {
-                    return place.walk_from(from, destination, arrived);
+                if !self.reaches(from.get(), body, gather, place) {
+                    return place.walk_from(from.get(), destination, arrived);
                 }
                 let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
                 if node.holder().is_none() {
                     return Step::Take(entity);
                 }
-                match self.free_node_near(from, team, gather, place) {
+                match self.free_node_near(from.get(), team, gather, place) {
                     Some(next) => Step::Retarget(next),
                     None => Step::Wait,
                 }
@@ -289,20 +290,20 @@ impl GatherView<'_, '_> {
                 };
                 let chosen = drop_off.and_then(|id| self.drop_off_place(id, owner, load.resource));
                 let Some(place) = chosen else {
-                    return match self.drop_off(from, owner, load.resource) {
+                    return match self.drop_off(from.get(), owner, load.resource) {
                         Some(next) => Step::Choose(next),
                         None => Step::Stand,
                     };
                 };
-                if !self.reaches(from, body, gather, place) {
-                    return place.walk_from(from, destination, arrived);
+                if !self.reaches(from.get(), body, gather, place) {
+                    return place.walk_from(from.get(), destination, arrived);
                 }
                 if !self.joins(owner, load) {
                     return Step::Stand;
                 }
                 let back = match node {
                     Some(_) => Some(order.node),
-                    None => self.free_node_near(from, team, gather, gone),
+                    None => self.free_node_near(from.get(), team, gather, gone),
                 };
                 Step::Deliver(back)
             }

@@ -351,7 +351,7 @@ pub mod internals {
     use campfire_actions::Actions;
     use campfire_combat::{Damage, DamageCause, PassQueue};
     use campfire_common::PlayerSlot;
-    use campfire_math::Num;
+    use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
     use campfire_script::internals::FailureKind;
     use campfire_script::{
@@ -380,7 +380,7 @@ pub mod internals {
         pub fn spawn_typed(
             world: &mut World,
             name: &str,
-            pos: Position,
+            pos: Vec3,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
@@ -395,7 +395,7 @@ pub mod internals {
         pub(super) fn spawn_at(
             world: &mut World,
             unit_type: UnitType,
-            pos: Position,
+            pos: Vec3,
             angle: Num,
             team: Team,
             parts: impl Bundle,
@@ -427,7 +427,7 @@ pub mod internals {
         pub fn spawn(
             world: &mut World,
             unit_type: UnitType,
-            pos: impl Into<Position>,
+            pos: impl Into<Vec3>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
@@ -438,7 +438,7 @@ pub mod internals {
         pub fn spawn_turned(
             world: &mut World,
             unit_type: UnitType,
-            pos: impl Into<Position>,
+            pos: impl Into<Vec3>,
             angle: Num,
             team: Team,
             parts: impl Bundle,
@@ -467,7 +467,7 @@ pub mod internals {
         pub fn spawn_named(
             world: &mut World,
             name: &str,
-            pos: impl Into<Position>,
+            pos: impl Into<Vec3>,
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
@@ -539,7 +539,7 @@ pub mod internals {
         }
 
         /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
-        pub fn placed_units(world: &World) -> Vec<(u64, Position, usize, Option<PathEnd>)> {
+        pub fn placed_units(world: &World) -> Vec<(u64, Vec3, usize, Option<PathEnd>)> {
             world
                 .resource::<EntityIndex>()
                 .iter()
@@ -548,7 +548,7 @@ pub mod internals {
                     let unit = world.entity(entity);
                     (
                         id.get(),
-                        *unit.get::<Position>().unwrap(),
+                        unit.get::<Position>().unwrap().get(),
                         unit.get::<Team>().unwrap().index(),
                         unit.get::<PathWalker>().map(|walker| walker.walks_from()),
                     )
@@ -586,7 +586,7 @@ pub mod internals {
             let modifiers = Modifiers::bundle([Application::refresh(instance)]);
             let grunt = Units::type_named(world, "grunt").unwrap();
             let parts = (Life::full(Num::int(1000)), modifiers);
-            Mode::spawn(world, grunt, Position::ORIGIN, team, parts)
+            Mode::spawn(world, grunt, Vec3::ZERO, team, parts)
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_orders::Orders;
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::Owner;
 use campfire_values::{Team, UnitType};
 
@@ -12,7 +13,7 @@ pub trait OrdersFixtures {
     fn hero(
         world: &mut World,
         hero: UnitType,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         slot: u32,
     ) -> StableId;
@@ -22,7 +23,7 @@ impl OrdersFixtures for Orders {
     fn hero(
         world: &mut World,
         hero: UnitType,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         slot: u32,
     ) -> StableId {

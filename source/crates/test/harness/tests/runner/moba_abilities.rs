@@ -202,7 +202,7 @@ fn spawn_with(
 fn spawn_at(
     arena: &Arena,
     game: &mut Match,
-    pos: impl Into<Position>,
+    pos: impl Into<Vec3>,
     team: Team,
     kit: Kit,
     parts: impl Bundle,
@@ -268,9 +268,9 @@ fn areas(game: &mut Match) -> usize {
 }
 
 /// The point `x`, `z` thousandths of a meter from the origin.
-fn milli(x: i64, z: i64) -> Position {
+fn milli(x: i64, z: i64) -> Vec3 {
     let at = |value: i64| Num::int(value).checked_div_int(1000).unwrap();
-    Position::new(Vec3::new(at(x), Num::ZERO, at(z))).unwrap()
+    Vec3::new(at(x), Num::ZERO, at(z))
 }
 
 #[test]
@@ -701,15 +701,15 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
             .unwrap()
             .contains(Team::new(0))
     };
-    let owls = |game: &mut Match| -> Vec<Position> {
+    let owls = |game: &mut Match| -> Vec<Vec3> {
         let mut owls = game.query::<(&Projectile, &Position)>();
-        owls.iter(game).map(|(_, &at)| at).collect()
+        owls.iter(game).map(|(_, at)| at.get()).collect()
     };
 
     // Aimed at a point 7 m out, within its 25 m range: it launches in tick 0, and flies 14/30 m
     // a tick, 7 829 367 bits rounded, from tick 1. Fifteen steps are 7 bits short of 7 m, and the
     // sixteenth ends it on the point, where its `on_end` runs.
-    let point = Position::from((7, 0, 0));
+    let point = Vec3::from((7, 0, 0));
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert!(!seen(&game));
     for _ in 1..=15 {
@@ -717,7 +717,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     }
     let short = Num::from_bits(15 * 7_829_367);
     assert_eq!(short, Num::int(7) - Num::from_bits(7));
-    let flying = Position::new(Vec3::new(short, Num::ZERO, Num::ZERO)).unwrap();
+    let flying = Vec3::new(short, Num::ZERO, Num::ZERO);
     assert_eq!(owls(&mut game), [flying]);
     arena.step(&mut game);
     assert_eq!(owls(&mut game), []);
@@ -754,7 +754,7 @@ fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
         [0, 2].map(|team| teams.contains(Team::new(team)))
     };
     // It resolves at once, in tick 0, and reveals for 5000 ms, 150 ticks: ticks 0 to 149.
-    let point = Position::from((20, 0, 0));
+    let point = Vec3::from((20, 0, 0));
     arena.tick(&mut game, 0, &[cast(caster, ActionTarget::Point(point))]);
     assert_eq!(
         [near, far].map(|unit| seen(&game, unit)),
@@ -971,7 +971,7 @@ fn walker() -> impl Bundle {
 /// Where `id` stands along x, and the forced move under way on it.
 fn forced(game: &Match, id: StableId) -> (Num, Option<ForcedMove>) {
     let entity = game.entity_of(id).unwrap();
-    let x = game.get::<Position>(entity).unwrap().get().x;
+    let x = game.get::<Position>(entity).unwrap().x;
     (x, game.get::<ForcedMove>(entity).copied())
 }
 

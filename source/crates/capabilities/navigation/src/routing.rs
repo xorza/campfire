@@ -80,7 +80,7 @@ impl Routing {
                     }
                 }
                 Some(goal) if route.goal() == Some(goal) => {
-                    let blocked = planned && changes.blocks_route(at, route.ahead(), walker);
+                    let blocked = planned && changes.blocks_route(at.get(), route.ahead(), walker);
                     let unreached = opened && !route.reached();
                     if route.asked().is_none() && (blocked || unreached) {
                         route.ask(goal, now, party(goal));
@@ -90,7 +90,7 @@ impl Routing {
                 Some(goal) => {
                     let from = match route.ahead() {
                         [.., before, _] => Some(*before),
-                        [_] => Some(at),
+                        [_] => Some(at.get()),
                         [] => None,
                     };
                     let straight = from.filter(|_| route.reached() && route.asked().is_none());

@@ -1,4 +1,5 @@
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_sim::{Position, SimWorld, StableId};
 use serde::{Deserialize, Serialize};
 
@@ -8,19 +9,27 @@ use serde::{Deserialize, Serialize};
 pub enum ActionTarget {
     None,
     Unit(StableId),
-    Point(Position),
+    Point(Vec3),
 }
 impl ActionTarget {
     /// The point it names in `world`: its point, or where its unit stands; `None` for no
     /// target, or a unit that is gone.
-    pub fn point(self, world: &World) -> Option<Position> {
+    pub fn pos(self, world: &World) -> Option<Vec3> {
         match self {
             ActionTarget::None => None,
             ActionTarget::Point(at) => Some(at),
             ActionTarget::Unit(id) => {
                 let entity = world.entity_of(id)?;
-                world.get::<Position>(entity).copied()
+                world.get::<Position>(entity).map(|pos| pos.get())
             }
+        }
+    }
+
+    /// Whether each of its places lies within the world's bound, as a restore checks it.
+    pub(crate) fn within_bound(self) -> bool {
+        match self {
+            ActionTarget::Point(at) => Position::from(at).within_bound(),
+            ActionTarget::None | ActionTarget::Unit(_) => true,
         }
     }
 
@@ -38,8 +47,8 @@ impl From<StableId> for ActionTarget {
     }
 }
 
-impl From<Position> for ActionTarget {
-    fn from(point: Position) -> ActionTarget {
+impl From<Vec3> for ActionTarget {
+    fn from(point: Vec3) -> ActionTarget {
         ActionTarget::Point(point)
     }
 }
@@ -53,7 +62,7 @@ mod tests {
     #[test]
     fn a_unit_or_a_point_is_its_target() {
         let unit = IdAllocator::default().allocate();
-        let point = Position::from((3, 0, -4));
+        let point = Vec3::from((3, 0, -4));
         assert_eq!(ActionTarget::from(unit), ActionTarget::Unit(unit));
         assert_eq!(ActionTarget::from(point), ActionTarget::Point(point));
     }

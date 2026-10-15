@@ -124,7 +124,7 @@ impl PathingGrid {
                 // A cell another body blocks too lies within the walker's radius of each, so the
                 // other's bounding box comes within this one's bound and twice the radius.
                 let reach = body.shape.bound() + radius + radius;
-                statics.near(layer, body.pos.get(), reach, |other| {
+                statics.near(layer, body.pos, reach, |other| {
                     other.spans_closer(grid, radius, |cells| {
                         let at = cleared.partition_point(|run| run.end <= cells.start);
                         let Some(run) = cleared.get(at) else {

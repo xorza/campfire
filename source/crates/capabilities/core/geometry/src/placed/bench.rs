@@ -1,7 +1,6 @@
 use std::hint::black_box;
 
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -15,8 +14,8 @@ use crate::shape::Shape;
 #[derive(Debug, Clone, Copy)]
 struct Beside {
     body: Placed,
-    from: Position,
-    to: Position,
+    from: Vec3,
+    to: Vec3,
 }
 
 /// `COUNT` bodies at whole centimeters within 20 m of the origin, each a circle of 0.2 to 5 m,
@@ -37,13 +36,13 @@ fn beside(seed: u64, boxes: bool) -> Vec<Beside> {
             } else {
                 Shape::Circle(Radius::new(length(20, 500)).unwrap())
             };
-            let pos = Position::new(scene.point(20)).unwrap();
+            let pos = scene.point(20);
             let from = scene.point(20);
             let to = from + scene.point(5);
             Beside {
                 body: Placed::new(pos, shape),
-                from: Position::new(from).unwrap(),
-                to: Position::new(to).unwrap(),
+                from,
+                to,
             }
         })
         .collect()

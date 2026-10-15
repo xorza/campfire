@@ -1,6 +1,6 @@
 use campfire_geometry::{Grid, Shape};
-use campfire_math::Num;
-use campfire_sim::{IdAllocator, Position};
+use campfire_math::{Num, Vec3};
+use campfire_sim::IdAllocator;
 use campfire_units::{Body, MapBook};
 use campfire_values::{DeclaredName, UnitType};
 
@@ -33,7 +33,7 @@ pub struct WalkCheck<'a> {
 pub struct PlacedBody {
     pub unit: usize,
     pub unit_type: UnitType,
-    pub pos: Position,
+    pub pos: Vec3,
     pub body: Body,
 }
 
@@ -41,7 +41,7 @@ pub struct PlacedBody {
 #[derive(Debug, Clone)]
 pub struct MarkerPoint {
     pub name: DeclaredName,
-    pub pos: Position,
+    pub pos: Vec3,
 }
 
 impl WalkCheck<'_> {
@@ -94,12 +94,12 @@ impl WalkCheck<'_> {
         for walker in widest {
             let clearance = grid.clearance(walker);
             let walkable = Walkable::of(clearance, &statics);
-            let stands = |pos: Position| !walkable.blocks(Segment::new(pos, pos));
+            let stands = |pos: Vec3| !walkable.blocks(Segment::new(pos, pos));
             if let Some(spawn) = self.spawns.iter().find(|spawn| !stands(spawn.pos)) {
                 let marker = spawn.name.clone();
                 return Err(MapProblem::MarkerBlocked { marker });
             }
-            let reach = |pos: Position| clearance.regions().reach(cells.nearest_cell(pos));
+            let reach = |pos: Vec3| clearance.regions().reach(cells.nearest_cell(pos));
             for (path, name) in paths.names().iter() {
                 let points = paths.points(path);
                 if let Some(waypoint) = points.iter().position(|&point| !stands(point)) {

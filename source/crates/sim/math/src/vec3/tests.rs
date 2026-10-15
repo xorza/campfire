@@ -110,6 +110,14 @@ fn within_is_exact_at_the_boundary() {
     assert!(origin.within(origin, Num::ZERO));
     assert!(!origin.within(origin, -Num::EPSILON));
     assert!(!raw(i64::MAX, 0, 0).within(raw(i64::MIN, 0, 0), Num::MAX));
+    // On the ground plane the heights drop: (1, 0, 1) to (4, 9, 5) is 3 m along x and 4 m along
+    // z, 5 m, whatever the heights.
+    let (from, to) = (v(1, 0, 1), v(4, 9, 5));
+    assert_eq!(to.ground(), v(4, 0, 5));
+    assert_eq!(from.ground_offset(to), v(3, 0, 4));
+    let reaches = [five - Num::EPSILON, five, five + Num::EPSILON]
+        .map(|radius| from.within_ground(to, radius));
+    assert_eq!(reaches, [false, true, true]);
 
     // (3, 4, 0) m is 25 m² = 25 · 2⁴⁸ raw; one raw unit more on x adds 2 · 3 · 2²⁴ + 1.
     assert_eq!(v(3, 4, 0).length_squared_bits(), 25 << 48);

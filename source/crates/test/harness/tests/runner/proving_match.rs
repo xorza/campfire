@@ -12,7 +12,7 @@ use campfire_capabilities::{Order, Release};
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::ModeWorld;
 use campfire_orders::OrdersAction;
 use campfire_production::TrainQueue;
@@ -39,9 +39,9 @@ struct Seen {
     trained: [usize; 2],
     /// The ticks the ward stood after, with its place and the teams that saw it; and the ticks
     /// after which north saw south's barracks.
-    ward: Vec<(u64, Position, TeamSet)>,
+    ward: Vec<(u64, Vec3, TeamSet)>,
     /// The ticks the sage's wisp stood after, with its place.
-    wisp: Vec<(u64, Position)>,
+    wisp: Vec<(u64, Vec3)>,
     barracks_watched: Vec<u64>,
     /// The mode's state after each tick that changed it.
     states: Vec<(u64, Vec<StateValue>)>,
@@ -138,7 +138,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
             seen.modified_heroes += 1;
         }
         if unit.contains::<Lifespan>() {
-            let pos = *unit.get::<Position>().unwrap();
+            let pos = unit.get::<Position>().unwrap().get();
             if unit
                 .get::<Owner>()
                 .is_some_and(|owner| owner.slot().get() == 1)
@@ -183,13 +183,13 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
         return;
     };
     let (at, body) = (
-        *stone.get::<Position>().unwrap(),
+        stone.get::<Position>().unwrap().get(),
         stone.get::<Body>().unwrap(),
     );
     for (id, unit) in units() {
         let walks = unit.contains::<MoveStep>() && !unit.contains::<Dead>();
         if let (true, Some(walker)) = (walks, unit.get::<Body>())
-            && walker.sinks_into(*unit.get::<Position>().unwrap(), body, at)
+            && walker.sinks_into(unit.get::<Position>().unwrap().get(), body, at)
         {
             seen.sunk.push((tick, id));
         }
@@ -198,7 +198,10 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     if lancer.contains::<Dead>() {
         return;
     }
-    let (from, own) = (*lancer.get::<Position>().unwrap(), lancer.get::<Body>());
+    let (from, own) = (
+        lancer.get::<Position>().unwrap().get(),
+        lancer.get::<Body>(),
+    );
     let box_reach = Body::reaches(from, own, LANCER_RANGE, at, Some(body));
     let bound_reach = Body::reaches_bound(from, own, LANCER_RANGE, at, Some(body));
     seen.lancer_reach.push((tick, box_reach, bound_reach));
@@ -298,7 +301,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // of north sees it otherwise.
     let ticks: Vec<u64> = seen.ward.iter().map(|&(tick, ..)| tick).collect();
     assert_eq!(ticks, (300..=338).collect::<Vec<_>>());
-    let pos = Position::from((12, 0, 9));
+    let pos = Vec3::from((12, 0, 9));
     let north_alone =
         |teams: TeamSet| (0..3).all(|team| teams.contains(Team::new(team)) == (team == 0));
     assert!(
@@ -310,7 +313,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // A summon: the sage's wisp, a unit type its own package declares, posted at (2, 6) in tick
     // 100, its order's, stands its 3000 ms, 60 ticks, from 100 to 159, so the state after each
     // of ticks 100 to 158 holds it.
-    let pos = Position::from((2, 0, 6));
+    let pos = Vec3::from((2, 0, 6));
     assert_eq!(
         seen.wisp,
         (100..=158).map(|tick| (tick, pos)).collect::<Vec<_>>()

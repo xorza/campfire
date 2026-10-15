@@ -8,7 +8,7 @@ use campfire_geometry::{
     BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowDirectory, RowEntries, Shape,
 };
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::{Body, Layer};
 
 use crate::segment::Segment;
@@ -49,7 +49,7 @@ pub struct BodyIndex {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IndexedBody {
     pub id: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
     pub shape: Shape,
     pub layer: Layer,
 }
@@ -137,7 +137,7 @@ impl BucketKey {
 
 impl IndexedBody {
     /// The body `body` of unit `id`, standing at `pos`.
-    pub const fn of(id: StableId, pos: Position, body: &Body) -> IndexedBody {
+    pub const fn of(id: StableId, pos: Vec3, body: &Body) -> IndexedBody {
         IndexedBody {
             id,
             pos,
@@ -154,7 +154,7 @@ impl IndexedBody {
 
     /// Whether the insides of the body and of `body`, a box at `pos`, share a point: touching is
     /// not overlap.
-    pub fn overlaps_box(&self, pos: Position, body: &BodyBox) -> bool {
+    pub fn overlaps_box(&self, pos: Vec3, body: &BodyBox) -> bool {
         match &self.shape {
             Shape::Circle(radius) => body.nearest(pos, self.pos, radius.get()) == Ordering::Less,
             Shape::Box(other) => body.overlaps(pos, other, self.pos),
@@ -256,8 +256,8 @@ impl BodyIndex {
                 level: self.levels.level(extent[0].max(extent[1])),
             };
             let cell = self.levels.cell(at.level);
-            let rows = Buckets::covering(cell, body.pos.get().z, extent[1]);
-            let columns = Buckets::covering(cell, body.pos.get().x, extent[0]);
+            let rows = Buckets::covering(cell, body.pos.z, extent[1]);
+            let columns = Buckets::covering(cell, body.pos.x, extent[0]);
             for row in rows.low..=rows.high {
                 debug_assert!(row.abs() < BucketKey::ROWS, "a body's rows fit a key");
                 self.fresh
@@ -353,7 +353,7 @@ impl BodyIndex {
     /// exactly: whether the walker along it would overlap one.
     pub fn blocks(&self, segment: Segment, walker: Walker) -> bool {
         let radius = walker.radius;
-        let (from, to) = (segment.start().get(), segment.end().get());
+        let (from, to) = (segment.start(), segment.end());
         let span = |a: Num, b: Num| [(a.min(b) - radius).to_bits(), (a.max(b) + radius).to_bits()];
         let ([low_x, high_x], [low_z, high_z]) = (span(from.x, to.x), span(from.z, to.z));
         let square = Square {

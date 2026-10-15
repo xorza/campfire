@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::Query;
 use campfire_common::Tick;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 use campfire_units::{Body, Dead, Layer};
 
@@ -39,10 +39,10 @@ pub(crate) struct RouteAsks {
     /// The members of the party being planned, by stable id.
     members: Vec<Member>,
     /// The shared routes of the party being planned, one for each layer, one after another.
-    shared: Vec<Position>,
+    shared: Vec<Vec3>,
     layers: Vec<SharedRoute>,
     /// The route being planned.
-    waypoints: Vec<Position>,
+    waypoints: Vec<Vec3>,
 }
 
 /// A walker whose route waits for the planner.
@@ -59,9 +59,9 @@ struct Waiting {
 pub(crate) struct Member {
     pub id: StableId,
     pub(crate) entity: Entity,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) walker: Walker,
-    pub(crate) goal: Position,
+    pub(crate) goal: Vec3,
 }
 
 /// The route a party plans once for the members of one layer.
@@ -98,7 +98,7 @@ impl RouteAsks {
                 let (_, _, &at, mut route, _) =
                     units.get_mut(next.entity).expect("a unit read this tick");
                 let goal = route.goal().expect("a unit that asked a route has a goal");
-                route.answer(at, &[goal], true);
+                route.answer(at.get(), &[goal], true);
             }
             return;
         };
@@ -175,8 +175,8 @@ impl RouteAsks {
         let (_, _, &at, mut route, body) = units.get_mut(entity).expect("a unit read this tick");
         let goal = route.goal().expect("a unit that asked a route has a goal");
         let walkable = Walkable::of(grid.clearance(Walker::walking(body)), statics);
-        let outcome = planner.plan(walkable, at, goal, &mut self.waypoints);
-        route.answer(at, &self.waypoints, outcome.reached);
+        let outcome = planner.plan(walkable, at.get(), goal, &mut self.waypoints);
+        route.answer(at.get(), &self.waypoints, outcome.reached);
     }
 
     /// Plans the routes of the party whose asks are `run` of `parties`, two at least, by stable
@@ -199,7 +199,7 @@ impl RouteAsks {
             self.members.push(Member {
                 id,
                 entity,
-                pos: at,
+                pos: at.get(),
                 walker: Walker::walking(body),
                 goal: route.goal().expect("a unit that asked a route has a goal"),
             });
@@ -212,7 +212,7 @@ impl RouteAsks {
             &mut |entity, waypoints, reached| {
                 let (_, _, &at, mut route, _) =
                     units.get_mut(entity).expect("a unit read this tick");
-                route.answer(at, waypoints, reached);
+                route.answer(at.get(), waypoints, reached);
             },
         )
     }
@@ -227,7 +227,7 @@ impl RouteAsks {
         statics: &BodyIndex,
         planner: &mut RoutePlanner,
         party: Party,
-        answer: &mut impl FnMut(Entity, &[Position], bool),
+        answer: &mut impl FnMut(Entity, &[Vec3], bool),
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
@@ -274,10 +274,7 @@ impl RouteAsks {
             .max()
             .expect("a layer of a member");
         let squared = |value: Num| u128::from(value.to_bits().unsigned_abs()).pow(2);
-        let distance = |pos: Position| {
-            let pos = pos.get();
-            squared(pos.x - centre[0]) + squared(pos.z - centre[1])
-        };
+        let distance = |pos: Vec3| squared(pos.x - centre[0]) + squared(pos.z - centre[1]);
         let leader = on_layer
             .filter(|member| member.walker == widest)
             .min_by_key(|member| (distance(member.pos), member.id))
@@ -304,7 +301,7 @@ impl RouteAsks {
         planner: &mut RoutePlanner,
         member: Member,
         party: Party,
-        answer: &mut impl FnMut(Entity, &[Position], bool),
+        answer: &mut impl FnMut(Entity, &[Vec3], bool),
     ) {
         let shared = self
             .layers
@@ -342,7 +339,7 @@ impl RouteAsks {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
-    use campfire_sim::Position;
+    use campfire_math::Vec3;
 
     use crate::body_index::BodyIndex;
     use crate::party::Party;
@@ -361,7 +358,7 @@ pub(crate) mod internals {
             planner: &mut RoutePlanner,
             party: Party,
             members: impl IntoIterator<Item = Member>,
-            answer: &mut impl FnMut(Entity, &[Position], bool),
+            answer: &mut impl FnMut(Entity, &[Vec3], bool),
         ) -> Planning {
             self.members.clear();
             self.members.extend(members);

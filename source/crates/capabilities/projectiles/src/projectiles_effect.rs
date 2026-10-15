@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
 use campfire_script::{Effect, Frame};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_units::MapBook;
 use campfire_values::UnitType;
 
@@ -16,7 +16,7 @@ pub(crate) struct ProjectilesEffect {
     pub id: StableId,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
-    pub(crate) from: Position,
+    pub(crate) from: Vec3,
     pub(crate) toward: Toward,
 }
 

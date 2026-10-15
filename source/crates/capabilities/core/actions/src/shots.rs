@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
-use campfire_math::Num;
-use campfire_sim::{Position, StableId};
+use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
 /// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches
@@ -15,7 +15,7 @@ pub struct Shots(pub Vec<Shot>);
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shot {
     pub source: StableId,
-    pub from: Position,
+    pub from: Vec3,
     pub target: StableId,
     pub unit_type: UnitType,
     pub action: ActionId,

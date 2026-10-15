@@ -2,6 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::{EntityKind, EntityParts, SpawnParts};
+use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
 use campfire_values::{Team, UnitTags, UnitType};
 
@@ -17,7 +18,7 @@ use crate::unit_states::UnitStates;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
     pub unit_type: UnitType,
     pub team: Team,
     pub owner: Option<Owner>,
@@ -50,7 +51,7 @@ impl UnitCore {
                 || owner.is_some() && unit.contains::<Owner>()),
             "a unit's parts hold none of its core, which would take their place"
         );
-        unit.insert((id, pos, unit_type, team));
+        unit.insert((id, Position::from(pos), unit_type, team));
         if let Some(owner) = owner {
             unit.insert(owner);
         }

@@ -45,7 +45,6 @@ mod tests {
     use campfire_geometry::internals::KernelScene;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
-    use campfire_sim::Position;
     use campfire_units::Layer;
 
     use crate::terrain::Terrain;
@@ -67,12 +66,8 @@ mod tests {
         let terrain = Terrain::new(&grid, &walls);
         let blocked = terrain.blocked(Layer::FIRST).unwrap();
         let at = |x: i64, z: i64| {
-            let pos = Position::new(Vec3::new(
-                Num::int(x) + Num::HALF,
-                Num::ZERO,
-                Num::int(z) + Num::HALF,
-            ));
-            let cell = grid.cell_of(pos.unwrap()).unwrap();
+            let pos = Vec3::new(Num::int(x) + Num::HALF, Num::ZERO, Num::int(z) + Num::HALF);
+            let cell = grid.cell_of(pos).unwrap();
             blocked[cell / 64] & (1 << (cell % 64)) != 0
         };
         // Inside each of the four pieces.

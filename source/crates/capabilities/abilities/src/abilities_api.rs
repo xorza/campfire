@@ -1,10 +1,10 @@
 use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_script::{
     ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
     RoleSet, ScriptValue, Status, Unit,
 };
-use campfire_sim::{Capability, Position};
+use campfire_sim::Capability;
 use campfire_values::{ActionId, Block, TagProperty};
 
 use crate::abilities_effect::AbilitiesEffect;
@@ -78,7 +78,7 @@ impl AbilitiesApi {
     }
 
     /// Where the running call's action's unit stood as the action started.
-    fn origin(ctx: &Ctx) -> Checked<Position> {
+    fn origin(ctx: &Ctx) -> Checked<Vec3> {
         let start = ctx.frame().start();
         Ok(start
             .ok_or_else(|| AbilitiesRefusal::NoStart.fail())?

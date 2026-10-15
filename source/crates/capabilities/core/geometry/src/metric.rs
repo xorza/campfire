@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
 
 use crate::approach::Approach;
@@ -21,10 +20,10 @@ pub enum Metric {
 
 impl Metric {
     /// The offset from `a` to `b` that counts towards a distance: a planar map drops the height.
-    pub fn offset(self, a: Position, b: Position) -> Vec3 {
+    pub fn offset(self, a: Vec3, b: Vec3) -> Vec3 {
         match self {
             Metric::Planar => a.ground_offset(b),
-            Metric::Spatial => b.get() - a.get(),
+            Metric::Spatial => b - a,
         }
     }
 
@@ -39,17 +38,16 @@ impl Metric {
 
     /// The point `step` from `from` toward `to` in the map's metric, or the point there when it
     /// is at most `step` away: a planar map steps on the ground plane, at `from`'s height.
-    pub fn step_toward(self, from: Position, to: Position, step: Num) -> Position {
+    pub fn step_toward(self, from: Vec3, to: Vec3, step: Num) -> Vec3 {
         let to = match self {
-            Metric::Planar => Vec3::new(to.get().x, from.get().y, to.get().z),
-            Metric::Spatial => to.get(),
+            Metric::Planar => Vec3::new(to.x, from.y, to.z),
+            Metric::Spatial => to,
         };
-        let stepped = from.get().step_toward(to, step);
-        Position::new(stepped).expect("a step ends between two points within the bound")
+        from.step_toward(to, step)
     }
 
     /// Whether `b` is within `range` of `a`, exactly, with no square root.
-    fn within(self, a: Position, b: Position, range: Num) -> bool {
+    fn within(self, a: Vec3, b: Vec3, range: Num) -> bool {
         Vec3::ZERO.within(self.offset(a, b), range)
     }
 
@@ -69,7 +67,7 @@ impl Metric {
             },
         ) = (from, to);
         debug_assert!(range >= Num::ZERO);
-        let within = |body: &BodyBox, pos: Position, other: Position, radius: Num| {
+        let within = |body: &BodyBox, pos: Vec3, other: Vec3, radius: Num| {
             debug_assert!(self == Metric::Planar, "a box lies on a planar map");
             let reach = range.checked_add(radius);
             reach.is_none_or(|reach| body.nearest(pos, other, reach) != Ordering::Greater)
@@ -92,13 +90,7 @@ impl Metric {
 
     /// How the straight path from `from` to `to` comes to `body`, against `reach`, as `reaches`
     /// counts it.
-    pub(crate) fn approach(
-        self,
-        body: Placed,
-        from: Position,
-        to: Position,
-        reach: Num,
-    ) -> Approach {
+    pub(crate) fn approach(self, body: Placed, from: Vec3, to: Vec3, reach: Num) -> Approach {
         let Placed { pos, shape } = body;
         match shape {
             Shape::Circle(radius) => Approach::of_circle(
@@ -117,7 +109,7 @@ impl Metric {
     /// Whether the straight path from `from` to `to` comes within `reach` of `body`, each
     /// distance to the nearest bit; and if it does, the place along the path of its point nearest
     /// the body, the first where it enters a box, its distance from `from`.
-    pub fn meets(self, from: Position, to: Position, body: Placed, reach: Num) -> Option<Num> {
+    pub fn meets(self, from: Vec3, to: Vec3, body: Placed, reach: Num) -> Option<Num> {
         let approach = self.approach(body, from, to, reach);
         (approach.nearest != Ordering::Greater).then_some(approach.place)
     }
@@ -132,7 +124,7 @@ mod tests {
     #[test]
     fn a_reach_runs_from_edge_to_edge() {
         let num = |value| Num::from_int(value).unwrap();
-        let (from, to) = (Position::from((0, 0, 0)), Position::from((10, 0, 0)));
+        let (from, to) = (Vec3::from((0, 0, 0)), Vec3::from((10, 0, 0)));
         // 10 m between centres: a range of 7 from a body of 1 to one of 2 reaches, 7 - ε not; a
         // point reaches as a body of 0.
         let cases = [
@@ -154,7 +146,7 @@ mod tests {
             assert_eq!(met, reaches, "{from_radius:?} + {range:?} + {to_radius:?}");
         }
         // 4 m up and 3 m along: 3 apart on a planar map, 5 on a spatial one.
-        let above = Position::from((3, 4, 0));
+        let above = Vec3::from((3, 4, 0));
         let point = Shape::POINT;
         assert!(Metric::Planar.reaches(
             Placed::new(from, point),
@@ -211,16 +203,16 @@ mod tests {
         // A step of 1 toward (3, 4, 0): along the ground at the height it starts at on a planar
         // map, along the line in space on a spatial one. A step past the end ends there, which on
         // a planar map is the point below or above at the start's height.
-        let (from, to) = (Position::from((0, 0, 0)), Position::from((3, 4, 0)));
+        let (from, to) = (Vec3::from((0, 0, 0)), Vec3::from((3, 4, 0)));
         assert_eq!(
             Metric::Planar.step_toward(from, to, num(1)),
-            Position::from((1, 0, 0))
+            Vec3::from((1, 0, 0))
         );
-        let spatial = Position::new(from.get().step_toward(to.get(), num(1))).unwrap();
+        let spatial = from.step_toward(to, num(1));
         assert_eq!(Metric::Spatial.step_toward(from, to, num(1)), spatial);
         assert_eq!(
             Metric::Planar.step_toward(from, to, num(5)),
-            Position::from((3, 0, 0))
+            Vec3::from((3, 0, 0))
         );
         assert_eq!(Metric::Spatial.step_toward(from, to, num(5)), to);
     }
@@ -228,17 +220,17 @@ mod tests {
     #[test]
     fn a_path_meets_a_point_within_reach_of_its_nearest_point() {
         let num = |value| Num::from_int(value).unwrap();
-        let (from, to) = (Position::from((0, 0, 0)), Position::from((10, 0, 0)));
+        let (from, to) = (Vec3::from((0, 0, 0)), Vec3::from((10, 0, 0)));
         let point = Shape::POINT;
         // Beside the path 2 m off, at 4 m along: met within 2, at 4 m along, and not within
         // 2 less a bit. Behind the start and past the end, the ends count.
         let cases = [
-            (Position::from((4, 0, 2)), num(2), Some(num(4))),
-            (Position::from((4, 0, 2)), num(2) - Num::EPSILON, None),
-            (Position::from((-1, 0, 0)), num(1), Some(Num::ZERO)),
-            (Position::from((-2, 0, 0)), num(1), None),
-            (Position::from((12, 0, 0)), num(2), Some(num(10))),
-            (Position::from((12, 0, 0)), num(1), None),
+            (Vec3::from((4, 0, 2)), num(2), Some(num(4))),
+            (Vec3::from((4, 0, 2)), num(2) - Num::EPSILON, None),
+            (Vec3::from((-1, 0, 0)), num(1), Some(Num::ZERO)),
+            (Vec3::from((-2, 0, 0)), num(1), None),
+            (Vec3::from((12, 0, 0)), num(2), Some(num(10))),
+            (Vec3::from((12, 0, 0)), num(1), None),
         ];
         for (at, reach, expected) in cases {
             let met = Metric::Planar.meets(from, to, Placed::new(at, point), reach);
@@ -247,16 +239,11 @@ mod tests {
         // A circle of 1 m is met within a reach 1 m shorter.
         let circle = Shape::Circle(Radius::new(num(1)).unwrap());
         assert_eq!(
-            Metric::Planar.meets(
-                from,
-                to,
-                Placed::new(Position::from((4, 0, 2)), circle),
-                num(1)
-            ),
+            Metric::Planar.meets(from, to, Placed::new(Vec3::from((4, 0, 2)), circle), num(1)),
             cases[0].2
         );
         // 3 m up: a planar map ignores the height, a spatial one counts it, √(4 + 9) > 3.
-        let above = Position::from((4, 3, 2));
+        let above = Vec3::from((4, 3, 2));
         // Its place on the path is the point's along it, 4 m, either way.
         let along = Some(num(4));
         assert_eq!(
@@ -275,7 +262,7 @@ mod tests {
         let still = Metric::Planar.meets(
             from,
             from,
-            Placed::new(Position::from((0, 0, 1)), point),
+            Placed::new(Vec3::from((0, 0, 1)), point),
             num(1),
         );
         assert_eq!(still, Some(Num::ZERO));
@@ -285,14 +272,14 @@ mod tests {
         let entered = Metric::Planar.meets(
             from,
             to,
-            Placed::new(Position::from((5, 0, 0)), body),
+            Placed::new(Vec3::from((5, 0, 0)), body),
             Num::ZERO,
         );
         assert_eq!(entered, Some(num(3)));
         // A reach and a radius whose sum passes every number reach every distance, as
         // `reaches` counts them: met at the path's nearest point, 4 m along, and come within.
         let huge = Shape::Circle(Radius::new(MAX_BOUND).unwrap());
-        let far = Position::from((4, 0, 900));
+        let far = Vec3::from((4, 0, 900));
         assert_eq!(
             Metric::Planar.meets(from, to, Placed::new(far, huge), Num::MAX),
             Some(num(4))

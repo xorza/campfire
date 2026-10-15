@@ -56,7 +56,7 @@ impl Seeing {
         for (entity, &pos, &team, sight, tags) in &seers {
             let detects = UnitTags::properties_of(tags).detects();
             let slot = entity.index_u32() as usize;
-            fog.sight(grid, slot, pos, team, sight.range(), detects);
+            fog.sight(grid, slot, pos.get(), team, sight.range(), detects);
         }
         // A write marks the reveals changed, so a tick with none writes nothing.
         if !reveals.is_empty() {
@@ -71,7 +71,7 @@ impl Seeing {
                 Shape::Circle(_) => None,
             };
             let slot = entity.index_u32() as usize;
-            let teams = fog.seen_by(grid, slot, pos, boxed, team, hidden);
+            let teams = fog.seen_by(grid, slot, pos.get(), boxed, team, hidden);
             seen.set_if_neq(SeenBy::new(teams));
         }
     }

@@ -1,5 +1,4 @@
-use campfire_math::{Flat, Num};
-use campfire_sim::Position;
+use campfire_math::{Flat, Num, Vec3};
 
 /// Coordinates in halves of a bit, the scale at which a grid cell's center is whole. Within
 /// twice the world's bound, they and their sums fit a `Flat`'s `i64`s, and their products its
@@ -14,8 +13,7 @@ impl Halves {
     }
 
     /// Where `pos` stands on the ground plane, in halves of a bit.
-    pub(crate) const fn ground(pos: Position) -> Flat {
-        let point = pos.get();
-        Flat::new(Halves::of(point.x), Halves::of(point.z))
+    pub(crate) const fn ground(pos: Vec3) -> Flat {
+        Flat::new(Halves::of(pos.x), Halves::of(pos.z))
     }
 }

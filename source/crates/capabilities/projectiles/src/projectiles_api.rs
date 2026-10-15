@@ -2,9 +2,10 @@ use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{
-    ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, Unit,
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, ScriptPosition,
+    Unit,
 };
-use campfire_sim::{Capability, Position};
+use campfire_sim::Capability;
 use campfire_units::NewUnit;
 
 use crate::error::ProjectilesRefusal;
@@ -25,13 +26,16 @@ impl ProjectilesApi {
         .roles(RoleSet::ACTION);
         api.call(
             projectile,
-            |ctx: &mut Ctx, from: Position, direction: Vec3| {
-                ProjectilesApi::launch(ctx, from, Toward::Direction(direction))
+            |ctx: &mut Ctx, from: ScriptPosition, direction: Vec3| {
+                ProjectilesApi::launch(ctx, from.get(), Toward::Direction(direction))
             },
         )
-        .call(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
-            ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
-        })
+        .call(
+            projectile,
+            |ctx: &mut Ctx, from: ScriptPosition, unit: Unit| {
+                ProjectilesApi::launch(ctx, from.get(), Toward::Unit(unit.id))
+            },
+        )
         .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
         .data::<DeliveryData>(&["projectile", "count", "spread_deg"], &[])
         .shared_data(DataTable::UnitType, &["projectile"], &[])
@@ -52,7 +56,7 @@ impl ProjectilesApi {
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
     /// unit: the new projectile, with the id the call takes for it; an error for a form its type
     /// does not fly in.
-    fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<NewUnit> {
+    fn launch(ctx: &Ctx, from: Vec3, toward: Toward) -> Checked<NewUnit> {
         let launcher = Launcher::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;

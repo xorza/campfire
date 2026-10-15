@@ -108,7 +108,7 @@ impl Carrier {
         Units::give_type(game, carrier, UseGroup::new(kind));
         let owner = Owner::new(PlayerSlot::new(0));
         let shop = spawn_shop(game, shop_type);
-        let id = Mode::spawn(game, carrier, Position::ORIGIN, Team::new(0), owner);
+        let id = Mode::spawn(game, carrier, Vec3::ZERO, Team::new(0), owner);
         game.part_mut::<Life>(id).take(Num::int(200));
         Carrier {
             id,
@@ -221,7 +221,7 @@ fn shop_type(game: &mut Match, sells: Vec<ItemId>, buyers: &str, share: Share) -
 
 /// A shop unit of `shop_type`, of team 0 and no player, at the origin.
 fn spawn_shop(game: &mut Match, shop_type: UnitType) -> StableId {
-    Mode::spawn(game, shop_type, Position::ORIGIN, Team::new(0), ())
+    Mode::spawn(game, shop_type, Vec3::ZERO, Team::new(0), ())
 }
 
 const fn buy(item: u32, shop: StableId) -> ItemsAction {
@@ -622,7 +622,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     step(&mut game, &[buy(2, living_shop), buy(2, hero)]);
     assert_eq!(gold(&game), 200);
     let past = Vec3::new(Num::int(5) + Num::from_bits(1), Num::ZERO, Num::ZERO);
-    *game.part_mut::<Position>(hero) = Position::new(past).unwrap();
+    *game.part_mut::<Position>(hero) = Position::from(past);
     step(&mut game, &[buy(2, living_shop)]);
     assert_eq!(gold(&game), 200);
 

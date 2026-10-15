@@ -139,13 +139,8 @@ fn on_think(ctx, unit) {
 }
 ";
 
-const fn raw(x: i64, y: i64, z: i64) -> Position {
-    Position::new(Vec3::new(
-        Num::from_bits(x),
-        Num::from_bits(y),
-        Num::from_bits(z),
-    ))
-    .unwrap()
+const fn raw(x: i64, y: i64, z: i64) -> Vec3 {
+    Vec3::new(Num::from_bits(x), Num::from_bits(y), Num::from_bits(z))
 }
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks; `Stay` on death, as a
@@ -260,15 +255,15 @@ fn a_hero_walks_to_its_players_target() {
     let TwoHeroes { first, second } = TwoHeroes::place(&mut game);
     game.step_with(&[(PlayerSlot::new(0), &move_to(first, 0, 5))]);
     // Straight along z, one meter a tick: exact, and done in the fifth tick.
-    assert_eq!(*game.part::<Position>(first), Position::from((0, 0, 1)));
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((0, 0, 1)));
     assert_eq!(
         game.part::<Destination>(first).get(),
-        Some(Position::from((0, 0, 5)))
+        Some(Vec3::from((0, 0, 5)))
     );
-    assert_eq!(*game.part::<Position>(second), Position::from((4, 2, 0)));
+    assert_eq!(game.part::<Position>(second).get(), Vec3::from((4, 2, 0)));
     assert_eq!(game.part::<Destination>(second).get(), None);
     game.run_until(5);
-    assert_eq!(*game.part::<Position>(first), Position::from((0, 0, 5)));
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((0, 0, 5)));
     assert_eq!(game.part::<Destination>(first).get(), None);
 
     // Offset (3, 0, 4) from slot 1's hero, distance 5: the first meter is 3/5 and 4/5, each
@@ -276,12 +271,12 @@ fn a_hero_walks_to_its_players_target() {
     // the hero's height, y = 2.
     game.step_with(&[(PlayerSlot::new(1), &move_to(second, 7, 4))]);
     assert_eq!(
-        *game.part::<Position>(second),
+        game.part::<Position>(second).get(),
         raw(4 * ONE + 10_066_330, 2 * ONE, 13_421_773)
     );
     assert_eq!(
         game.part::<Destination>(second).get(),
-        Some(Position::from((7, 2, 4)))
+        Some(Vec3::from((7, 2, 4)))
     );
 }
 
@@ -387,10 +382,10 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         (PlayerSlot::new(0), &move_to(first, 0, -5)),
     ]);
     // The last order in a tick wins.
-    assert_eq!(*game.part::<Position>(first), Position::from((0, 0, -1)));
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((0, 0, -1)));
     assert_eq!(
         game.part::<Destination>(first).get(),
-        Some(Position::from((0, 0, -5)))
+        Some(Vec3::from((0, 0, -5)))
     );
 
     // Past the world's bound, which bounds a match without a map: it clamps to the edge.
@@ -436,14 +431,14 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     ]);
     // Only the order past the bound reaches the first hero, which walks 1 m along z = −1 towards
     // the edge; the second takes only its own player's.
-    assert_eq!(*game.part::<Position>(first), Position::from((1, 0, -1)));
+    assert_eq!(game.part::<Position>(first).get(), Vec3::from((1, 0, -1)));
     assert_eq!(
         game.part::<Destination>(first).get(),
-        Some(Position::new(Vec3::new(Position::BOUND, Num::ZERO, -Num::int(1))).unwrap())
+        Some(Vec3::new(Position::BOUND, Num::ZERO, -Num::int(1)))
     );
     assert_eq!(
         game.part::<Destination>(second).get(),
-        Some(Position::new(Vec3::new(Position::BOUND, Num::int(2), Num::ZERO)).unwrap())
+        Some(Vec3::new(Position::BOUND, Num::int(2), Num::ZERO))
     );
 
     // Player 0 out of play: its order applies while it sees what its team sees, the default, and
@@ -460,7 +455,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
             (PlayerSlot::new(0), &move_to(first, x.into(), 3)),
             (PlayerSlot::new(1), &move_to(second, x.into(), 3)),
         ]);
-        let ordered = Some(Position::from((x, 0, 3)));
+        let ordered = Some(Vec3::from((x, 0, 3)));
         let first_to = if view == OutView::Team {
             ordered
         } else {
@@ -469,7 +464,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         assert_eq!(destination(&game, first), first_to, "{view:?}");
         assert_eq!(
             destination(&game, second),
-            Some(Position::from((x, 2, 3))),
+            Some(Vec3::from((x, 2, 3))),
             "{view:?}"
         );
     }
@@ -487,7 +482,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     // 6, and the next may start in tick 4 + 5 = 9.
     game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     game.run_until(4);
-    assert_eq!(*game.part::<Position>(fighter), Position::from((4, 0, 0)));
+    assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((4, 0, 0)));
     assert_eq!(Orders::strikes_at(&game, fighter), None);
     game.run_until(6);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(6)));
@@ -505,7 +500,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     // The next tick finds the target gone, drops it, and stays.
     game.run_until(23);
     assert_eq!(game.part::<ActionSlots>(fighter).attack_target(), None);
-    assert_eq!(*game.part::<Position>(fighter), Position::from((4, 0, 0)));
+    assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((4, 0, 0)));
 }
 
 #[test]
@@ -534,9 +529,9 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
     // A move in tick 5, after the strike, costs nothing: back to the dummy in tick 6, 2 m
     // away, the next attack starts in tick 7, when ready, and strikes in tick 9.
     game.step_with(&[(PlayerSlot::new(0), &move_to(fighter, -1, 0))]);
-    assert_eq!(*game.part::<Position>(fighter), Position::from((-1, 0, 0)));
+    assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((-1, 0, 0)));
     game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
-    assert_eq!(*game.part::<Position>(fighter), Position::from((0, 0, 0)));
+    assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((0, 0, 0)));
     game.run_until(9);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(9)));
     assert_eq!(Stats::health(&game, dummy), 70);
@@ -607,7 +602,7 @@ fn attack_orders_need_a_living_enemy() {
         (PlayerSlot::new(1), &move_to(doomed, 5, 5)),
         (PlayerSlot::new(0), &attack(fighter, doomed)),
     ]);
-    assert_eq!(*game.part::<Position>(doomed), Position::from((1, 0, 0)));
+    assert_eq!(game.part::<Position>(doomed).get(), Vec3::from((1, 0, 0)));
     assert_eq!(game.part::<ActionSlots>(fighter).attack_target(), None);
 }
 
@@ -686,11 +681,11 @@ fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
     let unit = |game: &mut Match, unit_type, team, at| {
         Mode::spawn(game, unit_type, at, Team::new(team), ())
     };
-    let first = unit(&mut game, creep, 0, Position::from((0, 0, 0)));
-    let second = unit(&mut game, creep, 0, Position::from((0, 0, 20)));
-    let tower = unit(&mut game, structure, 1, Position::from((5, 0, 0)));
-    let wall = unit(&mut game, structure, 1, Position::from((0, 0, 24)));
-    let rival = unit(&mut game, still_creep, 1, Position::from((0, 0, 26)));
+    let first = unit(&mut game, creep, 0, Vec3::from((0, 0, 0)));
+    let second = unit(&mut game, creep, 0, Vec3::from((0, 0, 20)));
+    let tower = unit(&mut game, structure, 1, Vec3::from((5, 0, 0)));
+    let wall = unit(&mut game, structure, 1, Vec3::from((0, 0, 24)));
+    let rival = unit(&mut game, still_creep, 1, Vec3::from((0, 0, 26)));
     assert_eq!([first, second].map(StableId::get), [0, 1]);
 
     // The first creep thinks in tick 0: only the tower is in its 7 m, so it takes it. The second
@@ -705,7 +700,7 @@ fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
     assert_eq!(game.part::<ActionSlots>(wall).attack_target(), None);
 
     // A rival creep 3 m from the first creep comes; at its think in tick 8, it keeps the tower.
-    unit(&mut game, still_creep, 1, Position::from((3, 0, 0)));
+    unit(&mut game, still_creep, 1, Vec3::from((3, 0, 0)));
     game.run_until(8);
     Orders::think(&mut game, &[]);
     assert_eq!(game.part::<ActionSlots>(first).attack_target(), Some(tower));
@@ -733,12 +728,12 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     };
     let owner = Owner::new(PlayerSlot::new(0));
     let foe = Mode::spawn(&mut game, hero, (3, 0, 0), Team::new(1), owner);
-    let first = unit(&mut game, creep, 0, Position::from((0, 0, 0)));
-    let second = unit(&mut game, creep, 0, Position::from((0, 0, 2)));
-    let rival = unit(&mut game, still_creep, 1, Position::from((6, 0, 0)));
-    let ally = unit(&mut game, hero, 0, Position::from((0, 0, -1)));
+    let first = unit(&mut game, creep, 0, Vec3::from((0, 0, 0)));
+    let second = unit(&mut game, creep, 0, Vec3::from((0, 0, 2)));
+    let rival = unit(&mut game, still_creep, 1, Vec3::from((6, 0, 0)));
+    let ally = unit(&mut game, hero, 0, Vec3::from((0, 0, -1)));
     // Far from everything, with a target it cannot reach.
-    let lone = unit(&mut game, creep, 0, Position::from((0, 0, 50)));
+    let lone = unit(&mut game, creep, 0, Vec3::from((0, 0, 50)));
     game.part_mut::<ActionSlots>(lone)
         .set_attack_target(Some(rival));
     assert_eq!([first, second, lone].map(StableId::get), [1, 2, 5]);
@@ -949,9 +944,9 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
 #[test]
 fn a_walker_goes_back_to_its_path_after_a_chase() {
     let waypoints = [
-        Position::from((0, 0, 0)),
-        Position::from((4, 0, 0)),
-        Position::from((4, 0, 4)),
+        Vec3::from((0, 0, 0)),
+        Vec3::from((4, 0, 0)),
+        Vec3::from((4, 0, 4)),
     ];
     let mut game = orders_match_with_paths(Paths::new([("mid", &waypoints[..])]));
     let chaser = armed(&mut game, combatant(100, 1, 1, 5, 0), Some(meter()));
@@ -965,11 +960,11 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
 
     // A meter towards the second waypoint, then towards the prey until it is a meter away.
     game.step_with(&[]);
-    assert_eq!(*game.part::<Position>(chaser), Position::from((1, 0, 0)));
+    assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 0)));
     game.part_mut::<ActionSlots>(chaser)
         .set_attack_target(Some(prey));
     game.run_until(4);
-    assert_eq!(*game.part::<Position>(chaser), Position::from((1, 0, 2)));
+    assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 2)));
     assert_eq!(game.part::<Destination>(chaser).get(), None);
 
     // The prey goes; in tick 4 the chaser drops it, and in tick 5 walks back to the second
@@ -980,7 +975,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     assert_eq!(game.part::<ActionSlots>(chaser).attack_target(), None);
     assert_eq!(
         game.part::<Destination>(chaser).get(),
-        Some(Position::from((4, 0, 0)))
+        Some(Vec3::from((4, 0, 0)))
     );
 }
 
@@ -991,10 +986,8 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     // waypoint as it spawns, walks to the nearest cell it reaches, (3.5, 1.5), 3 m on, in
     // ticks 0 to 2. There it waits, with no destination: it never asks for the route again.
     let half = Num::HALF;
-    let place = |x: i64, z: i64| {
-        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
-    };
-    let waypoints = [place(0, 1).unwrap(), place(6, 1).unwrap()];
+    let place = |x: i64, z: i64| Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half);
+    let waypoints = [place(0, 1), place(6, 1)];
     let mut game = orders_match_with_paths(Paths::new([("mid", &waypoints[..])]));
     let bounds = Bounds::new([Num::int(0), Num::int(0)], [Num::int(8), Num::int(3)]).unwrap();
     let ground = Walker {
@@ -1010,7 +1003,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     Units::give_type(&mut game, tower, BodyForm::circle(half).unwrap());
     let walker_type = armed(&mut game, combatant(100, 1, 1, 5, 0), Some(meter()));
     for z in 0..3 {
-        Mode::spawn(&mut game, tower, place(4, z).unwrap(), Team::new(0), ());
+        Mode::spawn(&mut game, tower, place(4, z), Team::new(0), ());
     }
     let walker = (
         OnPath::new(PathId::new(0)),
@@ -1018,7 +1011,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     );
     let walker = Mode::spawn(&mut game, walker_type, waypoints[0], Team::new(0), walker);
     game.run_until(3);
-    assert_eq!(*game.part::<Position>(walker), place(3, 1).unwrap());
+    assert_eq!(game.part::<Position>(walker).get(), place(3, 1));
     let entity = game.unit_entity(walker);
     let changed = |game: &Match| {
         let unit = game.entity(entity);
@@ -1041,7 +1034,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
         ("aggro_window_ms", Scalar::Int(5000)),
     ];
     let camp = Orders::ai_type(&mut game, &["camp"], &params, Some(CAMP_AI));
-    let home = Position::from((0, 0, 0));
+    let home = Vec3::from((0, 0, 0));
     Units::give_type(&mut game, camp, MoveStep::new(half).unwrap());
     let camp = arm(&mut game, camp, combatant(100, 1, 1, 5, 0));
     let hero = armed(&mut game, fighter_stats(), Some(meter()));
@@ -1076,7 +1069,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
         assert!(resets(&game));
         assert_eq!(game.part::<ActionSlots>(monster).attack_target(), None);
     }
-    assert_eq!(*game.part::<Position>(monster), home);
+    assert_eq!(game.part::<Position>(monster).get(), home);
     assert_eq!(Stats::health(&game, monster), 40);
     // Home, its pools fill as tick 56 begins, and its think then takes the hero again.
     Orders::think(&mut game, &[]);
@@ -1100,9 +1093,9 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
 #[test]
 fn a_walker_ordered_to_move_leaves_its_path_until_it_follows_it_again() {
     let waypoints = [
-        Position::from((0, 0, 0)),
-        Position::from((4, 0, 0)),
-        Position::from((4, 0, 4)),
+        Vec3::from((0, 0, 0)),
+        Vec3::from((4, 0, 0)),
+        Vec3::from((4, 0, 4)),
     ];
     let mut game = orders_match_with_paths(Paths::new([("mid", &waypoints[..])]));
     // To the post while away from it, and back to the path once there.
@@ -1137,14 +1130,14 @@ fn on_think(ctx, unit) {
     let mut steps = Vec::new();
     for _ in 0..8 {
         Orders::think(&mut game, &[]);
-        steps.push(*game.part::<Position>(walker));
+        steps.push(game.part::<Position>(walker).get());
     }
-    let post_at = Position::from((0, 0, 3));
+    let post_at = Vec3::from((0, 0, 3));
     assert_eq!(
         steps,
         [
-            Position::from((0, 0, 1)),
-            Position::from((0, 0, 2)),
+            Vec3::from((0, 0, 1)),
+            Vec3::from((0, 0, 2)),
             post_at,
             post_at,
             post_at,
@@ -1158,7 +1151,7 @@ fn on_think(ctx, unit) {
     assert!(!game.try_part::<PathWalker>(walker).copied().unwrap().left());
     assert_eq!(
         game.part::<Destination>(walker).get(),
-        Some(Position::from((4, 0, 0)))
+        Some(Vec3::from((4, 0, 0)))
     );
 
     // A player's move leaves the path too, as every order applies alike: a walker of player 0
@@ -1169,16 +1162,16 @@ fn on_think(ctx, unit) {
     assert!(game.try_part::<PathWalker>(led).copied().unwrap().left());
     assert_eq!(
         game.part::<Destination>(led).get(),
-        Some(Position::from((-3, 0, 0)))
+        Some(Vec3::from((-3, 0, 0)))
     );
 }
 
 #[test]
 fn a_walker_follows_its_path_in_its_direction() {
     let waypoints = [
-        Position::from((0, 0, 0)),
-        Position::from((4, 0, 0)),
-        Position::from((4, 0, 4)),
+        Vec3::from((0, 0, 0)),
+        Vec3::from((4, 0, 0)),
+        Vec3::from((4, 0, 4)),
     ];
     let mut game = orders_match_with_paths(Paths::new([("mid", &waypoints[..])]));
     let walker = armed(&mut game, dummy(10), Some(meter()));
@@ -1198,23 +1191,23 @@ fn a_walker_follows_its_path_in_its_direction() {
         .map(|_| {
             game.step_with(&[]);
             [
-                *game.part::<Position>(forward),
-                *game.part::<Position>(backward),
+                game.part::<Position>(forward).get(),
+                game.part::<Position>(backward).get(),
             ]
         })
         .collect();
     assert_eq!(
         walked,
         [
-            [Position::from((1, 0, 0)), Position::from((4, 0, 3))],
-            [Position::from((2, 0, 0)), Position::from((4, 0, 2))],
-            [Position::from((3, 0, 0)), Position::from((4, 0, 1))],
-            [Position::from((4, 0, 0)), Position::from((4, 0, 0))],
-            [Position::from((4, 0, 1)), Position::from((3, 0, 0))],
-            [Position::from((4, 0, 2)), Position::from((2, 0, 0))],
-            [Position::from((4, 0, 3)), Position::from((1, 0, 0))],
-            [Position::from((4, 0, 4)), Position::from((0, 0, 0))],
-            [Position::from((4, 0, 4)), Position::from((0, 0, 0))],
+            [Vec3::from((1, 0, 0)), Vec3::from((4, 0, 3))],
+            [Vec3::from((2, 0, 0)), Vec3::from((4, 0, 2))],
+            [Vec3::from((3, 0, 0)), Vec3::from((4, 0, 1))],
+            [Vec3::from((4, 0, 0)), Vec3::from((4, 0, 0))],
+            [Vec3::from((4, 0, 1)), Vec3::from((3, 0, 0))],
+            [Vec3::from((4, 0, 2)), Vec3::from((2, 0, 0))],
+            [Vec3::from((4, 0, 3)), Vec3::from((1, 0, 0))],
+            [Vec3::from((4, 0, 4)), Vec3::from((0, 0, 0))],
+            [Vec3::from((4, 0, 4)), Vec3::from((0, 0, 0))],
         ]
     );
 }
@@ -1239,7 +1232,7 @@ fn every_orders_type_is_state_and_restores() {
     Release::restore_into(&game, &mut restored);
     assert_eq!(
         restored.part::<Destination>(fighter).get(),
-        Some(Position::from((0, 0, 3)))
+        Some(Vec3::from((0, 0, 3)))
     );
     assert!(restored.try_part::<Resetting>(still).is_some());
 }
@@ -1261,13 +1254,12 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
     // sends each to its offset from the centre added to it: (18.5, 8), (21.5, 12) and (19.5, 9);
     // a move to (3, 4), inside the box, sends each to (3, 4) itself. The others stay. The three
     // plan one search, where three orders of one unit each plan three.
-    let half =
-        |x: i64, z: i64| Position::new(Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z)).unwrap();
+    let half = |x: i64, z: i64| Vec3::new(Num::HALF * x, Num::ZERO, Num::HALF * z);
     let away = [half(37, 16), half(43, 24), half(39, 18)];
     for (goal, goals, one_each) in [
         ((20, 10), away, false),
-        ((3, 4), [Position::from((3, 0, 4)); 3], false),
-        ((20, 10), [Position::from((20, 0, 10)); 3], true),
+        ((3, 4), [Vec3::from((3, 0, 4)); 3], false),
+        ((20, 10), [Vec3::from((20, 0, 10)); 3], true),
     ] {
         let mut game = orders_match();
         let bounds = Bounds::new([Num::int(-30); 2], [Num::int(30); 2]).unwrap();
@@ -1280,9 +1272,9 @@ fn a_move_to_a_group_keeps_its_shape_away_from_its_box_and_shares_one_route_sear
         let hero = armed(&mut game, dummy(10), Some(meter()));
         let still = armed(&mut game, dummy(10), None);
         let walkers = [
-            Position::from((1, 0, 2)),
-            Position::from((4, 0, 6)),
-            Position::from((2, 0, 3)),
+            Vec3::from((1, 0, 2)),
+            Vec3::from((4, 0, 6)),
+            Vec3::from((2, 0, 3)),
         ]
         .map(|at| Orders::hero(&mut game, hero, at, Team::new(0), 0));
         let other = Orders::hero(&mut game, hero, (3, 0, 3), Team::new(1), 1);
@@ -1324,7 +1316,7 @@ fn a_list_of_units_out_of_order_or_twice_orders_nothing() {
     game.step_with(&[(PlayerSlot::new(0), &order_to(&[first, second], to))]);
     assert_eq!(
         game.part::<Destination>(first).get(),
-        Some(Position::from((0, 0, 5)))
+        Some(Vec3::from((0, 0, 5)))
     );
 }
 
@@ -1333,7 +1325,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     // A walker on its path, with an attack target and an attack in its windup, stops: it drops
     // the target, the attack and the destination, and leaves the path; the stop of another
     // player's unit does nothing.
-    let waypoints = [Position::from((0, 0, 0)), Position::from((8, 0, 0))];
+    let waypoints = [Vec3::from((0, 0, 0)), Vec3::from((8, 0, 0))];
     let mut game = orders_match_with_paths(Paths::new([("mid", &waypoints[..])]));
     let walker_type = armed(&mut game, fighter_stats(), Some(meter()));
     let target = armed(&mut game, dummy(1000), None);
@@ -1356,9 +1348,9 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     assert_eq!(game.part::<ActionSlots>(walker).in_progress(), None);
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert!(game.try_part::<PathWalker>(walker).unwrap().left());
-    let place = *game.part::<Position>(walker);
+    let place = game.part::<Position>(walker).get();
     game.step_with(&[]);
-    assert_eq!(*game.part::<Position>(walker), place);
+    assert_eq!(game.part::<Position>(walker).get(), place);
     assert_eq!(game.part::<ActionSlots>(walker).attack_target(), None);
     // A second stop finds no destination to drop, and leaves it untouched, as a write would
     // replicate an avatar's.

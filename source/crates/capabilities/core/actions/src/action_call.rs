@@ -19,6 +19,13 @@ pub struct ActionCall {
     pub start: ActionStart,
 }
 
+impl ActionCall {
+    /// Whether each of its places lies within the world's bound, as a restore checks it.
+    pub(crate) fn within_bound(self) -> bool {
+        self.aim.target.within_bound() && self.start.within_bound()
+    }
+}
+
 /// A cast that resolved: its call, at the target its check gave, and its action's values at its
 /// rank.
 #[derive(Debug, Clone, Copy)]

@@ -2,7 +2,6 @@ use std::hint::black_box;
 
 use campfire_math::internals::SplitMix64;
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::BodyBox;
@@ -12,7 +11,7 @@ pub const COUNT: usize = 4096;
 
 /// `COUNT` boxes of sides from 1 to 9 m at any angle, each at a point within 20 m of the
 /// origin, with a point within 20 m of the origin beside each.
-fn scene(seed: u64) -> Vec<(BodyBox, Position, Position)> {
+fn scene(seed: u64) -> Vec<(BodyBox, Vec3, Vec3)> {
     let mut words = SplitMix64::new(seed);
     let one = Num::ONE.to_bits();
     let mut draw = |low: i64, span: i64| {
@@ -20,7 +19,7 @@ fn scene(seed: u64) -> Vec<(BodyBox, Position, Position)> {
     };
     let point = |draw: &mut dyn FnMut(i64, i64) -> Num| {
         let (x, z) = (draw(-20 * one, 40 * one), draw(-20 * one, 40 * one));
-        Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
+        Vec3::new(x, Num::ZERO, z)
     };
     (0..COUNT)
         .map(|_| {

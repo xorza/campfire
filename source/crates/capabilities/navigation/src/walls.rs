@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_geometry::{BodyBox, Bounds};
-use campfire_sim::Position;
+use campfire_math::Vec3;
 use campfire_units::Layer;
 
 use crate::wall::Wall;
@@ -31,13 +31,13 @@ impl Walls {
     pub fn room_for(
         walls: Option<&Walls>,
         bounds: Bounds,
-        pos: Position,
+        pos: Vec3,
         body: &BodyBox,
         layer: Layer,
     ) -> bool {
         let (min, max) = (bounds.min(), bounds.max());
         let extent = body.extent();
-        let ground = [pos.get().x, pos.get().z];
+        let ground = [pos.x, pos.z];
         let within = (0..2).all(|axis| {
             ground[axis]
                 .checked_sub(extent[axis])

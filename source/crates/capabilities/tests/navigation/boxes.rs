@@ -13,14 +13,14 @@ fn boxed(width: i64, height: i64) -> BodyForm {
 }
 
 /// The point `(x, z)` in quarters of a meter, on the ground.
-fn quarters(x: i64, z: i64) -> Position {
+fn quarters(x: i64, z: i64) -> Vec3 {
     let quarter = |value: i64| Num::from_bits(value * ONE / 4);
-    Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap()
+    Vec3::new(quarter(x), Num::ZERO, quarter(z))
 }
 
 /// Whether the circle of `radius` at `pos` comes into `body`, a box at `centre`, by more than
 /// two bits, as a push of collision rounds.
-fn sunk(pos: Position, radius: Num, centre: Position, body: &Body) -> bool {
+fn sunk(pos: Vec3, radius: Num, centre: Vec3, body: &Body) -> bool {
     let Shape::Box(boxed) = body.shape() else {
         panic!("a box");
     };
@@ -48,21 +48,18 @@ fn a_walker_routes_round_a_box_and_never_stands_inside_it() {
     let walker = Navigation::body(
         &mut game,
         (-6, 0, 0),
-        Some(Position::from((6, 0, 0))),
+        Some(Vec3::from((6, 0, 0))),
         Some(QUARTER),
         HALF,
     );
     let mut widest = Num::ZERO;
     for _ in 0..200 {
         game.step();
-        let pos = *game.part::<Position>(walker);
-        assert!(
-            !sunk(pos, HALF, Position::from((0, 0, 0)), &body),
-            "{pos:?}"
-        );
-        widest = widest.max(pos.get().z.max(-pos.get().z));
+        let pos = game.part::<Position>(walker).get();
+        assert!(!sunk(pos, HALF, Vec3::from((0, 0, 0)), &body), "{pos:?}");
+        widest = widest.max(pos.z.max(-pos.z));
     }
-    assert_eq!(*game.part::<Position>(walker), Position::from((6, 0, 0)));
+    assert_eq!(game.part::<Position>(walker).get(), Vec3::from((6, 0, 0)));
     // The box reaches 1.43 m off the line along z; the walker went at least that far round it.
     assert!(widest > Num::int(1), "{widest:?}");
 }
@@ -87,21 +84,21 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
     let walker = Navigation::body(
         &mut game,
         (540, 0, -56),
-        Some(Position::from((540, 0, 56))),
+        Some(Vec3::from((540, 0, 56))),
         Some(Num::ONE),
         HALF,
     );
     let mut farthest = Num::ZERO;
     for _ in 0..200 {
         game.step();
-        let pos = *game.part::<Position>(walker);
-        assert!(
-            !sunk(pos, HALF, Position::from((0, 0, 0)), &bridge),
-            "{pos:?}"
-        );
-        farthest = farthest.max(pos.get().x);
+        let pos = game.part::<Position>(walker).get();
+        assert!(!sunk(pos, HALF, Vec3::from((0, 0, 0)), &bridge), "{pos:?}");
+        farthest = farthest.max(pos.x);
     }
-    assert_eq!(*game.part::<Position>(walker), Position::from((540, 0, 56)));
+    assert_eq!(
+        game.part::<Position>(walker).get(),
+        Vec3::from((540, 0, 56))
+    );
     assert!(farthest > Num::int(559), "{farthest:?}");
     // A walker of 1 m that stands half a meter into its long edge at z = 50, far from its ends:
     // the Collide stage moves it out to touch, to z = 51, and a bit past, the push's slack.
@@ -113,7 +110,10 @@ fn a_walker_routes_round_a_box_wider_than_a_map_and_collides_with_it() {
         Num::ONE,
     );
     game.step();
-    assert_eq!(*game.part::<Position>(pushed), past((-400, 0, 51), [0, 1]));
+    assert_eq!(
+        game.part::<Position>(pushed).get(),
+        past((-400, 0, 51), [0, 1])
+    );
 }
 
 #[test]
@@ -125,8 +125,8 @@ fn collision_pushes_a_walker_out_of_a_box_to_touch_it() {
     let building = Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(4, 2));
     let walker = Navigation::body(&mut game, quarters(10, 0), None, Some(QUARTER), Num::ONE);
     game.step();
-    assert_eq!(*game.part::<Position>(walker), past((3, 0, 0), [1, 0]));
-    assert_eq!(*game.part::<Position>(building), Position::from((0, 0, 0)));
+    assert_eq!(game.part::<Position>(walker).get(), past((3, 0, 0), [1, 0]));
+    assert_eq!(game.part::<Position>(building).get(), Vec3::from((0, 0, 0)));
 }
 
 #[test]
@@ -141,18 +141,15 @@ fn a_box_that_spawns_over_a_walker_moves_it_to_the_nearest_open_cell() {
     let walker = Navigation::body(&mut game, quarters(1, 1), None, Some(QUARTER), QUARTER);
     game.step();
     Navigation::body_on(&mut game, (0, 0, 0), None, None, boxed(2, 2));
-    assert_eq!(*game.part::<Position>(walker), quarters(5, 1));
+    assert_eq!(game.part::<Position>(walker).get(), quarters(5, 1));
     // With no pathing grid, the box pushes it out through its nearest edge, x = 1, to touch, and
     // a bit past.
     let mut bare = walk_match();
     let walker = Navigation::body(&mut bare, quarters(1, 0), None, Some(QUARTER), QUARTER);
     Navigation::body_on(&mut bare, (0, 0, 0), None, None, boxed(2, 2));
-    let touching = quarters(5, 0).get();
+    let touching = quarters(5, 0);
     let past_it = Vec3::new(touching.x + Num::EPSILON, touching.y, touching.z);
-    assert_eq!(
-        *bare.part::<Position>(walker),
-        Position::new(past_it).unwrap()
-    );
+    assert_eq!(bare.part::<Position>(walker).get(), past_it);
 }
 
 #[test]
@@ -174,14 +171,14 @@ fn a_dash_at_a_box_ends_touching_it() {
     let mut path = Vec::new();
     for _ in 0..4 {
         game.step();
-        path.push(*game.part::<Position>(dasher));
+        path.push(game.part::<Position>(dasher).get());
     }
     assert_eq!(
         path,
         [
-            Position::from((-4, 0, 0)),
-            Position::from((-3, 0, 0)),
-            Position::from((-2, 0, 0)),
+            Vec3::from((-4, 0, 0)),
+            Vec3::from((-3, 0, 0)),
+            Vec3::from((-2, 0, 0)),
             quarters(-6, 0)
         ]
     );
@@ -247,12 +244,6 @@ fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_
 }
 
 /// `at`, in meters, moved by `bits` along x and z.
-fn past(at: (i16, i16, i16), bits: [i64; 2]) -> Position {
-    let at = Position::from(at).get();
-    let moved = Vec3::new(
-        at.x + Num::from_bits(bits[0]),
-        at.y,
-        at.z + Num::from_bits(bits[1]),
-    );
-    Position::new(moved).unwrap()
+fn past(at: (i16, i16, i16), bits: [i64; 2]) -> Vec3 {
+    Vec3::from(at) + Vec3::new(Num::from_bits(bits[0]), Num::ZERO, Num::from_bits(bits[1]))
 }

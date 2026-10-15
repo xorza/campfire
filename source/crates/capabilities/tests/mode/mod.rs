@@ -37,7 +37,7 @@ use campfire_script::{
     SyncedStateDecl, View,
 };
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, Position, SimComponent, SimResource, SimTick, SlotEvent,
+    Capability, EntityIndex, IdAllocator, SimComponent, SimResource, SimTick, SlotEvent,
     SlotEventKind, StableId, TickRate,
 };
 use campfire_stats::{

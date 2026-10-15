@@ -3,8 +3,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_declare::PerType;
-use campfire_math::{Num, Rounding};
-use campfire_sim::{Capability, Position, SimComponent, StableId};
+use campfire_math::{Num, Rounding, Vec3};
+use campfire_sim::{Capability, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, ActionStart, Rank, Relation, TagSet};
@@ -311,7 +311,7 @@ impl ActionSlots {
 
     /// Starts the ordered cast that passed its checks as `checked`, from `pos` at `now`: a
     /// charged action charges until its most; any other winds up, to resolve as its windup ends.
-    pub const fn begin(&mut self, checked: &CheckedAction<'_>, pos: Position, now: Tick) {
+    pub const fn begin(&mut self, checked: &CheckedAction<'_>, pos: Vec3, now: Tick) {
         let values = checked.values;
         if let Some(most) = values.charge {
             self.charge(checked.target, pos, now, now.after(most));
@@ -326,7 +326,7 @@ impl ActionSlots {
 
     /// Starts the ordered charged cast at the `target` its check kept, from `origin`, charging
     /// from `now` until `full`.
-    pub const fn charge(&mut self, target: ActionTarget, origin: Position, now: Tick, full: Tick) {
+    pub const fn charge(&mut self, target: ActionTarget, origin: Vec3, now: Tick, full: Tick) {
         if let Some(InProgress::Order { aim, .. }) = self.underway {
             self.underway = Some(InProgress::Charge {
                 aim: SlotAim {
@@ -574,7 +574,8 @@ impl SimComponent for ActionSlots {
     // An action the book lacks, a rank past its ranks, or what is under way of a slot it does
     // not have, an attack of no weapon or an order of one, has no rules for a cast to follow; a
     // slot of a kind the mode lacks, or of an action with ranks its kind has no level for, would
-    // be read past the mode's kinds.
+    // be read past the mode's kinds. A place past the world's bound would overflow the distance
+    // to another.
     fn check(&self, world: &World, _: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let kinds = &world.resource::<SlotKindBook>().0;
@@ -631,7 +632,9 @@ impl SimComponent for ActionSlots {
                 .and_then(|action| action.values_at(cut.rank)?.channel);
             usize::from(cut.call.aim.slot) < self.slots.len() && rule.is_some()
         });
-        self.slots.iter().all(held) && underway && channel && interrupted
+        let places = self.underway.is_none_or(InProgress::within_bound)
+            && self.interrupted.is_none_or(|cut| cut.call.within_bound());
+        self.slots.iter().all(held) && underway && channel && interrupted && places
     }
 }
 

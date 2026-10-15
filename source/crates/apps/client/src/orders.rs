@@ -206,7 +206,7 @@ impl Takes {
 
     /// The target it takes, `under` the unit under the cursor and `point` the ground point under
     /// it: none when the cursor shows none, which the sim refuses of an action that needs one.
-    fn target(self, under: Option<StableId>, point: Option<Position>) -> ActionTarget {
+    fn target(self, under: Option<StableId>, point: Option<SimVec3>) -> ActionTarget {
         let target = match self {
             Takes::Unit => under.map(ActionTarget::Unit),
             Takes::Point => point.map(ActionTarget::Point),
@@ -218,12 +218,13 @@ impl Takes {
 
 /// A point of the ground as a sim position, each axis exactly as `Num::try_from` takes it;
 /// `None` past the bound.
-fn position(point: Vec3) -> Option<Position> {
+fn position(point: Vec3) -> Option<SimVec3> {
     let axes = [point.x, point.y, point.z].map(|axis| Num::try_from(axis).ok());
     let [Some(x), Some(y), Some(z)] = axes else {
         return None;
     };
-    Position::new(SimVec3::new(x, y, z))
+    let point = SimVec3::new(x, y, z);
+    Position::from(point).within_bound().then_some(point)
 }
 
 #[cfg(test)]
@@ -235,7 +236,7 @@ mod tests {
     #[test]
     fn a_key_aims_as_its_action_takes() {
         let unit = IdAllocator::default().allocate();
-        let point = Position::from((3, 0, -2));
+        let point = SimVec3::from((3, 0, -2));
         // An action of a point, or of a direction, takes the point; of none, or no action,
         // nothing.
         let aims = [
@@ -261,10 +262,10 @@ mod tests {
         // which rounds to the step 1,677,722 of 2⁻²⁴, not a millimeter's multiple.
         assert_eq!(
             position(Vec3::new(3.0, 0.0, -2.0)),
-            Some(Position::from((3, 0, -2)))
+            Some(SimVec3::from((3, 0, -2)))
         );
         let tenth = position(Vec3::new(0.1, 0.0, 0.0)).unwrap();
-        assert_eq!(tenth.get().x.to_bits(), 1_677_722);
+        assert_eq!(tenth.x.to_bits(), 1_677_722);
         assert_eq!(position(Vec3::new(1e15, 0.0, 0.0)), None);
     }
 

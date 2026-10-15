@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_production::*;
 use campfire_script::View;
-use campfire_sim::{IdAllocator, Position, SimComponent, TickRate};
+use campfire_sim::{IdAllocator, SimComponent, TickRate};
 use campfire_values::{Names, ResourceId};
 
 #[test]
@@ -22,7 +22,7 @@ fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
     let mut ids = IdAllocator::default();
     let [first, second] = [0, 1].map(|z| NodeAt {
         node: ids.allocate(),
-        pos: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::int(z))).unwrap(),
+        pos: Vec3::new(Num::ZERO, Num::ZERO, Num::int(z)),
     });
     let load = |resource| Load {
         resource,

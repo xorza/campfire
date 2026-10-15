@@ -3,6 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_declare::PerType;
+use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
 use campfire_sim::{Capability, Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
@@ -33,7 +34,7 @@ pub struct GatherOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeAt {
     pub node: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
 }
 
 /// Where a worker is in its loop.
@@ -93,7 +94,7 @@ impl SimComponent for Gatherer {
 
     // A load of a resource the mode lacks would join no amount, and one with no last node has no
     // node to go back to; a checked loop's node is the last it chose. A step's tick of any value
-    // is compared, not counted from.
+    // is compared, not counted from; a node lies within the world's bound, as every place does.
     fn check(&self, world: &World, _: Entity) -> bool {
         let resources = world.declared_resources();
         let load = self
@@ -102,7 +103,9 @@ impl SimComponent for Gatherer {
         let order = self
             .order
             .is_none_or(|order| order.step == GatherStep::Ordered || self.last == Some(order.node));
-        load && order
+        let node = |node: NodeAt| Position::from(node.pos).within_bound();
+        let places = self.last.is_none_or(node) && self.order.is_none_or(|order| node(order.node));
+        load && order && places
     }
 }
 

@@ -5,7 +5,7 @@ use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::{Metric, Placed};
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
@@ -38,7 +38,7 @@ impl Construction {
     /// `metric`: from the edge of the one body to the edge of the other.
     fn in_range(
         metric: Metric,
-        from: Position,
+        from: Vec3,
         body: Option<&Body>,
         range: Num,
         placed: BuildPlace,
@@ -300,10 +300,10 @@ impl Construction {
             };
             let range = slots.meters_in(&book, slot);
             let placed = BuildPlace {
-                pos: at,
+                pos: at.get(),
                 body: *site_body,
             };
-            let reaches = Construction::in_range(map.metric, from, body, range, placed);
+            let reaches = Construction::in_range(map.metric, from.get(), body, range, placed);
             if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
                 building.push(BuildingAt {
                     site,

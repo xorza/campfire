@@ -17,7 +17,7 @@ use campfire_common::Tick;
 use campfire_harness::{
     ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode,
 };
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::{ModeParam, ModeWorld};
 use campfire_navigation::PathWalker;
 use campfire_progression::Points;
@@ -78,7 +78,7 @@ struct Seen {
     /// ticks 2500 to 2619; and its target and its place after tick 2640.
     wolf_answers: Option<StableId>,
     wolf_farthest: Num,
-    wolf_home: Option<(Option<StableId>, Position)>,
+    wolf_home: Option<(Option<StableId>, Vec3)>,
     /// Each hero's experience after ticks 2993 and 2994, the wolf's fall.
     xp_at_wolf_fall: Vec<Vec<Num>>,
     /// Cinder's, Veil's and Rime's learning after ticks 1200, 1201 and 1900, in that order.
@@ -116,7 +116,7 @@ struct Unit {
     id: StableId,
     team: Team,
     kind: UnitType,
-    pos: Position,
+    pos: Vec3,
     controller: Option<u32>,
     walks: bool,
     slots: Vec<ActionSlot>,
@@ -148,7 +148,7 @@ fn units(game: &Match) -> Vec<Unit> {
                 id,
                 team: *unit.get::<Team>()?,
                 kind: *unit.get::<UnitType>()?,
-                pos: *unit.get::<Position>()?,
+                pos: unit.get::<Position>()?.get(),
                 controller: unit.get::<Owner>().map(|owner| owner.slot().get()),
                 walks: unit.contains::<PathWalker>(),
                 slots: unit
@@ -255,14 +255,14 @@ impl Seen {
             self.xp_after_skirmish = xp();
         }
         let wolf = units.spawned_at((-18, 0, 12));
-        let home = Position::from((-18, 0, 12)).get();
+        let home = Vec3::from((-18, 0, 12));
         match tick {
             2460 => self.wolf_answers = target(wolf),
             2500..2620 => {
-                let away = units.position(wolf).get().distance(home);
+                let away = units.pos(wolf).distance(home);
                 self.wolf_farthest = self.wolf_farthest.max(away);
             }
-            2640 => self.wolf_home = Some((target(wolf), units.position(wolf))),
+            2640 => self.wolf_home = Some((target(wolf), units.pos(wolf))),
             2993 | 2994 => self.xp_at_wolf_fall.push(xp()),
             _ => {}
         }
@@ -281,7 +281,7 @@ impl Seen {
 
 /// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
 fn placed(run: &Run<'_>, x: i16, z: i16) -> StableId {
-    let pos = Position::from((x, 0, z));
+    let pos = Vec3::from((x, 0, z));
     let unit = run.at_pick_end.iter().find(|unit| unit.pos == pos);
     unit.expect("a placed unit").id
 }
@@ -333,7 +333,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     let hero = |slot: u32| {
         let team = u8::from(slot >= 3);
         let z = if team == 0 { -60 } else { 60 };
-        (Team::new(team), Position::from((0, 0, z)), Some(slot))
+        (Team::new(team), Vec3::from((0, 0, z)), Some(slot))
     };
     let heroes: Vec<_> = run.at_pick_end[16..22]
         .iter()
@@ -382,7 +382,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
         markers.filter(|marker| marker.tags.iter().any(|tag| tag.as_str() == "camp"));
     let neutral = Team::new(2);
     let expected: Vec<_> = camp_markers
-        .map(|marker| (neutral, marker.pos.unwrap().position().unwrap()))
+        .map(|marker| (neutral, marker.pos.unwrap().pos().unwrap()))
         .collect();
     assert_eq!(expected.len(), 5);
     assert_eq!(camps, expected);
@@ -392,7 +392,7 @@ fn assert_start(moba: &ScriptedMode<Moba3v3>, run: &Run<'_>) -> UnitType {
     let ends = [(0, -6, -50), (1, -6, 50), (0, 6, -50), (1, 6, 50)];
     let expected: Vec<_> = ends
         .iter()
-        .flat_map(|&(team, x, z)| [(Team::new(team), Position::from((x, 0, z))); 6])
+        .flat_map(|&(team, x, z)| [(Team::new(team), Vec3::from((x, 0, z))); 6])
         .collect();
     assert_eq!(seen, expected);
     assert!(wave.iter().all(|unit| unit.walks));
@@ -467,10 +467,7 @@ fn assert_camp(run: &Run<'_>) {
         "{}",
         run.seen.wolf_farthest
     );
-    assert_eq!(
-        run.seen.wolf_home,
-        Some((None, Position::from((-18, 0, 12))))
-    );
+    assert_eq!(run.seen.wolf_home, Some((None, Vec3::from((-18, 0, 12)))));
     // It falls in tick 2994 and comes back 60 s, 1200 ticks, after the end of that tick; its 90
     // experience is split between the two heroes within 16 m, 45 each, in that tick alone.
     let fell = run.deaths.iter().find(|death| death.id == wolf);

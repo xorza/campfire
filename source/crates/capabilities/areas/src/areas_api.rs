@@ -1,7 +1,7 @@
 use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
-use campfire_script::{ApiBuilder, Checked, Ctx, DataTable, MemberSpec, RoleSet};
-use campfire_sim::Position;
+use campfire_math::Vec3;
+use campfire_script::{ApiBuilder, Checked, Ctx, DataTable, MemberSpec, RoleSet, ScriptPosition};
 use campfire_units::NewUnit;
 
 use crate::area_data::{AreaData, AreaInsideData};
@@ -19,8 +19,8 @@ impl AreasApi {
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
-        api.call(area, |ctx: &mut Ctx, pos: Position| {
-            AreasApi::land(ctx, pos)
+        api.call(area, |ctx: &mut Ctx, pos: ScriptPosition| {
+            AreasApi::land(ctx, pos.get())
         })
         .data::<DeliveryData>(&["area"], &[])
         .shared_data(DataTable::UnitType, &["area"], &[])
@@ -33,7 +33,7 @@ impl AreasApi {
 
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new
     /// area, with the id the call takes for it.
-    fn land(ctx: &Ctx, pos: Position) -> Checked<NewUnit> {
+    fn land(ctx: &Ctx, pos: Vec3) -> Checked<NewUnit> {
         let launcher = Launcher::of(ctx, |shape| shape == DeliveryShape::Area)?;
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;

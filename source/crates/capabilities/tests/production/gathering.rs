@@ -6,7 +6,7 @@ use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
 use campfire_script::Filter;
-use campfire_sim::EntityIndex;
+use campfire_sim::{EntityIndex, Position};
 use campfire_units::{Layer, MapBook};
 use campfire_values::{Block, RelationSet};
 
@@ -64,7 +64,7 @@ impl Mine {
     }
 
     /// A worker of player `owner` at `pos`, its gather learned.
-    fn worker(self, game: &mut World, pos: impl Into<Position>, owner: u32) -> StableId {
+    fn worker(self, game: &mut World, pos: impl Into<Vec3>, owner: u32) -> StableId {
         let pos = pos.into();
         self.worker_ranked(game, pos, owner, Rank::new(1))
     }
@@ -73,7 +73,7 @@ impl Mine {
     fn worker_ranked(
         self,
         game: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         owner: u32,
         rank: Option<Rank>,
     ) -> StableId {
@@ -85,7 +85,7 @@ impl Mine {
     }
 
     /// A mineral at `pos` holding `amount`.
-    fn mineral(self, game: &mut World, pos: impl Into<Position>, amount: u32) -> StableId {
+    fn mineral(self, game: &mut World, pos: impl Into<Vec3>, amount: u32) -> StableId {
         Mode::spawn(game, self.mineral, pos, Team::new(2), Node::new(amount))
     }
 }
@@ -197,9 +197,9 @@ fn waiting_workers_take_a_freed_node_by_the_tick_they_waited_then_by_stable_id()
         [gold[2], gold[3], gold[6], gold[9], gold[12]],
         [0, 5, 10, 15, 20]
     );
-    let positions: Vec<Position> = workers
+    let positions: Vec<Vec3> = workers
         .iter()
-        .map(|&id| *game.part::<Position>(id))
+        .map(|&id| game.part::<Position>(id).get())
         .collect();
     assert_eq!(positions, [-2, 0, 2].map(|x| halves(x, 8)));
 }

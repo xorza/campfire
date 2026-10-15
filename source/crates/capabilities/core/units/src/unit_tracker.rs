@@ -9,6 +9,7 @@ use bevy_ecs::query::{Allow, QueryFilter};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemChangeTick, SystemParam};
 use campfire_declare::Cache;
+use campfire_math::Vec3;
 use campfire_sim::{Position, StableId, Unpredicted};
 
 use crate::body::Body;
@@ -47,7 +48,7 @@ struct Taken {
 pub struct TrackedUnit<'a> {
     pub entity: Entity,
     pub id: StableId,
-    pub pos: Position,
+    pub pos: Vec3,
     pub body: Option<&'a Body>,
 }
 
@@ -161,7 +162,7 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
             .map(|(entity, id, pos, body)| TrackedUnit {
                 entity,
                 id: *id,
-                pos: *pos,
+                pos: pos.get(),
                 body: body.map(Ref::into_inner),
             })
     }

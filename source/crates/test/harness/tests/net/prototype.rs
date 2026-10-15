@@ -48,7 +48,7 @@ const fn move_to(x: i64, z: i64) -> OrdersAction {
 
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
-    pos: Position,
+    pos: Vec3,
     destination: Destination,
 }
 
@@ -65,7 +65,7 @@ fn hero_entity(app: &App) -> Entity {
 fn hero(app: &App) -> Hero {
     let hero = app.world().entity(hero_entity(app));
     Hero {
-        pos: *hero.get::<Position>().unwrap(),
+        pos: hero.get::<Position>().unwrap().get(),
         destination: *hero.get::<Destination>().unwrap(),
     }
 }
@@ -113,7 +113,7 @@ fn server_and_replay_agree_on_every_tick() {
         }
 
         let arrived = Hero {
-            pos: Position::from((-2, 0, 5)),
+            pos: Vec3::from((-2, 0, 5)),
             destination: Destination::default(),
         };
         assert_eq!(hero(local.server()), arrived, "{case}");
@@ -174,7 +174,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         frames += 1;
     }
     let arrived = Hero {
-        pos: Position::from((-2, 0, 5)),
+        pos: Vec3::from((-2, 0, 5)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), arrived);
@@ -282,7 +282,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         local.step();
     }
     let at = |x: i16, z: i16| Hero {
-        pos: Position::from((x, 0, z)),
+        pos: Vec3::from((x, 0, z)),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), at(4, 0));
@@ -486,7 +486,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     let entity = hero_entity(local.server());
     let world = local.server_mut().world_mut();
     let pos = world.get::<Position>(entity).unwrap().get();
-    let to = Position::new(Vec3::new(pos.x - Num::int(6), pos.y, pos.z)).unwrap();
+    let to = Vec3::new(pos.x - Num::int(6), pos.y, pos.z);
     let step = Num::ONE.checked_div_int(5).unwrap();
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
@@ -655,9 +655,12 @@ impl Handoff {
         }
     }
 
-    fn at(&self, end: End) -> Position {
+    fn at(&self, end: End) -> Vec3 {
         let app = self.local.app(end);
-        *app.world().get::<Position>(self.entity_in(app)).unwrap()
+        app.world()
+            .get::<Position>(self.entity_in(app))
+            .unwrap()
+            .get()
     }
 
     fn slot(&self, client: usize) -> PlayerSlot {
@@ -736,7 +739,7 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
         .world_mut()
         .resource_mut::<PendingOrders>()
         .push(Order::one(hero, move_to(3, -1)));
-    let end = Position::from((3, 0, -1));
+    let end = Vec3::from((3, 0, -1));
     game.step_until(|game| {
         [End::Server, End::Client(0), End::Client(1)]
             .into_iter()

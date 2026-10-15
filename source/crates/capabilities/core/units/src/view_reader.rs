@@ -285,7 +285,7 @@ impl CoreSource {
         let (alive, targetable) = kept.map_or((true, false), |row| (row.alive, row.targetable));
         Some(UnitRow {
             id,
-            pos,
+            pos: pos.get(),
             team,
             shape: Body::shape_of(body),
             spawn: spawn.map(|spawn| spawn.get()),

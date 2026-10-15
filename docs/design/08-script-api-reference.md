@@ -149,14 +149,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `source` | read | combat | since 1.0 | the unit that gave it, `()` when gone or none |
 | `target` | read | combat | since 1.0 | the unit it heals |
 
-## Position
-
-| Name | Form | Capability | Status | What it is |
-| --- | --- | --- | --- | --- |
-| `direction_to` | `(pos)` | core | since 1.0 | the unit vector towards `pos` in the map's metric, `()` for the same point |
-| `distance_to` | `(pos)` | core | since 1.0 | the distance to `pos` in the map's metric |
-| `within` | `(pos, radius)` | core | since 1.0 | whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
-
 ## Vector
 
 | Name | Form | Capability | Status | What it is |
@@ -164,7 +156,10 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `*` | operator | core | since 1.0 | the vector scaled by a number, on either side |
 | `+` | operator | core | since 1.0 | the sum of two vectors |
 | `-` | operator | core | since 1.0 | the difference of two vectors |
+| `direction_to` | `(pos)` | core | since 1.0 | the unit vector towards `pos` in the map's metric, `()` for the same point |
+| `distance_to` | `(pos)` | core | since 1.0 | the distance to `pos` in the map's metric |
 | `rotated_deg` | `(degrees)` | core | since 1.0 | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
+| `within` | `(pos, radius)` | core | since 1.0 | whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
 
 ## Map, `ctx.map`
 

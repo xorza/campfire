@@ -121,6 +121,26 @@ impl Vec3 {
         offset.length_squared_bits() <= reach * reach
     }
 
+    /// The vector with its height dropped: its point on the ground plane.
+    #[must_use]
+    pub const fn ground(self) -> Vec3 {
+        Vec3::new(self.x, Num::ZERO, self.z)
+    }
+
+    /// The offset from here to `to` on the ground plane, heights dropped.
+    #[must_use]
+    pub const fn ground_offset(self, to: Vec3) -> Vec3 {
+        to.ground()
+            .checked_sub(self.ground())
+            .expect("Vec3 overflow in ground_offset")
+    }
+
+    /// Whether `other` is at most `radius` away on the ground plane, heights dropped, decided
+    /// exactly: the range test of a planar map.
+    pub const fn within_ground(self, other: Vec3, radius: Num) -> bool {
+        self.ground().within(other.ground(), radius)
+    }
+
     /// The unit vector in this direction, each component rounded once; `None` for the zero
     /// vector.
     pub fn normalized(self) -> Option<Vec3> {

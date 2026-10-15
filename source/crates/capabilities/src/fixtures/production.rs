@@ -1,13 +1,13 @@
 use bevy_ecs::world::World;
 use campfire_actions::ActionTarget;
 use campfire_common::PlayerSlot;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
 use campfire_production::{BuildTarget, Production};
+use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, StableId};
 use campfire_units::{BodyForm, Owner};
 use campfire_values::{Team, TeamSet, UnitType};
 use campfire_vision::SeenBy;
@@ -35,7 +35,7 @@ pub trait ProductionFixtures {
     /// A walker of `team` at `pos`, of a half meter, seen by `seen`, by all when `None`.
     fn yard_walker(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         seen: Option<TeamSet>,
     ) -> StableId;
@@ -46,7 +46,7 @@ impl ProductionFixtures for Production {
         Mode::spawn(
             world,
             unit_type,
-            Position::ORIGIN,
+            Vec3::ZERO,
             Team::new(1),
             Owner::new(owner),
         )
@@ -85,7 +85,7 @@ impl ProductionFixtures for Production {
 
     fn yard_walker(
         world: &mut World,
-        pos: impl Into<Position>,
+        pos: impl Into<Vec3>,
         team: Team,
         seen: Option<TeamSet>,
     ) -> StableId {

@@ -4,6 +4,8 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
+- **Geometry.** The engine spells the middle of a shape two ways: `centre` 203 times and `center` 138 times outside the client, as `Grid::center` and its cells' centers beside `BodyBox`'s `centre` arguments; Bevy's own names, which the client calls, are `center`. The question is which spelling the engine's own names take: `centre`, of most of them, or `center`, of Bevy's.
+
 ## Research
 
 - **Client.** A model drawing whose models never get bounds keeps `FitsModel`, so `View::fit_models` (`client/src/view/mod.rs`) walks its tree again in every frame for as long as it lives: a model whose nodes its look hides all, or one whose file does not load.

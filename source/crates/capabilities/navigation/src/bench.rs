@@ -6,7 +6,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{IdAllocator, Position};
+use campfire_sim::IdAllocator;
 use campfire_units::Layer;
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
@@ -150,11 +150,10 @@ fn route_planner(c: &mut Criterion) {
     let mut ends = KernelScene::new(17);
     let end_at = |ends: &mut KernelScene, z: i64| {
         let x = ends.below(span * 200).cast_signed() - span.cast_signed() * 100;
-        let at = Vec3::new(KernelScene::centimeters(x), Num::ZERO, Num::int(z));
-        Position::new(at).unwrap()
+        Vec3::new(KernelScene::centimeters(x), Num::ZERO, Num::int(z))
     };
     let edge = span.cast_signed() - 1;
-    let routes: Vec<[Position; 2]> = (0..ROUTES)
+    let routes: Vec<[Vec3; 2]> = (0..ROUTES)
         .map(|_| [end_at(&mut ends, -edge), end_at(&mut ends, edge)])
         .collect();
     let mut planner = RoutePlanner::new(&cells);
@@ -200,7 +199,7 @@ impl GroupScene<'_> {
         self,
         group: &mut BenchmarkGroup<'_, WallTime>,
         planner: &mut RoutePlanner,
-        routes: &[[Position; 2]],
+        routes: &[[Vec3; 2]],
     ) {
         let [start, goal] = routes[0];
         let side = ROUTES.isqrt();
@@ -209,12 +208,11 @@ impl GroupScene<'_> {
             let from_middle = at.cast_signed() - (side / 2).cast_signed();
             step * Num::from_int(i64::try_from(from_middle).unwrap()).unwrap()
         };
-        let starts: Vec<Position> = (0..ROUTES)
+        let starts: Vec<Vec3> = (0..ROUTES)
             .map(|at| {
-                let start = start.get();
                 let x = start.x + offset(at % side);
                 let z = start.z + offset(at / side);
-                Position::new(Vec3::new(x, start.y, z)).unwrap()
+                Vec3::new(x, start.y, z)
             })
             .collect();
         let party = Party {
@@ -251,7 +249,7 @@ impl GroupScene<'_> {
                         break;
                     }
                     let mut answered = 0;
-                    let mut answer = |_: Entity, route: &[Position], _: bool| {
+                    let mut answer = |_: Entity, route: &[Vec3], _: bool| {
                         black_box(route);
                         answered += 1;
                     };

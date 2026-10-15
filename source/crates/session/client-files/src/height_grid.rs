@@ -47,7 +47,7 @@ impl HeightGrid {
         };
         let far = grid.checked_far_corner()?;
         let top = step.checked_mul_int(u8::MAX.into())?;
-        let within = |[x, z]: [Num; 2]| Position::new(Vec3::new(x, top, z)).is_some();
+        let within = |[x, z]: [Num; 2]| Position::from(Vec3::new(x, top, z)).within_bound();
         (within(origin) && within(far)).then_some(grid)
     }
 

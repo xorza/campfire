@@ -2,8 +2,8 @@ use std::slice;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
-use campfire_math::Num;
-use campfire_sim::{Position, StableId};
+use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
 
 use crate::projectile::Flight;
@@ -24,7 +24,7 @@ pub struct Launches {
 pub struct Launch {
     pub id: Option<StableId>,
     pub(crate) source: StableId,
-    pub(crate) from: Position,
+    pub(crate) from: Vec3,
     pub(crate) unit_type: UnitType,
     pub(crate) flight: Flight,
     pub(crate) payload: LaunchPayload,

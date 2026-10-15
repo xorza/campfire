@@ -2390,6 +2390,7 @@ dependencies = [
  "bevy_ecs",
  "campfire-common",
  "campfire-declare",
+ "campfire-math",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",

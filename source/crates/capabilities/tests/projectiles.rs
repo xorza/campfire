@@ -147,7 +147,7 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     }
     let flying = |halves: i64| {
         let x = Num::from_bits(halves << (Num::FRAC_BITS - 1));
-        vec![Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap()]
+        vec![Vec3::new(x, Num::ZERO, Num::ZERO)]
     };
     let expected: Vec<_> = [vec![], vec![]]
         .into_iter()
@@ -268,11 +268,11 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
     let now = game.now();
     let blink = NavigationEffect::Teleport {
         id: blinker,
-        to: Position::from((6, 0, 0)),
+        to: Vec3::from((6, 0, 0)),
     };
     let dash = NavigationEffect::Dash {
         id: dasher,
-        to: DashTo::Point(Position::from((6, 0, 1))),
+        to: DashTo::Point(Vec3::from((6, 0, 1))),
         step: Num::from_bits(1 << (Num::FRAC_BITS - 1)),
         delivers: None,
     };
@@ -296,7 +296,7 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
         [blinker, dasher].map(|id| Stats::health(&game, id)),
         [100, 70]
     );
-    assert_eq!(*game.part::<Position>(dasher), Position::from((6, 0, 1)));
+    assert_eq!(game.part::<Position>(dasher).get(), Vec3::from((6, 0, 1)));
 }
 
 #[test]
@@ -359,7 +359,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let mut game = volley_match();
     let volley = Volley::place(&mut game);
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
-    let point = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
+    let point = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
     let e = Num::EPSILON;
     // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
     // along x from 0 to 6: 0.5 m beside it and 0.5 m past its end are in reach, one bit more is
@@ -436,9 +436,9 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let volley = Volley::place(&mut game);
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
     let [first, second, behind] = [
-        Position::from((3, 0, 0)),
-        Position::from((3, 0, 0)),
-        Position::from((4, 0, 0)),
+        Vec3::from((3, 0, 0)),
+        Vec3::from((3, 0, 0)),
+        Vec3::from((4, 0, 0)),
     ]
     .map(|at| Mode::spawn(&mut game, volley.target, at, Team::new(1), ()));
     let dart = volley.dart;

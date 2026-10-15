@@ -41,29 +41,29 @@ impl Bounds {
         self.max
     }
 
-    /// Whether `pos` is within the bounds on the ground plane, edges included.
-    pub const fn contains(self, pos: Position) -> bool {
-        let point = pos.get();
-        self.min[0].to_bits() <= point.x.to_bits()
-            && point.x.to_bits() <= self.max[0].to_bits()
-            && self.min[1].to_bits() <= point.z.to_bits()
-            && point.z.to_bits() <= self.max[1].to_bits()
+    /// Whether `pos` is within the bounds on the ground plane, edges included, and within the
+    /// world's bound in height, as every place is.
+    pub const fn contains(self, pos: Vec3) -> bool {
+        self.min[0].to_bits() <= pos.x.to_bits()
+            && pos.x.to_bits() <= self.max[0].to_bits()
+            && self.min[1].to_bits() <= pos.z.to_bits()
+            && pos.z.to_bits() <= self.max[1].to_bits()
+            && pos.y.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs()
     }
 
     /// How far a straight path from `from` along the unit vector `direction` stays within the
     /// bounds on the ground plane, and within the world's bound in height: 0 from a point
     /// outside. An axis the path barely moves along cannot be the one it leaves by, so a ratio
     /// too large to hold is never the nearest.
-    pub fn exit(self, from: Position, direction: Vec3) -> Num {
+    pub fn exit(self, from: Vec3, direction: Vec3) -> Num {
         if !self.contains(from) {
             return Num::ZERO;
         }
-        let at = from.get();
         let height = Position::BOUND;
         [
-            (at.x, direction.x, self.min[0], self.max[0]),
-            (at.y, direction.y, -height, height),
-            (at.z, direction.z, self.min[1], self.max[1]),
+            (from.x, direction.x, self.min[0], self.max[0]),
+            (from.y, direction.y, -height, height),
+            (from.z, direction.z, self.min[1], self.max[1]),
         ]
         .into_iter()
         .filter_map(|(at, moves, min, max)| {
@@ -84,16 +84,15 @@ impl Bounds {
     }
 
     /// The point of the bounds nearest `pos` on the ground plane, at its height.
-    pub fn clamp(self, pos: Position) -> Position {
-        let point = pos.get();
-        self.ground_point([point.x, point.z], pos)
+    pub fn clamp(self, pos: Vec3) -> Vec3 {
+        self.ground_point([pos.x, pos.z], pos)
     }
 
     /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `pos`: a
     /// unit ordered to a point on the ground keeps its height.
-    pub fn ground_point(self, ground: [Num; 2], pos: Position) -> Position {
+    pub fn ground_point(self, ground: [Num; 2], pos: Vec3) -> Vec3 {
         let [x, z] = self.clamp_ground(ground);
-        Position::new(Vec3::new(x, pos.get().y, z)).expect("bounds are within the world's bound")
+        Vec3::new(x, pos.y, z)
     }
 }
 
@@ -121,7 +120,8 @@ mod tests {
     fn bounds_hold_their_closed_rectangle_and_clamp_to_it() {
         let bounds = Bounds::new([Num::int(-2), Num::int(-1)], [Num::int(4), Num::int(3)]).unwrap();
         let e = Num::EPSILON;
-        // Corners and edges are inside; a bit past any edge is not. Height never counts.
+        // Corners and edges are inside; a bit past any edge is not. Height counts only past the
+        // world's bound: 50 m up is inside, a bit past 2²⁰ m, up or down, is not.
         for (x, z, inside) in [
             (Num::int(-2), Num::int(-1), true),
             (Num::int(4), Num::int(3), true),
@@ -132,32 +132,23 @@ mod tests {
             (Num::int(0), Num::int(-1) - e, false),
         ] {
             assert_eq!(
-                bounds.contains(Position::try_from(Vec3::from((x, 50, z))).unwrap()),
+                bounds.contains(Vec3::from((x, 50, z))),
                 inside,
                 "{x:?} {z:?}"
             );
         }
         // (9, 9) clamps to the corner (4, 3), (−5, 1) to the left edge at z = 1, and a point
         // inside stays, each at its own height.
-        assert_eq!(
-            bounds.clamp(Position::from((9, 7, 9))),
-            Position::from((4, 7, 3))
-        );
-        assert_eq!(
-            bounds.clamp(Position::from((-5, 5, 1))),
-            Position::from((-2, 5, 1))
-        );
-        assert_eq!(
-            bounds.clamp(Position::from((1, 0, 2))),
-            Position::from((1, 0, 2))
-        );
+        assert_eq!(bounds.clamp(Vec3::from((9, 7, 9))), Vec3::from((4, 7, 3)));
+        assert_eq!(bounds.clamp(Vec3::from((-5, 5, 1))), Vec3::from((-2, 5, 1)));
+        assert_eq!(bounds.clamp(Vec3::from((1, 0, 2))), Vec3::from((1, 0, 2)));
         assert_eq!(
             bounds.clamp_ground([Num::int(-9), Num::int(-9)]),
             [Num::int(-2), Num::int(-1)]
         );
         assert_eq!(
-            bounds.ground_point([Num::int(9), Num::int(-9)], Position::from((1, 6, 2))),
-            Position::from((4, 6, -1))
+            bounds.ground_point([Num::int(9), Num::int(-9)], Vec3::from((1, 6, 2))),
+            Vec3::from((4, 6, -1))
         );
 
         let past = Position::BOUND + e;
@@ -169,9 +160,13 @@ mod tests {
         ] {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
-        assert!(Bounds::WORLD.contains(
-            Position::try_from(Vec3::from((-Position::BOUND, 0, Position::BOUND))).unwrap()
-        ));
+        assert!(Bounds::WORLD.contains(Vec3::from((-Position::BOUND, 0, Position::BOUND))));
+        for height in [Position::BOUND, -Position::BOUND] {
+            assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));
+        }
+        for height in [past, -past] {
+            assert!(!bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));
+        }
 
         // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from the
         // right edge on along +x, 0. From a point past the right edge, 0, also back along −x and
@@ -180,11 +175,11 @@ mod tests {
         let x = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
         let z = Vec3::new(Num::ZERO, Num::ZERO, -Num::ONE);
         let up = Vec3::new(Num::ZERO, Num::ONE, Num::ZERO);
-        let origin = Position::from((0, 0, 1));
+        let origin = Vec3::from((0, 0, 1));
         assert_eq!(bounds.exit(origin, x), Num::int(4));
         assert_eq!(bounds.exit(origin, z), Num::int(2));
-        assert_eq!(bounds.exit(Position::from((4, 0, 1)), x), Num::ZERO);
-        let past = Position::from((5, 0, 1));
+        assert_eq!(bounds.exit(Vec3::from((4, 0, 1)), x), Num::ZERO);
+        let past = Vec3::from((5, 0, 1));
         for direction in [x, -x, up] {
             assert_eq!(bounds.exit(past, direction), Num::ZERO, "{direction:?}");
         }

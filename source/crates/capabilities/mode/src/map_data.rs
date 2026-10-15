@@ -145,7 +145,7 @@ impl MapData {
         points
             .iter()
             .map(|point| {
-                let at = self.point(point)?.get();
+                let at = self.pos(point)?;
                 Ok([at.x, at.z])
             })
             .collect()
@@ -178,10 +178,10 @@ impl MapData {
         Ok(walls)
     }
 
-    /// `point` as a position; an error unless it fits the map's metric and lies within its
+    /// The place of `point`; an error unless it fits the map's metric and lies within its
     /// bounds.
-    pub(crate) const fn point(&self, point: &MapPoint) -> Result<Position, ModeError> {
-        match point.position() {
+    pub(crate) fn pos(&self, point: &MapPoint) -> Result<Vec3, ModeError> {
+        match point.pos() {
             _ if !point.fits(self.metric) => Err(ModeError::PointShape),
             Some(pos) if self.bounds.contains(pos) => Ok(pos),
             _ => Err(ModeError::OutOfBounds),
@@ -192,14 +192,17 @@ impl MapData {
     /// planar map measures on the ground plane and keeps a position's height for its client; an
     /// error for a height on a spatial map, whose points hold their own, and for one past the
     /// world's bound.
-    pub fn placed_at(&self, point: &MapPoint, height: Num) -> Result<Position, ModeError> {
-        let pos = self.point(point)?;
+    pub fn placed_at(&self, point: &MapPoint, height: Num) -> Result<Vec3, ModeError> {
+        let pos = self.pos(point)?;
         match self.metric {
             _ if height == Num::ZERO => Ok(pos),
             Metric::Spatial => Err(ModeError::SpatialHeight),
             Metric::Planar => {
-                let at = pos.get();
-                Position::new(Vec3::new(at.x, height, at.z)).ok_or(ModeError::OutOfBounds)
+                let placed = Vec3::new(pos.x, height, pos.z);
+                Position::from(placed)
+                    .within_bound()
+                    .then_some(placed)
+                    .ok_or(ModeError::OutOfBounds)
             }
         }
     }
@@ -338,17 +341,17 @@ markers = [{ name = "camp", tags = ["spawn"], region = { min = [0, 0, 0], max = 
     #[test]
     fn a_point_beyond_the_world_bound_has_no_position() {
         let int = Num::int;
-        let at = |x: i64, y: i64, z: i64| Position::new(Vec3::new(int(x), int(y), int(z)));
+        let at = |x: i64, y: i64, z: i64| Some(Vec3::new(int(x), int(y), int(z)));
         // A ground point stands at height 0; a meter past 2²⁰ m is past the world's bound, on any
         // axis.
         let beyond = (1 << 20) + 1;
-        for (point, position) in [
+        for (point, pos) in [
             (MapPoint::Ground([int(1), int(2)]), at(1, 0, 2)),
             (MapPoint::Space([int(1), int(3), int(2)]), at(1, 3, 2)),
             (MapPoint::Space([int(1), int(beyond), int(2)]), None),
             (MapPoint::Ground([int(beyond), int(2)]), None),
         ] {
-            assert_eq!(point.position(), position, "{point:?}");
+            assert_eq!(point.pos(), pos, "{point:?}");
         }
     }
 

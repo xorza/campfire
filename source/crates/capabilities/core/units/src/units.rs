@@ -251,7 +251,7 @@ impl Units {
         Breach::first(world, |entity| {
             world
                 .get::<Position>(entity)
-                .is_some_and(|&at| !bounds.contains(at))
+                .is_some_and(|at| !bounds.contains(at.get()))
         })
     }
 

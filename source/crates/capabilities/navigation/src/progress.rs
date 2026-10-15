@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -12,14 +12,14 @@ use serde::{Deserialize, Serialize};
 /// every tick a unit walks.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Progress {
-    last_at: Option<Position>,
+    last_at: Option<Vec3>,
     stuck: u32,
 }
 
 impl Progress {
     /// Notes that the walker stands at `pos` as this tick steers, with a step of `step`; the ticks
     /// in a row it has moved less than half a step.
-    pub(crate) fn track(&mut self, pos: Position, step: Num) -> u32 {
+    pub(crate) fn track(&mut self, pos: Vec3, step: Num) -> u32 {
         let half = step / 2;
         self.stuck = match self.last_at {
             Some(last) if last.within_ground(pos, half) => self.stuck.saturating_add(1),
@@ -47,9 +47,10 @@ impl SimComponent for Progress {
     const NAME: &'static str = "navigation.progress";
     type Host = UnitEntity;
 
-    // Its decode keeps its position within the bound, and it names no book.
+    // Its place lies within the world's bound, as every place does, and it names no book.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.last_at
+            .is_none_or(|point| Position::from(point).within_bound())
     }
 }
 

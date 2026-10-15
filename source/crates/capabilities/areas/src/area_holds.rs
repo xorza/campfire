@@ -41,11 +41,11 @@ impl AreaHolds {
             let Some(spec) = holding(unit_type) else {
                 continue;
             };
-            grid.visit_near(pos, spec.radius, |body| {
+            grid.visit_near(pos.get(), spec.radius, |body| {
                 let Some(unit) = targets.living_at(body.key) else {
                     return;
                 };
-                if !targets.reaches(Placed::point(pos), spec.radius, &unit) {
+                if !targets.reaches(Placed::point(pos.get()), spec.radius, &unit) {
                     return;
                 }
                 let by = area.by();

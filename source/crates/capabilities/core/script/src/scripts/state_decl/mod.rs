@@ -2,7 +2,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -40,7 +39,6 @@ impl StateDecl {
             (StateType::String, None) => StateValue::Text(Arc::from("")),
             (StateType::Entity, None) => StateValue::Entity(None),
             (StateType::EntityList, None) => StateValue::EntityList(Arc::from([])),
-            (StateType::Pos, None) => StateValue::Pos(Position::ORIGIN),
             (StateType::Vec, None) => StateValue::Vec(Vec3::ZERO),
             (StateType::Int, Some(StateDefault::Int(value))) => StateValue::Int(value),
             (StateType::Num, Some(StateDefault::Int(value))) => {

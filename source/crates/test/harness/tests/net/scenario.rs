@@ -23,7 +23,7 @@ const RESPAWN_TICKS: u64 = 150;
 /// Where a hero stands in an app, and whether it is dead.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Hero {
-    pos: Position,
+    pos: Vec3,
     dead: bool,
 }
 
@@ -31,7 +31,7 @@ fn hero(app: &App, id: StableId) -> Hero {
     let world = app.world();
     let unit = world.entity_ref_of(id).unwrap();
     Hero {
-        pos: *unit.get::<Position>().unwrap(),
+        pos: unit.get::<Position>().unwrap().get(),
         dead: unit.contains::<Dead>(),
     }
 }
@@ -118,7 +118,7 @@ fn play(link: LinkModel) -> [u32; 2] {
     }
     // Each ends where its last order sent it, alive, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
-        let end = [Position::from((-3, 0, -2)), Position::from((3, 0, 4))][team];
+        let end = [Vec3::from((-3, 0, -2)), Vec3::from((3, 0, 4))][team];
         let end = Hero {
             pos: end,
             dead: false,
@@ -204,7 +204,7 @@ const CAST_TICKS: u64 = 360;
 /// the tick none but its owner's client and the server hold.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Caster {
-    pos: Position,
+    pos: Vec3,
     health: Num,
     mana: Option<Num>,
     ready_at: Option<Tick>,
@@ -215,7 +215,7 @@ fn caster(app: &App, id: StableId) -> Caster {
     let unit = world.entity_ref_of(id).unwrap();
     let mana = PoolId::new(1).unwrap();
     Caster {
-        pos: *unit.get::<Position>().unwrap(),
+        pos: unit.get::<Position>().unwrap().get(),
         health: unit.get::<Life>().unwrap().current(),
         mana: unit.get::<Pools>().and_then(|pools| pools.current(mana)),
         ready_at: unit
@@ -262,7 +262,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // again after its last cast's cooldown: on the server and on both clients, the mana and the
     // cooldown on its owner's client alone.
     assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
-    let edge = |x| Position::new(Vec3::new(x, Num::ZERO, Num::int(8))).unwrap();
+    let edge = |x| Vec3::new(x, Num::ZERO, Num::int(8));
     let expected = [
         (
             walker,
@@ -340,7 +340,7 @@ fn route(link: LinkModel) -> [u32; 2] {
     let mut closest = u128::MAX;
     while local.next_tick(End::Server) < ROUTE_TICKS {
         local.step();
-        let offset = hero(local.server(), walker).pos.get() - tower_at;
+        let offset = hero(local.server(), walker).pos - tower_at;
         closest = closest.min(offset.length_squared_bits());
     }
     check_log(&mut local, scripts);
@@ -353,7 +353,7 @@ fn route(link: LinkModel) -> [u32; 2] {
         reach * reach
     );
     let end = Hero {
-        pos: Position::from((-12, 0, -4)),
+        pos: Vec3::from((-12, 0, -4)),
         dead: false,
     };
     assert_eq!(hero(local.server(), walker), end);
@@ -398,8 +398,8 @@ fn round(link: LinkModel) -> [u32; 2] {
         reach * reach
     );
     for (id, end) in [
-        (walker, Position::from((0, 0, 5))),
-        (stander, Position::from((0, 0, 2))),
+        (walker, Vec3::from((0, 0, 5))),
+        (stander, Vec3::from((0, 0, 2))),
     ] {
         let end = Hero {
             pos: end,
@@ -460,7 +460,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // Each hero ends where its last order sent it, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
         let end = Hero {
-            pos: [Position::from((-3, 0, -2)), Position::from((3, 0, 4))][team],
+            pos: [Vec3::from((-3, 0, -2)), Vec3::from((3, 0, 4))][team],
             dead: false,
         };
         assert_eq!(hero(local.server(), id), end, "hero {index} on the server");
@@ -476,16 +476,16 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     // stamp never goes back past the last the log holds, and the server acknowledges the tick it
     // applies in, so the client corrects while its timeline steps back, and then no more. Each
     // target is its team's, on its own side of the lane, out of the enemy tower's reach.
-    let order = |local: &mut InProcessMatch, targets: [Position; 2]| {
+    let order = |local: &mut InProcessMatch, targets: [Vec3; 2]| {
         for (client, &team) in teams.iter().enumerate() {
-            let Vec3 { x, z, .. } = targets[team].get();
+            let Vec3 { x, z, .. } = targets[team];
             local.order(client, OrdersAction::Move { x, z });
         }
     };
     // An order every 5 frames from before the stall on, so some go out as a timeline steps back.
     let (away, targets) = (
-        [Position::from((-3, 0, -1)), Position::from((3, 0, 1))],
-        [Position::from((-3, 0, 2)), Position::from((3, 0, 0))],
+        [Vec3::from((-3, 0, -1)), Vec3::from((3, 0, 1))],
+        [Vec3::from((-3, 0, 2)), Vec3::from((3, 0, 0))],
     );
     for frame in 0..60 {
         if frame % 5 == 0 {
@@ -497,7 +497,7 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
         local.step();
     }
     order(&mut local, targets);
-    let ends = |local: &mut InProcessMatch, targets: [Position; 2]| {
+    let ends = |local: &mut InProcessMatch, targets: [Vec3; 2]| {
         for _ in 0..100 {
             local.step();
         }

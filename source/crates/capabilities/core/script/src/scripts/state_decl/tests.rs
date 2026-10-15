@@ -30,10 +30,6 @@ fn a_field_starts_at_its_default_or_its_types_zero() {
             (StateType::EntityList, None),
             Some(StateValue::EntityList(Arc::from([]))),
         ),
-        (
-            (StateType::Pos, None),
-            Some(StateValue::Pos(Position::ORIGIN)),
-        ),
         ((StateType::Vec, None), Some(StateValue::Vec(Vec3::ZERO))),
         // Defaults not of the type.
         ((StateType::Int, text("4")), None),

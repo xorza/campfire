@@ -1,4 +1,3 @@
-use campfire_math::Vec3;
 use campfire_sim::IdAllocator;
 
 use super::*;
@@ -16,7 +15,7 @@ fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Indexed<()> {
         id: ids.allocate(),
         key: (),
         body: Placed::new(
-            Position::new(Vec3::new(m(x), Num::ZERO, m(z))).unwrap(),
+            Vec3::new(m(x), Num::ZERO, m(z)),
             Shape::Circle(Radius::new(m(radius)).unwrap()),
         ),
     }
@@ -78,7 +77,7 @@ fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
     ] {
         let got = visited(&grid, low, high);
         let overlaps = |entry: &&Indexed<()>| {
-            let (at, bound) = (entry.body.pos.get(), entry.body.shape.bound());
+            let (at, bound) = (entry.body.pos, entry.body.shape.bound());
             let near =
                 |axis: Num, low: i64, high: i64| m(low) <= axis + bound && axis - bound <= m(high);
             near(at.x, low[0], high[0]) && near(at.z, low[1], high[1])
@@ -130,7 +129,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
         ] {
             let got = visited(&grid, low, high);
             let overlaps = |entry: &&Indexed<()>| {
-                let at = entry.body.pos.get();
+                let at = entry.body.pos;
                 let near = |axis: Num, low: i64, high: i64| {
                     m(low) <= axis + entry.body.shape.bound()
                         && axis - entry.body.shape.bound() <= m(high)
@@ -146,10 +145,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             // Exactly the bodies of the cells of their level that the box covers grown by the
             // level's widest body, 0.5, 1 and 1.2 m, whether row starts or searches find them.
             let inside = |entry: &&Indexed<()>| {
-                let (at, level) = (
-                    entry.body.pos.get(),
-                    grid.levels.level(entry.body.shape.bound()),
-                );
+                let (at, level) = (entry.body.pos, grid.levels.level(entry.body.shape.bound()));
                 let grow = m([5, 10, 12][usize::from(level)]);
                 let cell = |at: Num| grid.levels.index(level, at.to_bits());
                 let within = |axis: Num, low: i64, high: i64| {
@@ -173,7 +169,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             let level = grid.levels.level(entry.body.shape.bound());
             let grow = m([5, 10, 12][usize::from(level)]);
             let row = |at: Num| grid.levels.index(level, at.to_bits());
-            (row(m(-3) - grow)..=row(m(3) + grow)).contains(&row(entry.body.pos.get().z))
+            (row(m(-3) - grow)..=row(m(3) + grow)).contains(&row(entry.body.pos.z))
         };
         let mut expected: Vec<_> = bodies.iter().filter(in_band).map(|body| body.id).collect();
         expected.sort_unstable();

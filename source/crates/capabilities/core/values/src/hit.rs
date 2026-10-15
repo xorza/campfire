@@ -1,5 +1,5 @@
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 
 /// How a delivery reached a unit, or where it ended: the projectile or area that delivered it,
 /// the unit its action aimed at, if one, where, after how many meters flown, and in which
@@ -8,7 +8,7 @@ use campfire_sim::{Position, StableId};
 pub struct Hit {
     pub delivery: Option<StableId>,
     pub target: Option<StableId>,
-    pub pos: Position,
+    pub pos: Vec3,
     pub distance: Num,
     pub direction: Option<Vec3>,
 }

@@ -3,12 +3,13 @@ use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, Order};
 use campfire_common::PlayerSlot;
+use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::PackageTree;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, SimWorld, StableId, TickRate};
+use campfire_sim::{SimWorld, StableId, TickRate};
 use campfire_stats::{PoolId, Stats};
 use campfire_values::{ActionId, DeclaredName, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::Vision;
@@ -48,7 +49,7 @@ impl Arena {
         &self,
         game: &mut World,
         unit_type: &str,
-        pos: Position,
+        pos: Vec3,
         team: Team,
         parts: impl Bundle,
     ) -> StableId {

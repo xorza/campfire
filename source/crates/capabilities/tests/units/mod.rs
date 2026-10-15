@@ -50,12 +50,12 @@ fn units_match() -> Match {
 }
 
 /// A `melee` unit of `team` at `pos` with `parts`.
-fn melee(game: &mut Match, pos: impl Into<Position>, team: Team, parts: impl Bundle) -> StableId {
+fn melee(game: &mut Match, pos: impl Into<Vec3>, team: Team, parts: impl Bundle) -> StableId {
     Mode::spawn_named(game, "melee", pos, team, parts)
 }
 
 /// A unit of the type `name` of `team` at `pos`.
-fn spawn_named(game: &mut Match, name: &str, pos: impl Into<Position>, team: Team) -> StableId {
+fn spawn_named(game: &mut Match, name: &str, pos: impl Into<Vec3>, team: Team) -> StableId {
     Mode::spawn_named(game, name, pos, team, ())
 }
 
@@ -278,8 +278,8 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     let restores = |x: Num| {
         let mut game = units_match();
         game.resource_mut::<MapBook>().bounds = bounds;
-        let id = spawn_named(&mut game, "unit", Position::ORIGIN, Team::new(0));
-        *game.part_mut::<Position>(id) = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
+        let id = spawn_named(&mut game, "unit", Vec3::ZERO, Team::new(0));
+        *game.part_mut::<Position>(id) = Position::from(Vec3::new(x, Num::ZERO, Num::ZERO));
         let mut snapshot = Vec::new();
         game.snapshot(&mut snapshot);
         let mut fresh = units_match();
@@ -346,7 +346,7 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     game.step();
     assert!(game.check_change_ticks().is_none());
     let moved = value(&mut game, loose, "of.pos");
-    assert_eq!(moved.cast::<Position>(), Position::from((2, 0, 0)));
+    assert_eq!(moved.cast::<Vec3>(), Vec3::from((2, 0, 0)));
 }
 
 #[test]
@@ -360,7 +360,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-    let spawn = SpawnPoint::new(Position::from((5, 0, -5)));
+    let spawn = SpawnPoint::new(Vec3::from((5, 0, -5)));
     let of = Mode::spawn(
         &mut game,
         hero,
@@ -408,7 +408,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         let source = "fn probe(ctx, of) { of.spawn_pos }";
         Units::probe(game, source, unit).unwrap()
     };
-    assert_eq!(spawn_pos(&mut game, of).cast::<Position>(), spawn.get());
+    assert_eq!(spawn_pos(&mut game, of).cast::<Vec3>(), spawn.get());
     let unit_type = Units::type_named(&game, "unit").unwrap();
     let delivery = Deliveries::spawn_of(&mut game, of, unit_type, (1, 0, 0), ());
     assert!(spawn_pos(&mut game, delivery).is_unit());
@@ -643,7 +643,13 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
     Release::restore_into(&game, &mut restored);
     assert_eq!(tags(&restored, spawned), Some(own));
     let id = game.resource_mut::<IdAllocator>().allocate();
-    let received = (id, BodyUnit, creep, Position::ORIGIN, Team::new(0));
+    let received = (
+        id,
+        BodyUnit,
+        creep,
+        Position::from(Vec3::ZERO),
+        Team::new(0),
+    );
     let received = game.spawn(received).id();
     assert_eq!(
         game.get::<UnitTags>(received).map(|tags| tags.tags),

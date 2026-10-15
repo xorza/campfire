@@ -1,10 +1,10 @@
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_script::{
     AnyKeptRows, Filter, KeptRows, RowFill, ScriptList, ScriptRadius, ScriptValue, Unit,
     ViewColumn, ViewColumns,
 };
-use campfire_sim::Position;
 use campfire_values::{Relations, Team, TeamSet};
 
 use crate::seen_by::SeenBy;
@@ -52,12 +52,7 @@ impl VisionColumn {
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
-    pub(crate) fn find(
-        of: &Unit,
-        pos: Position,
-        radius: ScriptRadius,
-        filter: &Filter,
-    ) -> ScriptList {
+    pub(crate) fn find(of: &Unit, pos: Vec3, radius: ScriptRadius, filter: &Filter) -> ScriptList {
         let team = of.read(|row| row.team);
         of.view()
             .find(of, pos, radius.get(), filter, |columns, row| {

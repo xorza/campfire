@@ -210,7 +210,7 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_geometry::internals::KernelScene;
     use campfire_math::Num;
-    use campfire_sim::{IdAllocator, Position};
+    use campfire_sim::IdAllocator;
     use campfire_units::Layer;
 
     use crate::body_index::{BodyIndex, IndexedBody};
@@ -258,7 +258,7 @@ pub(crate) mod internals {
             .filter(|collider| !collider.movable)
             .map(|collider| IndexedBody {
                 id: collider.id,
-                pos: Position::new(collider.point).unwrap(),
+                pos: collider.point,
                 shape: collider.shape,
                 layer: collider.layer,
             })

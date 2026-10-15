@@ -34,13 +34,13 @@ pub enum NavigationEffect {
     /// A knock back `distance` away from `from` over `ticks`.
     KnockBack {
         id: StableId,
-        from: Position,
+        from: Vec3,
         distance: Num,
         ticks: Ticks,
     },
     Teleport {
         id: StableId,
-        to: Position,
+        to: Vec3,
     },
 }
 
@@ -74,7 +74,7 @@ impl NavigationEffect {
     pub(crate) fn knock_back(
         view: &View,
         id: StableId,
-        from: Position,
+        from: Vec3,
         distance: Num,
         ms: i64,
     ) -> Result<NavigationEffect, ApiError> {
@@ -95,7 +95,7 @@ impl NavigationEffect {
     pub(crate) fn teleport(
         view: &View,
         id: StableId,
-        to: Position,
+        to: Vec3,
     ) -> Result<NavigationEffect, ApiError> {
         NavigationEffect::walker(view, id)?;
         Ok(NavigationEffect::Teleport { id, to })
@@ -143,9 +143,9 @@ impl NavigationEffect {
 
     /// Puts the unit of `entity` at `pos`, at once: it ends its forced move and walks its route
     /// again from there, as a teleport and a box that spawns over it put a unit.
-    pub(super) fn put(world: &mut World, entity: Entity, pos: Position, now: Tick) {
+    pub(super) fn put(world: &mut World, entity: Entity, pos: Vec3, now: Tick) {
         let mut moved = world.entity_mut(entity);
-        *moved.get_mut::<Position>().expect("a unit has a place") = pos;
+        *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(pos);
         moved.remove::<ForcedMove>();
         if let Ok((destination, mut route, mut progress)) =
             moved.get_components_mut::<(&Destination, &mut Route, &mut Progress)>()
@@ -182,7 +182,7 @@ impl Effect for NavigationEffect {
             } => {
                 let pos = *world.get::<Position>(entity).expect("a unit has a place");
                 ForcedMove::KnockBack {
-                    to: knock_back_end(pos, from, distance),
+                    to: knock_back_end(pos.get(), from, distance),
                     left: ticks.get(),
                 }
             }
@@ -198,7 +198,7 @@ impl Effect for NavigationEffect {
 /// Where a knock back `distance` away from `from` takes a unit at `pos`: straight away on the
 /// ground plane, each component of the direction rounded once, along x from `from` itself, as
 /// collision parts two on one spot.
-fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
+fn knock_back_end(pos: Vec3, from: Vec3, distance: Num) -> Vec3 {
     let away =
         from.ground_offset(pos)
             .normalized()
@@ -206,8 +206,7 @@ fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
     let offset = away
         .checked_mul(distance)
         .expect("a distance within the bound scales a unit vector");
-    pos.get()
-        .checked_add(offset)
+    pos.checked_add(offset)
         .expect("a place and a distance within the bound add")
 }
 
@@ -215,7 +214,7 @@ fn knock_back_end(pos: Position, from: Position, distance: Num) -> Vec3 {
 /// its walker may not stand on the pathing grid, at the center of the nearest cell it may stand
 /// in, at `to`'s height; on a grid with no such cell, it stays. It ends its forced move and walks
 /// its route again from there, and every delivery that homes on it loses it.
-fn teleport(world: &mut World, entity: Entity, id: StableId, to: Position, now: Tick) {
+fn teleport(world: &mut World, entity: Entity, id: StableId, to: Vec3, now: Tick) {
     let mut pos = world.resource::<MapBook>().bounds.clamp(to);
     if let Some(grid) = world.get_resource::<PathingGrid>()
         && PathingGrid::serves(world, entity)

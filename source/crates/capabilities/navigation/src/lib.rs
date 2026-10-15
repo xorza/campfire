@@ -15,8 +15,8 @@ use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_geometry::Grid;
-use campfire_math::Num;
-use campfire_sim::{Capability, Position, SimEdge, SimSet};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Capability, SimEdge, SimSet};
 use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 use crate::navigation_column::RowReads;
@@ -221,7 +221,7 @@ impl Module for Navigation {
 impl Navigation {
     /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
     /// does not change untouched.
-    pub fn go_to(world: &mut World, entity: Entity, target: Option<Position>) {
+    pub fn go_to(world: &mut World, entity: Entity, target: Option<Vec3>) {
         if let Some(mut destination) = world.get_mut::<Destination>(entity) {
             destination.set_if_neq(Destination::to(target));
         }
@@ -267,13 +267,13 @@ impl Navigation {
     /// The center of the cell nearest `point` among those `walker` may stand in, at `point`'s
     /// height, as a teleport finds its cell, with the static bodies as the tick began; `None`
     /// with no pathing grid, or on a grid with no such cell.
-    pub fn open_cell(world: &World, walker: Walker, point: Position) -> Option<Position> {
+    pub fn open_cell(world: &World, walker: Walker, point: Vec3) -> Option<Vec3> {
         let grid = world.get_resource::<PathingGrid>()?;
         let planner = world.get_resource::<RoutePlanner>()?;
         let clearance = grid.serving(walker)?;
         let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
         let cell = planner.nearest_open(walkable, point, &mut 0)?;
-        Some(clearance.grid().center(cell, point.get().y))
+        Some(clearance.grid().center(cell, point.y))
     }
 }
 

@@ -12,11 +12,12 @@ use bevy_ecs::world::Mut;
 use campfire_actions::ActionBook;
 use campfire_common::SegmentSeed;
 use campfire_declare::{ByType, EntityParts, Module, Role};
+use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
 use campfire_script::{ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Position, SimUpdate, StateRegistry};
+use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::SourceFiles;
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::{Player, UnitTypeCore};
@@ -755,7 +756,7 @@ fn a_unit_holds_only_parts_the_declarations_list() {
     let declared: Vec<Capability> = set.iter().collect();
     let mut game = Match::unscripted(&declared);
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
-    let id = Mode::spawn(&mut game, unit_type, Position::ORIGIN, Team::new(0), ());
+    let id = Mode::spawn(&mut game, unit_type, Vec3::ZERO, Team::new(0), ());
     assert_eq!(
         Release::unlisted_components(set, &game),
         Vec::<String>::new()

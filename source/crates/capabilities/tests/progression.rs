@@ -1,11 +1,11 @@
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_declare::Book;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_progression::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Position, SimComponent};
+use campfire_sim::{Capability, SimComponent};
 use campfire_stats::Level;
 use campfire_units::{UnitTypeCore, Units};
 use campfire_values::{DeclaredName, Team, TrackId};
@@ -150,7 +150,7 @@ fn experience_is_state_and_restores() {
     let id = Mode::spawn(
         &mut game,
         on_both,
-        Position::ORIGIN,
+        Vec3::ZERO,
         Team::new(0),
         (level, experience, points),
     );
@@ -167,7 +167,7 @@ fn experience_is_state_and_restores() {
     let held = Mode::spawn(
         &mut game,
         on_valor,
-        Position::ORIGIN,
+        Vec3::ZERO,
         Team::new(0),
         (Experience::new(valor), points),
     );

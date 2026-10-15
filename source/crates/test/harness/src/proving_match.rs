@@ -5,7 +5,7 @@ use campfire_orders::OrdersAction;
 use campfire_package_disk::internals::TestMode;
 use campfire_production::TrainQueue;
 use campfire_protocol::{InputRules, SlotPlan};
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_values::Team;
 
 use crate::fixed_session::FixedSession;
@@ -152,9 +152,7 @@ impl Plan for ProvingMatch {
                 barracks(units, slot)[at],
                 OrdersAction::Slot {
                     slot: 1,
-                    target: ActionTarget::Point(
-                        Position::try_from(Vec3::from((Num::int(x), 0, Num::int(z)))).unwrap(),
-                    ),
+                    target: ActionTarget::Point(Vec3::from((Num::int(x), 0, Num::int(z)))),
                 },
             ),
             ProvingMatch::Cast { slot, at } => (

@@ -1,7 +1,6 @@
 use bevy_ecs::entity::Entity;
 use campfire_common::Ticks;
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 use campfire_stats::PoolCost;
 use campfire_values::{Rank, UnitType};
 
@@ -9,7 +8,7 @@ use campfire_values::{Rank, UnitType};
 #[derive(Debug, Clone, Copy)]
 pub enum Step {
     /// It walks to the point of its target's box nearest it.
-    Walk(Position),
+    Walk(Vec3),
     /// It stays: a builder of its site, in range.
     Build,
     /// It takes its `builder` site, of this entity, which no other builder holds, and builds it.
@@ -24,7 +23,7 @@ pub enum Step {
 #[derive(Debug, Clone, Copy)]
 pub struct Start {
     pub(super) unit_type: UnitType,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(super) angle: Num,
     pub(super) cost: PoolCost,
     pub(super) cooldown: Ticks,

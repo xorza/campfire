@@ -1,8 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_script::{Effect, Frame};
-use campfire_sim::Position;
 use campfire_values::Team;
 
 use crate::reveals::{Reveal, Reveals};
@@ -13,7 +12,7 @@ use crate::vision_book::VisionBook;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct VisionEffect {
     pub team: Team,
-    pub pos: Position,
+    pub pos: Vec3,
     pub(crate) radius: Num,
     pub(crate) ticks: Ticks,
 }

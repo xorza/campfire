@@ -13,13 +13,14 @@ pub enum MapPoint {
 }
 
 impl MapPoint {
-    /// The point as a position, a ground point at height 0; `None` beyond the world's bound.
-    pub const fn position(self) -> Option<Position> {
+    /// The place of the point, a ground point at height 0; `None` beyond the world's bound.
+    pub fn pos(self) -> Option<Vec3> {
         let [x, y, z] = match self {
             MapPoint::Ground([x, z]) => [x, Num::ZERO, z],
             MapPoint::Space(point) => point,
         };
-        Position::new(Vec3::new(x, y, z))
+        let point = Vec3::new(x, y, z);
+        Position::from(point).within_bound().then_some(point)
     }
 
     /// Whether it has the shape of a point of a map of `metric`.

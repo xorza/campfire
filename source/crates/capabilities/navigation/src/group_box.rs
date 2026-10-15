@@ -1,6 +1,5 @@
 use campfire_geometry::Bounds;
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 
 /// The smallest rectangle of the ground plane, its sides along x and z, that holds a group's
 /// positions, each corner `[x, z]`.
@@ -12,11 +11,10 @@ pub struct GroupBox {
 
 impl GroupBox {
     /// The box of `positions`; `None` for none.
-    pub fn of(positions: impl IntoIterator<Item = Position>) -> Option<GroupBox> {
+    pub fn of(positions: impl IntoIterator<Item = Vec3>) -> Option<GroupBox> {
         positions
             .into_iter()
             .fold(None, |held: Option<GroupBox>, at| {
-                let at = at.get();
                 let point = [at.x, at.z];
                 Some(held.map_or(
                     GroupBox {
@@ -49,19 +47,17 @@ impl GroupBox {
     /// The goal of the unit at `pos` of a group ordered to `goal`, a point within `bounds`: outside
     /// the box, `goal` plus the unit's offset from the centre, taken into the bounds; inside the
     /// box or on its edge, `goal` itself.
-    pub fn goal_of(self, pos: Position, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
+    pub fn goal_of(self, pos: Vec3, goal: [Num; 2], bounds: Bounds) -> [Num; 2] {
         if self.holds(goal) {
             return goal;
         }
         let [cx, cz] = self.centre();
-        let pos = pos.get();
         bounds.clamp_ground([goal[0] + (pos.x - cx), goal[1] + (pos.z - cz)])
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use campfire_math::Vec3;
 
     use super::*;
 
@@ -74,9 +70,9 @@ mod tests {
         let int = Num::int;
         let half = |value: i64| Num::int(value) / 2;
         let units = [
-            Position::try_from(Vec3::from((int(1), 0, int(2)))).unwrap(),
-            Position::try_from(Vec3::from((int(4), 0, int(6)))).unwrap(),
-            Position::try_from(Vec3::from((int(2), 0, int(3)))).unwrap(),
+            Vec3::from((int(1), 0, int(2))),
+            Vec3::from((int(4), 0, int(6))),
+            Vec3::from((int(2), 0, int(3))),
         ];
         let group = GroupBox::of(units).unwrap();
         assert_eq!(group.centre(), [half(5), int(4)]);
@@ -105,8 +101,8 @@ mod tests {
         // Ends 1 and 2 bits apart: (−1 + 0) / 2 = −½ bit rounds to −1 bit, (0 + 1) / 2 = ½ to 0.
         let bit = Num::from_bits;
         let group = GroupBox::of([
-            Position::try_from(Vec3::from((bit(-1), 0, bit(0)))).unwrap(),
-            Position::try_from(Vec3::from((bit(0), 0, bit(1)))).unwrap(),
+            Vec3::from((bit(-1), 0, bit(0))),
+            Vec3::from((bit(0), 0, bit(1))),
         ])
         .unwrap();
         assert_eq!(group.centre(), [bit(-1), bit(0)]);

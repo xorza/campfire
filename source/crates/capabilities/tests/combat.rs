@@ -173,7 +173,7 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
             }
         }
         let fighter = Mode::spawn(&mut game, types[0], (0, 0, 0), Team::new(0), ());
-        let dummy_at = Position::new(Vec3::new(dummy_x, Num::int(dummy_y), Num::ZERO)).unwrap();
+        let dummy_at = Vec3::new(dummy_x, Num::int(dummy_y), Num::ZERO);
         let dummy = Mode::spawn(&mut game, types[1], dummy_at, Team::new(1), ());
         Combat::attack(&mut game, fighter, dummy);
         game.run_until(1);
@@ -490,16 +490,16 @@ fn targets_are_living_enemies() {
     };
     assert_eq!(
         enemy_at(&mut game, Team::new(1), far),
-        Some(Position::from((6, 0, 0)))
+        Some(Vec3::from((6, 0, 0)))
     );
     assert_eq!(enemy_at(&mut game, Team::new(0), far), None);
     assert_eq!(enemy_at(&mut game, Team::new(1), dead), None);
     assert_eq!(
         enemy_at(&mut game, Team::new(1), high),
-        Some(Position::from((0, 9, 3)))
+        Some(Vec3::from((0, 9, 3)))
     );
     for (x, (unit, (blocks, target))) in (0..).zip(units.into_iter().zip(cases)) {
-        let pos = target.then_some(Position::from((x, 0, 5)));
+        let pos = target.then_some(Vec3::from((x, 0, 5)));
         assert_eq!(enemy_at(&mut game, Team::new(1), unit), pos, "{blocks:?}");
     }
     // By the relations: team 2, friendly to team 0, may not attack its units; team 3, neutral,
@@ -512,8 +512,8 @@ fn targets_are_living_enemies() {
         related,
         [
             None,
-            Some(Position::from((6, 0, 0))),
-            Some(Position::from((6, 0, 0)))
+            Some(Vec3::from((6, 0, 0))),
+            Some(Vec3::from((6, 0, 0)))
         ]
     );
     let entity = game.unit_entity(high);
@@ -740,7 +740,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     let stays = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let [fighter, stays] = arm(&mut game, [fighter(), stays]);
     let attacker = Mode::spawn(&mut game, fighter, (4, 0, 0), Team::new(0), ());
-    let spawn = SpawnPoint::new(Position::from((-3, 0, 2)));
+    let spawn = SpawnPoint::new(Vec3::from((-3, 0, 2)));
     let hero = Mode::spawn(&mut game, stays, (5, 0, 0), Team::new(1), spawn);
     Combat::attack(&mut game, attacker, hero);
     game.run_until(3);
@@ -764,8 +764,8 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     assert!(game.try_part::<Dead>(hero).is_none() && game.try_part::<Respawn>(hero).is_none());
     assert!(!tagged_dead(&game));
     assert_eq!(
-        game.try_part::<Position>(hero).copied(),
-        Some(Position::from((-3, 0, 2)))
+        game.try_part::<Position>(hero).map(|pos| pos.get()),
+        Some(Vec3::from((-3, 0, 2)))
     );
     assert_eq!(Stats::health(&game, hero), 30);
     assert_eq!(attackers(&game), Some(0));

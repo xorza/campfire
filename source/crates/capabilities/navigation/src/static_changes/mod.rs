@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
-use campfire_sim::Position;
+use campfire_math::Vec3;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::segment::Segment;
@@ -29,12 +29,7 @@ impl StaticChanges {
 
     /// Whether a body put in blocks `walker` on its way from `from` along `waypoints`: one of its
     /// layer that comes closer to a leg than the walker's radius.
-    pub(crate) fn blocks_route(
-        &self,
-        from: Position,
-        waypoints: &[Position],
-        walker: Walker,
-    ) -> bool {
+    pub(crate) fn blocks_route(&self, from: Vec3, waypoints: &[Vec3], walker: Walker) -> bool {
         let mut at = from;
         let ours = || self.added.iter().filter(|body| body.layer == walker.layer);
         waypoints.iter().any(|&next| {

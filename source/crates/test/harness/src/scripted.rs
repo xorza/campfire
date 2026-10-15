@@ -6,7 +6,6 @@ use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::{LeaveReason, ServerInput, SlotPlan};
-use campfire_sim::Position;
 
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::match_units::MatchUnits;
@@ -124,10 +123,10 @@ impl Aim {
         match self {
             Aim::Nothing => ActionTarget::None,
             Aim::Hero { slot } => ActionTarget::Unit(units.hero(slot)),
-            Aim::HeroPoint { slot } => ActionTarget::Point(units.position(units.hero(slot))),
+            Aim::HeroPoint { slot } => ActionTarget::Point(units.pos(units.hero(slot))),
             Aim::Point { x, z } => {
                 let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
-                ActionTarget::Point(Position::new(at).expect("a point of the map"))
+                ActionTarget::Point(at)
             }
         }
     }

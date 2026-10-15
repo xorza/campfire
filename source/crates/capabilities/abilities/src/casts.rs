@@ -11,6 +11,7 @@ use campfire_actions::{
 };
 use campfire_common::Tick;
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
+use campfire_math::Vec3;
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
     CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
@@ -154,14 +155,14 @@ impl Casts {
                     living: |id| targets.living(id),
                 })
                 .map(|mut checked| {
-                    checked.clamp(position, shape, &targets);
+                    checked.clamp(position.get(), shape, &targets);
                     checked
                 });
             let Some(checked) = checked else {
                 Self::drop_cast(&mut slots, destination.as_mut(), arrived, approached);
                 continue;
             };
-            if !checked.in_range(position, shape, &targets) {
+            if !checked.in_range(position.get(), shape, &targets) {
                 match (destination.is_some(), checked.aimed_at(&targets)) {
                     (true, Some(to)) => {
                         Self::walk(destination.as_mut(), arrived, Some(to));
@@ -174,7 +175,7 @@ impl Casts {
             if approached {
                 Self::walk(destination.as_mut(), arrived, None);
             }
-            slots.begin(&checked, position, now);
+            slots.begin(&checked, position.get(), now);
         }
     }
 
@@ -195,7 +196,7 @@ impl Casts {
     fn walk(
         destination: Option<&mut Mut<'_, Destination>>,
         arrived: Option<&ArrivedShort>,
-        to: Option<Position>,
+        to: Option<Vec3>,
     ) {
         if let Some(destination) = destination {
             Destination::walk_to(destination, arrived, to);
@@ -368,7 +369,7 @@ impl Casts {
         let book = world.resource::<ActionBook>();
         if let Some(delivery) = book.get(by.action).and_then(|action| action.delivery) {
             let deliver = world.resource::<Deliverers>().of(delivery.shape);
-            deliver(world, Launcher { by, delivery }, from, aim.target);
+            deliver(world, Launcher { by, delivery }, from.get(), aim.target);
         }
         ctx.apply(world);
         // The player's resources were paid in the call's frame, before its script ran, so a failed

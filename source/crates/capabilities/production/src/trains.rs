@@ -240,8 +240,8 @@ impl Trains {
                     && let Some(to) = rally
                     && let Some(mut destination) = world.get_mut::<Destination>(trained)
                 {
-                    let to = Vec3::new(to.get().x, pos.get().y, to.get().z);
-                    destination.set_if_neq(Destination::to(Position::new(to)));
+                    let to = Vec3::new(to.x, pos.y, to.z);
+                    destination.set_if_neq(Destination::to(Some(to)));
                 }
                 if let (Some(order), Some(mut gatherer)) =
                     (gathers, world.get_mut::<Gatherer>(trained))
@@ -277,16 +277,19 @@ impl Trains {
         })?;
         Some(GatherOrder {
             slot,
-            node: NodeAt { node, pos },
+            node: NodeAt {
+                node,
+                pos: pos.get(),
+            },
             step: GatherStep::Ordered,
         })
     }
 
     /// Where the units the producer of `entity` trains go: its rally point, or where the unit it
     /// rallies to stands; `None` with none, or a unit gone or dead.
-    fn rally_point(world: &World, entity: Entity) -> Option<Position> {
+    fn rally_point(world: &World, entity: Entity) -> Option<Vec3> {
         let producer = world.entity(entity);
-        let pos = *producer.get::<Position>().expect("a producer stands");
+        let pos = producer.get::<Position>().expect("a producer stands").get();
         match producer.get::<Rally>()?.get() {
             RallyTarget::Point { x, z } => {
                 Some(world.resource::<MapBook>().bounds.ground_point([x, z], pos))
@@ -294,7 +297,7 @@ impl Trains {
             RallyTarget::Unit(id) => {
                 let unit = world.entity_ref_of(id)?;
                 let unit_pos = *unit.get::<Position>()?;
-                (!unit.contains::<Dead>()).then_some(unit_pos)
+                (!unit.contains::<Dead>()).then_some(unit_pos.get())
             }
         }
     }
@@ -308,10 +311,10 @@ impl Trains {
         world: &World,
         entity: Entity,
         unit_type: UnitType,
-        rally: Option<Position>,
-    ) -> Position {
+        rally: Option<Vec3>,
+    ) -> Vec3 {
         let producer = world.entity(entity);
-        let pos = *producer.get::<Position>().expect("a producer stands");
+        let pos = producer.get::<Position>().expect("a producer stands").get();
         let walker = world
             .get_resource::<ByType<Walker>>()
             .and_then(|walkers| walkers.get(unit_type).copied());

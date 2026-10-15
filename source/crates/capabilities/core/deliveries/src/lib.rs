@@ -7,7 +7,7 @@ use bevy_ecs::world::World;
 use campfire_actions::ActionBook;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
 use campfire_math::Vec3;
-use campfire_sim::{Breach, Capability, Position, StableId};
+use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::ForcedMove;
 use campfire_values::{DashDelivery, Hit};
 
@@ -101,7 +101,7 @@ impl Deliveries {
         &mut self,
         dash: DashDelivery,
         target: Option<StableId>,
-        pos: Position,
+        pos: Vec3,
         direction: Option<Vec3>,
     ) {
         let by = Delivering {
@@ -153,7 +153,8 @@ pub mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::system::RunSystemOnce;
     use bevy_ecs::world::World;
-    use campfire_sim::{Position, StableId};
+    use campfire_math::Vec3;
+    use campfire_sim::StableId;
     use campfire_values::UnitType;
 
     use crate::Deliveries;
@@ -172,7 +173,7 @@ pub mod internals {
             world: &mut World,
             source: StableId,
             unit_type: UnitType,
-            pos: impl Into<Position>,
+            pos: impl Into<Vec3>,
             parts: B,
         ) -> StableId {
             let pos = pos.into();

@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Cache;
 use campfire_geometry::Grid;
-use campfire_sim::Position;
+use campfire_math::Vec3;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::pathing_grid::Clearance;
@@ -196,9 +196,9 @@ impl RoutePlanner {
     pub(crate) fn plan(
         &mut self,
         walkable: Walkable<'_>,
-        start: Position,
-        goal: Position,
-        waypoints: &mut Vec<Position>,
+        start: Vec3,
+        goal: Vec3,
+        waypoints: &mut Vec<Vec3>,
     ) -> Planned {
         let planned = self.search(walkable, start, goal, waypoints);
         self.spent += u64::from(planned.work);
@@ -208,9 +208,9 @@ impl RoutePlanner {
     fn search(
         &mut self,
         walkable: Walkable<'_>,
-        start: Position,
-        goal: Position,
-        waypoints: &mut Vec<Position>,
+        start: Vec3,
+        goal: Vec3,
+        waypoints: &mut Vec<Vec3>,
     ) -> Planned {
         waypoints.clear();
         let grid = walkable.clearance.grid();
@@ -299,7 +299,7 @@ impl RoutePlanner {
         let last = if reached {
             goal
         } else {
-            grid.center(end, goal.get().y)
+            grid.center(end, goal.y)
         };
         work += self.smooth(walkable, start, last, waypoints);
         let expanded = RoutePlanner::number(self.expanded.len());
@@ -328,12 +328,12 @@ impl RoutePlanner {
     fn smooth(
         &self,
         walkable: Walkable<'_>,
-        start: Position,
-        last: Position,
-        waypoints: &mut Vec<Position>,
+        start: Vec3,
+        last: Vec3,
+        waypoints: &mut Vec<Vec3>,
     ) -> u32 {
         let grid = walkable.clearance.grid();
-        let y = last.get().y;
+        let y = last.y;
         let point = |index: usize| match index {
             0 => last,
             _ => grid.center(self.cells[index] as usize, y),
@@ -416,7 +416,7 @@ impl RoutePlanner {
     pub(crate) fn nearest_open(
         &self,
         walkable: Walkable<'_>,
-        goal: Position,
+        goal: Vec3,
         work: &mut u32,
     ) -> Option<usize> {
         let grid = walkable.clearance.grid();
@@ -477,12 +477,12 @@ impl RoutePlanner {
     /// Where a walker of `walkable` stands for `pos`: `pos` itself when nothing blocks it
     /// there, else the center of the nearest cell it may stand in, at `pos`'s height, as a
     /// route's goal gives way; `None` on a grid with no such cell.
-    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, pos: Position) -> Option<Position> {
+    pub(crate) fn stand_at(&self, walkable: Walkable<'_>, pos: Vec3) -> Option<Vec3> {
         if !walkable.blocks(Segment::new(pos, pos)) {
             return Some(pos);
         }
         let cell = self.nearest_open(walkable, pos, &mut 0)?;
-        Some(walkable.clearance.grid().center(cell, pos.get().y))
+        Some(walkable.clearance.grid().center(cell, pos.y))
     }
 
     /// Reaches the cells around `at` a walker may stand in, and the search's target whether it

@@ -1,6 +1,7 @@
 use bevy_ecs::world::{EntityRef, World};
 use campfire_declare::ByType;
 use campfire_items::Shop;
+use campfire_math::Vec3;
 use campfire_progression::Experience;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
 use campfire_units::{Owner, SpawnPoint};
@@ -24,11 +25,10 @@ impl<'a> MatchUnits<'a> {
 
     /// Every unit, with its stable id, in the order of the ids.
     pub fn all(self) -> impl Iterator<Item = (StableId, EntityRef<'a>)> {
-        let world = self.world;
-        world
+        self.world
             .resource::<EntityIndex>()
             .iter()
-            .map(move |(id, entity)| (id, world.entity(entity)))
+            .map(move |(id, entity)| (id, self.world.entity(entity)))
     }
 
     /// Player `slot`'s hero: the unit it owns that gains experience.
@@ -52,18 +52,18 @@ impl<'a> MatchUnits<'a> {
         self.world.entity(entity)
     }
 
-    pub fn position(self, id: StableId) -> Position {
-        *self
-            .unit(id)
+    pub fn pos(self, id: StableId) -> Vec3 {
+        self.unit(id)
             .get::<Position>()
             .expect("a unit stands somewhere")
+            .get()
     }
 
     /// The units that stand at `at`, by stable id.
-    pub fn standing_at(self, at: impl Into<Position>) -> Vec<StableId> {
+    pub fn standing_at(self, at: impl Into<Vec3>) -> Vec<StableId> {
         let at = at.into();
         self.all()
-            .filter(|(_, unit)| unit.get::<Position>() == Some(&at))
+            .filter(|(_, unit)| unit.get::<Position>().map(|pos| pos.get()) == Some(at))
             .map(|(id, _)| id)
             .collect()
     }
@@ -90,7 +90,7 @@ impl<'a> MatchUnits<'a> {
     }
 
     /// The unit that spawned at `at`, of a team: a camp's, or a structure.
-    pub fn spawned_at(self, at: impl Into<Position>) -> StableId {
+    pub fn spawned_at(self, at: impl Into<Vec3>) -> StableId {
         let at = at.into();
         self.all()
             .find(|(_, unit)| {
