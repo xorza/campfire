@@ -180,7 +180,7 @@ impl StateRegistry {
             apply: |_, _, _| {},
             watch: |_, _| {},
             #[cfg(feature = "internals")]
-            scramble: |_, _| false,
+            scramble: internals::Draws::scramble_entities,
             #[cfg(feature = "internals")]
             mutate: |_, _, _| false,
             #[cfg(feature = "internals")]

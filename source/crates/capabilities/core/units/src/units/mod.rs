@@ -194,6 +194,8 @@ impl Module for Units {
         d.host::<Relations, MatchEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
+        // A forced move moves a unit that walks, in place of its step.
+        d.require::<ForcedMove, MoveStep>();
         d.book::<UnitTypeBook>();
         d.book::<UnitStateBook>();
         d.book::<TypeOriginBook>();

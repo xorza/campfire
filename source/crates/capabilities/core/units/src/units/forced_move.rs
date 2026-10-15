@@ -1,13 +1,13 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_values::DashDelivery;
 use serde::{Deserialize, Serialize};
 
-use crate::units::body::Body;
 use crate::units::unit_entity::UnitEntity;
 
 /// A forced move under way, a dash or a knock back, which moves its unit in the Move stage in
@@ -80,7 +80,8 @@ impl ForcedMove {
                         ends: true,
                     };
                 }
-                let ticks = i64::try_from(*left).expect("a knock back's ticks fit i64");
+                let ticks =
+                    i64::try_from(*left).expect("a knock back's ticks are within the tick limit");
                 let share = point
                     .distance(goal.point)
                     .checked_div_int(ticks)
@@ -99,24 +100,21 @@ impl SimComponent for ForcedMove {
     const NAME: &'static str = "units.forced_move";
     type Host = UnitEntity;
 
-    // A dash of no step, or a knock back with no tick left, never ends. A knock back's end lies
-    // within twice the world's bound, a distance within it from a place within it, so its way
-    // fits a number. A box never walks, so a forced move never moves one.
-    fn check(&self, world: &World, entity: Entity) -> bool {
-        let walker = world
-            .get::<Body>(entity)
-            .is_none_or(|body| body.radius().is_some());
-        walker
-            && match *self {
-                ForcedMove::Dash { step, .. } => step > Num::ZERO,
-                ForcedMove::KnockBack { to, left } => {
-                    let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
-                    left > 0
-                        && [to.x, to.y, to.z]
-                            .iter()
-                            .all(|axis| axis.to_bits().unsigned_abs() <= reach)
-                }
+    // A dash of no step, or a knock back with no tick left, never ends. A dash's step, and a
+    // knock back's end, lie within twice the world's bound, a distance within it from a place
+    // within it, so a step past a body's reach and a way to the end fit a number; a knock back's
+    // ticks are a time's, within the tick limit. That its unit walks, and so is no box, its
+    // declarations require.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
+        let within = |value: Num| value.to_bits().unsigned_abs() <= reach;
+        match *self {
+            ForcedMove::Dash { step, .. } => step > Num::ZERO && within(step),
+            ForcedMove::KnockBack { to, left } => {
+                (1..=Tick::LIMIT.get()).contains(&left)
+                    && [to.x, to.y, to.z].into_iter().all(within)
             }
+        }
     }
 }
 

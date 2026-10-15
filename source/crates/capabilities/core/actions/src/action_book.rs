@@ -5,7 +5,7 @@ use campfire_declare::Book;
 use campfire_script::{ScriptId, ScriptRole, View};
 use campfire_sim::Capability;
 use campfire_units::ScriptBook;
-use campfire_values::{ActionId, Names};
+use campfire_values::{ActionId, Names, Rank};
 
 use crate::action::Action;
 use crate::action_data::ActionData;
@@ -76,6 +76,12 @@ impl ActionBook {
 
     pub fn get(&self, id: ActionId) -> Option<&Action> {
         self.actions.get(id.index())
+    }
+
+    /// Whether the book holds `id` with `rank` among its ranks, as a restored value that names an
+    /// action at a rank needs.
+    pub fn ranked(&self, id: ActionId, rank: Rank) -> bool {
+        self.get(id).is_some_and(|action| action.has_rank(rank))
     }
 }
 

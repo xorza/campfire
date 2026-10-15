@@ -101,9 +101,7 @@ Batches go most impactful first. A batch that needs another batch or a decision 
 
 Files: `test/harness/tests/runner/proving_match.rs`, `sim/sim/src/state_registry/{mod,internals}.rs`, `capabilities/core/declare/src/**`, `capabilities/core/units/src/units/{forced_move,spawn_point}.rs`, `capabilities/core/actions/src/action_slots/{mod,slot_times}.rs`, `capabilities/mode/src/choices.rs`, `capabilities/items/src/inventory.rs`, `capabilities/navigation/src/{static_bodies,walking}.rs`, `session/runner/src/session_rules/mod.rs`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/sim_{server,client}/mod.rs`. Goldens: none move, as the wide-domain arithmetic rounds once, as the `Num` arithmetic did.
 
-- [ ] Guard: the drawn-values test fails on a state type with no holder, its fixture holds every state type, and it plays a scripted window after each restore.
-- [ ] Declared part rule: each kind declares the parts and the state markers its entities may carry, and the restore refuses any other part. This removes the hand rule of `forced_move.rs:105-120` (a forced move on a non-walker) and the panic it allows at `navigation/src/broadphase.rs:133`. Then `static_bodies.rs:30` and `walking.rs:268` read one predicate of "static".
-- [ ] `units/src/units/forced_move.rs:64,83`: the dash's reach and the knock back's `left` compute in the wide domain and saturate at the bound.
+- [ ] Declared part rule: `EntityParts::check` (`declare/src/declare/entity_parts.rs:108`) also refuses a declared part that an entity holds where its kind's spawn would not give it, so the restore refuses a part its kind does not declare. Then `navigation/src/static_bodies.rs:30` and `walking.rs:268` read one predicate of "static".
 - [ ] `actions/src/action_slots/slot_times.rs:341-348`, `action_slots/mod.rs:346-366`: the cooldown cut and the charge release scale ticks in `u128`, with no `Num::from_int(…).expect`.
 - [ ] `actions/src/action_slots/slot_times.rs:249`: `saturating_add` in `add_charge`.
 - [ ] `units/src/units/spawn_point.rs:30-33`: checked against `MapBook.bounds`.

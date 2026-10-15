@@ -14,12 +14,21 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::sim_state::{SimComponent, SimResource};
+use crate::stable_id::StableId;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::state_registry::state_delta::StateDelta;
 use crate::state_registry::{ENTITIES, StateRegistry};
 
-/// The most each value is drawn again when its type's decode refuses it.
-const TRIES: usize = 16;
+/// The most a layout fingerprint draws each value again when its type's decode refuses it. The
+/// fingerprints pinned in the tests hold the draws this number makes, so it changes only with
+/// them.
+const LAYOUT_TRIES: usize = 16;
+
+/// The most a scramble draws its value again when its type's decode refuses it. A unit's pools,
+/// eight optional meters, decode only when every meter that is there holds an amount from 0 to a
+/// positive maximum: as an option is none one draw in four, that is about one draw in 6,000, and
+/// a failed draw costs a few numbers, so a scramble draws long enough to reach one most times.
+const SCRAMBLE_TRIES: usize = 8192;
 
 /// The fewest values of a type a layout fingerprint encodes. Its numbers, options and lengths are
 /// drawn at random: where each draw meets an option, 32 draws miss its none, or a length, with
@@ -221,30 +230,46 @@ impl Draws {
         usize::try_from(self.below(4)).expect("a short length")
     }
 
-    /// A value of `T` its decode accepts, drawn again up to `TRIES` times; `None` when every draw
+    /// A value of `T` its decode accepts, drawn again up to `tries` times; `None` when every draw
     /// fails.
-    fn value<T: for<'de> Deserialize<'de>>(&mut self) -> Option<T> {
-        (0..TRIES).find_map(|_| T::deserialize(&mut *self).ok())
+    fn value<T: for<'de> Deserialize<'de>>(&mut self, tries: usize) -> Option<T> {
+        (0..tries).find_map(|_| T::deserialize(&mut *self).ok())
     }
 
-    /// Puts a drawn value of `C` in place of one entity's, of those that hold one; false when none
-    /// does, or no draw decodes.
+    /// Puts a drawn value of `C` in place of one entity's, of those that hold one, or, when none
+    /// does, on a drawn entity of the match, so a type the match holds nowhere is drawn too; false
+    /// when the match has no entity, or no draw decodes.
     pub(crate) fn scramble_component<C: SimComponent>(&mut self, world: &mut World) -> bool {
-        let holders: Vec<_> = world
+        let (holders, others): (Vec<_>, Vec<_>) = world
             .resource::<EntityIndex>()
             .iter()
             .map(|(_, entity)| entity)
-            .filter(|&entity| world.get::<C>(entity).is_some())
-            .collect();
-        if holders.is_empty() {
+            .partition(|&entity| world.get::<C>(entity).is_some());
+        let chosen = if holders.is_empty() {
+            self.pick(&others)
+        } else {
+            self.pick(&holders)
+        };
+        let Some(&entity) = chosen else {
             return false;
-        }
-        let count = u64::try_from(holders.len()).expect("holders fit u64");
-        let entity = holders[usize::try_from(self.below(count)).expect("a holder's place")];
-        let Some(value) = self.value::<C>() else {
+        };
+        let Some(value) = self.value::<C>(SCRAMBLE_TRIES) else {
             return false;
         };
         world.entity_mut(entity).insert(value);
+        true
+    }
+
+    /// Spawns an entity of a drawn stable id that holds no part, as a snapshot's entity list
+    /// could name one; false when the match has an entity of that id, or no draw decodes.
+    pub(crate) fn scramble_entities(&mut self, world: &mut World) -> bool {
+        let Some(id) = self.value::<StableId>(SCRAMBLE_TRIES) else {
+            return false;
+        };
+        if world.resource::<EntityIndex>().get(id).is_some() {
+            return false;
+        }
+        world.spawn(id);
         true
     }
 
@@ -351,7 +376,7 @@ impl Draws {
                 "a variant of {} is out of the draws' reach",
                 type_name::<T>()
             );
-            match self.value::<T>() {
+            match self.value::<T>(LAYOUT_TRIES) {
                 Some(value) => {
                     out.push(1);
                     Binary::encode_to(&value, out);
@@ -369,13 +394,10 @@ impl Draws {
             .expect("a layout's draws note their shape")
     }
 
-    /// Puts a drawn value of `R` in place of the match's; false when it has none, or no draw
-    /// decodes.
+    /// Puts a drawn value of `R` in place of the match's, or in the match that has none; false
+    /// when no draw decodes.
     pub(crate) fn scramble_resource<R: SimResource>(&mut self, world: &mut World) -> bool {
-        if !world.contains_resource::<R>() {
-            return false;
-        }
-        let Some(value) = self.value::<R>() else {
+        let Some(value) = self.value::<R>(SCRAMBLE_TRIES) else {
             return false;
         };
         world.insert_resource(value);
@@ -762,8 +784,8 @@ impl StateRegistry {
         (entry.mutate)(draws, world, mutation)
     }
 
-    /// Puts a drawn value of the type `name` in place of one holder's in `world`; false when
-    /// nothing holds one, or no draw decodes.
+    /// Puts a drawn value of the type `name` in `world`, in place of one holder's or where none
+    /// is; false when no draw decodes.
     pub fn scramble(&self, world: &mut World, name: &str, draws: &mut Draws) -> bool {
         let entry = self
             .entries

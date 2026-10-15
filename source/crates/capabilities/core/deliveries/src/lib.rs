@@ -3,9 +3,12 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::world::World;
+use campfire_actions::ActionBook;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
 use campfire_math::Vec3;
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{Breach, Capability, Position, StableId};
+use campfire_units::ForcedMove;
 use campfire_values::{DashDelivery, Hit};
 
 use crate::deliveries_api::DeliveriesApi;
@@ -65,6 +68,7 @@ impl Module for Deliveries {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<DeliverySet>();
         d.scratch::<Deliveries>();
+        d.check::<ForcedMove>(Deliveries::dashes_known);
         d.api(DeliveriesApi::register);
     }
 
@@ -114,6 +118,22 @@ impl Deliveries {
             reach: Reached::End,
             hit,
         });
+    }
+
+    /// The restore check of each dash that delivers an action: its action at its rank is in the
+    /// book, whose hooks the dash's end runs.
+    fn dashes_known(world: &World) -> Result<(), Breach> {
+        let book = world.resource::<ActionBook>();
+        Breach::first(world, |entity| {
+            let Some(ForcedMove::Dash {
+                delivers: Some(dash),
+                ..
+            }) = world.get::<ForcedMove>(entity)
+            else {
+                return false;
+            };
+            !book.ranked(dash.action, dash.rank)
+        })
     }
 }
 
