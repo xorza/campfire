@@ -5,7 +5,7 @@ use std::cmp::Ordering;
 
 use campfire_math::{Direction, Flat, FloorRoot, RoundedRoot};
 
-use crate::body_box::{Frame, cross, product};
+use crate::body_box::{Feature, Frame, Nearest, cross, product};
 
 /// What a box's tests take of a reach and of each half edge's line: the reach, the line's
 /// bounds, and its direction, for a point between them.
@@ -85,7 +85,7 @@ pub(crate) struct Row {
 /// What of an edge is nearest a point: a corner, by its index, or a point inside the edge, whose
 /// distance is the edge's line's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) enum Part {
+enum Part {
     Corner(usize),
     Line,
 }
@@ -190,19 +190,26 @@ impl Edges {
     /// nearest of its edges' distances, each to the nearest unit and measured against the reach
     /// alone, a corner's with no root, the first closer one ending the search.
     pub(super) fn against(&self, off: Flat, lines: &mut impl Lines) -> Ordering {
-        let reach = lines.reach();
-        let Some(probe) = self.probe(&self.row(off[1]), off[0]) else {
-            return 0.cmp(&reach.units);
-        };
-        let units = reach.units.cast_unsigned();
+        match self.probe(&self.row(off[1]), off[0]) {
+            Some(probe) => self.probe_against(&probe, lines),
+            None => 0.cmp(&lines.reach().units),
+        }
+    }
+
+    /// How the distance from `probe`'s point, outside the box, lies against the reach, as
+    /// `against` measures it. Inlined, so `against` keeps the probe in registers: out of line,
+    /// it cost `atomic/body_box/reach` 4.5 % on a Ryzen.
+    #[inline(always)]
+    pub(super) fn probe_against(&self, probe: &Probe, lines: &mut impl Lines) -> Ordering {
+        let units = lines.reach().units.cast_unsigned();
         let mut nearest = Ordering::Greater;
         for edge in 0..4 {
-            let order = match self.part(&probe, edge) {
+            let order = match self.part(probe, edge) {
                 Part::Corner(corner) => self
-                    .corner_square(&probe, corner)
+                    .corner_square(probe, corner)
                     .cast_unsigned()
                     .nearest_root_cmp(units),
-                Part::Line => self.line_order(&probe, edge, lines),
+                Part::Line => self.line_order(probe, edge, lines),
             };
             if order == Ordering::Less {
                 return order;
@@ -210,6 +217,45 @@ impl Edges {
             nearest = nearest.min(order);
         }
         nearest
+    }
+
+    /// The box's point nearest the point of `probe`, `None` for a point inside the box or on its
+    /// edge: its distance, to the nearest unit, and what of the box it is; the first edge on a
+    /// tie. `direction` gives a half edge's direction, by its index.
+    pub(super) fn nearest(
+        &self,
+        probe: Option<&Probe>,
+        mut direction: impl FnMut(usize) -> Direction<2>,
+    ) -> Nearest {
+        let Some(probe) = probe else {
+            return Nearest {
+                distance: 0,
+                feature: Feature::Inside,
+            };
+        };
+        // A half edge's direction only for an edge whose inside is nearest: none for a point
+        // nearest a corner, one for a point beside an edge.
+        let mut best: Option<Nearest> = None;
+        for edge in 0..4 {
+            let found = match self.part(probe, edge) {
+                Part::Corner(corner) => Nearest {
+                    distance: self
+                        .corner_square(probe, corner)
+                        .cast_unsigned()
+                        .nearest_root()
+                        .cast_signed(),
+                    feature: Feature::Corner(corner),
+                },
+                Part::Line => Nearest {
+                    distance: self.apart(probe, edge, direction(edge % 2)),
+                    feature: Feature::Edge(edge),
+                },
+            };
+            if best.is_none_or(|best| found.distance < best.distance) {
+                best = Some(found);
+            }
+        }
+        best.expect("four edges")
     }
 
     /// How the distance of `probe`'s point from the line of `edge`, to the nearest unit, lies
@@ -247,7 +293,7 @@ impl Edges {
 
     /// What of `edge` is nearest `probe`'s point: its start when the point lies at or behind it,
     /// its end at or past it, else the inside.
-    pub(super) const fn part(&self, probe: &Probe, edge: usize) -> Part {
+    const fn part(&self, probe: &Probe, edge: usize) -> Part {
         let half = edge % 2;
         let along = probe.along(edge).wrapping_add(self.along_from[half]);
         if along <= 0 {
@@ -260,14 +306,14 @@ impl Edges {
     }
 
     /// The squared distance of `probe`'s point from `corner`.
-    pub(super) const fn corner_square(&self, probe: &Probe, corner: usize) -> i128 {
+    const fn corner_square(&self, probe: &Probe, corner: usize) -> i128 {
         probe
             .corner_term(corner)
             .wrapping_add(self.corner_squares[corner % 2])
     }
 
     /// The distance of `probe`'s point from the line of `edge`, along `direction`.
-    pub(super) fn apart(&self, probe: &Probe, edge: usize, direction: Direction<2>) -> i128 {
+    fn apart(&self, probe: &Probe, edge: usize, direction: Direction<2>) -> i128 {
         let corner = self.corners[edge];
         direction.apart([
             i128::from(probe.x) - i128::from(corner[0]),

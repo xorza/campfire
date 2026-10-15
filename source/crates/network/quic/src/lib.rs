@@ -71,3 +71,15 @@ pub const LINK_MIN_MTU: usize = 1200 - (1 + CID_LEN + 4 + 16) - (1 + 8);
 pub mod internals {
     pub use crate::quic_endpoint::thread_fixture::ThreadFixture;
 }
+
+#[cfg(feature = "internals")]
+pub mod bench {
+    use criterion::Criterion;
+
+    use crate::admission;
+
+    /// Runs each bench of the crate whose id criterion's filter takes.
+    pub fn run(c: &mut Criterion) {
+        admission::bench::admission(c);
+    }
+}

@@ -8,6 +8,7 @@
 
 mod capability;
 mod command;
+mod due_run;
 mod host_rule;
 mod id_allocator;
 mod ordered;
@@ -30,6 +31,7 @@ mod unpredicted;
 
 pub use crate::capability::Capability;
 pub use crate::command::Command;
+pub use crate::due_run::DueRun;
 pub use crate::host_rule::{Either, HostRule, KindMarker, OnAny};
 pub use crate::id_allocator::IdAllocator;
 pub use crate::ordered::{Keyed, Ordered};

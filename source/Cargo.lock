@@ -2879,6 +2879,7 @@ dependencies = [
  "campfire-log",
  "campfire-quic",
  "campfire-store",
+ "criterion 0.8.2",
  "igd-next",
  "lightyear",
  "lightyear_serde",

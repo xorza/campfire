@@ -1,7 +1,10 @@
-use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut};
+use bevy_ecs::entity::Entity;
+use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, SimTick};
+use campfire_declare::Scratch;
+use campfire_sim::{Position, SimTick, Unpredicted};
 use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
@@ -33,7 +36,11 @@ impl Routing {
     /// static bodies changed since the tick before, against the bodies put in, which `changes`
     /// holds; as a route the static bodies do not block stays clear until one is put in, the
     /// outcome is that of checking every tick. A walker that asks or forgets its route forgets its
-    /// progress. One on its path asks as one of its spawn group's party, to its goal.
+    /// progress. One on its path asks as one of its spawn group's party, to its goal. With no
+    /// static change, a walker's route follows from its destination and its route alone: so a
+    /// run visits the walkers whose destination or route changed since its last, and those that
+    /// lived again or that a predicting client predicts again, `returned`, a buffer it keeps,
+    /// whose parts kept their ticks while hidden.
     pub(super) fn route_units(
         tick: Res<'_, SimTick>,
         (statics, mut changes): (Res<'_, BodyIndex>, ResMut<'_, StaticChanges>),
@@ -42,6 +49,7 @@ impl Routing {
             '_,
             '_,
             (
+                Entity,
                 &Position,
                 &mut Destination,
                 &mut Route,
@@ -51,11 +59,24 @@ impl Routing {
             ),
             Without<Dead>,
         >,
+        (mut lived, mut predicted, mut returned): (
+            RemovedComponents<'_, '_, Dead>,
+            RemovedComponents<'_, '_, Unpredicted>,
+            Local<'_, Vec<Entity>>,
+        ),
     ) {
         let now = tick.start();
         let planned = grid.is_some();
         let opened = planned && changes.removed();
-        for (&at, mut destination, mut route, mut progress, body, path) in &mut units {
+        let every = !changes.is_clear();
+        returned.clear();
+        returned.extend(lived.read().chain(predicted.read()));
+        returned.sort_unstable();
+        for (entity, &at, mut destination, mut route, mut progress, body, path) in &mut units {
+            let changed = destination.is_changed() || route.is_changed();
+            if !(every || changed || returned.binary_search(&entity).is_ok()) {
+                continue;
+            }
             let walker = Walker::walking(body);
             let party = |goal| {
                 let group = path.filter(|path| !path.left())?.group();

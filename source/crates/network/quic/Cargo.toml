@@ -9,6 +9,7 @@ internals = [
     "campfire-common/internals",
     "campfire-log/internals",
     "campfire-store/internals",
+    "dep:criterion",
 ]
 
 [dependencies]
@@ -20,6 +21,7 @@ attohttpc.workspace = true
 bevy_app.workspace = true
 bevy_ecs.workspace = true
 bytes.workspace = true
+criterion = { workspace = true, optional = true }
 igd-next.workspace = true
 lightyear.workspace = true
 netdev.workspace = true
@@ -39,6 +41,15 @@ bevy_state.workspace = true
 bevy_time.workspace = true
 campfire-quic = { workspace = true, features = ["internals"] }
 lightyear_serde.workspace = true
+
+# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
+[lib]
+bench = false
+
+[[bench]]
+name = "quic"
+harness = false
+required-features = ["internals"]
 
 [[test]]
 name = "alloc"

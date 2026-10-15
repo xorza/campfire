@@ -335,7 +335,7 @@ impl Moba3v3 {
     }
 
     /// Every segment's seed, as the server knows them.
-    pub const fn seeds() -> ServerSeeds {
+    pub fn seeds() -> ServerSeeds {
         FixedSession::seeds()
     }
 }

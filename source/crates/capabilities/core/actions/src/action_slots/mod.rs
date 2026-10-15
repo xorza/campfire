@@ -21,7 +21,7 @@ use crate::action_target::ActionTarget;
 use crate::channel_call::{ChannelCall, ChannelStep};
 use crate::checked_action::CheckedAction;
 use crate::in_progress::{InProgress, OrderPhase};
-use crate::rank_values::{ChannelRule, RankValues};
+use crate::rank_values::{ChannelRule, ChargeRule, RankValues};
 use crate::slot_aim::SlotAim;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
@@ -55,6 +55,15 @@ impl ActionSlot {
     /// not learned, or at a rank its action lacks.
     pub fn values_in(self, book: &ActionBook) -> Option<&RankValues> {
         book.get(self.action?)?.values_at(self.rank?)
+    }
+
+    /// Its action's rule of charges at its rank, as `book` gives it; none for a slot with no
+    /// action, one not learned, or an action without charges at its rank.
+    pub(crate) fn charge_rule(self, book: &ActionBook) -> Option<ChargeRule> {
+        let action = book
+            .get(self.action?)
+            .expect("a slot's action is in the book");
+        action.values_at(self.rank?)?.charges
     }
 }
 

@@ -66,8 +66,12 @@ impl GatherLoop {
         checked.clear();
         {
             let view = parts.p0();
+            if view.changed.is_empty() {
+                return;
+            }
+            let relations = view.relations.get();
             for entity in &view.changed {
-                if let Some(next) = view.resolve(entity) {
+                if let Some(next) = view.resolve(entity, &relations) {
                     checked.push(next);
                 }
             }
@@ -105,13 +109,17 @@ impl GatherLoop {
             .filter(|(.., gatherer)| gatherer.order().is_some())
             .map(|(entity, &id, _)| Keyed { id, entity });
         let mut due = order.sort(looping).iter();
+        if due.len() == 0 {
+            return;
+        }
         // A hold changes nothing, so one read of the view serves every worker that holds, up
         // to the next that changes the world.
         loop {
             let next = {
                 let read = view.get(world).expect("a gather view is always valid");
+                let relations = read.relations.get();
                 due.by_ref()
-                    .map(|&Keyed { entity, .. }| (entity, read.step(entity)))
+                    .map(|&Keyed { entity, .. }| (entity, read.step(entity, &relations)))
                     .find(|&(_, step)| !matches!(step, Step::Hold))
             };
             let Some((entity, mut step)) = next else {
@@ -122,10 +130,8 @@ impl GatherLoop {
                 if !step.goes_on() || taken == GatherLoop::STEPS {
                     break;
                 }
-                step = view
-                    .get(world)
-                    .expect("a gather view is always valid")
-                    .step(entity);
+                let read = view.get(world).expect("a gather view is always valid");
+                step = read.step(entity, &read.relations.get());
             }
         }
     }

@@ -115,7 +115,7 @@ impl FixedSession {
     }
 
     /// Every segment's seed, as the server knows them.
-    pub const fn seeds() -> ServerSeeds {
+    pub fn seeds() -> ServerSeeds {
         SEED_CHAIN.seeds()
     }
 
