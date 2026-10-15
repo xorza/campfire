@@ -1,5 +1,7 @@
+use std::ops::RangeInclusive;
+
 use crate::zero_hour::byte_cursor::ByteCursor;
-use crate::zero_hour::error::MapError;
+use crate::zero_hour::error::{Chunk, MapError};
 
 /// A map's bytes and how far a read has taken them, as the game's `DataChunkInput` reads them:
 /// the cursor's fields, and a map's counts, strings and chunks.
@@ -27,6 +29,15 @@ impl<'a> ChunkReader<'a> {
         self.cursor.is_empty()
     }
 
+    /// Refuses a body of the chunk of `kind` with bytes left past its fields.
+    pub(crate) const fn ended(&self, kind: Chunk) -> Result<(), MapError> {
+        if self.is_empty() {
+            Ok(())
+        } else {
+            Err(MapError::Leftover(kind))
+        }
+    }
+
     pub(crate) fn take(&mut self, len: usize) -> Result<&'a [u8], MapError> {
         Ok(self.cursor.take(len)?)
     }
@@ -49,6 +60,12 @@ impl<'a> ChunkReader<'a> {
 
     pub(crate) fn f32(&mut self) -> Result<f32, MapError> {
         Ok(self.cursor.f32()?)
+    }
+
+    /// An `i32` the game keeps unsigned, refused when negative.
+    pub(crate) fn non_negative(&mut self) -> Result<u32, MapError> {
+        let value = self.i32()?;
+        u32::try_from(value).ok().ok_or(MapError::Negative(value))
     }
 
     /// An `i32` count, refused when negative.
@@ -80,6 +97,24 @@ impl<'a> ChunkReader<'a> {
             version,
             body: ChunkReader::new(self.take(size)?),
         })
+    }
+}
+
+impl RawChunk<'_> {
+    /// Refuses a chunk of `kind` of a version not among `versions`.
+    pub(crate) fn check_version(
+        &self,
+        kind: Chunk,
+        versions: RangeInclusive<u16>,
+    ) -> Result<(), MapError> {
+        if versions.contains(&self.version) {
+            Ok(())
+        } else {
+            Err(MapError::Version {
+                chunk: kind,
+                version: self.version,
+            })
+        }
     }
 }
 

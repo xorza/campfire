@@ -13,7 +13,7 @@ use campfire_store::DurableDir;
 use campfire_values::PackagePath;
 
 use crate::texture::dds_file::DdsFile;
-use crate::texture::tga_file::TgaFile;
+use crate::texture::tga_file::{TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::{IniError, ZeroHourError};
 use crate::zero_hour::game_data_ini::GameDataIni;
@@ -121,12 +121,9 @@ impl<'a> ZeroHour<'a> {
     /// `data/units.toml`; each texture becomes a KTX2 file of `client/textures/`, at its path in
     /// the archives.
     pub fn write(&self, out: &Path) -> Result<Imported, ZeroHourError> {
-        DurableDir::create_new(out)
-            .map_err(WriteError::CreateDir)
-            .map_err(ZeroHourError::Write)?;
+        DurableDir::create_new(out).map_err(WriteError::CreateDir)?;
         let rules = ZeroHour::write_rules(&out.join(ZeroHour::RULES))?;
-        let mut writer =
-            PackageWriter::create(&out.join(ZeroHour::GAME)).map_err(ZeroHourError::Write)?;
+        let mut writer = PackageWriter::create(&out.join(ZeroHour::GAME))?;
         let mut write = |path: &str, bytes: &[u8]| {
             let path = PackagePath::parse(path).expect("the import's paths are package paths");
             writer.write(path, bytes).map_err(ZeroHourError::Write)
@@ -200,7 +197,7 @@ impl<'a> ZeroHour<'a> {
         }
         write("data/units.toml", object_names.units_toml().as_bytes())?;
         Ok(Imported {
-            fingerprint: writer.finish().map_err(ZeroHourError::Write)?,
+            fingerprint: writer.finish()?,
             rules,
             skipped_models: skipped,
             missing_textures,
@@ -290,11 +287,11 @@ impl ZeroHour<'_> {
 
     /// Writes the rules package into the new directory `dir`; its fingerprint.
     fn write_rules(dir: &Path) -> Result<Fingerprint, ZeroHourError> {
-        let mut writer = PackageWriter::create(dir).map_err(ZeroHourError::Write)?;
+        let mut writer = PackageWriter::create(dir)?;
         for (path, bytes) in RULES_FILES {
             let path =
                 PackagePath::parse(path).expect("the rules package's paths are package paths");
-            writer.write(path, bytes).map_err(ZeroHourError::Write)?;
+            writer.write(path, bytes)?;
         }
         writer.finish().map_err(ZeroHourError::Write)
     }
@@ -336,12 +333,12 @@ impl ZeroHour<'_> {
             size
         } else {
             let bytes = self.install.read(&path)?;
-            let tga = TgaFile::read(&bytes).map_err(|error| ZeroHourError::Texture {
+            let header = TgaHeader::read(&bytes).map_err(|error| ZeroHourError::Texture {
                 path: path.to_string(),
                 error,
             })?;
-            sizes.insert(path.clone(), tga.size());
-            tga.size()
+            sizes.insert(path.clone(), header.size());
+            header.size()
         };
         Ok(Some(ClassTexture {
             path: path.texture_path(),

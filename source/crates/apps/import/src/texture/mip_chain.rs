@@ -26,9 +26,12 @@ impl MipChain {
     /// The chain of `base`, `width` by `height` texels of red, green, blue and alpha, rows from
     /// the top.
     pub(crate) fn of(width: u32, height: u32, base: Vec<u8>) -> MipChain {
-        debug_assert_eq!(base.len(), width as usize * height as usize * 4);
+        let (mut width, mut height) = (
+            usize::try_from(width).expect("a u32 fits usize"),
+            usize::try_from(height).expect("a u32 fits usize"),
+        );
+        debug_assert_eq!(base.len(), width * height * 4);
         let mut levels = vec![base];
-        let (mut width, mut height) = (width as usize, height as usize);
         while width > 1 || height > 1 {
             let next = MipChain::down(width, height, levels.last().expect("a base"));
             levels.push(next);
@@ -44,7 +47,7 @@ impl MipChain {
         let columns = MipChain::shares(width);
         let rows = MipChain::shares(height);
         // Each side's weights sum to its count of texels above.
-        let total = (width * height) as u64;
+        let total = u64::try_from(width * height).expect("a usize fits u64");
         let mut below = Vec::with_capacity(columns.len() * rows.len() * 4);
         for row in &rows {
             for column in &columns {
@@ -77,7 +80,8 @@ impl MipChain {
                 let texels = (start / below..end.div_ceil(below))
                     .map(|j| Weighted {
                         at: j,
-                        weight: (end.min((j + 1) * below) - start.max(j * below)) as u64,
+                        weight: u64::try_from(end.min((j + 1) * below) - start.max(j * below))
+                            .expect("a usize fits u64"),
                     })
                     .collect();
                 Share { texels }

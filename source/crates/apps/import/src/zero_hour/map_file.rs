@@ -1,6 +1,5 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::ops::RangeInclusive;
 
 use miniz_oxide::inflate::decompress_to_vec_zlib_with_limit;
 
@@ -156,7 +155,7 @@ impl MapFile {
     /// `HeightMapData` version 4 (`WorldHeightMap::ParseHeightMapData`): its sizes, its border,
     /// its playable boundaries, which the import does not keep, and its samples.
     fn heights(chunk: RawChunk<'_>) -> Result<MapHeights, MapError> {
-        MapFile::version(&chunk, Chunk::HeightMapData, 4..=4)?;
+        chunk.check_version(Chunk::HeightMapData, 4..=4)?;
         let mut body = chunk.body;
         let width = body.count()?;
         let depth = body.count()?;
@@ -168,7 +167,7 @@ impl MapFile {
             return Err(MapError::Samples { len, width, depth });
         }
         let samples = body.take(len)?.to_vec();
-        MapFile::ended(&body, Chunk::HeightMapData)?;
+        body.ended(Chunk::HeightMapData)?;
         Ok(MapHeights {
             width,
             depth,
@@ -183,7 +182,7 @@ impl MapFile {
     /// of; the texture classes, the edge classes, the blended tiles and the cliff UVs, each list
     /// past an unused entry 0 that an index of 0 names.
     fn terrain(chunk: RawChunk<'_>, heights: &MapHeights) -> Result<TerrainParts, MapError> {
-        MapFile::version(&chunk, Chunk::BlendTileData, 6..=8)?;
+        chunk.check_version(Chunk::BlendTileData, 6..=8)?;
         let version = chunk.version;
         let mut body = chunk.body;
         let len = body.count()?;
@@ -214,13 +213,13 @@ impl MapFile {
                 })
                 .collect()
         };
-        let tile_count = MapFile::u32(&mut body)?;
+        let tile_count = body.non_negative()?;
         let blend_count = body.count()?;
         let cliff_count = body.count()?;
         let classes = (0..body.count()?)
             .map(|_| MapFile::texture_class(&mut body, ClassForm::Terrain))
             .collect::<Result<_, _>>()?;
-        let edge_tiles = MapFile::u32(&mut body)?;
+        let edge_tiles = body.non_negative()?;
         let edge_classes = (0..body.count()?)
             .map(|_| MapFile::texture_class(&mut body, ClassForm::Edge))
             .collect::<Result<_, _>>()?;
@@ -230,7 +229,7 @@ impl MapFile {
         let cliff_tiles = (1..cliff_count)
             .map(|_| MapFile::cliff_uv(&mut body))
             .collect::<Result<_, _>>()?;
-        MapFile::ended(&body, Chunk::BlendTileData)?;
+        body.ended(Chunk::BlendTileData)?;
         let cells = (0..len)
             .map(|at| {
                 Ok(TerrainCell {
@@ -279,9 +278,9 @@ impl MapFile {
         body: &mut ChunkReader<'_>,
         form: ClassForm,
     ) -> Result<TextureClass, MapError> {
-        let first_tile = MapFile::u32(body)?;
-        let tiles = MapFile::u32(body)?;
-        let width = MapFile::u32(body)?;
+        let first_tile = body.non_negative()?;
+        let tiles = body.non_negative()?;
+        let width = body.non_negative()?;
         if form == ClassForm::Terrain {
             body.i32()?;
         }
@@ -354,7 +353,7 @@ impl MapFile {
     /// map's time of day: the terrain is lit by them (design 16, D3), so its own are read and
     /// dropped, each still refused when a number of it is not finite.
     fn lighting(chunk: RawChunk<'_>) -> Result<[GameLight; 3], MapError> {
-        MapFile::version(&chunk, Chunk::GlobalLighting, 1..=3)?;
+        chunk.check_version(Chunk::GlobalLighting, 1..=3)?;
         let version = chunk.version;
         let mut body = chunk.body;
         let time = body.i32()?;
@@ -381,7 +380,7 @@ impl MapFile {
         if !body.is_empty() {
             body.u32()?;
         }
-        MapFile::ended(&body, Chunk::GlobalLighting)?;
+        body.ended(Chunk::GlobalLighting)?;
         Ok(times[at])
     }
 
@@ -408,7 +407,7 @@ impl MapFile {
         chunk: RawChunk<'_>,
         names: &BTreeMap<u32, &[u8]>,
     ) -> Result<Vec<MapObject>, MapError> {
-        MapFile::version(&chunk, Chunk::ObjectsList, 3..=3)?;
+        chunk.check_version(Chunk::ObjectsList, 3..=3)?;
         let mut body = chunk.body;
         let mut objects = Vec::new();
         while !body.is_empty() {
@@ -420,42 +419,14 @@ impl MapFile {
             {
                 continue;
             }
-            MapFile::version(&object, Chunk::Object, 3..=3)?;
+            object.check_version(Chunk::Object, 3..=3)?;
             let read = MapObject::read(&mut object.body, names)?;
-            MapFile::ended(&object.body, Chunk::Object)?;
+            object.body.ended(Chunk::Object)?;
             if read.kept() {
                 objects.push(read);
             }
         }
         Ok(objects)
-    }
-
-    fn version(
-        chunk: &RawChunk<'_>,
-        kind: Chunk,
-        versions: RangeInclusive<u16>,
-    ) -> Result<(), MapError> {
-        if versions.contains(&chunk.version) {
-            Ok(())
-        } else {
-            Err(MapError::Version {
-                chunk: kind,
-                version: chunk.version,
-            })
-        }
-    }
-
-    const fn ended(body: &ChunkReader<'_>, kind: Chunk) -> Result<(), MapError> {
-        if body.is_empty() {
-            Ok(())
-        } else {
-            Err(MapError::Leftover(kind))
-        }
-    }
-
-    fn u32(body: &mut ChunkReader<'_>) -> Result<u32, MapError> {
-        let value = body.i32()?;
-        u32::try_from(value).ok().ok_or(MapError::Negative(value))
     }
 
     /// An `i32` index the game keeps in an `i16`.

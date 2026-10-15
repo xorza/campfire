@@ -54,7 +54,7 @@ impl TerrainAtlas {
 
     /// The atlas of `terrain`'s classes and their textures.
     pub(crate) fn new(terrain: &TerrainParts) -> TerrainAtlas {
-        let tiles = terrain.tiles as usize;
+        let tiles = usize::try_from(terrain.tiles).expect("a u32 fits usize");
         let mut sources = vec![None; tiles];
         for class in &terrain.classes {
             let Some(texture) = &class.texture else {
@@ -64,11 +64,12 @@ impl TerrainAtlas {
                 continue;
             };
             for at in 0..side * side {
-                sources[(class.first_tile + at) as usize] = Some(TileSource {
-                    texture,
-                    column: at % side,
-                    row: at / side,
-                });
+                sources[usize::try_from(class.first_tile + at).expect("a u32 fits usize")] =
+                    Some(TileSource {
+                        texture,
+                        column: at % side,
+                        row: at / side,
+                    });
             }
         }
         let BlockPlaces {
@@ -82,7 +83,8 @@ impl TerrainAtlas {
             };
             for row in 0..data.width {
                 for column in 0..data.width {
-                    let at = (data.first_tile + column + row * data.width) as usize;
+                    let at = usize::try_from(data.first_tile + column + row * data.width)
+                        .expect("a u32 fits usize");
                     // A block wider than its class's tiles has squares no tile fills.
                     let Some(corner) = corners.get_mut(at) else {
                         continue;
@@ -182,7 +184,7 @@ impl TerrainAtlas {
         let mut used = 0;
         for width in (1..=cells).rev() {
             for (class, data) in terrain.classes.iter().enumerate() {
-                if data.width as usize != width {
+                if usize::try_from(data.width) != Ok(width) {
                     continue;
                 }
                 let room = (0..=cells - width).find_map(|row| {

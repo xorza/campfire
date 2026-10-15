@@ -17,10 +17,10 @@ use crate::texture::error::TextureError;
 pub enum ZeroHourError {
     /// A file or a directory of the install does not read.
     #[error("the install does not read")]
-    Read(#[source] PathError<ReadError>),
+    Read(#[from] PathError<ReadError>),
     /// The package does not write.
     #[error("the package does not write")]
-    Write(#[source] WriteError),
+    Write(#[from] WriteError),
     /// An archive of the install is no archive the game reads.
     #[error("{} is no archive", .archive.display())]
     Archive {
