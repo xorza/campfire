@@ -38,7 +38,7 @@ impl AreasApi {
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();
-        frame.effects.push(AreasEffect {
+        frame.queue(AreasEffect {
             id: Some(id),
             by: launcher.by,
             unit_type,

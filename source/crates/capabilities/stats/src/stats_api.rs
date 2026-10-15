@@ -166,7 +166,7 @@ impl StatsApi {
         let call = StatsCall::of_mut(&mut frame);
         StatsColumn::check_way(ctx.view(), call, id, action, rank)?;
         let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
-        frame.effects.push(StatsEffect::Add {
+        frame.queue(StatsEffect::Add {
             target: target.id,
             id,
             duration,

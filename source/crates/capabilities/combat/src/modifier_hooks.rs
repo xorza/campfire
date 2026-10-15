@@ -200,7 +200,7 @@ impl ModifierHooks {
                 };
                 let handle =
                     StatsColumn::held_handle(ctx.view(), call.spare(), of, clocks.state(at));
-                call.handles.push(handle.clone());
+                call.hand_out(handle.clone());
                 handle
             };
             match arg {

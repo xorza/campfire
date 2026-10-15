@@ -62,7 +62,7 @@ impl CombatEffect {
             },
             _ => unreachable!("combat queues only its own listed effects"),
         };
-        frame.effects.push(effect);
+        frame.queue(effect);
         Ok(())
     }
 }

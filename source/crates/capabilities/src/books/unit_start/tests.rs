@@ -38,7 +38,7 @@ fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
     };
     let mut stats = BTreeMap::from([(health(), base("280")), (MOVE_SPEED, base("3.25"))]);
     change(&mut stats);
-    StatsData(stats)
+    stats.into_iter().collect()
 }
 
 /// The start of a type of `stats`, with `combat` and `pools`, at `hz` ticks a second under a cap
@@ -132,8 +132,14 @@ fn a_start_takes_its_values_at_level_1_from_the_stat_book() {
     assert_eq!(turn(&turning("90"), 20), Some(decimal("4.5")));
     assert_eq!(turn(&turning("-5"), 30), Some(Num::ZERO));
     assert_eq!(turn(&caster(|_| ()), 30), None);
-    let mut rooted = turning("90");
-    rooted.0.remove(&MOVE_SPEED);
+    let rooted = caster(|stats| {
+        let value = StatValue {
+            base: decimal("90"),
+            per_level: Num::ZERO,
+        };
+        stats.insert(TURN_RATE, value);
+        stats.remove(&MOVE_SPEED);
+    });
     assert_eq!(turn(&rooted, 30), None);
 
     // No combat section, no move speed, no pools: nothing of any.

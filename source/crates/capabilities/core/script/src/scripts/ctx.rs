@@ -85,7 +85,7 @@ impl Ctx {
 
     /// Queues `effect`; a pure hook's call fails.
     pub fn queue<E: Effect>(&self, effect: E) -> Checked<()> {
-        self.write()?.effects.push(effect);
+        self.write()?.queue(effect);
         Ok(())
     }
 

@@ -6,7 +6,7 @@ use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, Rank};
 use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::{ApiError, CallError};
-use crate::scripts::frame::effects::Effects;
+use crate::scripts::frame::effects::{Effect, Effects};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::script_value::ScriptValue;
@@ -27,7 +27,7 @@ pub struct Frame {
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
     ids: IdAllocator,
     ids_taken: bool,
-    pub effects: Effects,
+    effects: Effects,
     /// What each capability reads and writes of a call besides the core's.
     parts: CallParts,
 }
@@ -143,6 +143,16 @@ impl Frame {
         self.pure = false;
         self.effects.clear();
         self.parts.begin(world, &start)
+    }
+
+    /// Queues `effect`, which applies when the call's effects do.
+    pub fn queue<E: Effect>(&mut self, effect: E) {
+        self.effects.push(effect);
+    }
+
+    /// The effects of type `E` the call queued, in order.
+    pub fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
+        self.effects.queued()
     }
 
     /// Commits what the call that ran wrote and applies the effects it queued: the ids it took,

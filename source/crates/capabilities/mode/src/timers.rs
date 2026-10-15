@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 pub struct Timers {
     /// Sorted by due time, then by when each was set, the latest first: the earliest fires from
     /// the end.
-    pub timers: Vec<Timer>,
+    timers: Vec<Timer>,
     /// Orders timers due at the same time by when they were set.
-    pub next_seq: u64,
+    next_seq: u64,
 }
 
 /// A timer: the name and data `on_timer` receives, when it is due, and its period if it repeats.
@@ -91,5 +91,22 @@ impl SimResource for Timers {
             timer.seq < self.next_seq && repeats
         });
         ordered && each && self.next_seq <= Tick::LIMIT.get()
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::timers::{Timer, Timers};
+
+    impl Timers {
+        /// The timers, to change as a flawed snapshot holds them.
+        pub const fn timers_mut(&mut self) -> &mut Vec<Timer> {
+            &mut self.timers
+        }
+
+        /// The sequence number the next timer takes, to change as a flawed snapshot holds it.
+        pub const fn next_seq_mut(&mut self) -> &mut u64 {
+            &mut self.next_seq
+        }
     }
 }

@@ -52,7 +52,7 @@ impl AreasEffect {
             start: frame.start(),
             launch: Some(launch),
         };
-        frame.effects.push(AreasEffect {
+        frame.queue(AreasEffect {
             id: None,
             by,
             unit_type: area,

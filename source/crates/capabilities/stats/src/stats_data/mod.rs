@@ -7,7 +7,7 @@ use serde::Deserialize;
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
-pub struct StatsData(pub BTreeMap<Stat, StatValue>);
+pub struct StatsData(pub(crate) BTreeMap<Stat, StatValue>);
 
 /// `{ base, per_level }`: the value at level `n` is `base + per_level × (n − 1)`, `per_level`
 /// 0 when it gives none.

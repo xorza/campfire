@@ -52,7 +52,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
     // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
     let offer = |index| Some(Offer::new(index));
-    let chosen = &game.resource::<Choices>().0;
+    let chosen = game.resource::<Choices>().offers();
     let rows: Vec<_> = chosen.chunks(4).collect();
     assert_eq!(
         rows,

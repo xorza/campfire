@@ -69,7 +69,7 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
             }
         }
     }
-    for _ in &api.enums {
+    for _ in api.enums() {
         let functions = EnumRecord::FUNCTIONS
             .iter()
             .chain(&EnumRecord::MEMBER_FUNCTIONS);
@@ -236,7 +236,7 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                let field = api.data[0];
+                let field = api.data()[0];
                 api.record_field(field.table, field.name, field.status, field.capability);
             },
             "is recorded once",
@@ -349,11 +349,11 @@ fn the_reference_is_what_the_registry_writes() {
         held == written,
         "the reference differs from the registry: run this test with CAMPFIRE_BLESS=1"
     );
-    api.members[0].spec.description = "another description";
+    api.members_mut()[0].spec.description = "another description";
     assert_ne!(api.reference(), held);
     // A script's literal is checked by a method's name alone, so every handle's method of a
     // name marks the same names.
-    let methods = api.members.iter().filter(|member| {
+    let methods = api.members().iter().filter(|member| {
         member.spec.owner != ApiOwner::Ctx && member.spec.kind == MemberKind::Method
     });
     for member in methods {

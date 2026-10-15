@@ -65,16 +65,16 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
     let mut choices = game.resource::<Choices>().clone();
     assert!(choices.check(&game));
-    assert!(!Choices(vec![None; 3]).check(&game));
-    choices.0[0] = Some(Offer::new(99));
+    assert!(!Choices::of(vec![None; 3]).check(&game));
+    choices.offers_mut()[0] = Some(Offer::new(99));
     assert!(!choices.check(&game));
     // Each row is `duo`'s two values, then `hero`'s, then `spells`'s, by their names. A choice is
     // all chosen or none: half of `duo` is refused. Its two values differ. A unique `hero` is one
     // player's: the same hero in two rows is refused, while a `duo` two players share restores.
     let chose = |values: &[(usize, usize)]| {
-        let mut choices = Choices(vec![None; 12]);
+        let mut choices = Choices::of(vec![None; 12]);
         for &(at, offer) in values {
-            choices.0[at] = Some(Offer::new(offer));
+            choices.offers_mut()[at] = Some(Offer::new(offer));
         }
         choices.check(&game)
     };

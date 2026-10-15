@@ -33,8 +33,8 @@ pub use crate::teleported::Teleported;
 /// reads its delivery. Not state: it empties within the tick.
 #[derive(Resource, Debug, Default)]
 pub struct Deliveries {
-    pub delivered: Vec<Delivered>,
-    pub ended: Vec<Entity>,
+    delivered: Vec<Delivered>,
+    ended: Vec<Entity>,
 }
 
 campfire_common::enum_all! {
@@ -84,6 +84,16 @@ impl Module for Deliveries {
 }
 
 impl Deliveries {
+    /// Records `delivered`, a delivery that reached what it reached this tick.
+    pub fn deliver(&mut self, delivered: Delivered) {
+        self.delivered.push(delivered);
+    }
+
+    /// Records that the delivery unit `entity` ended this tick, so it despawns.
+    pub fn end(&mut self, entity: Entity) {
+        self.ended.push(entity);
+    }
+
     /// Records the end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit
     /// stands at `pos` after a last step in `direction`: an end with no delivery unit, after
     /// the meters the dash went, whose hooks are its action's.
@@ -147,9 +157,15 @@ pub mod internals {
     use campfire_values::UnitType;
 
     use crate::Deliveries;
+    use crate::delivered::Delivered;
     use crate::delivery_spawner::DeliverySpawner;
 
     impl Deliveries {
+        /// The deliveries recorded this tick, to change as a test sets them.
+        pub const fn delivered_mut(&mut self) -> &mut Vec<Delivered> {
+            &mut self.delivered
+        }
+
         /// Spawns a delivery of `unit_type` for `source` at `pos`, with `parts`, which make it
         /// one, as an action's delivery spawns: its stable id.
         pub fn spawn_of<B: Bundle>(

@@ -85,13 +85,14 @@ impl AreaLife {
                     }
                 });
                 reached.sort_unstable();
-                let hits = reached.iter().map(|&unit| delivered(Reached::Hit(unit)));
-                deliveries.delivered.extend(hits);
+                for &unit in &reached {
+                    deliveries.deliver(delivered(Reached::Hit(unit)));
+                }
                 commands.entity(entity).remove::<AreaTrigger>();
             }
             if triggers_at.is_none_or(|at| at <= now) && area.ends_at() <= now {
-                deliveries.delivered.push(delivered(Reached::End));
-                deliveries.ended.push(entity);
+                deliveries.deliver(delivered(Reached::End));
+                deliveries.end(entity);
             }
         }
     }

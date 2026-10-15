@@ -40,7 +40,7 @@ impl ProgressionEffect {
         if !ProgressionColumn::has(view, id, track) {
             return Err(CallError::Api(ApiError::NoTrack));
         }
-        frame.effects.push(ProgressionEffect::AddXp {
+        frame.queue(ProgressionEffect::AddXp {
             id,
             track,
             amount: amount.number(frame),

@@ -34,13 +34,13 @@ pub(crate) mod tag_property_status;
 #[derive(Debug)]
 pub struct ScriptApi {
     /// Sorted by owner, then name.
-    pub members: Vec<ApiMember>,
+    pub(super) members: Vec<ApiMember>,
     /// Each hook, each tag property, and each data field: whether it runs.
     pub(super) hooks: Vec<HookStatus>,
     pub(super) tag_properties: Vec<TagPropertyStatus>,
-    pub data: Vec<DataField>,
+    pub(super) data: Vec<DataField>,
     /// The engine enums, in the order they bind.
-    pub enums: Vec<EnumRecord>,
+    pub(super) enums: Vec<EnumRecord>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`.
     builtins: BTreeSet<String>,
@@ -283,4 +283,23 @@ fn merged<T: Copy + PartialEq>(
         *merged = merged.or(said);
     }
     merged
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::scripts::script_api::ScriptApi;
+    use crate::scripts::script_api::api_member::ApiMember;
+    use crate::scripts::script_api::enum_record::EnumRecord;
+
+    impl ScriptApi {
+        /// Its members, to change as a test changes one.
+        pub const fn members_mut(&mut self) -> &mut Vec<ApiMember> {
+            &mut self.members
+        }
+
+        /// The engine enums, in the order they bind.
+        pub fn enums(&self) -> &[EnumRecord] {
+            &self.enums
+        }
+    }
 }

@@ -128,7 +128,7 @@ impl NavigationEffect {
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };
-        frame.effects.push(effect.map_err(CallError::Api)?);
+        frame.queue(effect.map_err(CallError::Api)?);
         Ok(())
     }
 

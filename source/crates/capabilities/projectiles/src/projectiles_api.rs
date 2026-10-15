@@ -63,7 +63,7 @@ impl ProjectilesApi {
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
         let id = frame.take_id();
-        frame.effects.push(ProjectilesEffect {
+        frame.queue(ProjectilesEffect {
             id,
             by: launcher.by,
             unit_type,

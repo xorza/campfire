@@ -18,9 +18,9 @@ use crate::scripts::script_value::ScriptValue;
 /// their calls, and the host, out of the world while they run.
 #[derive(Debug)]
 pub struct ScriptBatch<'a> {
-    pub world: &'a mut World,
-    pub host: &'a mut ScriptHost,
-    pub ctx: Ctx,
+    pub(super) world: &'a mut World,
+    pub(super) host: &'a mut ScriptHost,
+    pub(super) ctx: Ctx,
 }
 
 impl ScriptBatch<'_> {

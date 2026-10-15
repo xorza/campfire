@@ -228,7 +228,7 @@ impl Flights<'_> {
                 rank,
                 start,
                 ..
-            } => self.deliveries.delivered.push(Delivered {
+            } => self.deliveries.deliver(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,
@@ -252,7 +252,7 @@ impl Flights<'_> {
             ..
         } = projectile.payload()
         {
-            self.deliveries.delivered.push(Delivered {
+            self.deliveries.deliver(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,

@@ -13,7 +13,7 @@ use crate::roster::Roster;
 /// of the mode's choices, `None` where the player has not chosen.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Choices(pub Vec<Option<Offer>>);
+pub struct Choices(Vec<Option<Offer>>);
 
 impl Choices {
     /// The choices of `players` players of `specs`, none chosen.
@@ -96,5 +96,28 @@ impl SimResource for Choices {
         let book = world.non_send::<MatchMode>();
         let players = book.teams.players() as usize;
         self.fits(&book.choices, players, &book.roster)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::choices::Choices;
+    use crate::offer::Offer;
+
+    impl Choices {
+        /// The choices of `offers`, one a row, as a snapshot may hold them.
+        pub const fn of(offers: Vec<Option<Offer>>) -> Choices {
+            Choices(offers)
+        }
+
+        /// The offer each row took, if one.
+        pub fn offers(&self) -> &[Option<Offer>] {
+            &self.0
+        }
+
+        /// The offer each row took, to change as a flawed snapshot holds them.
+        pub fn offers_mut(&mut self) -> &mut [Option<Offer>] {
+            &mut self.0
+        }
     }
 }

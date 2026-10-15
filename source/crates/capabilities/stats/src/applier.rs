@@ -9,7 +9,7 @@ use crate::lifetime::Hold;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Applier {
     pub(crate) source: Option<StableId>,
-    pub action: Option<ActionId>,
-    pub rank: Rank,
-    pub hold: Option<Hold>,
+    pub(crate) action: Option<ActionId>,
+    pub(crate) rank: Rank,
+    pub(crate) hold: Option<Hold>,
 }

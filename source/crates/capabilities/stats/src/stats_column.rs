@@ -292,11 +292,7 @@ impl StatsColumn {
         id: ModifierId,
         source: Option<StableId>,
     ) -> ModifierHandle {
-        if let Some(handle) = call
-            .handles
-            .iter()
-            .find(|handle| handle.is(carrier, id, source))
-        {
+        if let Some(handle) = call.handed(carrier, id, source) {
             view.column(|column: &StatsColumn| column.apply_again(handle, id))
                 .expect("a match that applies a modifier has stats");
             return handle.clone();
@@ -329,7 +325,7 @@ impl StatsColumn {
                 ModifierHandle::new(spare, of, state, schema, view.clone())
             })
             .expect("a match that applies a modifier has stats");
-        call.handles.push(handle.clone());
+        call.hand_out(handle.clone());
         handle
     }
 

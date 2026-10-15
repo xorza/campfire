@@ -299,17 +299,17 @@ impl EffectListBook {
                         angle: Num::ZERO,
                     };
                     let life = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(ActionsEffect { at, life });
+                    frame.queue(ActionsEffect { at, life });
                 }
                 DoesSpec::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| duration(ms, frame));
-                    frame.effects.push(StatsEffect::Add {
+                    frame.queue(StatsEffect::Add {
                         target: unit(),
                         id,
                         duration,
                     });
                 }
-                DoesSpec::Purge { tag } => frame.effects.push(StatsEffect::Purge {
+                DoesSpec::Purge { tag } => frame.queue(StatsEffect::Purge {
                     carrier: unit(),
                     tag,
                 }),

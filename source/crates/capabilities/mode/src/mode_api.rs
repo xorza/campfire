@@ -444,7 +444,7 @@ impl ModeApi {
             return Err(ApiError::Ended.fail().into());
         }
         call.ended = true;
-        frame.effects.push(ModeEffect::End(result));
+        frame.queue(ModeEffect::End(result));
         Ok(())
     }
 
@@ -602,7 +602,6 @@ impl ModeApi {
             .collect::<Checked<Vec<_>>>()?;
         let mut frame = ctx.write()?;
         let queued: usize = frame
-            .effects
             .queued::<ModeEffect>()
             .filter_map(|effect| match effect {
                 ModeEffect::Grant {
@@ -616,7 +615,7 @@ impl ModeApi {
         if slots + queued + abilities.len() > ActionSlots::LIMIT {
             return Err(ApiError::TooManySlots.fail().into());
         }
-        frame.effects.push(ModeEffect::Grant {
+        frame.queue(ModeEffect::Grant {
             id,
             kind,
             rank,
@@ -651,7 +650,7 @@ impl ModeApi {
                 id: frame.take_id(),
             })
             .collect();
-        frame.effects.push(ModeEffect::SpawnGroup(SpawnGroup {
+        frame.queue(ModeEffect::SpawnGroup(SpawnGroup {
             team,
             path,
             from,
@@ -696,14 +695,13 @@ impl ModeApi {
         let effect = ModeEffect::Learn { id: unit.id, slot };
         let mut frame = ctx.write()?;
         let queued = frame
-            .effects
             .queued::<ModeEffect>()
             .filter(|&queued| *queued == effect)
             .count();
         if usize::from(Rank::count(slot_row.rank)) + queued >= usize::from(slot_row.ranks) {
             return Err(ApiError::MaxRank.fail().into());
         }
-        frame.effects.push(effect);
+        frame.queue(effect);
         Ok(())
     }
 

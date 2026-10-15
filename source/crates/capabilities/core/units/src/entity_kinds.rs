@@ -8,7 +8,7 @@ use campfire_sim::Restoring;
 /// The markers of the kinds the modules declare, so an entity's kind is found and an entity of
 /// two kinds refused. Derived from the declarations.
 #[derive(Resource, Debug, Default)]
-pub struct EntityKinds(pub Vec<ComponentId>);
+pub struct EntityKinds(Vec<ComponentId>);
 
 impl EntityKinds {
     /// Adds the kind of the marker `id`.
@@ -61,6 +61,11 @@ pub(crate) mod internals {
         /// The marker of `entity`'s kind; none for an entity of no kind.
         pub fn of(&self, entity: EntityRef<'_>) -> Option<ComponentId> {
             self.0.iter().copied().find(|&id| entity.contains_id(id))
+        }
+
+        /// The marker of each kind, in the order they were added.
+        pub fn markers(&self) -> &[ComponentId] {
+            &self.0
         }
     }
 }

@@ -14,7 +14,7 @@ fn the_unit_group_hosts_exactly_the_kinds_that_require_it() {
     let unit = components.component_id::<UnitEntity>().unwrap();
     let kinds = game.resource::<EntityKinds>();
     let mut requiring: Vec<TypeId> = kinds
-        .0
+        .markers()
         .iter()
         .filter_map(|&id| components.get_info(id))
         .filter(|info| info.required_components().iter_ids().any(|id| id == unit))

@@ -407,7 +407,8 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
             units.map(|id| at(&game, id)),
             units.map(|id| forced(&game, id).is_some()),
         ));
-        let ended = &mut game.resource_mut::<Deliveries>().delivered;
+        let mut deliveries = game.resource_mut::<Deliveries>();
+        let ended = deliveries.delivered_mut();
         if let Some(end) = ended.pop() {
             assert_eq!(end.hit.pos, point(7, 3));
             assert_eq!(end.hit.distance, Num::from_bits(7 * ONE / 2));
