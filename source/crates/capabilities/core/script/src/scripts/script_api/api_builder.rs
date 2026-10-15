@@ -7,18 +7,18 @@ use crate::scripts::api_version::ApiVersion;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx_fn::{CtxFn, GetFn, MethodFn};
 use crate::scripts::data_section::DataSection;
+use crate::scripts::data_table::DataTable;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
+use crate::scripts::member_kind::MemberKind;
+use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
-use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
-use crate::scripts::script_api::member_kind::MemberKind;
-use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::script_api::status::Status;
 use crate::scripts::script_arg::ScriptArg;
 use crate::scripts::script_value::{ScriptType, ScriptValue};
+use crate::scripts::status::Status;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its
 /// `register_get` and kin use and do not export.

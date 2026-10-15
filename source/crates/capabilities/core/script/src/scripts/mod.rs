@@ -2,7 +2,7 @@
 //! every call goes through, the batch every call runs in, its budgets and failures, script state,
 //! and the script view the modules fill.
 
-pub(crate) mod api_builder;
+pub(crate) mod api_owner;
 pub(crate) mod api_version;
 pub(crate) mod applies;
 pub(crate) mod arg_ctx;
@@ -12,11 +12,14 @@ pub(crate) mod core_api;
 pub(crate) mod ctx;
 pub(crate) mod ctx_fn;
 pub(crate) mod data_section;
+pub(crate) mod data_table;
 pub(crate) mod error;
 pub(crate) mod frame;
 pub(crate) mod hook;
 pub(crate) mod hook_set;
 mod id_args;
+pub(crate) mod member_kind;
+pub(crate) mod member_spec;
 pub(crate) mod name_kind;
 pub(crate) mod pending_calls;
 pub(crate) mod pool;
@@ -39,6 +42,7 @@ pub(crate) mod scripts_world;
 pub(crate) mod state_decl;
 pub(crate) mod state_type;
 pub(crate) mod state_value;
+pub(crate) mod status;
 pub(crate) mod type_slots;
 pub(crate) mod view;
 pub(crate) mod view_api;

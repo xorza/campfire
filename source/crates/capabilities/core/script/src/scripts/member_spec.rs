@@ -1,11 +1,11 @@
 use campfire_sim::Capability;
 use campfire_values::EngineEnum;
 
+use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::applies::Applies;
+use crate::scripts::member_kind::MemberKind;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::api_owner::ApiOwner;
-use crate::scripts::script_api::member_kind::MemberKind;
 
 /// A name of the script API as the code that binds it describes it: whose it is, what it is,
 /// who may use it, the forms it is called in, and what its arguments name.

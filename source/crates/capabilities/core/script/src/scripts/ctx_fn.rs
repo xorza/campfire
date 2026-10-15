@@ -6,9 +6,9 @@ use rhai::{Dynamic, Engine, NativeCallContext};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
+use crate::scripts::member_spec::{ArgKinds, MemberSpec};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::member_spec::{ArgKinds, MemberSpec};
 use crate::scripts::script_arg::ScriptArg;
 use crate::scripts::script_value::{ScriptType, ScriptValue};
 
