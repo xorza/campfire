@@ -106,3 +106,15 @@ Blocked: the one case.
 | **A. A refusal code by capability (recommended)** | `ApiError::Refused(Refusal)`, with `Refusal { owner: Capability, code: u8 }`, `Copy` and `PartialEq` as now. Each capability's refusal enum converts into it and back by `From` and `TryFrom`, and gives its message through a table its module declares, as the callbacks are. A test compares `ApiError::from(CombatRefusal::NoAttack)`. | About 45 cases move to a dozen enums, and the 208 uses change. A message is found by a lookup, not by `thiserror` on one enum. |
 | B. A static refusal of a trait object | `ApiError::Refused(&'static dyn CapabilityRefusal)`, each case a `static` of its capability, compared by its name. | `dyn` where an enum serves; equality by name. |
 | C. Keep the flat enum | `ApiError` stays the script API's one list of refusals, which the reference documents together. | The cases of a capability stay in `script`, and a new capability's refusal changes `script`. |
+
+## Batch 14: the guide items left unchanged
+
+The item: "Small guide items, also in Section 3." Each guide item is done but the five below. One waits for the Batch 9 question. For the other four, I recommend no change, and the plan does not keep them.
+
+| Guide item | Why it stays | Option to change it |
+| --- | --- | --- |
+| `net/src/sim_client/mod.rs`, `lose_link` and `retry_link` take `Res<Signer>` only for the retry jitter's random bytes | Blocked by Batch 9: the home of `Entropy` (`common`, or `net` as now) decides what these systems take. The plan keeps this item. | After Batch 9, the systems take the `Entropy` that the client holds. |
+| `capabilities/src/books/book_builder.rs:558`, the `mem::take` of `books.effects` | `BookBuilder::names` borrows the whole builder, and `effects.push` needs `books.effects` mutably at the same time. The swap is three lines, and it puts the book back before the error returns. | A struct of the name books apart from `effects` in `BookParts`, so the two borrows are of different fields. This moves about ten fields and their uses. |
+| `mode/src/mode_map.rs:162`, `ModeMap::install_pathing` | The review saw one caller. Now `Mode::load` and `Books::install_prediction` both call it, so the wrapper keeps the map's pathing in one place. | Inline it into both callers. |
+| `import/src/zero_hour/model_writer.rs:107`, `model_writer::path` | It is a free function with no type to own it, which the guide permits: the path is `campfire_package`'s `PackagePath`, and it takes no writer. | An associated function of `ModelWriter` that does not construct, which the guide does not permit. |
+| `net/src/sim_client/mod.rs:640`, the clone of each due `ScriptedInput` | The clone occurs once for each mode input of a script in a match, not for each tick. The pending input can stay in the queue after the tick, so it cannot borrow the script. | `Pending::Input` holds the input's place in `BotScript`, and the send reads the script again. The bot script must then stay while an input waits. |

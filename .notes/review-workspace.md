@@ -146,7 +146,7 @@ Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mod
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
 
 - [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal type. Blocked: see `review-workspace_QUESTIONS.md`, Batch 14.
-- [ ] Small guide items, also in Section 3.
+- [ ] `net/src/sim_client/mod.rs` `lose_link`, `retry_link`: the retry jitter takes `Entropy`, not `Signer`. Blocked: see `review-workspace_QUESTIONS.md`, Batch 9 and Batch 14.
 
 ### Batch 15. Design and code that disagree
 
@@ -156,21 +156,3 @@ D5 shapes it. Files: `docs/design/02-engine-core.md`, `docs/design/12-zero-hour.
 - [ ] D5: design 12 D7 stays. `PLAN.md` holds the fingerprint comparison and the parity suite as open steps, and design 02's dependency list of `zero-hour-check` follows the code.
 - [ ] `capabilities/src/lib.rs:7-13`, `areas/src/lib.rs:43`: the docs follow `LAYERS` and `NEEDS`.
 - [ ] `checks/zero-hour-check/src/main.rs`, `lan-check/src/run_dir.rs`: one run-root helper, in a home the design names.
-
-## 3. Lists that Batch 14 takes
-
-- **Flag parameters:** `HudPalette::fill`, `View::rest`, `Shape::of`, `Look::pose`, `CameraRig::zoom_key`, `turn_key`, `shop_panel::dimmed`, `Orders::slot_action`, `MapFile::texture_class`, `GlbBuilder::accessor`, `InProcessMatch::lose_server_packets`, `ViewRows::column_mut`, `SupplyCostBook::unit`, `SimClient.local`, `out_of_play`.
-- **Wide signatures:** `ActionBook::load`, `EffectListBook::queue`, `DeliverySpawner::spawn`, `SessionRules::terms`, `resume`/`resume_match`/`load_save` (two argument orders), `install_mode` and `books` (world second), `write_slot`, `terrain_image::copy`, `model_writer::convert`, `GlbBuilder::accessor`, lan-check `verify`, `Opening::find`.
-- **Guide items:**
-  - `names.rs:95` (`.ok()`), `spawn_match` (`impl IntoIterator`), `pending_calls.rs:29` (`Extend`), `api_builder.rs:184` (`assert!`).
-  - `entity_parts.rs:32` (`Arc` and `PhantomData`), `actions_api.rs:34-40` (one effect key list), `effect_list_book.rs:205` (a list-hook enum), `unit_type_data.rs:90-178` (one table for `FIELDS` and `given`).
-  - `book_builder.rs:436-441,548-552`, `sim_world_builder.rs:115-135`, `abilities_api.rs:131-136`.
-  - The import's `as` casts, its missing `#[from]`, its functions on the wrong type, and the double decode in `class_texture`.
-  - Misplaced docs: `units/mod.rs:276-279`, `tag_book.rs:88-91`, `stats_effect.rs:33`, `refresh.rs:34`. `refresh.rs:174,196-199`.
-  - The server: `main.rs:12` (`#![allow]`), its repeated exit blocks, and `Args::of`.
-  - Net: the `order_script` error cases, `bot_driver.rs:28`, the clone of `report`, `lose_link`'s `Signer`, and `LinkEnd::Refused`'s doc.
-  - The harness: `duo`, `lane_mode` and `step`.
-  - Math and log: the `UnitDivisor` choice and the `aarch64.rs` names, and `json_text.rs:12-15`.
-  - Errors: `visibility/src/setting/error.rs:512-523`, `ModeError::RepeatedName`, `add_resource`'s `NoMode`.
-  - `ModeMap::install_pathing`, `Frame::apply`'s growth assert, `Orders::apply_order`.
-  - Two client allocations: `unit_models.rs:232` and `view/mod.rs:332`.
