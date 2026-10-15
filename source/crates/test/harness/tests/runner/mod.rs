@@ -7,4 +7,5 @@ mod moba_abilities;
 mod proving_match;
 mod resume;
 mod ruled;
+mod skirmish;
 mod snapshot_layout;

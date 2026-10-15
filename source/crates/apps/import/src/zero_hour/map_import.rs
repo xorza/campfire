@@ -385,14 +385,23 @@ mod tests {
     use crate::zero_hour::terrain::{BlendShape, BlendTile};
 
     /// The fixture map's `data/units.toml`.
-    const UNITS_TOML: &str = r#"[units.americatankcrusader.stats.move_speed]
+    const UNITS_TOML: &str = r#"[units.americatankcrusader]
+pools = ["life"]
+
+[units.americatankcrusader.stats.move_speed]
 base = "30.5"
 
 [units.americatankcrusader.stats.turn_rate]
 base = "90"
 
+[units.americatankcrusader.stats.life]
+base = "400"
+
 [units.americatankcrusader.collision]
 radius = "5"
+
+[units.americatankcrusader.combat]
+on_death = "despawn"
 
 [units.fortresswall.collision]
 box = ["20", "5"]
@@ -652,8 +661,9 @@ box = ["20", "5"]
                 square([10, -15, 30, -10]),
             ]
         );
-        // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m;
-        // the wall is a structure, a box of 2 · 10 by 2 · 2.5 m; the fence is neither.
+        // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m,
+        // and lives by its active body, 400, of no armor; the wall is a structure, a box of 2 ·
+        // 10 by 2 · 2.5 m, whose highlander body gives it no life; the fence is neither.
         let units = names.units_file();
         assert_eq!(units.text, UNITS_TOML);
         assert_eq!(units.max_speed, Some(Num::int(61) / Num::int(2)));

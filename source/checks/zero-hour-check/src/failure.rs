@@ -1,12 +1,15 @@
 use campfire_common::{Fingerprint, MapName};
-use campfire_import::DropCause;
+use campfire_import::{DropCause, WeaponDrop};
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
+use campfire_mode::MatchResult;
 use campfire_orders::OrdersAction;
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{DRIVE_TICKS, FINGERPRINTS, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS};
+use crate::{
+    DRIVE_TICKS, FIGHT, FINGERPRINTS, FOUGHT, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS,
+};
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
@@ -62,6 +65,18 @@ pub(crate) enum Failure {
     /// The production play's ticks or money differ from the pinned.
     #[display("it played production as {_0:?}, not {PRODUCTION:?}")]
     Production(ProductionSteps),
+    /// The bot lacks the command center or the dozer the fight reads.
+    #[display("the bot lacks its command center or its dozer")]
+    FightStart,
+    /// The fight does not end the match within its limit.
+    #[display("the fight does not end the match")]
+    NoEnd,
+    /// The fight's ticks, money or end differ from the pinned.
+    #[display("it fought as {_0:?}, not {FIGHT:?}")]
+    Fight(FightSteps),
+    /// The import's weapons, armors, damage kinds and bodies differ from the pinned.
+    #[display("it converted {_0}, not {FOUGHT}")]
+    Fought(Box<FoughtCounts>),
     /// Tournament Desert lacks a start of player 1 or 2.
     #[display("it has no start of player 1 or of player 2")]
     NoStarts,
@@ -109,6 +124,35 @@ pub(crate) struct ProductionSteps {
     pub(crate) barracks_ticks: u64,
     pub(crate) ranger_ticks: u64,
     pub(crate) money: [i64; 3],
+}
+
+/// The fight's steps: the ticks from the first further train to the last ranger trained, and from
+/// the attack's order to the match's end; player 1's money as the attack is ordered; how the
+/// match ended; and whether the bot's dozer's life is gone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FightSteps {
+    pub(crate) train_ticks: u64,
+    pub(crate) fight_ticks: u64,
+    pub(crate) money: i64,
+    pub(crate) result: MatchResult,
+    pub(crate) killed: bool,
+}
+
+/// How many weapons the import converts, how many it drops for each cause, in the order of the
+/// causes, how many armors and damage kinds it writes, and how many unit types' objects it gives
+/// no life, or a life that starts below its most.
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display(
+    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded",
+    dropped
+)]
+pub(crate) struct FoughtCounts {
+    pub(crate) weapons: usize,
+    pub(crate) dropped: [usize; WeaponDrop::ALL.len()],
+    pub(crate) armors: usize,
+    pub(crate) kinds: usize,
+    pub(crate) unliving: usize,
+    pub(crate) wounded: usize,
 }
 
 /// How many trains and builds the import converts, and how many buttons it drops for each

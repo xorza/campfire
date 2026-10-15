@@ -16,6 +16,8 @@ use campfire_values::PackagePath;
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
+use crate::zero_hour::armor_ini::ArmorIni;
+use crate::zero_hour::combat_import::{CombatImport, CombatSources, DroppedWeapon};
 use crate::zero_hour::command_button_ini::CommandButtonIni;
 use crate::zero_hour::command_set_ini::CommandSetIni;
 use crate::zero_hour::error::{IniError, ZeroHourError};
@@ -34,17 +36,20 @@ use crate::zero_hour::multiplayer_ini::MultiplayerIni;
 use crate::zero_hour::object_ini::{DrawKind, DrawnState, ObjectIni, PlacedAs, StateLook};
 use crate::zero_hour::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::production_import::{CommandSources, DroppedButton, ProductionImport};
-use crate::zero_hour::rules_package::RULES_FILES;
+use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::string_table::StringTable;
 use crate::zero_hour::terrain::{ClassTexture, TextureClass};
 use crate::zero_hour::terrain_ini::TerrainIni;
+use crate::zero_hour::weapon_ini::WeaponIni;
 
 pub(crate) mod archive_path;
+pub(crate) mod armor_ini;
 pub(crate) mod big_archive;
 pub(crate) mod byte_cursor;
 pub(crate) mod chunk_reader;
 pub(crate) mod cliff_walls;
+pub(crate) mod combat_import;
 pub(crate) mod command_button_ini;
 pub(crate) mod command_set_ini;
 pub(crate) mod error;
@@ -85,6 +90,7 @@ pub(crate) mod w3d_chunks;
 pub(crate) mod w3d_fields;
 pub(crate) mod w3d_file;
 pub(crate) mod w3d_mesh;
+pub(crate) mod weapon_ini;
 
 /// What an import wrote: the package's fingerprint, the models the objects name that the
 /// package lacks, the textures its models name that no archive holds, which they draw
@@ -102,6 +108,13 @@ pub struct Imported {
     pub dropped_waypoints: BTreeMap<MapName, Vec<String>>,
     /// The command buttons the import does not convert, each with why (design 18, D3).
     pub dropped_buttons: Vec<DroppedButton>,
+    /// The weapons the import does not convert, each with why (design 19, D6).
+    pub dropped_weapons: Vec<DroppedWeapon>,
+    /// The unit types' objects whose body the import gives no life (design 19, D5).
+    pub unliving: Vec<String>,
+    /// The unit types' objects whose body starts below its most life, which the engine starts
+    /// full.
+    pub wounded: Vec<String>,
 }
 
 /// A model the objects name that the package lacks, and why.
@@ -258,10 +271,23 @@ impl<'a> ZeroHour<'a> {
             strings: &strings,
         };
         let production = ProductionImport::of(sources, &mut object_names);
-        write(
-            "data/mode.toml",
-            rules_package::mode_data(&start, &production, money).as_bytes(),
+        let weapons = self.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?;
+        let armors = self.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?;
+        let combat = CombatImport::of(
+            CombatSources {
+                ini: &ini,
+                weapons: &weapons,
+                armors: &armors,
+            },
+            &mut object_names,
         )?;
+        let mode = ModeImport {
+            start: &start,
+            production: &production,
+            combat: &combat,
+            start_money: money,
+        };
+        write("data/mode.toml", rules_package::mode_data(mode).as_bytes())?;
         let text = rules_package::mode_text(&production.texts);
         write("locale/en.ftl", text.as_bytes())?;
         let units = object_names.units_file();
@@ -278,6 +304,9 @@ impl<'a> ZeroHour<'a> {
             untextured_cells,
             dropped_waypoints,
             dropped_buttons: production.dropped,
+            dropped_weapons: combat.dropped,
+            unliving: combat.unliving,
+            wounded: combat.wounded,
         })
     }
 

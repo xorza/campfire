@@ -5,16 +5,19 @@ use campfire_capabilities::Order;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_math::Num;
+use campfire_mode::MatchEnd;
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
-use campfire_players::PlayersWorld;
-use campfire_production::{BuildTarget, Site};
+use campfire_players::{OrderUnits, PlayersWorld};
+use campfire_production::{BuildTarget, Site, TrainQueue};
+use campfire_protocol::{InputRules, SlotPlan};
 use campfire_runner::SessionWorld;
 use campfire_sim::StableId;
-use campfire_units::Units;
+use campfire_stats::Life;
+use campfire_units::{Units, UnitsWorld};
 use campfire_values::{DeclaredName, Names, ResourceId, UnitType};
 
-use crate::failure::{Failure, ProductionSteps};
+use crate::failure::{Failure, FightSteps, ProductionSteps};
 
 /// The unit types the play makes, and its producers'.
 const CENTER: &str = "americacommandcenter";
@@ -25,14 +28,30 @@ const RANGER: &str = "americainfantryranger";
 /// The most ticks the play waits for a step, past which it never ends.
 const STEP_LIMIT: u64 = 30 * 60 * 5;
 
+/// How many rangers the barracks trains and sends to fight, the first of the production steps
+/// among them.
+const RANGERS: usize = 20;
+
+/// The most trains a barracks queues, its `MaxQueueEntries`, which the play keeps it below.
+const QUEUE: usize = 9;
+
 /// Where the dozer places the barracks: 216 m along −z from `Player_1_Start`, clear of the
 /// command center's box and of the cliffs, at America's `PlacementViewAngle` of −135°.
 const BARRACKS_AT: [i64; 3] = [1005, -800, -135];
 
-/// The skirmish's production on Tournament Desert (design 18): player 1's command center trains
-/// a dozer, its start dozer builds a barracks, and the barracks trains a ranger.
+/// The skirmish on Tournament Desert against an idle bot (designs 18 and 19): player 1's command
+/// center trains a dozer, its start dozer builds a barracks, and the barracks trains a ranger;
+/// then the barracks trains `RANGERS` in all, and they attack the bot's command center until the
+/// match ends.
 #[derive(Debug)]
-pub(crate) struct ProductionPlay;
+pub(crate) struct SkirmishPlay;
+
+/// What the play measures: its production steps, and its fight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SkirmishSteps {
+    pub(crate) production: ProductionSteps,
+    pub(crate) fight: FightSteps,
+}
 
 /// What the play reads of its match: player 1's money, and the slots of its types' actions.
 #[derive(Debug)]
@@ -41,15 +60,15 @@ struct Play<'a> {
     money: ResourceId,
 }
 
-impl ProductionPlay {
-    /// Plays the three steps in a match of `packages` at `rate` ticks a second: each step's ticks,
-    /// and the money left after each; a failure for a step that does not end, or a unit the play
-    /// lacks, goes to `failures`.
+impl SkirmishPlay {
+    /// Plays the skirmish in a match of `packages` at `rate` ticks a second, player 1 against an
+    /// idle bot: each production step's ticks and the money left after each, and the fight's; a
+    /// failure for a step that does not end, or a unit the play lacks, goes to `failures`.
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
         failures: &mut Vec<Failure>,
-    ) -> Option<ProductionSteps> {
+    ) -> Option<SkirmishSteps> {
         let names: Names<ResourceId> = packages
             .data()
             .resources
@@ -60,7 +79,8 @@ impl ProductionPlay {
             failures.push(Failure::NoMoney);
             return None;
         };
-        let session = FixedSession::new(packages, rate, 1);
+        let plan = [SlotPlan::Player, SlotPlan::Bot];
+        let session = FixedSession::planned(packages, rate, InputRules::ROOMY, plan);
         let mut fixed = session.start();
         let play = Play {
             packages: session.packages(),
@@ -79,8 +99,8 @@ impl ProductionPlay {
 }
 
 impl Play<'_> {
-    /// The three steps in `fixed`, after its start's tick.
-    fn steps(&self, fixed: &mut FixedMatch) -> Result<ProductionSteps, Failure> {
+    /// The production steps in `fixed`, after its start's tick, then the fight.
+    fn steps(&self, fixed: &mut FixedMatch) -> Result<SkirmishSteps, Failure> {
         let mut tick = Tick::new(0);
         Play::step(fixed, &mut tick);
         let [center] = self.owned(fixed, CENTER)[..] else {
@@ -121,12 +141,77 @@ impl Play<'_> {
         let ranger_ticks = self.until(fixed, &mut tick, barracks, ranger, |play, fixed| {
             play.owned(fixed, RANGER).len() == 1
         })?;
-        Ok(ProductionSteps {
+        let production = ProductionSteps {
             dozer_ticks,
             barracks_ticks,
             ranger_ticks,
             money: [after_dozer, after_barracks, self.money(fixed)],
-        })
+        };
+        let fight = self.fight(fixed, &mut tick, barracks)?;
+        Ok(SkirmishSteps { production, fight })
+    }
+
+    /// The fight in `fixed` from the tick `tick`: the barracks `barracks` trains `RANGERS` in
+    /// all, one order a tick while its queue has room; they attack the bot's command center; the
+    /// ticks of each part, the money left, how the match ended, and whether the bot's dozer's
+    /// life is gone.
+    fn fight(
+        &self,
+        fixed: &mut FixedMatch,
+        tick: &mut Tick,
+        barracks: StableId,
+    ) -> Result<FightSteps, Failure> {
+        let [target] = self.owned_by(fixed, CENTER, 1)[..] else {
+            return Err(Failure::FightStart);
+        };
+        let [bot_dozer] = self.owned_by(fixed, DOZER, 1)[..] else {
+            return Err(Failure::FightStart);
+        };
+        let train = OrdersAction::Slot {
+            slot: self.slot(BARRACKS, "train_americainfantryranger"),
+            target: ActionTarget::None,
+        };
+        let mut train_ticks = 0;
+        while self.owned(fixed, RANGER).len() < RANGERS {
+            if train_ticks == STEP_LIMIT {
+                return Err(Failure::ProductionStep(train));
+            }
+            let queued = MatchUnits::of(fixed.game())
+                .unit(barracks)
+                .get::<TrainQueue>()
+                .map_or(0, |queue| queue.entries().len());
+            if self.owned(fixed, RANGER).len() + queued < RANGERS && queued < QUEUE {
+                fixed.send(0, *tick, &Order::payload(&[Order::one(barracks, train)]));
+            }
+            Play::step(fixed, tick);
+            train_ticks += 1;
+        }
+        let money = self.money(fixed);
+        let rangers = self.owned(fixed, RANGER);
+        let units = OrderUnits::new(&rangers).expect("the play's rangers");
+        let attack = Order {
+            units,
+            action: OrdersAction::Attack { target }.into(),
+        };
+        fixed.send(0, *tick, &Order::payload(&[attack]));
+        for fight_ticks in 1..=STEP_LIMIT {
+            Play::step(fixed, tick);
+            let world = fixed.game();
+            let end = world
+                .match_entity()
+                .and_then(|entity| world.get::<MatchEnd>(entity).copied());
+            if let Some(end) = end {
+                let bot_dozer = MatchUnits::of(world).unit(bot_dozer);
+                return Ok(FightSteps {
+                    train_ticks,
+                    fight_ticks,
+                    money,
+                    result: end.result(),
+                    killed: bot_dozer.get::<Life>().is_some_and(|life| life.is_empty()),
+                });
+            }
+        }
+        Err(Failure::NoEnd)
     }
 
     /// Orders `unit` to `action` in the tick `tick`, then runs ticks until `done`; the ticks it
@@ -157,12 +242,19 @@ impl Play<'_> {
 
     /// The living units player 1 owns of the type `name`, by stable id.
     fn owned(&self, fixed: &FixedMatch, name: &str) -> Vec<StableId> {
+        self.owned_by(fixed, name, 0)
+    }
+
+    /// The living units player `slot` owns of the type `name`, by stable id.
+    fn owned_by(&self, fixed: &FixedMatch, name: &str, slot: u32) -> Vec<StableId> {
         let world = fixed.game();
         let typed: UnitType = Units::type_named(world, name).expect("a type the play makes");
         MatchUnits::of(world)
             .all()
             .filter(|(_, unit)| {
-                unit.get::<UnitType>() == Some(&typed) && MatchUnits::owned_by(unit, 0)
+                unit.get::<UnitType>() == Some(&typed)
+                    && MatchUnits::owned_by(unit, slot)
+                    && unit.get::<Life>().is_none_or(|life| !life.is_empty())
             })
             .map(|(id, _)| id)
             .collect()

@@ -44,6 +44,9 @@ fn main() -> ExitCode {
             untextured_cells,
             dropped_waypoints,
             dropped_buttons,
+            dropped_weapons,
+            unliving,
+            wounded,
         }) => {
             for skipped in &skipped_models {
                 let model = &skipped.name;
@@ -83,6 +86,22 @@ fn main() -> ExitCode {
                     "a command button is not imported"
                 );
             }
+            for dropped in &dropped_weapons {
+                warn!(
+                    weapon = dropped.weapon,
+                    cause = ?dropped.cause,
+                    "a weapon is not imported"
+                );
+            }
+            for object in &unliving {
+                warn!(object, "an object's body is none the import gives life");
+            }
+            for object in &wounded {
+                warn!(
+                    object,
+                    "an object's body starts below its most life, which the engine starts full"
+                );
+            }
             info!(
                 packages = %args.out.display(),
                 %fingerprint,
@@ -91,6 +110,9 @@ fn main() -> ExitCode {
                 missing_textures = missing_textures.len(),
                 untextured_cells = untextured_cells.values().sum::<usize>(),
                 dropped_buttons = dropped_buttons.len(),
+                dropped_weapons = dropped_weapons.len(),
+                unliving = unliving.len(),
+                wounded = wounded.len(),
                 "imported"
             );
             ExitCode::from(ExitStatus::Success)

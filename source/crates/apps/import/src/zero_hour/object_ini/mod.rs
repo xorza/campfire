@@ -7,8 +7,10 @@ use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::ini_text::{FlagList, IniLine, IniText};
 use crate::zero_hour::look_conditions::LookConditions;
 use crate::zero_hour::object_ini::build_data::{BuildData, ProductionModule};
+use crate::zero_hour::object_ini::fight_data::{FightBlock, FightData};
 
 pub(crate) mod build_data;
+pub(crate) mod fight_data;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -35,13 +37,15 @@ pub(crate) struct IniObject {
     /// The locomotors of its `SET_NORMAL`, in the order its line names them.
     locomotors: Vec<String>,
     build: BuildData,
+    fight: FightData,
 }
 
 /// The kinds of an object's `KindOf` that the import reads: those that decide who draws its
 /// placed objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone
 /// draws, an object a build clears, which is fluff, the client's too, unless it is a fence, and a
-/// wall a unit walks on top of, which the game spawns with the bridges; and a structure, which
-/// routes block when it is not small.
+/// wall a unit walks on top of, which the game spawns with the bridges; a structure, which
+/// routes block when it is not small; and an object that counts for a multiplayer victory, which
+/// a structure of it keeps its player in the match by (design 19, D7).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
@@ -49,6 +53,7 @@ pub(crate) struct ObjectKinds {
     cleared_by_build: bool,
     walk_on_top_of_wall: bool,
     structure: bool,
+    mp_count_for_victory: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -166,6 +171,7 @@ const PROP: &str = "prop";
 const CLEARED_BY_BUILD: &str = "cleared_by_build";
 const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
 const STRUCTURE: &str = "structure";
+const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
 
 /// The locomotor set an object moves by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
@@ -215,7 +221,7 @@ pub(crate) enum DrawKind {
 }
 
 /// The weapon slots, as a field names them.
-const SLOTS: [&str; 3] = ["primary", "secondary", "tertiary"];
+pub(crate) const SLOTS: [&str; 3] = ["primary", "secondary", "tertiary"];
 
 /// A block the reader is inside.
 #[derive(Debug)]
@@ -238,6 +244,8 @@ enum Block {
     },
     /// An object's `Prerequisites`.
     Prerequisites,
+    /// A block combat reads: a body, a weapon set or an armor set.
+    Fight(FightBlock),
     /// A behavior module whose fields production reads.
     Production(ProductionModule),
     Other,
@@ -322,6 +330,7 @@ impl ObjectIni {
                 geometry: Geometry::DEFAULT,
                 locomotors: Vec::new(),
                 build: BuildData::default(),
+                fight: FightData::default(),
             },
             Some(base) => IniObject {
                 name: name.to_owned(),
@@ -382,6 +391,7 @@ impl ObjectKinds {
             CLEARED_BY_BUILD => &mut self.cleared_by_build,
             WALK_ON_TOP_OF_WALL => &mut self.walk_on_top_of_wall,
             STRUCTURE => &mut self.structure,
+            MP_COUNT_FOR_VICTORY => &mut self.mp_count_for_victory,
             _ => return,
         };
         *kind = set;
@@ -636,6 +646,17 @@ impl IniObject {
         &self.build
     }
 
+    /// What it gives combat: its body, its weapon sets and its armor sets.
+    pub(crate) const fn fight(&self) -> &FightData {
+        &self.fight
+    }
+
+    /// Whether it counts for a multiplayer victory: a structure of the kind
+    /// `MP_COUNT_FOR_VICTORY`, as `Team::hasAnyBuildings` counts it.
+    pub(crate) const fn counts_for_victory(&self) -> bool {
+        self.kinds.structure && self.kinds.mp_count_for_victory
+    }
+
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
         self.kinds.structure
@@ -690,6 +711,7 @@ impl Reading {
             Block::DefaultState { named: true }
             | Block::State { named: true }
             | Block::Prerequisites
+            | Block::Fight(_)
             | Block::Production(_)
             | Block::Other => Ok(None),
         }
@@ -801,6 +823,14 @@ impl Reading {
                 let open = self.object.as_mut().expect("prerequisites are an object's");
                 open.object.build.prerequisite(word, at)?;
             }
+            Block::Fight(block) => {
+                let block = *block;
+                let open = self.object.as_mut().expect("a combat block is an object's");
+                open.object.fight.field(block, word, at)?;
+                if ObjectIni::opens(word, tokens) {
+                    self.stack.push(Block::Other);
+                }
+            }
             Block::Production(module) => {
                 let module = *module;
                 let open = self.object.as_mut().expect("a module is an object's");
@@ -817,6 +847,10 @@ impl Reading {
                 let build = &mut open.object.build;
                 // A reskin's table sets none of these, so it keeps its base's.
                 if build.field(word, at)? {
+                    return Ok(());
+                }
+                if let Some(block) = open.object.fight.open(word, tokens) {
+                    self.stack.push(Block::Fight(block));
                     return Ok(());
                 }
                 if word == "prerequisites" && tokens.len() == 1 {
@@ -1025,6 +1059,16 @@ Object Bush\r
 End\r
 Object AmericaTankCrusader\r
   KindOf = VEHICLE\r
+  Body = ActiveBody ModuleTag_04\r
+    MaxHealth = 400.0\r
+    InitialHealth = 400.0\r
+  End\r
+  WeaponSet\r
+    Conditions = None\r
+    Weapon = PRIMARY TankCannon\r
+    Weapon = SECONDARY RangerRifle\r
+    Weapon = TERTIARY Railgun\r
+  End\r
   Locomotor = SET_NORMAL TankTreads\r
   Geometry = BOX\r
   GeometryMajorRadius = 4.0\r
@@ -1032,6 +1076,9 @@ Object AmericaTankCrusader\r
 End\r
 Object FortressWall\r
   KindOf = WALK_ON_TOP_OF_WALL IMMOBILE STRUCTURE\r
+  Body = HighlanderBody ModuleTag_05\r
+    MaxHealth = 1000.0\r
+  End\r
   Geometry = BOX\r
   GeometryMajorRadius = 10.0\r
   GeometryMinorRadius = 2.5\r
@@ -1041,7 +1088,15 @@ Object Rocks1\r
   FenceWidth = 10.0\r
 End\r
 Object AmericaCommandCenter\r
-  KindOf = STRUCTURE\r
+  KindOf = STRUCTURE MP_COUNT_FOR_VICTORY\r
+  Body = StructureBody ModuleTag_08\r
+    MaxHealth = 5000.0\r
+    InitialHealth = 5000.0\r
+  End\r
+  ArmorSet\r
+    Conditions = None\r
+    Armor = StructureArmor\r
+  End\r
   Geometry = BOX\r
   GeometryMajorRadius = 12.0\r
   GeometryMinorRadius = 9.0\r
@@ -1059,6 +1114,10 @@ Object AmericaCommandCenter\r
 End\r
 Object AmericaVehicleDozer\r
   KindOf = VEHICLE\r
+  Body = ActiveBody ModuleTag_02\r
+    MaxHealth = 250.0\r
+    InitialHealth = 200.0\r
+  End\r
   Locomotor = SET_NORMAL TankTreads\r
   Geometry = SPHERE\r
   GeometryMajorRadius = 2.0\r
@@ -1068,6 +1127,10 @@ Object AmericaVehicleDozer\r
 End\r
 Object AmericaBarracks\r
   KindOf = STRUCTURE\r
+  Body = StructureBody ModuleTag_09\r
+    MaxHealth = 1200.0\r
+    InitialHealth = 1200.0\r
+  End\r
   Geometry = BOX\r
   GeometryMajorRadius = 5.0\r
   GeometryMinorRadius = 4.0\r
@@ -1086,6 +1149,24 @@ Object AmericaBarracks\r
 End\r
 Object AmericaInfantryRanger\r
   KindOf = INFANTRY\r
+  Body = ActiveBody ModuleTag_03\r
+    MaxHealth = 180.0\r
+    InitialHealth = 180.0\r
+  End\r
+  WeaponSet\r
+    Conditions = PLAYER_UPGRADE\r
+    Weapon = PRIMARY Flamer\r
+  End\r
+  WeaponSet\r
+    Conditions = None\r
+    Weapon = PRIMARY RangerRifle\r
+    Weapon = SECONDARY Pistol\r
+    Weapon = TERTIARY NONE\r
+  End\r
+  ArmorSet\r
+    Conditions = None\r
+    Armor = HumanArmor\r
+  End\r
   Locomotor = SET_NORMAL TankTreads\r
   Geometry = CYLINDER\r
   GeometryMajorRadius = 1.0\r

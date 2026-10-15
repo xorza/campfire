@@ -21,13 +21,15 @@ use crate::zero_hour::object_ini::IniObject;
 pub(crate) struct ImportNames {
     taken: BTreeMap<ImportName, String>,
     placed: BTreeMap<ImportName, ImportedType>,
-    produced: BTreeMap<ImportName, TypeProduction>,
+    produced: BTreeMap<ImportName, TypeActions>,
 }
 
-/// What a unit type takes of production (design 18, D3): the actions of its slot kind
-/// `command`, in its command set's order, and its `production` section when it trains.
+/// What a unit type takes of combat and production (design 18, D3; design 19, D6): the actions
+/// of its slot kinds `weapon`, in its starting weapon set's order, and `command`, in its command
+/// set's order, and its `production` section when it trains.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct TypeProduction {
+struct TypeActions {
+    weapon: Vec<DeclaredName>,
     command: Vec<DeclaredName>,
     production: Option<ProductionSection>,
 }
@@ -48,16 +50,19 @@ pub(crate) struct ProductionSection {
 #[derive(Debug, Serialize)]
 struct TypeToml<'a> {
     #[serde(flatten)]
-    imported: ImportedType,
+    imported: &'a ImportedType,
     #[serde(skip_serializing_if = "Option::is_none")]
-    slots: Option<CommandSlots<'a>>,
+    slots: Option<TypeSlots<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     production: Option<ProductionSection>,
 }
 
-/// A unit type's `slots`: the actions of its slot kind `command`.
+/// A unit type's `slots`: the actions of its slot kinds `weapon` and `command`.
 #[derive(Debug, Serialize)]
-struct CommandSlots<'a> {
+struct TypeSlots<'a> {
+    #[serde(skip_serializing_if = "<[DeclaredName]>::is_empty")]
+    weapon: &'a [DeclaredName],
+    #[serde(skip_serializing_if = "<[DeclaredName]>::is_empty")]
     command: &'a [DeclaredName],
 }
 
@@ -109,8 +114,8 @@ impl ImportNames {
         let name = self.take(object)?;
         let declared = name.declared();
         let imported = match self.placed.entry(name) {
-            Entry::Occupied(placed) => *placed.get(),
-            Entry::Vacant(new) => *new.insert(ImportedType::of(object, locomotors)?),
+            Entry::Occupied(placed) => placed.get().clone(),
+            Entry::Vacant(new) => new.insert(ImportedType::of(object, locomotors)?).clone(),
         };
         Ok(NamedType {
             name: declared,
@@ -124,6 +129,20 @@ impl ImportNames {
             .keys()
             .map(|name| self.taken[name].clone())
             .collect()
+    }
+
+    /// The unit type of `object`, when `unit_type` made one.
+    pub(crate) fn typed(&self, object: &IniObject) -> Option<&ImportedType> {
+        self.placed.get(&object.import_name())
+    }
+
+    /// Gives the unit type of `object`, which `unit_type` made, `action` in its slot kind
+    /// `weapon`, after those it holds; one it holds already it holds once.
+    pub(crate) fn give_weapon(&mut self, object: &IniObject, action: DeclaredName) {
+        let entry = self.produced.entry(object.import_name()).or_default();
+        if !entry.weapon.contains(&action) {
+            entry.weapon.push(action);
+        }
     }
 
     /// Gives the unit type of `object`, which `unit_type` made, `action` in its slot kind
@@ -150,13 +169,16 @@ impl ImportNames {
         let units: BTreeMap<&str, TypeToml<'_>> = self
             .placed
             .iter()
-            .map(|(name, &imported)| {
+            .map(|(name, imported)| {
                 let produced = self.produced.get(name);
                 let section = TypeToml {
                     imported,
                     slots: produced
-                        .filter(|produced| !produced.command.is_empty())
-                        .map(|produced| CommandSlots {
+                        .filter(|produced| {
+                            !produced.weapon.is_empty() || !produced.command.is_empty()
+                        })
+                        .map(|produced| TypeSlots {
+                            weapon: &produced.weapon,
                             command: &produced.command,
                         }),
                     production: produced.and_then(|produced| produced.production),

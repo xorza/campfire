@@ -1,0 +1,11 @@
+# A building that counts for victory, and a unit that does not.
+[units.center]
+tags = ["counts_for_victory"]
+pools = ["life"]
+stats = { life = { base = 10 } }
+combat = { on_death = "despawn" }
+
+[units.dozer]
+pools = ["life"]
+stats = { life = { base = 5 } }
+combat = { on_death = "despawn" }

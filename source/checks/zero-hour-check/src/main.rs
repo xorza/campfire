@@ -31,27 +31,29 @@ use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::{ExitStatus, Fingerprint, MapName};
-use campfire_import::{DropCause, DroppedButton, GameVersion, ZeroHour};
+use campfire_import::{DropCause, DroppedButton, GameVersion, WeaponDrop, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_math::Num;
+use campfire_mode::MatchResult;
 use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::{DeclaredName, PackagePath, Team};
 use tracing::{error, info};
 
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
 use crate::failure::{
-    Failure, Fingerprints, LookCounts, ProducedCounts, ProductionSteps, TerrainDrawn,
+    Failure, FightSteps, Fingerprints, FoughtCounts, LookCounts, ProducedCounts, ProductionSteps,
+    TerrainDrawn,
 };
-use crate::production_play::ProductionPlay;
+use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
 
 mod command_line;
 mod error;
 mod failure;
-mod production_play;
+mod skirmish_play;
 mod start_drive;
 
 /// The map the check plays.
@@ -62,8 +64,8 @@ const MAP: &str = "tournament_desert";
 /// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
 /// again.
 const FINGERPRINTS: Fingerprints = Fingerprints {
-    game: Fingerprint::of_hex("840ce16c6864e210e979996ccfbc3bbb61332ffe188a6f7e1d13c1eca42079e5"),
-    rules: Fingerprint::of_hex("ea1d92566e4908a51db28a09b3a2d2af61530a75f654cf48b0b7b6d07dccc109"),
+    game: Fingerprint::of_hex("dce2b57aa348136ff5c8fb31780db7f4aa7e587799e14876e90d9d925ea29f45"),
+    rules: Fingerprint::of_hex("087b796ee35e5a9a0385483ee8dd439a9c77bb838c643efdac3e8194f04b7501"),
 };
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
@@ -104,6 +106,34 @@ const PRODUCTION: ProductionSteps = ProductionSteps {
     barracks_ticks: 706,
     ranger_ticks: 150,
     money: [9000, 8400, 8175],
+};
+
+/// The fight on Tournament Desert against an idle bot: the barracks' 19 more rangers, the first
+/// of the production steps trained, each its 150 ticks one after another, 2,850; their walk to
+/// the bot's command center and its destruction, 5,000 life at a ranger's 5 small arms halved,
+/// which the check pins as it measured it; the money of 8,175 less 19 rangers' 225 each; player
+/// 1's team the winner; and the bot's dozer's life gone.
+const FIGHT: FightSteps = FightSteps {
+    train_ticks: 19 * 150,
+    fight_ticks: 3199,
+    money: 8175 - 19 * 225,
+    result: MatchResult::Won(Team::new(0)),
+    killed: true,
+};
+
+/// The weapons the import converts from every starting weapon set, the weapons it drops by cause
+/// in the order of `WeaponDrop::ALL`: no weapon, a projectile 70, a radius 6, a scatter, a speed
+/// that may delay the damage 7, no hit on the ground 7, a suicide, damage at its own place, a
+/// fire that speeds up 3, a delay before the attack 4, a minimum range, a random delay, no delay
+/// 3, no damage type, a bad number; its armors, `Armor.ini`'s 53, and damage kinds, the game's
+/// 38; and the unit types' objects of no life, 38, and of a wounded start (design 19, D5, D6).
+const FOUGHT: FoughtCounts = FoughtCounts {
+    weapons: 21,
+    dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 0, 0],
+    armors: 53,
+    kinds: 38,
+    unliving: 38,
+    wounded: 0,
 };
 
 /// Tournament Desert's terrain: a ground quad for each of the 269 × 339 cells the game draws;
@@ -334,22 +364,58 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         dropped = ?produced.dropped,
         "the command sets' trains and builds"
     );
+    // The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.
+    let combat = &packages.data().combat;
+    let fought = FoughtCounts {
+        weapons: kind_count(&packages, ActionKind::Attack),
+        dropped: WeaponDrop::ALL.map(|cause| {
+            let dropped = imported.dropped_weapons.iter();
+            dropped.filter(|weapon| weapon.cause == cause).count()
+        }),
+        armors: combat.armors.len(),
+        kinds: combat.damage_kinds.len(),
+        unliving: imported.unliving.len(),
+        wounded: imported.wounded.len(),
+    };
+    if fought != FOUGHT {
+        failures.push(Failure::Fought(Box::new(fought)));
+    }
+    for dropped in &imported.dropped_weapons {
+        info!(
+            weapon = dropped.weapon,
+            cause = ?dropped.cause,
+            "a weapon is not imported"
+        );
+    }
+    info!(%fought, "the weapons, armors and bodies");
     let rate = NonZeroU32::new(30).expect("a rate");
     // The play takes a match of its own, of the packages loaded again.
     let played = PackageDir::new(out.join(ZeroHour::GAME))
         .mode_packages(&map)
         .map_err(CheckError::Load)?;
-    let production = ProductionPlay::run(played, rate, &mut failures);
-    if let Some(play) = production {
-        if play != PRODUCTION {
-            failures.push(Failure::Production(play));
+    if let Some(SkirmishSteps { production, fight }) =
+        SkirmishPlay::run(played, rate, &mut failures)
+    {
+        if production != PRODUCTION {
+            failures.push(Failure::Production(production));
         }
         info!(
-            dozer = play.dozer_ticks,
-            barracks = play.barracks_ticks,
-            ranger = play.ranger_ticks,
-            money = ?play.money,
+            dozer = production.dozer_ticks,
+            barracks = production.barracks_ticks,
+            ranger = production.ranger_ticks,
+            money = ?production.money,
             "player 1 trained a dozer, built a barracks and trained a ranger"
+        );
+        if fight != FIGHT {
+            failures.push(Failure::Fight(fight));
+        }
+        info!(
+            train = fight.train_ticks,
+            fight = fight.fight_ticks,
+            money = fight.money,
+            result = ?fight.result,
+            killed = fight.killed,
+            "player 1's rangers destroyed the bot's command center"
         );
     }
     if let Some(drive) = StartDrive::run(packages, rate, &mut failures) {

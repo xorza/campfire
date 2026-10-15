@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
@@ -54,6 +54,8 @@ pub(crate) struct ImportedAction {
     start: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     construct: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start_life: Option<String>,
 }
 
 /// What an action requires, its unit types.
@@ -242,6 +244,11 @@ impl ProductionImport {
                 range: (making == Making::Build).then_some(BUILD_RANGE),
                 start: (making == Making::Build).then_some("order"),
                 construct: (making == Making::Build).then_some("builder"),
+                start_life: typed
+                    .imported
+                    .life()
+                    .filter(|_| making == Making::Build)
+                    .map(ProductionImport::one_life),
             });
         names.give_command(producer, id);
         if let Some(section) = section {
@@ -290,6 +297,20 @@ impl ProductionImport {
         })
     }
 
+    /// The share of a life of `most` that is 1 life, as the original's site starts at 1 hit point
+    /// (`DozerAIUpdate::construct`): rounded up to the billionths a share holds, so the life it
+    /// gives is at least 1 and past it by less than `most / 10⁹`; all of a life of at most 1.
+    fn one_life(most: Num) -> String {
+        const BILLION: i128 = 1_000_000_000;
+        let bits = i128::from(most.to_bits());
+        let one = 1_i128 << Num::FRAC_BITS;
+        let billionths = Rounding::Ceiling.divide(BILLION * one, bits);
+        if billionths >= BILLION {
+            return "1".to_owned();
+        }
+        format!("0.{billionths:09}")
+    }
+
     /// The milliseconds of a build time of `seconds` the engine turns into the original's count
     /// of frames, `BuildTime × 30` truncated, as `calcTimeToBuild` counts it: rounded up, the
     /// engine's ⌈ms × 30 / 1000⌉ of ⌊frames × 100 / 3⌋ is the count; none for a time below 0 or
@@ -327,5 +348,23 @@ impl ProductionImport {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sites_start_is_the_least_share_of_billionths_that_gives_one_life() {
+        // 1 of 5,000 is 0.0002 exactly; of 1,200, 0.000833333… up to 833,334 billionths, which
+        // gives 1.0000008; of 180, 5,555,555.5… up to 5,555,556; a life of 1 or less starts
+        // whole.
+        let share = |most: Num| ProductionImport::one_life(most);
+        assert_eq!(share(Num::int(5000)), "0.000200000");
+        assert_eq!(share(Num::int(1200)), "0.000833334");
+        assert_eq!(share(Num::int(180)), "0.005555556");
+        assert_eq!(share(Num::ONE), "1");
+        assert_eq!(share(Num::HALF), "1");
     }
 }

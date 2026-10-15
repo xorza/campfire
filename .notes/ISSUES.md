@@ -21,3 +21,6 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Stats.** A unit a predicting client predicts again, as its owner changes and `Unpredicted` goes (`net/src/sim_client/mod.rs`, `mark_unpredicted`), keeps the change ticks its parts had while hidden: a pass that visits what changed by those ticks, as `Holds::want_passives` and the stats refresh do, may pass over it until a part of it changes, where a pass over every unit takes it at once. Whether Lightyear's prediction writes the parts again as it starts is not known.
 
 ## Ready
+
+- **Combat.** An attack lands its damage in the tick it fires, where Zero Hour deals a weapon of no projectile `distance / WeaponSpeed` frames after the shot, rounded up, when that is a frame or more (`WeaponStore::setDelayedDamage`): the import drops each non-laser weapon whose `WeaponSpeed` is below the default, 7 of the install's starting weapons, `HumveeGun` and `SentryDroneGun` among them (design 19, D6).
+- **MOBA test content.** The 3v3's `on_unit_died` (`source/packages/test/moba/modes/3v3/scripts/mode.rhai`) ends the match as the enemy team's win as each core dies: when both cores die in one tick, the first core heard gives its enemy the win where both teams lost, and the second's `ctx.end` is refused, `the match has ended`, which logs a warning.

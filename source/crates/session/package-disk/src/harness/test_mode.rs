@@ -16,6 +16,8 @@ pub enum TestMode {
     Moba3v3,
     /// `test-ruled`, on `stand`: a mode that runs its rules package's script as its own.
     Ruled,
+    /// `test-skirmish`, on `field`: a mode that runs Zero Hour's rules package's script.
+    Skirmish,
 }
 
 impl TestMode {
@@ -25,6 +27,7 @@ impl TestMode {
         match self {
             TestMode::Lane | TestMode::Proving | TestMode::Ruled => "test",
             TestMode::Moba3v3 => "test/moba",
+            TestMode::Skirmish => "",
         }
     }
 
@@ -35,6 +38,7 @@ impl TestMode {
             TestMode::Proving => "modes/proving",
             TestMode::Moba3v3 => "modes/3v3",
             TestMode::Ruled => "modes/ruled",
+            TestMode::Skirmish => "test/modes/skirmish",
         }
     }
 
@@ -45,6 +49,7 @@ impl TestMode {
             TestMode::Proving => "proving",
             TestMode::Moba3v3 => "two_lanes",
             TestMode::Ruled => "stand",
+            TestMode::Skirmish => "field",
         };
         MapName::new(name).expect("a test map's name")
     }

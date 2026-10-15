@@ -1,30 +1,45 @@
 use campfire_geometry::{BodyBox, Radius};
 use campfire_math::Num;
+use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::locomotor_ini::LocomotorIni;
+use crate::zero_hour::object_ini::fight_data::BodyKind;
 use crate::zero_hour::object_ini::{GeometryShape, IniObject};
 
-/// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4): the
-/// speed and the turn rate of its first normal locomotor that drives on the ground, and its
-/// body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or, when it is a
-/// structure that is not small, a box of twice its radii for a box geometry, else a circle of its
-/// radius. Every other object has neither, and stands and blocks nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+/// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4; design
+/// 19, D5, D7): the speed and the turn rate of its first normal locomotor that drives on the
+/// ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or,
+/// when it is a structure that is not small, a box of twice its radii for a box geometry, else a
+/// circle of its radius; the life of an active or a structure body, with its `combat` section,
+/// which despawns it as it dies, and the armor of its starting armor set; and the tag of victory
+/// for a structure that counts for one. Every other object has none of these.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {
     #[serde(skip_serializing_if = "Option::is_none")]
-    stats: Option<DriveStats>,
+    pools: Option<[&'static str; 1]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    tags: Option<[&'static str; 1]>,
+    #[serde(skip_serializing_if = "TypeStats::is_empty")]
+    stats: TypeStats,
     #[serde(skip_serializing_if = "Option::is_none")]
     collision: Option<TypeBody>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    combat: Option<TypeCombat>,
 }
 
-/// A driving type's stats: its `move_speed` in meters a second and its `turn_rate` in degrees a
-/// second, as the original's units a second and degrees a second are.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct DriveStats {
-    move_speed: StatBase,
-    turn_rate: StatBase,
+/// A type's stats: a driving type's `move_speed` in meters a second and its `turn_rate` in
+/// degrees a second, as the original's units a second and degrees a second are, and a living
+/// type's `life`, its body's `MaxHealth`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+struct TypeStats {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    move_speed: Option<StatBase>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    turn_rate: Option<StatBase>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    life: Option<StatBase>,
 }
 
 /// A stat's value at every level.
@@ -42,6 +57,21 @@ enum TypeBody {
     #[serde(rename = "box")]
     Box([Num; 2]),
 }
+
+/// A living type's `combat` section: it despawns as it dies, as the original's object goes, and
+/// takes damage through its armor, whole with none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct TypeCombat {
+    on_death: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    armor: Option<DeclaredName>,
+}
+
+/// The mode's pool of life, and the stat of its maximum.
+pub(crate) const LIFE: &str = "life";
+
+/// The tag of a type that counts for a multiplayer victory (design 19, D7).
+pub(crate) const VICTORY: &str = "counts_for_victory";
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
 /// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
@@ -88,18 +118,50 @@ impl ImportedType {
         if !held {
             return Err(TypeError::Body);
         }
-        let stats = match drive {
-            Some(locomotor) => Some(DriveStats {
-                move_speed: StatBase {
-                    base: num(locomotor.speed)?,
-                },
-                turn_rate: StatBase {
-                    base: num(locomotor.turn_rate)?,
-                },
-            }),
+        let base = |value| Ok::<_, TypeError>(StatBase { base: num(value)? });
+        let mut stats = TypeStats::default();
+        if let Some(locomotor) = drive {
+            stats.move_speed = Some(base(locomotor.speed)?);
+            stats.turn_rate = Some(base(locomotor.turn_rate)?);
+        }
+        let fight = object.fight();
+        let body = fight
+            .body
+            .filter(|body| matches!(body.kind, BodyKind::Active | BodyKind::Structure));
+        stats.life = body
+            .filter(|body| body.max > 0.0)
+            .map(|body| base(body.max))
+            .transpose()?;
+        let combat = match stats.life {
+            Some(_) => {
+                let armor = fight.starting_armor().map(|armor| {
+                    DeclaredName::new(&armor.to_ascii_lowercase())
+                        .ok_or_else(|| TypeError::ArmorName(armor.to_owned()))
+                });
+                Some(TypeCombat {
+                    on_death: "despawn",
+                    armor: armor.transpose()?,
+                })
+            }
             None => None,
         };
-        Ok(ImportedType { stats, collision })
+        Ok(ImportedType {
+            pools: stats.life.map(|_| [LIFE]),
+            tags: object.counts_for_victory().then_some([VICTORY]),
+            stats,
+            collision,
+            combat,
+        })
+    }
+
+    /// Its most life, of a type that lives.
+    pub(crate) fn life(&self) -> Option<Num> {
+        self.stats.life.map(|life| life.base)
+    }
+
+    /// Its armor, of a type that lives.
+    pub(crate) fn armor(&self) -> Option<&DeclaredName> {
+        self.combat.as_ref()?.armor.as_ref()
     }
 
     /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
@@ -117,7 +179,7 @@ impl ImportedType {
 
     /// Whether its units walk: it drives, so it has a `move_speed`.
     pub(crate) const fn walks(&self) -> bool {
-        self.stats.is_some()
+        self.stats.move_speed.is_some()
     }
 
     /// Whether its body is a box, which a build places.
@@ -127,10 +189,17 @@ impl ImportedType {
 
     /// Its speed in meters a second, when it drives.
     pub(crate) const fn move_speed(&self) -> Option<Num> {
-        match self.stats {
-            Some(stats) => Some(stats.move_speed.base),
+        match self.stats.move_speed {
+            Some(speed) => Some(speed.base),
             None => None,
         }
+    }
+}
+
+impl TypeStats {
+    /// Whether it holds no stat, so the type writes no `stats`.
+    const fn is_empty(&self) -> bool {
+        self.move_speed.is_none() && self.turn_rate.is_none() && self.life.is_none()
     }
 }
 
@@ -223,15 +292,22 @@ End
         let int = Num::int;
         let half = |x: i64| Num::from_bits(x << (Num::FRAC_BITS - 1));
         let drives = |speed, turn_rate, radius| ImportedType {
-            stats: Some(DriveStats {
-                move_speed: StatBase { base: speed },
-                turn_rate: StatBase { base: turn_rate },
-            }),
+            pools: None,
+            tags: None,
+            stats: TypeStats {
+                move_speed: Some(StatBase { base: speed }),
+                turn_rate: Some(StatBase { base: turn_rate }),
+                life: None,
+            },
             collision: Some(TypeBody::Circle(radius)),
+            combat: None,
         };
         let stands = |body| ImportedType {
-            stats: None,
+            pools: None,
+            tags: None,
+            stats: TypeStats::default(),
             collision: body,
+            combat: None,
         };
         // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
         // 10 bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of
@@ -276,5 +352,99 @@ End
         // refuses, so the import refuses them first.
         assert_eq!(of("Flat"), Err(TypeError::Body));
         assert_eq!(of("Huge"), Err(TypeError::Body));
+    }
+
+    /// The objects of each kind of life D5 and D7 tell apart.
+    const LIVING: &str = "Object Soldier
+  Body = ActiveBody ModuleTag_01
+    MaxHealth = 180.0
+    InitialHealth = 180.0
+  End
+  ArmorSet
+    Conditions = PLAYER_UPGRADE
+    Armor = ChemSuitArmor
+  End
+  ArmorSet
+    Conditions = None
+    Armor = HumanArmor
+  End
+End
+Object Center
+  KindOf = STRUCTURE MP_COUNT_FOR_VICTORY
+  Body = StructureBody ModuleTag_02
+    MaxHealth = 5000.0
+  End
+End
+Object Wall
+  KindOf = MP_COUNT_FOR_VICTORY
+  Body = ActiveBody ModuleTag_03
+    MaxHealth = 10
+  End
+  ArmorSet
+    Conditions = None
+    Armor = None
+  End
+End
+Object Ghost
+  Body = ImmortalBody ModuleTag_04
+    MaxHealth = 100
+  End
+End
+Object Hollow
+  Body = ActiveBody ModuleTag_05
+  End
+End
+ObjectReskin Veteran Soldier
+  Body = ActiveBody ModuleTag_06
+    MaxHealth = 9999
+  End
+End
+";
+
+    #[test]
+    fn a_living_object_lives_by_its_body_takes_its_starting_armor_and_may_count_for_victory() {
+        let mut ini = ObjectIni::default();
+        ini.read(LIVING.as_bytes()).unwrap();
+        let of = |name: &str| {
+            ImportedType::of(
+                ini.object(name.as_bytes()).unwrap(),
+                &LocomotorIni::default(),
+            )
+            .unwrap()
+        };
+        let lives = |life: i64, armor: Option<&str>, tags| ImportedType {
+            pools: Some([LIFE]),
+            tags,
+            stats: TypeStats {
+                life: Some(StatBase {
+                    base: Num::int(life),
+                }),
+                ..TypeStats::default()
+            },
+            collision: None,
+            combat: Some(TypeCombat {
+                on_death: "despawn",
+                armor: armor.map(|armor| DeclaredName::new(armor).unwrap()),
+            }),
+        };
+        // The soldier lives by its active body, 180, in the armor of its set of no condition,
+        // the second it gives, by the name the mode declares; a reskin keeps its base's body,
+        // as its table reads none.
+        assert_eq!(of("Soldier"), lives(180, Some("humanarmor"), None));
+        assert_eq!(of("Veteran"), of("Soldier"));
+        // A structure that counts for victory lives by its structure body, of no armor, and of
+        // no geometry stands as the game's sphere of radius 1; an
+        // object of the kind that is no structure, of an armor of `None`, counts for none.
+        let center = ImportedType {
+            collision: Some(TypeBody::Circle(Num::ONE)),
+            ..lives(5000, None, Some([VICTORY]))
+        };
+        assert_eq!(of("Center"), center);
+        assert_eq!(of("Wall"), lives(10, None, None));
+        // An immortal body, and a body of no most life, give no life, and no combat.
+        for name in ["Ghost", "Hollow"] {
+            let typed = of(name);
+            assert_eq!((typed.pools, typed.combat), (None, None), "{name}");
+        }
     }
 }

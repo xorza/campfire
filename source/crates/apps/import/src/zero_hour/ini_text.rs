@@ -87,6 +87,15 @@ impl IniLine<'_> {
         IniLine::real_of(self.value()?, self.number)
     }
 
+    /// The real number of its token at `at`, as `real` reads a field's value.
+    pub(crate) fn real_at(&self, at: usize) -> Result<f32, IniError> {
+        let token = self
+            .tokens
+            .get(at)
+            .ok_or(IniError::NoValue { line: self.number })?;
+        IniLine::real_of(token, self.number)
+    }
+
     /// The value of a field of a coordinate, as `INI::parseCoord3D` reads it: each of `labels` in
     /// order, of either case, then its real number, its tokens cut at every `:` as well, as
     /// `INI::getNextSubToken` cuts them, so `X:-18.0` and `X: -18.0` are alike.

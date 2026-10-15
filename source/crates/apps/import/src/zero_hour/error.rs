@@ -95,6 +95,19 @@ pub enum ZeroHourError {
     /// The multiplayer settings mark no choice of starting money as the default, or several.
     #[error("the multiplayer settings mark no single default starting money")]
     DefaultMoney,
+    /// An armor's name is none a mode may declare, or two armors' names differ only in case.
+    #[error("the armor {0} has a name the mode cannot declare once")]
+    ArmorName(String),
+    /// An armor's share of a damage type is below 0, or past what the engine holds.
+    #[error("an armor's share is past what the engine holds: {0}")]
+    ArmorShare(String),
+    /// An object names an armor no file defines by the name of its case, which the game's debug
+    /// build stops at as wrong data.
+    #[error("{object} names the armor {armor}, which no file defines")]
+    NoArmor { object: String, armor: String },
+    /// A weapon's name makes no action's name, or one another weapon's of other numbers makes.
+    #[error("the weapon {0} has a name no action may take once")]
+    WeaponName(String),
     /// The string table is none the game reads, by its path.
     #[error("{path} is no string table the game reads")]
     StringTable {
@@ -131,6 +144,9 @@ pub enum TypeError {
     /// Its body is a circle or a box no unit type of the engine may have.
     #[error("its body is none the engine holds")]
     Body,
+    /// Its armor's name is none a mode may declare.
+    #[error("its armor {0} has a name no mode declares")]
+    ArmorName(String),
 }
 
 /// How an install's archive differs from a version's.

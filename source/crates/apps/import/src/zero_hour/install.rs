@@ -293,6 +293,7 @@ pub(crate) mod internals {
     use campfire_store::internals::Scratch;
 
     use crate::texture::internals::textures;
+    use crate::zero_hour::armor_ini::internals::ARMORS;
     use crate::zero_hour::big_archive::internals::big;
     use crate::zero_hour::command_button_ini::internals::COMMAND_BUTTONS;
     use crate::zero_hour::command_set_ini::internals::COMMAND_SETS;
@@ -304,6 +305,7 @@ pub(crate) mod internals {
     use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
     use crate::zero_hour::ref_pack::internals::literal;
     use crate::zero_hour::string_table::internals::strings;
+    use crate::zero_hour::weapon_ini::internals::WEAPONS;
 
     /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
     /// and its `Grass`, whose texture it lacks.
@@ -344,6 +346,8 @@ pub(crate) mod internals {
                 ("Data\\INI\\Terrain.ini", TERRAIN_TYPES),
                 ("Data\\INI\\GameData.ini", GAME_DATA),
                 ("Data\\INI\\Locomotor.ini", LOCOMOTORS.as_bytes()),
+                ("Data\\INI\\Weapon.ini", WEAPONS.as_bytes()),
+                ("Data\\INI\\Armor.ini", ARMORS.as_bytes()),
                 ("Data\\INI\\PlayerTemplate.ini", PLAYER_TEMPLATES.as_bytes()),
                 ("Data\\INI\\CommandSet.ini", COMMAND_SETS.as_bytes()),
                 ("Data\\INI\\CommandButton.ini", COMMAND_BUTTONS.as_bytes()),
