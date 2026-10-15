@@ -1,5 +1,7 @@
 use thiserror::Error;
 
+use crate::effect_data::PlannedEffect;
+
 /// A capability field of an action that the release runs, which does not give a value of its
 /// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
 /// meters that is not negative, and never through a scaling param.
@@ -19,9 +21,12 @@ pub enum ActionField {
     Charge,
 }
 
-/// A rule a number of a listed effect breaks.
+/// A rule a listed effect breaks: a rule of its numbers, or the release's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum EffectRule {
+    /// An effect the release does not run yet.
+    #[error("`{}` is an effect the release does not run yet", .0.name())]
+    Planned(PlannedEffect),
     /// A value, at some rank, past what a sim number holds.
     #[error("a number past what a sim number holds")]
     Overflow,

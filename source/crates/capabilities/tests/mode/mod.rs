@@ -463,7 +463,7 @@ fn slot_kinds() -> SlotKinds {
         name: DeclaredName::new(name).unwrap(),
         ranks: NonZeroU8::new(ranks).map(|count| SlotRanks::new(count, None).unwrap()),
     };
-    SlotKinds::from([kind("basic", 2), kind("spell", 0)])
+    SlotKinds::new([kind("basic", 2), kind("spell", 0)]).unwrap()
 }
 
 /// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may

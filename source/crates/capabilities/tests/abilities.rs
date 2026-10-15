@@ -2492,11 +2492,11 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
     let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
-    (SlotKindBook(Arc::new(SlotKinds::from([SlotKindData {
+    let basic = SlotKindData {
         name: DeclaredName::new("basic").unwrap(),
         ranks: Some(ranks),
-    }]))))
-    .load_into(&mut game);
+    };
+    SlotKindBook(Arc::new(SlotKinds::new([basic]).unwrap())).load_into(&mut game);
     // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
     let caster = Abilities::caster(&mut game, lash_out, 0);
     let track = TrackId::new(0);

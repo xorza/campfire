@@ -40,7 +40,6 @@ use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
 use crate::books::unit_start::{StartOf, UnitStart};
 use crate::books::unit_type_data::UnitTypeData;
-use crate::release::Release;
 
 /// A unit type the builder looks up by the name it declared it by.
 const DECLARED: &str = "the builder declared each unit type";
@@ -136,21 +135,12 @@ impl<'a> BookBuilder<'a> {
             script_starts.push(start);
             start += package.scripts.len();
         }
-        let mut books = BookParts {
-            types: UnitTypeBook::new(Release::engine_tags()),
+        let types = Books::unit_types(input.tag_names, &input.packages);
+        let books = BookParts {
+            types: types.map_err(BookError::Types)?,
             supply: data.supply,
             ..BookParts::default()
         };
-        for name in input.tag_names {
-            books
-                .types
-                .declare(name.as_str())
-                .map_err(BookError::Types)?;
-        }
-        for (index, package) in (0..).zip(&input.packages) {
-            BookBuilder::declare_types(&mut books.types, index, package)
-                .map_err(BookError::Types)?;
-        }
         let names = ModeNames::of(data).map_err(BookError::Names)?;
         let life = data.combat.life_pool(&names.pools);
         let life = life.map_err(|name| BookError::unknown(0, BookPlace::Combat, name))?;
@@ -427,7 +417,7 @@ impl<'a> BookBuilder<'a> {
     /// which numbers them: its types by name, each a delivery type or one that stands, then an
     /// avatar package's avatar. The mode's types that stand are in the mode's scope, with the
     /// avatars; every other type is in its package's own.
-    fn declare_types(
+    pub(super) fn declare_types(
         types: &mut UnitTypeBook,
         index: u16,
         package: &BookPackage<'_>,
@@ -594,8 +584,14 @@ impl<'a> BookBuilder<'a> {
             .unit_type
             .as_ref()
             .expect("a build's kind fields hold, as its parts checked");
-        let file = &package.content.units[building];
         let place = BookPlace::UnitType(TypePlace::Declared(building.clone()));
+        let file = package
+            .content
+            .units
+            .get(building)
+            .filter(|file| !file.delivers());
+        let unknown = UnknownName::new(NameKind::UnitType, building);
+        let file = file.ok_or_else(|| at(BookPlace::Action(id.clone()))(unknown))?;
         let problem = |problem| BookError::Action {
             package: index,
             action: id.clone(),
@@ -864,7 +860,10 @@ impl<'a> BookBuilder<'a> {
         let package = &input.packages[usize::from(at.package)];
         let slotted = |kind| {
             let mut slotted = file.slots.values().flatten();
-            slotted.any(|id| package.content.actions[id].kind == kind)
+            slotted.any(|id| {
+                let action = package.content.actions.get(id);
+                action.is_some_and(|action| action.kind == kind)
+            })
         };
         let books = &mut self.books;
         books.lives.set_some(unit_type, life);
@@ -962,7 +961,11 @@ impl<'a> BookBuilder<'a> {
             let named = slots.names().named(kind.as_str());
             let kind = named.ok_or_else(|| UnknownName::new(NameKind::SlotKind, kind))?;
             let rank = slots.first_rank(kind);
-            held.extend(ids.iter().map(|id| (actions[id.as_str()], kind, rank)));
+            for id in ids {
+                let action = actions.get(id.as_str()).copied();
+                let action = action.ok_or_else(|| UnknownName::new(NameKind::Ability, id))?;
+                held.push((action, kind, rank));
+            }
         }
         if held.is_empty() && inventory.is_none() && uses.is_none() {
             return Ok(None);

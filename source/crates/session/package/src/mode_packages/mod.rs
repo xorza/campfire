@@ -197,6 +197,22 @@ impl ModePackages {
         rate: TickRate,
         stat_order: &'a [StatId],
     ) -> BookInput<'a> {
+        BookInput {
+            data: &self.data,
+            map: &self.map,
+            teams: &self.manifest.teams,
+            max_move_speed: self.manifest.max_move_speed,
+            progression: self.manifest.capabilities.contains(Capability::Progression),
+            tag_names: &self.tag_names,
+            packages: self.book_packages(),
+            scripts: &self.scripts,
+            rate,
+            stat_order,
+        }
+    }
+
+    /// Its packages as its books are built from them, the mode's then each dependency's.
+    pub(crate) fn book_packages(&self) -> Vec<BookPackage<'_>> {
         let packages = self.packages().map(|view| BookPackage {
             name: view.package.header.name.as_str(),
             content: view.content,
@@ -213,18 +229,7 @@ impl ModePackages {
                 .map(|script| &script.path)
                 .collect(),
         });
-        BookInput {
-            data: &self.data,
-            map: &self.map,
-            teams: &self.manifest.teams,
-            max_move_speed: self.manifest.max_move_speed,
-            progression: self.manifest.capabilities.contains(Capability::Progression),
-            tag_names: &self.tag_names,
-            packages: packages.collect(),
-            scripts: &self.scripts,
-            rate,
-            stat_order,
-        }
+        packages.collect()
     }
 
     /// The hooks each script of its packages defines, as the load read them, in the order a
@@ -242,14 +247,6 @@ impl ModePackages {
             book.push(functions.map(|function| (function.name.as_str(), function.params)));
         }
         book
-    }
-
-    /// The names of its avatars' unit types in the mode's scope: their packages' names.
-    pub(crate) fn avatar_names(&self) -> impl Iterator<Item = &str> {
-        self.dependencies
-            .iter()
-            .filter(|dependent| matches!(dependent.kind, DependentKind::Avatar(_)))
-            .map(|dependent| dependent.package.header.name.as_str())
     }
 
     /// The name of the map it loaded.

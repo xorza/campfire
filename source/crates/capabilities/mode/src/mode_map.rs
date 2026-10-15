@@ -53,7 +53,7 @@ pub struct WalkCheck<'a> {
 
 impl ModeMap {
     /// The names of `teams`; an error for two of one name, or more than a team index counts.
-    fn team_names(teams: &[TeamManifest]) -> Result<Names<Team>, ModeError> {
+    pub fn team_names(teams: &[TeamManifest]) -> Result<Names<Team>, ModeError> {
         let mut names = Names::default();
         for team in teams {
             match names.try_add(team.name.as_str()) {

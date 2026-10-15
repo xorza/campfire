@@ -2461,7 +2461,7 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("name = \"ultimate\"", "name = \"basic\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::SlotKinds, name } if name == "basic"),
+        |problem| read_fails(problem, "data/mode.toml", "the slot kind `basic` twice"),
     ),
     flaw(
         MODE_DATA,
@@ -2692,6 +2692,17 @@ static MAP_FLAWS: &[Flaw] = &[
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "dragon"),
+    },
+    // A delivery type is no unit type of the mode that a build raises.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"caster_creep_bolt\"\nconstruct = \"alone\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "raise" && name == "caster_creep_bolt"),
     },
     Flaw {
         file: MODE_DATA,

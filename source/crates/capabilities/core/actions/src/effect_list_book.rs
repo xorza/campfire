@@ -86,7 +86,7 @@ impl EffectListBook {
             .map(|effect| {
                 EffectListBook::holds(data, hook, &effect.does)?;
                 Ok(EffectSpec {
-                    does: self.resolve(data, &effect.does, names)?,
+                    does: self.resolve(data, hook, &effect.does, names)?,
                     to: effect.to,
                 })
             })
@@ -115,11 +115,12 @@ impl EffectListBook {
         Ok(())
     }
 
-    /// What `does`, an effect of the action `data`, does, its names resolved by `names`; a
-    /// launch's lists appended first.
+    /// What `does`, an effect of the action `data`'s list `hook`, does, its names resolved by
+    /// `names`; a launch's lists appended first.
     fn resolve(
         &mut self,
         data: &ActionData,
+        hook: Hook,
         does: &DoesData,
         names: &impl EffectNames,
     ) -> Result<DoesSpec, ActionError> {
@@ -195,7 +196,10 @@ impl EffectListBook {
                     ms: amount(ms)?,
                 }
             }
-            DoesData::Planned(_) => unreachable!("the load refuses a planned effect"),
+            DoesData::Planned(planned) => {
+                let rule = EffectRule::Planned(*planned);
+                return Err(ActionProblem::Effect { list: hook, rule }.into());
+            }
         };
         Ok(DoesSpec::Capability(of_capability))
     }

@@ -81,7 +81,7 @@ pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::{ActionField, EffectRule};
 pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
 pub use crate::action_data_field::ActionDataField;
-pub use crate::action_kind::ActionKind;
+pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
@@ -107,7 +107,7 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem};
+pub use crate::error::{ActionError, ActionProblem, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};

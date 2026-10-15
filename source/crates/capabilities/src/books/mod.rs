@@ -8,12 +8,12 @@ use campfire_declare::ByType;
 use campfire_mode::{ModeInputs, WalkCheck};
 use campfire_navigation::{MapProblem, Walker};
 use campfire_script::View;
-use campfire_units::{BodyForm, MapBook, UnitTypeBook};
+use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
 use campfire_values::{DamageKind, DeclaredName, Names, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;
-use crate::books::book_input::BookInput;
+use crate::books::book_input::{BookInput, BookPackage};
 use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
 use crate::release::Release;
@@ -48,6 +48,25 @@ impl Books {
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
         BookBuilder::new(input)?.build()
+    }
+
+    /// The unit types of `packages`, the mode's then each dependency's, and the tags of the
+    /// match: the engine's, then `tag_names`, then those the types name, in the order their ids
+    /// follow; an error for a type its scope names already, or past the most types or tags a
+    /// match holds. The build's first step, and the tables a check of the packages resolves
+    /// their names by.
+    pub fn unit_types(
+        tag_names: &[DeclaredName],
+        packages: &[BookPackage<'_>],
+    ) -> Result<UnitTypeBook, TypesError> {
+        let mut types = UnitTypeBook::new(Release::engine_tags());
+        for name in tag_names {
+            types.declare(name.as_str())?;
+        }
+        for (index, package) in (0..).zip(packages) {
+            BookBuilder::declare_types(&mut types, index, package)?;
+        }
+        Ok(types)
     }
 
     /// Checks that the mode's map can be walked by the kinds of its unit types that walk, as
