@@ -429,7 +429,7 @@ impl JoinState {
         self.step = Step::Playing(Playing {
             member,
             chain,
-            clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+            clock: MatchClock::new(NetTick(start.start_tick), start.first),
             team: start.team,
             history,
             last_stamp,
@@ -449,7 +449,7 @@ impl JoinState {
         };
         self.step = Step::Watching(Watching {
             member: answered.member,
-            clock: MatchClock::resumed(NetTick(start.start_tick), start.first),
+            clock: MatchClock::new(NetTick(start.start_tick), start.first),
         });
         true
     }
