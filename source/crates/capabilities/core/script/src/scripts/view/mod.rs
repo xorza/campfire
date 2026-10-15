@@ -9,10 +9,7 @@ use campfire_math::Num;
 use campfire_sim::{Position, StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
-use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
@@ -303,21 +300,6 @@ impl View {
         Ok(nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
             ScriptValue::of(Unit::new(id, at, self.clone()))
         }))
-    }
-
-    /// `ctx.find`.
-    pub fn register_queries(api: &mut ApiBuilder<'_>) {
-        let find = MemberSpec::call(
-            "find",
-            &[&["of", "pos", "radius", "filter"]],
-            "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
-        );
-        api.call(
-            find,
-            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: Filter| {
-                ctx.view().find(&of, pos, radius, &filter, |_, _| true)
-            },
-        );
     }
 }
 

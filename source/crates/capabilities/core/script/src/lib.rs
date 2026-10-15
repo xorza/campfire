@@ -80,6 +80,7 @@ pub use crate::scripts::view::unit_row::UnitRow;
 pub use crate::scripts::view::view_column::{ViewColumn, ViewColumns};
 pub use crate::scripts::view::view_names::ViewNames;
 pub use crate::scripts::view::view_rows::{ReadOf, ViewRows};
+pub use crate::scripts::view_api::ViewApi;
 
 #[cfg(feature = "internals")]
 pub mod internals {

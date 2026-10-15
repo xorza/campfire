@@ -8,7 +8,7 @@ use campfire_declare::{
 };
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StateSchema, SyncTo, Unit, UnitRow, View,
+    ScriptList, StateSchema, SyncTo, UnitRow, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{EngineTag, Relations, TagProperties, Team, UnitTags, UnitType};
@@ -205,10 +205,10 @@ impl Module for Units {
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptCall>();
         d.api(CoreApi::register);
-        d.api(Unit::register);
+        d.api(ViewApi::register_unit);
         d.api(NewUnit::register);
         d.api(UnitsApi::register);
-        d.api(View::register_queries);
+        d.api(ViewApi::register_queries);
         d.book::<ByType<MoveStep>>();
         d.book::<ByType<TurnStep>>();
         d.book::<ByType<BodyForm>>();
