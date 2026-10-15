@@ -4,13 +4,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 **Slice 5, units that drive.** The user starts Tournament Desert in the client, finds America's command center and dozer at their start, selects the dozer, and drives it round the cliffs to the other start, at its speed and turn rate, on the drawn ground. The design is [Units that drive](docs/design/17-units-that-drive.md); the facts are [Zero Hour research](docs/research/zero-hour.md#movement). The Zero Hour check plays the drive, and loads every imported map.
 
-**Hardening, before the rest of slice 5.** The workspace review, [review-workspace](.notes/review-workspace.md), found about 30 bugs and ten root causes. The user chose to take the whole review before Zero Hour's batch. Each batch removes the mechanism behind its root cause and adds a guard first, which fails on the bugs it fixes. A batch's items, with their places, defects and target shapes, are in the review's batch of the same number; an item done is deleted there, and a batch done is deleted here. The decisions D1 to D5 are in the review's section 0.
+**Hardening, before the rest of slice 5.** The workspace review, [review-workspace](.notes/review-workspace.md), found about 30 bugs and ten root causes. The user chose to take the whole review before Zero Hour's batch. Each batch removes the mechanism behind its root cause and adds a guard first, which fails on the bugs it fixes. A batch's items, with their places, defects and target shapes, are in the review's batch of the same number; an item done is deleted there, and a batch done is deleted here. The decisions D1 to D14 are in the review's section 0.
 
 ## 1. Hardening
-
-### H8. Declarations own install and spawn
-
-(`declare`, the release's installer, `units`, `combat`, `navigation`, `stats`, `mode`, `orders`, `production`, `deliveries`, `progression`, the books; review RC5.) After H2 and H7. `InstallCx` keeps its world private, so resources, hooks and parts come from declarations; every part comes with its spawn; navigation owns the map walk check; stats owns passives; progression asks stats for a level change. Guard: a unit changes archetype after its spawn only by its kind's state markers. Goldens: they may move where a part now comes at the spawn.
 
 ### H9. One home for each session fact
 
@@ -22,7 +18,7 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ### H11. Change-driven passes
 
-(sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. Each item names its bench for the next optimization session. Goldens: none move.
+(sim, `navigation`, `stats`, `actions`, `orders`, `production`, `projectiles`, `abilities`, `runner`, `protocol`, `quic`, `geometry`; review RC4.) A `DueRun` in sim for timed work, `Changed` filters for the rest, and incremental static and region updates. It waits for the user's next optimization session (D11), where each item's bench decides it. Goldens: none move.
 
 ### H13. Names resolved at the load
 

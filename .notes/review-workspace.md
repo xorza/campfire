@@ -13,6 +13,15 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 - **D3. `package` and the deterministic core:** `package` splits. A core crate checks and decodes packages from bytes, and a crate outside the core reads directories through `store`. Design 02's rule, that no core crate depends on `store`, stays as written.
 - **D4. The home of the client's formats:** a new crate at the session layer holds the client's presentation formats and `HeightGrid`. Only the import and the client depend on it.
 - **D5. The Zero Hour check against design 12 D7:** D7 stays the target. The plan holds the fingerprint comparison and the parity suite as open steps for when the oracle comes, and design 02's dependency list follows the code.
+- **D6. The books' build:** `into_books` keeps its list of books, which the declared-and-built check and the books test hold.
+- **D7. The engine tags' numbers:** each tag keeps its number in its `const`, and the declaration walk checks it.
+- **D8. A new unit's vision group:** each reader derives it from the relations it reads; `VisionGroups` stays the Vision pass's own.
+- **D9. The protocol's signer:** the session signs. `Entropy` moves to `common`. Protocol's `Signer` holds the key, the signing context and the entropy. The runner's `Session` holds the server's `Signer`, an `Option` that a server alone fills, and signs its own inputs, checkpoints and result. `ServerSigner` goes, and the client's signer is protocol's.
+- **D10. The units file's writer:** the import keeps its `UnitsToml`, and a test reads what it writes through `package`'s `UnitsFile`.
+- **D11. Change-driven passes:** Batch 11 moves whole to the user's next optimization session, where each item's bench decides it.
+- **D12. `JoinRefused`:** `JoinError` and the errors it wraps derive serde; `EventError` keeps nostr's error kind as a `Copy` enum of its own; `JoinRefused` carries the `JoinError`, and the link as its entity's bits, as the lobby's other lines then name links.
+- **D13. A capability's refusal in `ApiError`:** `ApiError::Refused(Refusal { owner: Capability, code: u8 })`, `Copy` and `PartialEq`. Each capability's refusal enum converts into it and back, and gives its message through a table its module declares.
+- **D14. The guide items kept:** `book_builder`'s `mem::take` of the effects, `ModeMap::install_pathing`, `model_writer::path` and the client's clone of a due `ScriptedInput` stay as they are.
 
 ## 1. Proposal
 
@@ -97,29 +106,22 @@ The user decided each question on 2026-10-15. Each plan item that a decision sha
 
 Batches go most impactful first. A batch that needs another batch or a decision names it. Each batch adds its guard first: the guard fails on the bugs, then each fix makes it pass, so the batch proves what it fixed. Each batch ends with `./drive.py check` passing, and it says whether the goldens move.
 
-### Batch 8. Declarations own install and spawn (RC5)
-
-Needs Batches 2 and 7. Files: `capabilities/core/declare/src/**`, `capabilities/src/release/installer.rs`, the `install` of `units`, `combat`, `navigation`, `stats`, `mode`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/{construction,gather_loop}/mod.rs`, `capabilities/core/deliveries/src/delivery_spawner.rs`, `capabilities/progression/src/{progression_effect,experience}.rs`, `capabilities/core/units/src/{unit_type_book,spawner}.rs`, `capabilities/src/books/*`. Goldens: they may move where a part now comes at the spawn. The batch says which.
-
-- [ ] `capabilities/src/books/{book_builder.rs:229-321,book_parts.rs,unit_type_data.rs}`, `areas/src/lib.rs:115`, `projectiles/src/lib.rs:113`, `production/src/lib.rs:188-202`: each module's book declaration carries its build function, `into_books` walks the declarations, and the engine tags are numbered by the walk. Blocked: see `review-workspace_QUESTIONS.md`, Batch 8.
-- [ ] `values/src/relations.rs:94-100`: `seen_targets.rs:39` reads `VisionGroups`. Blocked: see `review-workspace_QUESTIONS.md`, Batch 8.
-
 ### Batch 9. One home for each session fact (RC3)
 
 Needs Batch 1 (`CheckedTerms`). Files: `session/{protocol,runner,package}/src/**`, `apps/server/src/{main,opening/mod}.rs`, `network/net/src/local/local_server/mod.rs`, `network/net/src/sim_server/{mod,lobby/mod,lobby/door,data_filter}.rs`, `sim/math/src/{num/mod,direction/mod}.rs`. Goldens: none move. The session-id hash stays byte-equal.
 
-- [ ] Protocol signing: a `Signer { secp, key }` and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. `ServerSigner` goes. Blocked: see `review-workspace_QUESTIONS.md`, Batch 9.
+- [ ] Protocol signing, as D9 says: a `Signer` of the key, the signing context and `common`'s `Entropy`, and a verification context with its scratch message, used by `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect` and `session_log`. The session holds the server's signer and signs its own records. `ServerSigner` goes.
+- [ ] `net/src/sim_client/mod.rs` `lose_link`, `retry_link`: the retry jitter takes the client's `Entropy`, not its `Signer`.
 
 ### Batch 10. One home for each format (RC3)
 
 Needs Batch 3. Files: `apps/import/src/{zero_hour,texture}/*`, the client formats' crate of Batch 3, `capabilities/mode/src/map_data.rs`, `apps/client/src/{view/client_data,view/ground_heights,args,connection}*`. Goldens: none move. The imported packages stay byte-equal, or the batch says why not.
 
-- [ ] Guard: a round-trip test of the units file the import writes; the map's and KTX2's are done. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
-- [ ] `import/src/zero_hour/unit_types.rs:20`: the units file type derives `Serialize`, and the import writes it. Blocked: see `review-workspace_QUESTIONS.md`, Batch 10.
+- [ ] Guard, as D10 says: a test reads the units file the import's `UnitsToml` writes through `package`'s `UnitsFile`; the map's and KTX2's are done.
 
 ### Batch 11. Change-driven passes (RC4)
 
-Blocked: see `review-workspace_QUESTIONS.md`, Batch 11.
+Waits for the user's next optimization session (D11): each item is written there, with its bench before and after, and an item that does not pay is dropped.
 
 Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `capabilities/stats/src/held_pass.rs`, `capabilities/core/actions/src/holds.rs`, `capabilities/orders/src/thinking.rs`, `capabilities/production/src/gather_loop/mod.rs`, `capabilities/projectiles/src/flying.rs`, `capabilities/abilities/src/toggles.rs`, `session/{runner,protocol}/src/**`, `network/quic/src/admission.rs`, `capabilities/core/geometry/src/body_box/mod.rs`. Goldens: none move. A pass visits fewer units with the same result.
 
@@ -133,20 +135,18 @@ Files: `sim/sim/src/` (the new `DueRun`), `capabilities/navigation/src/**`, `cap
 - [ ] `protocol/src/server_seeds.rs:24-33`, `runner/src/session/mod.rs:107-117,217-224`: test `segment <= last` and derive the seed once, and one restore target for each replay.
 - [ ] `quic/src/admission.rs:18-84`: a map and an expiry queue.
 - [ ] `geometry/src/body_box/mod.rs:336-343,533`: pass the `Edges` and the probe already made.
-- [ ] Waits for the user's optimization session: each item's bench.
 
 ### Batch 13. Names resolved at the load
 
 Files: `capabilities/stats/src/{param_book,modifier_spec}.rs`, `capabilities/mode/src/{game_map,marker,marker_tag,marker_spec,mode_map}.rs`, `capabilities/core/{script,actions,values}/src/**`, `session/protocol/src/**`, `network/net/src/events/*`, `network/quic/src/{port_mapper/mod,error}.rs`. Goldens: none move.
 
-- [ ] `net/src/events/join_refused`: typed fields, as `LinkLost` has. Blocked: see `review-workspace_QUESTIONS.md`, Batch 13.
+- [ ] `net/src/events/join_refused`: typed fields, as D12 says.
 
 ### Batch 14. Sibling APIs (RC10)
 
 Files: `capabilities/core/{values,geometry,actions,deliveries,players,units,script}`, `capabilities/{stats,combat,abilities}`, `network/{net,quic}`, `apps/{client,import,server}`, `test/harness`. Goldens: none move.
 
-- [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal type. Blocked: see `review-workspace_QUESTIONS.md`, Batch 14.
-- [ ] `net/src/sim_client/mod.rs` `lose_link`, `retry_link`: the retry jitter takes `Entropy`, not `Signer`. Blocked: see `review-workspace_QUESTIONS.md`, Batch 9 and Batch 14.
+- [ ] `script/src/scripts/error.rs:26`: one case that carries a capability's own refusal, as D13 says.
 
 ### Batch 15. Design and code that disagree
 
