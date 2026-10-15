@@ -1,10 +1,12 @@
 use campfire_common::MapName;
+use campfire_import::DropCause;
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
+use campfire_orders::OrdersAction;
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{DRIVE_TICKS, LOOKS, TERRAIN, WALLS};
+use crate::{DRIVE_TICKS, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS};
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
@@ -42,6 +44,21 @@ pub(crate) enum Failure {
     /// from the pinned.
     #[display("it has {_0}, not {LOOKS}")]
     Looks(LookCounts),
+    /// The import's trains, builds and dropped buttons by cause differ from the pinned.
+    #[display("it converted {_0}, not {PRODUCED}")]
+    Produced(ProducedCounts),
+    /// The imported mode has no player resource `money` for the production play to pay with.
+    #[display("the imported mode has no money")]
+    NoMoney,
+    /// Tournament Desert's player 1 lacks a unit the production play orders.
+    #[display("player 1 lacks a unit the production play orders")]
+    ProductionStart,
+    /// A step of the production play does not end within its limit.
+    #[display("the production step {_0:?} does not end")]
+    ProductionStep(OrdersAction),
+    /// The production play's ticks or money differ from the pinned.
+    #[display("it played production as {_0:?}, not {PRODUCTION:?}")]
+    Production(ProductionSteps),
     /// Tournament Desert lacks a start of player 1 or 2.
     #[display("it has no start of player 1 or of player 2")]
     NoStarts,
@@ -79,6 +96,26 @@ pub(crate) struct LookCounts {
     pub(crate) empty: usize,
     pub(crate) night: usize,
     pub(crate) snowy: usize,
+}
+
+/// The production play's steps: each one's ticks, from the tick its order applies to the tick
+/// its unit or building is whole, and player 1's money after each pays.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProductionSteps {
+    pub(crate) dozer_ticks: u64,
+    pub(crate) barracks_ticks: u64,
+    pub(crate) ranger_ticks: u64,
+    pub(crate) money: [i64; 3],
+}
+
+/// How many trains and builds the import converts, and how many buttons it drops for each
+/// cause, in the order of the causes.
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
+pub(crate) struct ProducedCounts {
+    pub(crate) trains: usize,
+    pub(crate) builds: usize,
+    pub(crate) dropped: [usize; DropCause::ALL.len()],
 }
 
 /// How many ground quads, overlays, texture copies and border wraps a terrain file holds.

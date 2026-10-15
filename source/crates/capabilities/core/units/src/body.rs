@@ -180,6 +180,7 @@ mod tests {
 
     use super::*;
     use crate::body_form::BodyForm;
+    use crate::facing::Facing;
 
     #[test]
     fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
@@ -219,9 +220,19 @@ mod tests {
         let (one, two) = (Num::ONE, Num::int(2));
         assert_eq!(
             turned.half_edges(),
-            Some([[Num::ZERO, two], [-one, Num::ZERO]])
+            Some([[Num::ZERO, -two], [one, Num::ZERO]])
         );
         assert_eq!((turned.radius(), turned.layer()), (None, Layer::new(1)));
+        // At any angle the box's first half edge points the way a unit of that angle faces, so
+        // the model the client turns by the facing covers the box: at 30° and −135° (225°), the
+        // facing along it is the angle, within the rounding of its components to a bit, each a
+        // 2⁻²⁵ m of a 2 m edge, which moves its angle by under 2⁻²⁰ degrees.
+        for angle in [Num::int(30), Num::int(-135)] {
+            let [along, _] = boxed.at(angle).half_edges().unwrap();
+            let way = Facing::along(along).unwrap().degrees();
+            let gap = (way - Facing::of(angle).degrees()).to_bits().unsigned_abs();
+            assert!(gap <= 1 << (Num::FRAC_BITS - 16), "{angle}: {way}");
+        }
         assert!(boxed.is_box() && !form.is_box());
         assert_eq!(
             (boxed.circle_radius(), form.circle_radius()),

@@ -1,9 +1,11 @@
 // A skirmish's start, as the original's `placeNetworkBuildingsForPlayer` places it: each player's
 // faction building at its start waypoint, `Player_<n>_Start` of slot `n`, and each starting unit
 // at its rally waypoint, `Player_<n>_Rally`, or on a map with none at the building's point moved
-// `start_offset` along +z. A player whose start the map lacks starts with nothing.
+// `start_offset` along +z. A player whose start the map lacks starts with no unit. Every player
+// starts with the skirmish's money, `start_money`, as the game gives each its starting cash.
 fn on_match_start(ctx) {
     for player in 0..ctx.players {
+        ctx.add_resource(player, "money", ctx.p.start_money);
         let n = player + 1;
         let starts = start_marker(ctx, `Player_${n}_Start`);
         if starts.is_empty() {

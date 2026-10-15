@@ -64,10 +64,12 @@ impl BodyBox {
     pub(crate) const MAX_DIAGONAL: Num = Num::int(4094);
 
     /// The box of `size`, `[width, height]` in meters along `a` and `b`, turned by `angle`
-    /// degrees counterclockwise: each component of a half edge is the exact product of half a
-    /// size and a cosine or a sine, rounded once, to nearest, ties to even. A multiple of 90°
-    /// turns by exact sines; any other angle by those `sin_cos` gives. `None` for a size below
-    /// `MIN_SIZE`, or for a diagonal past `MAX_DIAGONAL`.
+    /// degrees as a unit's facing turns, from `x` towards `−z`: `a` along `(cos, −sin)` and `b`
+    /// along `(sin, cos)`, so its model, which the client turns by the same angle, covers it.
+    /// Each component of a half edge is the exact product of half a size and a cosine or a sine,
+    /// rounded once, to nearest, ties to even. A multiple of 90° turns by exact sines; any other
+    /// angle by those `sin_cos` gives. `None` for a size below `MIN_SIZE`, or for a diagonal past
+    /// `MAX_DIAGONAL`.
     pub fn new(size: [Num; 2], angle: Num) -> Option<BodyBox> {
         let [width, height] = size;
         if width < BodyBox::MIN_SIZE || height < BodyBox::MIN_SIZE {
@@ -87,8 +89,8 @@ impl BodyBox {
                 .expect("half a size within 4,094 m times at most 1 fits")
         };
         let made = BodyBox::of_halves([
-            [half(width, cos), half(width, sin)],
-            [-half(height, sin), half(height, cos)],
+            [half(width, cos), -half(width, sin)],
+            [half(height, sin), half(height, cos)],
         ]);
         debug_assert!(made.is_some(), "a box of the least size is not flat");
         made

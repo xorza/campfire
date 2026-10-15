@@ -87,16 +87,16 @@ fn crossing(start: Flat, path: Flat, a: Flat, b: Flat) -> Option<[i128; 2]> {
 #[test]
 fn a_box_turns_exactly_by_quarters_and_rounds_once_elsewhere() {
     let one = Num::ONE.to_bits();
-    // 4 × 2 m: half edges (2, 0) and (0, 1), turned a quarter at a time, and the same a whole
-    // turn on, or before.
+    // 4 × 2 m: half edges (2, 0) and (0, 1), turned a quarter at a time from x towards −z, as a
+    // facing turns, and the same a whole turn on, or before.
     let quarters = [
         ("0", [[2, 0], [0, 1]]),
-        ("90", [[0, 2], [-1, 0]]),
+        ("90", [[0, -2], [1, 0]]),
         ("180", [[-2, 0], [0, -1]]),
-        ("270", [[0, -2], [1, 0]]),
+        ("270", [[0, 2], [-1, 0]]),
         ("360", [[2, 0], [0, 1]]),
-        ("-90", [[0, -2], [1, 0]]),
-        ("450", [[0, 2], [-1, 0]]),
+        ("-90", [[0, 2], [-1, 0]]),
+        ("450", [[0, -2], [1, 0]]),
     ];
     for (angle, meters) in quarters {
         let expected = meters.map(|edge| edge.map(|m: i64| m * one));
@@ -107,14 +107,14 @@ fn a_box_turns_exactly_by_quarters_and_rounds_once_elsewhere() {
     let odd = |bits: i64| BodyBox::new([Num::from_bits(bits), Num::ONE], Num::ZERO).unwrap();
     assert_eq!(halves(&odd(one + 1))[0][0], one / 2);
     assert_eq!(halves(&odd(one + 3))[0][0], one / 2 + 2);
-    // At 45°, a 2 m side's half edge is the cosine and the sine themselves: within a bit of
-    // cos 45° × 2²⁴ = 11 863 283.2, as `sin_cos` is within 0.501 of a bit of the sine of the
+    // At 45°, a 2 m side's half edge is the cosine and the negated sine themselves: within a bit
+    // of cos 45° × 2²⁴ = 11 863 283.2, as `sin_cos` is within 0.501 of a bit of the sine of the
     // rounded angle, itself within 2⁻²⁵ rad of π/4. The other half edge is the first turned a
     // quarter, from the same products.
     let turned = halves(&made("2", "2", "45"));
-    for component in turned[0] {
-        assert!((component - 11_863_283).abs() <= 1, "{component}");
-    }
+    let [along, across] = turned[0];
+    assert!((along - 11_863_283).abs() <= 1, "{along}");
+    assert!((across + 11_863_283).abs() <= 1, "{across}");
     assert_eq!(turned[1], [-turned[0][1], turned[0][0]]);
 }
 
@@ -418,14 +418,14 @@ fn a_body_is_pushed_out_of_a_box() {
         upright.push_out(center, point("0", "2.5"), Num::ONE),
         Some(past("0", "3", [Num::ZERO, bit]))
     );
-    // Turned 30°, off the edge from a to a + b at 1.25·a, off the corner a + b by (0.25, 0.25) m,
-    // and inside at (1, 0) m, 0.5 m from the edge from −a − b to a − b, the nearest: each ends
-    // apart, within three bits of touching.
+    // Turned 30°, from x towards −z: off the edge from a to a − b at 1.25·a, off the corner
+    // a − b by (0.25, −0.25) m, and inside at (1, 0) m, 0.5 m from the edge from −a + b to a + b,
+    // the nearest: each ends apart, within three bits of touching.
     let turned = made("4", "2", "30");
     let bits = |x: i64, z: i64| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
     for from in [
-        bits(36_323_738, 20_971_520),
-        bits(24_864_686, 35_501_015),
+        bits(36_323_738, -20_971_520),
+        bits(24_864_686, -35_501_015),
         bits(16_777_216, 0),
     ] {
         assert!(
@@ -869,22 +869,23 @@ fn random_boxes(scale: i64) {
 
 #[test]
 fn a_body_at_the_bound_is_pushed_out_of_the_longest_box() {
-    // The longest box, turned 45°, and a body of 2,048 m into it: each push ends apart, within
-    // three bits of touching. The box's half edges are 2 046.95 m along (√½, √½) and
-    // 0.5 m along (−√½, √½), so its long edge's line lies 0.5 m from the center, its short edge's
-    // 2 046.95 m, and a corner at (1 447.06, 1 447.77) m: 1 447.41 ∓ 0.35, 1 447.41 + 0.35.
+    // The longest box, turned 45° from x towards −z, and a body of 2,048 m into it: each push
+    // ends apart, within three bits of touching. The box's half edges are 2 046.95 m along
+    // (√½, −√½) and 0.5 m along (√½, √½), so its long edge's line lies 0.5 m from the center,
+    // its short edge's 2 046.95 m, and a corner at (1 447.06, −1 447.77) m: 1 447.41 ∓ 0.35,
+    // −(1 447.41 + 0.35).
     let longest = made("4093.9", "1", "45");
     let center = at("0", "0");
     let radius = Num::int(2048);
     for probe in [
         // 1 448·√2 = 2 047.78 m across the long edge's normal, 0.72 m into the body's reach.
-        at("-1448", "1448"),
+        at("-1448", "-1448"),
         // 1.5·√½ = 1.06 m across it, so 0.56 m past the line and 2 047.44 m in.
-        at("1000", "1001.5"),
+        at("1000", "-1001.5"),
         // 2 895·√2 = 4 094.15 m along the axis, 2 047.20 m past the short edge, 0.80 m in.
-        at("2895", "2895"),
-        // 2 047.50 m straight up from the corner, between the long and short edges' normals.
-        at("1447.06", "3495.27"),
+        at("2895", "-2895"),
+        // 2 047.50 m along −z from the corner, between the long and short edges' normals.
+        at("1447.06", "-3495.27"),
     ] {
         assert!(
             longest.push_out(center, probe, radius).is_some(),

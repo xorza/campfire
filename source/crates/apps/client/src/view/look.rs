@@ -193,13 +193,14 @@ mod tests {
         assert_eq!(Shape::of(ShapeKind::Avatar, Some(&body)), avatar);
         assert_eq!(Shape::of(ShapeKind::Creep, None), CREEP);
         assert_eq!(Shape::of(ShapeKind::Structure, None), STRUCTURE);
-        // A box of 4 × 2 m turned a quarter: its first half edge points along +z, which Bevy's
-        // turn of -π/2 about y takes x to; it stands as tall as a structure, and reaches √5 m.
+        // A box of 4 × 2 m turned a quarter: its first half edge points along −z, which Bevy's
+        // turn of π/2 about y takes x to, as the unit's facing of 90° turns its model; it stands
+        // as tall as a structure, and reaches √5 m.
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         let boxed = Shape::of(ShapeKind::Structure, Some(&form.at(Num::int(90))));
         let expected = Footing::Box {
             half: [2.0, 1.0],
-            yaw: -FRAC_PI_2,
+            yaw: FRAC_PI_2,
         };
         assert_eq!(boxed.footing, expected);
         assert_eq!(boxed.height, STRUCTURE.height);

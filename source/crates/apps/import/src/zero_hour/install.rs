@@ -294,12 +294,16 @@ pub(crate) mod internals {
 
     use crate::texture::internals::textures;
     use crate::zero_hour::big_archive::internals::big;
+    use crate::zero_hour::command_button_ini::internals::COMMAND_BUTTONS;
+    use crate::zero_hour::command_set_ini::internals::COMMAND_SETS;
     use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
     use crate::zero_hour::map_file::internals::map;
     use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
+    use crate::zero_hour::multiplayer_ini::internals::MULTIPLAYER;
     use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
     use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
     use crate::zero_hour::ref_pack::internals::literal;
+    use crate::zero_hour::string_table::internals::strings;
 
     /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
     /// and its `Grass`, whose texture it lacks.
@@ -341,6 +345,10 @@ pub(crate) mod internals {
                 ("Data\\INI\\GameData.ini", GAME_DATA),
                 ("Data\\INI\\Locomotor.ini", LOCOMOTORS.as_bytes()),
                 ("Data\\INI\\PlayerTemplate.ini", PLAYER_TEMPLATES.as_bytes()),
+                ("Data\\INI\\CommandSet.ini", COMMAND_SETS.as_bytes()),
+                ("Data\\INI\\CommandButton.ini", COMMAND_BUTTONS.as_bytes()),
+                ("Data\\INI\\Multiplayer.ini", MULTIPLAYER.as_bytes()),
+                ("Data\\English\\generals.csf", &strings()),
                 ("Data\\INI\\Object.ini", OBJECTS.as_bytes()),
                 ("Data\\INI\\Object\\Deep\\More.ini", b""),
                 ("Data\\INI\\Object\\Misc.ini", MORE_OBJECTS.as_bytes()),

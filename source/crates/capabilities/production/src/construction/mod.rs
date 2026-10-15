@@ -207,11 +207,11 @@ impl Construction {
         let start_life = spec.start_life;
         let one_holds = matches!(spec.style, Style::Builder);
         let stays = !matches!(spec.style, Style::Alone);
-        // The site's life starts at its share of the most its type's life holds, as it spawns.
+        // The site's life starts at its share of the most its type's life holds, as it spawns; a
+        // mode of no life pool has no book of lives, and its site no life.
         let full = world
-            .resource::<ByType<Life>>()
-            .get(start.unit_type)
-            .copied();
+            .get_resource::<ByType<Life>>()
+            .and_then(|lives| lives.get(start.unit_type).copied());
         let gain = full.map_or(Num::ZERO, |full| {
             let max = full.max();
             let share =

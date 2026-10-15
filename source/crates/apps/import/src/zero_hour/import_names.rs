@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
+use std::num::NonZeroU8;
 
 use campfire_codec::Toml;
 use campfire_math::Num;
@@ -20,6 +21,44 @@ use crate::zero_hour::object_ini::IniObject;
 pub(crate) struct ImportNames {
     taken: BTreeMap<ImportName, String>,
     placed: BTreeMap<ImportName, ImportedType>,
+    produced: BTreeMap<ImportName, TypeProduction>,
+}
+
+/// What a unit type takes of production (design 18, D3): the actions of its slot kind
+/// `command`, in its command set's order, and its `production` section when it trains.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct TypeProduction {
+    command: Vec<DeclaredName>,
+    production: Option<ProductionSection>,
+}
+
+/// A unit type's `production` section as the import writes it: its queue's length, and its exit
+/// and default rally points, `[x, z]` in its own frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub(crate) struct ProductionSection {
+    pub(crate) queue: NonZeroU8,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) exit: Option<[Num; 2]>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) rally: Option<[Num; 2]>,
+}
+
+/// A unit type's section of `data/units.toml`: the fields its object gives, its slots and its
+/// production.
+#[derive(Debug, Serialize)]
+struct TypeToml<'a> {
+    #[serde(flatten)]
+    imported: ImportedType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    slots: Option<CommandSlots<'a>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    production: Option<ProductionSection>,
+}
+
+/// A unit type's `slots`: the actions of its slot kind `command`.
+#[derive(Debug, Serialize)]
+struct CommandSlots<'a> {
+    command: &'a [DeclaredName],
 }
 
 /// An object's unit type, by its name, and the fields its object gives.
@@ -29,10 +68,11 @@ pub(crate) struct NamedType {
     pub(crate) imported: ImportedType,
 }
 
-/// `data/units.toml`: `[units.<name>]` of each type, the fields its object gives.
+/// `data/units.toml`: `[units.<name>]` of each type, the fields its object gives, and its slots
+/// and production.
 #[derive(Debug, Serialize)]
 struct UnitsToml<'a> {
-    units: BTreeMap<&'a str, ImportedType>,
+    units: BTreeMap<&'a str, TypeToml<'a>>,
 }
 
 /// The package's `data/units.toml`, and the largest speed of its types, when one drives.
@@ -78,15 +118,56 @@ impl ImportNames {
         })
     }
 
-    /// The package's `data/units.toml`: each unit type the maps place, in the order of their
-    /// names, of the fields its object gives.
+    /// The object names of the unit types so far, in the order of their names.
+    pub(crate) fn typed_objects(&self) -> Vec<String> {
+        self.placed
+            .keys()
+            .map(|name| self.taken[name].clone())
+            .collect()
+    }
+
+    /// Gives the unit type of `object`, which `unit_type` made, `action` in its slot kind
+    /// `command`, after those it holds.
+    pub(crate) fn give_command(&mut self, object: &IniObject, action: DeclaredName) {
+        let entry = self.produced.entry(object.import_name()).or_default();
+        if !entry.command.contains(&action) {
+            entry.command.push(action);
+        }
+    }
+
+    /// Gives the unit type of `object`, which `unit_type` made, its `production` section.
+    pub(crate) fn give_production(&mut self, object: &IniObject, section: ProductionSection) {
+        self.produced
+            .entry(object.import_name())
+            .or_default()
+            .production = Some(section);
+    }
+
+    /// The package's `data/units.toml`: each unit type the maps place, the start makes or the
+    /// command sets make, in the order of their names, of the fields its object gives, its
+    /// slots and its production.
     pub(crate) fn units_file(&self) -> UnitsFile {
-        let units: BTreeMap<&str, ImportedType> = self
+        let units: BTreeMap<&str, TypeToml<'_>> = self
             .placed
             .iter()
-            .map(|(name, &imported)| (name.as_str(), imported))
+            .map(|(name, &imported)| {
+                let produced = self.produced.get(name);
+                let section = TypeToml {
+                    imported,
+                    slots: produced
+                        .filter(|produced| !produced.command.is_empty())
+                        .map(|produced| CommandSlots {
+                            command: &produced.command,
+                        }),
+                    production: produced.and_then(|produced| produced.production),
+                };
+                (name.as_str(), section)
+            })
             .collect();
-        let max_speed = units.values().filter_map(ImportedType::move_speed).max();
+        let max_speed = units
+            .values()
+            .filter_map(|unit| unit.imported.move_speed())
+            .max();
         UnitsFile {
             text: Toml::write(&UnitsToml { units }),
             max_speed,

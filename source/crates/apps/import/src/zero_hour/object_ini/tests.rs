@@ -1,4 +1,5 @@
 use super::*;
+use crate::zero_hour::object_ini::build_data::{Prerequisite, ProductionExit};
 use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -81,7 +82,12 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
     assert_eq!(
         names,
         [
+            "AmericaBarracks",
             "AmericaCommandCenter",
+            "AmericaFireBase",
+            "AmericaInfantryPathfinder",
+            "AmericaInfantryRanger",
+            "AmericaPowerPlant",
             "AmericaTankCrusader",
             "AmericaVehicleDozer",
             "Bush",
@@ -378,4 +384,81 @@ End
     assert_eq!(fails(unnamed), IniError::NoModel { line: 7 });
     let first = "Object A\n Draw = W3DModelDraw M\n  AliasConditionState = NIGHT\n End\nEnd\n";
     assert_eq!(fails(first), IniError::FirstAlias { line: 3 });
+}
+
+#[test]
+fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
+    fn build(ini: &ObjectIni, name: &str) -> BuildData {
+        ini.objects[name].build().clone()
+    }
+    let mut ini = ObjectIni::default();
+    ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
+    ini.read(OBJECTS.as_bytes()).unwrap();
+    // The command center: its fields, a `ProductionUpdate` of the default queue of 9, and its
+    // exit's points of `X:` and `Y:`, the height dropped.
+    assert_eq!(
+        build(&ini, "AmericaCommandCenter"),
+        BuildData {
+            cost: 2000,
+            time: 45.0,
+            command_set: Some("AmericaCommandCenterCommandSet".to_owned()),
+            prerequisites: Vec::new(),
+            queue: Some(9),
+            exit: Some(ProductionExit {
+                create: [-18.0, 35.0],
+                rally: [60.0, 35.0],
+            }),
+        }
+    );
+    // The barracks' queue of 5, and its points, of a `QueueProductionExitUpdate`, which names them
+    // as the default exit does; the ranger's line of one object; the pathfinder's of two; the
+    // power plant's science. An object of no fields is free, a second to build, and of no
+    // module.
+    assert_eq!(build(&ini, "AmericaBarracks").queue, Some(5));
+    assert_eq!(
+        build(&ini, "AmericaBarracks").exit,
+        Some(ProductionExit {
+            create: [0.0, 0.0],
+            rally: [55.0, 0.0],
+        })
+    );
+    let line =
+        |names: &[&str]| Prerequisite::Objects(names.iter().map(|&name| name.to_owned()).collect());
+    assert_eq!(
+        build(&ini, "AmericaInfantryRanger").prerequisites,
+        [line(&["AmericaBarracks"])]
+    );
+    assert_eq!(
+        build(&ini, "AmericaInfantryPathfinder").prerequisites,
+        [line(&["AmericaBarracks", "AmericaCommandCenter"])]
+    );
+    assert_eq!(
+        build(&ini, "AmericaPowerPlant").prerequisites,
+        [Prerequisite::Science("SCIENCE_AMERICA".to_owned())]
+    );
+    assert_eq!(build(&ini, "AmericaFireBase"), BuildData::default());
+    // A reskin keeps its base's, as its table sets none of them; a second `Prerequisites` block
+    // starts the list again.
+    ini.read(
+        b"ObjectReskin CenterRed AmericaCommandCenter\n BuildCost = 1\n CommandSet = Other\nEnd\n\
+          Object Twice\n Prerequisites\n  Object = A\n End\n Prerequisites\n  Object = B\n End\nEnd\n",
+    )
+    .unwrap();
+    assert_eq!(
+        build(&ini, "CenterRed"),
+        build(&ini, "AmericaCommandCenter")
+    );
+    assert_eq!(build(&ini, "Twice").prerequisites, [line(&["B"])]);
+    // A cost past an unsigned short, and a point that lacks a label, are refused.
+    let fails = |text: &str| ObjectIni::default().read(text.as_bytes()).unwrap_err();
+    assert_eq!(
+        fails("Object A\n BuildCost = 65536\nEnd\n"),
+        IniError::Range { line: 2 }
+    );
+    assert_eq!(
+        fails(
+            "Object A\n Behavior = DefaultProductionExitUpdate M\n  UnitCreatePoint = 1 2 3\n End\nEnd\n"
+        ),
+        IniError::Coord { line: 3 }
+    );
 }

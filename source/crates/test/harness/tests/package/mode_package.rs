@@ -2539,6 +2539,14 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Action(action) } if action == "recruit"),
     ),
+    // A train needs the name players see on its producer's button.
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::UnnamedAction(action) if action == "recruit"),
+    },
     Flaw {
         file: MODE_DATA,
         edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
@@ -3152,7 +3160,7 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
     // A build of a yard, a box with no life pool, so no start life, at a builders' rate table,
     // placed away from enemies; a gather of gold from a mine, which the yard takes back: the load
     // and its books take them all.
-    let raise = "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = { builders = [\"1\", \"1.5\"] }\ncancel_refund = \"0.75\"\nplacement = { away = [{ filter = \"enemies\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]";
+    let raise = "[actions.raise]\nname = \"action-raise\"\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = { builders = [\"1\", \"1.5\"] }\ncancel_refund = \"0.75\"\nplacement = { away = [{ filter = \"enemies\", distance = \"4\" }] }\n\n[actions.melee_creep_attack]";
     let edits = [
         (
             MODE_DATA,
@@ -3160,6 +3168,13 @@ fn a_build_and_a_gather_with_their_nodes_and_drop_offs_load() {
         ),
         (MANIFEST, PRODUCTION),
         (UNITS, YARD),
+        (
+            MODE_TEXT,
+            Edit::Replace(
+                "mode-name = Three on Three\n",
+                "mode-name = Three on Three\naction-raise = Raise\n",
+            ),
+        ),
         (
             MODE_DATA,
             Edit::Replace("[actions.melee_creep_attack]", MINE),

@@ -1,0 +1,331 @@
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::num::NonZeroU8;
+
+use campfire_math::Num;
+use campfire_values::DeclaredName;
+use serde::Serialize;
+
+use crate::zero_hour::command_button_ini::{ButtonCommand, CommandButton, CommandButtonIni};
+use crate::zero_hour::command_set_ini::CommandSetIni;
+use crate::zero_hour::import_names::{ImportNames, ProductionSection};
+use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::locomotor_ini::LocomotorIni;
+use crate::zero_hour::object_ini::build_data::{BuildData, Prerequisite};
+use crate::zero_hour::object_ini::{IniObject, ObjectIni};
+use crate::zero_hour::string_table::StringTable;
+
+/// What the production import reads: the objects, their command sets and buttons, the
+/// locomotors that decide whether a type walks, and the string table of the buttons' names.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CommandSources<'a> {
+    pub(crate) ini: &'a ObjectIni,
+    pub(crate) sets: &'a CommandSetIni,
+    pub(crate) buttons: &'a CommandButtonIni,
+    pub(crate) locomotors: &'a LocomotorIni,
+    pub(crate) strings: &'a StringTable,
+}
+
+/// Zero Hour's trains and builds (design 18, D3 to D6): each `UNIT_BUILD` and `DOZER_CONSTRUCT`
+/// button of the command set of each unit type, and of each type a converted button makes, once
+/// for the whole import; the names of their actions, as the string table gives their labels;
+/// and the buttons dropped, each once for each cause, in the order the sets are read.
+#[derive(Debug, Default)]
+pub(crate) struct ProductionImport {
+    pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
+    pub(crate) texts: BTreeMap<String, String>,
+    pub(crate) dropped: Vec<DroppedButton>,
+}
+
+/// A train or a build as the mode's data writes it, `[actions.<id>]`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub(crate) struct ImportedAction {
+    name: String,
+    kind: &'static str,
+    targeting: &'static str,
+    unit_type: DeclaredName,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    cost: BTreeMap<&'static str, u16>,
+    windup_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requires: Option<Requires>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    range: Option<Num>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    start: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    construct: Option<&'static str>,
+}
+
+/// What an action requires, its unit types.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+struct Requires {
+    units: Vec<DeclaredName>,
+}
+
+/// A button the import drops, by its name, and why.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DroppedButton {
+    pub button: String,
+    pub cause: DropCause,
+}
+
+campfire_common::enum_all! {
+/// Why the import drops a button.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DropCause {
+    /// No file defines the button, or its object, or an object its prerequisites name.
+    NoObject,
+    /// Its object's prerequisites need a science.
+    Science,
+    /// Its object's prerequisites hold a line of several objects, any one of which passes.
+    EitherOr,
+    /// It trains an object that does not walk.
+    NoWalker,
+    /// It builds an object of no box body.
+    NoBox,
+    /// It trains at an object of no `ProductionUpdate`, or of a queue past 1 to 255.
+    NoQueue,
+    /// Its object, or an object its prerequisites name, gives no unit type.
+    NoType,
+    /// Its object's build time is below 0, or not finite.
+    BadTime,
+}
+/// Every cause, in order.
+pub const ALL;
+}
+
+/// A button's kind, of those the import converts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Making {
+    Train,
+    Build,
+}
+
+/// The slot kind of the converted buttons, of every producer's and builder's.
+pub(crate) const COMMAND: &str = "command";
+
+/// The player resource every cost is in.
+pub(crate) const MONEY: &str = "money";
+
+/// How near a builder comes to its building's box, 10 m, the pathfinder's cell: the dozer docks in
+/// the free cell beside the building nearest it (design 18, D4).
+const BUILD_RANGE: Num = Num::int(10);
+
+/// The logic frames a second of the game, `LOGICFRAMES_PER_SECOND`.
+const FRAMES: f32 = 30.0;
+
+impl ProductionImport {
+    /// The trains and builds of `sources`, from the unit types `names` holds, each type a
+    /// converted button makes, or its object's prerequisites name, named there, and its own
+    /// command set's buttons converted in turn.
+    pub(crate) fn of(sources: CommandSources<'_>, names: &mut ImportNames) -> ProductionImport {
+        let mut import = ProductionImport::default();
+        let mut queued: VecDeque<String> = names.typed_objects().into();
+        let mut seen: BTreeSet<String> = queued.iter().cloned().collect();
+        while let Some(name) = queued.pop_front() {
+            let Some(producer) = sources.ini.object(name.as_bytes()) else {
+                continue;
+            };
+            let Some(set) = producer.build().command_set.as_deref() else {
+                continue;
+            };
+            let Some(buttons) = sources.sets.buttons(set) else {
+                continue;
+            };
+            for button_name in buttons {
+                let made = import.button(sources, producer, button_name, names);
+                if let Some(object) = made
+                    && seen.insert(object.clone())
+                {
+                    queued.push_back(object);
+                }
+            }
+        }
+        import
+    }
+
+    /// Converts the button `button_name` of the set of `producer`: its action, made once, and
+    /// the producer's slot; the name of the object it makes, unless it drops the button or the
+    /// button is no train or build.
+    fn button(
+        &mut self,
+        sources: CommandSources<'_>,
+        producer: &IniObject,
+        button_name: &str,
+        names: &mut ImportNames,
+    ) -> Option<String> {
+        // A button in several sets is reported once for each cause it drops by.
+        let mut drop = |cause| {
+            let dropped = DroppedButton {
+                button: button_name.to_owned(),
+                cause,
+            };
+            if !self.dropped.contains(&dropped) {
+                self.dropped.push(dropped);
+            }
+            None
+        };
+        let Some(button) = sources.buttons.get(button_name) else {
+            return drop(DropCause::NoObject);
+        };
+        let making = match button.command {
+            ButtonCommand::UnitBuild => Making::Train,
+            ButtonCommand::DozerConstruct => Making::Build,
+            ButtonCommand::Other => return None,
+        };
+        let made = button
+            .object
+            .as_deref()
+            .and_then(|object| sources.ini.object(object.as_bytes()));
+        let Some(made) = made else {
+            return drop(DropCause::NoObject);
+        };
+        let build = made.build();
+        let requires = match ProductionImport::requires(sources, build) {
+            Ok(requires) => requires,
+            Err(cause) => return drop(cause),
+        };
+        let Ok(imported) = ImportedType::of(made, sources.locomotors) else {
+            return drop(DropCause::NoType);
+        };
+        match making {
+            Making::Train if !imported.walks() => return drop(DropCause::NoWalker),
+            Making::Build if !imported.is_box() => return drop(DropCause::NoBox),
+            _ => {}
+        }
+        let section = match making {
+            Making::Train => match ProductionImport::section(producer.build()) {
+                Some(section) => Some(section),
+                None => return drop(DropCause::NoQueue),
+            },
+            Making::Build => None,
+        };
+        let Some(windup_ms) = ProductionImport::windup_ms(build.time) else {
+            return drop(DropCause::BadTime);
+        };
+        let mut units = Vec::with_capacity(requires.len());
+        for required in requires {
+            let Ok(typed) = names.unit_type(required, sources.locomotors) else {
+                return drop(DropCause::NoType);
+            };
+            units.push(typed.name);
+        }
+        let Ok(typed) = names.unit_type(made, sources.locomotors) else {
+            return drop(DropCause::NoType);
+        };
+        let kind = match making {
+            Making::Train => "train",
+            Making::Build => "build",
+        };
+        let id = DeclaredName::new(&format!("{kind}_{}", typed.name))
+            .expect("a kind and a type's name make a declared name");
+        let message = format!("action-{}", id.as_str().replace('_', "-"));
+        self.texts
+            .entry(message.clone())
+            .or_insert_with(|| ProductionImport::text(sources.strings, button, made));
+        self.actions
+            .entry(id.clone())
+            .or_insert_with(|| ImportedAction {
+                name: message,
+                kind,
+                targeting: match making {
+                    Making::Train => "none",
+                    Making::Build => "point",
+                },
+                unit_type: typed.name,
+                cost: (build.cost > 0)
+                    .then_some((MONEY, build.cost))
+                    .into_iter()
+                    .collect(),
+                windup_ms,
+                requires: (!units.is_empty()).then_some(Requires { units }),
+                range: (making == Making::Build).then_some(BUILD_RANGE),
+                start: (making == Making::Build).then_some("order"),
+                construct: (making == Making::Build).then_some("builder"),
+            });
+        names.give_command(producer, id);
+        if let Some(section) = section {
+            names.give_production(producer, section);
+        }
+        Some(made.name.clone())
+    }
+
+    /// The objects `build`'s prerequisites require, a line of one object each; a cause for a
+    /// line of a science, of several objects, or of an object no file defines.
+    fn requires<'a>(
+        sources: CommandSources<'a>,
+        build: &BuildData,
+    ) -> Result<Vec<&'a IniObject>, DropCause> {
+        build
+            .prerequisites
+            .iter()
+            .map(|line| match line {
+                Prerequisite::Science(_) => Err(DropCause::Science),
+                Prerequisite::Objects(objects) => match objects.as_slice() {
+                    [object] => sources
+                        .ini
+                        .object(object.as_bytes())
+                        .ok_or(DropCause::NoObject),
+                    _ => Err(DropCause::EitherOr),
+                },
+            })
+            .collect()
+    }
+
+    /// The `production` section of a producer of `build`: its queue, and its exit's points in
+    /// the engine's frame, the game's `y` its `−z`, as a map's places turn; none for no
+    /// `ProductionUpdate`, or a queue past 1 to 255.
+    fn section(build: &BuildData) -> Option<ProductionSection> {
+        let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
+        let frame = |[x, y]: [f32; 2]| {
+            let x = Num::try_from(x).ok()?;
+            let y = Num::try_from(y).ok()?;
+            Some([x, y.checked_neg()?])
+        };
+        let exit = build.exit;
+        Some(ProductionSection {
+            queue,
+            exit: exit.and_then(|exit| frame(exit.create)),
+            rally: exit.and_then(|exit| frame(exit.rally)),
+        })
+    }
+
+    /// The milliseconds of a build time of `seconds` the engine turns into the original's count
+    /// of frames, `BuildTime × 30` truncated, as `calcTimeToBuild` counts it: rounded up, the
+    /// engine's ⌈ms × 30 / 1000⌉ of ⌊frames × 100 / 3⌋ is the count; none for a time below 0 or
+    /// not finite.
+    fn windup_ms(seconds: f32) -> Option<u64> {
+        let frames = seconds * FRAMES;
+        if !frames.is_finite() || frames < 0.0 {
+            return None;
+        }
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "the game truncates the frames of a build to an `Int`, toward 0"
+        )]
+        let frames = frames as u64;
+        Some(frames * 100 / 3)
+    }
+
+    /// The name of the action of `button`, which makes `made`: the text of its label, its
+    /// hotkey's marker dropped, `&&` an `&`; the object's name when the table lacks the label.
+    fn text(strings: &StringTable, button: &CommandButton, made: &IniObject) -> String {
+        let Some(text) = button.label.as_deref().and_then(|label| strings.get(label)) else {
+            return made.name.clone();
+        };
+        let mut out = String::with_capacity(text.len());
+        let mut chars = text.chars().peekable();
+        while let Some(char) = chars.next() {
+            match char {
+                '&' if chars.peek() == Some(&'&') => {
+                    chars.next();
+                    out.push('&');
+                }
+                '&' => {}
+                _ => out.push(char),
+            }
+        }
+        out
+    }
+}
