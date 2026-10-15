@@ -191,6 +191,9 @@ pub enum MapError {
     /// Its heights are no grid within the world's bound.
     #[error("its heights are no grid within the world's bound")]
     Heights,
+    /// Its heights and the points its objects stand at make no bounds within the world's bound.
+    #[error("its heights and its objects' points make no bounds within the world's bound")]
+    Bounds,
     /// A dictionary entry is of a type the game does not read.
     #[error("a dictionary entry is of type {0}")]
     DictType(u8),

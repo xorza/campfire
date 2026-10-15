@@ -52,3 +52,16 @@ Each signature takes BIP-340's auxiliary randomness. Now `net`'s `ServerSigner` 
 | **A. The session signs (recommended)** | `Entropy` moves to `common`. Protocol's `Signer` holds the key, the context and the entropy. The runner's `Session`, a resource, holds the server's `Signer` and signs its own inputs, checkpoints and result, and `ServerSigner` goes. The client's `Signer` becomes protocol's too. | `Session::serve` and the checkpoint and result paths change in `runner` and `net`. A replay or a verifier holds no signer, so the session's signer is an `Option` that a server alone fills. |
 | B. A plain `Signer`, and `net` fills the randomness | Protocol's `Signer { secp, key }` replaces each `(secp, key)` pair. `ServerSigner` stays, as the resource that pairs the `Signer` with `net`'s `Entropy`. | The item's "`ServerSigner` goes" is not met: a wrapper stays. |
 | C. Fixed auxiliary randomness | The signatures take no fresh randomness, as BIP-340 permits, and `ServerSigner` goes. | BIP-340 recommends fresh randomness against side channels. Every pinned signature moves. |
+
+## Batch 10: the units file's writer
+
+The item: "`import/src/zero_hour/map_import.rs:69`, `unit_types.rs:20`: `MapData`, `PlacedUnitData`, `MarkerData` and the units file type derive `Serialize`, and the import writes them." The map part is done.
+
+Blocked: the units file part of this item.
+
+The units file type is `package`'s `UnitsFile`, a map of `capabilities`' `UnitTypeData`. `UnitTypeData` holds a section of each capability, so a `Serialize` on it needs one on about forty data types in a dozen crates, several with readers of their own that refuse values, each of which must write what it reads. The import writes only empty unit types, `[units.<name>]`, through a small type of its own.
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| **A. Keep the import's writer, and test it (recommended)** | The import keeps its `UnitsToml`, and a test reads what it writes through `package`'s `UnitsFile`, so a change of the format fails the test. | Two types say the units file's shape, one of them the import's, for the names alone. |
+| B. `Serialize` on every unit type section | `UnitTypeData` and each capability's section derive or implement `Serialize`, each with a round-trip test, and the import writes `UnitsFile`. | About forty types in a dozen crates; the import depends on `package` and through it on every capability. |

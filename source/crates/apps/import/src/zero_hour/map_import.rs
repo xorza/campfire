@@ -6,8 +6,10 @@ use campfire_client_files::{
     ClientObject, ClientObjects, ClientUnits, MapLight, MapLights, TerrainFile, TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
+use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
-use serde::Serialize;
+use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
+use campfire_values::DeclaredName;
 
 use crate::zero_hour::error::MapError;
 use crate::zero_hour::game_data::GameData;
@@ -65,40 +67,8 @@ const NEUTRAL: &str = "neutral";
 /// The tag of a marker made from a waypoint.
 const WAYPOINT: &str = "waypoint";
 
-#[derive(Debug, Serialize)]
-struct MapToml {
-    bounds: BoundsToml,
-    units: Vec<UnitToml>,
-    markers: Vec<MarkerToml>,
-}
-
-#[derive(Debug, Serialize)]
-struct BoundsToml {
-    min: [Num; 2],
-    max: [Num; 2],
-}
-
-#[derive(Debug, Serialize)]
-struct UnitToml {
-    unit_type: String,
-    team: &'static str,
-    pos: [Num; 2],
-    angle: Num,
-    height: Num,
-}
-
-#[derive(Debug, Serialize)]
-struct MarkerToml {
-    name: String,
-    tags: [&'static str; 1],
-    pos: [Num; 2],
-    params: MarkerParams,
-}
-
-#[derive(Debug, Serialize)]
-struct MarkerParams {
-    name: String,
-}
+/// The param of a marker made from a waypoint that holds the waypoint's name.
+const WAYPOINT_NAME: &str = "name";
 
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
@@ -147,6 +117,13 @@ impl MapImport {
             }
             point
         };
+        let declared =
+            |name: &str| DeclaredName::new(name).expect("the import's own names are declared");
+        let (neutral, waypoint_tag, waypoint_name) = (
+            declared(NEUTRAL),
+            declared(WAYPOINT),
+            declared(WAYPOINT_NAME),
+        );
         let mut bridges = Vec::new();
         let mut units = Vec::new();
         let mut client = ClientObjects::default();
@@ -172,11 +149,13 @@ impl MapImport {
                 if name.parse::<Num>().is_ok() {
                     return Err(MapError::WaypointName(name));
                 }
-                markers.push(MarkerToml {
-                    name: format!("w{id}"),
-                    tags: [WAYPOINT],
-                    pos,
-                    params: MarkerParams { name },
+                markers.push(MarkerData {
+                    name: declared(&format!("w{id}")),
+                    tags: vec![waypoint_tag.clone()],
+                    pos: Some(MapPoint::Ground(pos)),
+                    region: None,
+                    team: None,
+                    params: [(waypoint_name.clone(), ModeParam::Text(name))].into(),
                 });
             } else {
                 let Some(template) = ini.object(&object.template) else {
@@ -200,12 +179,14 @@ impl MapImport {
                     }
                     continue;
                 }
-                let unit = UnitToml {
-                    unit_type: types.name(&object.template)?.as_str().to_owned(),
-                    team: NEUTRAL,
-                    pos: take(ground),
+                let unit = PlacedUnitData {
+                    unit_type: types.name(&object.template)?,
+                    team: neutral.clone(),
+                    pos: MapPoint::Ground(take(ground)),
                     angle: degrees,
                     height,
+                    path: None,
+                    from: None,
                 };
                 match placed {
                     PlacedAs::Bridge => bridges.push(unit),
@@ -214,11 +195,12 @@ impl MapImport {
             }
         }
         bridges.append(&mut units);
-        let map = MapToml {
-            bounds: BoundsToml {
-                min: low,
-                max: high,
-            },
+        let map = MapData {
+            metric: Metric::Planar,
+            bounds: Bounds::new(low, high).ok_or(MapError::Bounds)?,
+            grid: None,
+            navigation: None,
+            paths: Vec::new(),
             units: bridges,
             markers,
         };
@@ -279,8 +261,6 @@ impl MapImport {
 #[cfg(test)]
 mod tests {
     use campfire_client_files::ClientUnit;
-    use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
-    use campfire_values::DeclaredName;
 
     use super::*;
     use crate::zero_hour::map_file::internals::map;

@@ -1,11 +1,11 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
-/// No unit is ever outside them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// No unit is ever outside them. A map's `[bounds]` writes them as `min` and `max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Bounds {
     min: [Num; 2],
     max: [Num; 2],

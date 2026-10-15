@@ -1,11 +1,11 @@
 use campfire_geometry::Metric;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// A point of the map, in meters: `[x, z]` on the ground plane of a planar map, `[x, y, z]` on a
 /// spatial one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MapPoint {
     Ground([Num; 2]),

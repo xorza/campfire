@@ -6,7 +6,7 @@ use campfire_navigation::{PathEnd, Wall};
 use campfire_sim::Position;
 use campfire_units::Layer;
 use campfire_values::{DeclaredName, Names};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::error::ModeError;
 use crate::map_point::MapPoint;
@@ -14,38 +14,41 @@ use crate::mode_data::ModeParam;
 use crate::region_data::RegionData;
 
 /// One of the mode's maps, `map/<name>/map.toml`: its metric, its bounds, its grids, its paths,
-/// the units placed on it from the start, and its markers.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+/// the units placed on it from the start, and its markers. It writes as it reads, but a field at
+/// the value its read takes when the field is left out, which it leaves out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapData {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub metric: Metric,
     pub bounds: Bounds,
     /// The cells vision reveals, over the bounds; a mode that declares `vision` has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub grid: Option<GridData>,
     /// The cells units plan routes over, over the bounds, and the walls that block them; a mode
     /// that declares `navigation` has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub navigation: Option<MapNavigationData>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub paths: Vec<PathData>,
     /// The units that stand on the map from the start.
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub units: Vec<PlacedUnitData>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub markers: Vec<MarkerData>,
 }
 
 /// A map's `[grid]`: the size of the square cells vision reveals, in meters, and its brush.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GridData {
     pub cell: Num,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub brush: Vec<BrushData>,
 }
 
 /// A brush, `[[grid.brush]]`: the polygon of `points`, whose cells only a unit in it reveals.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BrushData {
     pub points: Vec<MapPoint>,
@@ -53,25 +56,26 @@ pub struct BrushData {
 
 /// A map's `[navigation]`: the size of the square cells routes are planned on, in meters, and its
 /// walls.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapNavigationData {
     pub cell: Num,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub walls: Vec<WallData>,
 }
 
 /// A wall, `[[navigation.walls]]`: on `layer`, the mode's first when it names none, the polygon of
 /// `points`.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WallData {
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub layer: Option<DeclaredName>,
     pub points: Vec<MapPoint>,
 }
 
 /// A path of the map: its name, and its waypoints in the order a unit walks them from its start.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathData {
     pub name: DeclaredName,
@@ -81,31 +85,36 @@ pub struct PathData {
 /// A unit that stands on the map from the start, of a team; turned by `angle` degrees if it has
 /// a box body; `height` meters above the ground beneath `pos`; on a path if it guards one, and
 /// walking it from the end `from` names if it walks one.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
     pub unit_type: DeclaredName,
     pub team: DeclaredName,
     pub pos: MapPoint,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub angle: Num,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub height: Num,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub path: Option<DeclaredName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub from: Option<PathEnd>,
 }
 
 /// A named place of the map, which scripts read by its tags: a point, or a box of `region`, with
 /// a team and params when it names them, such as a team's spawn or a camp.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerData {
     pub name: DeclaredName,
     pub tags: Vec<DeclaredName>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pos: Option<MapPoint>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<RegionData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub team: Option<DeclaredName>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "is_default")]
     pub params: BTreeMap<DeclaredName, ModeParam>,
 }
 
@@ -204,6 +213,11 @@ impl MapData {
     }
 }
 
+/// Whether `value` is the value a map's read takes for a field left out.
+fn is_default<T: Default + PartialEq>(value: &T) -> bool {
+    *value == T::default()
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
@@ -277,6 +291,49 @@ mod tests {
     use campfire_geometry::PolygonError;
 
     use super::*;
+
+    #[test]
+    fn a_map_writes_what_it_reads_and_leaves_out_each_default() {
+        // Every section: a spatial metric, a grid with a brush, navigation with a wall on a
+        // layer and one on the first, a path, a unit on it, turned and raised, walking it from
+        // its end, a unit of no path, and a marker of a region, a team and two params.
+        let text = r#"
+metric = "spatial"
+bounds = { min = [-10, -10], max = [10, 10] }
+grid = { cell = 2, brush = [{ points = [[0, 0, 0], [2, 0, 0], [0, 0, 2]] }] }
+navigation = { cell = "0.5", walls = [{ layer = "air", points = [[1, 0, 1], [3, 0, 1], [1, 0, 3]] }, { points = [[4, 0, 4], [5, 0, 4], [4, 0, 5]] }] }
+paths = [{ name = "lane", points = [[0, 0, 0], [5, 0, 5]] }]
+units = [
+    { unit_type = "creep", team = "red", pos = [1, 2, 3], angle = "22.5", height = 4, path = "lane", from = "end" },
+    { unit_type = "tower", team = "blue", pos = [-1, 0, -1] },
+]
+markers = [{ name = "camp", tags = ["spawn"], region = { min = [0, 0, 0], max = [2, 2, 2] }, team = "red", params = { count = 3, kind = "wolf" } }]
+"#;
+        let map: MapData = Toml::parse(text).unwrap();
+        assert_eq!(Toml::parse::<MapData>(&Toml::write(&map)).unwrap(), map);
+        // A planar map of its bounds alone writes them alone: the metric, the empty lists and
+        // the absent sections are left out, as the read takes them for each left out.
+        let bounds = Bounds::new([Num::int(-1), Num::int(-2)], [Num::int(3), Num::int(4)]).unwrap();
+        let bare = MapData::planar(bounds);
+        let written = Toml::write(&bare);
+        assert_eq!(
+            written,
+            "[bounds]\nmin = [\"-1\", \"-2\"]\nmax = [\"3\", \"4\"]\n"
+        );
+        assert_eq!(Toml::parse::<MapData>(&written).unwrap(), bare);
+        // A unit at no angle and height, and a marker of no region, team or param, write their
+        // other fields alone.
+        let unit = PlacedUnitData::new("creep", "red", MapPoint::ground(1, 2));
+        assert_eq!(
+            Toml::write(&unit),
+            "unit_type = \"creep\"\nteam = \"red\"\npos = [\"1\", \"2\"]\n"
+        );
+        let marker = MarkerData::tagged("w1", &["waypoint"], MapPoint::ground(0, 0));
+        assert_eq!(
+            Toml::write(&marker),
+            "name = \"w1\"\ntags = [\"waypoint\"]\npos = [\"0\", \"0\"]\n"
+        );
+    }
 
     #[test]
     fn a_point_beyond_the_world_bound_has_no_position() {
