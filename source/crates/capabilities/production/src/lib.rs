@@ -10,7 +10,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+};
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
@@ -187,10 +189,11 @@ impl Module for Production {
         );
         // A build places a box, which only navigation tests for room, and a worker walks.
         if !cx.has(Capability::Navigation) {
-            cx.systems((
-                Trains::start_trains.in_set(ProductionSet::Start),
-                Trains::finish_trains.in_set(ProductionSet::Finish),
-            ));
+            cx.by_role(
+                Trains::start_trains::<ServerForm>.in_set(ProductionSet::Start),
+                Trains::start_trains::<ClientForm>.in_set(ProductionSet::Start),
+            );
+            cx.systems(Trains::finish_trains.in_set(ProductionSet::Finish));
             return;
         }
         cx.by_role(
@@ -233,10 +236,10 @@ impl Production {
                 .chain()
                 .in_set(ProductionSet::CheckBuilds),
             (
-                Trains::start_trains,
+                Trains::start_trains::<S>,
                 Construction::forget_dead_builds,
                 Construction::start_builds::<S>,
-                GatherLoop::run,
+                GatherLoop::run::<S>,
                 GatherLoop::tag_gatherers,
             )
                 .chain()

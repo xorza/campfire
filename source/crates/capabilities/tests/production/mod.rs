@@ -316,6 +316,39 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         assert_eq!(game.get::<ActionSlots>(entity).unwrap().in_progress(), None);
         assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
+
+    // A predicting client trains as the server does, but pays nothing: its player's resources
+    // are the server's, whose word comes back. Its player keeps all 5 gold.
+    let mut client = Match::predicting(&[Capability::Production]);
+    let shop = Shop::place(&mut client);
+    Players::spawn(&mut client, 1, 1);
+    client
+        .player_resources_mut(player)
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
+    let train = Actions::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
+    let owned = Production::allocate_id(&mut client);
+    let queue = TrainQueue::default();
+    shop.producer(
+        &mut client,
+        owned,
+        10,
+        Team::new(1),
+        Some(player),
+        train,
+        queue,
+    );
+    Production::order_train(&mut client, owned);
+    client.step();
+    assert_eq!(
+        shop.spawns(&mut client),
+        [(Team::new(1), Position::from((10, 0, 0)), Some(player))]
+    );
+    let held = PlayerResources::of_player(&client, player)
+        .unwrap()
+        .amount(gold);
+    assert_eq!(held, 5);
 }
 
 #[test]

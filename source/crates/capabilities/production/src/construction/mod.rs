@@ -3,6 +3,7 @@ use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
+use campfire_declare::RoleForm;
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_navigation::Navigation;
@@ -136,15 +137,22 @@ impl Construction {
                 }
                 Step::Start(start) => {
                     Navigation::go_to(world, entity, None);
-                    Construction::spawn_site(world, entity, start, &mut paid);
+                    Construction::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
         }
     }
 
     /// Starts the build `start` of the builder of `entity`: pays, goes on cooldown, and spawns
-    /// the site, whose build's paid player resources `paid` holds for its cancel.
-    fn spawn_site(world: &mut World, entity: Entity, start: Start, paid: &mut Vec<ResourceAmount>) {
+    /// the site, whose build's paid player resources `paid` holds for its cancel. A predicting
+    /// client's form `F` pays nothing, as the builder's pools and its player's resources are the
+    /// server's.
+    fn spawn_site<F: RoleForm>(
+        world: &mut World,
+        entity: Entity,
+        start: Start,
+        paid: &mut Vec<ResourceAmount>,
+    ) {
         let now = world.resource::<SimTick>().start();
         let unit = world.entity(entity);
         let team = *unit.get::<Team>().expect("a builder has a team");
@@ -168,13 +176,18 @@ impl Construction {
             let pools = pools.expect("a builder's pools").of(life);
             Payer::of(pools, resources).pay(&start.cost, paid);
         };
-        if let Some(player) = owner.and_then(|owner| world.player_entity(owner.slot())) {
-            let [mut unit, mut held] = world.entity_mut([entity, player]);
-            let mut resources = held.get_mut::<PlayerResources>();
-            pay(&mut unit, resources.as_deref_mut());
-        } else {
-            let [mut unit] = world.entity_mut([entity]);
-            pay(&mut unit, None);
+        let player = owner.and_then(|owner| world.player_entity(owner.slot()));
+        match (F::PREDICTS, player) {
+            (true, _) => {}
+            (false, Some(player)) => {
+                let [mut unit, mut held] = world.entity_mut([entity, player]);
+                let mut resources = held.get_mut::<PlayerResources>();
+                pay(&mut unit, resources.as_deref_mut());
+            }
+            (false, None) => {
+                let [mut unit] = world.entity_mut([entity]);
+                pay(&mut unit, None);
+            }
         }
         let mut times = world
             .get_mut::<SlotTimes>(entity)

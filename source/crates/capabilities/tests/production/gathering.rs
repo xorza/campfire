@@ -153,6 +153,15 @@ fn a_worker_brings_its_loads_in_trip_by_trip_and_stops_as_its_node_runs_out() {
     });
     assert_eq!(loads, [None, None, None, five]);
     assert_eq!(*client.part::<Node>(node), Node::new(12));
+    // It takes its load to the hall and drops it as the server's does, and joins nothing to its
+    // player's gold, which is the server's.
+    let gold = shop.gold(&client);
+    let delivered = (5..=40).find(|_| {
+        client.step();
+        client.part::<Gatherer>(worker).load().is_none()
+    });
+    assert!(delivered.is_some());
+    assert_eq!(shop.gold(&client), gold);
 }
 
 #[test]

@@ -71,7 +71,7 @@ const EXCLUSIVE: [&str; 7] = [
     "campfire_combat::modifier_intervals::ModifierIntervals::run_intervals",
     "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
     "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
-    "campfire_production::gather_loop::GatherLoop::run",
+    "campfire_production::gather_loop::GatherLoop::run<campfire_vision::team_sight::ByHolding>",
     "campfire_production::trains::Trains::finish_trains",
 ];
 

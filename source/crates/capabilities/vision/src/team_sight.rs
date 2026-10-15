@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
 use bevy_ecs::query::{QueryItem, ReadOnlyQueryData};
+use campfire_declare::RoleForm;
 use campfire_values::Team;
 
 use crate::seen_by::SeenBy;
@@ -8,7 +9,7 @@ use crate::seen_by::SeenBy;
 /// How a match tells whether a team sees a unit, for a check of what a player's order may aim
 /// at: by the server's vision, or, on a predicting client, by what the client holds, as the
 /// server sends it each unit its team sees and no other (design 14, D12).
-pub trait TeamSight: Send + Sync + 'static {
+pub trait TeamSight: RoleForm {
     /// What a query reads of a unit to tell.
     type Seen: ReadOnlyQueryData + Debug + 'static;
 
@@ -34,6 +35,16 @@ impl TeamSight for ByVision {
 /// those, and `SeenBy` stays the server's.
 #[derive(Debug)]
 pub struct ByHolding;
+
+/// The server's sight is of the server's form of a system.
+impl RoleForm for ByVision {
+    const PREDICTS: bool = false;
+}
+
+/// A predicting client's sight is of its form of a system.
+impl RoleForm for ByHolding {
+    const PREDICTS: bool = true;
+}
 
 impl TeamSight for ByHolding {
     type Seen = ();
