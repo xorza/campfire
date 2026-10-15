@@ -10,7 +10,7 @@ use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{CombatBindings, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
-use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap, UnitTypeSetup};
+use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
 use campfire_navigation::Walker;
 use campfire_orders::Ai;
 use campfire_players::ResourceAmount;
@@ -23,7 +23,7 @@ use campfire_projectiles::{ProjectileSpec, Projectiles};
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
 use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
-    PoolId, SpecError, StatBook, StatId,
+    PoolId, SpecError, StatBook, StatId, TypePassive,
 };
 use campfire_units::{Avatar, TypesError, UnitTypeBook};
 use campfire_values::{
@@ -226,8 +226,7 @@ impl<'a> BookBuilder<'a> {
             BookBuilder::stat_in(stats, 0, BookPlace::Combat, stat)
         })?;
         let standing = parts.units.unit_types.iter();
-        let bodies =
-            standing.map(|setup| (setup.unit_type, parts.bodies.get(setup.unit_type).copied()));
+        let bodies = standing.map(|&unit_type| (unit_type, parts.bodies.get(unit_type).copied()));
         parts.types.tag_layers(&self.names.layers, bodies);
         let mut kinds: Vec<Walker> = parts.walkers.values().copied().collect();
         kinds.sort_unstable();
@@ -264,6 +263,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.sights);
         built.add(parts.lives);
         built.add(parts.pools);
+        built.add(parts.passives);
         built.add(parts.deaths);
         built.add(parts.steps);
         built.add(parts.turns);
@@ -762,11 +762,11 @@ impl<'a> BookBuilder<'a> {
         let unknown = |name| at.unknown(name);
         self.production(unit_type, file).map_err(unknown)?;
         self.walker(at)?;
-        let setup = UnitTypeSetup {
-            unit_type,
-            passive: self.passive(index, file).map_err(unknown)?,
-        };
-        self.books.units.unit_types.push(setup);
+        let passive = self.passive(index, file).map_err(unknown)?;
+        self.books
+            .passives
+            .set_some(unit_type, passive.map(TypePassive));
+        self.books.units.unit_types.push(unit_type);
         Ok(())
     }
 

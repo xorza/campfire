@@ -12,7 +12,6 @@ use crate::mode_schema::ModeSchema;
 use crate::mode_setup::ModeSetup;
 use crate::placed_unit::PlacedUnit;
 use crate::roster::Roster;
-use crate::unit_type_setup::UnitTypeSetup;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -90,7 +89,7 @@ impl ModeSpec {
         let teams = Teams::new(teams, slots, setup.players)
             .expect("the session checked its players against the teams' slots");
         let mut types = ByType::default();
-        for &UnitTypeSetup { unit_type, .. } in &setup.units.unit_types {
+        for &unit_type in &setup.units.unit_types {
             let held = ModeType {
                 body: bodies.get(unit_type).copied(),
                 slots: spawn_slots.get(unit_type).map_or(0, ActionSlots::len),

@@ -43,7 +43,7 @@ use campfire_sim::{
 use campfire_stats::{
     Application, Hold, Level, Life, ModifierClocks, ModifierData, Modifiers, NewInstance,
     PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule, StatShare, Stats,
-    UnitStats,
+    TypePassive, UnitStats,
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
@@ -320,6 +320,7 @@ impl TestType {
         let mut bodies = ByType::default();
         let mut tracks = ByType::default();
         let mut slots = ByType::default();
+        let mut passives = ByType::default();
         for unit in types {
             let unit_type = unit.unit_type;
             lives.set(unit_type, Life::full(Num::int(10)));
@@ -328,6 +329,7 @@ impl TestType {
             bodies.set_some(unit_type, unit.body);
             tracks.set_some(unit_type, (!unit.tracks.is_empty()).then_some(unit.tracks));
             slots.set_some(unit_type, unit.slots());
+            passives.set_some(unit_type, unit.passive.map(TypePassive));
         }
         lives.load_into(game);
         deaths.load_into(game);
@@ -335,6 +337,7 @@ impl TestType {
         bodies.load_into(game);
         tracks.load_into(game);
         slots.load_into(game);
+        passives.load_into(game);
     }
 }
 
@@ -658,10 +661,7 @@ fn setup<'a>(
     types: &[TestType],
     spell: LoadoutSetup,
 ) -> ModeSetup<'a> {
-    let unit_types = types.iter().map(|unit| UnitTypeSetup {
-        unit_type: unit.unit_type,
-        passive: unit.passive,
-    });
+    let unit_types = types.iter().map(|unit| unit.unit_type);
     ModeSetup {
         script,
         data: &files.data,

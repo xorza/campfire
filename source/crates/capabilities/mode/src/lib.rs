@@ -71,7 +71,6 @@ mod team_manifest;
 mod timers;
 mod unanswered_deaths;
 mod unanswered_slot_events;
-mod unit_type_setup;
 
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
@@ -113,7 +112,6 @@ pub use crate::team_manifest::TeamManifest;
 pub use crate::timers::{Timer, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
-pub use crate::unit_type_setup::UnitTypeSetup;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
 /// its capabilities.
@@ -376,7 +374,6 @@ pub mod internals {
     use crate::mode_spec::ModeSpec;
     use crate::mode_units::ModeUnits;
     use crate::mode_world::ModeWorld;
-    use crate::unit_type_setup::UnitTypeSetup;
 
     impl Mode {
         /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
@@ -458,10 +455,8 @@ pub mod internals {
         /// passive, as a mode's load gives its own: a fixture that loads types loads it again.
         pub fn load_test_units(world: &mut World) {
             let count = world.resource::<UnitTypeBook>().count();
-            let types = (0..count).map(|index| UnitTypeSetup {
-                unit_type: UnitType::new(u16::try_from(index).expect("unit types fit u16")),
-                passive: None,
-            });
+            let types = (0..count)
+                .map(|index| UnitType::new(u16::try_from(index).expect("unit types fit u16")));
             let units = ModeUnits {
                 unit_types: types.collect(),
                 ..ModeUnits::default()

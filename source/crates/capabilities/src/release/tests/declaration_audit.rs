@@ -453,10 +453,10 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
     // player, the mode's three of the match, the 27 of a unit, items' `UseGroup` and orders'
     // `NextThink` among them, and
-    // the 45 books, 14 of the core's, interaction's two among them.
+    // the 46 books, 14 of the core's, interaction's two among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 32);
-    assert_eq!(audit.books.len(), 45);
+    assert_eq!(audit.books.len(), 46);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the

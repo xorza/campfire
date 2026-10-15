@@ -4,8 +4,8 @@ use bevy_ecs::world::World;
 use campfire_declare::Callbacks;
 use campfire_sim::Capability;
 
-/// What a capability above the core does to a unit the mode's spawner spawned, once its parts
-/// and its type's passive are on it: navigation's room for a box.
+/// What a capability above the core does to a unit the mode's spawner spawned, once its parts are
+/// on it, in the capabilities' order: stats' passive of its type, navigation's room for a box.
 pub(crate) type SpawnHook = fn(&mut World, Entity);
 
 /// The spawn hooks of the capabilities above the core, by capability: each declares its own, so

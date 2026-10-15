@@ -82,7 +82,7 @@ impl Books {
             .get::<ByType<BodyForm>>()
             .expect("the bodies are built");
         let body_of = |unit_type| {
-            let stands = standing.iter().any(|setup| setup.unit_type == unit_type);
+            let stands = standing.contains(&unit_type);
             assert!(stands, "a placed unit's type stands");
             let walks = walkers.get(unit_type).is_some();
             bodies.get(unit_type).copied().filter(|_| !walks)

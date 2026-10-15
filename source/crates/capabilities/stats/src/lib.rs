@@ -18,7 +18,7 @@ use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Player};
+use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 mod application;
@@ -70,6 +70,7 @@ mod stats_column;
 mod stats_data;
 mod stats_effect;
 mod stats_world;
+mod type_passive;
 mod unit_pools;
 mod unit_stats;
 
@@ -122,6 +123,7 @@ pub use crate::stats_column::{RowReads, StatsColumn};
 pub use crate::stats_data::{StatValue, StatsData};
 pub use crate::stats_effect::StatsEffect;
 pub use crate::stats_world::{StatsWorld, StatsWorldCrate};
+pub use crate::type_passive::TypePassive;
 pub use crate::unit_pools::{PoolMeters, PoolMetersMut, UnitPools, UnitPoolsReadOnly};
 pub use crate::unit_stats::UnitStats;
 
@@ -228,6 +230,8 @@ impl Module for Stats {
         d.call_params::<StatsCall>();
         d.api(StatsApi::register);
         d.book::<ByType<Pools>>();
+        d.book::<ByType<TypePassive>>();
+        d.callback::<SpawnHooks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
         d.part::<BodyUnit, Modifiers>(|_| Some(Modifiers::default()));
         d.part::<BodyUnit, ModifierClocks>(|_| Some(ModifierClocks::default()));
@@ -273,34 +277,6 @@ impl Stats {
         let book = world.resource::<ModifierBook>().clone();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.purge(|id| book.tags(id).contains(tag));
-        }
-    }
-
-    /// Grants `grant` to the unit `unit` from itself at once, as `GrantPass` does in its passes:
-    /// a unit type's passive as its unit spawns.
-    pub fn grant(world: &mut World, unit: StableId, grant: Grant) {
-        let Some(entity) = world.entity_of(unit) else {
-            return;
-        };
-        let Some(modifiers) = world.get::<Modifiers>(entity) else {
-            return;
-        };
-        match grant.change(modifiers, unit) {
-            Some(GrantChange::Apply(rank)) => {
-                let applier = Applier {
-                    source: Some(unit),
-                    action: grant.action,
-                    rank,
-                    hold: Some(grant.hold),
-                };
-                Stats::add_modifier(world, unit, grant.modifier, applier, None);
-            }
-            Some(GrantChange::Release) => {
-                if let Some(mut carried) = CarriedMut::of(world, entity) {
-                    carried.release(grant.modifier, Some(unit), grant.hold);
-                }
-            }
-            None => {}
         }
     }
 
