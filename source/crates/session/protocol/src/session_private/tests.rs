@@ -1,13 +1,12 @@
 use campfire_codec::BinaryError;
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks, Version};
 
 use super::*;
 use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
 use crate::slot_plan::SlotPlan;
-use campfire_common::Version;
 
 #[test]
 fn a_private_record_round_trips_and_other_bytes_are_refused() {

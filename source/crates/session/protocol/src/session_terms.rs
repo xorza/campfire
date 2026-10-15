@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, MapName};
+use campfire_common::{Fingerprint, MapName, Version};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,6 @@ use crate::input_rules::InputRules;
 use crate::seed_commitment::SeedCommitment;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
-use campfire_common::Version;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
 const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v3";

@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::Release;
+use campfire_common::Version;
 use campfire_declare::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
@@ -15,7 +16,6 @@ use crate::files::package_header::PackageHeader;
 use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
 use crate::language::Language;
-use campfire_common::Version;
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
 #[derive(Debug, Clone, PartialEq, Eq)]

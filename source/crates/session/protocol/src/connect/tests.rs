@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{Fingerprint, MapName, Ticks};
+use campfire_common::{Fingerprint, MapName, Ticks, Version};
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
@@ -12,7 +12,6 @@ use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
-use campfire_common::Version;
 
 const EXPIRATION: u64 = TestKey::NOW + 60;
 

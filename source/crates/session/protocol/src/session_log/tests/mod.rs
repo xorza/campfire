@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{Fingerprint, MapName, SegmentSeed, StateHash, Ticks};
+use campfire_common::{Fingerprint, MapName, SegmentSeed, StateHash, Ticks, Version};
 use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
@@ -12,11 +12,13 @@ use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
-use crate::session_log::error::SeedError;
+use crate::server_input::error::ServerInputDecodeError;
+use crate::session_log::error::{JournalReplayError, SeedError};
+use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_result::{Outcome, SessionResult};
+use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
-use campfire_common::Version;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
