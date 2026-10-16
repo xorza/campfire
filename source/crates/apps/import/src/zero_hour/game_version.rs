@@ -9,8 +9,8 @@ use crate::zero_hour::install::HashedArchive;
 /// reads, so the importer reads only an install whose every byte it knows the meaning of.
 #[derive(Debug)]
 pub struct GameVersion {
-    pub name: &'static str,
-    pub archives: &'static [ArchiveHash],
+    name: &'static str,
+    archives: &'static [ArchiveHash],
 }
 
 /// The first archive where an install differs from a version, by its path's ASCII lowercase, and
@@ -23,14 +23,19 @@ struct Difference {
 
 /// One archive of a version: its path in the install, with `/` between names, and its SHA-256.
 #[derive(Debug)]
-pub struct ArchiveHash {
-    pub path: &'static str,
-    pub sha256: ContentHash,
+struct ArchiveHash {
+    path: &'static str,
+    sha256: ContentHash,
 }
+
+const _: () = assert!(
+    !GameVersion::KNOWN.is_empty(),
+    "the importer knows a version"
+);
 
 impl ArchiveHash {
     /// The archive at `path` whose SHA-256 is the 64 lowercase hex digits `hex`.
-    pub const fn new(path: &'static str, hex: &str) -> Self {
+    const fn new(path: &'static str, hex: &str) -> Self {
         let sha256 = ContentHash::of_hex(hex);
         Self { path, sha256 }
     }
@@ -38,7 +43,7 @@ impl ArchiveHash {
 
 impl GameVersion {
     /// The versions the importer reads.
-    pub const KNOWN: &[Self] = &[Self {
+    pub(crate) const KNOWN: &[Self] = &[Self {
         name: "Steam: Zero Hour, and Generals in ZH_Generals",
         archives: &[
             ArchiveHash::new(
@@ -184,7 +189,12 @@ impl GameVersion {
         ],
     }];
 
-    /// The version of `known` whose archives `found` are, by their paths ignoring case and their
+    /// Its name, as a player knows it.
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// The version of `known`, not empty, whose archives `found` are, by their paths ignoring case and their
     /// SHA-256; otherwise how the first archive that differs from the first version differs.
     pub(crate) fn identify<'a>(
         found: &[HashedArchive],
@@ -234,6 +244,29 @@ impl GameVersion {
                 difference,
             })
         })
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_common::ContentHash;
+
+    use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
+
+    impl GameVersion {
+        /// The versions of one, `name`, whose archives are `archives`, each its path and its
+        /// SHA-256: a fixture install's, as its test writes it.
+        pub(crate) fn fixture(
+            name: &'static str,
+            archives: impl IntoIterator<Item = (&'static str, ContentHash)>,
+        ) -> &'static [Self] {
+            let archives = archives
+                .into_iter()
+                .map(|(path, sha256)| ArchiveHash { path, sha256 })
+                .collect::<Vec<_>>()
+                .leak();
+            Vec::from([Self { name, archives }]).leak()
+        }
     }
 }
 

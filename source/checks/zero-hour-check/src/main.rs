@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use campfire_common::{ExitStatus, MapName};
-use campfire_import::{GameVersion, Imported, ZeroHour};
+use campfire_import::{Imported, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
@@ -112,7 +112,7 @@ fn import(out: &Path) -> Result<Imported, CheckError> {
         .filter(|install| !install.is_empty())
         .map(PathBuf::from)
         .ok_or(CheckError::NoInstall)?;
-    let zero_hour = ZeroHour::open(&install, GameVersion::KNOWN).map_err(CheckError::Import)?;
+    let zero_hour = ZeroHour::open(&install).map_err(CheckError::Import)?;
     let name = out
         .file_name()
         .ok_or_else(|| CheckError::NoName(out.to_owned()))?;
@@ -124,7 +124,7 @@ fn import(out: &Path) -> Result<Imported, CheckError> {
     clear(out)?;
     DurableDir::rename(&stage, out).map_err(CheckError::Rename)?;
     info!(
-        version = zero_hour.version().name,
+        version = zero_hour.version().name(),
         fingerprint = %imported.fingerprint,
         rules = %imported.rules,
         packages = %out.display(),

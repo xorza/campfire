@@ -1,9 +1,7 @@
-/// The sRGB transfer function on 8-bit codes, in integers: a code's light, linear, in steps of
-/// 2⁻¹⁶, so code 255 is 65536, and a mean of light back to the nearest code. sRGB's curve, `((v + 0.055) / 1.055)^2.4`
-/// above code 10 and `v / 12.92` up to it, reduces on code `k` to `((40k + 561) / 10761)^(12/5)`,
-/// which the tests check each entry of exactly in 256-bit integers.
-#[derive(Debug)]
-pub(crate) struct Srgb;
+//! The sRGB transfer function on 8-bit codes, in integers: a code's light, linear, in steps of
+//! 2⁻¹⁶, so code 255 is 65536, and a mean of light back to the nearest code. sRGB's curve, `((v + 0.055) / 1.055)^2.4`
+//! above code 10 and `v / 12.92` up to it, reduces on code `k` to `((40k + 561) / 10761)^(12/5)`,
+//! which the tests check each entry of exactly in 256-bit integers.
 
 /// Each code's light, rounded to nearest.
 const LIGHT: [u32; 256] = [
@@ -50,21 +48,18 @@ const MIDPOINTS: [u32; 255] = [
     60676, 61236, 61800, 62366, 62936, 63508, 64084, 64662, 65244,
 ];
 
-impl Srgb {
-    /// The light of `code`.
-    pub(crate) const fn light(code: u8) -> u32 {
-        LIGHT[code as usize]
-    }
-
-    /// The code nearest the mean light `sum / total`, `total` positive: the count of midpoints
-    /// the mean reaches, compared exactly as `sum ≥ total · midpoint`.
-    pub(crate) fn encode(sum: u64, total: u64) -> u8 {
-        debug_assert!(total > 0, "a mean of something");
-        let reached = MIDPOINTS.partition_point(|&midpoint| sum >= total * u64::from(midpoint));
-        u8::try_from(reached).expect("at most 255 midpoints")
-    }
+/// The light of `code`.
+pub(crate) const fn light(code: u8) -> u32 {
+    LIGHT[code as usize]
 }
 
+/// The code nearest the mean light `sum / total`, `total` positive: the count of midpoints
+/// the mean reaches, compared exactly as `sum ≥ total · midpoint`.
+pub(crate) fn encode(sum: u64, total: u64) -> u8 {
+    debug_assert!(total > 0, "a mean of something");
+    let reached = MIDPOINTS.partition_point(|&midpoint| sum >= total * u64::from(midpoint));
+    u8::try_from(reached).expect("at most 255 midpoints")
+}
 #[cfg(test)]
 mod tests {
     use std::cmp::Ordering;
@@ -146,11 +141,11 @@ mod tests {
     #[test]
     fn a_mean_of_light_encodes_to_its_nearest_code() {
         // Each code alone encodes to itself.
-        assert!((0..=255).all(|code| Srgb::encode(u64::from(Srgb::light(code)), 1) == code));
+        assert!((0..=255).all(|code| encode(u64::from(light(code)), 1) == code));
         // Black and white in equal parts are light ½, which sRGB encodes as 0.73536 · 255 =
         // 187.52, so 188, not the 128 a mean of the codes gives; one part black to two of white
         // is light ⅔, 0.83601 · 255 = 213.18, so 213.
-        assert_eq!(Srgb::encode(2 * u64::from(SCALE), 4), 188);
-        assert_eq!(Srgb::encode(2 * u64::from(SCALE), 3), 213);
+        assert_eq!(encode(2 * u64::from(SCALE), 4), 188);
+        assert_eq!(encode(2 * u64::from(SCALE), 3), 213);
     }
 }

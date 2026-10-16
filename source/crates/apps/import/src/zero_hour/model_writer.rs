@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::MaterialFile;
 use campfire_codec::Toml;
+use campfire_package_disk::PackageWriter;
+use campfire_values::PackagePath;
 
 use crate::zero_hour::error::{NoPackagePath, ZeroHourError};
 use crate::zero_hour::game_path;
@@ -12,11 +14,12 @@ use crate::zero_hour::model_parts::ModelParts;
 use crate::zero_hour::{SkipReason, SkippedModel};
 
 /// The models of an import: each converted once, at `client/models/<name>.glb`, with the material
-/// files its shaders need, through `write`; the parts each one's looks read; the models the
-/// objects name that the package lacks; and the textures the models name that no archive holds.
+/// files its shaders need, into the package's writer; the parts each one's looks read; the models
+/// the objects name that the package lacks; and the textures the models name that no archive
+/// holds.
 #[derive(Debug)]
-pub(crate) struct ModelWriter<'i, W> {
-    converter: Converter<'i, W>,
+pub(crate) struct ModelWriter<'i, 'w> {
+    converter: Converter<'i, 'w>,
     written: BTreeMap<String, WrittenModel>,
 }
 
@@ -33,9 +36,9 @@ pub(crate) enum WrittenModel {
 /// What converts a model and writes its files: the assets it reads, the writer, and what the
 /// models lacked so far.
 #[derive(Debug)]
-struct Converter<'i, W> {
+struct Converter<'i, 'w> {
     assets: ModelAssets<'i>,
-    write: W,
+    writer: &'w mut PackageWriter,
     skipped: Vec<SkippedModel>,
     missing_textures: BTreeSet<String>,
 }
@@ -48,12 +51,12 @@ pub(crate) struct ModelReport {
     pub(crate) missing_textures: Vec<String>,
 }
 
-impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> {
-    pub(crate) const fn new(assets: ModelAssets<'i>, write: W) -> Self {
+impl<'i, 'w> ModelWriter<'i, 'w> {
+    pub(crate) const fn new(assets: ModelAssets<'i>, writer: &'w mut PackageWriter) -> Self {
         ModelWriter {
             converter: Converter {
                 assets,
-                write,
+                writer,
                 skipped: Vec::new(),
                 missing_textures: BTreeSet::new(),
             },
@@ -71,8 +74,8 @@ impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> 
     }
 
     /// Writes the package's file at `path`.
-    pub(crate) fn write(&mut self, path: &str, bytes: &[u8]) -> Result<(), ZeroHourError> {
-        (self.converter.write)(path, bytes)
+    pub(crate) fn write(&mut self, path: PackagePath, bytes: &[u8]) -> Result<(), ZeroHourError> {
+        Ok(self.converter.writer.write(path, bytes)?)
     }
 
     pub(crate) fn report(self) -> ModelReport {
@@ -83,19 +86,20 @@ impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> 
     }
 }
 
-impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
+impl Converter<'_, '_> {
     /// Converts the model `name` and writes its files; what it gives its looks, `skipped` gaining
     /// a model the package lacks.
     fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {
         let reason = match ModelImport::convert(name, &mut self.assets)? {
             Converted::Model(import) => {
-                (self.write)(game_path::model(name)?.as_str(), &import.glb.encode())?;
+                self.writer
+                    .write(game_path::model(name)?, &import.glb.encode())?;
                 for material in &import.materials {
                     let text = Toml::write(&material.file);
                     let path = MaterialFile::path(&material.name).ok_or_else(|| {
                         NoPackagePath(format!("{}/{}.toml", MaterialFile::DIR, material.name))
                     })?;
-                    (self.write)(path.as_str(), text.as_bytes())?;
+                    self.writer.write(path, text.as_bytes())?;
                 }
                 self.missing_textures.extend(import.missing_textures);
                 self.skipped

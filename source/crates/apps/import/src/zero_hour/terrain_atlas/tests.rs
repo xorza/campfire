@@ -1,16 +1,13 @@
-use campfire_values::PackagePath;
-
 use super::*;
-use crate::zero_hour::terrain::{Terrain, TerrainCell, TextureClass};
+use crate::zero_hour::format::map::terrain::{Terrain, TerrainCell, TextureClass};
 
-/// A class of `width` tiles a side and `tiles` tiles from `first_tile`, of no texture.
+/// A class of `width` tiles a side and `tiles` tiles from `first_tile`.
 fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {
     TextureClass {
         first_tile,
         tiles,
         width,
         name: String::new(),
-        texture: None,
     }
 }
 
@@ -31,7 +28,6 @@ fn terrain(classes: impl IntoIterator<Item = TextureClass>) -> TerrainParts {
         .max()
         .unwrap_or(0);
     TerrainParts {
-        columns: 1,
         cells: vec![TerrainCell {
             tile: 0,
             blend: None,
@@ -92,9 +88,8 @@ fn classes_take_the_grid_widest_first_and_one_with_no_room_has_none() {
 #[test]
 fn a_class_s_tiles_lie_upright_in_its_block_wrapped_by_its_border() {
     const SAND: &str = "client/textures/art/terrain/sand.ktx2";
-    let mut sand = class(0, 4, 2);
-    sand.texture = Some(texture(SAND, 128));
-    let atlas = TerrainAtlas::new(&terrain([sand]));
+    let sand = class(0, 4, 2);
+    let atlas = TerrainAtlas::new(&terrain([sand]), &[Some(texture(SAND, 128))]);
     assert_eq!(atlas.class(0), UVec2::new(4, 4));
     // The game reads a TGA's rows from its bottom: tile 0 is the bottom left, which the block's
     // bottom left holds, and tile 2 the top left.
@@ -130,18 +125,19 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     const SAND: &str = "client/textures/art/terrain/sand.ktx2";
     // Three tiles load a square of one: the bottom left, at the block's bottom left; tiles 1 and
     // 2 have no texture.
-    let mut three = class(0, 3, 2);
-    three.texture = Some(texture(SAND, 128));
-    let atlas = TerrainAtlas::new(&terrain([three]));
+    let three = class(0, 3, 2);
+    let atlas = TerrainAtlas::new(&terrain([three]), &[Some(texture(SAND, 128))]);
     assert_eq!(atlas.tile(0), Some(UVec2::new(4, 68)));
     assert_eq!(atlas.tile(1), None);
     assert_eq!(atlas.tile(2), None);
     assert_eq!(atlas.into_texture().copies, [copy(SAND, [0, 64], [4, 68])]);
     // A texture of one tile holds no class of four, and a class with no texture loads none, but
     // keeps its block and its border.
-    let mut four = class(0, 4, 2);
-    four.texture = Some(texture(SAND, 64));
-    let atlas = TerrainAtlas::new(&terrain([four, class(4, 1, 1)]));
+    let four = class(0, 4, 2);
+    let atlas = TerrainAtlas::new(
+        &terrain([four, class(4, 1, 1)]),
+        &[Some(texture(SAND, 64)), None],
+    );
     assert_eq!(
         (0..5).map(|tile| atlas.tile(tile)).collect::<Vec<_>>(),
         [None; 5]

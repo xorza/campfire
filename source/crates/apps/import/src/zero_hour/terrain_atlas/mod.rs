@@ -1,7 +1,9 @@
 use bevy_math::UVec2;
 use campfire_client_files::{BorderWrap, TerrainTexture, TextureCopy};
 
-use crate::zero_hour::terrain::{ClassTexture, TerrainParts};
+use campfire_values::PackagePath;
+
+use crate::zero_hour::format::map::terrain::TerrainParts;
 
 /// Zero Hour's terrain texture, as `WorldHeightMap` lays it out and `TerrainTextureClass` fills
 /// it, as a terrain file's texture (design 16, D2): 2,048 texels wide, each texture class a
@@ -30,6 +32,13 @@ struct BlockPlaces {
     height: u32,
 }
 
+/// A texture class's texture: the package's file of it, and its size in texels.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ClassTexture {
+    pub(crate) path: PackagePath,
+    pub(crate) size: UVec2,
+}
+
 /// Where a loaded source tile comes from: its class's texture, and its column and row of that
 /// texture's tiles, rows from the texture's bottom, as the game reads a TGA's rows.
 #[derive(Debug, Clone, Copy)]
@@ -51,12 +60,19 @@ impl TerrainAtlas {
     /// The most tiles a side of a class's texture gives.
     const MOST_TILES: u32 = 10;
 
-    /// The atlas of `terrain`'s classes and their textures.
-    pub(crate) fn new(terrain: &TerrainParts) -> Self {
+    /// The atlas of `terrain`'s classes and `textures`, the texture of each class in its order;
+    /// none for a class `Terrain.ini` names none of, or a TGA the install lacks, which the game
+    /// draws as no texture.
+    pub(crate) fn new(terrain: &TerrainParts, textures: &[Option<ClassTexture>]) -> Self {
+        debug_assert_eq!(
+            terrain.classes.len(),
+            textures.len(),
+            "a texture for each class"
+        );
         let tiles = usize::try_from(terrain.tiles).expect("a u32 fits usize");
         let mut sources = vec![None; tiles];
-        for class in &terrain.classes {
-            let Some(texture) = &class.texture else {
+        for (class, texture) in terrain.classes.iter().zip(textures) {
+            let Some(texture) = texture else {
                 continue;
             };
             let Some(side) = Self::read_side(class.tiles, texture.size) else {

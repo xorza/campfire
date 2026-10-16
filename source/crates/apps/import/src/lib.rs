@@ -9,9 +9,14 @@ mod zero_hour;
 pub use crate::texture::error::TextureError;
 pub use crate::zero_hour::combat_import::{DroppedWeapon, WeaponDrop};
 pub use crate::zero_hour::error::{
-    ArchiveError, Chunk, CsfError, IniError, MapError, ModelError, NameClash, NoPackagePath,
-    Packing, RefPackError, TerrainError, TypeError, VersionDifference, W3dError, ZeroHourError,
+    MapError, ModelError, NameClash, NoPackagePath, TypeError, VersionDifference, ZeroHourError,
 };
-pub use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
+pub use crate::zero_hour::format::big::error::ArchiveError;
+pub use crate::zero_hour::format::csf::error::CsfError;
+pub use crate::zero_hour::format::ini::error::IniError;
+pub use crate::zero_hour::format::map::error::{Chunk, MapReadError, Packing, TerrainError};
+pub use crate::zero_hour::format::ref_pack::error::RefPackError;
+pub use crate::zero_hour::format::w3d::error::W3dError;
+pub use crate::zero_hour::game_version::GameVersion;
 pub use crate::zero_hour::production_import::{DropCause, DroppedButton};
 pub use crate::zero_hour::{Imported, ImportedMap, SkipReason, SkippedModel, ZeroHour};

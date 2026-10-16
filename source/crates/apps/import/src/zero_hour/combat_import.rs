@@ -5,13 +5,14 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
-use crate::zero_hour::armor_ini::ArmorIni;
-use crate::zero_hour::damage_type::DamageType;
 use crate::zero_hour::error::ZeroHourError;
-use crate::zero_hour::game_float;
-use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::object_ini::ObjectIni;
-use crate::zero_hour::weapon_ini::{IniWeapon, ShotDelay, WeaponIni};
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::armor_ini::ArmorIni;
+use crate::zero_hour::format::ini::damage_type::DamageType;
+use crate::zero_hour::format::ini::object_ini::ObjectIni;
+use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, ShotDelay, WeaponIni};
+use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::unit_types::UnitTypes;
 
 /// The slot kind of the converted weapons.
 pub(crate) const WEAPON: &str = "weapon";
@@ -27,11 +28,13 @@ pub(crate) struct CombatSources<'a> {
 /// Zero Hour's combat (design 19, D4 to D6): the weapons of each unit type's starting weapon set
 /// that hit one target at once, as attack actions, once for the whole import, each in its type's
 /// slot kind `weapon`; every armor, the share of each damage kind it does not take whole; the
-/// weapons dropped, each once for each cause, in the order the types are read; and the objects
-/// whose body the import gives no life, and those whose body starts below its most life.
+/// weapons dropped, each once for each cause, in the order the types are read; the objects
+/// whose body the import gives no life, and those whose body starts below its most life; and
+/// each type's actions of the slot kind `weapon`, by its name, which it returns.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
+    pub(crate) weapons: BTreeMap<ImportName, Vec<DeclaredName>>,
     pub(crate) armors: BTreeMap<DeclaredName, BTreeMap<DeclaredName, Num>>,
     pub(crate) dropped: Vec<DroppedWeapon>,
     pub(crate) unliving: Vec<String>,
@@ -96,8 +99,6 @@ pub enum WeaponDrop {
     RandomDelay,
     /// Its `DelayBetweenShots` is no frame, a period the engine refuses.
     NoDelay,
-    /// Its `DamageType` is none of the game's.
-    NoDamageType,
     /// Its `DamageType` takes no life: a status, a subdual, or the kill of a pilot or a garrison.
     NoLife,
     /// Its `DamageType` is `HEALING`, which gives its target life.
@@ -113,19 +114,15 @@ pub const ALL;
 const FRAMES_PER_MS: f32 = 30.0 / 1000.0;
 
 impl CombatImport {
-    /// The combat of `sources`, of the unit types `names` holds, each type's weapons given to
-    /// it; an error for a type whose armor no file defines by the name of its case, which the
-    /// game's debug build stops at as wrong data and its release build takes as no armor
+    /// The combat of `sources`, of the closed set `types`, each type's weapons by its name; an
+    /// error for a type whose armor no file defines by the name of its case, which the game's
+    /// debug build stops at as wrong data and its release build takes as no armor
     /// (`INI::parseArmorTemplate`).
-    pub(crate) fn of(
-        sources: CombatSources<'_>,
-        names: &mut ImportNames,
-    ) -> Result<Self, ZeroHourError> {
+    pub(crate) fn of(sources: CombatSources<'_>, types: &UnitTypes) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let mut armors = BTreeMap::new();
         for (name, armor) in sources.armors.iter() {
-            let id = DeclaredName::new(&name.to_ascii_lowercase())
-                .ok_or_else(|| ZeroHourError::ArmorName(name.to_owned()))?;
+            let id = ImportName::latin(name).declared();
             let mut shares = BTreeMap::new();
             for kind in DamageType::ALL {
                 let share = armor.share(kind);
@@ -142,12 +139,12 @@ impl CombatImport {
                 return Err(ZeroHourError::ArmorName(name.to_owned()));
             }
         }
-        for object_name in names.typed_objects() {
+        for (type_name, typed) in types.iter() {
             let object = sources
                 .ini
-                .object(object_name.as_bytes())
+                .object(typed.object.as_bytes())
                 .expect("a typed object is in the file");
-            let typed = names.typed(object).expect("a typed object has its type");
+            let typed = &typed.imported;
             let fight = object.fight();
             if typed.armor().is_some() {
                 let armor = fight
@@ -178,9 +175,11 @@ impl CombatImport {
                     .and_then(ImportedWeapon::of);
                 match converted {
                     Ok(imported) => {
-                        let id =
-                            DeclaredName::new(&format!("weapon_{}", weapon.to_ascii_lowercase()))
-                                .ok_or_else(|| ZeroHourError::WeaponName(weapon.clone()))?;
+                        let id = DeclaredName::new(&format!(
+                            "weapon_{}",
+                            ImportName::latin(weapon).as_str()
+                        ))
+                        .expect("a kind and an import name make a declared name");
                         // Weapons whose names differ only in case would share one action.
                         match import.actions.entry(id.clone()) {
                             Entry::Occupied(held) if *held.get() != imported => {
@@ -191,7 +190,10 @@ impl CombatImport {
                                 new.insert(imported);
                             }
                         }
-                        names.give_weapon(object, id);
+                        let weapons = import.weapons.entry(type_name.clone()).or_default();
+                        if !weapons.contains(&id) {
+                            weapons.push(id);
+                        }
                     }
                     Err(cause) => {
                         let dropped = DroppedWeapon {
@@ -229,7 +231,7 @@ impl ImportedWeapon {
         if !weapon.anti_ground {
             return Err(WeaponDrop::NotGround);
         }
-        if weapon.suicide {
+        if weapon.affects.suicide {
             return Err(WeaponDrop::Suicide);
         }
         if weapon.at_self {
@@ -251,10 +253,7 @@ impl ImportedWeapon {
             0 => return Err(WeaponDrop::NoDelay),
             ms => ms,
         };
-        let damage_kind = match weapon.damage_type.as_deref() {
-            None => DamageType::Explosion,
-            Some(named) => DamageType::of(named).ok_or(WeaponDrop::NoDamageType)?,
-        };
+        let damage_kind = weapon.damage_type;
         if !damage_kind.takes_life() {
             return Err(WeaponDrop::NoLife);
         }
@@ -308,9 +307,10 @@ impl ImportedWeapon {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::armor_ini::internals::ARMORS;
-    use crate::zero_hour::locomotor_ini::LocomotorIni;
-    use crate::zero_hour::weapon_ini::internals::WEAPONS;
+    use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
+    use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+    use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
+    use crate::zero_hour::import_names::ImportNames;
 
     #[test]
     fn a_weapon_converts_when_it_hits_one_target_at_once_and_is_dropped_by_its_first_cause() {
@@ -386,6 +386,7 @@ End
                 let object = ini.object(object.as_bytes()).unwrap();
                 names.unit_type(object, &LocomotorIni::default()).unwrap();
             }
+            let types = names.close();
             let mut weapons = WeaponIni::default();
             weapons.read(guns.as_bytes()).unwrap();
             let sources = CombatSources {
@@ -393,7 +394,7 @@ End
                 weapons: &weapons,
                 armors: &ArmorIni::default(),
             };
-            CombatImport::of(sources, &mut names)
+            CombatImport::of(sources, &types)
         };
         let gun = |name: &str, damage: u8| {
             format!("Weapon {name}\n  PrimaryDamage = {damage}\n  DelayBetweenShots = 100\nEnd\n")
@@ -428,7 +429,7 @@ End
                 weapons: &WeaponIni::default(),
                 armors: &armors,
             };
-            CombatImport::of(sources, &mut names).map(|import| import.armors.len())
+            CombatImport::of(sources, &names.close()).map(|import| import.armors.len())
         };
         // The fixture's two armors are written whatever the types name; an armor of another
         // case is none the game finds.

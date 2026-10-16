@@ -2,11 +2,11 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 
 use crate::zero_hour::error::{TypeError, ZeroHourError};
-use crate::zero_hour::game_float;
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
+use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::locomotor_ini::LocomotorIni;
-use crate::zero_hour::object_ini::{IniObject, ObjectIni};
-use crate::zero_hour::player_template_ini::PlayerTemplateIni;
 
 /// The player template a skirmish starts its players as, until a faction choice comes (design
 /// 17, D6).
@@ -71,9 +71,11 @@ impl SkirmishStart {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
-    use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::object_ini::internals::{
+        DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
+    };
+    use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
 
     #[test]
     fn a_skirmish_starts_with_its_factions_objects_and_offset() {

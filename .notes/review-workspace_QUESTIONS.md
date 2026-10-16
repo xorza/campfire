@@ -31,3 +31,19 @@
 | C. The engine's names where they exist | `unliving` and `wounded` name the unit types the import made (`DeclaredName`); waypoints and textures stay strings | A reviewer looks an object up by its engine name, not by the INI's |
 
 **Blocked.** The typed-names part of item 8 alone.
+
+## Batch 18, item 2: the engine's types write the import's data files (import, mode, capabilities)
+
+**Item.** `units.toml`, `mode.toml` and the manifest are written by structs that mirror the engine's types by hand, and by `format!` templates; the engine types are to derive `Serialize`, and the importer is to build them, as it builds `MapData`. Batch 18 says no fingerprint moves.
+
+**Why it needs a decision.** A TOML serializer writes a struct's fields in their order, values before tables. The engine's `UnitTypeData` orders `tags` before `pools`, and its tables `slots`, `stats`, `combat`, `collision`, `production`; the importer's mirror writes `pools` before `tags`, then `stats`, `collision`, `combat`, `slots`, `production`. Built from the engine's types, every unit type's section of `data/units.toml` changes its bytes, so the imported package's fingerprint moves, which a run on Linux and a run on macOS then pin again (design 12, D4). The fingerprint is already in the issue log, as it moved before this plan's batch 15.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Do it, and pin the fingerprint again (recommended) | The engine's types derive `Serialize`; the importer builds them; `FINGERPRINTS` takes the new value of a run on Linux and one on macOS | The batch's rule of no fingerprint move breaks for this item; the macOS run is the user's |
+| B. Reorder the engine's fields to the importer's | The bytes stay as they are | The engine's types take an order chosen by one importer's past output |
+| C. Keep the mirrors | Nothing changes | The hand-kept mirrors stay, which the item names |
+
+**Blocked.** Item 2 alone. Items 3 to 12 of batch 18 do not wait for it.

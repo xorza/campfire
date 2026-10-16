@@ -1,15 +1,19 @@
-use std::fmt;
-use std::num::{ParseFloatError, ParseIntError};
 use std::path::PathBuf;
 
 use campfire_client_files::TerrainFileError;
 use campfire_package_disk::WriteError;
-use campfire_store::{PathError, ReadError};
+use campfire_store::PathError;
+use campfire_store::ReadError;
 use derive_more::Display;
-use miniz_oxide::inflate::TINFLStatus;
 use thiserror::Error;
 
 use crate::texture::error::TextureError;
+use crate::zero_hour::format::big::error::ArchiveError;
+use crate::zero_hour::format::csf::error::CsfError;
+use crate::zero_hour::format::ini::error::IniError;
+use crate::zero_hour::format::map::error::MapReadError;
+use crate::zero_hour::format::map::error::TerrainError;
+use crate::zero_hour::format::w3d::error::W3dError;
 
 /// Why a Zero Hour install does not import: a file of it does not read, it is not one the importer
 /// reads, or the package does not write.
@@ -99,8 +103,8 @@ pub enum ZeroHourError {
     /// The multiplayer settings mark no choice of starting money as the default, or several.
     #[error("the multiplayer settings mark no single default starting money")]
     DefaultMoney,
-    /// An armor's name is none a mode may declare, or two armors' names differ only in case.
-    #[error("the armor {0} has a name the mode cannot declare once")]
+    /// Two armors' names give one id in the mode.
+    #[error("the armor {0} has a name another armor's gives")]
     ArmorName(String),
     /// An armor's share of a damage type is below 0, or past what the engine holds.
     #[error("an armor's share is past what the engine holds: {0}")]
@@ -109,7 +113,7 @@ pub enum ZeroHourError {
     /// build stops at as wrong data.
     #[error("{object} names the armor {armor}, which no file defines")]
     NoArmor { object: String, armor: String },
-    /// A weapon's name makes no action's name, or one another weapon's of other numbers makes.
+    /// A weapon's name makes the action's name another weapon's of other numbers makes.
     #[error("the weapon {0} has a name no action may take once")]
     WeaponName(String),
     /// The string table is none the game reads, by its path.
@@ -150,9 +154,6 @@ pub enum TypeError {
     /// Its body is a circle or a box no unit type of the engine may have.
     #[error("its body is none the engine holds")]
     Body,
-    /// Its armor's name is none a mode may declare.
-    #[error("its armor {0} has a name no mode declares")]
-    ArmorName(String),
 }
 
 /// How an install's archive differs from a version's.
@@ -169,112 +170,20 @@ pub enum VersionDifference {
     OtherBytes,
 }
 
-/// Why an archive's bytes are no `.big` archive.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum ArchiveError {
-    /// It does not start with `BIGF`.
-    #[error("it does not start with BIGF")]
-    NotBig,
-    /// Its header, or its list of entries, ends past the file or its own length.
-    #[error("its header ends past its length")]
-    Short,
-    /// An entry's bytes lie past the file's end.
-    #[error("{0}'s bytes lie past its end")]
-    EntryPastEnd(String),
-    /// An entry's path is not ASCII.
-    #[error("an entry's path is not ASCII")]
-    NotAscii,
-}
-
-/// Why a `RefPack` stream does not decode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum RefPackError {
-    /// It ends inside its header, a command or its literal bytes.
-    #[error("it ends inside a command")]
-    Short,
-    /// A copy reaches back before the first byte written.
-    #[error("a copy reaches before the start")]
-    BeforeStart,
-    /// It writes more bytes than its header gives.
-    #[error("it writes more than its {0} bytes")]
-    TooLong(usize),
-    /// It ends having written fewer bytes than its header gives.
-    #[error("it writes {written} of its {len} bytes")]
-    TooShort { written: usize, len: usize },
-}
-
-/// Why a map's bytes are no map the game reads, or none the importer turns into a package's.
+/// Why a map is none the importer turns into a package's: its bytes do not read, or what they
+/// read converts to no map of the engine.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum MapError {
-    /// It is packed in a form the game reads but no shipped map uses.
-    #[error("it is packed as {0}, which the importer does not read")]
-    Packing(Packing),
-    /// Its `RefPack` stream does not decode.
-    #[error("its RefPack stream does not decode")]
-    RefPack(#[source] RefPackError),
-    /// Its zlib stream does not inflate, or inflates past its header's size.
-    #[error("its zlib stream does not inflate: {0:?}")]
-    Zlib(TINFLStatus),
-    /// It unpacks to another size than its header gives.
-    #[error("it unpacks to {written} bytes, not its header's {len}")]
-    PackedSize { written: usize, len: usize },
-    /// It does not start with `CkMp`.
-    #[error("it does not start with CkMp")]
-    NotChunks,
-    /// It ends inside its table, a chunk or a field.
-    #[error("it ends inside a chunk")]
-    Short,
-    /// Its table names an id twice.
-    #[error("its table names id {0} twice")]
-    NameTwice(u32),
-    /// A chunk or a dictionary key names an id its table lacks.
-    #[error("it names id {0}, which its table lacks")]
-    UnknownName(u32),
-    /// It lacks a chunk the import reads.
-    #[error("it holds no {0} chunk")]
-    Missing(Chunk),
-    /// It holds a chunk twice.
-    #[error("it holds a second {0} chunk")]
-    Twice(Chunk),
-    /// A chunk is of a version no shipped map has.
-    #[error("its {chunk} chunk is version {version}, which the importer does not read")]
-    Version { chunk: Chunk, version: u16 },
-    /// A chunk holds bytes past its last field.
-    #[error("its {0} chunk holds bytes past its fields")]
-    Leftover(Chunk),
-    /// A count is negative.
-    #[error("a count of {0} is negative")]
-    Negative(i32),
-    /// Its heights or its terrain hold other than one entry for each sample.
-    #[error("it holds {len} entries for {width} × {depth} samples")]
-    Samples {
-        len: usize,
-        width: usize,
-        depth: usize,
-    },
+    #[error(transparent)]
+    Read(#[from] MapReadError),
     /// Its heights are no grid within the world's bound.
     #[error("its heights are no grid within the world's bound")]
     Heights,
     /// Its heights and the points its objects stand at make no bounds within the world's bound.
     #[error("its heights and its objects' points make no bounds within the world's bound")]
     Bounds,
-    /// A dictionary entry is of a type the game does not read.
-    #[error("a dictionary entry is of type {0}")]
-    DictType(u8),
-    /// A blended tile, by its index in the file, lacks the mark that ends it.
-    #[error("blended tile {0} lacks its end mark")]
-    BlendMark(usize),
-    /// A blended tile sets other than one direction.
-    #[error("blended tile {0} sets other than one direction")]
-    BlendShape(usize),
-    /// A blended tile sets inverted bits the game does not read.
-    #[error("blended tile {0} sets unknown inverted bits")]
-    BlendInverted(usize),
-    /// A tile, blend, cliff or edge index is negative or past its list.
-    #[error("index {0} is past its list")]
-    Index(i32),
-    /// A text the import keeps is not ASCII.
-    #[error("a name is not ASCII")]
+    /// A waypoint's name, which a marker's param keeps, is not ASCII.
+    #[error("a waypoint's name is not ASCII")]
     NotAscii,
     /// The terrain names past what it holds.
     #[error("its terrain names past what it holds")]
@@ -295,12 +204,9 @@ pub enum MapError {
     /// A waypoint's name reads as a number, which a marker's param would take for one.
     #[error("waypoint name {0} reads as a number")]
     WaypointName(String),
-    /// Its time of day is none of the game's four.
-    #[error("its time of day {0} is none of the game's four")]
-    TimeOfDay(i32),
-    /// A number of its lighting is not finite, or a light it draws its objects in goes no way.
-    #[error("a number of its lighting is not finite, or an object light goes no way")]
-    Lighting,
+    /// A light it draws its objects in goes no way.
+    #[error("a light it draws its objects in goes no way")]
+    LightDirection,
     #[error(transparent)]
     NameClash(#[from] NameClash),
     /// An object it places gives no unit type.
@@ -326,215 +232,6 @@ pub struct NameClash {
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 #[error("{0} is no path a package can name")]
 pub struct NoPackagePath(pub String);
-
-/// Why a map's terrain is not one the import converts: a count or an index that reaches past
-/// what it holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum TerrainError {
-    /// Its cells fill no whole rows of its columns.
-    #[error("its cells fill no whole rows")]
-    Shape,
-    /// A cell, a blend or a cliff's UVs name a tile past its tiles.
-    #[error("tile {0} is past its tiles")]
-    Tile(u16),
-    /// A cell names a blend past its blends.
-    #[error("blend {0} is past its blends")]
-    Blend(u16),
-    /// A cell names cliff UVs past its list.
-    #[error("cliff UVs {0} are past its list")]
-    CliffUv(u16),
-    /// A texture class, by its index, reaches past its tiles.
-    #[error("texture class {0} reaches past its tiles")]
-    Class(usize),
-    /// A texture class, by its index, is more tiles a side than the atlas's grid holds.
-    #[error("texture class {0} is wider than the atlas")]
-    ClassWidth(usize),
-    /// An edge class, by its index, reaches past its edge tiles.
-    #[error("edge class {0} reaches past its edge tiles")]
-    EdgeClassTiles(usize),
-    /// A blend names an edge class past its edge classes.
-    #[error("edge class {0} is past its edge classes")]
-    EdgeClass(u16),
-}
-
-/// A packing the game reads that the importer does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Display)]
-pub enum Packing {
-    #[display("NOX")]
-    Nox,
-    #[display("EAB")]
-    BTree,
-    #[display("EAH")]
-    Huffman,
-}
-
-/// A chunk of a map that the import reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Chunk {
-    HeightMapData,
-    BlendTileData,
-    ObjectsList,
-    Object,
-    GlobalLighting,
-    WorldInfo,
-}
-
-impl Chunk {
-    /// Its name in a map's table.
-    pub(crate) const fn name(self) -> &'static str {
-        match self {
-            Self::HeightMapData => "HeightMapData",
-            Self::BlendTileData => "BlendTileData",
-            Self::ObjectsList => "ObjectsList",
-            Self::Object => "Object",
-            Self::GlobalLighting => "GlobalLighting",
-            Self::WorldInfo => "WorldInfo",
-        }
-    }
-}
-
-impl fmt::Display for Chunk {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
-    }
-}
-
-/// Why an INI file is none the game reads, each with its line from 1.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum IniError {
-    /// An `End` closes no block.
-    #[error("line {line}: an End closes no block")]
-    StrayEnd { line: usize },
-    /// The file ends inside a block.
-    #[error("it ends inside a block")]
-    Unclosed,
-    /// A line outside every block starts none of the file's blocks: `Object` or `ObjectReskin`
-    /// in an object file, `Terrain` in a terrain file, `GameData` in a game data file.
-    #[error("line {line}: no block of the file starts here")]
-    NotBlock { line: usize },
-    /// A block lacks its name, or an `ObjectReskin` its base's.
-    #[error("line {line}: a block lacks a name")]
-    NoName { line: usize },
-    /// A field the importer reads has no value.
-    #[error("line {line}: a field has no value")]
-    NoValue { line: usize },
-    /// A field of yes or no holds neither.
-    #[error("line {line}: a field holds neither Yes nor No")]
-    Bool { line: usize },
-    /// A field of a real number holds none.
-    #[error("line {line}: a field holds no number")]
-    Real {
-        line: usize,
-        #[source]
-        error: ParseFloatError,
-    },
-    /// A field's number is past what the game holds.
-    #[error("line {line}: a field's number is past what the game holds")]
-    Range { line: usize },
-    /// A coordinate's field lacks a label, as `X:`, in its place, or the value after it.
-    #[error("line {line}: a coordinate lacks a label or a value")]
-    Coord { line: usize },
-    /// A field of a whole number holds none.
-    #[error("line {line}: a field holds no whole number")]
-    Number {
-        line: usize,
-        #[source]
-        error: ParseIntError,
-    },
-    /// A model draw module's first state is neither `DefaultConditionState` nor `NONE`.
-    #[error("line {line}: a draw module's first state is no default")]
-    NoDefaultState { line: usize },
-    /// A `DefaultConditionState` follows another state.
-    #[error("line {line}: a DefaultConditionState is not the first state")]
-    LateDefaultState { line: usize },
-    /// A model draw module's default state names no `Model`.
-    #[error("line {line}: a default state names no model")]
-    NoModel { line: usize },
-    /// An `AliasConditionState` comes before any state, so it names none.
-    #[error("line {line}: an alias state comes before any state")]
-    FirstAlias { line: usize },
-    /// A weapon bone names no slot of `PRIMARY`, `SECONDARY` and `TERTIARY`, or no bone.
-    #[error("line {line}: a weapon bone names no slot and bone")]
-    WeaponSlot { line: usize },
-    /// A list of flags, as a `KindOf`, mixes names with names of `+` or `-`, or `NONE` with
-    /// either.
-    #[error("line {line}: a list of flags mixes its forms")]
-    MixedFlags { line: usize },
-    /// A value of a fixed list the game reads, as a surface or a geometry, is none of the list.
-    #[error("line {line}: a value is none the game knows")]
-    NotListed { line: usize },
-    /// An object's `Scale` is not positive, or not finite.
-    #[error("line {line}: an object's scale is not positive")]
-    Scale { line: usize },
-    /// An `Object` or an `ObjectReskin` of a name read before.
-    #[error("line {line}: an object of this name is read before")]
-    Redefined { line: usize },
-    /// An `ObjectReskin` of a base not read before it.
-    #[error("line {line}: a reskin's base is not read before it")]
-    NoBase { line: usize },
-}
-
-/// Why a string table's bytes are none the game reads.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum CsfError {
-    /// It runs past its end.
-    #[error("it runs past its end")]
-    Short,
-    /// It does not start with the tag `CSF `, or gives a length below 0.
-    #[error("it is no string table")]
-    NotCsf,
-    /// A label, by its place from 0, does not start with the tag `LBL `.
-    #[error("label {index} has no label's tag")]
-    NotLabel { index: usize },
-    /// A string of a label, by the label's place, starts with neither `STR ` nor `STRW`, or gives
-    /// a length below 0.
-    #[error("a string of label {index} has no string's tag")]
-    NotString { index: usize },
-    /// A string of a label, by the label's place, is no UTF-16 text.
-    #[error("a string of label {index} is no text")]
-    NotText { index: usize },
-}
-
-impl From<Short> for CsfError {
-    fn from(_: Short) -> Self {
-        Self::Short
-    }
-}
-
-/// Why a W3D file's bytes are no model the importer converts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum W3dError {
-    /// A chunk or a field runs past its end.
-    #[error("a chunk runs past its end")]
-    Short,
-    /// A name is not ASCII.
-    #[error("a name is not ASCII")]
-    NotAscii,
-    /// A chunk lacks a part it needs, as a mesh its header.
-    #[error("a chunk lacks a part")]
-    Missing,
-    /// An index passes its list, or a pivot's parent does not come before it.
-    #[error("an index passes its list")]
-    Index,
-    /// A mesh's lists are not its header's counts.
-    #[error("a mesh's lists are not its counts")]
-    Counts,
-    /// A float is infinite or not a number.
-    #[error("a float is not finite")]
-    NotFinite,
-    /// An HLOD has other than one level of detail.
-    #[error("an HLOD has {0} levels of detail")]
-    Levels(u32),
-    /// An HLOD of one level of detail has other than one array of it.
-    #[error("an HLOD of one level of detail has {0} arrays of it")]
-    LodArrays(u32),
-    /// A mesh is of a geometry the importer does not draw, as a camera-aligned one.
-    #[error("a mesh is of geometry {0:#x}")]
-    Geometry(u32),
-    /// A material pass holds more texture stages than the game's two.
-    #[error("a pass holds more than two texture stages")]
-    Stages,
-}
 
 /// Why a model the objects name does not convert.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -566,32 +263,4 @@ pub enum ModelError {
     DetailFunction(u8),
     #[error(transparent)]
     NoPackagePath(#[from] NoPackagePath),
-}
-
-/// Why a float of the game's files is not a number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub(crate) enum FloatError {
-    /// Infinite, or not a number.
-    #[error("not finite")]
-    NotFinite,
-    /// Past `±2³⁹`, what a `Num` holds.
-    #[error("outside the range of Num")]
-    OutOfRange,
-}
-
-/// Bytes of the original that end inside a field.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-#[error("it ends inside a field")]
-pub(crate) struct Short;
-
-impl From<Short> for MapError {
-    fn from(_: Short) -> Self {
-        Self::Short
-    }
-}
-
-impl From<Short> for W3dError {
-    fn from(_: Short) -> Self {
-        Self::Short
-    }
 }

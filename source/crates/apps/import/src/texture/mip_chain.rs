@@ -1,4 +1,4 @@
-use crate::texture::srgb::Srgb;
+use crate::texture::srgb;
 
 /// An 8-bit RGBA texture's full chain of levels, from its base down to 1 × 1: each level a box
 /// filter of the one above it, in linear light. A side of `n` texels halves to `max(1, n / 2)`,
@@ -58,12 +58,12 @@ impl MipChain {
                         let weight = y.weight * x.weight;
                         let texel = &above[(y.at * width + x.at) * 4..][..4];
                         for (sum, &code) in light.iter_mut().zip(&texel[..3]) {
-                            *sum += weight * u64::from(Srgb::light(code));
+                            *sum += weight * u64::from(srgb::light(code));
                         }
                         alpha += weight * u64::from(texel[3]);
                     }
                 }
-                below.extend(light.map(|sum| Srgb::encode(sum, total)));
+                below.extend(light.map(|sum| srgb::encode(sum, total)));
                 below.push(u8::try_from((alpha + total / 2) / total).expect("a mean of bytes"));
             }
         }

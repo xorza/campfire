@@ -8,7 +8,7 @@ use std::env;
 use std::process::ExitCode;
 
 use campfire_common::ExitStatus;
-use campfire_import::{GameVersion, Imported, SkipReason, ZeroHour};
+use campfire_import::{Imported, SkipReason, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use tracing::{error, info, warn};
 
@@ -27,9 +27,9 @@ fn main() -> ExitCode {
         Err(status) => return ExitCode::from(status),
     };
     let imported = match args.game {
-        Game::ZeroHour => ZeroHour::open(&args.install, GameVersion::KNOWN).and_then(|game| {
+        Game::ZeroHour => ZeroHour::open(&args.install).and_then(|game| {
             info!(
-                version = game.version().name,
+                version = game.version().name(),
                 "the install is a version the importer knows"
             );
             game.write(&args.out)

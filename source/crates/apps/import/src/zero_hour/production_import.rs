@@ -5,15 +5,19 @@ use campfire_math::{Num, Rounding};
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
-use crate::zero_hour::command_button_ini::{ButtonCommand, CommandButton, CommandButtonIni};
-use crate::zero_hour::command_set_ini::CommandSetIni;
-use crate::zero_hour::game_float;
-use crate::zero_hour::import_names::{ImportNames, ProductionSection};
+use crate::zero_hour::format::csf::string_table::StringTable;
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::command_button_ini::{
+    ButtonCommand, CommandButton, CommandButtonIni,
+};
+use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::object_ini::build_data::{BuildData, Prerequisite};
+use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
+use crate::zero_hour::import_name::ImportName;
+use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::imported_type::ImportedType;
-use crate::zero_hour::locomotor_ini::LocomotorIni;
-use crate::zero_hour::object_ini::build_data::{BuildData, Prerequisite};
-use crate::zero_hour::object_ini::{IniObject, ObjectIni};
-use crate::zero_hour::string_table::StringTable;
+use crate::zero_hour::unit_types::ProductionSection;
 
 /// What the production import reads: the objects, their command sets and buttons, the
 /// locomotors that decide whether a type walks, and the string table of the buttons' names.
@@ -29,12 +33,18 @@ pub(crate) struct CommandSources<'a> {
 /// Zero Hour's trains and builds (design 18, D3 to D6): each `UNIT_BUILD` and `DOZER_CONSTRUCT`
 /// button of the command set of each unit type, and of each type a converted button makes, once
 /// for the whole import; the names of their actions, as the string table gives their labels;
-/// and the buttons dropped, each once for each cause, in the order the sets are read.
+/// the buttons dropped, each once for each cause, in the order the sets are read; and what it
+/// gives each producer, its actions of the slot kind `command` and its `production` section.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
     pub(crate) texts: BTreeMap<String, String>,
     pub(crate) dropped: Vec<DroppedButton>,
+    /// Each producer's and builder's actions of its slot kind `command`, by its type's name, in
+    /// its command set's order.
+    pub(crate) commands: BTreeMap<ImportName, Vec<DeclaredName>>,
+    /// Each producer's `production` section, by its type's name.
+    pub(crate) sections: BTreeMap<ImportName, ProductionSection>,
 }
 
 /// A train or a build as the mode's data writes it, `[actions.<id>]`.
@@ -251,9 +261,15 @@ impl ProductionImport {
                     .filter(|_| making == Making::Build)
                     .map(Self::one_life),
             });
-        names.give_command(producer, id);
+        let commands = self
+            .commands
+            .entry(ImportName::object(producer))
+            .or_default();
+        if !commands.contains(&id) {
+            commands.push(id);
+        }
         if let Some(section) = section {
-            names.give_production(producer, section);
+            self.sections.insert(ImportName::object(producer), section);
         }
         Some(made.name.clone())
     }

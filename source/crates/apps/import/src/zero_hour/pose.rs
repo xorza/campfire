@@ -1,4 +1,4 @@
-use crate::zero_hour::hierarchy::Pivot;
+use crate::zero_hour::format::w3d::hierarchy::Pivot;
 
 /// A rigid placement in W3D's frame, `z` up: a rotation, a quaternion `x, y, z, w` with WW3D's
 /// `Build_Matrix3`, the standard one, then a translation. Each step is `f32`, in a fixed order with
@@ -40,61 +40,61 @@ impl Pose {
     /// `child`, placed in this pose's frame.
     pub(crate) fn then(self, child: Self) -> Self {
         Self {
-            translation: Self::add(self.rotate(child.translation), self.translation),
-            rotation: Self::multiply(self.rotation, child.rotation),
+            translation: add(self.rotate(child.translation), self.translation),
+            rotation: multiply(self.rotation, child.rotation),
         }
     }
 
     pub(crate) fn place(self, point: [f32; 3]) -> [f32; 3] {
-        Self::add(self.rotate(point), self.translation)
+        add(self.rotate(point), self.translation)
     }
 
     /// `vector` turned by the rotation: `v + 2w (q × v) + 2 q × (q × v)`.
     pub(crate) fn rotate(self, vector: [f32; 3]) -> [f32; 3] {
         let [x, y, z, w] = self.rotation;
         let axis = [x, y, z];
-        let once = Self::cross(axis, vector);
-        let twice = Self::cross(axis, once);
+        let once = cross(axis, vector);
+        let twice = cross(axis, once);
         let mut out = [0.0; 3];
         for at in 0..3 {
             out[at] = vector[at] + 2.0 * (w * once[at]) + 2.0 * twice[at];
         }
         out
     }
+}
 
-    /// A point or a direction of W3D's frame on glTF's axes, `y` up: `(x, y, z)` as `(x, z, −y)`,
-    /// a rotation, so handedness and winding hold.
-    pub(crate) const fn y_up(vector: [f32; 3]) -> [f32; 3] {
-        [vector[0], vector[2], -vector[1]]
-    }
+/// A point or a direction of W3D's frame on glTF's axes, `y` up: `(x, y, z)` as `(x, z, −y)`,
+/// a rotation, so handedness and winding hold.
+pub(crate) const fn y_up(vector: [f32; 3]) -> [f32; 3] {
+    [vector[0], vector[2], -vector[1]]
+}
 
-    /// A rotation of W3D's frame on glTF's axes: its axis turned as a vector is, its angle kept.
-    pub(crate) const fn y_up_rotation(rotation: [f32; 4]) -> [f32; 4] {
-        [rotation[0], rotation[2], -rotation[1], rotation[3]]
-    }
+/// A rotation of W3D's frame on glTF's axes: its axis turned as a vector is, its angle kept.
+pub(crate) const fn y_up_rotation(rotation: [f32; 4]) -> [f32; 4] {
+    [rotation[0], rotation[2], -rotation[1], rotation[3]]
+}
 
-    fn multiply(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
-        let [ax, ay, az, aw] = a;
-        let [bx, by, bz, bw] = b;
-        [
-            aw * bx + ax * bw + ay * bz - az * by,
-            aw * by - ax * bz + ay * bw + az * bx,
-            aw * bz + ax * by - ay * bx + az * bw,
-            aw * bw - ax * bx - ay * by - az * bz,
-        ]
-    }
+fn multiply(a: [f32; 4], b: [f32; 4]) -> [f32; 4] {
+    let [ax, ay, az, aw] = a;
+    let [bx, by, bz, bw] = b;
+    [
+        aw * bx + ax * bw + ay * bz - az * by,
+        aw * by - ax * bz + ay * bw + az * bx,
+        aw * bz + ax * by - ay * bx + az * bw,
+        aw * bw - ax * bx - ay * by - az * bz,
+    ]
+}
 
-    fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-        [
-            a[1] * b[2] - a[2] * b[1],
-            a[2] * b[0] - a[0] * b[2],
-            a[0] * b[1] - a[1] * b[0],
-        ]
-    }
+fn cross(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ]
+}
 
-    fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
-        [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
-    }
+fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
+    [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
 #[cfg(test)]
@@ -127,10 +127,7 @@ mod tests {
         let [x, y, _] = twice.rotate([1.0, 0.0, 0.0]);
         assert!((x + 1.0).abs() < CLOSE && y.abs() < CLOSE, "{x} {y}");
         // W3D's up, z, is glTF's y; its north, y, is glTF's −z.
-        assert_eq!(Pose::y_up([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
-        assert_eq!(
-            Pose::y_up_rotation([0.1, 0.2, 0.3, 0.9]),
-            [0.1, 0.3, -0.2, 0.9]
-        );
+        assert_eq!(y_up([1.0, 2.0, 3.0]), [1.0, 3.0, -2.0]);
+        assert_eq!(y_up_rotation([0.1, 0.2, 0.3, 0.9]), [0.1, 0.3, -0.2, 0.9]);
     }
 }

@@ -13,14 +13,15 @@ use campfire_values::DeclaredName;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::object_ini::{ObjectIni, PlacedAs};
+use crate::zero_hour::format::look_conditions::LookConditions;
+use crate::zero_hour::format::map::map_file::{GameLight, MapFile, MapHeights};
+use crate::zero_hour::format::map::map_object::Placement;
+use crate::zero_hour::format::map::terrain::Terrain;
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::locomotor_ini::LocomotorIni;
-use crate::zero_hour::map_file::{GameLight, MapFile, MapHeights};
-use crate::zero_hour::map_object::Placement;
-use crate::zero_hour::object_ini::{ObjectIni, PlacedAs};
-use crate::zero_hour::terrain::{Terrain, TerrainParts};
-use crate::zero_hour::terrain_atlas::TerrainAtlas;
+use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
@@ -89,6 +90,8 @@ pub(crate) struct MapSources<'a> {
     pub(crate) looks: &'a ClientUnits,
     pub(crate) lights: usize,
     pub(crate) game: GameData,
+    /// The texture of each of the map's texture classes, in their order.
+    pub(crate) textures: &'a [Option<ClassTexture>],
 }
 
 /// The terrain's surface, rough, of no metal or specular, as the import's materials are (design
@@ -122,8 +125,10 @@ const WAYPOINT_NAME: &str = "name";
 /// players' start objects at (design 17, D6).
 pub(crate) const START: &str = "start";
 
-/// The player slots of a game, `MAX_SLOTS`: the starts a map may name, from `Player_1_Start`.
-const SLOTS: u8 = 8;
+/// The player slots of a game, `MAX_SLOTS`: the starts a map may name, from `Player_1_Start`,
+/// and the players of a skirmish, each its own team, as the original's default skirmish holds
+/// them (design 19, D1).
+pub(crate) const SLOTS: u8 = 8;
 
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
@@ -144,6 +149,7 @@ impl MapImport {
             looks,
             lights,
             game,
+            textures,
         } = sources;
         let heights = Self::heights(&file.heights)?;
         let map_lights = MapLights::new(
@@ -153,14 +159,11 @@ impl MapImport {
                 direction: Self::axes(light),
             }),
         )
-        .ok_or(MapError::Lighting)?;
-        let terrain = Terrain::new(TerrainParts {
-            cells: Self::flipped(&file.terrain.cells, file.heights.width),
-            ..file.terrain.clone()
-        })
-        .map_err(MapError::Terrain)?;
-        let atlas = TerrainAtlas::new(terrain.parts());
-        let cells = TerrainCells::new(terrain.parts(), heights.samples(), &atlas, game);
+        .ok_or(MapError::LightDirection)?;
+        let terrain =
+            Terrain::new(file.terrain.clone(), file.heights.width).map_err(MapError::Terrain)?;
+        let atlas = TerrainAtlas::new(terrain.parts(), textures);
+        let cells = TerrainCells::new(terrain.parts(), &file.heights, &atlas, game);
         let untextured = cells.untextured();
         let quads = cells.quads();
         let terrain = TerrainFile::new(quads, atlas.into_texture(), SURFACE)
@@ -323,7 +326,7 @@ impl MapImport {
             lights: Toml::write(&map_lights),
             objects: Toml::write(&client),
             conditions: Toml::write(&MapConditions {
-                conditions: file.conditions.names(),
+                conditions: condition_names(file.conditions),
             }),
             dropped_waypoints,
         })
@@ -373,16 +376,29 @@ impl MapImport {
     }
 }
 
+/// The names the package gives `conditions`, `night` and `snow`, in that order.
+pub(crate) fn condition_names(conditions: LookConditions) -> Vec<DeclaredName> {
+    let named = |name| DeclaredName::new(name).expect("the import's own names are declared");
+    [(conditions.night, "night"), (conditions.snow, "snow")]
+        .into_iter()
+        .filter(|&(held, _)| held)
+        .map(|(_, name)| named(name))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::mem;
+
     use campfire_client_files::ClientUnit;
 
     use super::*;
-    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::look_conditions::LookConditions;
-    use crate::zero_hour::map_file::internals::map;
-    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
-    use crate::zero_hour::terrain::{BlendShape, BlendTile};
+    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::object_ini::internals::{
+        DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
+    };
+    use crate::zero_hour::format::map::map_file::internals::map;
+    use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile};
 
     /// The fixture map's `data/units.toml`.
     const UNITS_TOML: &str = r#"[units.americatankcrusader]
@@ -448,6 +464,7 @@ box = ["20", "5"]
                 adjust_cliff_textures: true,
                 three_way_blends: true,
             },
+            textures: &vec![None; file.terrain.classes.len()],
         };
         MapImport::new(file, sources)
     }
@@ -480,7 +497,7 @@ box = ["20", "5"]
         // An object light it draws that goes no way is refused; one it does not draw is not.
         file.lights[1].position = [0.0; 3];
         let refused = import(&file, &mut names, 3).map(drop);
-        assert_eq!(refused, Err(MapError::Lighting));
+        assert_eq!(refused, Err(MapError::LightDirection));
         assert!(import(&file, &mut names, 1).is_ok());
     }
 
@@ -664,7 +681,7 @@ box = ["20", "5"]
         // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m,
         // and lives by its active body, 400, of no armor; the wall is a structure, a box of 2 ·
         // 10 by 2 · 2.5 m, whose highlander body gives it no life; the fence is neither.
-        let units = names.units_file();
+        let units = mem::take(&mut names).close().bare_file();
         assert_eq!(units.text, UNITS_TOML);
         assert_eq!(units.max_speed, Some(Num::int(61) / Num::int(2)));
 

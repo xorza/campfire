@@ -79,12 +79,12 @@ pub(crate) const FIGHT: FightSteps = FightSteps {
 /// in the order of `WeaponDrop::ALL`: no weapon, a projectile 70, a radius 6, a scatter, a speed
 /// that may delay the damage 7, no hit on the ground 7, a suicide, damage at its own place, a
 /// fire that speeds up 3, a delay before the attack 4, a minimum range, a random delay, no delay
-/// 3, no damage type, no damage to life 4, healing, a bad number; its armors, `Armor.ini`'s 53,
+/// 3, no damage to life 4, healing, a bad number; its armors, `Armor.ini`'s 53,
 /// and damage kinds, the game's 38; and the unit types' objects of no life, 38, and of a wounded
 /// start (design 19, D5, D6).
 pub(crate) const FOUGHT: FoughtCounts = FoughtCounts {
     weapons: 17,
-    dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 0, 4, 0, 0],
+    dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 4, 0, 0],
     armors: 53,
     kinds: 38,
     unliving: 38,

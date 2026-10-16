@@ -1,6 +1,8 @@
 use campfire_common::MapName;
 use campfire_values::DeclaredName;
 
+use crate::zero_hour::format::ini::object_ini::IniObject;
+
 /// A name of the original, a map's folder or an object's template, as a package names it: its
 /// ASCII letters lowercase, its digits and `_` kept, each other byte `_`, and `x` before a name
 /// that does not start with a letter. Two names may give one, which the import refuses.
@@ -20,6 +22,21 @@ impl ImportName {
             name.insert(0, 'x');
         }
         Self(name)
+    }
+
+    /// The name a package gives `object`, of its name's bytes, each char of Latin-1 one, as a
+    /// map's template writes it.
+    pub(crate) fn object(object: &IniObject) -> Self {
+        Self::latin(&object.name)
+    }
+
+    /// The name a package gives `name`, an INI's text, each char of Latin-1 one byte.
+    pub(crate) fn latin(name: &str) -> Self {
+        let bytes: Vec<u8> = name
+            .chars()
+            .map(|char| u8::try_from(char).expect("an INI's text is Latin-1"))
+            .collect();
+        Self::of(&bytes)
     }
 
     pub(crate) fn as_str(&self) -> &str {
