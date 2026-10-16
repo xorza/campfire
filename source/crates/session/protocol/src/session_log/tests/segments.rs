@@ -14,7 +14,10 @@ fn checkpoint(log: &SessionLog, byte: u8) -> Checkpoint {
 
 /// The signature of `record` by `key`, in the session of `terms()`.
 fn signed_by(record: &Checkpoint, key: &Keypair) -> Signature {
-    record.sign(&TestKey::signer(*key), session_id())
+    TestKey::signer(*key).sign(&InSession {
+        session_id: session_id(),
+        record,
+    })
 }
 
 /// The result of `log` that stops before its next tick, ended as `outcome`.
@@ -117,7 +120,10 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     // The session ends before tick 4. The file holds both segments, the reveal of segment 1's
     // seed and the result, decodes to the same bytes, and replays the same ticks.
     let ended = result(&log, Outcome::Won { team: 1 });
-    let signature = ended.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &ended,
+    });
     log.record_result(ended, &signature).unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     assert_eq!(
@@ -181,7 +187,10 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
 
     // A result signed by another key, or at another tick than the next.
     let ended = result(&log, Outcome::Draw);
-    let forged = ended.sign(&TestKey::signer(stranger), session_id());
+    let forged = TestKey::signer(stranger).sign(&InSession {
+        session_id: session_id(),
+        record: &ended,
+    });
     assert_eq!(
         log.record_result(ended, &forged),
         Err(ResultError::BadSignature)
@@ -190,7 +199,10 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         tick: Tick::new(1),
         ..ended
     };
-    let signature = early.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &early,
+    });
     assert_eq!(log.record_result(early, &signature), Err(ResultError::Tick));
     assert_eq!(log.result(), None);
 }

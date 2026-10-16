@@ -1,5 +1,5 @@
 use bevy_app::AppExit;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
@@ -15,6 +15,7 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
@@ -65,11 +66,13 @@ impl SimServerWorld for World {
             self.remove_resource::<Checkpoints>();
         }
         let result = self.session_result();
-        let mut session = self.session_mut();
-        session
-            .record_result(result)
-            .expect("the server's own result holds");
-        session.reveal_seed();
+        self.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = &world.resource::<ServerSigner>().0;
+            session
+                .record_result(result, signer)
+                .expect("the server's own result holds");
+            session.reveal_seed();
+        });
         Ok(())
     }
 

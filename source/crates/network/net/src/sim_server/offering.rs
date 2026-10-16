@@ -300,7 +300,11 @@ impl Offering {
 
     /// The delegation of `join`, when its session key answered the challenge `offered` over the
     /// link's channel binding, and it grants this session, not expired by the server's clock.
-    pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
+    pub(crate) fn check(
+        &mut self,
+        offered: &Offered,
+        join: &Join,
+    ) -> Result<Delegation, JoinError> {
         let delegation = Delegation::parse(&join.delegation).map_err(JoinError::Delegation)?;
         let answer = ConnectAnswer {
             challenge: &offered.challenge,
@@ -308,7 +312,7 @@ impl Offering {
         };
         answer
             .check(
-                &self.verifier,
+                &mut self.verifier,
                 &self.terms,
                 &delegation,
                 &join.answer,
@@ -322,7 +326,7 @@ impl Offering {
     /// gives the links in the order of its tables, which changes from run to run once Lightyear
     /// iterates them in parallel, so the answered ones go in an order of what they sent.
     pub(crate) fn check_all(
-        &self,
+        &mut self,
         joins: impl Iterator<Item = (Entity, Offered, Join)>,
         checked: &mut CheckedJoins,
     ) {

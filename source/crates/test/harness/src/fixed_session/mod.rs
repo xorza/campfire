@@ -133,7 +133,6 @@ impl FixedSession {
             log: self.log(),
             seeds: Self::seeds(),
             packages: &self.packages,
-            signer: Some(Self::server_signer()),
         };
         let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, signers, self.terms.clone(), log)

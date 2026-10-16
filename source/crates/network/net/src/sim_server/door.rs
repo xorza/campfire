@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
 use campfire_log::ErrorReport;
@@ -26,6 +26,7 @@ use crate::sim_server::offering::{
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 
 /// The session's door after the start: it offers the terms to every new link, and seats each
@@ -68,7 +69,7 @@ impl Door {
     ) {
         joins.extend(links.iter_mut(world).filter_map(Offering::received));
         world
-            .resource::<Self>()
+            .resource_mut::<Self>()
             .offering
             .check_all(joins.drain(..), &mut checked);
         for (link, error) in checked.refused.drain(..) {
@@ -228,10 +229,10 @@ impl Door {
 
     /// Logs `input`, signed by the server.
     fn serve(world: &mut World, input: ServerInput<'_>) -> Result<(), JoinError> {
-        world
-            .resource_mut::<Session>()
-            .serve(input)
-            .map_err(JoinError::Refused)
+        world.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = &world.resource::<ServerSigner>().0;
+            session.serve(input, signer).map_err(JoinError::Refused)
+        })
     }
 
     /// Watches the seated links: a link that failed logs its slot `Disconnected`, and the grace
@@ -267,10 +268,7 @@ impl Door {
                     slot = slot.get(),
                     "a player's link failed; their grace period runs"
                 );
-                Self::serve_unless_full(
-                    &mut world.resource_mut::<Session>(),
-                    ServerInput::Disconnected { slot },
-                );
+                Self::serve_unless_full(world, ServerInput::Disconnected { slot });
                 if let Ok(mut gone) = world.get_entity_mut(link) {
                     gone.remove::<PlayerLink>();
                 }
@@ -307,7 +305,7 @@ impl Door {
         let becomes = world.resource::<Session>().after_leave();
         info!(slot = slot.get(), ?reason, ?becomes, "a player left");
         Self::serve_unless_full(
-            &mut world.resource_mut::<Session>(),
+            world,
             ServerInput::Leave {
                 slot,
                 reason,
@@ -319,9 +317,10 @@ impl Door {
     /// Logs `input`, a change of a link or a leave, which its slot's player always allows,
     /// signed by the server; none when the log is full, as the session then ends at the next
     /// boundary, before the tick it would apply in.
-    pub(crate) fn serve_unless_full(session: &mut Session, input: ServerInput<'_>) {
-        match session.serve(input) {
-            Ok(()) | Err(ServerInputRefused::Log(ServerInputError::LogFull)) => {}
+    pub(crate) fn serve_unless_full(world: &mut World, input: ServerInput<'_>) {
+        match Self::serve(world, input) {
+            Ok(())
+            | Err(JoinError::Refused(ServerInputRefused::Log(ServerInputError::LogFull))) => {}
             Err(error) => panic!("the server's own input holds: {}", ErrorReport::of(&error)),
         }
     }

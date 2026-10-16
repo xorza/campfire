@@ -16,6 +16,7 @@ use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned};
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
@@ -205,10 +206,12 @@ impl Checkpoints {
             segment: record.segment,
             tick: record.tick,
         };
-        world
-            .resource_mut::<Session>()
-            .record_checkpoint(record)
-            .expect("the server's own checkpoint holds");
+        world.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = &world.resource::<ServerSigner>().0;
+            session
+                .record_checkpoint(record, signer)
+                .expect("the server's own checkpoint holds");
+        });
         taken.log();
     }
 }

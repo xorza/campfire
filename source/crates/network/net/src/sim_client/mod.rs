@@ -393,11 +393,11 @@ fn receive_receipt(
     mut receivers: Query<'_, '_, &mut MessageReceiver<SignedReceipt>, With<Client>>,
     mut state: ResMut<'_, JoinState>,
     writer: Option<Res<'_, ReceiptWriter>>,
-    verifier: Local<'_, Verifier>,
+    mut verifier: Local<'_, Verifier>,
 ) {
     for mut receiver in &mut receivers {
         for receipt in receiver.receive() {
-            if let Err(refusal) = state.take_receipt(&receipt, &verifier) {
+            if let Err(refusal) = state.take_receipt(&receipt, &mut verifier) {
                 ReceiptRefused { refusal }.log();
                 continue;
             }
@@ -710,7 +710,7 @@ fn send_orders(
         playing.extend(stamp, payload);
     }
     let inputs = payloads.map(|payload| (stamp, payload));
-    let signature = playing.chain.sign(&signer.0, session.id);
+    let signature = signer.0.sign(&playing.chain.signed_head(session.id));
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
 }
 

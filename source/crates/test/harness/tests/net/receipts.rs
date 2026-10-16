@@ -56,11 +56,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
             (receipt.receipt.session_id, receipt.receipt.slot),
             (id, slot)
         );
-        assert!(
-            receipt
-                .receipt
-                .signed_by(&Verifier::new(), &server, &receipt.signature)
-        );
+        assert!(Verifier::new().verifies(&receipt.signature, &server, &receipt.receipt));
         let file = scratch
             .path("data")
             .join(format!("client-{client}"))

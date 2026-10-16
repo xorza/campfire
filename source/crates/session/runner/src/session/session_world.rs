@@ -91,11 +91,7 @@ impl SessionWorld for World {
                     .seeds
                     .seed(segment)
                     .expect("the seeds reach the log's last segment");
-                let seed = session
-                    .log
-                    .header()
-                    .segment_seed(segment, &server_seed)
-                    .expect("seeds whose first checks give every segment's");
+                let seed = session.log.header().segment_seed(segment, &server_seed);
                 world.insert_resource(SimRng::new(seed));
                 session.segment = segment;
             }

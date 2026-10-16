@@ -144,11 +144,10 @@ impl Joining {
     fn join(&self, json: &str, session: u8, binding: u8) -> Join {
         Join {
             delegation: json.to_owned(),
-            answer: ConnectAnswer {
+            answer: TestKey::signer(TestKey::of(session)).sign(&ConnectAnswer {
                 challenge: &self.offered.challenge,
                 binding: &ChannelBinding::new([binding; 32]),
-            }
-            .sign(&TestKey::signer(TestKey::of(session))),
+            }),
             role: JoinRole::Play,
         }
     }
@@ -172,7 +171,7 @@ fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
     // In either order, the answered joins go in the order of their main keys, then their
     // session keys, and the join over another session's binding is refused. The x-only keys begin
     // 46… for byte 4 and 53… for byte 3, and the session keys 4d… for byte 2 and f9… for byte 8.
-    let lobby = Lobby::new(setup(&[], &[])).unwrap();
+    let mut lobby = Lobby::new(setup(&[], &[])).unwrap();
     let joining = Joining::new(&lobby);
     let links = links(&mut World::new());
     let frame = [

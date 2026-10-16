@@ -40,7 +40,6 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_protocol::RandomKey;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
 use campfire_values::{DeclaredName, Names, ResourceId, Team, TeamSet};
@@ -148,7 +147,7 @@ fn main() -> ExitCode {
     let tick = TickRate::new(pin.tick_hz).length();
     let sim_client = SimClient {
         main_key,
-        session_key: RandomKey::generate(|bytes| Os::SYSTEM.entropy.fill(bytes)),
+        session_key: Os::SYSTEM.entropy.keypair(),
         server: pin,
         role: if args.spectate {
             JoinRole::Watch
@@ -295,7 +294,7 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
 /// code when the file does not read.
 fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
     let Some(path) = &args.key else {
-        return Ok(RandomKey::generate(|bytes| Os::SYSTEM.entropy.fill(bytes)));
+        return Ok(Os::SYSTEM.entropy.keypair());
     };
     let file = SecretFile::at(path.clone());
     KeyFile::read_or_create(&file, Os::SYSTEM.entropy).map_err(|error| {

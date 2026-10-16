@@ -375,11 +375,10 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: ConnectAnswer {
+            answer: signer.sign(&ConnectAnswer {
                 challenge: &offer.challenge,
                 binding,
-            }
-            .sign(signer),
+            }),
             role: self.player.role,
         };
         self.step = Step::Answered(answered);
@@ -521,7 +520,7 @@ impl JoinState {
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
-        verifier: &Verifier,
+        verifier: &mut Verifier,
     ) -> Result<(), ReceiptRefusal> {
         let (member, slot, history) = match &mut self.step {
             Step::Playing(playing) => (
@@ -533,7 +532,7 @@ impl JoinState {
             _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
-        if !signed.signed_by(verifier, &self.player.server.key, &receipt.signature) {
+        if !verifier.verifies(&receipt.signature, &self.player.server.key, &signed) {
             return Err(ReceiptRefusal::BadSignature);
         }
         if signed.session_id != member.session.id

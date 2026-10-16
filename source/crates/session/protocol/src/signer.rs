@@ -1,8 +1,8 @@
 use secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 
 use crate::entropy::Entropy;
-use crate::random_key::RandomKey;
 use crate::signature::Signature;
+use crate::signed::Signed;
 
 /// A key that signs, the context its signatures take, and what fills their randomness: each
 /// signature takes fresh auxiliary randomness, as BIP-340 recommends against side channels.
@@ -25,7 +25,7 @@ impl Signer {
     /// Takes a new key, from fresh randomness, as a player renews their delegation.
     pub fn renew(&mut self) {
         let entropy = self.entropy;
-        self.key = RandomKey::generate(|bytes| entropy.fill(bytes));
+        self.key = entropy.keypair();
     }
 
     pub fn public_key(&self) -> XOnlyPublicKey {
@@ -36,8 +36,26 @@ impl Signer {
         self.entropy
     }
 
+    /// The key's signature over `record`.
+    pub fn sign(&self, record: &impl Signed) -> Signature {
+        self.sign_with(record, &mut Vec::new())
+    }
+
+    /// The key's signature over `record`, its message written into `scratch`, as a signer that
+    /// signs often keeps one.
+    pub fn sign_with(&self, record: &impl Signed, scratch: &mut Vec<u8>) -> Signature {
+        record.write_message(scratch);
+        self.sign_message(scratch)
+    }
+
+    /// The key's signature over a Nostr event's `id`, as NIP-01 signs an event: the id hashes
+    /// its own kind and content.
+    pub(crate) fn sign_event_id(&self, id: &[u8; 32]) -> Signature {
+        self.sign_message(id)
+    }
+
     /// The key's BIP-340 signature over `message`.
-    pub(crate) fn sign(&self, message: &[u8]) -> Signature {
+    fn sign_message(&self, message: &[u8]) -> Signature {
         let aux = self.entropy.random();
         let signature = self
             .secp

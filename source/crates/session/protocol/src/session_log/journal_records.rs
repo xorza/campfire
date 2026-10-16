@@ -9,10 +9,10 @@ use crate::journal::record_sink::RecordSink;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
-use crate::session_log::{
-    Control, Entry, LoggedCheckpoint, LoggedResult, SegmentStart, SessionLog, file, offset, put,
-    take,
-};
+use crate::session_log::log_entries::Entry;
+use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
+use crate::session_log::slot_control::Control;
+use crate::session_log::{LoggedResult, SessionLog, file, put, take};
 
 /// The bytes that start each kind of journal record.
 const JOURNAL_HEADER: u8 = 0;
@@ -101,7 +101,7 @@ impl SessionLog {
 
     /// Whether no entry was logged since the last tick was sealed: where a checkpoint may come.
     pub(super) fn at_boundary(&self) -> bool {
-        self.entries.len() == self.tick_ends.last().map_or(0, |&end| end as usize)
+        self.entries.at_boundary()
     }
 
     /// Takes the journal record `record`, past the header, with `inputs` and `applied` as
@@ -171,8 +171,9 @@ impl SessionLog {
             self.put_header(out);
         });
         let mut start = 0;
-        let mut segments = (1..).zip(self.segments.iter().skip(1)).peekable();
-        for (tick, &end) in (0..).zip(self.tick_ends.iter()) {
+        let starts = self.segments.first(self.segments.len());
+        let mut segments = (1..).zip(starts.iter().skip(1)).peekable();
+        for (tick, end) in (0..).zip(self.entries.tick_ends()) {
             if let Some((number, segment)) =
                 segments.next_if(|(_, segment)| segment.tick == Tick::new(tick))
             {
@@ -187,7 +188,7 @@ impl SessionLog {
         if let Some((number, segment)) = segments.next() {
             segment.journal_whole(&mut journal, number);
         }
-        for at in start..offset(self.entries.len()) {
+        for at in start..self.entries.len() {
             self.journal_entry(&mut journal, at);
         }
         if let Some(result) = &self.result {
@@ -204,7 +205,7 @@ impl SessionLog {
     pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         self.journal = Some(Journal::new(sink, len));
-        for (slot, held) in (0..).map(PlayerSlot::new).zip(&self.slots) {
+        for (slot, held) in (0..).map(PlayerSlot::new).zip(self.control.iter()) {
             let Control::Player { delegation, chain } = held.control else {
                 continue;
             };
@@ -213,7 +214,7 @@ impl SessionLog {
                 continue;
             }
             let head = chain.next_seq().checked_sub(1).map(|seq| DurableHead {
-                delegation: *self.delegations[delegation as usize].id(),
+                delegation: *self.entries.delegation(delegation).id(),
                 seq,
                 head: chain.head(),
             });
@@ -249,14 +250,14 @@ impl SessionLog {
     /// Writes the entry the log took last into its journal, when it keeps one.
     pub(super) fn journal_last_entry(&mut self) {
         if let Some(mut journal) = self.journal.take() {
-            self.journal_entry(&mut journal, offset(self.entries.len() - 1));
+            self.journal_entry(&mut journal, self.entries.len() - 1);
             self.journal = Some(journal);
         }
     }
 
     /// Writes the entry `at` into `journal`.
     fn journal_entry(&self, journal: &mut Journal, at: u32) {
-        journal.append(|out| match self.entries[at as usize] {
+        journal.append(|out| match self.entries.entry(at) {
             Entry::Packet(packet) => {
                 out.push(JOURNAL_PACKET);
                 self.put_packet(out, packet);

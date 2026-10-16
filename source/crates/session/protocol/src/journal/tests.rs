@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::journal::error::NotJournal;
+use crate::journal::journal_frames::JournalFrames;
 use crate::journal::journal_frames::MAX_RECORD;
 
 /// A journal's file in memory, which a test reads back as it likes.
@@ -126,10 +127,10 @@ fn a_flipped_byte_or_a_length_past_the_bound_stops_the_read_at_its_frame() {
     }
     // A length one past the bound, with that many bytes after it, is a bad frame.
     let mut long = JournalFrames::TAG.to_vec();
-    let start = JournalFrames::open(&mut long);
+    let start = journal_frames::open(&mut long);
     long.resize(long.len() + MAX_RECORD + 1, 0);
     let len = u32::try_from(MAX_RECORD + 1).unwrap();
     long[start..start + 4].copy_from_slice(&len.to_le_bytes());
-    long.extend_from_slice(JournalFrames::hash(&long[start + 4..]).as_bytes());
+    long.extend_from_slice(journal_frames::hash(&long[start + 4..]).as_bytes());
     assert_eq!(read(&long), Some((Vec::new(), JournalFrames::TAG.len())));
 }

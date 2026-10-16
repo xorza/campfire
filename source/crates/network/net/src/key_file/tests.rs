@@ -14,7 +14,7 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
         KeyFile::read_or_create(&file, Entropy::Fixed(9)).unwrap(),
         made
     );
-    assert_eq!(scratch.read("player.nsec"), Nsec::encode(&made).as_bytes());
+    assert_eq!(scratch.read("player.nsec"), encode_nsec(&made).as_bytes());
 
     // Text that is no key; a file that is not there; one longer than a key file may be.
     let bad = SecretFile::at(scratch.path("bad.nsec"));
@@ -28,7 +28,7 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
         }))
     ));
     let long = SecretFile::at(scratch.path("long.nsec"));
-    long.create_new(&[b' '; Nsec::MAX_FILE_LEN + 1]).unwrap();
+    long.create_new(&[b' '; MAX_NSEC_FILE_LEN + 1]).unwrap();
     assert!(matches!(
         KeyFile::read(&long),
         Err(KeyFileError::Read(PathError {

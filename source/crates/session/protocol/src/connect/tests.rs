@@ -54,11 +54,10 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
 fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     let challenge = ConnectChallenge::new([9; 32]);
     let binding = ChannelBinding::new([7; 32]);
-    let answer = ConnectAnswer {
+    let answer = TestKey::signer(TestKey::of(2)).sign(&ConnectAnswer {
         challenge: &challenge,
         binding: &binding,
-    }
-    .sign(&TestKey::signer(TestKey::of(2)));
+    });
     let good = delegation(|_| {});
     let check = |challenge: ConnectChallenge,
                  binding: ChannelBinding,
@@ -69,7 +68,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
             challenge: &challenge,
             binding: &binding,
         };
-        to.check(&Verifier::new(), &terms(), delegation, answer, now)
+        to.check(&mut Verifier::new(), &terms(), delegation, answer, now)
     };
     assert_eq!(
         check(challenge, binding, &good, &answer, TestKey::NOW),
@@ -105,11 +104,10 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     }
     // An answer given to another challenge, or over another TLS session's binding, as a relay
     // between two sessions gives, is refused.
-    let relayed = ConnectAnswer {
+    let relayed = TestKey::signer(TestKey::of(2)).sign(&ConnectAnswer {
         challenge: &ConnectChallenge::new([10; 32]),
         binding: &binding,
-    }
-    .sign(&TestKey::signer(TestKey::of(2)));
+    });
     let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
         check(challenge, binding, &good, &relayed, TestKey::NOW),
@@ -121,11 +119,12 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     );
 
     // The signed message is the domain, the challenge and the binding, end to end.
-    let message = ConnectAnswer {
+    let mut message = Vec::new();
+    ConnectAnswer {
         challenge: &challenge,
         binding: &binding,
     }
-    .message();
+    .write_message(&mut message);
     assert_eq!(&message[..19], b"campfire/connect/v2");
     assert_eq!(
         (&message[19..51], &message[51..]),

@@ -1,20 +1,15 @@
 use campfire_codec::{Binary, TaggedError};
 use campfire_common::{PlayerSlot, Tick};
-use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
-use crate::signer::Signer;
-use crate::verifier::Verifier;
+use crate::signed::{SignatureDomain, Signed};
 
 /// Starts every receipt file and states its version, so other bytes are refused at once.
 const FILE_TAG: &[u8] = b"campfire/receipt-file/v1";
-/// Starts every signed receipt, so no other signature of the server key counts as one.
-const SIGNATURE_DOMAIN: &[u8] = b"campfire/receipt/v1";
-const MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 32 + 8 + 8 + 32;
 
 /// The server's word that it logged a player's inputs up to seq `seq`, whose chain head is
 /// `head`, durably: their journal records were synced, so no crash loses them. It names the
@@ -37,41 +32,18 @@ pub struct SignedReceipt {
     pub signature: Signature,
 }
 
-impl Receipt {
-    /// The server key's signature over the receipt, `server`'s.
-    pub fn sign(&self, server: &Signer) -> Signature {
-        server.sign(&self.message())
-    }
+/// `domain ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head`, little-endian,
+/// as the server key signs a receipt.
+impl Signed for Receipt {
+    const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/receipt/v1");
 
-    /// Whether `signature` is `server_key`'s over the receipt.
-    pub fn signed_by(
-        &self,
-        verifier: &Verifier,
-        server_key: &XOnlyPublicKey,
-        signature: &Signature,
-    ) -> bool {
-        verifier.verifies(*signature, server_key, &self.message())
-    }
-
-    /// `domain ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head`,
-    /// little-endian.
-    fn message(&self) -> [u8; MESSAGE_LEN] {
-        let mut message = [0; MESSAGE_LEN];
-        let mut at = 0;
-        for part in [
-            SIGNATURE_DOMAIN,
-            self.session_id.as_bytes(),
-            &self.slot.get().to_le_bytes(),
-            self.delegation.as_bytes(),
-            &self.tick.get().to_le_bytes(),
-            &self.seq.to_le_bytes(),
-            self.head.as_bytes(),
-        ] {
-            message[at..at + part.len()].copy_from_slice(part);
-            at += part.len();
-        }
-        debug_assert_eq!(at, MESSAGE_LEN, "the parts fill the message");
-        message
+    fn write_body(&self, message: &mut Vec<u8>) {
+        message.extend_from_slice(self.session_id.as_bytes());
+        message.extend_from_slice(&self.slot.get().to_le_bytes());
+        message.extend_from_slice(self.delegation.as_bytes());
+        message.extend_from_slice(&self.tick.get().to_le_bytes());
+        message.extend_from_slice(&self.seq.to_le_bytes());
+        message.extend_from_slice(self.head.as_bytes());
     }
 }
 

@@ -4,14 +4,10 @@ use crate::connect::error::ConnectError;
 use crate::delegation::Delegation;
 use crate::session_terms::SessionTerms;
 use crate::signature::Signature;
-use crate::signer::Signer;
+use crate::signed::{SignatureDomain, Signed};
 use crate::verifier::Verifier;
 
 pub(crate) mod error;
-
-/// Starts every signed connect answer, so no other signature of the session key counts as one.
-const ANSWER_DOMAIN: &[u8] = b"campfire/connect/v2";
-const ANSWER_MESSAGE_LEN: usize = ANSWER_DOMAIN.len() + 32 + 32;
 
 /// The random bytes a server sends a connecting client. The client answers with its delegation
 /// and its session key's signature over the challenge and its TLS session's channel binding,
@@ -35,19 +31,24 @@ pub struct ConnectAnswer<'a> {
     pub binding: &'a ChannelBinding,
 }
 
-impl ConnectAnswer<'_> {
-    /// The answer as the session key, `session`'s, signs it.
-    pub fn sign(&self, session: &Signer) -> Signature {
-        session.sign(&self.message())
-    }
+/// `domain ‖ challenge ‖ binding`, as the session key signs an answer.
+impl Signed for ConnectAnswer<'_> {
+    const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/connect/v2");
 
+    fn write_body(&self, message: &mut Vec<u8>) {
+        message.extend_from_slice(self.challenge.as_bytes());
+        message.extend_from_slice(self.binding.as_bytes());
+    }
+}
+
+impl ConnectAnswer<'_> {
     /// Checks a joining player's `answer` with `delegation`, at `now` in Unix seconds: the
     /// delegation names the server and the session of `terms` and has not expired, and its
     /// session key signed the challenge over the binding, the server's own end of the TLS
     /// session.
     pub fn check(
         &self,
-        verifier: &Verifier,
+        verifier: &mut Verifier,
         terms: &SessionTerms,
         delegation: &Delegation,
         answer: &Signature,
@@ -60,21 +61,10 @@ impl ConnectAnswer<'_> {
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
-        if !verifier.verifies(*answer, &granted.session_key, &self.message()) {
+        if !verifier.verifies(answer, &granted.session_key, self) {
             return Err(ConnectError::BadAnswer);
         }
         Ok(())
-    }
-
-    /// `domain ‖ challenge ‖ binding`.
-    const fn message(&self) -> [u8; ANSWER_MESSAGE_LEN] {
-        let mut message = [0; ANSWER_MESSAGE_LEN];
-        let (domain, rest) = message.split_at_mut(ANSWER_DOMAIN.len());
-        let (challenge, bound) = rest.split_at_mut(32);
-        domain.copy_from_slice(ANSWER_DOMAIN);
-        challenge.copy_from_slice(self.challenge.as_bytes());
-        bound.copy_from_slice(self.binding.as_bytes());
-        message
     }
 }
 

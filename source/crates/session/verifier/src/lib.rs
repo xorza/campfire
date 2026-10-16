@@ -7,5 +7,5 @@ mod events;
 mod verification;
 
 pub use crate::events::verified::Verified;
-pub use crate::verification::Verification;
 pub use crate::verification::error::VerifyError;
+pub use crate::verification::{SnapshotFiles, SnapshotSource, verify_file, verify_log};

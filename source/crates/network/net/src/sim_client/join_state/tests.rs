@@ -171,7 +171,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
             binding: &binding,
         };
         answer.check(
-            &Verifier::new(),
+            &mut Verifier::new(),
             &offer.terms,
             &delegation,
             &join.answer,
@@ -391,7 +391,7 @@ fn signed(receipt: Receipt) -> SignedReceipt {
     let server = TestKey::of(8);
     SignedReceipt {
         receipt,
-        signature: receipt.sign(&TestKey::signer(server)),
+        signature: TestKey::signer(server).sign(&receipt),
     }
 }
 
@@ -412,10 +412,10 @@ fn receipted() -> (JoinState, Signer, Vec<InputHash>, Delegation, Receipt) {
 
 #[test]
 fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
-    let verifier = Verifier::new();
+    let mut verifier = Verifier::new();
     let (mut state, _, heads, _, receipt) = receipted();
     assert_eq!(
-        waiting(TICK_HZ).take_receipt(&signed(receipt), &verifier),
+        waiting(TICK_HZ).take_receipt(&signed(receipt), &mut verifier),
         Err(ReceiptRefusal::NotPlaying)
     );
     let forged = SignedReceipt {
@@ -470,7 +470,7 @@ fn a_client_refuses_a_receipt_not_signed_over_its_own_chain() {
         ),
     ];
     for (receipt, refusal) in refused {
-        assert_eq!(state.take_receipt(&receipt, &verifier), Err(refusal));
+        assert_eq!(state.take_receipt(&receipt, &mut verifier), Err(refusal));
     }
     assert_eq!(state.receipt(), None);
 }
@@ -480,10 +480,10 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
     // After a load, the server's chain stands at seq 1 with a head that is not the client's own
     // there, heads[1]: a local server's chain is taken, its 2 inputs after seq 1 never apply and
     // its receipt is dropped; any other server rewrote the chain.
-    let verifier = Verifier::new();
+    let mut verifier = Verifier::new();
     for hosting in [Hosting::Local, Hosting::Remote] {
         let (mut state, mut signer, heads, _, receipt) = receipted();
-        state.take_receipt(&signed(receipt), &verifier).unwrap();
+        state.take_receipt(&signed(receipt), &mut verifier).unwrap();
         state.lose(Duration::ZERO, [0; 32]);
         state
             .answer(&offer(|_| {}), &BINDING, &mut signer, TestKey::NOW)
@@ -517,24 +517,24 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
 
 #[test]
 fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
-    let verifier = Verifier::new();
+    let mut verifier = Verifier::new();
     let (mut state, mut signer, heads, delegation, receipt) = receipted();
     // Seq 1 is kept; seq 1 again, as a restored server gives it at a later tick, is kept in its
     // place, and with another head refused; seq 0 is older; seq 2 replaces it.
-    assert_eq!(state.take_receipt(&signed(receipt), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(receipt), &mut verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(receipt)));
     let again = Receipt {
         tick: Tick::new(9),
         ..receipt
     };
-    assert_eq!(state.take_receipt(&signed(again), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(again), &mut verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(again)));
     let other = Receipt {
         head: heads[1],
         ..again
     };
     assert_eq!(
-        state.take_receipt(&signed(other), &verifier),
+        state.take_receipt(&signed(other), &mut verifier),
         Err(ReceiptRefusal::OtherHead)
     );
     let first = Receipt {
@@ -543,7 +543,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         ..receipt
     };
     assert_eq!(
-        state.take_receipt(&signed(first), &verifier),
+        state.take_receipt(&signed(first), &mut verifier),
         Err(ReceiptRefusal::Older)
     );
     let third = Receipt {
@@ -552,7 +552,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         head: heads[3],
         ..receipt
     };
-    assert_eq!(state.take_receipt(&signed(third), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(third), &mut verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(third)));
 
     // A day on, the link fails: the client keeps the receipt while it tries again, renews its
@@ -599,10 +599,10 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         ..fourth
     };
     assert_eq!(
-        state.take_receipt(&signed(stranger), &verifier),
+        state.take_receipt(&signed(stranger), &mut verifier),
         Err(ReceiptRefusal::Other)
     );
-    assert_eq!(state.take_receipt(&signed(fourth), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(fourth), &mut verifier), Ok(()));
     let playing = state.playing_mut().unwrap();
     playing.extend(Tick::new(0), b"e");
     let fifth = Receipt {
@@ -611,7 +611,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         head: playing.chain.head(),
         ..fourth
     };
-    assert_eq!(state.take_receipt(&signed(fifth), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(fifth), &mut verifier), Ok(()));
 
     // The history forgot every head before the receipt's: a server whose copy holds fewer
     // inputs than it named rewrote the chain.
@@ -636,9 +636,9 @@ fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
     // The player leaves after inputs a, b and c; the receipt of c, seq 2, which the server sent
     // before it took the leave, comes after it: the client keeps it, as the newest. Once the
     // link closes, it takes none.
-    let verifier = Verifier::new();
+    let mut verifier = Verifier::new();
     let (mut state, _, heads, _, receipt) = receipted();
-    state.take_receipt(&signed(receipt), &verifier).unwrap();
+    state.take_receipt(&signed(receipt), &mut verifier).unwrap();
     state.leave();
     assert!(state.left());
     let last = Receipt {
@@ -646,19 +646,19 @@ fn a_client_that_left_takes_a_receipt_until_its_link_closes() {
         head: heads[3],
         ..receipt
     };
-    assert_eq!(state.take_receipt(&signed(last), &verifier), Ok(()));
+    assert_eq!(state.take_receipt(&signed(last), &mut verifier), Ok(()));
     assert_eq!(state.receipt(), Some(&signed(last)));
     assert_eq!(state.lose(Duration::ZERO, [0; 32]), LinkLoss::Nothing);
     assert!(state.left());
     assert_eq!(
-        state.take_receipt(&signed(last), &verifier),
+        state.take_receipt(&signed(last), &mut verifier),
         Err(ReceiptRefusal::NotPlaying)
     );
     // A client that leaves before it plays holds no chain to take one of.
     let mut early = waiting(TICK_HZ);
     early.leave();
     assert_eq!(
-        early.take_receipt(&signed(last), &verifier),
+        early.take_receipt(&signed(last), &mut verifier),
         Err(ReceiptRefusal::NotPlaying)
     );
 }

@@ -62,10 +62,7 @@ impl Delegation {
                 DelegationTag::ServerKey,
                 Bytes32::new(terms.server_key.serialize()).to_string(),
             ),
-            custom(
-                DelegationTag::SessionId,
-                Bytes32::new(*terms.session_id.as_bytes()).to_string(),
-            ),
+            custom(DelegationTag::SessionId, terms.session_id.to_string()),
             custom(
                 DelegationTag::SeedContribution,
                 terms.seed_contribution.to_string(),
@@ -80,7 +77,7 @@ impl Delegation {
             "",
         );
         let id = unsigned.compute_id();
-        let signature = Signature::from_byte_array(main.sign(id.as_bytes()).to_bytes());
+        let signature = Signature::from_byte_array(main.sign_event_id(id.as_bytes()).to_bytes());
         let event = unsigned
             .add_signature(signature)
             .expect("a fresh signature holds");

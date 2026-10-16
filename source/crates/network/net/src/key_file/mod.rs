@@ -1,4 +1,4 @@
-use campfire_protocol::{Entropy, Nsec, RandomKey};
+use campfire_protocol::{Entropy, MAX_NSEC_FILE_LEN, decode_nsec, encode_nsec};
 use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
 use secp256k1::Keypair;
 
@@ -14,8 +14,8 @@ pub struct KeyFile;
 impl KeyFile {
     /// The key in `file`, whose access is checked before its key is read.
     pub fn read(file: &SecretFile) -> Result<Keypair, KeyFileError> {
-        let bytes = file.read(Nsec::MAX_FILE_LEN).map_err(KeyFileError::Read)?;
-        Nsec::decode(&bytes).map_err(KeyFileError::NotNsec)
+        let bytes = file.read(MAX_NSEC_FILE_LEN).map_err(KeyFileError::Read)?;
+        decode_nsec(&bytes).map_err(KeyFileError::NotNsec)
     }
 
     /// The key in `file`, or, when there is no file, a new key from `entropy`'s random bytes,
@@ -26,8 +26,8 @@ impl KeyFile {
                 error: ReadError::Missing,
                 ..
             })) => {
-                let key = RandomKey::generate(|bytes| entropy.fill(bytes));
-                match file.create_new(Nsec::encode(&key).as_bytes()) {
+                let key = entropy.keypair();
+                match file.create_new(encode_nsec(&key).as_bytes()) {
                     Ok(()) => Ok(key),
                     Err(PathError {
                         error: DurableCreateError::Exists,

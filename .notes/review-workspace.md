@@ -101,24 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 14. Session log: one type for each job
-
-`protocol`: `session_log`, `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect`, `server_seeds`, `delegation`, `nsec`, `random_key`, `journal`; `runner`; `verifier`. After batch 1.
-
-- [ ] protocol/src/session_log/mod.rs:65-117 — `SessionLog` has 27 fields and seven jobs, its impl spread over three files, and a rewound log is a hidden mode (six `debug_assert!(self.to_replay.is_empty())`). During a replay, `controller`, `leaver`, `last_stamp` and `carry` answer for the log's end. → `LogEntries`, `SlotControl`, `InputSchedule` (with the spills, out of `Slot`) and `Segments`; a replay drives `InputSchedule` from `LogEntries`.
-- [ ] protocol/src/session_log/session_header.rs:33, runner/src/session/session_world.rs:101, mod.rs:82 — `segment_seed` hashes `segment + 1` times at each segment's start: in the server's tick, and O(N²) in a verifier. → `ServerSeeds` checked once against the commitment.
-- [ ] protocol/src/session_log/mod.rs:703, runner/src/session/mod.rs:155, 220-239 — the log signs server inputs itself; checkpoints and results are signed by the runner and verified again. → The log takes `&Signer` for each server record (`serve_checkpoint`, `serve_result`); a verifier's `Session` holds no signer, by type.
-- [ ] protocol: checkpoint/mod.rs:19, 97, session_result/mod.rs:12, 55, server_input/mod.rs:17, 185, receipt/mod.rs:16-17, 57-75, input_chain/mod.rs:16-17, 101-122, connect/mod.rs:13-14, 72-80 — six signature domains as bare `&[u8]`, built three ways; each `signed_by` takes four or five parameters. V2 covers hashes only. → A `SignatureDomain` type and a `Signed` trait (`DOMAIN`, `write_body`) that `Signer` and `Verifier` read.
-- [ ] protocol/src/session_log/file.rs:137, journal_records.rs:140 — `decode_within` encodes the whole log again to compare, which doubles peak memory, and each `Loaded` record decodes and verifies the whole log again. → The comparison becomes a `debug_assert`; a restore rebuilds from the records.
-- [ ] runner/src/replay/mod.rs:90-99 — `check_snapshot` builds a whole match for each checkpoint. → One target, restored into again.
-- [ ] verifier/src/verification/mod.rs:28-55 — the steps are joined to the file system. → A core over bytes, `&PackageStore` and a snapshot source; `file` wraps it.
-- [ ] protocol/src/session_log/mod.rs:111, file.rs:101 — `position_bound` is a production field for tests. → A test override of batch 1's bound.
-- [ ] protocol/src/nsec/mod.rs:43-48 — `decode` leaves the secret bytes unzeroed. → `Zeroizing`.
-- [ ] Namespace structs: `Nsec` (nsec/mod.rs:14), `RandomKey` (random_key/mod.rs:5), `Verification::file` (verifier), `JournalFrames` (journal/journal_frames.rs:46-65). → Free fns; `Entropy::keypair()`.
-- [ ] protocol/src/session_log — 24 `u32 as usize` casts. → One `at(u32) -> usize` helper.
-- [ ] protocol/src/delegation/mod.rs:67 — rebuilds a hex form that `Value32`'s `Display` gives. protocol/Cargo.toml:32 — a `postcard` dev-dependency to name one error. → `Display`; drop the dependency.
-- [ ] Test-only `pub`: `carry` (session_log/mod.rs:903), `server_inputs` (471), `revealed_seed` (357), `Verification::packages` (verifier mod.rs:57); `ResumeError::Load` (runner/src/session/error.rs:64) is built only by gated code. → Private or `internals`.
-
 ### 15. QUIC and the checks
 
 `quic`: `io_thread`, `shared_endpoint`, `port_mapper`, `gateway`, `upnp_gateway`, `quic_endpoint`, the root; `lan-check`; `zero-hour-check`; `import`: `zero_hour/mod.rs`; `docs/design/15-quic-transport.md`. After batch 7 (`Worker`).

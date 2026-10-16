@@ -1,3 +1,5 @@
+use crate::session_log::at;
+
 /// Byte strings, each in one piece, in pages that never move: a page holds `PAGE` bytes, or one
 /// string longer than that alone, so a push never copies the bytes before it, and each string
 /// reads as one slice.
@@ -39,9 +41,9 @@ impl PagedBytes {
         }
     }
 
-    pub(crate) fn get(&self, at: BytesAt) -> &[u8] {
-        let start = at.start as usize;
-        &self.pages[at.page as usize][start..start + at.len as usize]
+    pub(crate) fn get(&self, place: BytesAt) -> &[u8] {
+        let start = at(place.start);
+        &self.pages[at(place.page)][start..start + at(place.len)]
     }
 }
 

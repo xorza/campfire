@@ -38,6 +38,10 @@ pub trait SimWorld {
     /// `StateRegistry::restore` does.
     fn restore(&mut self, snapshot: &[u8]) -> Result<(), SnapshotError>;
 
+    /// Despawns every sim entity, so the world takes a restore again, as a target that checks
+    /// one snapshot after another does.
+    fn despawn_state(&mut self);
+
     /// The hash of the state, and in `per_type` each state type's own.
     fn state_hash_by_type(&self, per_type: &mut Vec<TypeHash>) -> StateHash;
 
@@ -86,6 +90,21 @@ impl SimWorld for World {
         self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
             registry.restore(snapshot, world)
         })
+    }
+
+    fn despawn_state(&mut self) {
+        let entities: Vec<Entity> = self
+            .resource::<EntityIndex>()
+            .iter()
+            .map(|(_, entity)| entity)
+            .collect();
+        for entity in entities {
+            self.despawn(entity);
+        }
+        debug_assert!(
+            self.resource::<EntityIndex>().iter().next().is_none(),
+            "a despawn unindexes its entity"
+        );
     }
 
     fn state_hash_by_type(&self, per_type: &mut Vec<TypeHash>) -> StateHash {

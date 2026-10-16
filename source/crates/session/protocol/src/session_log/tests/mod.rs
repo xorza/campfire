@@ -1,8 +1,10 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
-use campfire_common::{MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version};
-use secp256k1::{Keypair, XOnlyPublicKey};
+use campfire_common::{
+    AfterLeave, MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version,
+};
+use secp256k1::Keypair;
 
 use super::*;
 use crate::delegation::DelegationTerms;
@@ -11,15 +13,19 @@ use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::input_rules::InputRules;
+use crate::journal::journal_frames::JournalFrames;
 use crate::journal::tests::MemorySink;
 use crate::seed_chain::SeedChain;
+use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
-use crate::session_log::error::{JournalReplayError, SeedError};
+use crate::session_log::error::JournalReplayError;
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_result::{Outcome, SessionResult};
 use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
 use crate::snapshot_fingerprint::SnapshotFingerprint;
+use crate::spill::Spill;
+use crate::stamp_count::StampCount;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -205,7 +211,8 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
             for &(slot, stamp, payload) in *sends {
                 let chain = &mut chains[slot as usize];
                 let input = chain.extend(Tick::new(stamp), payload);
-                let signature = chain.sign(&TestKey::signer(keys[slot as usize]), session_id());
+                let signature =
+                    TestKey::signer(keys[slot as usize]).sign(&chain.signed_head(session_id()));
                 match packets.last_mut() {
                     Some(packet) if last_slot == Some(slot) => {
                         packet.inputs.push(input);
@@ -234,7 +241,8 @@ fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Se
                 .iter()
                 .map(|&(stamp, payload)| chain.extend(Tick::new(stamp), payload))
                 .collect();
-            let signature = chain.sign(&TestKey::signer(session_key(signer)), session_id());
+            let signature =
+                TestKey::signer(session_key(signer)).sign(&chain.signed_head(session_id()));
             Sent { inputs, signature }
         })
         .collect()
@@ -558,13 +566,13 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
         file: file_bound,
         journal: Bounds::MAX.journal,
     };
-    assert!(SessionLog::decode_within(&file, within(start + 70 + kept)).is_ok());
+    assert!(SessionLog::decode_within(&file, within(start + 70 + kept), Signatures::Check).is_ok());
     let full = LogError::Input {
         tick: Tick::new(0),
         error: InputError::LogFull,
     };
     assert_eq!(
-        SessionLog::decode_within(&file, within(start + 70 + kept - 1)).err(),
+        SessionLog::decode_within(&file, within(start + 70 + kept - 1), Signatures::Check).err(),
         Some(full)
     );
     // A log full only once it takes a record of the most bytes and the end no more.
@@ -800,14 +808,14 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     assert_ne!(expected[0], expected[1]);
     for (segment, expected) in (0..).zip(expected) {
         let seed = header().segment_seed(segment, &SEED_CHAIN.seed(segment));
-        assert_eq!(seed, Ok(expected));
+        assert_eq!(seed, expected);
     }
+    // A seed of another segment, or of no chain of the commitment's, is no seed of its chain.
+    let commitment = header().terms.seed_commitment;
+    assert!(ServerSeeds::new(1, s1).commits_to(&commitment));
     for (segment, server_seed) in [(0, s1), (1, s0), (0, ServerSeed::new([4; 32]))] {
-        assert_eq!(
-            header().segment_seed(segment, &server_seed),
-            Err(SeedError::WrongSeed),
-            "{segment}: {server_seed:?}"
-        );
+        let seeds = ServerSeeds::new(segment, server_seed);
+        assert!(!seeds.commits_to(&commitment), "{segment}: {server_seed:?}");
     }
 
     // Each signed contribution counts in every segment, and so does their slot order.
@@ -822,7 +830,7 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     for other in [changed, swapped] {
         for (segment, expected) in (0..).zip(expected) {
             let seed = other.segment_seed(segment, &SEED_CHAIN.seed(segment));
-            assert_ne!(seed.unwrap(), expected, "{segment}: {other:?}");
+            assert_ne!(seed, expected, "{segment}: {other:?}");
         }
     }
 
@@ -964,7 +972,11 @@ fn a_log_file_has_its_layout() {
         slot: PlayerSlot::new(0),
     };
     let place = log.next_place();
-    let signature = disconnected.sign(&TestKey::signer(TestKey::server()), session_id(), place);
+    let signature = TestKey::signer(TestKey::server()).sign(&PlacedInput {
+        input: &disconnected,
+        session_id: session_id(),
+        place,
+    });
     serve(&mut log, disconnected).unwrap();
     drop(log.seal_tick());
     log.reveal_seed(server_seed());
@@ -1052,7 +1064,10 @@ fn play_minimal(log: &mut SessionLog) {
         snapshot: SnapshotFingerprint::new([4; 32]),
         carry: log.carry(),
     };
-    let signature = record.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &record,
+    });
     log.record_checkpoint(record, &signature).unwrap();
     sent[1].submit(log, &mut applied).unwrap();
     let result = SessionResult {
@@ -1060,7 +1075,10 @@ fn play_minimal(log: &mut SessionLog) {
         outcome: Outcome::Won { team: 1 },
         state_hash: StateHash::new([5; 32]),
     };
-    let signature = result.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &result,
+    });
     log.record_result(result, &signature).unwrap();
 }
 
@@ -1126,9 +1144,10 @@ fn flawed_server_entries_are_refused() {
         with(kind_at + 1, 200),
         Some(LogError::ServerDecode {
             tick,
-            error: ServerInputDecodeError::Malformed(BinaryError::Malformed(
-                postcard::Error::SerdeDeCustom
-            )),
+            // A variant past an enum's last, as postcard refuses it.
+            error: ServerInputDecodeError::Malformed(
+                Binary::decode::<Outcome>(&[100]).unwrap_err()
+            ),
         })
     );
     // `Connected` in place of `Disconnected`: the signature no longer holds.
@@ -1172,9 +1191,8 @@ fn flawed_log_files_are_refused() {
         ([valid.as_slice(), &[0]].concat(), LogError::Trailing),
         (
             [&valid[..valid.len() - 1], &[2]].concat(),
-            LogError::Malformed(BinaryError::Malformed(
-                postcard::Error::DeserializeBadOption,
-            )),
+            // An option's tag past 1, as postcard refuses it.
+            LogError::Malformed(Binary::decode::<Option<u8>>(&[2]).unwrap_err()),
         ),
         (
             frame(&header(), &sent, &[], Some(ServerSeed::new([4; 32]))),
@@ -1257,10 +1275,8 @@ fn mixed_packet(
         .iter()
         .map(|&(stamp, payload)| chain.extend(Tick::new(stamp), payload))
         .collect();
-    let signature = chain.sign(
-        &TestKey::signer(session_key(key)),
-        mixed_terms().session_id(),
-    );
+    let signature =
+        TestKey::signer(session_key(key)).sign(&chain.signed_head(mixed_terms().session_id()));
     Sent { inputs, signature }
 }
 
@@ -1356,7 +1372,11 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         tick: log.next_tick(),
         index: 0,
     };
-    let stale = input.sign(&TestKey::signer(TestKey::server()), log.session_id(), early);
+    let stale = TestKey::signer(TestKey::server()).sign(&PlacedInput {
+        input: &input,
+        session_id: log.session_id(),
+        place: early,
+    });
     assert_eq!(
         log.record_server(input, &stale),
         Err(ServerInputError::BadSignature)
@@ -1542,3 +1562,10 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
 mod format;
 mod journal;
 mod segments;
+
+impl SessionLog {
+    /// The last segment's server seed, once the log is published.
+    const fn revealed_seed(&self) -> Option<ServerSeed> {
+        self.revealed
+    }
+}

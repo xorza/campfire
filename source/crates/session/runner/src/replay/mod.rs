@@ -22,6 +22,9 @@ pub(crate) mod error;
 #[derive(Debug)]
 pub struct Replay<'p> {
     game: Match,
+    /// The match each checkpoint's snapshot restores into, built once, as the first check
+    /// needs it.
+    target: Option<Match>,
     packages: &'p ModePackages,
     /// The tick after the last the log holds.
     ticks: Tick,
@@ -41,8 +44,8 @@ impl<'p> Replay<'p> {
                 log: published.rewound(),
                 seeds,
                 packages,
-                signer: None,
             })?,
+            target: None,
             packages,
             ticks,
         })
@@ -86,17 +89,30 @@ impl<'p> Replay<'p> {
     }
 
     /// Whether `snapshot` is the one `record`, a checkpoint of the log, names, and restores to
-    /// the state it records.
+    /// the state it records, in the one target the replay restores each into. A target a
+    /// refused snapshot left partly restored is dropped.
     pub fn check_snapshot(
-        &self,
+        &mut self,
         record: &Checkpoint,
         snapshot: &[u8],
     ) -> Result<(), SnapshotCheckError> {
-        let header = self.game.session().log().header();
-        let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
-        let rate = TickRate::new(header.terms.tick_hz);
-        let mut game = MatchBuild::restore_target(self.packages, rate, slots);
-        Session::restore_checked(&mut game, record, snapshot)
+        let target = match &mut self.target {
+            Some(target) => {
+                target.despawn_state();
+                target
+            }
+            empty => {
+                let header = self.game.session().log().header();
+                let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
+                let rate = TickRate::new(header.terms.tick_hz);
+                empty.insert(MatchBuild::restore_target(self.packages, rate, slots))
+            }
+        };
+        let checked = Session::restore_checked(target, record, snapshot);
+        if checked.is_err() {
+            self.target = None;
+        }
+        checked
     }
 
     pub const fn game(&self) -> &Match {

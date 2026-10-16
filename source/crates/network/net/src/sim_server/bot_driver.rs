@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
+use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog, Signer};
 use campfire_runner::{ServerInputRefused, Session};
 use campfire_sim::StableId;
 use campfire_units::{HeldPlayerUnits, UnitTypeBook};
@@ -12,6 +12,7 @@ use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::order_script::OrderScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
+use crate::sim_server::server_signer::ServerSigner;
 
 /// Plays the server's bots: before each tick, for each slot a bot plays, the orders and mode
 /// inputs its script has for that tick, each a payload as a client writes it, which the server
@@ -129,6 +130,10 @@ impl BotDriver {
             scratch,
             ..
         } = self;
+        let mut served = BotServer {
+            session,
+            signer: &world.resource::<ServerSigner>().0,
+        };
         for driven in bots {
             let since = tick
                 .since(driven.since)
@@ -137,7 +142,7 @@ impl BotDriver {
             for input in driven.script.due_inputs(script_tick) {
                 payload.clear();
                 input.write_payload(body, payload);
-                Self::log(session, driven.slot, payload);
+                served.log(driven.slot, payload);
             }
             let units = players.get(world);
             for scripted in driven.script.due_orders(script_tick) {
@@ -155,16 +160,26 @@ impl BotDriver {
                 };
                 payload.clear();
                 order.write_payload(body, payload);
-                Self::log(session, driven.slot, payload);
+                served.log(driven.slot, payload);
             }
         }
     }
+}
 
+/// The session the bots' inputs go into, with the server's signer, which signs each.
+#[derive(Debug)]
+struct BotServer<'s> {
+    session: &'s mut Session,
+    signer: &'s Signer,
+}
+
+impl BotServer<'_> {
     /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, past
     /// the ticks up to its max input lead, which the slot's inputs fill, or past a full log, is
     /// dropped.
-    fn log(session: &mut Session, slot: PlayerSlot, payload: &[u8]) {
-        let cause = match session.serve(ServerInput::Bot { slot, payload }) {
+    fn log(&mut self, slot: PlayerSlot, payload: &[u8]) {
+        let input = ServerInput::Bot { slot, payload };
+        let cause = match self.session.serve(input, self.signer) {
             Ok(()) => return,
             Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
             Err(ServerInputRefused::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,

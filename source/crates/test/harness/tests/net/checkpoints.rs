@@ -80,7 +80,14 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();
-    for record in replay.game().session().log().checkpoints() {
+    let records: Vec<_> = replay
+        .game()
+        .session()
+        .log()
+        .checkpoints()
+        .cloned()
+        .collect();
+    for record in &records {
         let file = snapshots.join(record.snapshot.to_string());
         let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();
         assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));

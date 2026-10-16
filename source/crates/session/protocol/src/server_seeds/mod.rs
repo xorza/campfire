@@ -1,3 +1,4 @@
+use crate::seed_commitment::SeedCommitment;
 use crate::server_seed::ServerSeed;
 
 /// The server seeds a holder knows: every segment's up to the last, each derived once from the
@@ -24,6 +25,12 @@ impl ServerSeeds {
     /// The last segment whose seed is known.
     pub fn last(&self) -> u32 {
         u32::try_from(self.seeds.len() - 1).expect("a segment fits u32")
+    }
+
+    /// Whether they are seeds of the chain `commitment` commits to: one hash, as each seed is
+    /// the hash of the next.
+    pub fn commits_to(&self, commitment: &SeedCommitment) -> bool {
+        self.seeds[0].commitment() == *commitment
     }
 
     /// Segment `segment`'s seed; none past the last known.
@@ -63,6 +70,11 @@ mod tests {
             Some(long.seed(0))
         );
         let revealed = ServerSeeds::new(1, chain.seed(1));
+        // The chain's seeds commit to its commitment, from any segment's; others do not.
+        assert!(all.commits_to(&chain.commitment()) && revealed.commits_to(&chain.commitment()));
+        let other = ServerSeeds::new(1, ServerSeed::new([4; 32]));
+        assert!(!other.commits_to(&chain.commitment()));
+        assert!(!all.commits_to(&long.commitment()));
         assert_eq!(revealed.seed(0), Some(chain.seed(0)));
         assert_eq!(revealed.seed(1), Some(chain.seed(1)));
         assert_eq!(revealed.seed(2), None);

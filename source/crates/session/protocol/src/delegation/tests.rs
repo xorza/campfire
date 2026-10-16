@@ -35,7 +35,7 @@ fn event(kind: u16, tags: Vec<Tag>) -> String {
         "",
     );
     let id = unsigned.compute_id();
-    let signature = Signature::from_byte_array(main.sign(id.as_bytes()).to_bytes());
+    let signature = Signature::from_byte_array(main.sign_event_id(id.as_bytes()).to_bytes());
     unsigned.add_signature(signature).unwrap().as_json()
 }
 

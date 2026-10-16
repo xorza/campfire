@@ -1,4 +1,3 @@
-use crate::journal::journal_frames::JournalFrames;
 use crate::journal::record_sink::RecordSink;
 
 pub(crate) mod error;
@@ -31,9 +30,9 @@ impl Journal {
     pub(crate) fn append(&mut self, mut write: impl FnMut(&mut Vec<u8>)) {
         let mut framed = 0;
         self.sink.append(&mut |out| {
-            let start = JournalFrames::open(out);
+            let start = journal_frames::open(out);
             write(out);
-            JournalFrames::seal(out, start);
+            journal_frames::seal(out, start);
             framed = out.len() - start;
         });
         self.written += 1;

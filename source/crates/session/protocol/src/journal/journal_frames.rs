@@ -46,41 +46,42 @@ impl<'a> JournalFrames<'a> {
         })
     }
 
-    /// The bytes a frame takes beside its record: its length and its hash.
-    pub(crate) const FRAME_OVERHEAD: usize = LEN_BYTES + HASH_BYTES;
-
     /// How many bytes the tag and the frames read so far take: once the read ends, the length
     /// to cut the journal to.
     pub const fn whole(&self) -> usize {
         self.at
     }
+}
 
-    /// Appends the frame of `record`, the bytes `out` holds from `start`, in place: its length
-    /// before it, its hash after it.
-    pub(crate) fn seal(out: &mut Vec<u8>, start: usize) {
-        let len = out.len() - start - LEN_BYTES;
-        debug_assert!(
-            len <= MAX_RECORD,
-            "a journal record of {len} bytes, past the bound its log's terms keep"
-        );
-        let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
-        out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
-        let hash = JournalFrames::hash(&out[start + LEN_BYTES..]);
-        out.extend_from_slice(hash.as_bytes());
-    }
+/// The bytes a frame takes beside its record: its length and its hash.
+pub(crate) const FRAME_OVERHEAD: usize = LEN_BYTES + HASH_BYTES;
 
-    /// Where a frame's record starts in `out`: its length's place is held first.
-    pub(crate) fn open(out: &mut Vec<u8>) -> usize {
-        let start = out.len();
-        out.extend_from_slice(&[0; LEN_BYTES]);
-        start
-    }
+/// Appends the frame of `record`, the bytes `out` holds from `start`, in place: its length
+/// before it, its hash after it.
+pub(crate) fn seal(out: &mut Vec<u8>, start: usize) {
+    let len = out.len() - start - LEN_BYTES;
+    debug_assert!(
+        len <= MAX_RECORD,
+        "a journal record of {len} bytes, past the bound its log's terms keep"
+    );
+    let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
+    out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
+    let hash = hash(&out[start + LEN_BYTES..]);
+    out.extend_from_slice(hash.as_bytes());
+}
 
-    pub(crate) fn hash(record: &[u8]) -> FrameHash {
-        let mut hasher = DomainHasher::new(FRAME_DOMAIN);
-        hasher.update(record);
-        hasher.finish()
-    }
+/// Where a frame's record starts in `out`: its length's place is held first.
+pub(crate) fn open(out: &mut Vec<u8>) -> usize {
+    let start = out.len();
+    out.extend_from_slice(&[0; LEN_BYTES]);
+    start
+}
+
+/// The hash of the frame of `record`.
+pub(crate) fn hash(record: &[u8]) -> FrameHash {
+    let mut hasher = DomainHasher::new(FRAME_DOMAIN);
+    hasher.update(record);
+    hasher.finish()
 }
 
 impl<'a> Iterator for JournalFrames<'a> {
@@ -94,7 +95,7 @@ impl<'a> Iterator for JournalFrames<'a> {
             return None;
         }
         let (record, rest) = rest.split_at(len);
-        if rest[..HASH_BYTES] != *JournalFrames::hash(record).as_bytes() {
+        if rest[..HASH_BYTES] != *hash(record).as_bytes() {
             return None;
         }
         self.at += LEN_BYTES + len + HASH_BYTES;

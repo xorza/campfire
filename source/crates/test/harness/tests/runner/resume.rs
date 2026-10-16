@@ -101,7 +101,6 @@ impl Checkpointed {
                 log,
                 seeds: FixedSession::seeds(),
                 packages,
-                signer: None,
             };
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
@@ -166,7 +165,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         fixed
             .game_mut()
             .session_mut()
-            .record_checkpoint(record)
+            .record_checkpoint(record, &FixedSession::server_signer())
             .unwrap();
         snapshot
     };
@@ -191,7 +190,6 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
             log,
             seeds: FixedSession::seeds(),
             packages: proving.packages(),
-            signer: None,
         };
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
@@ -253,7 +251,9 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     }
     assert_ne!(game.state_hash(), hashes[149]);
     let result = game.session_result();
-    game.session_mut().record_result(result).unwrap();
+    game.session_mut()
+        .record_result(result, &FixedSession::server_signer())
+        .unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
     game.session().log().encode(&mut bytes);

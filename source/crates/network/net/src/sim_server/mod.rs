@@ -71,6 +71,7 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::SessionFiles;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
@@ -98,6 +99,7 @@ pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
 pub(crate) mod server_setup;
+pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
@@ -365,13 +367,13 @@ impl SimServer {
         let terms = log.header().terms.clone();
         Self::take_terms(world, &terms, visibility);
         let slots = log.slot_count();
+        world.insert_resource(ServerSigner(Signer::new(server.key, server.os.entropy)));
         Session::start(
             world,
             SessionSource {
                 log,
                 seeds,
                 packages,
-                signer: Some(Signer::new(server.key, server.os.entropy)),
             },
         )?;
         let snapshots = files.map(|SessionFiles { journal, snapshots }| {
@@ -484,10 +486,9 @@ impl SimServer {
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began. The session may end there, and then logs nothing more.
         Self::at_boundary(world);
-        let mut session = world.resource_mut::<Session>();
-        if session.log().result().is_none() {
+        if world.resource::<Session>().log().result().is_none() {
             for &slot in &players {
-                Door::serve_unless_full(&mut session, ServerInput::Disconnected { slot });
+                Door::serve_unless_full(world, ServerInput::Disconnected { slot });
             }
         }
         Ok(())
