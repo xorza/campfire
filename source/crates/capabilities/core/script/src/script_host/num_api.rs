@@ -9,7 +9,8 @@ type Comparison = fn(&Num, &Num) -> bool;
 type Extreme = fn(Num, Num) -> Num;
 
 /// `Num` in scripts: `num(i)`, the four operators, the comparisons, `min` and `max` with a `Num` or
-/// an integer on either side, unary minus, `clamp`, and `round`, `floor` and `ceil` to an integer;
+/// an integer on either side, unary minus, `clamp` with a `Num` or an integer in each place and a
+/// `Num` in one at least, and `round`, `floor` and `ceil` to an integer;
 /// and `vector(x, y, z)`, a vector of three `Num`s or integers. Arithmetic is checked: an
 /// overflow, or an integer beyond a `Num`, fails the call with its `NumError`.
 #[derive(Debug)]
@@ -67,12 +68,13 @@ impl NumApi {
                 Ok(extreme(from_int(a)?, b))
             });
         }
-        engine.register_fn("clamp", |n: Num, low: Num, high: Num| -> Checked<Num> {
-            if low > high {
-                return Err(Raised::error(NumError::ClampBounds).into());
-            }
-            Ok(n.clamp(low, high))
-        });
+        engine.register_fn("clamp", clamp::<Num, Num, Num>);
+        engine.register_fn("clamp", clamp::<Num, Num, INT>);
+        engine.register_fn("clamp", clamp::<Num, INT, Num>);
+        engine.register_fn("clamp", clamp::<Num, INT, INT>);
+        engine.register_fn("clamp", clamp::<INT, Num, Num>);
+        engine.register_fn("clamp", clamp::<INT, Num, INT>);
+        engine.register_fn("clamp", clamp::<INT, INT, Num>);
         engine.register_fn(
             "vector",
             |x: Dynamic, y: Dynamic, z: Dynamic| -> Checked<Vec3> {
@@ -83,6 +85,32 @@ impl NumApi {
         engine.register_fn("floor", |n: Num| n.floor());
         engine.register_fn("ceil", |n: Num| n.ceil());
     }
+}
+
+/// A number a function of `Num` takes in place of one: a `Num`, or an integer.
+trait NumArg: Copy + 'static {
+    fn num(self) -> Checked<Num>;
+}
+
+impl NumArg for Num {
+    fn num(self) -> Checked<Num> {
+        Ok(self)
+    }
+}
+
+impl NumArg for INT {
+    fn num(self) -> Checked<Num> {
+        from_int(self)
+    }
+}
+
+/// `n` within `low` and `high`; a low bound above the high one fails the call.
+fn clamp<N: NumArg, L: NumArg, H: NumArg>(n: N, low: L, high: H) -> Checked<Num> {
+    let [n, low, high] = [n.num()?, low.num()?, high.num()?];
+    if low > high {
+        return Err(Raised::error(NumError::ClampBounds).into());
+    }
+    Ok(n.clamp(low, high))
 }
 
 /// An integer as a `Num`; one beyond a `Num` fails the call.

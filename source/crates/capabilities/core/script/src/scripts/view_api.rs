@@ -1,7 +1,6 @@
 use campfire_geometry::Shape;
 use campfire_values::Tag;
 
-use crate::plain_script_arg;
 use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -53,21 +52,12 @@ impl ViewApi {
                 field("params", "its unit type's params, unresolved"),
                 |unit: &mut Unit| UnitParams(unit.clone()),
             )
-            .bind(
-                field("team", "its team's name"),
-                |unit: &mut Unit| -> Checked<ScriptValue> {
-                    let name = unit.view().names().name(unit.read(|row| row.team));
-                    name.map(ScriptValue::of)
-                        .ok_or_else(|| ApiError::Unknown(NameKind::Team).fail().into())
-                },
-            )
+            .bind(field("team", "its team's name"), |unit: &mut Unit| {
+                unit.view().names().name(unit.read(|row| row.team))
+            })
             .bind(
                 field("unit_type", "its unit type's name"),
-                |unit: &mut Unit| {
-                    let unit_type = unit.read(|row| row.unit_type);
-                    let name = unit.view().names().name(unit_type);
-                    name.map_or(ScriptValue::UNIT, ScriptValue::of)
-                },
+                |unit: &mut Unit| unit.view().names().name(unit.read(|row| row.unit_type)),
             )
             .bind(
                 field("owner", "its player's slot, `()` with none"),
@@ -154,5 +144,3 @@ impl UnitParams {
         Ok(ScriptValue::from(param))
     }
 }
-
-plain_script_arg!(Unit);

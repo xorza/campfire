@@ -103,7 +103,7 @@ impl NavigationColumn {
     pub(crate) fn path(unit: &Unit) -> ScriptValue {
         let view = unit.view();
         let path = view.column(|column: &Self| column.rows.now()[unit.row_index()].path);
-        let name = path.flatten().and_then(|path| view.names().name(path));
+        let name = path.flatten().map(|path| view.names().name(path));
         name.map_or(ScriptValue::UNIT, ScriptValue::of)
     }
 

@@ -97,12 +97,12 @@ impl DeliveryHooks {
                     };
                     let hit = ScriptValue::of(HitHandle::new(hit, view.clone()));
                     match reach {
-                        Reached::Hit(_) => {
-                            batch.call_hook(pool, script, hook, (ctx.clone(), caster, target, hit))
-                        }
-                        Reached::End => {
-                            batch.call_hook(pool, script, hook, (ctx.clone(), caster, hit))
-                        }
+                        Reached::Hit(_) => batch
+                            .call(pool, script, hook, (ctx.clone(), caster, target, hit))
+                            .map(drop),
+                        Reached::End => batch
+                            .call(pool, script, hook, (ctx.clone(), caster, hit))
+                            .map(drop),
                     }
                 });
             }

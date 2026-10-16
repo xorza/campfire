@@ -253,10 +253,7 @@ impl ModeHooks {
                 for &LevelUp { id, track, level } in &due {
                     if let Some(handle) = view.unit(id) {
                         let level = i64::from(level.get());
-                        let name = view
-                            .names()
-                            .name(track)
-                            .expect("a track of the match is named");
+                        let name = view.names().name(track);
                         let args = (call.ctx.clone(), handle, name, level);
                         if call
                             .answer(Some(id), Pool::Mode, Hook::OnLevelUp, args)

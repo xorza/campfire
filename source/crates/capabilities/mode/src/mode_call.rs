@@ -111,6 +111,11 @@ impl ModeCall {
         );
     }
 
+    /// The match's mode.
+    pub(crate) fn spec(&self) -> Rc<ModeSpec> {
+        Rc::clone(&self.book)
+    }
+
     /// The mode's part of `frame`, which the mode added as it installed.
     pub fn of(frame: &Frame) -> &Self {
         frame

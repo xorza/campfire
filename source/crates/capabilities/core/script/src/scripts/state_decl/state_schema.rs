@@ -47,7 +47,7 @@ impl StateSchema {
     pub fn new<'a>(fields: impl IntoIterator<Item = (&'a str, SyncTo, &'a StateDecl)>) -> Self {
         let mut names = Names::default();
         let (mut initial, mut places) = (Vec::new(), Vec::new());
-        let mut counts = [0; 4];
+        let mut counts = [0; SyncTo::ALL.len()];
         let mut previous: Option<&str> = None;
         for (name, sync, decl) in fields {
             debug_assert!(

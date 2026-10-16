@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn milliseconds_round_up_to_whole_ticks() {
+fn milliseconds_become_whole_ticks_up_or_down() {
     // At 30 Hz 250 ms is 7.5 ticks, up to 8; at 20 Hz exactly 5; at 60 Hz exactly 15. 1 ms
     // is under a tick at every rate, up to 1; 2000 ms is exactly 40, 60 and 120.
     let cases = [
@@ -26,7 +26,15 @@ fn milliseconds_round_up_to_whole_ticks() {
         assert_eq!(rate.window(0), Ticks::new(0));
         assert_eq!(rate.window(2000), rate.ticks(2000).unwrap());
         assert_eq!(rate.window(u64::MAX), Ticks::new(u64::MAX));
+        // A cut rounds down: 0 is none, 1 ms is under a tick, 2000 ms the same as up.
+        assert_eq!(rate.cut(0), Ticks::new(0));
+        assert_eq!(rate.cut(1), Ticks::new(0));
+        assert_eq!(rate.cut(2000), rate.ticks(2000).unwrap());
+        assert_eq!(rate.cut(u64::MAX), Ticks::new(u64::MAX));
     }
+    // At 30 Hz 250 ms is 7.5 ticks, down to 7; at 20 Hz exactly 5.
+    let cut = |hz, ms| TickRate::new(NonZeroU32::new(hz).unwrap()).cut(ms);
+    assert_eq!((cut(30, 250), cut(20, 250)), (Ticks::new(7), Ticks::new(5)));
     // 10⁹ ns ÷ 30 = 33 333 333.3, down to 33 333 333; ÷ 20 = 50 000 000 exactly.
     let length = |hz| TickRate::new(NonZeroU32::new(hz).unwrap()).length();
     assert_eq!(

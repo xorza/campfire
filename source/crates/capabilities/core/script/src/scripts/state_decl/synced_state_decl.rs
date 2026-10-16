@@ -11,29 +11,25 @@ pub struct SyncedStateDecl {
     pub sync: SyncTo,
 }
 
-/// Which clients a field of script state is sent to: none unless the field says so.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SyncTo {
-    #[default]
-    None,
-    Owner,
-    Team,
-    All,
+campfire_common::enum_all! {
+    /// Which clients a field of script state is sent to: none unless the field says so.
+    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum SyncTo {
+        #[default]
+        None,
+        Owner,
+        Team,
+        All,
+    }
+    /// Every class, in the order of their places.
+    pub const ALL;
 }
 
 impl SyncTo {
-    /// Every class, in the order of their places.
-    pub const ALL: [Self; 4] = [Self::None, Self::Owner, Self::Team, Self::All];
-
-    /// Its place among the classes: none, owner, team, all.
+    /// Its place among the classes, `ALL`'s: none, owner, team, all.
     pub const fn index(self) -> usize {
-        match self {
-            Self::None => 0,
-            Self::Owner => 1,
-            Self::Team => 2,
-            Self::All => 3,
-        }
+        self as usize
     }
 }
 

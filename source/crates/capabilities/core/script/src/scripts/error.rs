@@ -16,6 +16,10 @@ pub enum CallError {
     /// The script API refused a call.
     #[error("the script API refused a call")]
     Api(#[source] ApiError),
+    /// The call found its pool spent, or spent it as it ran: what the caller answers in a later
+    /// tick waits, or the call fails.
+    #[error("the call's pool is spent")]
+    PoolSpent,
     /// The script failed otherwise.
     #[error(transparent)]
     Script(ScriptError),
@@ -42,9 +46,6 @@ pub enum ApiError {
     /// A projectile or an area of an action that delivers none of that kind.
     #[error("the action delivers no unit of that kind")]
     NoDelivery,
-    /// An integer beyond a `Num`, which reaches 2³⁹.
-    #[error("integer is beyond a Num")]
-    IntegerBeyondNum,
     /// An attack field or order for a unit that has no attack, or an attack order on a target
     /// none of its weapons selects.
     #[error("unit has no attack for the target")]
@@ -178,10 +179,12 @@ pub enum ParamProblem {
 }
 
 impl CallError {
-    /// A failed call's error: the API's own when it refused the call.
+    /// A failed call's error: the API's own when it refused the call, and `PoolSpent` for a
+    /// spent budget.
     pub fn from_script(error: ScriptError) -> Self {
         let refused = match &error {
             ScriptError::Raised(raised) => raised.get::<ApiError>(),
+            ScriptError::TickBudget => return Self::PoolSpent,
             _ => None,
         };
         refused.map_or(Self::Script(error), CallError::Api)
@@ -207,7 +210,7 @@ pub(crate) mod internals {
         Api(ApiError),
         Compile,
         CallLimit,
-        TickBudget,
+        PoolSpent,
         Raised(Option<NumError>),
         Runtime,
     }
@@ -218,7 +221,10 @@ pub(crate) mod internals {
                 Self::Api(api) => FailureKind::Api(*api),
                 Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
                 Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
-                Self::Script(ScriptError::TickBudget) => FailureKind::TickBudget,
+                Self::PoolSpent => FailureKind::PoolSpent,
+                Self::Script(ScriptError::TickBudget) => {
+                    unreachable!("a spent budget is a spent pool")
+                }
                 Self::Script(ScriptError::Raised(raised)) => {
                     FailureKind::Raised(raised.get::<NumError>())
                 }

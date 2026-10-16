@@ -1,6 +1,7 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, ScriptPosition, Unit,
+    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, ScriptLasting,
+    ScriptPosition, Unit,
 };
 use campfire_units::DashTo;
 
@@ -57,7 +58,7 @@ impl NavigationApi {
         )
         .call(
             knock_back,
-            |ctx: &mut Ctx, of: Unit, from: ScriptPosition, distance: Num, ms: i64| {
+            |ctx: &mut Ctx, of: Unit, from: ScriptPosition, distance: Num, ms: ScriptLasting| {
                 Self::knock_back(ctx, &of, from.get(), distance, ms)
             },
         )
@@ -74,7 +75,13 @@ impl NavigationApi {
         ctx.queue(dash.map_err(ApiError::fail)?)
     }
 
-    fn knock_back(ctx: &Ctx, unit: &Unit, from: Vec3, distance: Num, ms: i64) -> Checked<()> {
+    fn knock_back(
+        ctx: &Ctx,
+        unit: &Unit,
+        from: Vec3,
+        distance: Num,
+        ms: ScriptLasting,
+    ) -> Checked<()> {
         let knock_back = NavigationEffect::knock_back(ctx.view(), unit.id, from, distance, ms);
         ctx.queue(knock_back.map_err(ApiError::fail)?)
     }

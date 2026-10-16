@@ -135,7 +135,9 @@ impl Channels {
         let pool = Pool::of(owner);
         let target = Abilities::target(ctx.view(), aim.target);
         batch.hook_call(start, hook, Some(caster), |batch| {
-            batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))
+            batch
+                .call(pool, script, hook, (ctx.clone(), handle, target))
+                .map(drop)
         });
     }
 

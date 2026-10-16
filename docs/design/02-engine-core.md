@@ -292,13 +292,13 @@ One promise on every OS. Code that differs by OS lives only in `store`'s `platfo
 
   | Pool | Hooks |
   | --- | --- |
-  | The player's, one per slot | The calls the player causes: its units' actions, their deliveries and modifiers, its quests and dialogue |
+  | The player's, one per slot | The calls the player causes: its units' actions, their deliveries and modifiers, its mode inputs, its quests and dialogue, so one player's inputs cannot spend the mode's pool |
   | `think` | AI `on_think` and `on_heard`; an action's or modifier's hooks whose source no player controls, or is gone |
-  | `mode` | The mode's hooks: timers, inputs, deaths, region events, `on_level_up`, `on_wake`; a modifier with no source |
+  | `mode` | The mode's hooks: the match start, timers, players' joins and leaves, deaths, region events, `on_level_up`, `on_wake`; a modifier with no source |
   | `systems`, planned | `on_system`, planned |
   | None, the limit per call only | `calc_damage` and `calc_heal`, pure, once for each damage and heal, so a crowded fight cannot change how they weigh ([Combat](04-capabilities/combat.md#damage-and-heals)); `on_generate`, planned, under its own larger limit, also planned |
 
-  A call that finds its pool spent waits and runs first in the next tick; a pure hook has no pool.
+  Every call runs through one entry, which begins it, calls its script, and applies it, or gives back its failure, a spent pool as its own case. A mode hook and an AI `on_think` that find their pool spent wait, and run first in a later tick. An action's, a delivery's or a modifier's hook, and a mode input, that find their pool spent fail as over budget, as an input is answered once. A pure hook has no pool.
 - **Other limits** (call depth, sizes) are engine constants, as Rhai's defaults differ between debug and release.
 - **All or nothing per call.** State writes go to an overlay the call reads back; effects are queued, each capability's types in its own queues in the call's frame, each applying itself, so the runtime names no capability. On success the overlay commits and the effects apply in call order; on failure both are dropped, a `script_error` event is recorded, and the tick goes on.
 - **A call's parts.** A module adds what a call reads and writes besides the core's as a `CallPart` of the frame: `begin` readies it for a call from the world, and `commit` writes what the call changed. Its `COMMITS` says when: `Commit::BeforeEffects` for the mode's state and choices, which an effect may read; `Commit::AfterEffects` for the units' state, the modifier handles and the players' resources, as a unit an effect spawns takes the call's writes to it. A part that holds the params of a scope of calls also implements `CallParams`: stats for an ability's and a modifier's calls, the mode for the mode's and the AI's. `ScriptRole::params` gives a role's `ParamScope`, and the frame keeps one source of params for each scope, so `ctx.p` asks one part, and a mode call in a match with no mode finds none.

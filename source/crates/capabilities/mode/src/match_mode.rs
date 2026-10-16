@@ -5,7 +5,7 @@ use crate::mode_spec::ModeSpec;
 
 /// The mode of the match, once it installs, as its systems and checks read it: a non-send
 /// resource, as the book holds the script engine's values. A script call reads the same book
-/// through its `Ctx`, which holds another handle of it.
+/// through the mode's part of its frame, which holds another handle of it.
 #[derive(Debug, Clone)]
 pub struct MatchMode(pub(crate) Rc<ModeSpec>);
 

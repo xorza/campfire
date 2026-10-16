@@ -201,8 +201,12 @@ impl ModifierHooks {
                 StatsColumn::held_handle(ctx.view(), call, of, clocks.state(at))
             };
             match arg {
-                Some(arg) => batch.call_hook(pool, script, hook, (ctx.clone(), handle, arg)),
-                None => batch.call_hook(pool, script, hook, (ctx.clone(), handle)),
+                Some(arg) => batch
+                    .call(pool, script, hook, (ctx.clone(), handle, arg))
+                    .map(drop),
+                None => batch
+                    .call(pool, script, hook, (ctx.clone(), handle))
+                    .map(drop),
             }
         });
     }

@@ -1,4 +1,5 @@
 use campfire_actions::{ActionDataField, RequiresData};
+use campfire_common::PlayerSlot;
 use campfire_script::{
     ApiBuilder, ApiOwner, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, Unit,
 };
@@ -50,7 +51,7 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
                 ),
-                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, SupplyCount::Used),
+                |ctx: &mut Ctx, player: PlayerSlot| Self::supply(ctx, player, SupplyCount::Used),
             )
             .call(
                 MemberSpec::call(
@@ -58,15 +59,14 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
                 ),
-                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, SupplyCount::Cap),
+                |ctx: &mut Ctx, player: PlayerSlot| Self::supply(ctx, player, SupplyCount::Cap),
             );
     }
 
     /// `player`'s supply as the view read the match: the count `count` names.
-    fn supply(ctx: &Ctx, player: i64, count: SupplyCount) -> Checked<i64> {
+    fn supply(ctx: &Ctx, player: PlayerSlot, count: SupplyCount) -> Checked<i64> {
         let view = ctx.view();
-        let slot = view.names().player(player)?;
-        let supply = ProductionColumn::supply(view, slot)
+        let supply = ProductionColumn::supply(view, player)
             .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;
         let count = match count {
             SupplyCount::Used => supply.used,

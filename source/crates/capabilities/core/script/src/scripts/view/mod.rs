@@ -3,13 +3,12 @@ use std::fmt;
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Tick;
 use campfire_geometry::{Bounds, Metric, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
-use crate::scripts::error::ApiError;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
@@ -112,28 +111,6 @@ impl View {
         self.0.rate
     }
 
-    /// `ms` in ticks at the match's rate, rounded up, at least one, or all ticks for a time too
-    /// long to count: a window back from now.
-    pub fn window(&self, ms: u64) -> Ticks {
-        self.0.rate.window(ms)
-    }
-
-    /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
-    /// or one too long to count.
-    pub fn ticks(&self, ms: i64) -> Result<Ticks, ApiError> {
-        let ms = u64::try_from(ms).ok().ok_or(ApiError::NegativeTime)?;
-        self.0.rate.duration(ms).ok_or(ApiError::TimeTooLarge)
-    }
-
-    /// `ms`, more than 0, in ticks as `ticks` gives them: what lasts, as a reveal or a knock
-    /// back, lasts some time.
-    pub fn lasting(&self, ms: i64) -> Result<Ticks, ApiError> {
-        if ms == 0 {
-            return Err(ApiError::ZeroTime);
-        }
-        self.ticks(ms)
-    }
-
     /// How `of` regards `other`, as the units were read.
     pub fn relation(&self, of: Team, other: Team) -> Relation {
         self.rows().relations().between(of, other)
@@ -221,8 +198,7 @@ impl View {
     /// The name of action `id` as a script value: `()` for none.
     pub fn ability_value(&self, id: Option<ActionId>) -> ScriptValue {
         id.map_or(ScriptValue::UNIT, |id| {
-            let name = self.names().name(id);
-            ScriptValue::of(name.expect("an action of the match is named"))
+            ScriptValue::of(self.names().name(id))
         })
     }
 

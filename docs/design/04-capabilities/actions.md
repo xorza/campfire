@@ -69,7 +69,7 @@ A field's value may be one or one per rank; times become whole ticks at load, ro
 ### Values and bookkeeping
 
 - **Values.** In an action's hooks, `ctx.range` is its range at its rank, `()` for a global one; `ctx.origin` where its unit stood as it started; `ctx.charge` fails for an action with no `charge`.
-- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms` off an action's cooldown, and `ctx.reduce_cooldowns(unit, kind, fraction)` a fraction of what is left off each action of a slot kind, rounded up to a whole tick, as Master Yi's takedowns do. Each also shortens the time to the next charge, and neither makes a ready tick earlier than now. An action the unit lacks, an undeclared kind, a negative `ms` and a fraction outside 0 to 1 fail the call.
+- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms`, rounded down to whole ticks, off an action's cooldown, so a cut of 0 cuts nothing, and `ctx.reduce_cooldowns(unit, kind, fraction)` a fraction of what is left off each action of a slot kind, what it keeps rounded up to a whole tick, as Master Yi's takedowns do. Neither cut ends a wait before its time. Each also shortens the time to the next charge, and neither makes a ready tick earlier than now. An action the unit lacks, an undeclared kind, a negative `ms` and a fraction outside 0 to 1 fail the call.
 
 ### Kinds
 

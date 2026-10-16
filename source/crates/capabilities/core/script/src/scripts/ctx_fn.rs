@@ -130,6 +130,19 @@ pub struct WithCtx;
 #[derive(Debug)]
 pub struct WithoutCtx;
 
+/// How many of the arguments whose `NUMBER` is `flags` are `Num`s.
+const fn numbers(flags: &[bool]) -> usize {
+    let mut count = 0;
+    let mut at = 0;
+    while at < flags.len() {
+        if flags[at] {
+            count += 1;
+        }
+        at += 1;
+    }
+    count
+}
+
 /// What arguments that name `names` and take `enums` name and take, by place, among the
 /// arguments a spec records.
 fn args_of(names: &[Option<NameKind>], enums: &[Option<EngineEnum>]) -> ArgKinds {
@@ -193,6 +206,12 @@ macro_rules! script_fn {
                     $(let $arg = $arg::take($arg, &args)?;)*
                     each(ctx, $($arg),*).map(ScriptValue::engine)
                 });
+                const {
+                    assert!(
+                        numbers(&[$($arg::NUMBER),*]) <= 1,
+                        "a member's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [$($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Int),*| -> Checked<Dynamic> {
                         if roles != RoleSet::ALL {
@@ -246,6 +265,12 @@ macro_rules! script_fn {
                         each(handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
+                const {
+                    assert!(
+                        numbers(&[H::NUMBER, $($arg::NUMBER),*]) <= 1,
+                        "a method's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,
@@ -300,6 +325,12 @@ macro_rules! script_fn {
                         each(args.get(), handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
+                const {
+                    assert!(
+                        numbers(&[H::NUMBER, $($arg::NUMBER),*]) <= 1,
+                        "a method's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,

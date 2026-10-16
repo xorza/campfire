@@ -2,7 +2,7 @@ use std::rc::Rc;
 
 use campfire_actions::ActionSlots;
 use campfire_declare::ByType;
-use campfire_script::{ApiError, Checked, Ctx, Teams};
+use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
 use campfire_values::{Names, Relations, Team, UnitType};
 
@@ -61,22 +61,6 @@ pub struct SpecLoad<'a> {
 }
 
 impl ModeSpec {
-    /// The mode of the match `ctx` runs in, once it installed.
-    pub fn of(ctx: &Ctx) -> Option<&Self> {
-        ctx.mode()?.downcast_ref()
-    }
-
-    /// The mode of the match `ctx` runs in, which has one: the mode's own systems and calls run
-    /// only in such a match.
-    pub(crate) fn of_match(ctx: &Ctx) -> &Self {
-        Self::of(ctx).expect("a match with a mode")
-    }
-
-    /// The mode of the match `ctx` runs in; an error in a match with none.
-    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&Self> {
-        Self::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
-    }
-
     /// The book of `setup`, for players the teams seat, with what `load` gives.
     pub fn new(setup: ModeSetup<'_>, load: SpecLoad<'_>) -> Self {
         let SpecLoad {

@@ -165,15 +165,18 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
             r#"ctx.find(of, of.pos, -1, "all")"#,
             ApiError::NegativeRadius,
         ),
-        (
-            r#"ctx.nearest_visible(of, 1 << 40, "all")"#,
-            ApiError::IntegerBeyondNum,
-        ),
     ];
     for (call, refusal) in refusals {
         let error = Units::read(&mut game, call, of).unwrap_err();
         assert_eq!(error.kind(), FailureKind::Api(refusal), "{call}: {error:?}");
     }
+    // An integer beyond a `Num` fails as the number API's own does.
+    let call = r#"ctx.nearest_visible(of, 1 << 40, "all")"#;
+    let error = Units::read(&mut game, call, of).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        FailureKind::Raised(Some(NumError::IntegerBeyondNum))
+    );
 }
 
 #[test]

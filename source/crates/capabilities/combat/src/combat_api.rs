@@ -2,7 +2,7 @@ use campfire_actions::{ActionDataField, ActionsColumn};
 use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook,
-    MemberSpec, RoleSet, Status, Unit,
+    MemberSpec, RoleSet, ScriptWindow, Status, Unit,
 };
 use campfire_sim::Capability;
 use campfire_stats::PoolId;
@@ -128,8 +128,8 @@ impl CombatApi {
             &[&["ms"]],
             "the living units that struck it within the last `ms`, rounded up to whole ticks",
         );
-        api.method(recent_attackers, |unit: Unit, ms: i64| {
-            CombatColumn::recent_attackers(&unit, ms)
+        api.method(recent_attackers, |unit: Unit, ms: ScriptWindow| {
+            Ok(CombatColumn::recent_attackers(&unit, ms))
         });
     }
 

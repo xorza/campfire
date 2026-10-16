@@ -4,7 +4,7 @@ use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, Pack
 
 use crate::scripts::script_role::ScriptRole;
 
-/// What a call starts with: its role; its acting unit, a cast's caster, a modifier's source or
+/// What a call starts with: its role; whether it writes or only reads; its acting unit, a cast's caster, a modifier's source or
 /// the unit that thinks, none for the mode; the action whose params it reads, at `rank`, and its
 /// modifier's; the package whose names it means, 0 the mode's; the depth of the chain of combat
 /// events it runs in, 0 outside one; the hit a delivery's hook runs for, which the damage it
@@ -13,6 +13,7 @@ use crate::scripts::script_role::ScriptRole;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CallStart {
     pub role: ScriptRole,
+    pub purity: Purity,
     pub acting: Option<StableId>,
     pub action: Option<ActionId>,
     pub rank: Rank,
@@ -26,12 +27,21 @@ pub struct CallStart {
     pub now: Tick,
 }
 
+/// What a call may do with the match: queue effects and write state, or, as a pure hook's,
+/// only read. A pure call draws from no pool, and applies nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Purity {
+    Writes,
+    Reads,
+}
+
 impl CallStart {
-    /// A call of `role` in tick `now`, with no acting unit, action, modifier or chain, of the
-    /// mode's package, at rank 1.
+    /// A call of `role` in tick `now`, which writes, with no acting unit, action, modifier or
+    /// chain, of the mode's package, at rank 1.
     pub const fn mode(role: ScriptRole, now: Tick) -> Self {
         Self {
             role,
+            purity: Purity::Writes,
             acting: None,
             action: None,
             rank: Rank::FIRST,
@@ -42,6 +52,22 @@ impl CallStart {
             start: None,
             dash_delivers: None,
             now,
+        }
+    }
+
+    /// The mode's pure hook in tick `now`, whose `ctx` only reads.
+    pub const fn pure(now: Tick) -> Self {
+        Self {
+            purity: Purity::Reads,
+            ..Self::mode(ScriptRole::Mode, now)
+        }
+    }
+
+    /// `on_think` of `id` in tick `now`.
+    pub const fn think(id: StableId, now: Tick) -> Self {
+        Self {
+            acting: Some(id),
+            ..Self::mode(ScriptRole::Ai, now)
         }
     }
 

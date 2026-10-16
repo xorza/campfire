@@ -451,7 +451,7 @@ fn no_module_names_another_modules_sets() {
 /// is given once, as its arguments' types take them, in the load, which resolves the packages'
 /// names once, or as a bot starts. The test fails when a
 /// lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 45] = [
+const LOOKUPS: [(&str, &str); 44] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -493,7 +493,6 @@ const LOOKUPS: [(&str, &str); 45] = [
     ("mode/roster.rs", "offer_named"),
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),
-    ("script/scripts/script_arg.rs", "named"),
     ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),

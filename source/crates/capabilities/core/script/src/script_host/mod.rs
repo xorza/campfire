@@ -86,7 +86,7 @@ impl ScriptHost {
         // The seed is set once in a process: the set of each host after the first fails, keeps
         // the seed there, and gives back the one passed, so only the read after tells which
         // seed holds.
-        hashing::set_hashing_seed(Some(HASHING_SEED)).unwrap_or_default();
+        hashing::set_hashing_seed(Some(HASHING_SEED)).ok();
         assert_eq!(
             hashing::get_hashing_seed(),
             &Some(HASHING_SEED),

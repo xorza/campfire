@@ -122,9 +122,7 @@ impl ModifierHandle {
                 field("source", "the unit that applied it, `()` when gone or none"),
                 |handle: &mut Self| {
                     let data = handle.data();
-                    data.source
-                        .and_then(|source| data.view.unit(source))
-                        .map_or(ScriptValue::UNIT, ScriptValue::of)
+                    data.view.unit_value(data.source)
                 },
             )
             .bind(stacks, |handle: &mut Self| i64::from(handle.data().stacks))
@@ -154,8 +152,7 @@ impl ModifierHandle {
                 |_, state: &mut ModifierState, name: &str, value: ScriptValue| -> Checked<()> {
                     let mut data = state.0.data();
                     let field = data.field(name)?;
-                    let value = StateValue::from_value(data.schema.kind(field), &value)
-                        .ok_or_else(|| ApiError::WrongStateType.fail())?;
+                    let value = StateValue::from_value(data.schema.kind(field), &value)?;
                     data.state[field.index()] = value;
                     data.written = true;
                     Ok(())

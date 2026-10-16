@@ -4,6 +4,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
+use crate::script_host::error::{NumError, Raised};
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
@@ -26,9 +28,21 @@ pub enum StateValue {
 }
 
 impl StateValue {
-    /// A script's value as a field of type `kind`; `None` when it is not of the type. An integer
-    /// is a `Num` too, and `()` is an entity field's none.
-    pub fn from_value(kind: StateType, value: &ScriptValue) -> Option<Self> {
+    /// A script's value as a field of type `kind`; an error when it is not of the type, or is an
+    /// integer beyond a `Num` for a `Num` field. An integer is a `Num` too, and `()` is an entity
+    /// field's none.
+    pub fn from_value(kind: StateType, value: &ScriptValue) -> Checked<Self> {
+        Self::of_kind(kind, value).ok_or_else(|| {
+            if kind == StateType::Num && value.as_int().is_some() {
+                Raised::error(NumError::IntegerBeyondNum).into()
+            } else {
+                ApiError::WrongStateType.fail().into()
+            }
+        })
+    }
+
+    /// `value` as a field of type `kind`, when it is one, as `from_value` takes it.
+    pub fn of_kind(kind: StateType, value: &ScriptValue) -> Option<Self> {
         Some(match kind {
             StateType::Int => Self::Int(value.as_int()?),
             StateType::Num => Self::Num(match value.as_int() {
@@ -81,5 +95,43 @@ impl StateValue {
             ),
             Self::Vec(vec) => ScriptValue::of(*vec),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internals::FailureKind;
+    use crate::script_host::error::ScriptError;
+    use crate::scripts::error::CallError;
+
+    #[test]
+    fn a_value_takes_its_fields_type_and_an_integer_past_a_num_fails_as_the_number_apis() {
+        let kind = |field, value: i64| {
+            let error = StateValue::from_value(field, &ScriptValue::of(value)).unwrap_err();
+            CallError::from_script(ScriptError::from_eval(error)).kind()
+        };
+        // 3 is an integer, and a `Num` too; 2³⁹ is the least integer past a `Num`.
+        let three = ScriptValue::of(3_i64);
+        assert_eq!(
+            StateValue::from_value(StateType::Int, &three).unwrap(),
+            StateValue::Int(3)
+        );
+        assert_eq!(
+            StateValue::from_value(StateType::Num, &three).unwrap(),
+            StateValue::Num(Num::from_int(3).unwrap())
+        );
+        assert_eq!(
+            kind(StateType::Num, 1 << 39),
+            FailureKind::Raised(Some(NumError::IntegerBeyondNum))
+        );
+        assert_eq!(
+            StateValue::of_kind(StateType::Num, &ScriptValue::of(1_i64 << 39)),
+            None
+        );
+        assert_eq!(
+            kind(StateType::Bool, 1),
+            FailureKind::Api(ApiError::WrongStateType)
+        );
     }
 }

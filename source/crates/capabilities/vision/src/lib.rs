@@ -117,7 +117,7 @@ pub mod internals {
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
     use campfire_script::internals::FailureKind;
-    use campfire_script::{Budget, CallError, Ctx, ScriptHost};
+    use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
     use campfire_units::UnitsWorld;
@@ -193,10 +193,11 @@ pub mod internals {
             let ctx = world.non_send::<Ctx>().clone();
             ctx.view().read(world);
             let now = world.resource::<SimTick>().start();
-            match actor {
-                Some(actor) => ctx.frame().begin_think(world, actor, now),
-                None => ctx.frame().begin_mode(world, false, now),
-            }
+            let start = match actor {
+                Some(actor) => CallStart::think(actor, now),
+                None => CallStart::mode(ScriptRole::Mode, now),
+            };
+            ctx.frame().begin(world, start).unwrap();
             let at = ctx.view().unit(at).unwrap();
             let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
             let returned = {

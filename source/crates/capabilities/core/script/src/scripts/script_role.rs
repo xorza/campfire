@@ -49,10 +49,7 @@ impl ScriptRole {
 impl ParamScope {
     /// Its place among `ALL`.
     pub const fn index(self) -> usize {
-        match self {
-            Self::Action => 0,
-            Self::Mode => 1,
-        }
+        self as usize
     }
 
     /// The failure of a call that reads a param of the scope where no part holds them: the mode's

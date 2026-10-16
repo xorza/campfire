@@ -29,8 +29,7 @@ pub enum StateDefault {
 
 impl StateDecl {
     /// A field of `kind` that starts at `default`, or at its type's zero without one; `None` when
-    /// the default is not of the type. An entity, a list, a position or a vector takes no
-    /// default.
+    /// the default is not of the type. An entity, a list or a vector takes no default.
     pub fn new(kind: StateType, default: Option<StateDefault>) -> Option<Self> {
         let initial = match (kind, default) {
             (StateType::Int, None) => StateValue::Int(0),

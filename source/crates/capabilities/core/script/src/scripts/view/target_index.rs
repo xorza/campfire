@@ -21,9 +21,9 @@ pub(crate) struct TargetIndex {
 /// `team`.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TargetQuery<'a> {
-    pub team: Team,
+    pub(crate) team: Team,
     pub(crate) from: Vec3,
-    pub shape: Shape,
+    pub(crate) shape: Shape,
     pub(crate) radius: Num,
     pub(crate) filter: &'a Filter,
 }

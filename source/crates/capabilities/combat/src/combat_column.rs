@@ -4,8 +4,8 @@ use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList,
-    ScriptValue, Unit, ViewColumn,
+    AnyKeptRows, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, ScriptWindow,
+    Unit, ViewColumn,
 };
 use campfire_stats::Life;
 use campfire_units::Dead;
@@ -115,12 +115,9 @@ impl CombatColumn {
 
     /// `unit.recent_attackers(ms)`: the living units that struck `unit` within the last `ms`
     /// milliseconds, rounded up to whole ticks, by stable id; none in a view with no combat.
-    pub(crate) fn recent_attackers(unit: &Unit, ms: i64) -> Checked<ScriptList> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
+    pub(crate) fn recent_attackers(unit: &Unit, ms: ScriptWindow) -> ScriptList {
         let view = unit.view();
-        let (window, now) = (view.window(ms), view.now());
+        let (window, now) = (ms.get(), view.now());
         let attackers = view.column(|column: &Self| {
             column
                 .rows
@@ -134,7 +131,7 @@ impl CombatColumn {
                 .map(ScriptValue::of)
                 .collect()
         });
-        Ok(attackers.unwrap_or_default())
+        attackers.unwrap_or_default()
     }
 
     /// Fills a row of the script view with what combat holds: whether the unit lives and whether it

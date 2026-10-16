@@ -47,6 +47,7 @@ mod match_mode;
 mod mode_api;
 mod mode_call;
 mod mode_core;
+mod mode_ctx;
 mod mode_data;
 mod mode_effect;
 mod mode_hooks;
@@ -288,7 +289,6 @@ impl Mode {
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
         ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
-        ctx.set_mode(Rc::<ModeSpec>::clone(&book));
         world.insert_non_send(MatchMode(Rc::clone(&book)));
     }
 
@@ -359,8 +359,7 @@ impl Mode {
         let now = world.resource::<SimTick>().start();
         Calls::scope(world, now, |call| {
             call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
-        })
-        .map_err(CallError::from_script)?;
+        })?;
         // A save the start asked for is at the boundary before the first tick, its own time.
         if world.contains_resource::<SaveAsked>() {
             world.insert_resource(SaveAsked::new(now));
@@ -397,8 +396,8 @@ pub mod internals {
 
     use crate::Mode;
     use crate::match_mode::MatchMode;
+    use crate::mode_ctx::ModeCtx;
     use crate::mode_input::{InputValue, ModeInput};
-    use crate::mode_spec::ModeSpec;
     use crate::mode_units::ModeUnits;
     use crate::mode_world::ModeWorld;
 
@@ -595,7 +594,8 @@ pub mod internals {
         /// The state field `name`: the state holds the fields in the order of their names.
         pub fn field(world: &World, name: &str) -> StateValue {
             let ctx = world.non_send::<Ctx>();
-            let at = ModeSpec::of(ctx)
+            let at = ctx
+                .mode_spec()
                 .unwrap()
                 .schema
                 .state
@@ -700,8 +700,14 @@ pub mod internals {
             ctx.view().read(world);
             let now = world.resource::<SimTick>().start();
             match role {
-                ScriptRole::Mode => ctx.frame().begin_mode(world, false, now),
-                ScriptRole::Ai => ctx.frame().begin_think(world, actor, now),
+                ScriptRole::Mode => {
+                    let start = CallStart::mode(ScriptRole::Mode, now);
+                    ctx.frame().begin(world, start).unwrap();
+                }
+                ScriptRole::Ai => ctx
+                    .frame()
+                    .begin(world, CallStart::think(actor, now))
+                    .unwrap(),
                 ScriptRole::Action => {
                     let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
                     let start =

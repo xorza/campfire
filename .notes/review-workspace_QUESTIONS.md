@@ -47,3 +47,35 @@
 | C. Keep the mirrors | Nothing changes | The hand-kept mirrors stay, which the item names |
 
 **Blocked.** Item 2 alone. Items 3 to 12 of batch 18 do not wait for it.
+
+## Batch 19, item 5: where the match's mode lives (mode, script)
+
+**Item.** `Ctx` had a `dyn Any` slot for the mode alone, and the mode kept its `ModeSpec` three times: the slot, the `MatchMode` non-send resource and its `ModeCall` part of the frame. The item asks that the mode read its spec through its `ModeCall` part, and that the slot and `MatchMode` go. The slot is gone: the mode's calls read the spec through `ModeCall`, by the new `ModeCtx` trait on `Ctx`.
+
+**Why it needs a decision.** Thirteen readers of `MatchMode` are not calls: the run conditions of the mode's hooks, the declarations of the match entity's parts, the checks of `Choices`, `ModeState` and `UnansweredSlotEvents`, `ModeWorld::team_of` and `mode_state`, which the server's door reads, and `Mode::start`. Without `MatchMode`, each reads the spec through `world.non_send::<Ctx>().frame()`, a `RefCell` borrow of the call frame. A reader that runs while a call holds the frame, as an effect that applies and asks for a player's team, then panics on a double borrow, where `MatchMode` cannot.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Keep `MatchMode` (recommended) | The world's readers keep the non-send resource, the calls read `ModeCall`; the spec is held twice, each by one kind of reader | Two handles of one `Rc<ModeSpec>` |
+| B. Remove `MatchMode` | Every reader goes through the frame's `ModeCall` part | A world-level read becomes a borrow of the call frame, which panics if a call holds it |
+| C. Make `ModeSpec` itself the non-send resource | `MatchMode`'s `Deref` wrapper goes, and the world holds the `Rc<ModeSpec>` by a resource type of its own | A newtype is still needed for an `Rc` in a non-send resource, so little changes |
+
+**Blocked.** The removal of `MatchMode` alone.
+
+## Batch 19, item 6: one text type for state and scripts (script)
+
+**Item.** Each read of a text state field makes a new `ImmutableString`, and each write a new `Arc<str>`; the item asks for one shared text type for state and scripts.
+
+**Why it needs a decision.** The two sides need different sharing. Rhai builds without its `sync` feature, so its `ImmutableString`, which `ScriptText` holds, is an `Rc`, and is not `Send`. `StateValue` lives in Bevy components (`ModeState`, a unit's state), which must be `Send` and `Sync`, so its text is an `Arc<str>`. No one type is both, and a read or a write that crosses between them copies the text.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Keep the copy (recommended) | Each crossing copies the text once, as now | One allocation for each text field a call reads or writes |
+| B. Turn on Rhai's `sync` feature | `ImmutableString` becomes an `Arc`, which `StateValue` can hold | Every value a script holds must then be `Send` and `Sync`; `View`, `Ctx` and the handles hold `Rc` and `RefCell`, and each Rhai value's count becomes atomic |
+| C. A match-wide table of texts | `StateValue::Text` holds an index into a table of each text as both types | The table grows with every distinct text a script makes, and is state a snapshot must hold, in a fixed order |
+
+**Blocked.** Item 6 alone.

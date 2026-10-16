@@ -1,7 +1,9 @@
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_values::{DamageKind, EngineEnum, Relation};
+use campfire_values::{EngineEnum, Relation};
 use rhai::{Array, Dynamic, ImmutableString, Variant};
 
+use crate::script_host::error::{NumError, Raised};
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
@@ -9,11 +11,13 @@ use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
+use crate::scripts::view::unit::Unit;
 
 /// An argument of a call or a method of the script API: what Rhai passes, and what the member
 /// takes of it. A name resolves to its id, its kind of name recorded in the member's spec, and a
 /// `Num` takes an integer too, in the member's integer form. Its impl lives with its type, or
-/// here for a type of a layer below the scripts' or of another crate.
+/// here for a type of a layer below the scripts', of another crate, or of `view`, which an
+/// argument's `ArgCtx` reads, so `view` imports no `ScriptArg`.
 pub trait ScriptArg: Sized + 'static {
     /// What Rhai passes.
     type Raw: Variant + Clone;
@@ -134,7 +138,7 @@ macro_rules! enum_script_arg {
     )*};
 }
 
-plain_script_arg!((), i64, bool, Vec3);
+plain_script_arg!((), i64, bool, Vec3, Unit);
 enum_script_arg!(Relation);
 
 impl ScriptArg for Num {
@@ -148,15 +152,29 @@ impl ScriptArg for Num {
         Ok(raw)
     }
 
-    /// A script's integer as a `Num`; one beyond a `Num` fails the call.
+    /// A script's integer as a `Num`; one beyond a `Num` fails the call, as the number API's
+    /// own does.
     fn take_int(raw: i64, _: &ArgCtx<'_>) -> Checked<Self> {
-        Self::from_int(raw).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
+        Self::from_int(raw).ok_or_else(|| Raised::error(NumError::IntegerBeyondNum).into())
     }
 }
 
-name_script_arg!(DamageKind, NameKind::DamageKind, |ctx, name| {
-    ctx.view().names().named(name)
-});
+/// A player a script names by its slot, which the session has; another fails the call.
+impl ScriptArg for PlayerSlot {
+    type Raw = i64;
+    type Int = i64;
+    const NAMES: Option<NameKind> = None;
+    const ENUM: Option<EngineEnum> = None;
+    const NUMBER: bool = false;
+
+    fn take(raw: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
+        ctx.get().view().names().player(raw)
+    }
+
+    fn take_int(raw: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
+        Self::take(raw, ctx)
+    }
+}
 
 /// Implements `ScriptArg` for each type of `scripts` that stands for an engine type, which Rhai
 /// passes as the engine's, and `$of` takes.

@@ -66,8 +66,7 @@ impl UnitStateAccess {
             let field = schema
                 .field(name)
                 .ok_or_else(|| ApiError::UnknownState.fail())?;
-            let value = StateValue::from_value(schema.kind(field), value)
-                .ok_or_else(|| ApiError::WrongStateType.fail())?;
+            let value = StateValue::from_value(schema.kind(field), value)?;
             let place = schema.place(field);
             Checked::Ok(StateWrite {
                 id: self.id,

@@ -1,5 +1,10 @@
 use crate::scripts::hook::Hook;
 
+const _: () = assert!(
+    Hook::ALL.len() <= u32::BITS as usize,
+    "a hook set holds each hook in a bit of a u32"
+);
+
 /// A set of hooks, one bit each, as the hooks a script defines.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct HookSet(u32);

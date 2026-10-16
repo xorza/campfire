@@ -47,7 +47,7 @@ fn on_mode_input(ctx, player, name, value) {
             errors[..],
             [
                 CallError::Script(ScriptError::CallLimit),
-                CallError::Script(ScriptError::TickBudget)
+                CallError::PoolSpent
             ]
         ),
         "{errors:?}"

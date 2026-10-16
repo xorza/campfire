@@ -70,10 +70,19 @@ fn num_arithmetic_is_exact_and_checked() {
             "{body}"
         );
     }
-    assert_eq!(
-        num(&mut host, "clamp(num(9), num(0), num(4))"),
-        Num::from_int(4).unwrap()
-    );
+    // `clamp` takes an integer in any place but all three: 9 down to 4, 2 kept, −1 up to 0.
+    for (body, expected) in [
+        ("clamp(num(9), num(0), num(4))", 4),
+        ("num(9).clamp(0, 4)", 4),
+        ("clamp(2, num(0), 4)", 2),
+        ("clamp(-1, 0, num(4))", 0),
+    ] {
+        assert_eq!(
+            num(&mut host, body),
+            Num::from_int(expected).unwrap(),
+            "{body}"
+        );
+    }
 
     // A vector takes a `Num` or an integer on each axis: (1, 2.5, −3).
     let vector = run(&mut host, "vector(1, num(5) / 2, -3)")
@@ -91,6 +100,8 @@ fn num_arithmetic_is_exact_and_checked() {
         ("num(1) / 0", NumError::Overflow),
         ("num(1 << 39)", NumError::IntegerBeyondNum),
         ("clamp(num(1), num(4), num(0))", NumError::ClampBounds),
+        ("num(1).clamp(4, 0)", NumError::ClampBounds),
+        ("clamp(num(1), 0, 1 << 39)", NumError::IntegerBeyondNum),
         ("vector(0, \"one\", 0)", NumError::NotNumber),
         ("vector(0, 0, 1 << 39)", NumError::IntegerBeyondNum),
     ] {

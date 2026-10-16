@@ -6,7 +6,7 @@ use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::Teleported;
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, View};
+use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
 use campfire_values::DashDelivery;
@@ -70,19 +70,19 @@ impl NavigationEffect {
     }
 
     /// A knock back of `id`, which walks, `distance` away from `from`, more than 0 and within
-    /// the world's bound, over `ms`, more than 0, rounded up to ticks.
+    /// the world's bound, over `lasting`.
     pub(crate) fn knock_back(
         view: &View,
         id: StableId,
         from: Vec3,
         distance: Num,
-        ms: i64,
+        lasting: ScriptLasting,
     ) -> Result<Self, ApiError> {
         Self::walker(view, id)?;
         if distance <= Num::ZERO || distance > Position::BOUND {
             return Err(NavigationRefusal::NotADistance.refused());
         }
-        let ticks = view.lasting(ms)?;
+        let ticks = lasting.get();
         Ok(Self::KnockBack {
             id,
             from,
@@ -119,8 +119,8 @@ impl NavigationEffect {
             CapabilityDoesSpec::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
                 // Whole, as the load checked, so the floor is exact.
-                let ms = ms.number(frame).floor();
-                Self::knock_back(view, id, from, distance.number(frame), ms)
+                let lasting = ScriptLasting::of(view.rate(), ms.number(frame).floor())?;
+                Self::knock_back(view, id, from, distance.number(frame), lasting)
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };

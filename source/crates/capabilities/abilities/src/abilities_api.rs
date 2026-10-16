@@ -1,8 +1,8 @@
 use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, ScriptValue, Status, Unit,
+    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
+    ScriptCut, ScriptValue, Status, Unit,
 };
 use campfire_sim::Capability;
 use campfire_values::{ActionId, Block, TagProperty};
@@ -48,7 +48,7 @@ impl AbilitiesApi {
                 &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
             ),
-            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: i64| {
+            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: ScriptCut| {
                 Self::reduce_cooldown(ctx, &unit, id, ms)
             },
         )
@@ -107,11 +107,11 @@ impl AbilitiesApi {
         }
     }
 
-    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the
-    /// script's package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: i64) -> Checked<()> {
+    /// Queues `ms` off the cooldown of `unit`'s action `action` of the script's package, which
+    /// it holds.
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: ScriptCut) -> Checked<()> {
         Self::check_held(ctx, unit, action)?;
-        let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
+        let cut = ms.get();
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
             action,

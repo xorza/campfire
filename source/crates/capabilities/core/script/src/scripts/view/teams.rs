@@ -76,7 +76,7 @@ impl Teams {
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
-    pub fn player(&self, player: i64) -> Checked<PlayerSlot> {
+    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
         u32::try_from(player)
             .ok()
             .filter(|&slot| slot < self.players())
