@@ -237,17 +237,12 @@ impl ScriptApi {
         Some(&self.members[at])
     }
 
-    /// What the arguments of the method `name` of any handle name and take: every handle with
-    /// a method of that name gives the same, so a script's literal is checked whatever value it
-    /// calls it on.
-    pub fn method_args(&self, name: &str) -> Option<ArgKinds> {
-        self.members
-            .iter()
-            .find(|member| {
-                let spec = &member.spec;
-                spec.owner != ApiOwner::Ctx && spec.kind == MemberKind::Method && spec.name == name
-            })
-            .map(|member| member.spec.args())
+    /// The spec of the method `name` of any handle: every handle with a method of that name
+    /// gives the same arguments, so a script's literal is checked whatever value it calls it on.
+    pub fn method(&self, name: &str) -> Option<&MemberSpec> {
+        self.members.iter().map(|member| &member.spec).find(|spec| {
+            spec.owner != ApiOwner::Ctx && spec.kind == MemberKind::Method && spec.name == name
+        })
     }
 
     pub fn members(&self) -> &[ApiMember] {

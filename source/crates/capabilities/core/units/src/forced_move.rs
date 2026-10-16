@@ -53,8 +53,8 @@ pub struct Advanced {
 
 impl ForcedMove {
     /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead,
-    /// which ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
-    /// knock back goes its share of the way to its end, and ends on it in its last tick.
+    /// which ends where it is. A dash goes its step, and ends once it comes within its goal's
+    /// reach; a knock back goes its share of the way to its end, and ends on it in its last tick.
     pub fn advance(&mut self, point: Vec3, goal: Option<Goal>) -> Advanced {
         let Some(goal) = goal else {
             return Advanced { point, ends: true };

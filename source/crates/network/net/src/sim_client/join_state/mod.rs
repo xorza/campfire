@@ -310,14 +310,13 @@ impl JoinState {
     }
 
     /// The player's answer to `offer`, at `now` in Unix seconds, while the client waits for one or
-    /// tries to take its match up again: the delegation of the session key in the offered
-    /// session, made at `now`, a new one with a fresh
-    /// seed contribution for a first join, or for a later one whose delegation expires within
-    /// `RENEW_MARGIN`, signed by a new session key; and the session key's signature over the
-    /// challenge and `binding`, the link's TLS session's. An error when the terms name another server, a
-    /// session the client cannot play, another rate than the listing, or, for a later join,
-    /// another session, and the client then refuses every later offer; `None` for an offer it
-    /// does not wait for.
+    /// tries to take its match up again: the delegation of the session key in the offered session,
+    /// made at `now`, a new one with a fresh seed contribution for a first join, or for a later one
+    /// whose delegation expires within `RENEW_MARGIN`, signed by a new session key; and the session
+    /// key's signature over the challenge and `binding`, the link's TLS session's. An error when
+    /// the terms name another server, a session the client cannot play, another rate than the
+    /// listing, or, for a later join, another session, and the client then refuses every later
+    /// offer; `None` for an offer it does not wait for.
     pub(crate) fn answer(
         &mut self,
         offer: &Offer,
@@ -386,13 +385,12 @@ impl JoinState {
     }
 
     /// Plays the match `start` names, for a client that answered: the player's chain starts anew
-    /// from the root the server names, whatever the client's history, or goes on from the
-    /// server's copy, which
-    /// a client with a history finds in it and cuts its own back to, and a client with none
-    /// takes; after a load, which may drop inputs the client's history holds, every client of a
-    /// local server takes it: only a local server loads a save, so only the match start of a
-    /// server `hosting` says is local is taken as a load. Sim tick `start.first` is Lightyear
-    /// tick `start.start_tick`.
+    /// from the root the server names, whatever the client's history, or goes on from the server's
+    /// copy, which a client with a history finds in it and cuts its own back to, and a client with
+    /// none takes; after a load, which may drop inputs the client's history holds, every client of
+    /// a local server takes it: only a local server loads a save, so only the match start of a
+    /// server `hosting` says is local is taken as a load. Sim tick `start.first` is Lightyear tick
+    /// `start.start_tick`.
     pub(crate) fn start(&mut self, start: MatchStart, hosting: Hosting) -> Started {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Answered(answered) if self.player.role == JoinRole::Play => answered,

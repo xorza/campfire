@@ -194,8 +194,9 @@ impl GameVersion {
         self.name
     }
 
-    /// The version of `known`, not empty, whose archives `found` are, by their paths ignoring case and their
-    /// SHA-256; otherwise how the first archive that differs from the first version differs.
+    /// The version of `known`, not empty, whose archives `found` are, by their paths ignoring case
+    /// and their SHA-256; otherwise how the first archive that differs from the first version
+    /// differs.
     pub(crate) fn identify<'a>(
         found: &[HashedArchive],
         known: &'a [Self],

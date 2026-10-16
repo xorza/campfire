@@ -3,13 +3,13 @@ use std::num::NonZeroU64;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{AfterLeave, PlayerSlot, Tick, Ticks};
+use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, RecordSink,
-    ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult, Signature, Signer,
-    SlotStart, SnapshotFingerprint,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerPacket,
+    RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult,
+    Signer, SlotStart, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
@@ -127,16 +127,14 @@ impl Session {
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
     pub fn record<'a, I>(
         &mut self,
-        slot: PlayerSlot,
-        inputs: I,
-        signature: &Signature,
+        packet: PlayerPacket<'_, I>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where
         I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
-        self.log.record(slot, inputs, signature, applied)
+        self.log.record(packet, applied)
     }
 
     /// Logs a server input before the next tick, signed in the log by `server` at the place it

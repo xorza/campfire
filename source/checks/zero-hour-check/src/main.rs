@@ -1,22 +1,21 @@
 //! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into the
-//! directory its command line names, in place of the packages an earlier run wrote there once
-//! the new ones are whole, and checks the fingerprints of the imported package and the rules
-//! package against those it pins, which a run on Linux and a run on macOS gave. Then it checks
-//! that Tournament Desert imports as a multiplayer game of the original spawns it: 270 × 340
-//! height samples; of its 580 objects, once its 176 road ends are dropped, 142 placed units of 41
-//! types and 438 client objects of 22 looks, each kind's templates logged for review; and 28
-//! markers. It checks its
-//! terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and border
-//! wraps, each logged for review; that the import reports no cell of its terrain whose tile has
-//! no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
+//! directory its command line names, in place of the packages an earlier run wrote there once the
+//! new ones are whole, and checks the fingerprints of the imported package and the rules package
+//! against those it pins, which a run on Linux and a run on macOS gave. Then it checks that
+//! Tournament Desert imports as a multiplayer game of the original spawns it: 270 × 340 height
+//! samples; of its 580 objects, once its 176 road ends are dropped, 142 placed units of 41 types
+//! and 438 client objects of 22 looks, each kind's templates logged for review; and 28 markers. It
+//! checks its terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and
+//! border wraps, each logged for review; that the import reports no cell of its terrain whose tile
+//! has no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
 //! mode, where player 1 starts with America's command center at `Player_1_Start` and its dozer
 //! clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets there within
 //! `DRIVE_TICKS`, in no wall's cell in any tick. It counts the trains and builds the import
 //! converts from the command sets and the buttons it drops by cause; and in a match of its own,
-//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains
-//! a ranger, each in its pinned ticks and paid from the starting money. Every other map the game
-//! lists loads in the imported mode. It fails when `GENERALSZH_DATA` names no install, so a
-//! machine with no copy never passes as one that checked.
+//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains a
+//! ranger, each in its pinned ticks and paid from the starting money. Every other map the game
+//! lists loads in the imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine
+//! with no copy never passes as one that checked.
 //!
 //! Run it with `./drive.py zero-hour [out]`, which builds it with the `release-dev` profile and
 //! writes to `~/zh-package` unless `out` names another directory.

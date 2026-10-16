@@ -2,11 +2,11 @@ use campfire_actions::{ActionProgress, TimedSlots};
 use campfire_production::{
     Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
 };
+use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {

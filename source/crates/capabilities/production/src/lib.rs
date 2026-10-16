@@ -174,18 +174,18 @@ impl Module for Production {
     }
 
     /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on
-    /// the server, set rally points to points or the units its vision sees; in Act, after the
-    /// other orders start, ordered trains pass their checks, pay, and join their unit's queue; in
-    /// Mode, before the mode's hooks, the trains whose time ended spawn. With navigation, which
-    /// tests a box for room and walks a worker, construction and gathering too: in Inputs, the
-    /// build and gather orders that changed are checked; in Act, after the trains, builds start
-    /// and workers run their loops; in Mode, before the trains finish, sites grow; as the tick
-    /// ends, the nodes that ran out despawn. A
-    /// player's supply, a node's end, and the units trains and builds spawn are the server's: a
-    /// predicting client derives none, as it holds only the units its team sees, and its unit
-    /// comes back by replication. A build's placement tests the units the server's
-    /// vision sees, or, on a predicting client, the units it holds. On the server, a player spawns
-    /// with its supply, which the refresh writes in place; a client receives its own player's.
+    /// the server, set rally points to points or the units its vision sees; in Act, after the other
+    /// orders start, ordered trains pass their checks, pay, and join their unit's queue; in Mode,
+    /// before the mode's hooks, the trains whose time ended spawn. With navigation, which tests a
+    /// box for room and walks a worker, construction and gathering too: in Inputs, the build and
+    /// gather orders that changed are checked; in Act, after the trains, builds start and workers
+    /// run their loops; in Mode, before the trains finish, sites grow; as the tick ends, the nodes
+    /// that ran out despawn. A player's supply, a node's end, and the units trains and builds spawn
+    /// are the server's: a predicting client derives none, as it holds only the units its team
+    /// sees, and its unit comes back by replication. A build's placement tests the units the
+    /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
+    /// player spawns with its supply, which the refresh writes in place; a client receives its own
+    /// player's.
     fn install(cx: &mut InstallCx<'_>) {
         cx.by_role(
             ProductionOrders::apply_cancels::<ByVision>.in_set(ProductionSet::Commands),

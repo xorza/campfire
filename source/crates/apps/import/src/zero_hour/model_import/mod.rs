@@ -194,10 +194,10 @@ pub(crate) mod internals {
     /// `Tank.w3d`: the HLOD `TANK` on its hierarchy of a root, a turret a half turn about `z` at
     /// `(1, 2, 3)`, and a flash bone at `(0, 1, 0)` on the turret. Its sub-objects: a hull of
     /// vertex colors, coordinates of `NaN` and infinity at one vertex, and two triangles, one of a
-    /// clamped texture `Rock.tga` and one of none; on
-    /// the turret a triangle with zero normals and a vertex no triangle uses; on the flash bone an
-    /// additive two-sided triangle of a texture no archive holds, `Gone.tga`, and no coordinates;
-    /// a box; a name of no render object; and a skin on the turret.
+    /// clamped texture `Rock.tga` and one of none; on the turret a triangle with zero normals and a
+    /// vertex no triangle uses; on the flash bone an additive two-sided triangle of a texture no
+    /// archive holds, `Gone.tga`, and no coordinates; a box; a name of no render object; and a skin
+    /// on the turret.
     pub(crate) fn tank() -> Vec<u8> {
         let pivot = |name: &str, parent, translation, rotation| Pivot {
             name: name.to_owned(),

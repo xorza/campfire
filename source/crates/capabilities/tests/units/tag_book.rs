@@ -31,9 +31,11 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
-    let tower = types
-        .load(TypeScope::Mode, PackageIndex::MODE, "tower", &tower)
-        .unwrap();
+    let origin = TypeOrigin {
+        package: PackageIndex::MODE,
+        name: "tower".into(),
+    };
+    let tower = types.load(TypeScope::Mode, origin, &tower).unwrap();
     let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
         blocks: blocks.to_vec(),
         hidden: false,

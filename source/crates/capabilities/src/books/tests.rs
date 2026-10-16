@@ -1,14 +1,14 @@
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::event::Event;
-use bevy_ecs::lifecycle::ComponentHook;
-use bevy_ecs::schedule::SystemCondition;
-use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::panic::{self, AssertUnwindSafe};
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::SystemCondition;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use campfire_combat::CombatBook;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,

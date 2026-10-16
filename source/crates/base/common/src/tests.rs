@@ -233,7 +233,7 @@ const CODEC_METHODS: [&str; 24] = [
     "serde_json::from_value",
     "serde_json::to_value",
     "toml::Value::try_into",
-    "toml::Table::try_into",
+    "toml::map::Map::try_into",
     "bevy_replicon::postcard_utils::to_extend_mut",
     "bevy_replicon::postcard_utils::from_buf",
 ];

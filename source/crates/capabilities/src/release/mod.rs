@@ -262,12 +262,14 @@ pub(crate) mod internals {
     use std::any::TypeId;
     use std::collections::BTreeSet;
     use std::fmt::Debug;
+    use std::num::NonZeroU64;
 
     use bevy_ecs::archetype::Archetype;
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
     use campfire_declare::CapabilitySet;
+    use campfire_script::{ScriptApi, ScriptHost};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         Capability, EntityIndex, SimResource, SimWorld, SnapshotError, StableId, StateCopy,
@@ -275,9 +277,6 @@ pub(crate) mod internals {
     };
     use campfire_state_types::{Replication, StateTypes};
     use campfire_units::{EntityKinds, Units, UnitsWorld};
-    use std::num::NonZeroU64;
-
-    use campfire_script::{ScriptApi, ScriptHost};
 
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;

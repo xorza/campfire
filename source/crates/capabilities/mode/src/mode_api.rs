@@ -548,8 +548,8 @@ impl ModeApi {
             .collect())
     }
 
-    /// Whether player `slot` may choose `value` of `choice`: it offers the value, and no other player
-    /// chose it in a unique choice.
+    /// Whether player `slot` may choose `value` of `choice`: it offers the value, and no other
+    /// player chose it in a unique choice.
     fn available(ctx: &Ctx, slot: PlayerSlot, choice: ChoiceId, value: &str) -> Checked<bool> {
         let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);

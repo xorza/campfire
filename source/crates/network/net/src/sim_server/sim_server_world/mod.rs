@@ -21,11 +21,11 @@ use crate::sim_server::session_dir::SessionDir;
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
     /// Ends the session before the next tick, as the mode ended the match or aborted when it did
-    /// not: logs the record of the
-    /// checkpoint on its thread first; then the result, which the server key signs; reveals the
-    /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
-    /// session runs. The server then publishes the log. An error when the checkpoint's snapshot
-    /// was not written, as the log can then not be published: the session ends with no result.
+    /// not: logs the record of the checkpoint on its thread first; then the result, which the
+    /// server key signs; reveals the seed; and from then on runs no tick and logs nothing, as each
+    /// such system checks that the session runs. The server then publishes the log. An error when
+    /// the checkpoint's snapshot was not written, as the log can then not be published: the session
+    /// ends with no result.
     fn end_session(&mut self) -> Result<(), SnapshotWriteError>;
 
     /// Whether the session went back to a save, and its server is to start again on

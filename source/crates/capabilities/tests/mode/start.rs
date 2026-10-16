@@ -1,9 +1,9 @@
+use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
 use campfire_units::MapBook;
 use campfire_vision::VisionBook;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {

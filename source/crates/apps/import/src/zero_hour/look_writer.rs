@@ -27,14 +27,14 @@ struct LookModels {
 }
 
 impl LookWriter<'_, '_, '_> {
-    /// Writes `client/units.toml` of `ini`'s objects, and gives it: each
-    /// object's look, its models, each at its object's asset scale, with the nodes its default
-    /// look hides, a look of no models for an object whose draw modules name none, as it draws
-    /// nothing, and no look for one whose models the package lacks, which the client shows as
-    /// the engine's shape; and the look of each object that maps place as client objects, as the client's
-    /// tree or prop buffer draws it (design 12, D14): a tree's models of its tree draw modules, a
-    /// prop's of its first draw module, when the `W3DModelDraw` family's, each created by its
-    /// name, so only the meshes hidden by their own flag are hidden.
+    /// Writes `client/units.toml` of `ini`'s objects, and gives it: each object's look, its models,
+    /// each at its object's asset scale, with the nodes its default look hides, a look of no models
+    /// for an object whose draw modules name none, as it draws nothing, and no look for one whose
+    /// models the package lacks, which the client shows as the engine's shape; and the look of each
+    /// object that maps place as client objects, as the client's tree or prop buffer draws it
+    /// (design 12, D14): a tree's models of its tree draw modules, a prop's of its first draw
+    /// module, when the `W3DModelDraw` family's, each created by its name, so only the meshes
+    /// hidden by their own flag are hidden.
     pub(crate) fn units(
         &mut self,
         ini: &ObjectIni,

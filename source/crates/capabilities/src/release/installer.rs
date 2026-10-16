@@ -225,10 +225,10 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    /// Each stage checks `condition` once, as it starts, with `SimEdge::Start` before them all,
-    /// so the stage it turns false in is the last to run, its closing set with it.
     fn non_send_loaded<R: 'static>(&mut self) {}
 
+    /// Each stage checks `condition` once, as it starts, with `SimEdge::Start` before them all,
+    /// so the stage it turns false in is the last to run, its closing set with it.
     fn stages_run_if<M>(&mut self, condition: impl SystemCondition<M> + Clone) {
         self.schedule
             .configure_sets(SimEdge::Start.run_if(condition.clone()));

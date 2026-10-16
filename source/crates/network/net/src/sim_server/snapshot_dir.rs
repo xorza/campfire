@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use campfire_protocol::SnapshotFingerprint;
+use campfire_store::{DurableDir, DurableFile};
 
 use crate::faults::error::SnapshotWriteError;
-use campfire_store::{DurableDir, DurableFile};
 
 /// A session's `snapshots` directory, where each checkpoint's snapshot is named by its
 /// fingerprint in hex.

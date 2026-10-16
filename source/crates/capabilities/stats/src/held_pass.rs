@@ -65,14 +65,13 @@ impl HeldPass {
     /// Holds, in Resolve each tick, each aura's modifier on every living unit whose body comes
     /// within its radius of its carrier's position in the map's metric, as an area's reaches, that
     /// its `affects` selects, from the unit that carries the aura. An aura's instance projects only
-    /// while it has a stack and takes effect on its carrier, which its immunities may suppress.
-    /// And each one another capability holds this tick, as `HeldModifiers` lists it. Each ends on
-    /// a unit that left it. An aura's modifier resolves its numbers from the ability that gave the
-    /// aura, and has no duration. A
-    /// predicting client keeps a held instance from a source whose modifiers it does not hold, as
-    /// a mode that hides them from it, or that it does not hold at all, as the server sent it: it
-    /// cannot tell whether that source's aura still reaches, so the server's word corrects it once
-    /// as it comes and once as it goes (design 14, D5).
+    /// while it has a stack and takes effect on its carrier, which its immunities may suppress. And
+    /// each one another capability holds this tick, as `HeldModifiers` lists it. Each ends on a
+    /// unit that left it. An aura's modifier resolves its numbers from the ability that gave the
+    /// aura, and has no duration. A predicting client keeps a held instance from a source whose
+    /// modifiers it does not hold, as a mode that hides them from it, or that it does not hold at
+    /// all, as the server sent it: it cannot tell whether that source's aura still reaches, so the
+    /// server's word corrects it once as it comes and once as it goes (design 14, D5).
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"

@@ -571,7 +571,11 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     // A scope names a type once.
     let repeated = Units::change_types(&mut game, |_, types| {
         let scope = TypeScope::Package(PackageIndex::new(1));
-        types.load(scope, PackageIndex::new(1), "grunt", &data)
+        let origin = TypeOrigin {
+            package: PackageIndex::new(1),
+            name: "grunt".into(),
+        };
+        types.load(scope, origin, &data)
     });
     assert_eq!(repeated, Err(TypesError::Repeated("grunt".to_owned())));
     let view = game.non_send::<View>();

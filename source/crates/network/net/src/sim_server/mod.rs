@@ -20,7 +20,8 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, Controller, InputError, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
+    Applied, Controller, InputError, PlayerPacket, ServerInput, ServerSeeds, SessionLog,
+    SessionTerms, Signer,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
@@ -534,9 +535,12 @@ fn record_inputs(
                 link = refuse_link(&mut commands, entity, link);
                 continue;
             };
-            if let Err(error) =
-                session.record(slot, inputs.clone(), message.signature(), &mut applied)
-            {
+            let packet = PlayerPacket {
+                slot,
+                inputs: inputs.clone(),
+                signature: message.signature(),
+            };
+            if let Err(error) = session.record(packet, &mut applied) {
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,

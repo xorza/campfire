@@ -171,8 +171,9 @@ impl Edges {
     /// Whether the point at `x` of `row` lies closer than the reach to the box, each distance to
     /// the nearest unit: on its edge, at 0; inside the open box, below 0, as a signed distance
     /// measures it, so closer than a reach of 0 too, as a circle's center is; or nearer than the
-    /// reach to an edge or a corner, the first found ending the search. Each edge is one compare against the reach, not an order
-    /// compared after: that made `grid/box_spans_closer` 26 % slower on a Ryzen.
+    /// reach to an edge or a corner, the first found ending the search. Each edge is one compare
+    /// against the reach, not an order compared after: that made `grid/box_spans_closer` 26 %
+    /// slower on a Ryzen.
     fn closer(&self, row: &Row, x: i64, lines: &mut impl Lines) -> bool {
         let slabs = self.slabs(row, x);
         if self.outside(slabs) {

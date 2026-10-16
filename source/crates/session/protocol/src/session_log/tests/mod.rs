@@ -131,7 +131,12 @@ impl Sent<'_> {
     /// Records the packet into `log`, as the server does when it arrives.
     fn submit(&self, log: &mut SessionLog, applied: &mut Vec<Applied>) -> Result<(), InputError> {
         let inputs = self.inputs.iter().map(|input| (input.stamp, input.payload));
-        log.record(self.slot(), inputs, &self.signature, applied)
+        let packet = PlayerPacket {
+            slot: self.slot(),
+            inputs,
+            signature: &self.signature,
+        };
+        log.record(packet, applied)
     }
 
     /// The slot of its first input, or slot 0 for a packet of none.

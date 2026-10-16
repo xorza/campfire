@@ -3,14 +3,13 @@
 //! them, a package's fingerprint, a map's name, the TLS key a server presents, and a TLS
 //! session's channel binding.
 //!
-//! A type enters only when two crates that do not depend on each other both name it, and only
-//! as a plain value: construction, parsing, display and serde, no other logic. The exceptions
-//! are `enum_all!`, which states an enum with the list of its variants, and `NamedEnum`, which
-//! names them from one table; the hashers, SHA-256 and domain-tagged BLAKE3, which construct
-//! the 32-byte values (design 05, Hashes, ids and keys); and, behind `internals`, the
-//! allocation audit every crate's `tests/alloc` suite runs on. The
-//! crate depends on nothing but `serde`, `derive_more`, `sha2` and `blake3`, and, for the audit,
-//! `backtrace`.
+//! A type enters only when two crates that do not depend on each other both name it, and only as a
+//! plain value: construction, parsing, display and serde, no other logic. The exceptions are
+//! `enum_all!`, which states an enum with the list of its variants, and `NamedEnum`, which names
+//! them from one table; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
+//! values (design 05, Hashes, ids and keys); and, behind `internals`, the allocation audit every
+//! crate's `tests/alloc` suite runs on. The crate depends on nothing but `serde`, `derive_more`,
+//! `sha2` and `blake3`, and, for the audit, `backtrace`.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

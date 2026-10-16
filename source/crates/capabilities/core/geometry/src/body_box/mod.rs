@@ -191,12 +191,11 @@ impl BodyBox {
         Vec3::new(Num::from_bits(ground[0]), pos.y, Num::from_bits(ground[1]))
     }
 
-    /// How the straight path from `from` to `to` comes to the box at `center`, against `reach`:
-    /// a path that meets the box comes nearest where it enters it, or at its start inside it,
-    /// at 0, and closer than a reach of 0 too when it enters the open box, as `Edges::against`
-    /// measures a point inside it;
-    /// one that does not, at its nearest point, the first of them along the path where a stretch
-    /// is nearest. Each distance and place is to the nearest bit.
+    /// How the straight path from `from` to `to` comes to the box at `center`, against `reach`: a
+    /// path that meets the box comes nearest where it enters it, or at its start inside it, at 0,
+    /// and closer than a reach of 0 too when it enters the open box, as `Edges::against` measures a
+    /// point inside it; one that does not, at its nearest point, the first of them along the path
+    /// where a stretch is nearest. Each distance and place is to the nearest bit.
     pub(crate) fn approach(&self, center: Vec3, from: Vec3, to: Vec3, reach: Num) -> Approach {
         let frame = self.frame();
         let start = flat(from) - flat(center);

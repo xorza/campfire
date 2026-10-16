@@ -303,7 +303,8 @@ impl<'a> ApiBuilder<'a> {
 
     /// Binds `get` as the indexer of `T`, through which scripts read names the data declares, as
     /// `ctx.p.<name>`, and as the getter of each such name scripts use: the load check reads those
-    /// names against the data, and each member that gives a `T` leads to data. `get` has the running call's `ctx`, found when it reads it.
+    /// names against the data, and each member that gives a `T` leads to data. `get` has the
+    /// running call's `ctx`, found when it reads it.
     pub fn index<T: ScriptType>(
         &mut self,
         get: fn(&ArgCtx<'_>, &mut T, &str) -> Checked<ScriptValue>,

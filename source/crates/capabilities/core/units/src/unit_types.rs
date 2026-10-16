@@ -3,8 +3,8 @@ use std::sync::Arc;
 
 use campfire_script::{StateSchema, TagNames};
 use campfire_values::{
-    DeclaredName, EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag,
-    TagProperties, TagSet, TypeScope, UnitType,
+    DeclaredName, EngineTag, NameId, NameTable, Names, NamesError, Scalar, Tag, TagProperties,
+    TagSet, TypeScope, UnitType,
 };
 
 use crate::body_form::BodyForm;
@@ -68,14 +68,13 @@ impl UnitTypes {
         }
     }
 
-    /// Loads `data` as the type `name` of `scope`, declared by the package at `package`: its tags
-    /// join the match's, and its params are kept for `unit.params`; an error for a type its scope
-    /// names already, or past the most types or tags a match holds.
+    /// Loads `data` as the type of `scope` that `origin` names: its tags join the match's, and its
+    /// params are kept for `unit.params`; an error for a type its scope names already, or past the
+    /// most types or tags a match holds.
     pub fn load(
         &mut self,
         scope: TypeScope,
-        package: PackageIndex,
-        name: &str,
+        origin: TypeOrigin,
         data: &UnitTypeCore,
     ) -> Result<UnitType, TypesError> {
         let mut tags = TagSet::NONE;
@@ -86,11 +85,12 @@ impl UnitTypes {
             .params
             .iter()
             .map(|(name, &value)| (name.as_str(), value));
-        let added = Arc::make_mut(&mut self.types).try_add((scope, name));
-        let unit_type = added.map_err(|error| match error {
-            NamesError::Full => TypesError::TooManyTypes,
-            NamesError::Repeated => TypesError::Repeated(name.to_owned()),
-        })?;
+        let added = Arc::make_mut(&mut self.types).try_add((scope, &*origin.name));
+        let unit_type = match added {
+            Ok(unit_type) => unit_type,
+            Err(NamesError::Full) => return Err(TypesError::TooManyTypes),
+            Err(NamesError::Repeated) => return Err(TypesError::Repeated(origin.name.into())),
+        };
         let run = Arc::make_mut(&mut self.params).push(params);
         debug_assert_eq!(run, unit_type.index(), "one run of params per type");
         let fields = data.state.iter();
@@ -102,10 +102,7 @@ impl UnitTypes {
             "one schema per type"
         );
         self.type_tags.push(tags);
-        self.origins.push(TypeOrigin {
-            package,
-            name: name.into(),
-        });
+        self.origins.push(origin);
         Ok(unit_type)
     }
 

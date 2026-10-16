@@ -309,7 +309,21 @@ fn a_unit_component_near_a_half_rounds_by_the_exact_half() {
     }
     assert_eq!(unit_component(half + 3, 1, 2), Num::from_bits(11_863_284));
     // The wide product of two 128-bit factors, high and low halves.
-    assert_eq!(wide_product(u128::MAX, u128::MAX), (u128::MAX - 1, 1));
-    assert_eq!(wide_product(1 << 100, 1 << 100), (1 << 72, 0));
-    assert_eq!(wide_product(3, 5), (0, 15));
+    assert_eq!(
+        WideProduct::of(u128::MAX, u128::MAX),
+        WideProduct {
+            high: u128::MAX - 1,
+            low: 1,
+        }
+    );
+    assert_eq!(
+        WideProduct::of(1 << 100, 1 << 100),
+        WideProduct {
+            high: 1 << 72,
+            low: 0,
+        }
+    );
+    assert_eq!(WideProduct::of(3, 5), WideProduct { high: 0, low: 15 });
+    // The high half orders first: 2¹²⁸ is past every product below it, 2¹²⁸ − 1 among them.
+    assert!(WideProduct::of(1 << 64, 1 << 64) > WideProduct::of(u128::MAX, 1));
 }

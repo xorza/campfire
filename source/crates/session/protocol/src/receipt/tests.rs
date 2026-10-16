@@ -1,7 +1,8 @@
+use campfire_codec::BinaryError;
+
 use super::*;
 use crate::harness::test_key::TestKey;
 use crate::verifier::Verifier;
-use campfire_codec::BinaryError;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {

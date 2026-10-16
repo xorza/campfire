@@ -2,8 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, KindSpec, Purse, SlotAim,
-    SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, Purse, SlotAim, SlotTimes,
 };
 use campfire_geometry::{Metric, Placed, Shape};
 use campfire_math::{Num, Vec3};
@@ -14,7 +13,7 @@ use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
 use campfire_values::{Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
-use crate::build_book::{BuildBook, BuildSpec, Style};
+use crate::build_book::{BuildBook, Building, Style};
 use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::step::{Start, Step};
@@ -76,14 +75,6 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) changed: Query<'w, 's, Entity, (Changed<Builder>, Without<Dead>)>,
 }
 
-/// A builder's build of its order's slot: the building's type, its spec, and its range.
-#[derive(Debug, Clone, Copy)]
-pub(super) struct Building<'a> {
-    pub(super) unit_type: UnitType,
-    pub(super) spec: BuildSpec<'a>,
-    pub(super) range: Num,
-}
-
 /// A builder as its build's place reads it: where it stands, and its player.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct BuilderAt<'a> {
@@ -111,27 +102,6 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// Reads the holdings, unless they are read, for the requirements the builds meet.
     pub(super) fn read_holdings(&mut self) {
         self.holdings.read(self.owned.iter());
-    }
-
-    /// The build in `slot` of `slots`, as `book` and `builds` hold it; `None` for a slot that
-    /// holds no build. It borrows the two books alone, so a placement's test may run beside it.
-    fn building<'b>(
-        book: &ActionBook,
-        builds: &'b BuildBook,
-        slots: &ActionSlots,
-        slot: u8,
-    ) -> Option<Building<'b>> {
-        let action = slots.slot(slot)?.action?;
-        let KindSpec::Build(unit_type) = book.get(action)?.kind else {
-            return None;
-        };
-        let range = slots.meters_in(book, slot);
-        let spec = builds.of(action).expect("a build's spec is in the book");
-        Some(Building {
-            unit_type,
-            spec,
-            range,
-        })
     }
 
     /// Where the build at `target` places its building, by the builder `by`: the point's box,
@@ -170,7 +140,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let BuildTarget::Point { angle, .. } = order.target else {
             return None;
         };
-        let building = Self::building(&self.book, &self.builds, slots, order.slot)?;
+        let building = self.builds.building(&self.book, slots, order.slot)?;
         let by = BuilderAt {
             from: from.get(),
             owner,
@@ -227,7 +197,8 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
                     from: from.get(),
                     owner,
                 };
-                Self::building(&self.book, &self.builds, slots, order.slot)
+                self.builds
+                    .building(&self.book, slots, order.slot)
                     .and_then(|building| self.placed(building, by, order.target))
                     .is_some()
             }
@@ -263,7 +234,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let Some(order) = builder.order() else {
             return Step::End;
         };
-        let Some(building) = Self::building(&self.book, &self.builds, slots, order.slot) else {
+        let Some(building) = self.builds.building(&self.book, slots, order.slot) else {
             return Step::End;
         };
         // An order build starts as its order applies, wherever its builder stands, and its

@@ -1,10 +1,10 @@
 use campfire_abilities::AbilitiesRefusal;
 use campfire_actions::SlotTimes;
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {

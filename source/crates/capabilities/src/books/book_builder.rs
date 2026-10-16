@@ -26,7 +26,7 @@ use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
     PoolId, SpecError, StatBook, StatId, TypePassive,
 };
-use campfire_units::{Avatar, TypesError, UnitTypes};
+use campfire_units::{Avatar, TypeOrigin, TypesError, UnitTypes};
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
     PackagePath, Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
@@ -441,10 +441,18 @@ impl<'a> BookBuilder<'a> {
     ) -> Result<(), TypesError> {
         let scope = TypeScope::of_package(index);
         for (name, file) in &package.content.units {
-            types.load(scope, index, name.as_str(), &file.core())?;
+            let origin = TypeOrigin {
+                package: index,
+                name: name.as_str().into(),
+            };
+            types.load(scope, origin, &file.core())?;
         }
         if let BookKind::Avatar(unit) = package.kind {
-            types.load(TypeScope::Mode, index, package.name, &unit.core())?;
+            let origin = TypeOrigin {
+                package: index,
+                name: package.name.into(),
+            };
+            types.load(TypeScope::Mode, origin, &unit.core())?;
         }
         Ok(())
     }

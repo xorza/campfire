@@ -1,9 +1,9 @@
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::StatsRefusal;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {

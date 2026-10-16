@@ -10,9 +10,9 @@ use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
 /// The log's own state at a checkpoint's boundary, which a segment's verification from its
-/// checkpoint alone, planned, will start from: each slot's controller, with a player's delegation and chain, the main key of the
-/// player who left it last, its stamp counts and its spill; and the inputs logged before the
-/// boundary and due from it on, in the order they apply.
+/// checkpoint alone, planned, will start from: each slot's controller, with a player's delegation
+/// and chain, the main key of the player who left it last, its stamp counts and its spill; and the
+/// inputs logged before the boundary and due from it on, in the order they apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogCarry {
     pub(crate) slots: Vec<CarriedSlot>,

@@ -447,10 +447,9 @@ fn no_module_names_another_modules_sets() {
 
 /// Every lookup by name that the production code of the capabilities and the network calls, by
 /// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
-/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it
-/// is given once, as its arguments' types take them, in the load, which resolves the packages'
-/// names once, or as a bot starts. The test fails when a
-/// lookup appears and when one listed here is gone.
+/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
+/// given once, as its arguments' types take them, in the load, which resolves the packages' names
+/// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
 const LOOKUPS: [(&str, &str); 44] = [
     // The load.
     ("actions/cost_target.rs", "named"),

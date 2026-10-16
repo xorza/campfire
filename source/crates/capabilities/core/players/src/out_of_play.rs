@@ -6,11 +6,12 @@ use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::Player;
 use serde::{Deserialize, Serialize};
 
-/// Marks a player out of play, on its entity (design 14, D16): while it holds avatars and every
-/// one is dead, or while the mode's script holds it out. The mode's server derives it as each tick
-/// ends, as out of play is the mode's (design 14, D12), and sends it to every client, as who is out of play is the match's public state. A player out
-/// of play that sees what a spectator sees gives no order, so the hash and the snapshot hold it:
-/// a restore refuses the orders the run it restores refused.
+/// Marks a player out of play, on its entity (design 14, D16): while it holds avatars and every one
+/// is dead, or while the mode's script holds it out. The mode's server derives it as each tick
+/// ends, as out of play is the mode's (design 14, D12), and sends it to every client, as who is out
+/// of play is the match's public state. A player out of play that sees what a spectator sees gives
+/// no order, so the hash and the snapshot hold it: a restore refuses the orders the run it restores
+/// refused.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OutOfPlay;
 

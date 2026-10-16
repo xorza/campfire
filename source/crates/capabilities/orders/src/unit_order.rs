@@ -68,13 +68,13 @@ pub struct OrderedUnit {
 }
 
 impl UnitOrder {
-    /// Gives the order, which its source checked, to `unit`, within `bounds`, in `now`: every
-    /// order of every source is given here. A move or a reset drops the unit's target and leaves its
-    /// path until it is told to follow it again; a move's point clamps to the bounds, and a slot's
-    /// point to the ground within them, at the unit's height. A group's move asks for its route at
-    /// once, as one of its party. An attack on another target cancels one in its windup; a slot's
-    /// cast or train replaces an action not resolved yet, or releases the charge of its own slot; a
-    /// use fills its slot afresh with its object's action, unless it holds it, and then starts as a
+    /// Gives the order, which its source checked, to `unit`, within `bounds`, in `now`: every order
+    /// of every source is given here. A move or a reset drops the unit's target and leaves its path
+    /// until it is told to follow it again; a move's point clamps to the bounds, and a slot's point
+    /// to the ground within them, at the unit's height. A group's move asks for its route at once,
+    /// as one of its party. An attack on another target cancels one in its windup; a slot's cast or
+    /// train replaces an action not resolved yet, or releases the charge of its own slot; a use
+    /// fills its slot afresh with its object's action, unless it holds it, and then starts as a
     /// slot's cast. A stop ends what is under way, with nothing spent, drops the target and the
     /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's build
     /// order, its point taken into the bounds, and a gather its gather loop, each dropping the

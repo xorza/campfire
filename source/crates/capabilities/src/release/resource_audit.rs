@@ -1,12 +1,12 @@
+use std::any::{TypeId, type_name};
+use std::fmt::Debug;
+
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
-use std::any::{TypeId, type_name};
-use std::fmt::Debug;
-
-use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,

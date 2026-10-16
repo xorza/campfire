@@ -199,8 +199,7 @@ impl SessionLog {
 
     /// Keeps `sink` as its journal, of `len` bytes, which holds every record the log took, as the
     /// log was rebuilt from it: from then on each record the log takes goes to it as it takes it.
-    /// Every
-    /// chain whose head its player's current delegation signed stands durably where the log
+    /// Every chain whose head its player's current delegation signed stands durably where the log
     /// holds it, as the journal was read back from the disk.
     pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
         assert!(self.journal.is_none(), "a log keeps one journal");

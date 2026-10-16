@@ -8,9 +8,9 @@ use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
+use serde::{Deserialize, Serialize};
 
 use crate::party::{Party, PartyKey};
-use serde::{Deserialize, Serialize};
 
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
 /// from the end it starts at while it has no other order, and stays at the last. It keeps the

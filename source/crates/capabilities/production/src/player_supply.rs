@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -83,6 +85,12 @@ pub(super) struct SupplyChanges<'w, 's> {
     unowned: RemovedComponents<'w, 's, Owner>,
     untyped: RemovedComponents<'w, 's, UnitType>,
     unqueued: RemovedComponents<'w, 's, TrainQueue>,
+}
+
+impl fmt::Debug for SupplyChanges<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SupplyChanges").finish_non_exhaustive()
+    }
 }
 
 impl SupplyChanges<'_, '_> {

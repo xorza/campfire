@@ -30,17 +30,16 @@ pub struct Refresh;
 
 impl Refresh {
     /// Derives the stats and tags of every unit whose level, modifiers or type changed, that died
-    /// or came back, as a client may receive its type after its level, that is new, or that
-    /// carries a live change of a unit it refreshes, a chain of them whole, and sets what holds
-    /// their effect: how far it walks a tick and its pools' maxima, a pool keeping the rule of
-    /// stats.md. A modifier its tags' immunities suppress gives no tags and no stats. Each stat
-    /// is computed for every refreshing unit in the stat book's order, so a live change reads its
-    /// source's stats once they are final; a live
-    /// change whose source is gone keeps the value it last had. An effect whose stat the mode does
-    /// not declare keeps what the unit's type gave it as it spawned. A predicting client derives
-    /// the stats and tags of every unit it holds, as their inputs reach it, so an aura's numbers
-    /// resolve there as on the server (design 14, D11); it writes nothing else of a unit it holds
-    /// as the server sent it.
+    /// or came back, as a client may receive its type after its level, that is new, or that carries
+    /// a live change of a unit it refreshes, a chain of them whole, and sets what holds their
+    /// effect: how far it walks a tick and its pools' maxima, a pool keeping the rule of stats.md.
+    /// A modifier its tags' immunities suppress gives no tags and no stats. Each stat is computed
+    /// for every refreshing unit in the stat book's order, so a live change reads its source's
+    /// stats once they are final; a live change whose source is gone keeps the value it last had.
+    /// An effect whose stat the mode does not declare keeps what the unit's type gave it as it
+    /// spawned. A predicting client derives the stats and tags of every unit it holds, as their
+    /// inputs reach it, so an aura's numbers resolve there as on the server (design 14, D11); it
+    /// writes nothing else of a unit it holds as the server sent it.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"

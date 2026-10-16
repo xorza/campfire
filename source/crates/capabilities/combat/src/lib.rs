@@ -20,6 +20,7 @@ use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
 use crate::combat_column::RowReads;
 use crate::next_damage::NextDamage;
+use crate::volley::Volley;
 
 mod armor;
 mod attacks;
@@ -81,7 +82,6 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
-use crate::volley::Volley;
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.

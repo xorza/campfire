@@ -11,7 +11,7 @@ use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::{Route, RouteAsk};
-use crate::route_asks::{Ask, AskingUnits, Member, RouteAsks};
+use crate::route_asks::{Ask, AskingUnits, Member, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -128,14 +128,18 @@ impl Routing {
                 },
             })
         }));
-        let statics = (grid.as_deref(), &*statics);
-        asks.plan(
-            statics,
-            planner.as_deref_mut(),
-            &mut |entity, from, waypoints, reached| {
-                let (.., mut route, _) = units.get_mut(entity).expect("a unit read this tick");
-                route.answer(from, waypoints, reached);
-            },
-        );
+        let search = grid
+            .as_deref()
+            .zip(planner.as_deref_mut())
+            .map(|(grid, planner)| RouteSearch {
+                grid,
+                statics: &statics,
+                planner,
+            });
+        asks.plan(search, &mut |member, waypoints, reached| {
+            let units = units.get_mut(member.entity);
+            let (.., mut route, _) = units.expect("a unit read this tick");
+            route.answer(member.pos, waypoints, reached);
+        });
     }
 }

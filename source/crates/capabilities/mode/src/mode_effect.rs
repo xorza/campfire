@@ -68,16 +68,16 @@ impl SlotGrant {
     fn apply(&self, slots: &mut ActionSlots, held: (&mut SlotTimes, &mut ActionProgress)) {
         slots.grant(held, self.kind, &self.abilities, self.rank);
     }
+}
 
-    /// `slots` with each of `grants`, in order, every slot ready and nothing under way.
-    fn granted(mut slots: ActionSlots, grants: &[Self]) -> TimedSlots {
-        let mut times = SlotTimes::ready(&slots);
-        let mut progress = ActionProgress::default();
-        for grant in grants {
-            grant.apply(&mut slots, (&mut times, &mut progress));
-        }
-        TimedSlots::new(slots)
+/// `slots` with each of `grants`, in order, every slot ready and nothing under way.
+fn granted(mut slots: ActionSlots, grants: &[SlotGrant]) -> TimedSlots {
+    let mut times = SlotTimes::ready(&slots);
+    let mut progress = ActionProgress::default();
+    for grant in grants {
+        grant.apply(&mut slots, (&mut times, &mut progress));
     }
+    TimedSlots::new(slots)
 }
 
 impl Effect for ModeEffect {
@@ -106,7 +106,7 @@ impl Effect for ModeEffect {
                         .and_then(|book| book.get(at.unit_type))
                         .cloned()
                         .unwrap_or_else(|| ActionSlots::new([]));
-                    spawner.spawn(world, at, SlotGrant::granted(slots, &grants));
+                    spawner.spawn(world, at, granted(slots, &grants));
                 }
             }
             Self::SpawnGroup(group) => group.spawn(world),
@@ -121,7 +121,7 @@ impl Effect for ModeEffect {
                 if let Ok((mut slots, mut times, mut progress)) = held {
                     grant.apply(&mut slots, (&mut times, &mut progress));
                 } else {
-                    let granted = SlotGrant::granted(ActionSlots::new([]), slice::from_ref(&grant));
+                    let granted = granted(ActionSlots::new([]), slice::from_ref(&grant));
                     unit.insert(granted);
                 }
             }

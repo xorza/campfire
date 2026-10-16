@@ -40,10 +40,10 @@ pub(crate) const LOOKS: LookCounts = LookCounts {
     snowy: 17,
 };
 
-/// The trains and builds the import converts from every command set, and the buttons it drops,
-/// by cause in the order of `DropCause::ALL`: no object, a science 22, an either-or 4, no walker 36,
-/// as the aircraft an airfield or a supply center trains, no box 24, no queue, no type, a bad
-/// time (design 18, D3).
+/// The trains and builds the import converts from every command set, and the buttons it drops, by
+/// cause in the order of `DropCause::ALL`: no object, a science 22, an either-or 4, no walker 36,
+/// as the aircraft an airfield or a supply center trains, no box 24, no queue, no type, a bad time
+/// (design 18, D3).
 pub(crate) const PRODUCED: ProducedCounts = ProducedCounts {
     trains: 187,
     builds: 138,

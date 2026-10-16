@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
+use campfire_values::MessageId;
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentError, FluentResource};
 
@@ -12,7 +13,6 @@ use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::mode_packages::ModePackages;
-use campfire_values::MessageId;
 
 type Bundle = FluentBundle<Arc<FluentResource>>;
 

@@ -80,6 +80,28 @@ struct SharedRoute {
     reached: bool,
 }
 
+/// What a route search reads, and the planner that does it.
+#[derive(Debug)]
+pub(crate) struct RouteSearch<'a> {
+    pub(crate) grid: &'a PathingGrid,
+    pub(crate) statics: &'a BodyIndex,
+    pub(crate) planner: &'a mut RoutePlanner,
+}
+
+/// A route search for the party being planned.
+#[derive(Debug)]
+struct PartySearch<'s, 'a> {
+    search: &'s mut RouteSearch<'a>,
+    party: Party,
+}
+
+impl<'a> RouteSearch<'a> {
+    /// What `walker` may walk.
+    fn walkable(&self, walker: Walker) -> Walkable<'a> {
+        Walkable::of(self.grid.clearance(walker), self.statics)
+    }
+}
+
 /// Whether the tick's planning goes on after a party.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Planning {
@@ -88,44 +110,46 @@ pub(crate) enum Planning {
 }
 
 impl RouteAsks {
-    /// Plans the routes of the asks `read` took, by the tick they were asked in, then by stable
-    /// id, as the tick's work begins, until `planner` did all the work a tick may: the route that meets
-    /// that limit finishes, and the rest wait for the next tick. A party's members plan together
-    /// as the turn of the first of them comes. With no pathing grid each route is the straight
-    /// line to its goal. Each route goes to `answer`, with its unit, the place it starts from,
-    /// and whether it reaches the unit's goal.
+    /// Plans the routes of the asks `read` took, by the tick they were asked in, then by stable id,
+    /// as the tick's work begins, until the planner of `search` did all the work a tick may: the
+    /// route that meets that limit finishes, and the rest wait for the next tick. A party's
+    /// members plan together as the turn of the first of them comes. With no search each route is
+    /// the straight line to its goal. Each route goes to `answer`, with its member and whether it
+    /// reaches the member's goal.
     pub(crate) fn plan(
         &mut self,
-        (grid, statics): (Option<&PathingGrid>, &BodyIndex),
-        planner: Option<&mut RoutePlanner>,
-        answer: &mut impl FnMut(Entity, Vec3, &[Vec3], bool),
+        search: Option<RouteSearch<'_>>,
+        answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) {
-        let (Some(grid), Some(planner)) = (grid, planner) else {
+        let Some(mut search) = search else {
             for waiting in &self.waiting {
                 let member = waiting.ask.member;
-                answer(member.entity, member.pos, &[member.goal], true);
+                answer(member, &[member.goal], true);
             }
             return;
         };
-        planner.begin_tick();
+        search.planner.begin_tick();
         for index in 0..self.waiting.len() {
             let next = self.waiting[index];
             if next.answered {
                 continue;
             }
-            if planner.spent() {
+            if search.planner.spent() {
                 break;
             }
             let run = next.ask.party.map_or(0..0, |party| self.party_run(party));
             if run.len() < 2 {
                 let member = next.ask.member;
-                let walkable = Walkable::of(grid.clearance(member.walker), statics);
-                let outcome = planner.plan(walkable, member.pos, member.goal, &mut self.waypoints);
-                answer(member.entity, member.pos, &self.waypoints, outcome.reached);
+                let walkable = search.walkable(member.walker);
+                let outcome =
+                    search
+                        .planner
+                        .plan(walkable, member.pos, member.goal, &mut self.waypoints);
+                answer(member, &self.waypoints, outcome.reached);
                 self.waiting[index].answered = true;
                 continue;
             }
-            if self.plan_party(grid, statics, planner, run, answer) == Planning::Spent {
+            if self.plan_party(&mut search, run, answer) == Planning::Spent {
                 break;
             }
         }
@@ -170,11 +194,9 @@ impl RouteAsks {
     /// id, and marks each it answers.
     fn plan_party(
         &mut self,
-        grid: &PathingGrid,
-        statics: &BodyIndex,
-        planner: &mut RoutePlanner,
+        search: &mut RouteSearch<'_>,
         run: Range<usize>,
-        answer: &mut impl FnMut(Entity, Vec3, &[Vec3], bool),
+        answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) -> Planning {
         let party = self.waiting[self.parties[run.start] as usize]
             .ask
@@ -185,16 +207,11 @@ impl RouteAsks {
             self.members.push(self.waiting[index as usize].ask.member);
         }
         let mut answered = 0;
-        let planning = self.plan_members(
-            grid,
-            statics,
-            planner,
-            party,
-            &mut |member, waypoints, reached| {
-                answered += 1;
-                answer(member.entity, member.pos, waypoints, reached);
-            },
-        );
+        let mut search = PartySearch { search, party };
+        let planning = self.plan_members(&mut search, &mut |member, waypoints, reached| {
+            answered += 1;
+            answer(member, waypoints, reached);
+        });
         for &index in &self.parties[run.start..run.start + answered] {
             self.waiting[index as usize].answered = true;
         }
@@ -207,10 +224,7 @@ impl RouteAsks {
     /// the rest wait.
     fn plan_members(
         &mut self,
-        grid: &PathingGrid,
-        statics: &BodyIndex,
-        planner: &mut RoutePlanner,
-        party: Party,
+        search: &mut PartySearch<'_, '_>,
         answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
@@ -227,11 +241,11 @@ impl RouteAsks {
                 .iter()
                 .any(|shared| shared.layer == member.walker.layer);
             if searched {
-                self.search(grid, statics, planner, party, member.walker.layer, center);
-            } else if planner.spent() {
+                self.search(search, member.walker.layer, center);
+            } else if search.search.planner.spent() {
                 return Planning::Spent;
             }
-            self.follow(grid, statics, planner, member, party, answer);
+            self.follow(search, member, answer);
         }
         Planning::Goes
     }
@@ -239,15 +253,7 @@ impl RouteAsks {
     /// Plans the shared route of the members on `layer` to the party's goal, for the widest of
     /// their walkers, from the member of that walker nearest `center`, the lower stable id on a
     /// tie.
-    fn search(
-        &mut self,
-        grid: &PathingGrid,
-        statics: &BodyIndex,
-        planner: &mut RoutePlanner,
-        party: Party,
-        layer: Layer,
-        center: [Num; 2],
-    ) {
+    fn search(&mut self, search: &mut PartySearch<'_, '_>, layer: Layer, center: [Num; 2]) {
         let on_layer = self
             .members
             .iter()
@@ -263,8 +269,12 @@ impl RouteAsks {
             .filter(|member| member.walker == widest)
             .min_by_key(|member| (distance(member.pos), member.id))
             .expect("the widest walker is a member's");
-        let walkable = Walkable::of(grid.clearance(widest), statics);
-        let outcome = planner.plan(walkable, leader.pos, party.goal, &mut self.waypoints);
+        let goal = search.party.goal;
+        let walkable = search.search.walkable(widest);
+        let outcome = search
+            .search
+            .planner
+            .plan(walkable, leader.pos, goal, &mut self.waypoints);
         let start = self.shared.len();
         self.shared.extend_from_slice(&self.waypoints);
         self.layers.push(SharedRoute {
@@ -280,13 +290,11 @@ impl RouteAsks {
     /// else to the party's goal. A member that sees no waypoint plans its own route.
     fn follow(
         &mut self,
-        grid: &PathingGrid,
-        statics: &BodyIndex,
-        planner: &mut RoutePlanner,
+        search: &mut PartySearch<'_, '_>,
         member: Member,
-        party: Party,
         answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) {
+        let PartySearch { search, party } = search;
         let shared = self
             .layers
             .iter()
@@ -294,7 +302,8 @@ impl RouteAsks {
             .expect("its layer's route was searched")
             .clone();
         let route = &self.shared[shared.waypoints];
-        let walkable = Walkable::of(grid.clearance(member.walker), statics);
+        let walkable = search.walkable(member.walker);
+        let planner = &mut *search.planner;
         let seen = (0..route.len())
             .rev()
             .find(|&at| planner.sees(walkable, Segment::new(member.pos, route[at])));

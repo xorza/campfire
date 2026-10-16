@@ -3,7 +3,8 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_protocol::{
-    Applied, Checkpoint, Controller, InputChain, ServerInput, SessionResult, SessionTerms, Signer,
+    Applied, Checkpoint, Controller, InputChain, PlayerPacket, ServerInput, SessionResult,
+    SessionTerms, Signer,
 };
 
 use crate::fixed_session::FixedSession;
@@ -51,9 +52,11 @@ impl FixedMatch {
         self.game
             .session_mut()
             .record(
-                input.slot,
-                [(input.stamp, input.payload)],
-                &signature,
+                PlayerPacket {
+                    slot: input.slot,
+                    inputs: [(input.stamp, input.payload)],
+                    signature: &signature,
+                },
                 &mut self.applied,
             )
             .unwrap_or_else(|error| {

@@ -15,10 +15,10 @@ use crate::server_seed::ServerSeed;
 use crate::session_log::applied::Applied;
 use crate::session_log::error::{HeaderError, LogError};
 use crate::session_log::log_entries::Entry;
+use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::session_header::SessionHeader;
 use crate::session_log::{Bounds, LoggedResult, SessionLog, Signatures, len, offset, put, take};
 use crate::session_terms::SessionTerms;
-use crate::signature::Signature;
 use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
 
@@ -182,8 +182,7 @@ impl SessionLog {
         }
     }
 
-    /// Writes the packet `index`: its `u32` slot, its inputs as a `u32` count and each input's stamp
-    /// and payload bytes, and its signature.
+    /// Writes the packet `index`, as `write_packet` does.
     pub(super) fn put_packet(&self, out: &mut Vec<u8>, index: u32) {
         let packet = self.entries.packet(index);
         let slot = self.entries.input(packet.inputs.start).slot;
@@ -191,13 +190,13 @@ impl SessionLog {
             let input = self.entries.input(index);
             (input.stamp, input.payload)
         });
-        write_packet(
-            out,
+        let count = packet.inputs.end - packet.inputs.start;
+        let written = PlayerPacket {
             slot,
-            packet.inputs.end - packet.inputs.start,
             inputs,
-            &packet.signature,
-        );
+            signature: &packet.signature,
+        };
+        write_packet(out, written, count);
     }
 
     /// Writes the server input `index` and its signature.
@@ -244,7 +243,12 @@ impl SessionLog {
             inputs.push((stamp, payload));
         }
         let signature = take(rest)?;
-        self.record(slot, inputs.iter().copied(), &signature, applied)
+        let packet = PlayerPacket {
+            slot,
+            inputs: inputs.iter().copied(),
+            signature: &signature,
+        };
+        self.record(packet, applied)
             .map_err(|error| LogError::Input { tick, error })
     }
 
@@ -283,22 +287,20 @@ impl SessionLog {
     }
 }
 
-/// Writes a packet of `slot`: its `u32` slot, its `count` inputs as a `u32` count and each
-/// input's stamp and payload bytes, and its signature.
+/// Writes `packet`: its `u32` slot, its `count` inputs as a `u32` count and each input's stamp
+/// and payload bytes, and its signature.
 pub(super) fn write_packet<'a>(
     out: &mut Vec<u8>,
-    slot: PlayerSlot,
+    packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])>>,
     count: u32,
-    inputs: impl Iterator<Item = (Tick, &'a [u8])>,
-    signature: &Signature,
 ) {
-    put(out, &slot.get());
+    put(out, &packet.slot.get());
     put(out, &count);
-    for (stamp, payload) in inputs {
+    for (stamp, payload) in packet.inputs {
         put(out, &stamp);
         put(out, &Bytes(payload));
     }
-    put(out, signature);
+    put(out, packet.signature);
 }
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.

@@ -4,13 +4,13 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
 use campfire_combat::Deaths;
 use campfire_players::Seating;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::BodyUnit;
 use campfire_units::internals::UnitsWorldInternals;
+use campfire_values::NameId;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
-use campfire_values::NameId;
 
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {

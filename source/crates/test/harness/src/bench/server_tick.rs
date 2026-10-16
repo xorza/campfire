@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_protocol::SessionLog;
+use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, SimWorld, StateDelta};
 use campfire_stats::{Life, Pools};
@@ -13,7 +14,6 @@ use criterion::{Criterion, Throughput};
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::moba_3v3::Moba3v3;
 use crate::scripted_mode::ScriptedMode;
-use campfire_runner::SessionWorld;
 
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
 /// tick 2399, which fight their lanes' towers.

@@ -10,7 +10,7 @@ use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
 use crate::scripts::member_kind::MemberKind;
-use crate::scripts::member_spec::{ArgKinds, MemberSpec};
+use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::ScriptApi;
 
@@ -144,7 +144,7 @@ impl ScriptFacts {
                     if let Expr::MethodCall(call, _) = &dot.rhs
                         && !on_ctx
                     {
-                        facts.read_args(api.method_args(&call.name), None, &call.name, &call.args);
+                        facts.read_args(api.method(&call.name), &call.args);
                     }
                 }
                 Some(ASTNode::Expr(Expr::Variable(variable, ..))) if !variable.2.is_empty() => {
@@ -229,7 +229,7 @@ impl ScriptFacts {
                     kind: MemberKind::Method,
                 });
                 let args = call.args.get(1..).unwrap_or_default();
-                self.read_args(api.method_args(&call.name), None, &call.name, args);
+                self.read_args(api.method(&call.name), args);
             }
         }
     }
@@ -241,10 +241,10 @@ impl ScriptFacts {
             kind: MemberKind::Call,
         });
         let member = api.member(ApiOwner::Ctx, name);
-        let member = member.filter(|member| member.spec.kind == MemberKind::Call);
-        let kinds = member.map(|member| member.spec.args());
-        let applies = member.and_then(|member| member.spec.applies);
-        self.read_args(kinds, applies, name, args);
+        let spec = member
+            .map(|member| &member.spec)
+            .filter(|spec| spec.kind == MemberKind::Call);
+        self.read_args(spec, args);
     }
 
     /// The members a chain of links reads, from `link`: its first is a name of `ctx` when
@@ -285,31 +285,26 @@ impl ScriptFacts {
         }
     }
 
-    /// The literals of `args`, the arguments of `call` past its receiver, that `kinds` marks: a
-    /// name, a modifier's with how the call `applies` it, and a string an engine enum's argument
-    /// is given.
-    fn read_args(
-        &mut self,
-        kinds: Option<ArgKinds>,
-        applies: Option<Applies>,
-        call: &str,
-        args: &[Expr],
-    ) {
-        let Some(kinds) = kinds else {
+    /// The literals of `args`, the arguments past its receiver of a call of the member `spec`,
+    /// that its arguments mark: a name, a modifier's with how the call applies it, and a string
+    /// an engine enum's argument is given.
+    fn read_args(&mut self, spec: Option<&MemberSpec>, args: &[Expr]) {
+        let Some(spec) = spec else {
             return;
         };
+        let kinds = spec.args();
         for (at, arg) in args.iter().enumerate().take(MemberSpec::ARGS) {
             let Some(literal) = string(arg) else {
                 continue;
             };
             if let Some(engine_enum) = kinds.enums[at] {
                 self.enum_strings.push(EnumString {
-                    call: call.to_owned(),
+                    call: spec.name.to_owned(),
                     engine_enum,
                 });
             }
             if let Some(kind) = kinds.names[at] {
-                let applies = applies.filter(|_| kind == NameKind::Modifier);
+                let applies = spec.applies.filter(|_| kind == NameKind::Modifier);
                 self.names.push(ScriptName {
                     kind,
                     name: literal,

@@ -283,12 +283,12 @@ impl RestoredSession {
         Ok(snapshots)
     }
 
-    /// Ends the session, as a server back past the restore window does, unless it ended before
-    /// the crash: replays the log, of the mode `publisher` names, as `replay` does, to the state
-    /// its last tick left; logs the result there, aborted unless the mode ended the match, into
-    /// the journal too; and
-    /// publishes the log under the publisher's data directory, its seed revealed, and logs
-    /// `SessionAborted`. The publisher's key signs what it logs. The published file's path.
+    /// Ends the session, as a server back past the restore window does, unless it ended before the
+    /// crash: replays the log, of the mode `publisher` names, as `replay` does, to the state its
+    /// last tick left; logs the result there, aborted unless the mode ended the match, into the
+    /// journal too; and publishes the log under the publisher's data directory, its seed revealed,
+    /// and logs `SessionAborted`. The publisher's key signs what it logs. The published file's
+    /// path.
     pub fn abort(self, publisher: Publisher<'_>) -> Result<PathBuf, AbortError> {
         let Publisher {
             data,

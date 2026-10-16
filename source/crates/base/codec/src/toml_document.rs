@@ -53,22 +53,22 @@ impl TomlDocument {
             Toml::parse(&format!("value = {value}")).expect("a test's TOML value parses");
         let value = parsed.remove("value").expect("the value just parsed");
         self.at_path(path, Missing::Add, |parent, key| {
-            Self::put(parent, key, value);
+            parent.put(key, value);
         });
     }
 
     /// Removes the value at `path`.
     pub fn remove(&mut self, path: &str) {
         self.at_path(path, Missing::Fail, |parent, key| {
-            drop(Self::take(parent, key));
+            drop(parent.take(key));
         });
     }
 
     /// Gives the key at `path` the name `name`, in the same table.
     pub fn rename(&mut self, path: &str, name: &str) {
         self.at_path(path, Missing::Fail, |parent, key| {
-            let value = Self::take(parent, key);
-            Self::put(parent, name, value);
+            let value = parent.take(key);
+            parent.put(name, value);
         });
     }
 
@@ -93,34 +93,37 @@ impl TomlDocument {
                             .get_mut(key)
                             .unwrap_or_else(|| panic!("no {key} on the way to {path}")),
                     },
-                    TomlNode::List(list) => &mut list[Self::index(key)],
+                    TomlNode::List(list) => &mut list[list_index(key)],
                     _ => panic!("{path} passes through a value"),
                 });
         edit(parent, key);
     }
+}
 
-    /// Puts `value` at `key` of `parent`, a table's key or a list's index.
-    fn put(parent: &mut TomlNode, key: &str, value: TomlNode) {
-        match parent {
-            TomlNode::Table(table) => drop(table.insert(key.to_owned(), value)),
-            TomlNode::List(list) => list[Self::index(key)] = value,
+impl TomlNode {
+    /// Puts `value` at `key` of it, a table's key or a list's index.
+    fn put(&mut self, key: &str, value: Self) {
+        match self {
+            Self::Table(table) => drop(table.insert(key.to_owned(), value)),
+            Self::List(list) => list[list_index(key)] = value,
             _ => panic!("{key} is inside a value"),
         }
     }
 
-    /// Takes the value at `key` of `parent`, a table's key or a list's index, out of it.
-    fn take(parent: &mut TomlNode, key: &str) -> TomlNode {
-        match parent {
-            TomlNode::Table(table) => table
+    /// Takes the value at `key` of it, a table's key or a list's index, out of it.
+    fn take(&mut self, key: &str) -> Self {
+        match self {
+            Self::Table(table) => table
                 .remove(key)
                 .unwrap_or_else(|| panic!("no {key} to remove")),
-            TomlNode::List(list) => list.remove(Self::index(key)),
+            Self::List(list) => list.remove(list_index(key)),
             _ => panic!("{key} is inside a value"),
         }
     }
+}
 
-    fn index(key: &str) -> usize {
-        key.parse()
-            .unwrap_or_else(|_| panic!("{key} indexes an array"))
-    }
+/// The index `key` names in a list.
+fn list_index(key: &str) -> usize {
+    key.parse()
+        .unwrap_or_else(|_| panic!("{key} indexes an array"))
 }

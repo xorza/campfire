@@ -4,12 +4,12 @@ use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, ModifierId, Pack
 
 use crate::scripts::script_role::ScriptRole;
 
-/// What a call starts with: its role; whether it writes or only reads; its acting unit, a cast's caster, a modifier's source or
-/// the unit that thinks, none for the mode; the action whose params it reads, at `rank`, and its
-/// modifier's; the package whose names it means, 0 the mode's; the depth of the chain of combat
-/// events it runs in, 0 outside one; the hit a delivery's hook runs for, which the damage it
-/// deals carries; how its action started; and the delivery a dash it starts carries, an instant
-/// action's own in its `on_resolve`.
+/// What a call starts with: its role; whether it writes or only reads; its acting unit, a cast's
+/// caster, a modifier's source or the unit that thinks, none for the mode; the action whose params
+/// it reads, at `rank`, and its modifier's; the package whose names it means, 0 the mode's; the
+/// depth of the chain of combat events it runs in, 0 outside one; the hit a delivery's hook runs
+/// for, which the damage it deals carries; how its action started; and the delivery a dash it
+/// starts carries, an instant action's own in its `on_resolve`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CallStart {
     pub role: ScriptRole,

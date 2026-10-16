@@ -316,6 +316,7 @@ pub(crate) mod internals {
     use crate::script_book::ScriptBook;
     use crate::tag_book::TagBook;
     use crate::tag_data::TagData;
+    use crate::type_origin_book::TypeOrigin;
     use crate::unit_type_book::UnitTypeBook;
     use crate::unit_type_core::UnitTypeCore;
     use crate::unit_types::UnitTypes;
@@ -489,7 +490,11 @@ pub(crate) mod internals {
                 TypeScope::Package(package) => package,
             };
             Self::change_types(world, |_, types| {
-                types.load(scope, package, name, data).unwrap()
+                let origin = TypeOrigin {
+                    package,
+                    name: name.into(),
+                };
+                types.load(scope, origin, data).unwrap()
             })
         }
 

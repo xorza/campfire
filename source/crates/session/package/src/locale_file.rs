@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use campfire_values::MessageId;
 use campfire_values::PackagePath;
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
@@ -8,7 +9,6 @@ use fluent_syntax::ast::Entry;
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::package_files::PackageFiles;
-use campfire_values::MessageId;
 
 /// One Fluent file of human text, parsed, with the messages it defines.
 #[derive(Debug)]

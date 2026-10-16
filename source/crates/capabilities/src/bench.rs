@@ -14,7 +14,7 @@ use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeB
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
 use campfire_units::{
-    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeCore, UnitTypes,
+    Body, BodyForm, BodyUnit, Destination, Owner, TypeOrigin, UnitCore, UnitTypeCore, UnitTypes,
 };
 use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
@@ -58,13 +58,12 @@ fn two_fields() -> Match {
     // The scene's types and their books, as a match loads them before any unit spawns.
     let mut types = UnitTypes::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
+        let origin = TypeOrigin {
+            package: PackageIndex::MODE,
+            name: name.into(),
+        };
         types
-            .load(
-                TypeScope::Mode,
-                PackageIndex::MODE,
-                name,
-                &UnitTypeCore::default(),
-            )
+            .load(TypeScope::Mode, origin, &UnitTypeCore::default())
             .unwrap()
     });
     let books = types.finish(&BTreeMap::new());

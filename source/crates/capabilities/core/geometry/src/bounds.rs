@@ -1,9 +1,9 @@
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::Position;
-
-use crate::body_box::BodyBox;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::body_box::BodyBox;
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
 /// No unit is ever outside them. A map's `[bounds]` writes them as `min` and `max`.

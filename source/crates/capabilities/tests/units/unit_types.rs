@@ -17,7 +17,11 @@ fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
         ..UnitTypeCore::default()
     };
     let load = |types: &mut UnitTypes, name: &str, data: &UnitTypeCore| {
-        types.load(TypeScope::Mode, PackageIndex::MODE, name, data)
+        let origin = TypeOrigin {
+            package: PackageIndex::MODE,
+            name: name.into(),
+        };
+        types.load(TypeScope::Mode, origin, data)
     };
     assert_eq!(
         load(&mut types, "tower", &named("one_more")),

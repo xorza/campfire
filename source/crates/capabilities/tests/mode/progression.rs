@@ -1,9 +1,9 @@
 use campfire_common::Tick;
 use campfire_progression::ProgressionRefusal;
+use campfire_script::CapabilityRefusal;
 use campfire_units::TagData;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_nothing() {

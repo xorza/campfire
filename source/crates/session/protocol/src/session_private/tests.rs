@@ -1,6 +1,6 @@
-use campfire_codec::BinaryError;
 use std::num::NonZeroU32;
 
+use campfire_codec::BinaryError;
 use campfire_common::{MapName, PackageFingerprint, Ticks, Version};
 
 use super::*;

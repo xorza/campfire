@@ -17,7 +17,7 @@ use crate::broadphase::internals::{scene, static_bodies, statics};
 use crate::collider::Collider;
 use crate::party::{Party, PartyKey};
 use crate::pathing_grid::PathingGrid;
-use crate::route_asks::{Ask, Member, RouteAsks};
+use crate::route_asks::{Ask, Member, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::terrain::Terrain;
 use crate::walker::Walker;
@@ -249,12 +249,17 @@ impl GroupScene<'_> {
                 let mut left = members.as_slice();
                 while !left.is_empty() {
                     let mut answered = 0;
-                    let mut answer = |_: Entity, _: Vec3, route: &[Vec3], _: bool| {
+                    let mut answer = |_: Member, route: &[Vec3], _: bool| {
                         black_box(route);
                         answered += 1;
                     };
                     asks.read(left.iter().copied());
-                    asks.plan((Some(self.grid), self.statics), Some(planner), &mut answer);
+                    let search = RouteSearch {
+                        grid: self.grid,
+                        statics: self.statics,
+                        planner,
+                    };
+                    asks.plan(Some(search), &mut answer);
                     left = &left[answered..];
                 }
             });

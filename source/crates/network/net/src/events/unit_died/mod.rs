@@ -7,9 +7,9 @@ use serde::Deserialize;
 use tracing::{debug, info};
 
 /// A unit of `team`, owned by `owner` if any, died, dealt its last damage by `killer` if any;
-/// `avatar` says it was its owner's avatar. `tick` is the sim tick of the end that logs it: on the server the tick the unit
-/// died in, and on a client its own, which runs ahead of the server's, once it runs one. Each
-/// end logs an avatar's death at `info`, any other at `debug`.
+/// `avatar` says it was its owner's avatar. `tick` is the sim tick of the end that logs it: on the
+/// server the tick the unit died in, and on a client its own, which runs ahead of the server's,
+/// once it runs one. Each end logs an avatar's death at `info`, any other at `debug`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub(crate) struct UnitDied {
     #[serde(default)]

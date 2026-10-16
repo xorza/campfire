@@ -2,10 +2,10 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::{Position, SimEdge, SimSet, SimUpdate};
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_death_reaches_the_mode_and_a_respawn_brings_the_unit_back_at_its_spawn() {

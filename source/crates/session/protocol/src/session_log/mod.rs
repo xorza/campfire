@@ -28,6 +28,7 @@ use crate::session_log::error::{
 use crate::session_log::input_schedule::InputSchedule;
 use crate::session_log::log_entries::{LogEntries, Served};
 use crate::session_log::paged_vec::PagedVec;
+use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::segments::{LoggedCheckpoint, Segments};
 use crate::session_log::session_header::SessionHeader;
 use crate::session_log::slot_control::{Control, Slot, SlotControl};
@@ -49,6 +50,7 @@ mod journal_records;
 mod log_entries;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
+pub(crate) mod player_packet;
 mod segments;
 pub(crate) mod session_header;
 mod slot_control;
@@ -145,6 +147,14 @@ enum Signatures {
 struct Growth {
     file: u64,
     journal: u64,
+}
+
+/// What a server input that passes its checks does: the change of its slot's controller, and
+/// what it adds to the file and the journal.
+#[derive(Debug, Clone, Copy)]
+struct ServerAllowed {
+    change: Option<SlotChangeKind>,
+    growth: Growth,
 }
 
 /// The result and the server's signature over it, as the file holds them.
@@ -292,8 +302,8 @@ impl SessionLog {
     }
 
     /// Whether the file and the journal take `growth` and keep the room the session's end takes
-    /// after it, as `kept` counts it. A decode of the file, which records a checkpoint's record as its segment starts, then
-    /// takes every entry the log took.
+    /// after it, as `kept` counts it. A decode of the file, which records a checkpoint's record as
+    /// its segment starts, then takes every entry the log took.
     fn has_room(&self, growth: Growth) -> bool {
         let kept = self.kept();
         let fits = |len: u64, more: u64, bound: u64| {
@@ -478,9 +488,8 @@ impl SessionLog {
         &self.changes[self.sealed_changes.clone()]
     }
 
-    /// Logs a packet of the player of `slot` before the next tick: `inputs`, each its stamp and
-    /// payload, in the order sent, and the player's session-key `signature` over the chain head
-    /// after the last. Writes when each input applies into `applied`, which is cleared first:
+    /// Logs a player's packet before the next tick. Writes when each input applies into
+    /// `applied`, which is cleared first:
     /// late when the next tick is more than the max input delay after its stamp; early when its
     /// stamp is more than the max input lead ahead; else at `max(stamp, next tick)`, or later,
     /// when the player's inputs before it fill that tick: a player's inputs fill each tick up to
@@ -494,15 +503,18 @@ impl SessionLog {
     /// any input is hashed. A refused packet leaves the log unchanged.
     pub fn record<'a, I>(
         &mut self,
-        slot: PlayerSlot,
-        inputs: I,
-        signature: &Signature,
+        packet: PlayerPacket<'_, I>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where
         I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
+        let PlayerPacket {
+            slot,
+            inputs,
+            signature,
+        } = packet;
         let inputs = inputs.into_iter();
         if inputs.clone().next().is_none() {
             return Err(InputError::EmptyPacket);
@@ -543,7 +555,12 @@ impl SessionLog {
             return Err(InputError::AheadOfTime);
         }
         self.message.clear();
-        file::write_packet(&mut self.message, slot, count, inputs.clone(), signature);
+        let written = PlayerPacket {
+            slot,
+            inputs: inputs.clone(),
+            signature,
+        };
+        file::write_packet(&mut self.message, written, count);
         let growth = self.entry_growth(len(self.message.len()));
         if !self.has_room(growth) {
             return Err(InputError::LogFull);
@@ -663,20 +680,19 @@ impl SessionLog {
         }
     }
 
-    /// Logs a server input before the next tick, with the server key's `signature` over it at
-    /// its place, the next server input logged there: what `change_of` allows, and the log's
-    /// file and journal have room for, a bot's commands applying in the next tick in slot order,
-    /// among the players' inputs, or, past the tick's max inputs, in the first later tick its
-    /// slot's inputs leave room in. A join or a leave of
-    /// a slot drops the inputs its player logged that were still to apply, and changes the
-    /// controller from the next tick on. A refused input leaves the log unchanged.
+    /// Logs a server input before the next tick, with the server key's `signature` over it at its
+    /// place, the next server input logged there: what `change_of` allows, and the log's file and
+    /// journal have room for, a bot's commands applying in the next tick in slot order, among the
+    /// players' inputs, or, past the tick's max inputs, in the first later tick its slot's inputs
+    /// leave room in. A join or a leave of a slot drops the inputs its player logged that were
+    /// still to apply, and changes the controller from the next tick on. A refused input leaves the
+    /// log unchanged.
     pub fn record_server(
         &mut self,
         input: ServerInput<'_>,
         signature: &Signature,
     ) -> Result<(), ServerInputError> {
-        let change = self.change_of(&input)?;
-        let growth = self.server_growth(&input)?;
+        let allowed = self.server_allowed(&input)?;
         let place = self.next_place();
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
@@ -689,7 +705,7 @@ impl SessionLog {
         if !self.checks(signature, &server_key, &placed) {
             return Err(ServerInputError::BadSignature);
         }
-        self.log_server(input, change, growth, signature);
+        self.log_server(input, allowed, signature);
         Ok(())
     }
 
@@ -703,8 +719,7 @@ impl SessionLog {
     ) -> Result<(), ServerInputError> {
         self.debug_server(server);
         let server_key = self.header.terms.server_key;
-        let change = self.change_of(&input)?;
-        let growth = self.server_growth(&input)?;
+        let allowed = self.server_allowed(&input)?;
         let placed = PlacedInput {
             input: &input,
             session_id: self.session_id,
@@ -715,7 +730,7 @@ impl SessionLog {
             self.verifier.verifies(&signature, &server_key, &placed),
             "a signature the log made verifies"
         );
-        self.log_server(input, change, growth, &signature);
+        self.log_server(input, allowed, &signature);
         Ok(())
     }
 
@@ -738,24 +753,27 @@ impl SessionLog {
         );
     }
 
-    /// What `input` adds to the file and the journal, with its signature; an error when they
-    /// have no room for it.
-    fn server_growth(&mut self, input: &ServerInput<'_>) -> Result<Growth, ServerInputError> {
+    /// What `input` does, when `change_of` allows it and the file and the journal have room for
+    /// it with its signature.
+    fn server_allowed(
+        &mut self,
+        input: &ServerInput<'_>,
+    ) -> Result<ServerAllowed, ServerInputError> {
+        let change = self.change_of(input)?;
         self.message.clear();
         input.encode(&mut self.message);
         let growth = self.entry_growth(len(self.message.len()) + Signature::ENCODED_LEN);
         if !self.has_room(growth) {
             return Err(ServerInputError::LogFull);
         }
-        Ok(growth)
+        Ok(ServerAllowed { change, growth })
     }
 
-    /// Logs a server input `change_of` allowed, of `growth`, with its `signature`.
+    /// Logs a server input `server_allowed` let through, with its `signature`.
     fn log_server(
         &mut self,
         input: ServerInput<'_>,
-        change: Option<SlotChangeKind>,
-        growth: Growth,
+        allowed: ServerAllowed,
         signature: &Signature,
     ) {
         debug_assert!(
@@ -812,7 +830,7 @@ impl SessionLog {
             ServerInput::Connected { .. } => Served::Connected { slot },
             ServerInput::Disconnected { .. } => Served::Disconnected { slot },
         };
-        if let Some(kind) = change {
+        if let Some(kind) = allowed.change {
             self.changes.push(SlotChange {
                 tick: next,
                 slot,
@@ -821,7 +839,7 @@ impl SessionLog {
         }
         self.entries.push_server(served, *signature);
         self.server_since += 1;
-        self.took_entry(growth);
+        self.took_entry(allowed.growth);
     }
 
     /// Ends the last segment at the boundary before the next tick, and starts the next there, as

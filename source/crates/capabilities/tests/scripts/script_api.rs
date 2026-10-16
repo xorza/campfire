@@ -395,7 +395,7 @@ fn the_reference_is_what_the_registry_writes() {
     });
     for member in methods {
         assert_eq!(
-            api.method_args(member.spec.name),
+            api.method(member.spec.name).map(MemberSpec::args),
             Some(member.spec.args()),
             "{}",
             member.spec.name

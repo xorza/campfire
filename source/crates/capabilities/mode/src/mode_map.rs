@@ -64,16 +64,15 @@ impl ModeMap {
         Ok(names)
     }
 
-    /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the
-    /// mode's types that stand. An error for what it names that the
-    /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
-    /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
-    /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
-    /// bounds, a wall on a layer of no name `layers` holds, a wall or a brush with points that
-    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type,
-    /// team or path it lacks, or that walks from an end of no path, a marker of another's name, a
-    /// team it lacks, or with a point and a region or a region outside the bounds, and any point
-    /// that does not fit its metric or its bounds.
+    /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the mode's
+    /// types that stand. An error for what it names that the mode does not have: teams that share a
+    /// name or more than `Team::LIMIT`, or more than `VisionGrid::MAX_TEAMS` with a vision grid; a
+    /// relation of a team to itself, of a team the mode lacks, or of a pair named before; and in
+    /// the map, grids that make no grid of its bounds, a wall on a layer of no name `layers` holds,
+    /// a wall or a brush with points that make no simple polygon, a path with no waypoint or
+    /// another's name, a placed unit of a type, team or path it lacks, or that walks from an end of
+    /// no path, a marker of another's name, a team it lacks, or with a point and a region or a
+    /// region outside the bounds, and any point that does not fit its metric or its bounds.
     pub fn resolve(
         input: MapInput<'_>,
         unit_type: impl Fn(&str) -> Option<UnitType>,

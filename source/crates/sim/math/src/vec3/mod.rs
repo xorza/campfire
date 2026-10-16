@@ -274,25 +274,35 @@ fn unit_component(unit: i64, component: i128, square: u128) -> Num {
     } else {
         let twice = component.unsigned_abs() << (Num::FRAC_BITS + 1);
         let odd = u128::from(2 * floor + 1);
-        wide_product(twice, twice) > wide_product(odd * odd, square)
+        WideProduct::of(twice, twice) > WideProduct::of(odd * odd, square)
     };
     let bits = (floor + u64::from(up)).cast_signed();
     Num::from_bits(if unit < 0 { -bits } else { bits })
 }
 
-/// `a · b` as its high and its low 128 bits.
-const fn wide_product(a: u128, b: u128) -> (u128, u128) {
-    const LOW: u128 = (1 << 64) - 1;
-    let (a_high, a_low) = (a >> 64, a & LOW);
-    let (b_high, b_low) = (b >> 64, b & LOW);
-    let low = a_low * b_low;
-    let middle_a = a_high * b_low;
-    let middle_b = a_low * b_high;
-    let (middle, middle_carry) = middle_a.overflowing_add(middle_b);
-    let (low, low_carry) = low.overflowing_add(middle << 64);
-    let high =
-        a_high * b_high + (middle >> 64) + ((middle_carry as u128) << 64) + low_carry as u128;
-    (high, low)
+/// A product of two `u128`s, exact: its high and its low 128 bits, which order as the product
+/// does, the high first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct WideProduct {
+    high: u128,
+    low: u128,
+}
+
+impl WideProduct {
+    /// `a · b`.
+    const fn of(a: u128, b: u128) -> Self {
+        const LOW: u128 = (1 << 64) - 1;
+        let (a_high, a_low) = (a >> 64, a & LOW);
+        let (b_high, b_low) = (b >> 64, b & LOW);
+        let low = a_low * b_low;
+        let middle_a = a_high * b_low;
+        let middle_b = a_low * b_high;
+        let (middle, middle_carry) = middle_a.overflowing_add(middle_b);
+        let (low, low_carry) = low.overflowing_add(middle << 64);
+        let high =
+            a_high * b_high + (middle >> 64) + ((middle_carry as u128) << 64) + low_carry as u128;
+        Self { high, low }
+    }
 }
 
 impl Add for Vec3 {

@@ -1,7 +1,7 @@
 //! The sRGB transfer function on 8-bit codes, in integers: a code's light, linear, in steps of
-//! 2⁻¹⁶, so code 255 is 65536, and a mean of light back to the nearest code. sRGB's curve, `((v + 0.055) / 1.055)^2.4`
-//! above code 10 and `v / 12.92` up to it, reduces on code `k` to `((40k + 561) / 10761)^(12/5)`,
-//! which the tests check each entry of exactly in 256-bit integers.
+//! 2⁻¹⁶, so code 255 is 65536, and a mean of light back to the nearest code. sRGB's curve,
+//! `((v + 0.055) / 1.055)^2.4` above code 10 and `v / 12.92` up to it, reduces on code `k` to
+//! `((40k + 561) / 10761)^(12/5)`, which the tests check each entry of exactly in 256-bit integers.
 
 /// Each code's light, rounded to nearest.
 const LIGHT: [u32; 256] = [

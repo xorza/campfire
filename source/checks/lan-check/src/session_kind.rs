@@ -1,5 +1,6 @@
-use crate::process::Process;
 use derive_more::Display;
+
+use crate::process::Process;
 
 /// Which session of a run a session log is: the LAN match's, or the local match's.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]

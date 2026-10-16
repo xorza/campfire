@@ -1,9 +1,9 @@
 use campfire_combat::{Armor, ArmorShare};
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
