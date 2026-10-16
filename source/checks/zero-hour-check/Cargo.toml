@@ -22,6 +22,7 @@ campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-players.workspace = true
 campfire-production.workspace = true
+campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true

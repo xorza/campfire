@@ -8,7 +8,7 @@ use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
 use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::imported_type::ImportedType;
-use crate::zero_hour::unit_types::{TypedObject, UnitTypes};
+use crate::zero_hour::unit_types::UnitTypes;
 
 /// The name each object of the original takes in the package, for its look and for its unit
 /// type, with the object that took it, so a look and a unit type of one name are of one object:
@@ -64,6 +64,38 @@ impl ImportNames {
         })
     }
 
+    /// The unit type of the shell `object` fires, `imported`, by `name`, its object's own or one
+    /// of its own for a weapon's shell; an error when another object took the name, or when the
+    /// object's own unit type took it.
+    pub(crate) fn shell(
+        &mut self,
+        name: ImportName,
+        object: &IniObject,
+        imported: ImportedType,
+    ) -> Result<DeclaredName, NameClash> {
+        let taker = self
+            .taken
+            .entry(name.clone())
+            .or_insert_with(|| object.name.clone());
+        if *taker != object.name || self.placed.contains_key(&name) {
+            return Err(NameClash {
+                first: taker.clone(),
+                second: object.name.clone(),
+            });
+        }
+        let declared = name.declared();
+        self.placed.insert(name, imported);
+        Ok(declared)
+    }
+
+    /// Each unit type so far, by its name, with its object's name and its fields, in the order of
+    /// their names.
+    pub(crate) fn types(&self) -> impl Iterator<Item = (&ImportName, &str, &ImportedType)> {
+        self.placed
+            .iter()
+            .map(|(name, imported)| (name, self.taken[name].as_str(), imported))
+    }
+
     /// The object names of the unit types so far, in the order of their names.
     pub(crate) fn typed_objects(&self) -> Vec<String> {
         self.placed
@@ -74,16 +106,7 @@ impl ImportNames {
 
     /// The closed set of the unit types it made, which no stage after adds to.
     pub(crate) fn close(self) -> UnitTypes {
-        let mut taken = self.taken;
-        let objects = self
-            .placed
-            .into_iter()
-            .map(|(name, imported)| {
-                let object = taken.remove(&name).expect("a unit type takes its name");
-                (name, TypedObject { object, imported })
-            })
-            .collect();
-        UnitTypes::new(objects)
+        UnitTypes::new(self.placed)
     }
 }
 

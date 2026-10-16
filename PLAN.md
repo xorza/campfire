@@ -6,10 +6,38 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 8. The import, the client's shells and the check
+### 9. The fold
 
-`import`: `zero_hour/combat_import.rs`, `zero_hour/imported_type.rs`, the models' conversion; `client`: `view/mod.rs`; `zero-hour-check`: its match and `pins.rs`. Builds: one rendering pipeline for every game; only the importer knows its game.
+`docs`: the system documents of every system the slice changed. It stands last, as a slice ends when the user plays it.
 
-- [ ] crates/apps/import/src/zero_hour/combat_import.rs:218-223 — a weapon of a `ProjectileObject`, a radius or a scatter is dropped, and no object's turret, speed or pitch is read (The import converts shells, splash, scatter, pitch, turrets and slow weapons). → The conversions of the import's decision, the causes `Missile` and `Radius` for the weapons still dropped; the shells' models into their types' looks; the turret's bone into its unit's look. A fixture's test for each.
-- [ ] crates/apps/client/src/view/mod.rs:441-471 — a projectile is drawn as one ball at a fixed height (The client draws a projectile with its look). → A projectile of a look draws its model at its point, its height included, turned along its last step; one of no look keeps the ball at its height.
-- [ ] checks/zero-hour-check/ — no Zero Hour unit fires a shell, and the game package's fingerprint, which batch 2's `[ground]` moved to `69d19697…` on Linux, is pinned at its old value. → The check trains a Crusader, and its shells destroy the bot's command center; it pins its first shot's tick, its first detonation's and the import's counts. Its fingerprints are pinned from a run on Linux and a run on macOS ([Zero Hour](docs/design/12-zero-hour.md#decisions)).
+- [ ] docs/design/20-zero-hour-projectiles.md — the slice's decisions stand in a document of its own (A slice's proposal is temporary). → Once the user plays a Crusader's shells in the client, each lasting decision folds into the document of the system it governs, its practice into `docs/research/precedents.md`, and design 20 is deleted.
+
+
+## Match options
+
+The slice of [Match options](docs/design/21-match-options.md): the player starts a Zero Hour skirmish with 50,000 money for every player against a bot that builds a base and never attacks. The systems it changes: `package`, `mode`, `protocol`, `runner`, `verifier`, `harness`, `net`, `server`, `client`, `import`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
+
+### 1. A mode declares its options
+
+`package`: `mode_packages/` (the mode's data, the load check); `mode`: `mode_schema.rs`. It stands first, as every later batch reads the declarations. Builds: a name is resolved once, at the load.
+
+- [ ] crates/session/package/src/mode_packages/load_check.rs:216 — a mode declares no option (A mode declares its options). → `[options.<name>]` reads with its choices and default, and the load refuses each case the decision names; `ctx.p.<name>` of an option gives its default. A test for each refusal.
+
+### 2. The terms record the picks
+
+`protocol`: `session_terms.rs`; `runner`: `session_rules/`, `match_build/`, `session/`, `replay/`; `verifier`; `harness`: `fixed_session/`; the design `05-protocol-spec.md`. It stands second, as the command lines give picks the terms must hold. Builds: what can be forgotten is a type, the picks a checked value of the rules.
+
+- [ ] crates/session/protocol/src/session_terms.rs:30 — terms hold no pick of an option (The host picks, and the terms record the pick). → `SessionTerms` holds each option's choice index in the session id after the visibility, of the domain `campfire/session-id/v4`; `SessionRules::check` gives the checked picks beside the visibility; `HostChoices` takes the picks; a match and a restore target install the mode with them (A script reads the pick as the param). The goldens of the session ids move.
+
+### 3. The host names its picks
+
+`net`: `sim_server/lobby/`; `server`: `args/`; `client`: `args/`, the local server. Builds: a name is resolved once, at the command line.
+
+- [ ] crates/apps/server/src/args/mod.rs:104 — no command line names an option (A pick is given by its value). → `--option <name>=<value>` on the server and on the local client, refused for a name the mode lacks and a value of no choice.
+
+### 4. Zero Hour's money and the builder bot
+
+`import`: `zero_hour/rules_package.rs`; `zero-hour-check`: its bot's order script, its play and `pins.rs`. It stands last, as it plays every batch before it.
+
+- [ ] crates/apps/import/src/zero_hour/rules_package.rs:66 — `start_money` is a param of one value (The import writes Zero Hour's money as an option). → The option of `Multiplayer.ini`'s choices, with a fixture's test.
+- [ ] checks/zero-hour-check/ — the check's bot is idle (A bot that builds and does not fight). → The builder bot's order script; the check plays a skirmish of 50,000 with it as its bot, and pins what it built and trained, and that no unit of it stood farther from its start than its farthest site. Its fingerprints are pinned from a run on Linux and a run on macOS.

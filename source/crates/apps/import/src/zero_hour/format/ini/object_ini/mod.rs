@@ -43,8 +43,9 @@ pub(crate) struct IniObject {
 /// objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone draws, an
 /// object a build clears, which is fluff, the client's too, unless it is a fence, and a wall a unit
 /// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
-/// is not small; and an object that counts for a multiplayer victory, which a structure of it keeps
-/// its player in the match by (12-zero-hour.md, Defeat by the last building that counts).
+/// is not small; an object that counts for a multiplayer victory, which a structure of it keeps
+/// its player in the match by (12-zero-hour.md, Defeat by the last building that counts); and
+/// infantry, which a weapon may scatter more at.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
@@ -53,6 +54,7 @@ pub(crate) struct ObjectKinds {
     walk_on_top_of_wall: bool,
     structure: bool,
     mp_count_for_victory: bool,
+    infantry: bool,
 }
 
 /// An object's geometry as the game reads it (`GeometryInfo`): its shape, its radii and its
@@ -88,15 +90,16 @@ pub(crate) enum PlacedAs {
     Unit,
 }
 
-/// A draw module: how it names its model, the model of its default state, if it draws one, and
-/// that state's look; the sets of flags its default state is drawn for, none and its aliases';
-/// its other condition states, in order; and the map conditions it ignores
-/// (`IgnoreConditionStates`).
+/// A draw module: how it names its model, the model of its default state, if it draws one, that
+/// state's look, and the bone its turret turns, its `Turret`; the sets of flags its default state
+/// is drawn for, none and its aliases'; its other condition states, in order; and the map
+/// conditions it ignores (`IgnoreConditionStates`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DrawModule {
     pub(crate) kind: DrawKind,
     pub(crate) model: Option<String>,
     pub(crate) look: StateLook,
+    pub(crate) turret: Option<String>,
     sets: Vec<ConditionSet>,
     states: Vec<DrawState>,
     ignored: LookConditions,
@@ -172,6 +175,7 @@ const CLEARED_BY_BUILD: &str = "cleared_by_build";
 const WALK_ON_TOP_OF_WALL: &str = "walk_on_top_of_wall";
 const STRUCTURE: &str = "structure";
 const MP_COUNT_FOR_VICTORY: &str = "mp_count_for_victory";
+const INFANTRY: &str = "infantry";
 
 /// The locomotor set an object moves by, of `TheLocomotorSetNames`.
 const SET_NORMAL: &str = "set_normal";
@@ -189,7 +193,7 @@ const OPEN_WITH_VALUE: [&str; 8] = [
 ];
 
 /// The keywords that open a block only alone on their line: with a value, each is a field, as
-/// `Turret = TurretBone` is.
+/// a draw state's `Turret = Turret` is.
 const OPEN_ALONE: [&str; 14] = [
     "defaultconditionstate",
     "armorset",
@@ -378,6 +382,7 @@ impl ObjectKinds {
             WALK_ON_TOP_OF_WALL => &mut self.walk_on_top_of_wall,
             STRUCTURE => &mut self.structure,
             MP_COUNT_FOR_VICTORY => &mut self.mp_count_for_victory,
+            INFANTRY => &mut self.infantry,
             _ => return,
         };
         *kind = set;
@@ -470,6 +475,7 @@ impl DrawModule {
             kind,
             model: None,
             look: StateLook::default(),
+            turret: None,
             sets: vec![ConditionSet::default()],
             states: Vec::new(),
             ignored: LookConditions::default(),
@@ -514,6 +520,11 @@ impl DrawModule {
 
     /// A field of its default state that the look reads.
     fn default_field(&mut self, word: &str, tokens: &[&str], line: usize) -> Result<(), IniError> {
+        if word == "turret"
+            && let Some(bone) = tokens.get(1)
+        {
+            self.turret = Some((*bone).to_owned());
+        }
         state_field(&mut self.model, &mut self.look, word, tokens, line)
     }
 
@@ -652,7 +663,7 @@ impl IniObject {
         &self.build
     }
 
-    /// What it gives combat: its body, its weapon sets and its armor sets.
+    /// What it gives combat: its body, its weapon sets, its armor sets, its shell and its turret.
     pub(crate) const fn fight(&self) -> &FightData {
         &self.fight
     }
@@ -666,6 +677,17 @@ impl IniObject {
     /// Whether it is a structure, of `KindOf`.
     pub(crate) const fn is_structure(&self) -> bool {
         self.kinds.structure
+    }
+
+    /// Whether it is infantry, of `KindOf`.
+    pub(crate) const fn is_infantry(&self) -> bool {
+        self.kinds.infantry
+    }
+
+    /// Whether it is a wall, which a projectile of `WALLS` detonates on: a fence, of a
+    /// `FenceWidth` above 0 (`shouldProjectileCollideWith`).
+    pub(crate) const fn is_wall(&self) -> bool {
+        self.fence_width > 0.0
     }
 
     /// The asset scale every drawable of it takes: its `Scale`.
@@ -820,9 +842,10 @@ impl Reading {
             Block::Fight(block) => {
                 let block = *block;
                 let open = self.object.as_mut().expect("a combat block is an object's");
-                open.object.fight.field(block, word, at)?;
-                if ObjectIni::opens(word, tokens) {
-                    self.stack.push(Block::Other);
+                match open.object.fight.field(block, word, at)? {
+                    Some(inner) => self.stack.push(Block::Fight(inner)),
+                    None if ObjectIni::opens(word, tokens) => self.stack.push(Block::Other),
+                    None => {}
                 }
             }
             Block::Production(module) => {
@@ -934,7 +957,7 @@ Object Tank\r
       WeaponMuzzleFlash = PRIMARY MuzzleFX\r
       WeaponLaunchBone = PRIMARY None\r
       WeaponFireFXBone = SECONDARY Fire ; a slot's bones need not name a flash\r
-      Turret = TurretBone\r
+      Turret = Turret\r
     End\r
     ConditionState = REALLYDAMAGED\r
       Model = TANK_D\r
@@ -999,7 +1022,8 @@ End
     /// draw module, a stump of no model, a prop of a lone mesh at a scale of 1.5 and its
     /// reskin, an optimized tree, fluff, a wall a unit walks on, a structure of a box of half
     /// extents 10 and 2.5, and the fixture map's tank, which drives on its treads, a box of half
-    /// extents 4 and 3, and its fence; and America's start objects, which no map places: a
+    /// extents 4 and 3, its gun on a turret of 180° a second, and its fence; the shell the tank's
+    /// cannon fires, a sphere of radius 1; and America's start objects, which no map places: a
     /// command center of a box of half extents 12 and 9 and height 40, whose sphere's radius is
     /// √(144 + 81 + 400) = 25, and a dozer on treads.
     pub(crate) const OBJECTS: &str = "ObjectReskin TankCamo Tank\r
@@ -1064,9 +1088,30 @@ Object AmericaTankCrusader\r
     Weapon = TERTIARY Railgun\r
   End\r
   Locomotor = SET_NORMAL TankTreads\r
+  Behavior = AIUpdateInterface ModuleTag_06\r
+    Turret\r
+      TurretTurnRate = 180\r
+      ControlledWeaponSlots = PRIMARY\r
+    End\r
+  End\r
   Geometry = BOX\r
   GeometryMajorRadius = 4.0\r
   GeometryMinorRadius = 3.0\r
+End\r
+Object TankShell\r
+  KindOf = PROJECTILE\r
+  Body = ActiveBody ModuleTag_02\r
+    MaxHealth = 100.0\r
+  End\r
+  Behavior = DumbProjectileBehavior ModuleTag_03\r
+    FirstHeight = 10\r
+    SecondHeight = 10\r
+    FirstPercentIndent = 50%\r
+    SecondPercentIndent = 90%\r
+    FlightPathAdjustDistPerSecond = 100\r
+  End\r
+  Geometry = SPHERE\r
+  GeometryMajorRadius = 1.0\r
 End\r
 Object FortressWall\r
   KindOf = WALK_ON_TOP_OF_WALL IMMOBILE STRUCTURE\r

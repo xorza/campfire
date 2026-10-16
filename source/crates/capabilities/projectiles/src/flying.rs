@@ -90,7 +90,7 @@ impl Flying {
             let aloft = Aloft {
                 id,
                 team,
-                spec: *specs
+                spec: specs
                     .get(unit_type)
                     .expect("a projectile's type has a spec"),
                 position: &mut position,

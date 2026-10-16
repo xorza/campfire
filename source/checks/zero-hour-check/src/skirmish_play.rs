@@ -10,8 +10,8 @@ use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
 use campfire_production::{BuildTarget, Site, TrainQueue};
+use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SlotPlan};
-
 use campfire_sim::StableId;
 use campfire_stats::Life;
 use campfire_units::UnitsWorld;
@@ -19,38 +19,72 @@ use campfire_values::{DeclaredName, Names, ResourceId};
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
-use crate::pins::{FightSteps, ProductionSteps};
+use crate::pins::{FactorySteps, FightSteps, ProductionSteps};
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
 const RANGER: &str = "americainfantryranger";
+const FACTORY: &str = "americawarfactory";
+const CRUSADER: &str = "americatankcrusader";
 
 /// The most ticks the play waits for a step, past which it never ends.
 const STEP_LIMIT: u64 = 30 * 60 * 5;
 
-/// How many rangers the barracks trains and sends to fight, the first of the production steps
-/// among them.
-const RANGERS: usize = 20;
+/// How many crusaders the war factory trains and sends to fight, as the money left pays for.
+const CRUSADERS: usize = 3;
 
-/// The most trains a barracks queues, its `MaxQueueEntries`, which the play keeps it below.
+/// The most trains a factory queues, its `MaxQueueEntries`, which the play keeps it below.
 const QUEUE: usize = 9;
 
 /// Where the dozer places the barracks: 216 m along −z from `Player_1_Start`, clear of the
 /// command center's box and of the cliffs, at America's `PlacementViewAngle` of −135°.
 const BARRACKS_AT: [i64; 3] = [1005, -800, -135];
 
-/// The skirmish on Tournament Desert against an idle bot (designs 18 and 19): player 1's command
-/// center trains a dozer, its start dozer builds a barracks, and the barracks trains a ranger;
-/// then the barracks trains `RANGERS` in all, and they attack the bot's command center until the
-/// match ends.
+/// The buildings the dozer builds after the barracks, each the prerequisite of the next, at its
+/// place: the power plant 150 m along −x from `Player_1_Start`, the supply center 150 m along
+/// +x, and the war factory 200 m past the barracks along −z, each clear of the cliffs and of the
+/// others, at America's angle.
+const FACTORY_CHAIN: [Building; 3] = [
+    Building {
+        unit: "americapowerplant",
+        action: "build_americapowerplant",
+        at: [855, -584, -135],
+    },
+    Building {
+        unit: "americasupplycenter",
+        action: "build_americasupplycenter",
+        at: [1155, -584, -135],
+    },
+    Building {
+        unit: FACTORY,
+        action: "build_americawarfactory",
+        at: [1005, -1000, -135],
+    },
+];
+
+/// The skirmish on Tournament Desert against an idle bot (designs 18 and 19;
+/// 20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets and
+/// slow weapons): player 1's command center trains a dozer, its start dozer builds a barracks,
+/// and the barracks trains a ranger; then the dozer builds a power plant, a supply center and a
+/// war factory, the factory trains `CRUSADERS`, and their shells destroy the bot's command
+/// center, which ends the match.
 #[derive(Debug)]
 pub(crate) struct SkirmishPlay;
 
-/// What the play measures: its production steps, and its fight.
+/// What the play measures: its production steps, its factory's, and its fight.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SkirmishSteps {
     pub(crate) production: ProductionSteps,
+    pub(crate) factory: FactorySteps,
     pub(crate) fight: FightSteps,
+}
+
+/// A building the dozer builds: its unit type, its build action, and its place, `[x, z, angle]`.
+#[derive(Debug, Clone, Copy)]
+struct Building {
+    unit: &'static str,
+    action: &'static str,
+    at: [i64; 3],
 }
 
 /// What the play reads of its match: player 1's money, and the slots of its types' actions.
@@ -99,7 +133,8 @@ impl SkirmishPlay {
 }
 
 impl Play<'_> {
-    /// The production steps in `play`, after its start's tick, then the fight.
+    /// The production steps in `play`, after its start's tick, then the factory's, then the
+    /// fight.
     fn steps(&self, play: &mut MatchPlay) -> Result<SkirmishSteps, Failure> {
         play.step();
         let [center] = play.owned(CENTER, 0)?[..] else {
@@ -146,57 +181,99 @@ impl Play<'_> {
             ranger_ticks,
             money: [after_dozer, after_barracks, self.money(play)],
         };
-        let fight = self.fight(play, barracks, ranger)?;
-        Ok(SkirmishSteps { production, fight })
+        let factory = self.factory(play, dozer)?;
+        let fight = self.fight(play)?;
+        Ok(SkirmishSteps {
+            production,
+            factory,
+            fight,
+        })
     }
 
-    /// The fight in `play`: the barracks `barracks` trains `RANGERS` in all by `train`, one order
-    /// a tick while its queue has room; they attack the bot's command center; the ticks of each
-    /// part, the money left, how the match ended, and whether the bot's dozer's life is gone.
-    fn fight(
-        &self,
-        play: &mut MatchPlay,
-        barracks: StableId,
-        train: OrdersAction,
-    ) -> Result<FightSteps, Failure> {
+    /// The dozer `dozer` builds each of `FACTORY_CHAIN` whole in `play`, one after another; the
+    /// ticks of each and the money left.
+    fn factory(&self, play: &mut MatchPlay, dozer: StableId) -> Result<FactorySteps, Failure> {
+        let mut ticks = [0; FACTORY_CHAIN.len()];
+        for (building, ticks) in FACTORY_CHAIN.iter().zip(&mut ticks) {
+            let [x, z, angle] = building.at.map(Num::int);
+            let build = OrdersAction::Build {
+                slot: self.slot(DOZER, building.action)?,
+                target: BuildTarget::Point { x, z, angle },
+            };
+            *ticks = self.until(play, dozer, build, |play| {
+                let built = play.owned(building.unit, 0)?;
+                let units = MatchUnits::of(play.game());
+                Ok(built.len() == 1 && !units.unit(built[0]).contains::<Site>())
+            })?;
+        }
+        Ok(FactorySteps {
+            ticks,
+            money: self.money(play),
+        })
+    }
+
+    /// The fight in `play`: player 1's war factory trains `CRUSADERS`, one order a tick while its
+    /// queue has room; they attack the bot's command center; the ticks of the trains, from
+    /// the attack's order to the first shell's launch and to the first damage to the center, and
+    /// to the match's end; the money left, how the match ended, and whether the bot's dozer's
+    /// life is gone.
+    fn fight(&self, play: &mut MatchPlay) -> Result<FightSteps, Failure> {
+        let [factory] = play.owned(FACTORY, 0)?[..] else {
+            return Err(Failure::ProductionStart);
+        };
         let [target] = play.owned(CENTER, 1)?[..] else {
             return Err(Failure::FightStart);
         };
         let [bot_dozer] = play.owned(DOZER, 1)?[..] else {
             return Err(Failure::FightStart);
         };
+        let train = OrdersAction::Slot {
+            slot: self.slot(FACTORY, "train_americatankcrusader")?,
+            target: ActionTarget::None,
+        };
         let mut train_ticks = 0;
-        while play.owned(RANGER, 0)?.len() < RANGERS {
+        while play.owned(CRUSADER, 0)?.len() < CRUSADERS {
             if train_ticks == STEP_LIMIT {
                 return Err(Failure::ProductionStep(train));
             }
             let queued = MatchUnits::of(play.game())
-                .unit(barracks)
+                .unit(factory)
                 .get::<TrainQueue>()
                 .map_or(0, |queue| queue.entries().len());
-            if play.owned(RANGER, 0)?.len() + queued < RANGERS && queued < QUEUE {
-                play.order(&[Order::one(barracks, train)]);
+            if play.owned(CRUSADER, 0)?.len() + queued < CRUSADERS && queued < QUEUE {
+                play.order(&[Order::one(factory, train)]);
             }
             play.step();
             train_ticks += 1;
         }
         let money = self.money(play);
-        let rangers = play.owned(RANGER, 0)?;
-        let units = OrderUnits::new(&rangers).expect("the play's rangers");
+        let crusaders = play.owned(CRUSADER, 0)?;
+        let units = OrderUnits::new(&crusaders).expect("the play's crusaders");
         play.order(&[Order {
             units,
             action: OrdersAction::Attack { target }.into(),
         }]);
+        let full = Self::life(play, target);
+        let (mut shot_ticks, mut hit_ticks) = (None, None);
         for fight_ticks in 1..=STEP_LIMIT {
             play.step();
             let world = play.game();
+            let units = MatchUnits::of(world);
+            if shot_ticks.is_none() && units.all().any(|(_, unit)| unit.contains::<Projectile>()) {
+                shot_ticks = Some(fight_ticks);
+            }
+            if hit_ticks.is_none() && Self::life(play, target) < full {
+                hit_ticks = Some(fight_ticks);
+            }
             let end = world
                 .match_entity()
                 .and_then(|entity| world.get::<MatchEnd>(entity).copied());
             if let Some(end) = end {
-                let bot_dozer = MatchUnits::of(world).unit(bot_dozer);
+                let bot_dozer = units.unit(bot_dozer);
                 return Ok(FightSteps {
                     train_ticks,
+                    shot_ticks,
+                    hit_ticks,
                     fight_ticks,
                     money,
                     result: end.result(),
@@ -205,6 +282,13 @@ impl Play<'_> {
             }
         }
         Err(Failure::NoEnd)
+    }
+
+    /// The life of `unit` in `play`, none once it is gone.
+    fn life(play: &MatchPlay, unit: StableId) -> Option<Num> {
+        let units = MatchUnits::of(play.game());
+        let unit = units.all().find(|(id, _)| *id == unit)?.1;
+        unit.get::<Life>().map(|life| life.current())
     }
 
     /// Orders `unit` to `action` in the tick `play` runs next, then runs ticks until `done`; the

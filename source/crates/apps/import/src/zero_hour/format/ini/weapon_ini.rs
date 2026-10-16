@@ -14,9 +14,10 @@ pub(crate) struct WeaponIni {
 /// What the import reads of a weapon (`WeaponTemplate`), each the template's default when absent:
 /// its `PrimaryDamage`, `PrimaryDamageRadius`, `SecondaryDamageRadius`, `ScatterRadius`,
 /// `ScatterRadiusVsInfantry`, `AttackRange` and `MinimumAttackRange`; its `WeaponSpeed` in units
-/// a second, `INSTANT` by default; whether it names a `LaserName`; whether it may hit the ground,
-/// `AntiGround`, yes by default; whether its `RadiusDamageAffects` holds `SUICIDE`; whether it
-/// deals its damage at its own place, `DamageDealtAtSelfPosition`; whether it fires faster as it
+/// a second, `INSTANT` by default; its `MinTargetPitch` and `MaxTargetPitch` in degrees, −180 and
+/// 180 by default; whether it names a `LaserName`; whether it may hit the ground, `AntiGround`,
+/// yes by default; its `RadiusDamageAffects` and its `ProjectileCollidesWith`; whether it deals its
+/// damage at its own place, `DamageDealtAtSelfPosition`; whether it fires faster as it
 /// keeps firing, of a `ContinuousFireOne` or a `ContinuousFireTwo`; its `DamageType`, of the
 /// game's types, `EXPLOSION` by default; its `DelayBetweenShots`, `ClipSize`,
 /// `ClipReloadTime` and `PreAttackDelay`, times in milliseconds; and its `ProjectileObject`, none
@@ -30,9 +31,11 @@ pub(crate) struct IniWeapon {
     pub(crate) infantry_scatter: f32,
     pub(crate) range: f32,
     pub(crate) speed: f32,
+    pub(crate) pitch: [f32; 2],
     pub(crate) laser: bool,
     pub(crate) anti_ground: bool,
     pub(crate) affects: RadiusAffects,
+    pub(crate) collides: CollideMask,
     pub(crate) at_self: bool,
     pub(crate) continuous_fire: bool,
     pub(crate) min_range: f32,
@@ -44,11 +47,34 @@ pub(crate) struct IniWeapon {
     pub(crate) projectile: Option<String>,
 }
 
-/// What a weapon's `RadiusDamageAffects` holds of what the import reads: `SUICIDE`, which kills
-/// its own unit.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+/// A weapon's `RadiusDamageAffects`, of `TheWeaponAffectsMaskNames`: whom its radius damages, by
+/// their relation to its unit, its unit itself, `SELF`, and whether it kills its own unit, spares
+/// the units of its unit's own template, or spares the airborne; `ALLIES ENEMIES NEUTRALS` by
+/// default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RadiusAffects {
+    pub(crate) source: bool,
+    pub(crate) allies: bool,
+    pub(crate) enemies: bool,
+    pub(crate) neutrals: bool,
     pub(crate) suicide: bool,
+    pub(crate) not_similar: bool,
+    pub(crate) not_airborne: bool,
+}
+
+/// A weapon's `ProjectileCollidesWith`, of `TheWeaponCollideMaskNames`: what its projectile
+/// detonates on in its way, `STRUCTURES` by default (`shouldProjectileCollideWith`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CollideMask {
+    pub(crate) allies: bool,
+    pub(crate) enemies: bool,
+    pub(crate) structures: bool,
+    pub(crate) shrubbery: bool,
+    pub(crate) projectiles: bool,
+    pub(crate) walls: bool,
+    pub(crate) small_missiles: bool,
+    pub(crate) ballistic_missiles: bool,
+    pub(crate) controlled_structures: bool,
 }
 
 /// A weapon's `DelayBetweenShots`: one time in milliseconds, or a range of `Min:` and `Max:`, of
@@ -69,9 +95,11 @@ impl Default for IniWeapon {
             infantry_scatter: 0.0,
             range: 0.0,
             speed: Self::INSTANT,
+            pitch: [-180.0, 180.0],
             laser: false,
             anti_ground: true,
-            affects: RadiusAffects::default(),
+            affects: RadiusAffects::DEFAULT,
+            collides: CollideMask::DEFAULT,
             at_self: false,
             continuous_fire: false,
             min_range: 0.0,
@@ -127,9 +155,12 @@ impl IniWeapon {
             "scatterradiusvsinfantry" => self.infantry_scatter = at.real()?,
             "attackrange" => self.range = at.real()?,
             "weaponspeed" => self.speed = at.real()?,
+            "mintargetpitch" => self.pitch[0] = at.real()?,
+            "maxtargetpitch" => self.pitch[1] = at.real()?,
             "lasername" => self.laser = at.tokens.len() > 1,
             "antiground" => self.anti_ground = at.yes()?,
             "radiusdamageaffects" => at.set_flags(&mut self.affects)?,
+            "projectilecollideswith" => at.set_flags(&mut self.collides)?,
             "damagedealtatselfposition" => self.at_self = at.yes()?,
             "continuousfireone" | "continuousfiretwo" => self.continuous_fire = true,
             "minimumattackrange" => self.min_range = at.real()?,
@@ -155,16 +186,88 @@ impl IniWeapon {
     }
 }
 
+impl RadiusAffects {
+    /// `DEFAULT_AFFECTS_MASK`.
+    const DEFAULT: Self = Self {
+        allies: true,
+        enemies: true,
+        neutrals: true,
+        ..Self::NONE
+    };
+
+    pub(crate) const NONE: Self = Self {
+        source: false,
+        allies: false,
+        enemies: false,
+        neutrals: false,
+        suicide: false,
+        not_similar: false,
+        not_airborne: false,
+    };
+}
+
 impl FlagSet for RadiusAffects {
     fn clear(&mut self) {
-        self.suicide = false;
+        *self = Self::NONE;
     }
 
-    /// Any of the game's names; the import reads `SUICIDE` alone.
+    /// One of the game's names; another is refused, as `BitFlags::parse` refuses it.
     fn set(&mut self, name: &str, on: bool) -> bool {
-        if name.eq_ignore_ascii_case("suicide") {
-            self.suicide = on;
-        }
+        let flag = match name.to_ascii_lowercase().as_str() {
+            "self" => &mut self.source,
+            "allies" => &mut self.allies,
+            "enemies" => &mut self.enemies,
+            "neutrals" => &mut self.neutrals,
+            "suicide" => &mut self.suicide,
+            "not_similar" => &mut self.not_similar,
+            "not_airborne" => &mut self.not_airborne,
+            _ => return false,
+        };
+        *flag = on;
+        true
+    }
+}
+
+impl CollideMask {
+    /// `DEFAULT_COLLIDE_MASK`.
+    const DEFAULT: Self = Self {
+        structures: true,
+        ..Self::NONE
+    };
+
+    const NONE: Self = Self {
+        allies: false,
+        enemies: false,
+        structures: false,
+        shrubbery: false,
+        projectiles: false,
+        walls: false,
+        small_missiles: false,
+        ballistic_missiles: false,
+        controlled_structures: false,
+    };
+}
+
+impl FlagSet for CollideMask {
+    fn clear(&mut self) {
+        *self = Self::NONE;
+    }
+
+    /// One of the game's names; another is refused, as `BitFlags::parse` refuses it.
+    fn set(&mut self, name: &str, on: bool) -> bool {
+        let flag = match name.to_ascii_lowercase().as_str() {
+            "allies" => &mut self.allies,
+            "enemies" => &mut self.enemies,
+            "structures" => &mut self.structures,
+            "shrubbery" => &mut self.shrubbery,
+            "projectiles" => &mut self.projectiles,
+            "walls" => &mut self.walls,
+            "small_missiles" => &mut self.small_missiles,
+            "ballistic_missiles" => &mut self.ballistic_missiles,
+            "controlled_structures" => &mut self.controlled_structures,
+            _ => return false,
+        };
+        *flag = on;
         true
     }
 }
@@ -172,7 +275,9 @@ impl FlagSet for RadiusAffects {
 #[cfg(test)]
 pub(crate) mod internals {
     /// `Data\INI\Weapon.ini` of the fixture install: a rifle that fires a clip of 3 at once, a
-    /// cannon that fires a shell, a flamer of a radius, a knife that waits before it strikes, a
+    /// cannon that fires a shell of a radius, a scatter at infantry and a bound pitch, a launcher of
+    /// a rocket, a phantom of a projectile no file defines, a lobber whose radius spares its own
+    /// kind, a popper whose shell detonates on shrubbery, a flamer of a radius, a knife that waits before it strikes, a
     /// mortar of a minimum range, a pistol of a random delay, a marker of no delay, a shotgun of a
     /// second radius, a gatling that scatters at infantry, a bolt of a set speed, which may delay its
     /// damage, a stinger that hits no ground, a blast that kills its own unit, a pulse dealt at
@@ -191,10 +296,44 @@ pub(crate) mod internals {
 End\r
 Weapon TankCannon\r
   PrimaryDamage = 60\r
+  PrimaryDamageRadius = 5\r
+  ScatterRadiusVsInfantry = 10\r
   AttackRange = 150\r
+  MinTargetPitch = -15\r
+  MaxTargetPitch = 15\r
   DamageType = ARMOR_PIERCING\r
+  WeaponSpeed = 400\r
   DelayBetweenShots = 2000\r
   ProjectileObject = TankShell\r
+  RadiusDamageAffects = ALLIES ENEMIES NEUTRALS\r
+  ProjectileCollidesWith = STRUCTURES WALLS\r
+End\r
+Weapon Launcher\r
+  PrimaryDamage = 40\r
+  AttackRange = 200\r
+  DelayBetweenShots = 1000\r
+  ProjectileObject = Rocket\r
+End\r
+Weapon Phantom\r
+  PrimaryDamage = 40\r
+  AttackRange = 200\r
+  DelayBetweenShots = 1000\r
+  ProjectileObject = NoSuchShell\r
+End\r
+Weapon Lobber\r
+  PrimaryDamage = 20\r
+  PrimaryDamageRadius = 10\r
+  AttackRange = 200\r
+  DelayBetweenShots = 1000\r
+  ProjectileObject = TankShell\r
+  RadiusDamageAffects = ENEMIES NOT_SIMILAR\r
+End\r
+Weapon Popper\r
+  PrimaryDamage = 20\r
+  AttackRange = 200\r
+  DelayBetweenShots = 1000\r
+  ProjectileObject = TankShell\r
+  ProjectileCollidesWith = STRUCTURES SHRUBBERY\r
 End\r
 Weapon Flamer\r
   PrimaryDamage = 10\r
@@ -311,9 +450,11 @@ mod tests {
                 infantry_scatter: 0.0,
                 range: 100.0,
                 speed: IniWeapon::INSTANT,
+                pitch: [-180.0, 180.0],
                 laser: false,
                 anti_ground: true,
-                affects: RadiusAffects::default(),
+                affects: RadiusAffects::DEFAULT,
+                collides: CollideMask::DEFAULT,
                 at_self: false,
                 continuous_fire: false,
                 min_range: 0.0,
@@ -325,10 +466,17 @@ mod tests {
                 projectile: None,
             }
         );
-        assert_eq!(
-            ini.get("TankCannon").unwrap().projectile.as_deref(),
-            Some("TankShell")
-        );
+        // The cannon's shell detonates on structures and walls, and its radius damages every
+        // relation but its own unit; its pitch is read in degrees.
+        let cannon = ini.get("TankCannon").unwrap();
+        assert_eq!(cannon.projectile.as_deref(), Some("TankShell"));
+        assert_eq!(cannon.pitch, [-15.0, 15.0]);
+        let collides = CollideMask {
+            walls: true,
+            ..CollideMask::DEFAULT
+        };
+        assert_eq!(cannon.collides, collides);
+        assert_eq!(cannon.affects, RadiusAffects::DEFAULT);
         assert_eq!(ini.get("Pistol").unwrap().delay, ShotDelay::Random);
         // A weapon that names no type is of the default; a type of none of the game's names is
         // refused, as the game's reader refuses it.
@@ -360,6 +508,26 @@ mod tests {
             "  RadiusDamageAffects = SUICIDE\n  RadiusDamageAffects = ENEMIES\n"
         ));
         assert!(!affects("  RadiusDamageAffects = +SUICIDE -SUICIDE\n"));
+        // `SELF` is the unit itself; a name the game does not list is refused, as its reader
+        // refuses it.
+        let mut own = WeaponIni::default();
+        own.read(b"Weapon W\n  RadiusDamageAffects = SELF NOT_SIMILAR\nEnd\n")
+            .unwrap();
+        let own = own.get("W").unwrap().affects;
+        let expected = RadiusAffects {
+            source: true,
+            not_similar: true,
+            ..RadiusAffects::NONE
+        };
+        assert_eq!(own, expected);
+        for line in [
+            "RadiusDamageAffects = FRIENDS",
+            "ProjectileCollidesWith = STRUCTURES TREES",
+        ] {
+            let text = format!("Weapon W\n  {line}\nEnd\n");
+            let read = WeaponIni::default().read(text.as_bytes());
+            assert_eq!(read, Err(IniError::NotListed { line: 2 }), "{line}");
+        }
         assert!(ini.get("Minigun").unwrap().continuous_fire);
         assert!(!ini.get("Stinger").unwrap().anti_ground);
         // A line outside a block, and a block left open, are refused.

@@ -89,6 +89,11 @@ impl ModelParts {
         flashes
     }
 
+    /// The name of its pivot `name`, of either case, as its node is named.
+    pub(crate) fn pivot_name(&self, name: &str) -> Option<&str> {
+        Some(self.pivots[self.pivot(name)?].name.as_str())
+    }
+
     fn pivot(&self, name: &str) -> Option<usize> {
         self.pivots
             .iter()

@@ -585,19 +585,27 @@ fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_n
     // A width of 4,096 m flies as a circle of 2,048 m, the widest body; a bit more does not read.
     let widest = read("speed = 20\nwidth = 4096").unwrap();
     assert_eq!(widest.width, Num::int(4096));
-    // `hits` is `none` or a filter, `enemies` when it is absent.
+    // `hits` is `none`, a filter or a list of filters, `enemies` when it is absent; a list of
+    // none, and a list of a filter that is none, do not read.
     let hits = |text: &str| read(&format!("speed = 1\nhits = {text}")).map(|data| data.hits);
+    let filter = |text: &str| FilterData::parse(text).unwrap();
     assert_eq!(hits("\"none\"").unwrap(), ProjectileHits::Nothing);
     assert_eq!(
         hits("\"allies:avatar\"").unwrap(),
-        ProjectileHits::Units(FilterData::parse("allies:avatar").unwrap())
+        ProjectileHits::Units(vec![filter("allies:avatar")])
     );
-    assert_eq!(plain.hits, ProjectileHits::ENEMIES);
-    assert!(
-        hits("\"nobody\"")
-            .unwrap_err()
-            .message()
-            .starts_with("filter \"nobody\"")
+    assert_eq!(
+        hits("[\"enemies:structure\", \"all:wall\"]").unwrap(),
+        ProjectileHits::Units(vec![filter("enemies:structure"), filter("all:wall")])
+    );
+    assert_eq!(plain.hits, ProjectileHits::Units(vec![filter("enemies")]));
+    for text in ["\"nobody\"", "[\"all\", \"nobody\"]"] {
+        let message = hits(text).unwrap_err().message().to_owned();
+        assert!(message.starts_with("filter \"nobody\""), "{message}");
+    }
+    assert_eq!(
+        hits("[]").unwrap_err().message(),
+        "a list of hits holds a filter at least; `none` hits no unit"
     );
     for (text, message) in [
         ("speed = 0", "a projectile's speed is positive"),

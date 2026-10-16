@@ -67,9 +67,10 @@ pub(crate) mod unit_looks;
 pub(crate) mod unit_models;
 
 /// Draws the match: a camera over the lane, the ground, a capsule for every unit the client holds,
-/// colored by team, a ball for every projectile and a disc for every area, each moving smoothly
-/// between the places the sim gives it; a unit in its attack's windup leans towards its target. Each unit's drawing is a
-/// tree under a root on the ground, which glides, and which the unit's despawn takes along.
+/// colored by team, a projectile's models turned along its flight or a ball, and a disc for every
+/// area, each moving smoothly between the places the sim gives it; a unit in its attack's windup
+/// leans towards its target. Each unit's drawing is a tree under a root on the ground, which
+/// glides, and which the unit's despawn takes along.
 #[derive(Debug)]
 pub(crate) struct View;
 
@@ -139,6 +140,14 @@ enum Fit {
 /// leans by its own rotation, and turns none.
 #[derive(Component, Debug)]
 struct Turns;
+
+/// On the root of a projectile's model drawing, which turns along its flight: the point its sim
+/// place was drawn at last, where its next step starts (20-zero-hour-projectiles.md, The client
+/// draws a projectile with its look).
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
+struct Heading {
+    from: Vec3,
+}
 
 /// The ground the match is drawn on, which shows the match's result once it ends.
 #[derive(Component, Debug)]
@@ -224,12 +233,26 @@ const RING_LIFT: f32 = 0.035;
 /// unpredicted.
 type Ended<'w, 's> = Query<'w, 's, &'static MatchEnd, (Added<MatchEnd>, Allow<Unpredicted>)>;
 
-/// The projectiles not drawn yet.
+/// The projectiles not drawn yet: where each is, its type, and whether the client only receives
+/// it.
 type NewShots<'w, 's> = Query<
     'w,
     's,
-    (Entity, &'static Position, Has<Unpredicted>),
+    (
+        Entity,
+        &'static Position,
+        &'static UnitType,
+        Has<Unpredicted>,
+    ),
     (With<Projectile>, Without<Drawing>, Allow<Unpredicted>),
+>;
+
+/// The drawn projectiles whose sim place changed.
+type MovedShots<'w, 's> = Query<
+    'w,
+    's,
+    (&'static Position, &'static Drawing),
+    (With<Projectile>, Changed<Position>, Allow<Unpredicted>),
 >;
 
 impl Plugin for View {
@@ -245,6 +268,7 @@ impl Plugin for View {
                 Self::draw_areas,
                 Self::mourn,
                 Self::follow,
+                Self::head_shots,
                 Self::glide,
                 Self::lean,
             )
@@ -436,26 +460,21 @@ impl View {
         }
     }
 
-    /// Gives each projectile the client received a ball at its place, which glides as a unit's
-    /// drawing does.
+    /// Gives each projectile the client received a drawing at its place, its height included,
+    /// which glides as a unit's drawing does: its type's models, which turn along its flight, or
+    /// nothing for a look of no models, or with no look a ball at a chest's height above it.
     fn draw_shots(
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         shots: NewShots<'_, '_>,
+        looks: Option<Res<'_, UnitLooks>>,
         data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
     ) {
         let heights = data.heights.as_ref();
-        for (shot, &pos, received) in &shots {
+        for (shot, &pos, &unit_type, received) in &shots {
             let at = ground(pos, heights);
-            let ball = commands
-                .spawn((
-                    Mesh3d(palette.projectile.clone()),
-                    MeshMaterial3d(palette.shot.clone()),
-                    Transform::from_translation(Vec3::Y * SHOT_HEIGHT),
-                ))
-                .id();
-            commands
+            let root = commands
                 .spawn((
                     DrawingOf(shot),
                     Transform::from_translation(at),
@@ -469,7 +488,49 @@ impl View {
                         time.elapsed(),
                     ),
                 ))
-                .add_child(ball);
+                .id();
+            match looks.as_deref().and_then(|looks| looks.look(unit_type)) {
+                Some(models) => {
+                    commands.entity(root).insert(Heading { from: at });
+                    for model in models {
+                        commands.spawn((
+                            WorldAssetRoot(model.scene.clone()),
+                            model.parts.clone(),
+                            Transform::from_scale(Vec3::splat(model.scale)),
+                            ChildOf(root),
+                        ));
+                    }
+                }
+                None => {
+                    commands.spawn((
+                        Mesh3d(palette.projectile.clone()),
+                        MeshMaterial3d(palette.shot.clone()),
+                        Transform::from_translation(Vec3::Y * SHOT_HEIGHT),
+                        ChildOf(root),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Turns each projectile's model drawing along its last step, the way from the point its sim
+    /// place was drawn at before to the one now, its model's `+x` along it and its top up; a
+    /// step of no length keeps its turn.
+    fn head_shots(
+        shots: MovedShots<'_, '_>,
+        data: Res<'_, ClientData>,
+        mut roots: Query<'_, '_, (&mut Heading, &mut Transform)>,
+    ) {
+        let heights = data.heights.as_ref();
+        for (&pos, drawing) in &shots {
+            let Ok((mut heading, mut transform)) = roots.get_mut(drawing.root()) else {
+                continue;
+            };
+            let to = ground(pos, heights);
+            if let Some(turn) = Heading::along(to - heading.from) {
+                transform.rotation = turn;
+            }
+            heading.from = to;
         }
     }
 
@@ -811,6 +872,20 @@ impl View {
         for mut window in &mut windows {
             title.clone_into(&mut window.title);
         }
+    }
+}
+
+impl Heading {
+    /// The turn that points `+x` along `way` with `+y` up: its yaw about the vertical, then its
+    /// pitch above the ground plane; none for a way of no length.
+    fn along(way: Vec3) -> Option<Quat> {
+        if way == Vec3::ZERO {
+            return None;
+        }
+        let level = way.x.hypot(way.z);
+        let yaw = (-way.z).atan2(way.x);
+        let pitch = way.y.atan2(level);
+        Some(Quat::from_rotation_y(yaw) * Quat::from_rotation_z(pitch))
     }
 }
 

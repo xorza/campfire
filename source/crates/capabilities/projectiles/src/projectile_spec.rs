@@ -5,16 +5,16 @@ use campfire_common::Ticks;
 use campfire_declare::PerType;
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding};
-use campfire_script::{Filter, TagNames, UnknownName};
+use campfire_script::{Filters, TagNames, UnknownName};
 use campfire_sim::TickRate;
 
 use crate::projectile_data::{CurveData, ProjectileData, ProjectileHits};
 
 /// A projectile type as a match runs it: its speed a tick, half its width, the radius of the
 /// circle it flies as, its range if it has its own, whether it homes, stops at its first hit, or
-/// hits a unit once a cast, the units it hits, none when it hits nothing, and its curve, if it
-/// flies one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// hits a unit once a cast, the units it hits, by no filter when it hits nothing, and its curve,
+/// if it flies one.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectileSpec {
     pub(crate) speed: Num,
     pub(crate) half_width: Radius,
@@ -22,7 +22,7 @@ pub struct ProjectileSpec {
     pub homing: bool,
     pub(crate) stop_on_hit: bool,
     pub(crate) once_per_cast: bool,
-    pub(crate) hits: Option<Filter>,
+    pub(crate) hits: Filters,
     pub(crate) curve: Option<CurveSpec>,
 }
 
@@ -41,8 +41,8 @@ impl ProjectileSpec {
     /// `tags`; an error for a filter of a tag `tags` lacks.
     pub fn of(data: &ProjectileData, tags: &TagNames, rate: TickRate) -> Result<Self, UnknownName> {
         let hits = match &data.hits {
-            ProjectileHits::Nothing => None,
-            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, tags)?),
+            ProjectileHits::Nothing => Filters::default(),
+            ProjectileHits::Units(filters) => Filters::resolve(filters, tags)?,
         };
         let per_tick = |speed: Num| {
             speed

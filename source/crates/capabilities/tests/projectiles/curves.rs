@@ -162,18 +162,19 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
 
 #[test]
 fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_source() {
-    // A shell 2 m wide hits all, from a shooter of a body 1 m wide and 2 m tall, its center at
+    // A shell 2 m wide hits hostiles and allies, by a filter each, from a shooter of a body 1 m wide and 2 m tall, its center at
     // (0, 1, 0), to the center of a target 2 m tall at (8, 1, 0): its inner points rise to 5 m,
     // and its middle is (4, (1 + 15 + 15 + 1) ÷ 8 = 4, 0).
-    let data = ProjectileData {
-        hits: ProjectileHits::Units(FilterData {
-            relations: RelationSet::All,
-            tags: Vec::new(),
-        }),
-        ..shell(120, Num::int(2), 0, None)
+    let filters = |names: &[&str]| {
+        let filters = names.iter().map(|name| FilterData::parse(name).unwrap());
+        ProjectileData {
+            hits: ProjectileHits::Units(filters.collect()),
+            ..shell(120, Num::int(2), 0, None)
+        }
     };
-    let fixture = |game: &mut Match| {
-        let volley = Shelling::place(game, &data, Num::int(2));
+    let both = filters(&["hostiles", "allies"]);
+    let fixture = |game: &mut Match, data: &ProjectileData| {
+        let volley = Shelling::place(game, data, Num::int(2));
         let tall = BodyForm::circle(Num::ONE)
             .unwrap()
             .raised(Num::int(2))
@@ -184,7 +185,7 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
     // Two enemies 4 m tall beside its middle, 1.5 m either side along z: its sphere, 1 m wide,
     // lies 0.5 m from each, on the plane of their tops, and meets both. The lower id takes it.
     let mut game = volley_match();
-    let volley = fixture(&mut game);
+    let volley = fixture(&mut game, &both);
     let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
     let target = Mode::spawn(&mut game, volley.tall, (8, 0, 0), Team::new(1), ());
     let half = Num::HALF * 3;
@@ -205,24 +206,28 @@ fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_sourc
     assert_eq!(healths, [70, 100, 100, 100]);
     assert_eq!(Projectiles::projectiles(&game), []);
     // In tick 3, at its first point, the shooter's own center, it meets its source's body, which
-    // it passes, and a friend's 1.5 m beside it, which it hits.
-    let mut game = volley_match();
-    let volley = fixture(&mut game);
-    let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
-    let target = Mode::spawn(&mut game, volley.tall, (8, 0, 0), Team::new(1), ());
-    let friend = Mode::spawn(
-        &mut game,
-        volley.tall,
-        (half, Num::ZERO, Num::ZERO),
-        Team::new(0),
-        (),
-    );
-    Combat::attack(&mut game, shooter, target);
-    for _ in 0..4 {
-        game.step();
-    }
-    let healths = [friend, target, shooter].map(|id| Stats::health(&game, id));
-    assert_eq!(healths, [70, 100, 100]);
+    // it passes, and a friend's 1.5 m beside it, which its filter of allies hits; of hostiles
+    // alone, it passes the friend and hits its target at its last point, in tick 5.
+    let friendly_fire = |data: &ProjectileData| {
+        let mut game = volley_match();
+        let volley = fixture(&mut game, data);
+        let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
+        let target = Mode::spawn(&mut game, volley.tall, (8, 0, 0), Team::new(1), ());
+        let friend = Mode::spawn(
+            &mut game,
+            volley.tall,
+            (half, Num::ZERO, Num::ZERO),
+            Team::new(0),
+            (),
+        );
+        Combat::attack(&mut game, shooter, target);
+        for _ in 0..6 {
+            game.step();
+        }
+        [friend, target, shooter].map(|id| Stats::health(&game, id))
+    };
+    assert_eq!(friendly_fire(&both), [70, 100, 100]);
+    assert_eq!(friendly_fire(&filters(&["hostiles"])), [100, 70, 100]);
 }
 
 #[test]

@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bevy_math::UVec2;
-use campfire_client_files::{CameraFile, ClientObjects, MapConditions, MapLights, TerrainFile};
+use campfire_client_files::{
+    CameraFile, ClientObjects, ClientUnits, MapConditions, MapLights, TerrainFile,
+};
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_math::Num;
@@ -71,6 +73,7 @@ pub(crate) mod skirmish_start;
 pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod unit_types;
+pub(crate) mod weapon_drop;
 
 /// What an import wrote: the package's fingerprint, the models the objects name that the
 /// package lacks, the textures its models name that no archive holds, which they draw
@@ -171,7 +174,7 @@ impl ZeroHour {
             self.read_inis("Locomotor", LocomotorIni::default(), LocomotorIni::read)?;
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
-        let looks = LookWriter {
+        let mut looks = LookWriter {
             models: &mut models,
         }
         .units(&ini, &mut object_names)?;
@@ -271,9 +274,6 @@ impl ZeroHour {
             strings: &strings,
         };
         let production = ProductionImport::of(sources, &mut object_names);
-        // Every unit type is made: the maps', the start's and the command sets'. The stages
-        // after read their closed set, and return what they give each.
-        let types = object_names.close();
         let weapons = self.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?;
         let armors = self.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?;
         let combat = CombatImport::of(
@@ -282,8 +282,15 @@ impl ZeroHour {
                 weapons: &weapons,
                 armors: &armors,
             },
-            &types,
+            &mut object_names,
         )?;
+        combat.add_shell_looks(&mut looks);
+        let text = Toml::write(&looks);
+        writer.write(ClientUnits::path(), text.as_bytes())?;
+        // Every unit type is made: the maps', the start's, the command sets' and the shells'
+        // their weapons fire. The stages after read their closed set, and return what they give
+        // each.
+        let types = object_names.close();
         let mode = ModeImport {
             start: &start,
             production: &production,

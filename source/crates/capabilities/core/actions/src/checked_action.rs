@@ -111,7 +111,7 @@ impl CheckedAction<'_> {
         if let (Some(pitch), ActionTarget::Unit(target)) = (pitch, self.target) {
             let center = Body::center(body, from, targets.map());
             let aimed = targets.volume_of(target);
-            if !aimed.is_some_and(|aimed| pitch.holds(center, aimed.center())) {
+            if !aimed.is_some_and(|aimed| pitch.reaches(center, &aimed)) {
                 return false;
             }
         }

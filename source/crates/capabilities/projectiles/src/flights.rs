@@ -6,7 +6,7 @@ use campfire_actions::{Reached, ShotHit, ShotHits, Targets};
 use campfire_deliveries::{Delivered, Deliveries, Delivering};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
-use campfire_script::Filter;
+use campfire_script::Filters;
 use campfire_sim::{Position, StableId};
 use campfire_values::{Hit, Team};
 
@@ -41,13 +41,13 @@ pub(crate) struct CurveFlight {
 /// A curve projectile's sphere where it stands: of radius `half` at the point in space `point`,
 /// of a projectile of `team` from `source`, aimed at `aimed`, which meets what `hits` selects.
 #[derive(Debug, Clone, Copy)]
-struct Sphere {
+struct Sphere<'a> {
     point: Vec3,
     half: Num,
     team: Team,
     source: StableId,
     aimed: Option<StableId>,
-    hits: Option<Filter>,
+    hits: &'a Filters,
 }
 
 /// A projectile as it reaches a unit or its end: itself, and its team.
@@ -71,7 +71,7 @@ pub(crate) struct Line {
 pub(crate) struct Aloft<'a> {
     pub id: StableId,
     pub team: Team,
-    pub(crate) spec: ProjectileSpec,
+    pub(crate) spec: &'a ProjectileSpec,
     pub(crate) position: &'a mut Position,
     pub(crate) projectile: &'a Projectile,
     pub(crate) state: &'a mut FlightState,
@@ -225,7 +225,8 @@ impl Flights<'_> {
         };
         let metric = targets.metric();
         self.met.clear();
-        if let Some(hits) = spec.hits {
+        if !spec.hits.is_empty() {
+            let hits = &spec.hits;
             let (start, end) = (from.get(), to);
             let half = spec.half_width.get();
             let low = [start.x.min(end.x), start.z.min(end.z)]
@@ -357,7 +358,7 @@ impl Flights<'_> {
             team,
             source: projectile.source(),
             aimed,
-            hits: spec.hits,
+            hits: &spec.hits,
         };
         let Some(met) = self.met(targets, sphere) else {
             return false;
@@ -370,7 +371,7 @@ impl Flights<'_> {
 
     /// The unit of the lowest stable id whose volume `sphere` meets, touching included: a living
     /// unit its `hits` selects, or the unit it aimed at, never its source.
-    fn met(&self, targets: &Targets<'_, '_>, sphere: Sphere) -> Option<StableId> {
+    fn met(&self, targets: &Targets<'_, '_>, sphere: Sphere<'_>) -> Option<StableId> {
         let Sphere {
             point,
             half,
@@ -383,7 +384,7 @@ impl Flights<'_> {
             volume.is_some_and(|volume| volume.nearest(point, half) != Ordering::Greater)
         };
         let mut met = aimed.filter(|&aimed| aimed != source && meets(targets.volume_of(aimed)));
-        if let Some(hits) = hits {
+        if !hits.is_empty() {
             let grid = self.grid.expect("a curve finds the units near");
             grid.visit_near(point, half, |body| {
                 let Some(unit) = targets.target_at(body.key) else {

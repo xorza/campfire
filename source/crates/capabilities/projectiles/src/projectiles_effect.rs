@@ -37,7 +37,7 @@ impl Effect for ProjectilesEffect {
     /// is gone, launches nothing.
     fn apply(self, world: &mut World, _: &mut Frame) {
         let from = world.resource::<MapBook>().bounds.clamp(self.from);
-        let spec = *world
+        let spec = world
             .resource::<ByType<ProjectileSpec>>()
             .get(self.unit_type)
             .expect("a delivery's projectile type has a spec");
@@ -52,7 +52,7 @@ impl Effect for ProjectilesEffect {
                     to,
                     aimed: Some(target),
                 };
-                Flight::curve(aim, &spec, map)
+                Flight::curve(aim, spec, map)
             }
             Toward::Unit(target) => Flight::homing(target),
             Toward::Direction(direction) => {

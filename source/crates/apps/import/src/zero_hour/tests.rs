@@ -1,4 +1,4 @@
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale};
+use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale};
 use campfire_common::ContentHash;
 use campfire_package_disk::PackageDir;
 use campfire_sim::Capability;
@@ -8,7 +8,6 @@ use serde::Deserialize;
 
 use super::*;
 use crate::texture::internals::ktx2;
-use crate::zero_hour::combat_import::WeaponDrop;
 use crate::zero_hour::error::{NameClash, VersionDifference};
 use crate::zero_hour::format::big::big_archive::internals::big;
 use crate::zero_hour::format::csf::string_table::internals::strings;
@@ -25,6 +24,7 @@ use crate::zero_hour::format::map::map_file::internals::map;
 use crate::zero_hour::install::internals::{fixture, packed_map};
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::production_import::DropCause;
+use crate::zero_hour::weapon_drop::WeaponDrop;
 
 /// The fixture install's version, as its archives hold their bytes now.
 fn version_of(scratch: &Scratch) -> &'static [GameVersion] {
@@ -78,8 +78,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
     // The package's own reader takes its units file: the tank, the wall and the rocks the
-    // map places, America's start objects, and the barracks and the ranger their command
-    // sets make. Its units drive, by stats, orders and navigation, no faster than the tank's
+    // map places, America's start objects, the barracks and the ranger their command sets
+    // make, and the shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster than the tank's
     // 30.5 m a second.
     let mode = PackageDir::new(scratch.path("one/game"))
         .mode_packages(Some(&named))
@@ -99,7 +99,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             "americatankcrusader",
             "americavehicledozer",
             "fortresswall",
-            "rocks1"
+            "rocks1",
+            "tankshell"
         ]
     );
     // Its players start with America's command center and dozer, the dozer half the center's
@@ -168,6 +169,34 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             shots: 3,
             reload_ms: 700,
         }),
+        delivery: None,
+        splash: None,
+        scatter: None,
+        pitch_deg: None,
+        speed: None,
+    };
+    // The crusader's cannon fires its shell, of 60 armor-piercing damage within 5 m of where it
+    // ends, to all but its own unit, which scatters 10 m at infantry, within 15° of level.
+    let cannon = WeaponView {
+        range: Num::int(150),
+        amount: Num::int(60),
+        damage_kind: "armor_piercing".to_owned(),
+        period_ms: 2000,
+        clip: None,
+        delivery: Some(DeliveryView {
+            projectile: "tankshell".to_owned(),
+        }),
+        splash: Some(SplashView {
+            radius: Num::int(5),
+            affects: "all".to_owned(),
+            spares_source: true,
+        }),
+        scatter: Some(ScatterView {
+            radius: Num::ZERO,
+            tags: [("infantry".to_owned(), Num::int(10))].into(),
+        }),
+        pitch_deg: Some([Num::int(-15), Num::int(15)]),
+        ..rifle.clone()
     };
     assert_eq!(
         data.actions,
@@ -182,6 +211,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
                 ActionOf::Made(action("train", "americavehicledozer", 1000, 5000))
             ),
             ("weapon_rangerrifle".to_owned(), ActionOf::Weapon(rifle)),
+            ("weapon_tankcannon".to_owned(), ActionOf::Weapon(cannon)),
         ]
         .into()
     );
@@ -231,7 +261,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         slots.map_or_default(|slots| slots.weapon.clone())
     };
     assert_eq!(weapons("americainfantryranger"), ["weapon_rangerrifle"]);
-    assert_eq!(weapons("americatankcrusader"), ["weapon_rangerrifle"]);
+    assert_eq!(
+        weapons("americatankcrusader"),
+        ["weapon_tankcannon", "weapon_rangerrifle"]
+    );
     assert_eq!(weapons("americavehicledozer"), Vec::<String>::new());
     let life = |name: &str| {
         let unit = &units.units[name];
@@ -268,14 +301,49 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         (lives, Some(Num::int(250)), Some(&combat(None)))
     );
     assert_eq!(life("fortresswall"), (None, None, None));
+    let tags = |name: &str| units.units[name].tags.clone();
+    let named = |names: &[&str]| Some(names.iter().map(|&name| name.to_owned()).collect());
     assert_eq!(
-        units.units["americacommandcenter"].tags,
-        Some(vec!["counts_for_victory".to_owned()])
+        tags("americacommandcenter"),
+        named(&["counts_for_victory", "structure"])
     );
-    assert_eq!(units.units["americabarracks"].tags, None);
+    assert_eq!(tags("americabarracks"), named(&["structure"]));
+    assert_eq!(tags("americainfantryranger"), named(&["infantry"]));
+    assert_eq!(tags("americatankcrusader"), None);
+    // The crusader's turret turns 180° a second, its weapons within 0.035 radians,
+    // 33,644,228 · 2⁻²⁴°; its shell, of no life or body, flies at its cannon's 400 m/s, 2 m
+    // wide, on its curve of 50% and 90%, the latter 15,099,494 · 2⁻²⁴, 10 m up, detonating on
+    // what is no player's own structure and on walls, for 10 s.
+    assert_eq!(
+        units.units["americatankcrusader"].turret,
+        Some(TurretView {
+            turn_rate: Num::int(180),
+            tolerance_deg: Num::from_bits(33_644_228),
+            slot: "weapon".to_owned(),
+        })
+    );
+    let shell = &units.units["tankshell"];
+    assert_eq!(
+        (&shell.pools, &shell.combat, &shell.tags),
+        (&None, &None, &None)
+    );
+    assert_eq!(
+        shell.projectile,
+        Some(ProjectileView {
+            speed: Num::int(400),
+            width: Num::int(2),
+            hits: vec!["enemies:structure".to_owned(), "all:wall".to_owned()],
+            curve: CurveView {
+                first: [Num::HALF, Num::int(10)],
+                second: [Num::from_bits(15_099_494), Num::int(10)],
+                follow: Num::int(100),
+                life_ms: 10_000,
+            },
+        })
+    );
     // The weapons dropped, each by its cause, in the order the types are read: the ranger's
-    // pistol of a random delay, the crusader's cannon of a shell and its railgun no file
-    // defines; the flamer of the ranger's upgraded set is never read. The wall's highlander
+    // pistol of a random delay, and the crusader's railgun no file defines; the flamer of the
+    // ranger's upgraded set is never read. The wall's highlander
     // body gives no life; the dozer starts at 200 of its 250, which the engine starts full.
     let dropped: Vec<(&str, WeaponDrop)> = imported
         .dropped_weapons
@@ -286,7 +354,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         dropped,
         [
             ("Pistol", WeaponDrop::RandomDelay),
-            ("TankCannon", WeaponDrop::Projectile),
             ("Railgun", WeaponDrop::NoWeapon),
         ]
     );
@@ -431,8 +498,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         expected.conditions
     );
     // The units file holds the map's types and the start's, which the start's own reading
-    // of the templates adds, those the command sets make, as the import adds them, and their
-    // weapons.
+    // of the templates adds, those the command sets make, as the import adds them, their
+    // weapons, and the shell the crusader's cannon fires.
     let mut templates = PlayerTemplateIni::default();
     templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
     SkirmishStart::of(&templates, &ini, &locomotors, &mut names).unwrap();
@@ -449,7 +516,6 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         strings: &strings,
     };
     let production = ProductionImport::of(sources, &mut names);
-    let types = names.close();
     let mut weapons = WeaponIni::default();
     weapons.read(WEAPONS.as_bytes()).unwrap();
     let mut armors = ArmorIni::default();
@@ -459,7 +525,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         weapons: &weapons,
         armors: &armors,
     };
-    let combat = CombatImport::of(combat, &types).unwrap();
+    let combat = CombatImport::of(combat, &mut names).unwrap();
+    let types = names.close();
     let units = types.units_file(TypeAdditions {
         weapon: &combat.weapons,
         command: &production.commands,
@@ -610,7 +677,9 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     };
     // The tank's night state shows its turret, and with it the flash below: a night map, and a
     // night of snow, draw it whole; a snowy map its default, which the variant names too, so
-    // the client's best match finds each.
+    // the client's best match finds each. Its turret turns the node of its bone `Turret`, the
+    // model's pivot `TURRET`, as the converted model names it; its red reskin's own draw module
+    // names no turret.
     let hidden = || vec![model("tank", &["tank.turret", "tank.flash"])];
     let variant = |conditions: &[&str], models| LookVariant {
         conditions: conditions
@@ -627,7 +696,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             variant(&["night", "snow"], vec![model("tank", &[])]),
         ],
         placement_angle: None,
-        turret: None,
+        turret: Some("turret".to_owned()),
     };
     // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
     // look as a unit of both its models, and as the client's of its tree draw module's; the
@@ -666,6 +735,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             ("tank", tank()),
             ("tankcamo", tank()),
             ("tankred", unit(vec![model("tank", &[])])),
+            ("tankshell", empty()),
         ]),
         objects: looks(vec![
             ("bush", unit(vec![model("tank", &[])])),
@@ -723,7 +793,7 @@ enum ActionOf {
     Made(ActionView),
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct WeaponView {
     kind: String,
@@ -733,9 +803,35 @@ struct WeaponView {
     damage_kind: String,
     period_ms: u64,
     clip: Option<ClipView>,
+    delivery: Option<DeliveryView>,
+    splash: Option<SplashView>,
+    scatter: Option<ScatterView>,
+    pitch_deg: Option<[Num; 2]>,
+    speed: Option<Num>,
 }
 
-#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct DeliveryView {
+    projectile: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SplashView {
+    radius: Num,
+    affects: String,
+    spares_source: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ScatterView {
+    radius: Num,
+    tags: BTreeMap<String, Num>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 struct ClipView {
     shots: u16,
     reload_ms: u64,
@@ -794,6 +890,34 @@ struct UnitView {
     combat: Option<UnitCombatView>,
     slots: Option<SlotsView>,
     production: Option<ProductionView>,
+    turret: Option<TurretView>,
+    projectile: Option<ProjectileView>,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TurretView {
+    turn_rate: Num,
+    tolerance_deg: Num,
+    slot: String,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProjectileView {
+    speed: Num,
+    width: Num,
+    hits: Vec<String>,
+    curve: CurveView,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CurveView {
+    first: [Num; 2],
+    second: [Num; 2],
+    follow: Num,
+    life_ms: u64,
 }
 
 #[derive(Debug, Deserialize)]

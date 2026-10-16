@@ -55,7 +55,7 @@ What the import does not hold against the original:
 - **The widest walkers** collide as circles of 25 m.
 - **Range.** Measured from each body's edge, a box's from its box, where the original measures from bounding circles, which hold a box's corners.
 - **Weapon choice.** A unit attacks with its first weapon whose targeting selects the target, where the original picks the best for each target.
-- **Dropped weapons.** Weapons that need a projectile object, a radius, a pre-attack delay, a minimum range or a random delay are not imported until the engine holds them ([Zero Hour projectiles](20-zero-hour-projectiles.md)).
+- **Dropped weapons.** Weapons that fire a missile, damage a second radius, splash or scatter with no shell, spare their own kind or the airborne, detonate on shrubbery or projectiles, or need a pre-attack delay, a minimum range or a random delay are not imported until the engine holds them ([Zero Hour projectiles](20-zero-hour-projectiles.md)).
 - **Auto attack.** A unit attacks only what it is ordered to.
 - **Weapon sets and bonuses.** Only the set of `Conditions = None`; no upgrade or veterancy changes a weapon.
 - **Other bodies.** Objects of an immortal, highlander, undead, hive or inactive body have no life.

@@ -460,11 +460,20 @@ height = "1"
 [units.americatankcrusader.combat]
 on_death = "despawn"
 
+[units.americatankcrusader.turret]
+turn_rate = "180"
+tolerance_deg = "2.0053522586822509765625"
+slot = "weapon"
+
+[units.fortresswall]
+tags = ["structure"]
+
 [units.fortresswall.collision]
 box = ["20", "5"]
 height = "1"
 
 [units.rocks1]
+tags = ["wall"]
 "#;
 
     /// The fixture install's objects.
@@ -742,9 +751,10 @@ height = "1"
             ]
         );
         // The tank drives on its treads, 30.5 m and 90° a second, a circle of √(4² + 3²) = 5 m,
-        // and lives by its active body, 400, of no armor; the wall is a structure, a box of 2 ·
-        // 10 by 2 · 2.5 m, whose highlander body gives it no life; the fence is neither. Each
-        // body has the game's default height, 1 m, as no geometry names its own.
+        // lives by its active body, 400, of no armor, and turns its gun on a turret of 180° a
+        // second within 33,644,228 · 2⁻²⁴°; the wall is a structure, a box of 2 · 10 by 2 · 2.5
+        // m, whose highlander body gives it no life; the fence is a wall of no body. Each body
+        // has the game's default height, 1 m, as no geometry names its own.
         let units = mem::take(&mut names).close().bare_file();
         assert_eq!(units.text, UNITS_TOML);
         assert_eq!(units.max_speed, Some(Num::int(61) / Num::int(2)));

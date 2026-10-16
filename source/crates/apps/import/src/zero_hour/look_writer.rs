@@ -1,9 +1,8 @@
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale};
-use campfire_codec::Toml;
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::{
-    DrawKind, DrawnState, ObjectIni, PlacedAs, StateLook,
+    DrawKind, DrawModule, DrawnState, ObjectIni, PlacedAs, StateLook,
 };
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::game_path;
@@ -11,7 +10,7 @@ use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::map_import;
 use crate::zero_hour::model_writer::{ModelWriter, WrittenModel};
 
-/// What writes the client's looks of the objects, `client/units.toml`, each model it draws
+/// What makes the client's looks of the objects, of `client/units.toml`, each model it draws
 /// converted once through `models`.
 #[derive(Debug)]
 pub(crate) struct LookWriter<'m, 'i, 'w> {
@@ -27,10 +26,12 @@ struct LookModels {
 }
 
 impl LookWriter<'_, '_, '_> {
-    /// Writes `client/units.toml` of `ini`'s objects, and gives it: each object's look, its models,
-    /// each at its object's asset scale, with the nodes its default look hides, a look of no models
-    /// for an object whose draw modules name none, as it draws nothing, and no look for one whose
-    /// models the package lacks, which the client shows as the engine's shape; and the look of each
+    /// The looks of `client/units.toml` of `ini`'s objects: each object's look, its models, each at
+    /// its object's asset scale, with the nodes its default look hides and the node its turret
+    /// turns (20-zero-hour-projectiles.md, The client draws a projectile with its look), a look of
+    /// no models for an object whose draw modules name none, as it draws nothing, and no look for
+    /// one whose models the package lacks, which the client shows as the engine's shape; and the
+    /// look of each
     /// object that maps place as client objects, as the client's tree or prop buffer draws it
     /// (12-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
     /// modules, a prop's of its first draw module, when the `W3DModelDraw` family's, each created
@@ -52,6 +53,7 @@ impl LookWriter<'_, '_, '_> {
             };
             // A preview of its build stands at the angle the original's cursor shows it at.
             unit_look.placement_angle = object.build().placement_angle;
+            unit_look.turret = self.turret(draws)?;
             let unit_type = names.take(object)?;
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
@@ -80,9 +82,24 @@ impl LookWriter<'_, '_, '_> {
             }
             units.units.insert(unit_type.declared(), unit_look);
         }
-        let text = Toml::write(&units);
-        self.models.write(ClientUnits::path(), text.as_bytes())?;
         Ok(units)
+    }
+
+    /// The node the turret of `draws` turns: the pivot of the first module's model that its
+    /// default state's `Turret` names, of either case, as `W3DModelDraw` finds the bone; none when
+    /// no module names one its model has.
+    fn turret(&mut self, draws: &[DrawModule]) -> Result<Option<String>, ZeroHourError> {
+        for draw in draws {
+            let (Some(model), Some(bone)) = (&draw.model, &draw.turret) else {
+                continue;
+            };
+            if let WrittenModel::Parts(parts) = self.models.model(&model.to_ascii_lowercase())?
+                && let Some(pivot) = parts.pivot_name(bone)
+            {
+                return Ok(Some(pivot.to_owned()));
+            }
+        }
+        Ok(None)
     }
 
     /// The look of what `drawn` draws on a map of each conditions, at `scale`: its models on a

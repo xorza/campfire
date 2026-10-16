@@ -6,9 +6,9 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
 
-use crate::zero_hour::combat_import::{CombatImport, WEAPON};
+use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::damage_type::DamageType;
-use crate::zero_hour::imported_type::{LIFE, VICTORY};
+use crate::zero_hour::imported_type::{INFANTRY, LIFE, STRUCTURE, VICTORY, WALL, WEAPON};
 use crate::zero_hour::map_import::{SLOTS, START};
 use crate::zero_hour::production_import::{COMMAND, MONEY, ProductionImport};
 use crate::zero_hour::skirmish_start::SkirmishStart;
@@ -27,9 +27,9 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
 ];
 
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside
-/// the `neutral` team every placed object stands on, whose units drive, are made and fight
-/// (designs 17, 18 and 19): of `stats`, `orders`, `navigation`, `abilities`, `production` and
-/// `combat`, no unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a
+/// the `neutral` team every placed object stands on, whose units drive, are made and fight with
+/// shells: of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and
+/// `projectiles`, no unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a
 /// second, depending on the rules package beside it.
 pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
     let teams: Vec<String> = (1..=SLOTS)
@@ -43,7 +43,7 @@ version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = ["stats", "orders", "navigation", "abilities", "production", "combat"]
+capabilities = ["stats", "orders", "navigation", "abilities", "production", "combat", "projectiles"]
 tick_hz = {{ min = 30, max = 30, default = 30 }}
 teams = [{teams}]
 max_move_speed = "{max_move_speed}"
@@ -68,12 +68,12 @@ pub(crate) struct ModeImport<'a> {
 
 /// The imported package's mode data: its name and its teams' names, the rules package's mode
 /// script, the player resource `money`, the stats its unit types drive by and the life they live
-/// by, the pool of that life, its combat of the game's damage types and armors, the tag of victory,
-/// the markers its players start at, the state `ended` by which its script ends the match once, its
-/// params of what each starts with, `start` (12-zero-hour.md, A skirmish starts with the faction's
-/// start objects), and the money `start_money`; the slot kinds `weapon` and `command`, the weapons
-/// of `combat` (12-zero-hour.md) and the trains and builds of `production`
-/// (04-capabilities/production.md).
+/// by, the pool of that life, its combat of the game's damage types and armors, the tags of
+/// victory, of a structure, a wall and infantry, the markers its players start at, the state
+/// `ended` by which its script ends the match once, its params of what each starts with, `start`
+/// (12-zero-hour.md, A skirmish starts with the faction's start objects), and the money
+/// `start_money`; the slot kinds `weapon` and `command`, the weapons of `combat`
+/// (12-zero-hour.md) and the trains and builds of `production` (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,
@@ -130,6 +130,12 @@ damage_kinds = [{kinds}]
 life = "{LIFE}"
 
 [tags.{VICTORY}]
+
+[tags.{STRUCTURE}]
+
+[tags.{WALL}]
+
+[tags.{INFANTRY}]
 
 {teams}[teams.neutral]
 name = "team-neutral"

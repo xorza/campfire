@@ -2,6 +2,8 @@ use std::str::FromStr;
 
 use campfire_stats::PoolCost;
 
+use campfire_geometry::Placed;
+
 use super::*;
 use crate::action_range::ActionRange;
 
@@ -142,21 +144,28 @@ fn a_scatter_widens_at_its_targets_tags_and_aims_by_its_two_draws() {
 }
 
 #[test]
-fn a_pitch_bound_holds_targets_from_its_least_to_its_most_angle_above_the_ground() {
-    // From −10° to 45°: 3 m up and 4 m along is 36.9°, within; 4 m up and 3 m along, 53.1°, past
-    // it; 45° exactly holds; 1 m down and 4 m along, −14°, below it; level holds.
+fn a_pitch_bound_reaches_a_target_whose_pitches_from_bottom_to_top_meet_it() {
+    // From −10° to 45°, from (1, 2, 3): a point 3 m up and 4 m along, 36.9°, is within; 4 m up
+    // and 3 m along, 53.1°, past it; 45° exactly is within; 1 m down and 4 m along, −14°, below
+    // it; level is within.
     let pitch = Pitch::of(Num::int(-10), Num::int(45));
     let from = Vec3::from((1, 2, 3));
-    let to = |along: i32, up: i32| from + Vec3::from((along, up, 0));
-    let held = [to(4, 3), to(3, 4), to(5, 5), to(4, -1), to(4, 0)].map(|to| pitch.holds(from, to));
-    assert_eq!(held, [true, false, true, false, true]);
+    let volume = |along: i32, up: i32, height: i64| {
+        let base = Placed::point(from + Vec3::from((along, up, 0)));
+        Volume::new(base, Num::int(height))
+    };
+    let reached = [(4, 3), (3, 4), (5, 5), (4, -1), (4, 0)]
+        .map(|(along, up)| pitch.reaches(from, &volume(along, up, 0)));
+    assert_eq!(reached, [true, false, true, false, true]);
+    // A volume reaches when any pitch of it, bottom to top, does: one from 1 m down to 3 m up,
+    // 4 m along, spans −14° to 36.9°; one from 4 m up to 10 m up, 3 m along, spans 53.1° and
+    // more, past it.
+    assert!(pitch.reaches(from, &volume(4, -1, 4)));
+    assert!(!pitch.reaches(from, &volume(3, 4, 6)));
     // From −90° to 90°, any.
     let any = Pitch::of(Num::int(-90), Num::int(90));
-    assert!(
-        [to(0, -5), to(0, 5), to(5, 0)]
-            .iter()
-            .all(|&to| any.holds(from, to))
-    );
+    let all = [(0, -5), (0, 5), (5, 0)].map(|(along, up)| any.reaches(from, &volume(along, up, 0)));
+    assert_eq!(all, [true; 3]);
 }
 
 #[test]

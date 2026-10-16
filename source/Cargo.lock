@@ -3193,6 +3193,7 @@ dependencies = [
  "campfire-package-disk",
  "campfire-players",
  "campfire-production",
+ "campfire-projectiles",
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",

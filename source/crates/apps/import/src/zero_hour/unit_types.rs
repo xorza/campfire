@@ -9,19 +9,12 @@ use serde::Serialize;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::imported_type::ImportedType;
 
-/// The closed set of the import's unit types, by their names: each its object's name and the
-/// fields its object gives. The stages after it read it and add no type; what they give a
-/// type, its actions and its production, they return.
+/// The closed set of the import's unit types, by their names: each the fields its object gives.
+/// The stages after it read it and add no type; what they give a type, its actions and its
+/// production, they return.
 #[derive(Debug)]
 pub(crate) struct UnitTypes {
-    types: BTreeMap<ImportName, TypedObject>,
-}
-
-/// A unit type's object, by its name, and the fields it gives.
-#[derive(Debug)]
-pub(crate) struct TypedObject {
-    pub(crate) object: String,
-    pub(crate) imported: ImportedType,
+    types: BTreeMap<ImportName, ImportedType>,
 }
 
 /// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
@@ -82,13 +75,8 @@ pub(crate) struct UnitsFile {
 }
 
 impl UnitTypes {
-    pub(crate) const fn new(types: BTreeMap<ImportName, TypedObject>) -> Self {
+    pub(crate) const fn new(types: BTreeMap<ImportName, ImportedType>) -> Self {
         Self { types }
-    }
-
-    /// Each type's name, its object's name and its fields, in the order of their names.
-    pub(crate) fn iter(&self) -> impl Iterator<Item = (&ImportName, &TypedObject)> {
-        self.types.iter()
     }
 
     /// The package's `data/units.toml`: each unit type in the order of their names, of the
@@ -98,11 +86,11 @@ impl UnitTypes {
         let units: BTreeMap<&str, TypeToml<'_>> = self
             .types
             .iter()
-            .map(|(name, typed)| {
+            .map(|(name, imported)| {
                 let weapon = additions.weapon.get(name).map_or(NONE, Vec::as_slice);
                 let command = additions.command.get(name).map_or(NONE, Vec::as_slice);
                 let section = TypeToml {
-                    imported: &typed.imported,
+                    imported,
                     slots: (!weapon.is_empty() || !command.is_empty())
                         .then_some(TypeSlots { weapon, command }),
                     production: additions.production.get(name).copied(),

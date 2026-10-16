@@ -2,6 +2,7 @@ use campfire_math::Num;
 
 use super::*;
 use crate::zero_hour::format::ini::object_ini::build_data::{Prerequisite, ProductionExit};
+use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
 use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -70,6 +71,7 @@ fn draws_of(ini: &ObjectIni, name: &str) -> Vec<DrawModule> {
     let default = |draw: &DrawModule| DrawModule {
         model: draw.model.clone(),
         look: draw.look.clone(),
+        turret: draw.turret.clone(),
         ..DrawModule::new(draw.kind)
     };
     ini.objects[name].draws().iter().map(default).collect()
@@ -102,12 +104,13 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
             "Tank",
             "TankCamo",
             "TankRed",
+            "TankShell",
             "Tree"
         ]
     );
     // The tank's default state: its model; its hides and shows, the second of `Barrel`
-    // changing the first in its place; its weapon bones, a bone `None` none; `Turret =
-    // TurretBone` is a field, and the debris draw module names no model.
+    // changing the first in its place; its weapon bones, a bone `None` none; the bone its turret
+    // turns, `Turret`; and the debris draw module names no model.
     let model = |model: &str, look| DrawModule {
         model: Some(model.to_owned()),
         look,
@@ -135,7 +138,11 @@ fn objects_give_their_default_models_and_looks_with_reskins_copied_as_read() {
             WeaponBones::default(),
         ],
     };
-    let tank = [model("TANK", tank_look), DrawModule::new(DrawKind::Other)];
+    let tank_draw = DrawModule {
+        turret: Some("Turret".to_owned()),
+        ..model("TANK", tank_look)
+    };
+    let tank = [tank_draw, DrawModule::new(DrawKind::Other)];
     assert_eq!(draws_of(&ini, "Tank"), tank);
     // A reskin of no draw module keeps its base's; one of its own keeps none of them, and its
     // `ShowSubObject = None` empties the list before `Hatch`.
@@ -467,5 +474,92 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
             "Object A\n Behavior = DefaultProductionExitUpdate M\n  UnitCreatePoint = 1 2 3\n End\nEnd\n"
         ),
         IniError::Coord { line: 3 }
+    );
+}
+
+/// A shell, of its curve's fields, a life of its own and a field the import does not read, and a
+/// tank whose AI module holds a turret and a second one, its `AltTurret`, after a module of a
+/// block named `Turret` that is no AI's.
+const FIGHTERS: &str = "Object Shell
+  Behavior = DumbProjectileBehavior ModuleTag_01
+    FirstHeight = 10
+    SecondHeight = 2.5
+    FirstPercentIndent = 50%
+    SecondPercentIndent = 90%
+    FlightPathAdjustDistPerSecond = 100
+    MaxLifespan = 5000
+    TumbleRandomly = Yes
+  End
+End
+Object Gun
+  Behavior = SlowDeathBehavior ModuleTag_01
+    Turret
+      TurretTurnRate = 1
+    End
+  End
+  Behavior = AIUpdateInterface ModuleTag_02
+    Turret
+      TurretTurnRate = 60
+      ControlledWeaponSlots = PRIMARY TERTIARY
+    End
+    AltTurret
+      TurretTurnRate = 90
+      ControlledWeaponSlots = SECONDARY
+    End
+  End
+End
+Object Plain
+  Behavior = DumbProjectileBehavior ModuleTag_01
+  End
+  Behavior = AIUpdateInterface ModuleTag_02
+    Turret
+    End
+  End
+End
+";
+
+#[test]
+fn an_object_gives_combat_its_shells_curve_and_its_first_turret() {
+    let mut ini = ObjectIni::default();
+    ini.read(FIGHTERS.as_bytes()).unwrap();
+    let fight = |name: &str| ini.objects[name].fight().clone();
+    // A percent is a fraction of 1: 50% is 0.5, and 90% is 90 ÷ 100 in the game's `f32`.
+    assert_eq!(
+        fight("Shell").shell,
+        Some(IniShell {
+            first_height: 10.0,
+            second_height: 2.5,
+            first_indent: 0.5,
+            second_indent: 90.0 / 100.0,
+            follow: 100.0,
+            lifespan_ms: 5000,
+        })
+    );
+    // The AI module's first turret, of its slots; the death module's block and the second
+    // turret are none of it.
+    assert_eq!(
+        fight("Gun").turret,
+        Some(IniTurret {
+            turn_rate: 60.0,
+            slots: [true, false, true],
+        })
+    );
+    assert_eq!(fight("Gun").shell, None);
+    // Of no field, a shell lives 10 s on a straight curve, and a turret turns 0.01 radians a
+    // frame, 0.01 × 30 ÷ (π ÷ 180) a second, each step in `f32`: 0.3 ÷ 0.017453292 =
+    // 17.188732147216797, of the bits 0x41898286, with no weapon.
+    let plain = fight("Plain");
+    assert_eq!(plain.shell, Some(IniShell::DEFAULT));
+    assert_eq!(plain.shell.unwrap().lifespan_ms, 10_000);
+    let turret = plain.turret.unwrap();
+    assert_eq!(turret.slots, [false; 3]);
+    assert_eq!(turret.turn_rate.to_bits(), 0x4189_8286);
+    // A slot the game does not name is refused at its line.
+    let mut bad = ObjectIni::default();
+    let text = "Object A\n Behavior = AIUpdateInterface M\n  Turret\n   ControlledWeaponSlots = \
+                FOURTH\n  End\n End\nEnd\n";
+    assert_eq!(
+        bad.read(text.as_bytes()),
+        Err(IniError::WeaponSlot { line: 4 })
     );
 }

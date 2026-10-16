@@ -6,9 +6,9 @@ use campfire_package::LoadError;
 use derive_more::Display;
 
 use crate::pins::{
-    CLIENT_OBJECTS, DRIVE_TICKS, FIGHT, FINGERPRINTS, FOUGHT, FightSteps, Fingerprints,
-    FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION,
-    ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS, WALLS,
+    CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FINGERPRINTS, FOUGHT, FactorySteps, FightSteps,
+    Fingerprints, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED,
+    PRODUCTION, ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS, WALLS,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -76,6 +76,9 @@ pub(crate) enum Failure {
     /// The production play's ticks or money differ from the pinned.
     #[display("it played production as {_0:?}, not {PRODUCTION:?}")]
     Production(ProductionSteps),
+    /// The factory's chain's ticks or money differ from the pinned.
+    #[display("it built the factory's chain as {_0:?}, not {FACTORY:?}")]
+    Factory(FactorySteps),
     /// The bot lacks the command center or the dozer the fight reads.
     #[display("the bot lacks its command center or its dozer")]
     FightStart,

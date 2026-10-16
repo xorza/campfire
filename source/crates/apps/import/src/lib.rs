@@ -7,7 +7,7 @@ mod texture;
 mod zero_hour;
 
 pub use crate::texture::error::TextureError;
-pub use crate::zero_hour::combat_import::{DroppedWeapon, WeaponDrop};
+pub use crate::zero_hour::combat_import::DroppedWeapon;
 pub use crate::zero_hour::error::{
     MapError, ModelError, NameClash, NoPackagePath, TypeError, VersionDifference, ZeroHourError,
 };
@@ -19,4 +19,5 @@ pub use crate::zero_hour::format::ref_pack::error::RefPackError;
 pub use crate::zero_hour::format::w3d::error::W3dError;
 pub use crate::zero_hour::game_version::GameVersion;
 pub use crate::zero_hour::production_import::{DropCause, DroppedButton};
+pub use crate::zero_hour::weapon_drop::WeaponDrop;
 pub use crate::zero_hour::{Imported, ImportedMap, SkipReason, SkippedModel, ZeroHour};

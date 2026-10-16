@@ -136,7 +136,7 @@ impl Projectiles {
         let book = world.resource::<ActionBook>();
         let action = book.get(by.action).expect("a cast's action is in the book");
         let to_point = matches!(action.aim, Aim::Point { .. });
-        let spec = *world
+        let spec = world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
@@ -164,7 +164,7 @@ impl Projectiles {
                 aimed: target.unit(),
             };
             let launch = map.position(aim.from);
-            let curve = Flight::curve(aim, &spec, map);
+            let curve = Flight::curve(aim, spec, map);
             Self::push(world, by, unit_type, launch, None, [curve]);
             return;
         }
@@ -175,7 +175,7 @@ impl Projectiles {
         let Some(aim) = offset.normalized() else {
             return;
         };
-        let range = Self::range(&spec, action.values(by.rank).range);
+        let range = Self::range(spec, action.values(by.rank).range);
         let distance = offset.length();
         let range = if to_point {
             Some(range.map_or(distance, |range| range.min(distance)))

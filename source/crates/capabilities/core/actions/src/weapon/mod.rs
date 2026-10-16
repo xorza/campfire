@@ -1,4 +1,5 @@
 use campfire_common::Ticks;
+use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_stats::StatId;
 use campfire_values::{DamageKind, NameId, Speed, Tag, TagSet};
@@ -85,17 +86,21 @@ impl Pitch {
         }
     }
 
-    /// Whether the point `to` lies within its pitches from the point `from`, against the ground
-    /// plane: the pitch `φ` of the way from one to the other, its rise `y` over its run on the
-    /// ground `r`, is at least `θ` exactly when `sin(φ − θ) ≥ 0`, so `y cos θ ≥ r sin θ`, its run
-    /// to the nearest bit and each product exact.
-    pub fn holds(&self, from: Vec3, to: Vec3) -> bool {
-        let rise = i128::from(to.y.to_bits()) - i128::from(from.y.to_bits());
-        let run = i128::from(from.ground_offset(to).length().to_bits());
-        let side = |bound: SinCos| {
+    /// Whether `target` lies within its pitches from the point `from`, against the ground plane,
+    /// as Zero Hour's `Weapon::isWithinTargetPitch` measures a target: the pitches from `from` to
+    /// the volume's bottom and to its top, at its place on the ground plane, meet its least and
+    /// its most. A pitch `φ`, its rise `y` over its run on the ground `r`, is at least `θ` exactly
+    /// when `sin(φ − θ) ≥ 0`, so `y cos θ ≥ r sin θ`, the run to the nearest bit and each product
+    /// exact.
+    pub fn reaches(&self, from: Vec3, target: &Volume) -> bool {
+        let bottom = target.base.pos;
+        let top = i128::from((bottom.y + target.height).to_bits());
+        let run = i128::from(from.ground_offset(bottom).length().to_bits());
+        let side = |bound: SinCos, height: i128| {
+            let rise = height - i128::from(from.y.to_bits());
             rise * i128::from(bound.cos.to_bits()) - run * i128::from(bound.sin.to_bits())
         };
-        side(self.low) >= 0 && side(self.high) <= 0
+        side(self.low, top) >= 0 && side(self.high, i128::from(bottom.y.to_bits())) <= 0
     }
 }
 

@@ -38,12 +38,15 @@ pub struct CurveData {
     pub life_ms: Option<u32>,
 }
 
-/// What a projectile hits. In data: `none`, or a filter of the units it hits.
+/// What a projectile hits. In data: `none`, a filter of the units it hits, or a list of filters,
+/// any one of which selects a unit it hits (20-zero-hour-projectiles.md, A projectile hits by any
+/// of its filters).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectileHits {
     /// No unit: it flies to its end, as Snow Owl flies to its point.
     Nothing,
-    Units(FilterData),
+    /// The units any of its filters selects, of which it holds one at least.
+    Units(Vec<FilterData>),
 }
 
 /// Data is untrusted, so a speed that is not positive, a width or a range that is negative, a
@@ -99,7 +102,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
             homing: fields.homing,
             stop_on_hit: fields.stop_on_hit,
             once_per_cast: fields.once_per_cast,
-            hits: fields.hits.unwrap_or(ProjectileHits::ENEMIES),
+            hits: fields.hits.unwrap_or_else(ProjectileHits::enemies),
             gravity: fields.gravity,
             curve: fields.curve,
         })
@@ -157,20 +160,37 @@ impl<'de> Deserialize<'de> for CurveData {
 
 impl ProjectileHits {
     /// The units of `enemies`, which a projectile hits when its data names none.
-    pub const ENEMIES: Self = Self::Units(FilterData {
-        relations: RelationSet::Enemies,
-        tags: Vec::new(),
-    });
+    pub fn enemies() -> Self {
+        Self::Units(vec![FilterData {
+            relations: RelationSet::Enemies,
+            tags: Vec::new(),
+        }])
+    }
 }
 
+/// Data is untrusted, so a list of no filter, which `none` says, fails to read.
 impl<'de> Deserialize<'de> for ProjectileHits {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        match text.as_str() {
-            "none" => Ok(Self::Nothing),
-            filter => FilterData::parse(filter)
-                .map(ProjectileHits::Units)
-                .ok_or_else(|| D::Error::custom(format!("filter {filter:?}"))),
+        #[derive(Debug, Deserialize)]
+        #[serde(untagged)]
+        enum Fields {
+            One(String),
+            Any(Vec<String>),
+        }
+        let filter = |text: &str| {
+            FilterData::parse(text).ok_or_else(|| D::Error::custom(format!("filter {text:?}")))
+        };
+        match Fields::deserialize(deserializer)? {
+            Fields::One(text) if text == "none" => Ok(Self::Nothing),
+            Fields::One(text) => Ok(Self::Units(vec![filter(&text)?])),
+            Fields::Any(texts) if texts.is_empty() => Err(D::Error::custom(
+                "a list of hits holds a filter at least; `none` hits no unit",
+            )),
+            Fields::Any(texts) => texts
+                .iter()
+                .map(|text| filter(text))
+                .collect::<Result<_, _>>()
+                .map(Self::Units),
         }
     }
 }
@@ -188,7 +208,7 @@ pub(crate) mod internals {
     impl ProjectileData {
         /// A projectile of `speed` m/s and nothing more, as a section that names its speed alone
         /// reads: no width, its action's range, along a line, through what it hits.
-        pub const fn flying(speed: Num) -> Self {
+        pub fn flying(speed: Num) -> Self {
             Self {
                 speed,
                 width: Num::ZERO,
@@ -196,7 +216,7 @@ pub(crate) mod internals {
                 homing: false,
                 stop_on_hit: false,
                 once_per_cast: false,
-                hits: ProjectileHits::ENEMIES,
+                hits: ProjectileHits::enemies(),
                 gravity: None,
                 curve: None,
             }

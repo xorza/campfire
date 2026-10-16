@@ -4,7 +4,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use campfire_client_files::MaterialFile;
 use campfire_codec::Toml;
 use campfire_package_disk::PackageWriter;
-use campfire_values::PackagePath;
 
 use crate::zero_hour::error::{NoPackagePath, ZeroHourError};
 use crate::zero_hour::game_path;
@@ -71,11 +70,6 @@ impl<'i, 'w> ModelWriter<'i, 'w> {
             Entry::Occupied(known) => known.into_mut(),
             Entry::Vacant(new) => new.insert(self.converter.convert(name)?),
         })
-    }
-
-    /// Writes the package's file at `path`.
-    pub(crate) fn write(&mut self, path: PackagePath, bytes: &[u8]) -> Result<(), ZeroHourError> {
-        Ok(self.converter.writer.write(path, bytes)?)
     }
 
     pub(crate) fn report(self) -> ModelReport {

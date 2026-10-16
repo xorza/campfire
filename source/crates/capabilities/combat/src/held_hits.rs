@@ -20,11 +20,6 @@ struct HeldHit {
 }
 
 impl HeldHits {
-    /// How many hits are on their way.
-    pub(crate) const fn len(&self) -> usize {
-        self.0.len()
-    }
-
     /// Holds `damage` until `lands`.
     pub(crate) fn hold(&mut self, lands: Tick, damage: Damage) {
         self.0.push(HeldHit { lands, damage });
@@ -55,5 +50,17 @@ impl SimResource for HeldHits {
     // them.
     fn check(&self, world: &World) -> bool {
         self.0.iter().all(|hit| hit.damage.known(world))
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::held_hits::HeldHits;
+
+    impl HeldHits {
+        /// How many hits are on their way.
+        pub(crate) const fn len(&self) -> usize {
+            self.0.len()
+        }
     }
 }

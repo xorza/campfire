@@ -15,9 +15,9 @@ use tracing::info;
 use crate::error::CheckError;
 use crate::failure::Failure;
 use crate::pins::{
-    CLIENT_OBJECTS, DRIVE_TICKS, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS,
-    OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS,
-    WALLS,
+    CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS, LookCounts,
+    MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn, UNIT_TYPES,
+    UNITS, WALLS,
 };
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
@@ -242,8 +242,11 @@ impl ImportCheck<'_> {
             .game
             .mode_packages(Some(self.map))
             .map_err(CheckError::Load)?;
-        if let Some(SkirmishSteps { production, fight }) =
-            SkirmishPlay::run(played, rate, &mut self.failures)
+        if let Some(SkirmishSteps {
+            production,
+            factory,
+            fight,
+        }) = SkirmishPlay::run(played, rate, &mut self.failures)
         {
             if production != PRODUCTION {
                 self.failures.push(Failure::Production(production));
@@ -255,16 +258,26 @@ impl ImportCheck<'_> {
                 money = ?production.money,
                 "player 1 trained a dozer, built a barracks and trained a ranger"
             );
+            if factory != FACTORY {
+                self.failures.push(Failure::Factory(factory));
+            }
+            info!(
+                ticks = ?factory.ticks,
+                money = factory.money,
+                "player 1 built a power plant, a supply center and a war factory"
+            );
             if fight != FIGHT {
                 self.failures.push(Failure::Fight(fight));
             }
             info!(
                 train = fight.train_ticks,
+                shot = ?fight.shot_ticks,
+                hit = ?fight.hit_ticks,
                 fight = fight.fight_ticks,
                 money = fight.money,
                 result = ?fight.result,
                 killed = fight.killed,
-                "player 1's rangers destroyed the bot's command center"
+                "player 1's crusaders' shells destroyed the bot's command center"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

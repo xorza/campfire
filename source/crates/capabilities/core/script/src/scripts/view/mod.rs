@@ -21,6 +21,7 @@ use crate::scripts::view::view_names::ViewNames;
 use crate::scripts::view::view_rows::ViewRows;
 
 pub(crate) mod filter;
+pub(crate) mod filters;
 pub(crate) mod kept_rows;
 pub(crate) mod living_unit;
 pub(crate) mod row_fill;

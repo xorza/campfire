@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_PI_4;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -7,13 +8,15 @@ use bevy::ecs::world::World;
 use bevy::tasks::{IoTaskPool, TaskPool};
 use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
+use campfire_actions::ShotDamage;
 use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
 use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 use campfire_math::Num;
+use campfire_projectiles::{Flight, Payload};
 use campfire_sim::IdAllocator;
 use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
-use campfire_values::{DeclaredName, PackageIndex, PackagePath};
+use campfire_values::{ActionId, DamageKind, DeclaredName, PackageIndex, PackagePath, Rank};
 
 use super::*;
 
@@ -346,6 +349,112 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let world = app.world();
     assert_eq!(world.get::<Shape>(root).unwrap().height, 3.8);
     assert!(!world.entity(root).contains::<FitsModel>());
+}
+
+#[test]
+fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as_a_ball() {
+    IoTaskPool::get_or_init(TaskPool::new);
+    let mut app = view();
+    app.init_asset::<WorldAsset>();
+    let shell = ClientUnit::new(vec![ClientModel {
+        model: PackagePath::parse("client/models/shell.glb").unwrap(),
+        scale: ModelScale::new(2.0).unwrap(),
+        hide: Vec::new(),
+    }]);
+    let data = ClientData {
+        units: vec![ClientUnits {
+            units: [(DeclaredName::new("shell").unwrap(), shell)]
+                .into_iter()
+                .collect(),
+            ..ClientUnits::default()
+        }],
+        ..ClientData::default()
+    };
+    let origins: TypeOriginBook = ["shell", "bolt"]
+        .map(|name| TypeOrigin {
+            package: PackageIndex::MODE,
+            name: name.into(),
+        })
+        .into_iter()
+        .collect();
+    let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
+    app.insert_resource(looks);
+    app.insert_resource(data);
+    let [(shell_type, _), (bolt_type, _)] = [0, 1].map(|at| origins.iter().nth(at).unwrap());
+    let mut ids = IdAllocator::default();
+    let source = ids.allocate();
+    let flight = Flight::Homing { target: source };
+    let payload = Payload::Attack(ShotDamage {
+        action: ActionId::new(0),
+        amount: Num::ONE,
+        kind: DamageKind::new(0),
+        rank: Rank::FIRST,
+        roll: Num::ZERO,
+    });
+    let projectile = || Projectile::new(source, flight, payload).unwrap();
+    // A shell 3 m up at (1, 0); a bolt of no look beside it.
+    let shell = app
+        .world_mut()
+        .spawn((
+            ids.allocate(),
+            Position::from((1, 3, 0)),
+            shell_type,
+            projectile(),
+        ))
+        .id();
+    let bolt = app
+        .world_mut()
+        .spawn((
+            ids.allocate(),
+            Position::from((4, 0, 0)),
+            bolt_type,
+            projectile(),
+        ))
+        .id();
+    app.update();
+    // The shell's root stands at its height, unturned, over its one model at its scale.
+    let (shell_root, _, at) = root(app.world(), shell);
+    assert_eq!(at, Vec3::new(1.0, 3.0, 0.0));
+    let world = app.world();
+    assert_eq!(
+        world.get::<Transform>(shell_root).unwrap().rotation,
+        Quat::IDENTITY
+    );
+    let children = world.get::<Children>(shell_root).unwrap();
+    assert_eq!(children.len(), 1);
+    let model = world.entity(children[0]);
+    assert!(model.get::<WorldAssetRoot>().is_some());
+    assert_eq!(model.get::<Transform>().unwrap().scale, Vec3::splat(2.0));
+    // It steps 3 m along +x and 3 m down, then 4 m along −z on the level: its `+x` turns 45°
+    // below the level, then a quarter about the vertical, from `+x` towards `−z`.
+    let turn = |app: &mut App, to: (i32, i32, i32)| {
+        app.world_mut().entity_mut(shell).insert(Position::from(to));
+        app.update();
+        app.world().get::<Transform>(shell_root).unwrap().rotation
+    };
+    let down = turn(&mut app, (4, 0, 0));
+    assert!(
+        down.abs_diff_eq(Quat::from_rotation_z(-FRAC_PI_4), 1e-6),
+        "{down}"
+    );
+    assert!((down * Vec3::X).abs_diff_eq(Vec3::new(1.0, -1.0, 0.0).normalize(), 1e-6));
+    let level = turn(&mut app, (4, 0, -4));
+    assert!(
+        level.abs_diff_eq(Quat::from_rotation_y(FRAC_PI_2), 1e-6),
+        "{level}"
+    );
+    // A step of no length keeps the turn.
+    assert_eq!(turn(&mut app, (4, 0, -4)), level);
+    // The bolt is a ball at a chest's height over its place, which turns none.
+    let world = app.world();
+    let (bolt_root, _, at) = root(world, bolt);
+    assert_eq!(at, Vec3::new(4.0, 0.0, 0.0));
+    assert!(world.get::<Heading>(bolt_root).is_none());
+    let ball = world.get::<Children>(bolt_root).unwrap()[0];
+    assert_eq!(
+        world.get::<Transform>(ball).unwrap().translation,
+        Vec3::Y * SHOT_HEIGHT
+    );
 }
 
 #[test]
