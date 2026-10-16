@@ -37,6 +37,7 @@ Every change moves the engine toward one shape. The rules and the tests that hol
 - **A pass visits what changed:** no query state, structural change or allocation per item on a hot path, and a fact fixed at install or load is a fact of the schedule, not a check each tick.
 - **Each crate depends only on lower layers,** and a capability asks another for its work through a contract below both, never by writing its state.
 - **One rendering pipeline for every game.** An importer converts its game to Bevy's standard material and the generic formats, and writes down what it loses; a need the pipeline cannot say becomes a general feature, never a path, a flag or a shader for one game.
+- **A capability serves every game.** It names no game, genre or constant of one game. What a game expects is configuration: its rules package supplies it as data and Rhai, and the import ships that package with the game. A need that no configuration can express becomes a general option of the capability, never a path or a flag for one game ([Games](docs/design/04-capabilities/games.md)).
 - **Bevy's own mechanisms, not hand-made ones:** run conditions and `If`, observers, one-shot systems, required components, sparse-set storage, plugin groups.
 
 ## Workflow
