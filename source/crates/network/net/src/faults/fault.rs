@@ -1,9 +1,10 @@
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_store::{AppendError, DurableError, PathError};
+use campfire_store::AppendError;
 
 use crate::events::checkpoint_failed::CheckpointFailed;
 use crate::events::journal_failed::JournalFailed;
 use crate::events::receipt_unsaved::ReceiptUnsaved;
+use crate::faults::error::{ReceiptWriteError, SnapshotWriteError};
 
 /// A worker's failure, typed by the step that failed, with its source.
 #[derive(Debug)]
@@ -11,9 +12,9 @@ pub(crate) enum Fault {
     /// The session's journal stopped at a failed write or sync.
     Journal(AppendError),
     /// A checkpoint's snapshot was not written.
-    Snapshot(PathError<DurableError>),
+    Snapshot(SnapshotWriteError),
     /// A client's newest receipt was not written.
-    Receipt(PathError<DurableError>),
+    Receipt(ReceiptWriteError),
 }
 
 /// What a fault does, beyond its log.

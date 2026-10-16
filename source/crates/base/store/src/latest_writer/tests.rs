@@ -4,7 +4,7 @@ use std::thread;
 use super::*;
 
 #[test]
-fn the_newest_value_replaces_one_not_written_and_each_failure_is_taken_once() {
+fn the_newest_value_replaces_one_not_written_and_the_newest_failure_is_taken_once() {
     // The worker writes into `written`, after the test's word for each write; odd values fail.
     let (go, gate) = mpsc::channel::<()>();
     let written = Arc::new(Mutex::new(Vec::new()));
@@ -23,15 +23,22 @@ fn the_newest_value_replaces_one_not_written_and_each_failure_is_taken_once() {
     writer.give(3);
     go.send(()).unwrap();
     go.send(()).unwrap();
-    while writer.shared.slot.lock().failures.len() < 2 {
+    while writer.shared.slot.lock().failure != Some(3) {
         thread::yield_now();
     }
+    // Both failed, and 3's failure replaced 1's, as the newest: it is taken once.
     assert_eq!(*written.lock().unwrap(), [1, 3]);
-    assert_eq!(writer.take_failures(), [1, 3]);
-    assert!(writer.take_failures().is_empty());
-    // Dropped, the writer writes the value it holds.
+    assert_eq!(writer.take_failure(), Some(3));
+    assert_eq!(writer.take_failure(), None);
+    // Closed, the writer writes the value it holds, and gives back its failure, which a failure
+    // stops nothing before: 4 is written, then 5, which fails.
     writer.give(4);
     go.send(()).unwrap();
-    drop(writer);
-    assert_eq!(*written.lock().unwrap(), [1, 3, 4]);
+    while writer.shared.slot.lock().newest.is_some() {
+        thread::yield_now();
+    }
+    writer.give(5);
+    go.send(()).unwrap();
+    assert_eq!(writer.close(), Some(5));
+    assert_eq!(*written.lock().unwrap(), [1, 3, 4, 5]);
 }

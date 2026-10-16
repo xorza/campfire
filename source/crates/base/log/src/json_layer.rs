@@ -25,6 +25,7 @@ pub(crate) mod internals {
     )]
 
     use std::cell::RefCell;
+    use std::fmt::Debug;
     use std::io::{self, Write};
     use std::mem;
     use std::rc::{Rc, Weak};
@@ -42,6 +43,15 @@ pub(crate) mod internals {
     use crate::json_layer::json;
     use crate::log_event::LogEvent;
     use crate::log_line::LogLine;
+
+    /// Asserts that `event` logs one JSON line, which reads back as `event`.
+    pub fn round_trip<E: LogEvent + PartialEq + Debug>(event: &E) {
+        let lines = capture(|| event.log());
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let line = LogLine::parse(&lines[0]).unwrap();
+        let read = line.read::<E>().expect("the line is the event");
+        assert_eq!(read.as_ref().ok(), Some(event), "{}: {read:?}", lines[0]);
+    }
 
     thread_local! {
         /// The check the fixtures of the thread share, while one of them holds it.

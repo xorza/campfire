@@ -1,5 +1,3 @@
-use std::mem;
-
 use postcard::ser_flavors::Flavor;
 use serde::{Deserialize, Serialize};
 
@@ -24,12 +22,14 @@ pub struct Taken<'a, T> {
 impl Binary {
     /// The bytes of `value`.
     pub fn encode<T: Serialize + ?Sized>(value: &T) -> Vec<u8> {
-        postcard::to_allocvec(value).expect("a value encodes in postcard")
+        let mut out = Vec::new();
+        Self::encode_to(value, &mut out);
+        out
     }
 
     /// Appends the bytes of `value` to `out`.
     pub fn encode_into<T: Serialize + ?Sized>(value: &T, out: &mut Vec<u8>) {
-        *out = postcard::to_extend(value, mem::take(out)).expect("a value encodes in postcard");
+        Self::encode_to(value, out);
     }
 
     /// Writes the bytes of `value` into `sink`, in batches.
@@ -221,21 +221,21 @@ mod tests {
     }
 
     #[test]
-    fn every_encode_writes_the_same_bytes() {
-        // A value longer than a batch of 64, so the sink takes it in more than one call.
+    fn an_encode_appends_its_bytes_and_each_value_follows_the_last() {
+        // A value longer than a batch of 64: 1 + 100 bytes of the list, 300 in 2, and "end" in
+        // 1 + 3, after the 9 `out` held.
         let value = (vec![7_u8; 100], 300_u32, "end");
-        let bytes = Binary::encode(&value);
-        assert_eq!(bytes.len(), 1 + 100 + 2 + 1 + 3);
         let mut appended = vec![9];
         Binary::encode_into(&value, &mut appended);
-        assert_eq!(appended, [&[9][..], &bytes].concat());
-        let mut sunk = Vec::new();
-        Binary::encode_to(&value, &mut sunk);
-        assert_eq!(sunk, bytes);
+        assert_eq!(appended.len(), 1 + 1 + 100 + 2 + 1 + 3);
+        assert_eq!(appended[..2], [9, 100]);
+        assert_eq!(
+            Binary::decode::<(Vec<u8>, u32, &str)>(&appended[1..]),
+            Ok(value)
+        );
         let mut each = Vec::new();
         Binary::encode_each_to([1_u8, 2, 3], &mut each);
         assert_eq!(each, [1, 2, 3]);
-        assert_eq!(Binary::decode::<(Vec<u8>, u32, &str)>(&bytes), Ok(value));
     }
 
     /// A value with options at each depth: a field, a tuple's inside a `Some`, a vector's

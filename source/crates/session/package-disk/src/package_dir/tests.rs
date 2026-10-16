@@ -1,4 +1,4 @@
-use campfire_codec::Toml;
+use campfire_codec::{Toml, TomlTable};
 use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
 
@@ -207,7 +207,7 @@ fn a_package_reads_its_own_files_only() {
     struct Hero {
         name: String,
         slots: BTreeMap<String, Vec<String>>,
-        actions: BTreeMap<String, toml::Table>,
+        actions: BTreeMap<String, TomlTable>,
     }
     #[derive(Debug, serde::Deserialize)]
     struct Named {

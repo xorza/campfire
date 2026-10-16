@@ -23,8 +23,8 @@ fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
     let journal = Fault::Journal(AppendError::Sync(io::Error::other("full")));
     let faults = [
         journal,
-        Fault::Snapshot(no_name("s")),
-        Fault::Receipt(no_name("r")),
+        Fault::Snapshot(no_name("s").into()),
+        Fault::Receipt(no_name("r").into()),
     ];
     assert_eq!(
         faults.each_ref().map(Fault::policy),
@@ -39,16 +39,16 @@ fn each_fault_is_logged_once_and_ends_the_server_as_its_policy_says() {
     world.init_resource::<Faults>();
     assert_eq!(Faults::apply(&mut world), None);
     // A receipt not written is logged, and play goes on.
-    let receipt = Fault::Receipt(no_name("receipt"));
+    let receipt = Fault::Receipt(no_name("receipt").into());
     world.resource_mut::<Faults>().report(receipt);
     assert_eq!(Faults::apply(&mut world), None);
     assert_eq!(log.take::<ReceiptUnsaved>().len(), 1);
     // A snapshot not written, with a receipt after it: both logged, and the server ends.
-    let snapshot = Fault::Snapshot(no_name("snapshot"));
+    let snapshot = Fault::Snapshot(no_name("snapshot").into());
     world.resource_mut::<Faults>().report(snapshot);
     world
         .resource_mut::<Faults>()
-        .report(Fault::Receipt(no_name("receipt")));
+        .report(Fault::Receipt(no_name("receipt").into()));
     let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
     assert_eq!(Faults::apply(&mut world), Some(AppExit::Error(code)));
     let failed = log.take::<CheckpointFailed>();

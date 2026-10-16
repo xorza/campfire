@@ -27,7 +27,7 @@ impl KeyFile {
                 ..
             })) => {
                 let key = RandomKey::generate(|bytes| entropy.fill(bytes));
-                match file.create(Nsec::encode(&key).as_bytes()) {
+                match file.create_new(Nsec::encode(&key).as_bytes()) {
                     Ok(()) => Ok(key),
                     Err(PathError {
                         error: DurableCreateError::Exists,
@@ -35,7 +35,7 @@ impl KeyFile {
                     }) => Self::read(file),
                     Err(PathError {
                         path,
-                        error: DurableCreateError::Write(error),
+                        error: DurableCreateError::Make(error),
                     }) => Err(KeyFileError::Write(PathError { path, error })),
                 }
             }

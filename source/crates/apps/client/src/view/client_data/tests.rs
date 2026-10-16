@@ -78,7 +78,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
 "#,
     )
     .unwrap();
-    let map = MapName::new("desert").unwrap();
+    let map = MapName::parse("desert").unwrap();
     let mode = package(
         &scratch,
         "mode",
@@ -133,7 +133,7 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
 #[test]
 fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_them() {
     let scratch = Scratch::new();
-    let map = MapName::new("desert").unwrap();
+    let map = MapName::parse("desert").unwrap();
     // 3 × 2 samples, 10 m apart from (0, 0): 0, 16 and 0 steps of 0.625 m on row 0, then 16, 0
     // and 16, so the cells' two diagonals differ.
     let grid = HeightGrid::new(

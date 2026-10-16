@@ -221,6 +221,12 @@ impl SessionLog {
         }
     }
 
+    /// Closes its journal, the sink's drop writing what the sink holds before it ends, as a
+    /// session that ends does before its log is published: the log keeps no journal after.
+    pub fn close_journal(&mut self) {
+        self.journal = None;
+    }
+
     /// Notes where each player's chain stands once the first `durable` records the log wrote
     /// into its journal's sink are synced, as the sink's writer counts them.
     pub fn advance_durable(&mut self, durable: u64) {

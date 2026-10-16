@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, Read};
 
-use campfire_common::{ContentHash, ContentHasher};
+use campfire_common::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_values::PackagePath;
 
 use crate::error::ContentError;
@@ -34,7 +34,7 @@ impl PackageWalk {
         mut file: impl Read,
     ) -> Result<ContentHash, ContentError> {
         self.stream.resize(STREAM_CHUNK, 0);
-        let mut hasher = ContentHasher::default();
+        let mut hasher = ContentHasher::<ContentHashMeaning>::new();
         let mut size = 0_u64;
         loop {
             let count = match file.read(&mut self.stream) {

@@ -38,9 +38,9 @@ mod hash_sink;
 pub(crate) mod state_delta;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
-const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/state/v1");
+const HASH_DOMAIN: HashDomain<StateHash> = HashDomain::new("campfire/state/v1");
 /// The domain of `StateRegistry::digest`.
-const DIGEST_DOMAIN: HashDomain = HashDomain::new("campfire/digest/v1");
+const DIGEST_DOMAIN: HashDomain<StateHash> = HashDomain::new("campfire/digest/v1");
 /// Starts every snapshot, so other bytes are refused at once.
 const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
 /// The built-in type listing every live stable id, so an entity with no registered component
@@ -297,7 +297,7 @@ impl StateRegistry {
     pub fn digest(bytes: &[u8]) -> StateHash {
         let mut hasher = DomainHasher::new(DIGEST_DOMAIN);
         hasher.update(bytes);
-        StateHash::new(hasher.finish())
+        hasher.finish()
     }
 
     pub fn hash(&self, world: &World) -> StateHash {
@@ -331,7 +331,7 @@ impl StateRegistry {
             let body_len = u64::try_from(body.len()).expect("snapshot above 2⁶⁴ bytes");
             out[len_at..len_at + BODY_LEN_BYTES].copy_from_slice(&body_len.to_le_bytes());
         }
-        StateHash::new(total.finish())
+        total.finish()
     }
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
@@ -557,7 +557,7 @@ impl StateRegistry {
                 });
             }
         }
-        StateHash::new(total.finish())
+        total.finish()
     }
 }
 
@@ -568,7 +568,7 @@ impl Default for StateRegistry {
 }
 
 /// Adds the hash of the type `name` to a state hash's `total`.
-fn fold(total: &mut DomainHasher, name: &str, hash: &PartHash) {
+fn fold(total: &mut DomainHasher<StateHash>, name: &str, hash: &PartHash) {
     total
         .update(&name_len(name).to_le_bytes())
         .update(name.as_bytes())

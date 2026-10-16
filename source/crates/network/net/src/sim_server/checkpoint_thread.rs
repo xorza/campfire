@@ -3,8 +3,9 @@ use std::collections::VecDeque;
 use bevy_ecs::world::World;
 use campfire_protocol::{Checkpoint, CheckpointBegun};
 use campfire_sim::{EntityIndex, StateDelta, StateRegistry};
-use campfire_store::{DurableError, Exchange, PathError};
+use campfire_store::Exchange;
 
+use crate::faults::error::SnapshotWriteError;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// The thread that takes a session's checkpoints off the main thread. It holds its own copy of
@@ -41,7 +42,7 @@ pub(crate) enum Returned {
     /// The checkpoint begun there: its record, its snapshot written.
     Taken(Checkpoint),
     /// The checkpoint begun there, whose snapshot was not written.
-    Failed(PathError<DurableError>),
+    Failed(SnapshotWriteError),
 }
 
 /// The checkpoint thread's copy of the match's state, and what it takes checkpoints with.
@@ -141,7 +142,7 @@ impl CheckpointCopy {
     }
 
     /// The record of `begun`, of the copy as it stands, once its snapshot is written.
-    fn take(&mut self, begun: CheckpointBegun) -> Result<Checkpoint, PathError<DurableError>> {
+    fn take(&mut self, begun: CheckpointBegun) -> Result<Checkpoint, SnapshotWriteError> {
         let state_hash = self.registry.snapshot(&self.world, &mut self.snapshot);
         let fingerprint = self.snapshots.write(&self.snapshot)?;
         let record = Checkpoint {

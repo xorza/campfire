@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use super::*;
+use crate::scratch::Scratch;
 
 /// A file that holds what is written to it, each write after the test's word, and fails each
 /// write of a piece that starts with `!`.
@@ -87,7 +88,7 @@ fn a_failed_write_stops_the_stream_keeps_its_failure_and_drops_what_follows() {
     let sender = writer.sender();
     sender.put(|out| out.extend_from_slice(b"!x"));
     go.send(()).unwrap();
-    while !writer.shared.pending.lock().failed {
+    while !writer.shared.pending.lock().stopped {
         thread::yield_now();
     }
     // Pieces after the failure are dropped, even past the bound, with no wait.
@@ -148,4 +149,20 @@ fn a_writer_dropped_as_a_panic_unwinds_closes_over_a_piece_that_panicked() {
         panic::panic_any(9_u32);
     }));
     assert_eq!(unwound.unwrap_err().downcast_ref::<u32>(), Some(&9));
+}
+
+#[test]
+fn a_created_stream_is_its_owners_only_and_empties_a_file_there() {
+    let scratch = Scratch::new();
+    let fresh = scratch.path("fresh");
+    drop(StreamWriter::create("stream", &fresh, 16).unwrap());
+    assert_eq!(OwnerOnly::exposure_at(&fresh).unwrap(), None);
+    assert_eq!(scratch.read_text(Path::new("fresh")), "");
+    // A file there is emptied before the stream's first piece.
+    let kept = Path::new("kept");
+    scratch.write(kept, "old text");
+    let writer = StreamWriter::create("stream", &scratch.path("kept"), 16).unwrap();
+    writer.sender().put(|out| out.extend_from_slice(b"new"));
+    assert!(writer.close().is_none());
+    assert_eq!(scratch.read_text(kept), "new");
 }

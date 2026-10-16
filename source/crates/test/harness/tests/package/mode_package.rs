@@ -8,7 +8,7 @@ use campfire_actions::{
     LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
 use campfire_capabilities::{Release, UnitStartError};
-use campfire_codec::Toml;
+use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_common::MapName;
 use campfire_geometry::Metric;
 use campfire_mode::ModeError;
@@ -3154,9 +3154,9 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
 /// `pos` and a `points` list to y = 0, and a region from y = 0 to 10, as a spatial region is a
 /// box with height; not the bounds, which stay on the ground plane.
 fn raised(map: &str) -> String {
-    fn raise(value: &mut toml::Value, height: Option<i64>) {
+    fn raise(value: &mut TomlNode, height: Option<i64>) {
         match value {
-            toml::Value::Table(table) => {
+            TomlNode::Table(table) => {
                 let region = table.contains_key("min") && !table.contains_key("cell");
                 for (key, inner) in table.iter_mut() {
                     let height = match key.as_str() {
@@ -3168,28 +3168,28 @@ fn raised(map: &str) -> String {
                     raise(inner, height);
                 }
             }
-            toml::Value::Array(items) => match height {
-                Some(y) if !items[0].is_array() => items.insert(1, toml::Value::Integer(y)),
+            TomlNode::List(items) => match height {
+                Some(y) if !matches!(items[0], TomlNode::List(_)) => {
+                    items.insert(1, TomlNode::Integer(y));
+                }
                 _ => {
                     for item in items {
                         raise(item, height);
                     }
                 }
             },
-            _ => {}
+            TomlNode::Integer(_) | TomlNode::Float(_) | TomlNode::Text(_) | TomlNode::Flag(_) => {}
         }
     }
-    let mut table = Toml::parse::<toml::Table>(map).unwrap();
-    for (key, value) in &mut table {
+    let mut document = TomlDocument::parse(map);
+    let table = document.table_mut();
+    for (key, value) in table.iter_mut() {
         if key != "bounds" {
             raise(value, None);
         }
     }
-    table.insert(
-        "metric".to_owned(),
-        toml::Value::String("spatial".to_owned()),
-    );
-    Toml::write(&table)
+    table.insert("metric".to_owned(), TomlNode::Text("spatial".to_owned()));
+    document.text()
 }
 
 #[test]
@@ -3235,7 +3235,7 @@ fn a_mode_loads_the_map_its_session_names() {
     // and a third is no map of the mode.
     let map = PackageTree::of(TestMode::Moba3v3).text(MAP).to_owned();
     let raised = raised(&map);
-    let second = MapName::new("second").unwrap();
+    let second = MapName::parse("second").unwrap();
     let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
@@ -3243,7 +3243,7 @@ fn a_mode_loads_the_map_its_session_names() {
     let spatial = two.mode_packages(&second).unwrap();
     assert_eq!(spatial.map_name(), &second);
     assert_eq!(spatial.map().metric, Metric::Spatial);
-    let third = MapName::new("third").unwrap();
+    let third = MapName::parse("third").unwrap();
     let error = two.mode_packages(&third).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
 

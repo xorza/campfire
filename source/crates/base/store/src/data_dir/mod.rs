@@ -23,20 +23,27 @@ pub struct DataDir {
 
 impl DataDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<Self, PathError<DataDirError>> {
-        Self::open_case(path).map_err(PathError::at(path))
-    }
-
-    fn open_case(path: &Path) -> Result<Self, DataDirError> {
+    pub fn open(path: &Path) -> Result<Self, DataDirError> {
         DurableDir::create_all(path).map_err(DataDirError::Create)?;
-        if let Some(exposure) = OwnerOnly::dir_exposure(path).map_err(DataDirError::Inspect)? {
-            return Err(DataDirError::Exposed(exposure));
+        let exposure = OwnerOnly::dir_exposure(path)
+            .map_err(|error| DataDirError::Inspect(PathError::at(path)(error)))?;
+        if let Some(exposure) = exposure {
+            return Err(DataDirError::Exposed {
+                path: path.to_owned(),
+                exposure,
+            });
         }
-        let lock = OwnerOnly::open_or_create(&path.join("lock")).map_err(DataDirError::Lock)?;
+        let lock_path = path.join("lock");
+        let lock_error = |error| DataDirError::Lock(PathError::at(&lock_path)(error));
+        let lock = OwnerOnly::open_or_create(&lock_path).map_err(lock_error)?;
         match lock.try_lock() {
             Ok(()) => {}
-            Err(TryLockError::WouldBlock) => return Err(DataDirError::Locked),
-            Err(TryLockError::Error(error)) => return Err(DataDirError::Lock(error)),
+            Err(TryLockError::WouldBlock) => {
+                return Err(DataDirError::Locked {
+                    path: path.to_owned(),
+                });
+            }
+            Err(TryLockError::Error(error)) => return Err(lock_error(error)),
         }
         Ok(Self {
             path: path.to_owned(),

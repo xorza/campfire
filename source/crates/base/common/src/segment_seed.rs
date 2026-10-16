@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::domain_hasher::HashOutput;
 use crate::secret::Secret;
 
 /// The seed of one log segment. It stays secret until the segment is published.
@@ -18,5 +19,11 @@ impl SegmentSeed {
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
         self.0.as_bytes()
+    }
+}
+
+impl HashOutput for SegmentSeed {
+    fn of_hash(bytes: [u8; 32]) -> Self {
+        Self::new(bytes)
     }
 }

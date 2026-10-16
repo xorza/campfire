@@ -11,7 +11,7 @@ use campfire_protocol::{JournalFrames, SessionId, SessionLog, SessionPrivate, Si
 use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
 use campfire_sim::StateRegistry;
 use campfire_store::{
-    AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
+    AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
 };
 
@@ -20,7 +20,9 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+use crate::sim_server::session_dir::error::{
+    AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
+};
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
@@ -69,10 +71,7 @@ pub struct Publisher<'a> {
 impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
-    pub fn create(
-        data: &ServerDir,
-        private: &SessionPrivate,
-    ) -> Result<Self, PathError<DurableError>> {
+    pub fn create(data: &ServerDir, private: &SessionPrivate) -> Result<Self, SessionCreateError> {
         DurableDir::create(&data.layout().sessions_dir())?;
         let path = data.layout().session_dir(private.terms.session_id());
         DurableDir::create(&path)?;
@@ -205,12 +204,12 @@ impl SessionDir {
     }
 
     /// Removes the directory of a session whose match never started, which logged nothing.
-    pub fn remove(self) -> Result<(), PathError<DurableError>> {
-        Ok(DurableDir::remove(&self.path)?)
+    pub fn remove(self) -> Result<(), PathError<DurableDirError>> {
+        DurableDir::remove(&self.path)
     }
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
-    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PathError<DurableError>> {
+    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PublishError> {
         DurableDir::create(&data.layout().logs_dir())?;
         let file = data.layout().published_log(log.session_id());
         let mut bytes = Vec::new();
@@ -354,7 +353,7 @@ mod tests {
                 seed_commitment: seed_chain.commitment(),
                 release: Version::ENGINE,
                 mode: PackageFingerprint::new([1; 32]),
-                map: MapName::new("lane").unwrap(),
+                map: MapName::parse("lane").unwrap(),
                 dependencies: Vec::new(),
                 slots: vec![SlotPlan::Open],
                 visibility: Visibility::DEFAULT.encode(),

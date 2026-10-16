@@ -25,9 +25,9 @@ pub(crate) mod slow_sync;
 /// publishes how many records are durable; the next sync waits for the next records, so a burst
 /// of records shares one sync. A crash loses at most the records not yet synced. A failed write
 /// or sync is never retried, as the data a failed sync held may be lost and a retry can succeed
-/// over the loss: the worker stops, and reports the failure once. A sync slower than
-/// `SLOW_SYNC` is kept for the caller to see. Dropping the writer writes and syncs what it holds,
-/// then ends the worker.
+/// over the loss: the worker stops, and keeps the failure for its owner to take once, through
+/// the writer's watch or its `close`. A sync slower than `SLOW_SYNC` is kept for the caller to
+/// see. Closing or dropping the writer writes and syncs what it holds, then ends the worker.
 #[derive(Debug)]
 pub struct AppendWriter {
     shared: Arc<AppendShared>,
@@ -140,6 +140,14 @@ impl AppendWriter {
 
     pub fn watch(&self) -> AppendWatch {
         AppendWatch(Arc::clone(&self.shared))
+    }
+
+    /// Closes the writer, as a drop does, once the worker wrote and synced what it held; the
+    /// failure that stopped it, if one did and no `take_failure` took it.
+    pub fn close(self) -> Option<AppendError> {
+        let shared = Arc::clone(&self.shared);
+        drop(self);
+        shared.failure.take()
     }
 }
 

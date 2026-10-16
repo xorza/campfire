@@ -168,7 +168,7 @@ mod tests {
 
     #[test]
     fn a_waiting_sessions_map_is_loaded_and_another_asked_is_refused() {
-        let name = |name: &str| MapName::new(name).unwrap();
+        let name = |name: &str| MapName::parse(name).unwrap();
         let (lane, river) = (name("lane"), name("river"));
         // No session waits: the map asked, or none, for the mode's only map.
         assert_eq!(

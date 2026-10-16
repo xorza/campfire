@@ -74,7 +74,7 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
             TermsError::OtherMode,
         ),
         (
-            |terms| terms.map = MapName::new("other").unwrap(),
+            |terms| terms.map = MapName::parse("other").unwrap(),
             TermsError::OtherMap,
         ),
         (

@@ -1,3 +1,6 @@
+use std::fmt;
+use std::marker::PhantomData;
+
 use sha2::{Digest, Sha256};
 
 use crate::value32::{ContentMeaning, Meaning, Value32};
@@ -16,18 +19,40 @@ impl Meaning for ContentHashMeaning {
 
 impl ContentMeaning for ContentHashMeaning {}
 
-/// The SHA-256 of bytes given in parts, as a file streams past.
-#[derive(Debug, Default, Clone)]
-pub struct ContentHasher(Sha256);
+/// The SHA-256 of bytes given in parts, as a file streams past, of the content meaning `K`.
+pub struct ContentHasher<K> {
+    hasher: Sha256,
+    meaning: PhantomData<fn() -> K>,
+}
 
-impl ContentHasher {
-    pub fn update(&mut self, bytes: &[u8]) {
-        self.0.update(bytes);
+impl<K: ContentMeaning> ContentHasher<K> {
+    pub fn new() -> Self {
+        Self {
+            hasher: Sha256::new(),
+            meaning: PhantomData,
+        }
+    }
+
+    pub fn update(&mut self, bytes: &[u8]) -> &mut Self {
+        self.hasher.update(bytes);
+        self
     }
 
     /// The hash of every part given.
-    pub fn finish(self) -> ContentHash {
-        ContentHash::new(self.0.finalize().into())
+    pub fn finish(self) -> Value32<K> {
+        Value32::new(self.hasher.finalize().into())
+    }
+}
+
+impl<K: ContentMeaning> Default for ContentHasher<K> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<K> fmt::Debug for ContentHasher<K> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("ContentHasher").field(&self.hasher).finish()
     }
 }
 
@@ -40,7 +65,7 @@ mod tests {
         // SHA-256's own test vector, of "abc".
         let hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
         assert_eq!(ContentHash::of(b"abc"), ContentHash::of_hex(hex));
-        let mut hasher = ContentHasher::default();
+        let mut hasher = ContentHasher::<ContentHashMeaning>::new();
         for part in [&b"a"[..], b"", b"bc"] {
             hasher.update(part);
         }

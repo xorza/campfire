@@ -51,7 +51,7 @@ impl TestMode {
             Self::Ruled => "stand",
             Self::Skirmish => "field",
         };
-        MapName::new(name).expect("a test map's name")
+        MapName::parse(name).expect("a test map's name")
     }
 
     /// The mode's directory on disk.

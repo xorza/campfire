@@ -31,7 +31,7 @@ impl ImportName {
     }
 
     pub(crate) fn map(&self) -> MapName {
-        MapName::new(&self.0).expect("an import name is a map name")
+        MapName::parse(&self.0).expect("an import name is a map name")
     }
 }
 

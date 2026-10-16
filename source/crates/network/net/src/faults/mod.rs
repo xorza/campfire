@@ -5,6 +5,7 @@ use campfire_common::ExitStatus;
 
 use crate::faults::fault::{Fault, FaultPolicy};
 
+pub(crate) mod error;
 pub(crate) mod fault;
 
 /// The one surface of the workers' failures, on a server and on a client: each worker's failure

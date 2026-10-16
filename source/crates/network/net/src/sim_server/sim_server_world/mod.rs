@@ -3,11 +3,11 @@ use bevy_ecs::world::World;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use campfire_store::{DurableError, PathError};
 use tracing::error;
 
 use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
+use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
 use crate::match_clock::MatchClock;
 use crate::sim_server::Reload;
@@ -25,7 +25,7 @@ pub trait SimServerWorld {
     /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
     /// session runs. The server then publishes the log. An error when the checkpoint's snapshot
     /// was not written, as the log can then not be published: the session ends with no result.
-    fn end_session(&mut self) -> Result<(), PathError<DurableError>>;
+    fn end_session(&mut self) -> Result<(), SnapshotWriteError>;
 
     /// Whether the session went back to a save, and its server is to start again on
     /// its data, which restores the match from it.
@@ -35,8 +35,9 @@ pub trait SimServerWorld {
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
     /// match started, when `stop` asks it to or every player left, it ends the session, as the
-    /// mode ended the match or aborted; it then publishes the log in its `ServerDir`, and exits,
-    /// with an error when the log is not written, as the session it holds is lost.
+    /// mode ended the match or aborted, and closes its journal, whose last sync's failure ends it
+    /// as one in a frame does; it then publishes the log in its `ServerDir`, and exits, with an
+    /// error when the log is not written, as the session it holds is lost.
     fn exit_due(&mut self, stop: bool) -> Option<AppExit>;
 }
 
@@ -47,11 +48,11 @@ pub(crate) trait SimServerWorldCrate {
     /// says, which the journal logs. The match then runs no tick and logs nothing: its server
     /// starts again on its data, which restores the match from the save, once `reload_wanted`
     /// says so. An error when the checkpoint's snapshot was not written.
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>>;
+    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError>;
 }
 
 impl SimServerWorld for World {
-    fn end_session(&mut self) -> Result<(), PathError<DurableError>> {
+    fn end_session(&mut self) -> Result<(), SnapshotWriteError> {
         if self.contains_resource::<Checkpoints>() {
             Checkpoints::settle(self)?;
             self.remove_resource::<Checkpoints>();
@@ -87,6 +88,11 @@ impl SimServerWorld for World {
                 return Faults::apply(self);
             }
         }
+        self.session_mut().close_journal();
+        JournalWatch::report_failure(self);
+        if let Some(exit) = Faults::apply(self) {
+            return Some(exit);
+        }
         let session = self.resource::<Session>();
         let id = session.log().session_id();
         let hash = self.state_hash();
@@ -110,7 +116,7 @@ impl SimServerWorld for World {
 }
 
 impl SimServerWorldCrate for World {
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>> {
+    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError> {
         Checkpoints::settle(self)?;
         self.resource_mut::<Session>()
             .load(segment)

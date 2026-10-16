@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::seed_commitment::SeedCommitment;
 
 /// Starts each link of the seed chain, so no other BLAKE3 use can produce one.
-const CHAIN_DOMAIN: HashDomain = HashDomain::new("campfire/seed-chain/v1");
+const CHAIN_DOMAIN: HashDomain<SeedCommitment> = HashDomain::new("campfire/seed-chain/v1");
 
 /// A segment's server seed, `s_k` of the session's `SeedChain`. It predicts every hidden random
 /// outcome of its segment, so it stays secret until the segment is published.
@@ -46,6 +46,6 @@ impl ServerSeed {
     fn link(&self) -> SeedCommitment {
         let mut hasher = DomainHasher::new(CHAIN_DOMAIN);
         hasher.update(self.0.as_bytes());
-        SeedCommitment::new(hasher.finish())
+        hasher.finish()
     }
 }

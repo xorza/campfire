@@ -200,6 +200,11 @@ impl Session {
         self.log.resume_journal(sink, len);
     }
 
+    /// Closes the journal of the session's log: see `SessionLog::close_journal`.
+    pub fn close_journal(&mut self) {
+        self.log.close_journal();
+    }
+
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
     /// the log's last: the next tick draws from its seed. An error past the seed chain's last
     /// segment, and as `SessionLog::begin_checkpoint` gives one.

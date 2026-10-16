@@ -1,4 +1,4 @@
-use std::fs::{self, OpenOptions};
+use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 use std::process::Stdio;
@@ -6,9 +6,10 @@ use std::process::Stdio;
 use crate::path_error::PathError;
 use crate::platform::owner_only::OwnerOnly;
 
-/// A new file, written once: one a child process writes to, as a check keeps a process's
-/// standard error, made its owner's only and given as the `Stdio` the child takes, so no `File`
-/// leaves this crate; or one whose bytes a later check proves, as a package's against its index.
+/// A new file, written once, its owner's only, as every file `store` makes: one a child process
+/// writes to, as a check keeps a process's standard error, given as the `Stdio` the child takes,
+/// so no `File` leaves this crate; or one whose bytes a later check proves, as a package's
+/// against its index.
 #[derive(Debug)]
 pub struct OutputFile;
 
@@ -24,13 +25,7 @@ impl OutputFile {
     /// short or torn is found where it is read, and thousands of files cost no sync each. An
     /// error when a file is there.
     pub fn write_new(path: &Path, bytes: &[u8]) -> Result<(), PathError<io::Error>> {
-        let write = || {
-            OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(path)?
-                .write_all(bytes)
-        };
+        let write = || OwnerOnly::create_new(path)?.write_all(bytes);
         write().map_err(PathError::at(path))
     }
 
@@ -61,6 +56,7 @@ mod tests {
         let path = scratch.path("one");
         OutputFile::write_new(&path, b"abc").unwrap();
         assert_eq!(InputFile::read(&path, 3).unwrap(), b"abc");
+        assert_eq!(OwnerOnly::exposure_at(&path).unwrap(), None);
         let error = OutputFile::write_new(&path, b"x").unwrap_err();
         assert_eq!(error.error.kind(), io::ErrorKind::AlreadyExists);
         assert_eq!(error.path, path);

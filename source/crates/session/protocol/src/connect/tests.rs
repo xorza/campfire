@@ -28,7 +28,7 @@ fn terms() -> SessionTerms {
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         release: Version::new(0, 1, 0),
         mode: PackageFingerprint::new([5; 32]),
-        map: MapName::new("lane").unwrap(),
+        map: MapName::parse("lane").unwrap(),
         dependencies: vec![PackageFingerprint::new([4; 32])],
         slots: vec![SlotPlan::Player],
         visibility: Vec::new(),

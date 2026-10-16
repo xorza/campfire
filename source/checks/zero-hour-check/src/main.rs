@@ -213,7 +213,7 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
     if given != FINGERPRINTS {
         failures.push(Failure::Fingerprints(given));
     }
-    let map = MapName::new(MAP).expect("a map's name");
+    let map = MapName::parse(MAP).expect("a map's name");
     let packages = PackageDir::new(out.join(ZeroHour::GAME))
         .mode_packages(&map)
         .map_err(CheckError::Load)?;

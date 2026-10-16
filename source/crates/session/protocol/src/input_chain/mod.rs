@@ -12,9 +12,9 @@ use crate::signer::Signer;
 use crate::verifier::Verifier;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
-const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/input-hash/v1");
+const HASH_DOMAIN: HashDomain<InputHash> = HashDomain::new("campfire/input-hash/v1");
 /// Starts every root of a chain a join starts, so no other BLAKE3 use can produce one.
-const JOIN_DOMAIN: HashDomain = HashDomain::new("campfire/join-root/v1");
+const JOIN_DOMAIN: HashDomain<InputHash> = HashDomain::new("campfire/join-root/v1");
 /// Starts every signed chain head, so no other signature of the session key counts as one.
 const SIGNATURE_DOMAIN: &[u8] = b"campfire/input/v1";
 const HEAD_MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 8 + 32;
@@ -50,7 +50,7 @@ impl InputChain {
             .update(delegation.as_bytes())
             .update(&place.tick.get().to_le_bytes())
             .update(&place.index.to_le_bytes());
-        Self::new(slot, InputHash::new(hasher.finish()))
+        Self::new(slot, hasher.finish())
     }
 
     /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for
@@ -88,7 +88,7 @@ impl InputChain {
             .update(&self.next_seq.to_le_bytes())
             .update(&stamp.get().to_le_bytes())
             .update(payload);
-        self.head = InputHash::new(hasher.finish());
+        self.head = hasher.finish();
         self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");
         PlayerInput {
             slot: self.slot,

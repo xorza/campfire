@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
-use bevy_app::{App, First, FixedUpdate, Plugin, Update};
+use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{not, resource_exists, resource_exists_and_changed};
+use bevy_ecs::schedule::common_conditions::{
+    not, on_message, resource_exists, resource_exists_and_changed,
+};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
@@ -248,10 +250,14 @@ impl Plugin for SimClient {
             Update,
             (
                 (link, receive_input_acks, report_end, report_deaths),
-                ReceiptWriter::report_failures,
+                ReceiptWriter::report_failure,
                 Faults::watch,
             )
                 .chain(),
+        );
+        app.add_systems(
+            Last,
+            ReceiptWriter::close_at_exit.run_if(on_message::<AppExit>),
         );
         app.add_systems(First, log_frame);
         app.add_systems(

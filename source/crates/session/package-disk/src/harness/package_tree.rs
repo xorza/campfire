@@ -3,10 +3,9 @@ use std::path::{Path, PathBuf};
 use std::str;
 use std::sync::Arc;
 
-use campfire_codec::Toml;
+use campfire_codec::internals::TomlDocument;
 use campfire_package::{LoadError, ModePackages};
 use campfire_store::{DirEntries, EntryKind, InputFile};
-use toml::{Table, Value};
 
 use crate::harness::test_mode::TestMode;
 use crate::package_dir::PackageDir;
@@ -37,14 +36,6 @@ pub enum Edit<'a> {
     Remove(&'a str),
     /// The key at the path, given the name.
     Rename(&'a str, &'a str),
-}
-
-/// What a path does at a table that lacks its next key.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Missing {
-    /// Adds the key, an empty table.
-    Add,
-    Fail,
 }
 
 impl PackageTree {
@@ -78,22 +69,9 @@ impl PackageTree {
                 assert!(text.contains(from), "{file}: {from}");
                 text.replacen(from, to, 1)
             }
-            Edit::Set(at, value) => {
-                let value =
-                    Toml::parse::<Table>(&format!("value = {value}")).unwrap()["value"].clone();
-                Self::at_path(self.text(file), at, Missing::Add, |parent, key| {
-                    Self::put(parent, key, value);
-                })
-            }
-            Edit::Remove(at) => Self::at_path(self.text(file), at, Missing::Fail, |parent, key| {
-                drop(Self::remove(parent, key));
-            }),
-            Edit::Rename(at, name) => {
-                Self::at_path(self.text(file), at, Missing::Fail, |parent, key| {
-                    let value = Self::remove(parent, key);
-                    Self::put(parent, name, value);
-                })
-            }
+            Edit::Set(at, value) => self.edited(file, |document| document.set(at, value)),
+            Edit::Remove(at) => self.edited(file, |document| document.remove(at)),
+            Edit::Rename(at, name) => self.edited(file, |document| document.rename(at, name)),
         };
         self.files.insert(PathBuf::from(file), edited.into_bytes());
         self
@@ -114,6 +92,13 @@ impl PackageTree {
         self.load().expect("the edited test mode loads")
     }
 
+    /// The text of `file` as TOML, with `edit` made to it.
+    fn edited(&self, file: &str, edit: impl FnOnce(&mut TomlDocument)) -> String {
+        let mut document = TomlDocument::parse(self.text(file));
+        edit(&mut document);
+        document.text()
+    }
+
     fn read(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
         for entry in DirEntries::read(dir).unwrap() {
             let (on_disk, path) = (dir.join(&entry.name), at.join(&entry.name));
@@ -123,61 +108,6 @@ impl PackageTree {
                 files.insert(path, InputFile::read(&on_disk, FILE_LEN).unwrap());
             }
         }
-    }
-
-    /// Puts `value` at `key` of `parent`, a table's key or an array's index.
-    fn put(parent: &mut Value, key: &str, value: Value) {
-        match parent {
-            Value::Table(table) => drop(table.insert(key.to_owned(), value)),
-            Value::Array(array) => array[Self::index(key)] = value,
-            _ => panic!("{key} is inside a value"),
-        }
-    }
-
-    /// Removes the value at `key` of `parent`, a table's key or an array's index.
-    fn remove(parent: &mut Value, key: &str) -> Value {
-        match parent {
-            Value::Table(table) => table
-                .remove(key)
-                .unwrap_or_else(|| panic!("no {key} to remove")),
-            Value::Array(array) => array.remove(Self::index(key)),
-            _ => panic!("{key} is inside a value"),
-        }
-    }
-
-    fn index(key: &str) -> usize {
-        key.parse()
-            .unwrap_or_else(|_| panic!("{key} indexes an array"))
-    }
-
-    /// `text` as TOML with `edit` made to the value that holds the last key of `path`, its keys
-    /// and array indices joined by dots, and written back. The keys of each table come back
-    /// sorted, which no package file depends on.
-    fn at_path(
-        text: &str,
-        path: &str,
-        missing: Missing,
-        edit: impl FnOnce(&mut Value, &str),
-    ) -> String {
-        let mut root = Value::Table(Toml::parse::<Table>(text).unwrap());
-        let (parent, key) = path.rsplit_once('.').unwrap_or(("", path));
-        let parent = parent.split('.').filter(|key| !key.is_empty()).fold(
-            &mut root,
-            |value, key| match value {
-                Value::Table(table) => match missing {
-                    Missing::Add => table
-                        .entry(key)
-                        .or_insert_with(|| Value::Table(Table::new())),
-                    Missing::Fail => table
-                        .get_mut(key)
-                        .unwrap_or_else(|| panic!("no {key} on the way to {path}")),
-                },
-                Value::Array(array) => &mut array[Self::index(key)],
-                _ => panic!("{path} passes through a value"),
-            },
-        );
-        edit(parent, key);
-        Toml::write(&root)
     }
 }
 
@@ -212,7 +142,7 @@ mod tests {
                 .is_some_and(|extension| extension == "toml")
             {
                 let text = str::from_utf8(bytes).unwrap();
-                *bytes = PackageTree::at_path(text, "", Missing::Fail, |_, _| {}).into_bytes();
+                *bytes = TomlDocument::parse(text).text().into_bytes();
             }
         }
         let root = TestMode::Moba3v3.root();

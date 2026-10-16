@@ -1,4 +1,5 @@
 use campfire_capabilities::{PackageContent, UnitTypeData};
+use campfire_codec::TomlTable;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -21,11 +22,11 @@ impl<'de> Deserialize<'de> for AvatarFile {
         struct Fields {
             name: MessageId,
             #[serde(flatten)]
-            rest: toml::Table,
+            rest: TomlTable,
         }
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
         let content = ContentTable::take(&mut rest)?;
-        let unit = UnitTypeData::deserialize(toml::Value::Table(rest)).map_err(D::Error::custom)?;
+        let unit: UnitTypeData = rest.read().map_err(D::Error::custom)?;
         Ok(Self {
             name,
             unit,

@@ -4,6 +4,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::platform::os::Os;
 
+/// Whether the process caught the stop's signals: its handlers are the process's, as the OS
+/// keeps them, so the one check of a second catch is the process's too.
+static CAUGHT: AtomicBool = AtomicBool::new(false);
+
 /// The signals that stop a process by its exit, caught for the rest of the process. On Unix,
 /// `SIGINT`, `SIGTERM` and `SIGHUP`, each only when the process did not start with it ignored, as
 /// `nohup` starts one with `SIGHUP` and a shell's `&` with `SIGINT`; on Windows, the console's
@@ -21,8 +25,13 @@ impl StopSignals {
     /// interrupted job, and `common::ExitStatus::Interrupted`'s, as a test there checks.
     pub const EXIT_CODE: u8 = 130;
 
-    /// Catches the stop's signals, once in a process; an error when the OS refuses a handler.
+    /// Catches the stop's signals, once in a process, which a second call breaks on every OS;
+    /// an error when the OS refuses a handler.
     pub fn catch() -> io::Result<Self> {
+        assert!(
+            !CAUGHT.swap(true, Ordering::SeqCst),
+            "a process catches the stop's signals once"
+        );
         let received = Arc::new(AtomicBool::new(false));
         Os::catch_stop(&received)?;
         Ok(Self { received })
@@ -55,5 +64,21 @@ pub(crate) mod internals {
         pub fn stop(child: &Child) {
             Os::stop(child.id()).unwrap();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic;
+
+    use super::*;
+
+    #[test]
+    fn a_process_catches_the_stops_signals_once() {
+        let caught = StopSignals::catch().unwrap();
+        assert!(!caught.received());
+        let again = panic::catch_unwind(StopSignals::catch).unwrap_err();
+        let said = again.downcast_ref::<&str>().unwrap();
+        assert_eq!(*said, "a process catches the stop's signals once");
     }
 }

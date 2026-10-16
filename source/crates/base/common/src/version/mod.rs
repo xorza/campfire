@@ -91,8 +91,7 @@ impl Serialize for Version {
 impl<'de> Deserialize<'de> for Version {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        Self::parse(&text)
-            .ok_or_else(|| D::Error::custom(format!("{text:?} is not major.minor.patch")))
+        Self::parse(&text).ok_or_else(|| D::Error::custom(NotVersion))
     }
 }
 

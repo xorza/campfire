@@ -24,10 +24,7 @@ fn each_path_is_as_stage_6_names_it_and_one_server_holds_the_directory() {
     );
     assert!(matches!(
         ServerDir::open(&path),
-        Err(PathError {
-            error: DataDirError::Locked,
-            ..
-        })
+        Err(DataDirError::Locked { .. })
     ));
     drop(data);
 }

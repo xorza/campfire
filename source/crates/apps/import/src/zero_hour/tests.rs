@@ -51,7 +51,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let fingerprint = imported.fingerprint;
     // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
     // of the 3 × 2 cells the game draws is untextured.
-    let named = MapName::new("fixture_map").unwrap();
+    let named = MapName::parse("fixture_map").unwrap();
     assert_eq!(imported.untextured_cells, [(named.clone(), 6)].into());
     assert!(imported.dropped_waypoints.is_empty());
     // Beside it, the rules package as the workspace holds it, which the imported mode, of

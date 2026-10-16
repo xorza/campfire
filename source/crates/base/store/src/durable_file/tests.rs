@@ -48,9 +48,9 @@ fn a_durable_write_replaces_a_file_whole_and_leaves_no_temporary_file() {
 fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
     let dir = TempDir::new().unwrap();
     let path = dir.path().join("server.nsec");
-    DurableFile::create(&path, b"first").unwrap();
+    DurableFile::create_new(&path, b"first").unwrap();
     assert!(matches!(
-        DurableFile::create(&path, b"second"),
+        DurableFile::create_new(&path, b"second"),
         Err(PathError {
             error: DurableCreateError::Exists,
             ..
@@ -64,7 +64,7 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
     let raced = dir.path().join("raced.nsec");
     let results = Race::run(2, |index| {
         let bytes = [&b"one"[..], b"two"][index];
-        (bytes, DurableFile::create(&raced, bytes))
+        (bytes, DurableFile::create_new(&raced, bytes))
     });
     let made: Vec<_> = results
         .iter()
@@ -85,5 +85,21 @@ fn a_durable_create_makes_a_file_once_and_never_replaces_it() {
         .map(|entry| entry.unwrap().file_name())
         .collect();
     names.sort();
-    assert_eq!(names, ["raced.nsec", "server.nsec"]);
+    assert_eq!(
+        names,
+        [
+            "raced.nsec",
+            "raced.nsec.lock",
+            "server.nsec",
+            "server.nsec.lock"
+        ]
+    );
+
+    // A crash left the temporary of a create, a copy of a secret: the next create of its name
+    // removes it before it writes its own, and leaves none.
+    let crashed = dir.path().join("crashed.nsec");
+    fs::write(dir.path().join("crashed.nsec.new"), b"lost").unwrap();
+    DurableFile::create_new(&crashed, b"made").unwrap();
+    assert_eq!(fs::read(&crashed).unwrap(), b"made");
+    assert!(!dir.path().join("crashed.nsec.new").exists());
 }

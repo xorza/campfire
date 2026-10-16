@@ -3,7 +3,7 @@ use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 use crate::journal::error::NotJournal;
 
 /// Starts the hash of every frame, so no other BLAKE3 use can produce one.
-const FRAME_DOMAIN: HashDomain = HashDomain::new("campfire/journal-frame/v1");
+const FRAME_DOMAIN: HashDomain<FrameHash> = HashDomain::new("campfire/journal-frame/v1");
 /// The longest record a frame holds: a longer length is a torn or corrupted frame.
 pub(crate) const MAX_RECORD: usize = 16 << 20;
 const LEN_BYTES: usize = size_of::<u32>();
@@ -79,7 +79,7 @@ impl<'a> JournalFrames<'a> {
     pub(crate) fn hash(record: &[u8]) -> FrameHash {
         let mut hasher = DomainHasher::new(FRAME_DOMAIN);
         hasher.update(record);
-        FrameHash::new(hasher.finish())
+        hasher.finish()
     }
 }
 

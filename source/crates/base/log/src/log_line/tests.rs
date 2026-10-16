@@ -4,8 +4,8 @@ use serde::Serialize;
 use tracing::info;
 
 use super::*;
+use crate::json_layer::internals::round_trip;
 use crate::json_text::JsonText;
-use crate::log_event::internals::round_trip;
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 struct Opened {

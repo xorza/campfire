@@ -95,28 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 7. Store, codec, log: one contract for each family
-
-`store`: `append_writer`, `latest_writer`, `stream_writer`, `worker`, `durable_file`, `durable_dir`, `output_file`, `data_dir`, `run_dir`, `platform`; `codec`; `log`; `common`; `source/clippy.toml`; `package`: `files`; `net`: `sim_server/journal_watch`, the dirs, `sim_client/receipt_writer`.
-
-- [ ] store/src/append_writer/mod.rs:199, latest_writer/mod.rs:337, stream_writer/mod.rs:51, 92-102, append_watch.rs:287 — the three writers report failures in three shapes, and two have no `close()`: a failure in `Drop` goes to a slot nobody reads, so a full disk at shutdown exits 0, not 74. → One writer contract: `close(self) -> Option<E>` on each writer, one failure accessor, one flag name. The owners call `close` at shutdown (net's journal and receipt writers).
-- [ ] store/src/durable_file/mod.rs:15-17, 52-70 — `create`'s temporary is `<name>.<pid>.<tid>.part`, and only the same name is removed. A crash leaves `server.nsec.<pid>.<tid>.part`, a copy of the server's key, for ever. Line 67 returns without removing the temporary. The doc is false. → Temporaries are found and removed (or not named per process), and every error path removes its temporary.
-- [ ] store/src/worker/mod.rs:107 — `resume_panic` is `pub(crate)`, so quic cannot pass its thread's panic on, as design 02 Workers promises. → A public check. Batch 15 uses it.
-- [ ] store/src/durable_file/mod.rs:44, durable_dir/mod.rs:174, 204 — `create` is exclusive for a file and keep-or-make for a directory; the error variants differ (`Write` against `Make`). → One table of verbs: `create_new` exclusive, `create` keep-or-make, one variant name.
-- [ ] store/src/durable_file/error.rs:133-156 — `DurableError::Dir` and its `From` exist only for net's `?` chains (snapshot_dir.rs:19-20, receipt_writer.rs:26-29, session_dir/mod.rs:74-80, 211-215). → Remove; each caller's error has a variant per step.
-- [ ] store/src/data_dir/error.rs:169, run_dir/error.rs:125-128 — two shapes for one failure; `DataDir` shows its path twice. → One shape.
-- [ ] store/src/output_file.rs:26-35, stream_writer/mod.rs:62 — two files made with the default mode, where every other file is owner-only. → One rule, or the exception named in the doc.
-- [ ] store/src/platform/unix.rs:106-116, windows.rs:245-250 — a second `StopSignals::catch` registers again on Unix and panics on Windows. → Both enforce once.
-- [ ] codec/src/lib.rs:23-28; package/src/files/mode_file.rs:20, 29, avatar_file.rs:24, 28, content_table.rs:12-17, package/Cargo.toml:54 — codec has `JsonValue` and no TOML value, so `package` decodes through `toml::Table` past the proxy and flattens errors to text. → A codec TOML table type with `TomlError`; `package` drops `toml`.
-- [ ] source/clippy.toml, common/src/tests.rs — ban gaps: `toml::Value`/`Table` as a deserializer, `Value::try_into`, `serde_json::from_value`/`to_value`, `tempfile::Builder`, `tempdir_in`, `tempfile_in`, `SpooledTempFile`, `std::thread::Builder::spawn_unchecked`. → Ban every entry point of each group.
-- [ ] codec/src/batch.rs:38-45 — a piece that does not fit is flushed and then sent alone, even when it fits the empty buffer, so the hash sink gets about two updates per 64 bytes. → After the flush, a piece of at most `BUFFER` bytes goes into the buffer.
-- [ ] codec/src/binary.rs:26-54 — three postcard paths for one encoding, and a test that keeps them equal. → One path (`Batch`).
-- [ ] common/src/domain_hasher.rs:64-72 — `finish(&self)` returns `[u8; 32]`, and `update` returns `&mut Self`, where `ContentHasher` consumes itself and returns a type. PLAN V2 types the sites, not this signature. → `HashDomain<K>` and `DomainHasher<K>::finish() -> Value32<K>`; `ContentHasher` alike. Lands with V2.
-- [ ] common/src/version/mod.rs:39, 95, map_name/mod.rs:20, 44 — one checked constructor named `parse` and `new`; `Version`'s `Deserialize` fails with a `format!` string, and `NotVersion` is unused. → One name, `D::Error::custom(NotVersion)`.
-- [ ] log/src/log_event.rs:17, 19 — two module cycles made by `round_trip`. → Move it into `json_layer::internals`.
-- [ ] log/src/logging.rs:135 — `EnvFilter::new` drops a directive it cannot parse, so a misspelled default filters nothing. → `try_new`, and panic on a broken constant.
-- [ ] log/Cargo.toml:21 — `campfire-common` is required, but only `start` code names it. → Optional, under `start`.
-
 ### 8. One list of modules
 
 `capabilities`: `release`, `books`, `order`; `declare`; `players`; `units`: `units.rs`; `actions`: `lib.rs`, `action_data_field`, `kind_data`; `mode`: `lib.rs`; `sim`: `state_registry`; `package`: `load_check`, `files/mode_manifest`.

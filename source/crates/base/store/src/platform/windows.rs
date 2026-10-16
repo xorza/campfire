@@ -243,10 +243,8 @@ impl Os {
     }
 
     pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
-        assert!(
-            STOP.set(Arc::clone(received)).is_ok(),
-            "a process catches the stop's signals once"
-        );
+        STOP.set(Arc::clone(received))
+            .expect("`StopSignals::catch` runs once in a process");
         // SAFETY: a handler of the routine's signature, which lives as long as the process.
         unsafe { SetConsoleCtrlHandler(Some(Self::on_console_event), true) }.map_err(io_error)
     }

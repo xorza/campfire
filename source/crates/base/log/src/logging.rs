@@ -116,7 +116,8 @@ impl Logging {
 
 impl ChosenFilter {
     /// The filter `value`, a variable's, gives: `default` when the variable is not set, or when
-    /// it holds no filter, with why.
+    /// it holds no filter, with why. A `default` of the code that holds no filter panics, where
+    /// `EnvFilter::new` would drop it and filter nothing.
     fn of(value: Result<String, env::VarError>, default: &str) -> Self {
         let refused = match value {
             Err(env::VarError::NotPresent) => None,
@@ -132,7 +133,7 @@ impl ChosenFilter {
             },
         };
         Self {
-            filter: EnvFilter::new(default),
+            filter: EnvFilter::try_new(default).expect("a default filter of the code is a filter"),
             refused,
         }
     }
@@ -167,6 +168,7 @@ impl ChosenFilter {
 #[cfg(test)]
 mod tests {
     use std::env::VarError;
+    use std::panic;
 
     use super::*;
     use crate::json_layer::internals::capture;
@@ -196,6 +198,9 @@ mod tests {
         );
         let unicode = Err(VarError::NotUnicode(OsString::from("x")));
         assert_eq!(chosen(unicode), ("warn".to_owned(), Some("not unicode")));
+        // A default that holds no filter is the code's mistake.
+        let broken = panic::catch_unwind(|| ChosenFilter::of(Err(VarError::NotPresent), "x=loud"));
+        assert!(broken.is_err());
         // Its report names the case, then the variable's or the filter's own error.
         let refused = ChosenFilter::of(Ok("campfire=loud".to_owned()), "warn").refused;
         let report = ErrorReport::of(&refused.unwrap()).to_string();

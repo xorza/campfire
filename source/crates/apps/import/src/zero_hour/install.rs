@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
-use campfire_common::{ContentHash, ContentHasher};
+use campfire_common::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
 
 use crate::zero_hour::archive_path::ArchivePath;
@@ -236,7 +236,7 @@ impl Install {
             .iter()
             .map(|archive| {
                 let mut file = archive.open()?;
-                let mut hasher = ContentHasher::default();
+                let mut hasher = ContentHasher::<ContentHashMeaning>::new();
                 let mut at = 0;
                 while at < file.len() {
                     let len = (file.len() - at).min(HASH_CHUNK);

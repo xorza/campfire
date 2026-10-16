@@ -38,7 +38,7 @@ pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
 pub use crate::channel_binding::{ChannelBinding, ChannelBindingMeaning};
 pub use crate::content_hash::{ContentHash, ContentHashMeaning, ContentHasher};
-pub use crate::domain_hasher::{DomainHasher, HashDomain};
+pub use crate::domain_hasher::{DomainHasher, HashDomain, HashOutput};
 pub use crate::exit_status::ExitStatus;
 pub use crate::map_name::MapName;
 pub use crate::map_name::error::NotMapName;

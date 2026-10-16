@@ -68,6 +68,7 @@ pub use crate::events::session_restored::SessionRestored;
 pub use crate::events::session_written::SessionWritten;
 pub use crate::events::ticks_caught_up::TicksCaughtUp;
 pub use crate::events::time_dropped::TimeDropped;
+pub use crate::faults::error::SnapshotWriteError;
 pub use crate::hosting::Hosting;
 pub use crate::input_message::InputMessage;
 pub use crate::join::JoinRole;
@@ -105,7 +106,7 @@ pub use crate::sim_server::server_dir::ServerDir;
 pub use crate::sim_server::server_layout::ServerLayout;
 pub use crate::sim_server::server_setup::ServerSetup;
 pub use crate::sim_server::session_dir::error::{
-    AbortError, FindError, RestoreError, WaitingError,
+    AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
 };
 pub use crate::sim_server::session_dir::{Publisher, RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;

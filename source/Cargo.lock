@@ -2479,7 +2479,6 @@ dependencies = [
  "criterion 0.8.2",
  "lightyear",
  "secp256k1",
- "toml",
 ]
 
 [[package]]
@@ -2740,7 +2739,6 @@ dependencies = [
  "fluent-syntax",
  "serde",
  "thiserror 2.0.21",
- "toml",
  "unic-langid",
 ]
 
@@ -2756,7 +2754,6 @@ dependencies = [
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]

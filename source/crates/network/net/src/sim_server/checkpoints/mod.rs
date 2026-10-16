@@ -6,12 +6,12 @@ use campfire_mode::SaveBy;
 use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError};
 use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateDelta, StateRegistry};
-use campfire_store::{DurableError, PathError};
 
 use crate::events::checkpoint_taken::CheckpointTaken;
 use crate::events::save_refused::error::SaveRefusal;
 use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::faults::Faults;
+use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
 use crate::save_command::SaveCommand;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned};
@@ -108,7 +108,7 @@ impl Checkpoints {
 
     /// Waits for every delta on the thread and queued for it, and logs the record of each
     /// checkpoint among them; an error when a snapshot was not written.
-    pub(super) fn settle(world: &mut World) -> Result<(), PathError<DurableError>> {
+    pub(super) fn settle(world: &mut World) -> Result<(), SnapshotWriteError> {
         loop {
             let returned = world.resource_mut::<Self>().thread.wait();
             if returned.is_none() {
@@ -161,7 +161,7 @@ impl Checkpoints {
     pub(super) fn take_again(
         world: &mut World,
         snapshots: &SnapshotDir,
-    ) -> Result<(), PathError<DurableError>> {
+    ) -> Result<(), SnapshotWriteError> {
         let session = world.resource::<Session>();
         let next = session.log().next_tick();
         if session
@@ -188,10 +188,7 @@ impl Checkpoints {
 
     /// Logs the record `returned` brings, when it brings one; an error when its snapshot was
     /// not written.
-    fn record(
-        world: &mut World,
-        returned: Option<Returned>,
-    ) -> Result<(), PathError<DurableError>> {
+    fn record(world: &mut World, returned: Option<Returned>) -> Result<(), SnapshotWriteError> {
         match returned {
             None | Some(Returned::Applied) => Ok(()),
             Some(Returned::Taken(record)) => {

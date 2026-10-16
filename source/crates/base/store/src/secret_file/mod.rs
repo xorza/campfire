@@ -37,8 +37,8 @@ impl SecretFile {
     /// Makes the file with `bytes`, durably and its owner's only, and never replaces one: a file
     /// that holds its name is left as it is, `Exists`, so of two processes that make one secret
     /// at once, one makes it and the other reads it.
-    pub fn create(&self, bytes: &[u8]) -> Result<(), PathError<DurableCreateError>> {
-        DurableFile::create(&self.path, bytes)
+    pub fn create_new(&self, bytes: &[u8]) -> Result<(), PathError<DurableCreateError>> {
+        DurableFile::create_new(&self.path, bytes)
     }
 
     /// Replaces the file, or makes it, with `bytes`, durably and its owner's only: a secret its

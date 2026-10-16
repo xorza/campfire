@@ -18,7 +18,7 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
 
     // Text that is no key; a file that is not there; one longer than a key file may be.
     let bad = SecretFile::at(scratch.path("bad.nsec"));
-    bad.create(b"secret").unwrap();
+    bad.create_new(b"secret").unwrap();
     assert!(matches!(KeyFile::read(&bad), Err(KeyFileError::NotNsec(_))));
     assert!(matches!(
         KeyFile::read(&SecretFile::at(scratch.path("none.nsec"))),
@@ -28,7 +28,7 @@ fn a_key_file_round_trips_and_refuses_what_is_no_private_nsec() {
         }))
     ));
     let long = SecretFile::at(scratch.path("long.nsec"));
-    long.create(&[b' '; Nsec::MAX_FILE_LEN + 1]).unwrap();
+    long.create_new(&[b' '; Nsec::MAX_FILE_LEN + 1]).unwrap();
     assert!(matches!(
         KeyFile::read(&long),
         Err(KeyFileError::Read(PathError {

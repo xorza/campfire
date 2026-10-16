@@ -28,6 +28,15 @@ impl Worker {
         }
     }
 
+    /// Passes on the panic of the thread when it ended while its owner still needs it, as a
+    /// worker ends early only by a panic; nothing while it runs. An owner whose job's channel
+    /// cannot tell it the thread ended calls it where it next needs the worker.
+    pub fn check(&mut self) {
+        if self.thread.as_ref().is_some_and(JoinHandle::is_finished) {
+            self.resume_panic();
+        }
+    }
+
     /// Joins the thread, which ended while its owner still needed it, and passes its panic on:
     /// a worker ends early only by a panic.
     pub(crate) fn resume_panic(&mut self) -> ! {

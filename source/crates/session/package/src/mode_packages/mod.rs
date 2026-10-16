@@ -454,6 +454,6 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
                 .strip_suffix("/map.toml")?;
             (!name.contains('/')).then_some(name)
         })
-        .map(|name| MapName::new(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
+        .map(|name| MapName::parse(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
         .collect()
 }

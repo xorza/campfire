@@ -1,6 +1,8 @@
 use campfire_runner::{ResumeError, StartError};
-use campfire_store::{DurableError, PathError, ReadError};
+use campfire_store::{PathError, ReadError};
 use thiserror::Error;
+
+use crate::faults::error::SnapshotWriteError;
 
 /// Why a session a stop ended does not restore its match.
 #[derive(Debug, Error)]
@@ -16,5 +18,5 @@ pub enum RestoreMatchError {
     Resume(#[source] ResumeError),
     /// A checkpoint taken again did not write its snapshot.
     #[error("a checkpoint's snapshot was not written")]
-    WriteSnapshot(#[source] PathError<DurableError>),
+    WriteSnapshot(#[source] SnapshotWriteError),
 }

@@ -1,10 +1,10 @@
-use std::fs::File;
 use std::io::{self, Write};
 use std::mem;
 use std::path::Path;
 use std::sync::{Arc, Condvar};
 
 use crate::path_error::PathError;
+use crate::platform::owner_only::OwnerOnly;
 use crate::stream_writer::error::StreamError;
 use crate::stream_writer::stream_sender::StreamSender;
 use crate::worker::Worker;
@@ -48,14 +48,20 @@ struct Pending {
     /// The writer dropped: the worker writes what the buffer holds, and no piece is put any more.
     closing: bool,
     /// The worker stopped at a failure, so no piece is kept any more.
-    failed: bool,
+    stopped: bool,
 }
 
 impl StreamWriter {
-    /// A new file at `path`, in place of one there, written on the worker `name`, with a buffer
-    /// of `bound` bytes.
+    /// A file at `path` emptied, or a new one, its owner's only, as every file `store` makes; one
+    /// it empties keeps the access it had. Written on the worker `name`, with a buffer of `bound`
+    /// bytes.
     pub fn create(name: &str, path: &Path, bound: usize) -> Result<Self, PathError<io::Error>> {
-        let file = File::create(path).map_err(PathError::at(path))?;
+        let open = || {
+            let file = OwnerOnly::open_or_create(path)?;
+            file.set_len(0)?;
+            Ok(file)
+        };
+        let file = open().map_err(PathError::at(path))?;
         Ok(Self::start(name, file, bound))
     }
 
@@ -103,10 +109,10 @@ impl StreamShared {
     /// writer drops or the worker stopped at a failure.
     fn put(&self, put: impl FnOnce(&mut Vec<u8>)) {
         let mut pending = self.pending.lock();
-        while !pending.closing && !pending.failed && pending.bytes.len() >= self.bound {
+        while !pending.closing && !pending.stopped && pending.bytes.len() >= self.bound {
             pending = self.pending.wait(&self.emptied, pending);
         }
-        if pending.closing || pending.failed {
+        if pending.closing || pending.stopped {
             return;
         }
         put(&mut pending.bytes);
@@ -137,7 +143,7 @@ impl StreamShared {
             if let Err(error) = written {
                 self.failure.keep(error);
                 let mut pending = self.pending.lock();
-                pending.failed = true;
+                pending.stopped = true;
                 pending.bytes.clear();
                 drop(pending);
                 self.emptied.notify_all();

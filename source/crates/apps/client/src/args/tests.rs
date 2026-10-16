@@ -60,7 +60,7 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "--map",
         "lane",
     ]);
-    assert_eq!(local.map, MapName::new("lane"));
+    assert_eq!(local.map, MapName::parse("lane"));
     let Server::Local { bots, data } = local.server else {
         panic!("a local server");
     };
