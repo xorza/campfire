@@ -37,9 +37,9 @@ impl Worker {
         }
     }
 
-    /// Joins the thread, which ended while its owner still needed it, and passes its panic on:
-    /// a worker ends early only by a panic.
-    pub(crate) fn resume_panic(&mut self) -> ! {
+    /// Joins the thread, which ended while its owner still needed it, or which ends as it
+    /// unwinds, and passes its panic on: a worker ends early only by a panic.
+    pub fn resume_panic(&mut self) -> ! {
         let thread = self.thread.take().expect("a worker joins once");
         match thread.join() {
             Err(payload) => panic::resume_unwind(payload),

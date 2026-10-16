@@ -1,7 +1,7 @@
 use xmltree::Element;
 
-use crate::router_url::RouterUrl;
-use crate::router_xml;
+use crate::port_map::router_url::RouterUrl;
+use crate::port_map::router_xml;
 
 /// The WAN connection services a router maps ports through, as `igd-next` takes them.
 const WAN_SERVICES: [&str; 3] = [

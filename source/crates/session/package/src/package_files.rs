@@ -99,19 +99,6 @@ impl PackageFiles {
         Self::text(path, bytes)
     }
 
-    /// The TOML data file at `path`, which a load does not keep, read now and checked against its
-    /// row, as a session's map is.
-    pub(crate) fn read_file_data<T: DeserializeOwned>(
-        &self,
-        path: &PackagePath,
-    ) -> Result<T, ContentError> {
-        let bytes = self.read_file(path)?;
-        Toml::parse(Self::text(path, &bytes)?).map_err(|error| ContentError::Data {
-            path: path.clone(),
-            error,
-        })
-    }
-
     pub(crate) const fn index(&self) -> &FileIndex {
         self.reader.index()
     }

@@ -3,7 +3,7 @@
 //! raw Ed25519 key, and a client that takes the key it pinned and no other. It knows no game:
 //! `net` installs it.
 
-#![allow(
+#![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems and hooks take their parameters by value"
 )]
@@ -13,37 +13,26 @@ mod admission;
 mod app_code;
 mod arena_ring;
 mod close_link;
-mod control_schema;
 mod derived_secret;
 mod endpoint_state;
 mod error;
-mod gateway;
 mod io_thread;
 mod link_binding;
 mod link_end;
 mod link_times;
-mod nat_pmp_map;
 mod outbox;
-mod pcp_map;
 mod peer;
 mod pinned_key_verifier;
 mod port_map;
-mod port_mapper;
 mod quic_endpoint;
 mod quic_link;
 mod quic_plugin;
 mod recv_batch;
-mod reply_error;
 mod reset_key;
-mod router_description;
-mod router_url;
-mod router_xml;
 mod server_key;
 mod shared_endpoint;
 mod spki;
-mod ssdp_announcement;
 mod udp_port;
-mod upnp_gateway;
 mod used_tokens;
 
 pub use crate::address_limit::AddressLimit;

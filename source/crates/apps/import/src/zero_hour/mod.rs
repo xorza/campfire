@@ -96,8 +96,7 @@ pub(crate) mod weapon_ini;
 
 /// What an import wrote: the package's fingerprint, the models the objects name that the
 /// package lacks, the textures its models name that no archive holds, which they draw
-/// untextured, each map's count of cells whose terrain draws a tile of no texture, and the
-/// waypoints each map dropped, past its bounds, by name, of the maps that dropped any.
+/// untextured, and each map it wrote.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The imported package's.
@@ -106,8 +105,8 @@ pub struct Imported {
     pub rules: PackageFingerprint,
     pub skipped_models: Vec<SkippedModel>,
     pub missing_textures: Vec<String>,
-    pub untextured_cells: BTreeMap<MapName, usize>,
-    pub dropped_waypoints: BTreeMap<MapName, Vec<String>>,
+    /// Each map the import wrote, by name.
+    pub maps: BTreeMap<MapName, ImportedMap>,
     /// The command buttons the import does not convert, each with why (design 18, D3).
     pub dropped_buttons: Vec<DroppedButton>,
     /// The weapons the import does not convert, each with why (design 19, D6).
@@ -117,6 +116,14 @@ pub struct Imported {
     /// The unit types' objects whose body starts below its most life, which the engine starts
     /// full.
     pub wounded: Vec<String>,
+}
+
+/// What the import wrote of a map: its count of cells whose terrain draws a tile of no texture,
+/// and the waypoints it dropped, past its bounds, by name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportedMap {
+    pub untextured_cells: usize,
+    pub dropped_waypoints: Vec<String>,
 }
 
 /// A model the objects name that the package lacks, and why.
@@ -185,8 +192,7 @@ impl<'a> ZeroHour<'a> {
             missing_textures,
         } = models.report();
         let mut names = BTreeMap::<MapName, String>::new();
-        let mut untextured_cells = BTreeMap::new();
-        let mut dropped_waypoints = BTreeMap::new();
+        let mut maps = BTreeMap::new();
         let mut class_sizes = BTreeMap::new();
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
@@ -215,10 +221,6 @@ impl<'a> ZeroHour<'a> {
                 game: game_data.game_data(),
             };
             let imported = MapImport::new(&file, sources).map_err(in_map)?;
-            untextured_cells.insert(name.clone(), imported.untextured);
-            if !imported.dropped_waypoints.is_empty() {
-                dropped_waypoints.insert(name.clone(), imported.dropped_waypoints);
-            }
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
             write(&format!("map/{name}/heights.bin"), &imported.heights)?;
             write(&TerrainFile::path(name.as_str()), &imported.terrain)?;
@@ -231,6 +233,13 @@ impl<'a> ZeroHour<'a> {
                 &ClientObjects::path(name.as_str()),
                 imported.objects.as_bytes(),
             )?;
+            maps.insert(
+                name,
+                ImportedMap {
+                    untextured_cells: imported.untextured,
+                    dropped_waypoints: imported.dropped_waypoints,
+                },
+            );
         }
         for InstallTexture { path, kind } in self.install.textures() {
             let bytes = self.install.read(&path)?;
@@ -303,8 +312,7 @@ impl<'a> ZeroHour<'a> {
             rules,
             skipped_models: skipped,
             missing_textures,
-            untextured_cells,
-            dropped_waypoints,
+            maps,
             dropped_buttons: production.dropped,
             dropped_weapons: combat.dropped,
             unliving: combat.unliving,

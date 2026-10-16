@@ -1,6 +1,6 @@
 use xmltree::Element;
 
-use crate::router_xml;
+use crate::port_map::router_xml;
 
 /// A WAN connection service's schema as `igd-next`'s `Gateway` takes it: each action's name,
 /// with the names of its arguments in, in order, by which a request names its values. The

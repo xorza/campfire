@@ -56,31 +56,40 @@ const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 /// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
 /// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
 /// connections within its `AddressLimit` (D13), and spawns a `LinkOf` for each once its
-/// handshake completes; a client connects to its server, and its entity carries the connection. Taken from a started entity, by any path, it ends that entity's link;
-/// dropped, it closes every connection with `AppCode::STOPPED`, waits until its thread wrote the
-/// closes, and joins it.
+/// handshake completes; a client connects to its server, and its entity carries the connection.
+/// Taken from a started entity, by any path, it ends that entity's link; dropped, it closes every
+/// connection with `AppCode::STOPPED`, waits until its thread wrote the closes, and joins it.
 #[derive(Component, Debug)]
 #[component(on_discard = QuicEndpoint::on_discard)]
 pub struct QuicEndpoint {
     shared: Arc<SharedEndpoint>,
     side: Side,
     local: SocketAddr,
-    _worker: Worker,
+    worker: Worker,
 }
 
 /// Whether the endpoint takes connections, presenting its TLS key, or opens one to its server,
 /// whose key it pinned.
 #[derive(Debug)]
 enum Side {
-    Server {
-        key: TlsKey,
-        limit: AddressLimit,
-    },
-    Client {
-        server: SocketAddr,
-        pin: TlsKey,
-        config: ClientConfig,
-    },
+    Server { key: TlsKey, limit: AddressLimit },
+    Client(ClientSide),
+}
+
+/// What a client's endpoint connects with: its server, the key it pinned, and its QUIC config.
+#[derive(Debug)]
+struct ClientSide {
+    server: SocketAddr,
+    pin: TlsKey,
+    config: ClientConfig,
+}
+
+/// A socket bound, its address read, and the config of the endpoint it serves.
+#[derive(Debug)]
+struct BoundSocket {
+    port: UdpPort,
+    local: SocketAddr,
+    config: EndpointConfig,
 }
 
 impl QuicEndpoint {
@@ -93,31 +102,22 @@ impl QuicEndpoint {
     /// A client's endpoint, which connects to `server` and takes only the key `pin`.
     pub fn client(server: SocketAddr, pin: &TlsKey, times: LinkTimes) -> Result<Self, BindError> {
         let config = Self::client_config(PinnedKeyVerifier::new(pin).client_config(), times);
-        Self::client_of(server, *pin, config, CID_LEN)
+        let client = ClientSide {
+            server,
+            pin: *pin,
+            config,
+        };
+        Self::client_of(client, Self::endpoint_config(ResetKey::random()))
     }
 
-    fn client_of(
-        server: SocketAddr,
-        pin: TlsKey,
-        config: ClientConfig,
-        cid_len: usize,
-    ) -> Result<Self, BindError> {
-        let unspecified = if server.is_ipv4() {
+    fn client_of(client: ClientSide, config: EndpointConfig) -> Result<Self, BindError> {
+        let unspecified = if client.server.is_ipv4() {
             Ipv4Addr::UNSPECIFIED.into()
         } else {
             Ipv6Addr::UNSPECIFIED.into()
         };
-        let side = Side::Client {
-            server,
-            pin,
-            config,
-        };
-        Self::open(
-            SocketAddr::new(unspecified, 0),
-            None,
-            Self::endpoint_config(ResetKey::random(), cid_len),
-            side,
-        )
+        let socket = BoundSocket::bind(SocketAddr::new(unspecified, 0), config)?;
+        Ok(Self::run(socket, None, Side::Client(client)))
     }
 
     /// The server's QUIC: a Retry for each new address, and `NEW_TOKEN` tokens after each
@@ -141,32 +141,20 @@ impl QuicEndpoint {
         config
     }
 
-    fn endpoint_config(reset: ResetKey, cid_len: usize) -> EndpointConfig {
+    fn endpoint_config(reset: ResetKey) -> EndpointConfig {
         let mut config = EndpointConfig::new(reset.into_hmac());
-        config.cid_generator(move || Box::new(RandomConnectionIdGenerator::new(cid_len)));
+        config.cid_generator(|| Box::new(RandomConnectionIdGenerator::new(CID_LEN)));
         config
     }
 
-    fn open(
-        address: SocketAddr,
-        server: Option<Arc<ServerConfig>>,
-        config: EndpointConfig,
-        side: Side,
-    ) -> Result<Self, BindError> {
-        let bind_error = |error| BindError { address, error };
-        let port = UdpPort::bind(address).map_err(bind_error)?;
-        let local = port.local_address().map_err(bind_error)?;
-        Ok(Self::run(port, local, server, config, side))
-    }
-
-    /// The endpoint of `port`, bound to `local`, with its thread running.
-    fn run(
-        port: UdpPort,
-        local: SocketAddr,
-        server: Option<Arc<ServerConfig>>,
-        config: EndpointConfig,
-        side: Side,
-    ) -> Self {
+    /// The endpoint of `socket`, a server's when `server` names its config, with its thread
+    /// running.
+    fn run(socket: BoundSocket, server: Option<Arc<ServerConfig>>, side: Side) -> Self {
+        let BoundSocket {
+            port,
+            local,
+            config,
+        } = socket;
         let max_payload =
             usize::try_from(config.get_max_udp_payload_size()).expect("a UDP payload fits usize");
         let endpoint = Endpoint::new(Arc::new(config), server, !port.may_fragment(), None);
@@ -178,7 +166,7 @@ impl QuicEndpoint {
             shared,
             side,
             local,
-            _worker: worker,
+            worker,
         }
     }
 
@@ -192,7 +180,7 @@ impl QuicEndpoint {
     pub const fn tls_key(&self) -> TlsKey {
         match &self.side {
             Side::Server { key, .. } => *key,
-            Side::Client { pin, .. } => *pin,
+            Side::Client(client) => client.pin,
         }
     }
 
@@ -215,7 +203,7 @@ impl QuicEndpoint {
         commands: &mut Commands<'_, '_>,
     ) {
         let (server, config) = match &self.side {
-            Side::Client { server, config, .. } => (server, config),
+            Side::Client(ClientSide { server, config, .. }) => (server, config),
             Side::Server { limit, .. } => {
                 self.shared.lock().start_accepting(*limit, Instant::now());
                 commands
@@ -263,13 +251,19 @@ impl QuicEndpoint {
 
     /// Takes the thread's news into the world, the endpoint on `endpoint`, and moves each linked
     /// connection's datagrams to its link's receive queue, its MTU and its address to its link.
+    /// A thread that panicked passes its panic on here, at the next frame.
     pub(crate) fn receive(
-        &self,
+        &mut self,
         endpoint: Entity,
         links: &mut Query<'_, '_, (&mut Link, &mut PeerAddr)>,
         commands: &mut Commands<'_, '_>,
     ) {
-        let mut state = self.shared.lock();
+        let Ok(mut state) = self.shared.try_lock() else {
+            self.worker.resume_panic();
+        };
+        if !state.ended() {
+            self.worker.check();
+        }
         while let Some(news) = state.next_news() {
             match news {
                 News::Connected { key } => {
@@ -311,7 +305,7 @@ impl QuicEndpoint {
         let remote = peer.remote();
         let binding = peer.binding();
         let entity = match self.side {
-            Side::Client { .. } => {
+            Side::Client(_) => {
                 let client = peer
                     .entity()
                     .expect("a client's open connection keeps its entity until it closes");
@@ -321,19 +315,18 @@ impl QuicEndpoint {
                 client
             }
             Side::Server { .. } => {
-                let link = commands
-                    .spawn((
-                        LinkOf { server: endpoint },
-                        Self::link(),
-                        PeerAddr(remote),
-                        binding,
-                        QuicLink::new(Arc::downgrade(&self.shared), peer.key()),
-                    ))
-                    .id();
-                commands
-                    .entity(link)
-                    .insert((RemoteId(PeerId::Entity(link.to_bits())), Linked));
-                link
+                let mut link = commands.spawn_empty();
+                let id = link.id();
+                link.insert((
+                    LinkOf { server: endpoint },
+                    Self::link(),
+                    PeerAddr(remote),
+                    binding,
+                    QuicLink::new(Arc::downgrade(&self.shared), peer.key()),
+                    RemoteId(PeerId::Entity(id.to_bits())),
+                    Linked,
+                ));
+                id
             }
         };
         peer.link(entity);
@@ -366,7 +359,7 @@ impl QuicEndpoint {
         let endpoint = world
             .get::<Self>(entity)
             .expect("a hook of QuicEndpoint runs on an entity that holds one");
-        let client = matches!(endpoint.side, Side::Client { .. });
+        let client = matches!(endpoint.side, Side::Client(_));
         let mut commands = world.commands();
         if client {
             Self::unlink(entity, end, &mut commands);
@@ -423,10 +416,8 @@ impl Drop for QuicEndpoint {
 /// address is known, so no server's endpoint exists without one.
 #[derive(Debug)]
 pub struct ServerSocket {
-    port: UdpPort,
-    local: SocketAddr,
+    socket: BoundSocket,
     server: Arc<ServerConfig>,
-    config: EndpointConfig,
     key: TlsKey,
 }
 
@@ -442,22 +433,19 @@ impl ServerSocket {
     ) -> Result<Self, BindError> {
         let key = ServerKey::derive(secret);
         let config = QuicEndpoint::server_config(key.server_config(), times);
-        let port = UdpPort::bind(address).map_err(|error| BindError { address, error })?;
-        let local = port
-            .local_address()
-            .map_err(|error| BindError { address, error })?;
         Ok(Self {
-            port,
-            local,
+            socket: BoundSocket::bind(
+                address,
+                QuicEndpoint::endpoint_config(ResetKey::derive(secret)),
+            )?,
             server: Arc::new(config),
-            config: QuicEndpoint::endpoint_config(ResetKey::derive(secret), CID_LEN),
             key: key.public(),
         })
     }
 
     /// The address the socket is bound to, its port the OS's when the address named 0.
     pub const fn local_address(&self) -> SocketAddr {
-        self.local
+        self.socket.local
     }
 
     /// The TLS key the server presents, which its listing names.
@@ -468,20 +456,28 @@ impl ServerSocket {
     /// The server's endpoint, which takes connections within `limit` for each address once it
     /// starts.
     pub fn serve(self, limit: AddressLimit) -> QuicEndpoint {
-        let Self {
-            port,
-            local,
-            server,
-            config,
-            key,
-        } = self;
         QuicEndpoint::run(
+            self.socket,
+            Some(self.server),
+            Side::Server {
+                key: self.key,
+                limit,
+            },
+        )
+    }
+}
+
+impl BoundSocket {
+    /// A socket bound to `address`, for an endpoint of `config`.
+    fn bind(address: SocketAddr, config: EndpointConfig) -> Result<Self, BindError> {
+        let error = |error| BindError { address, error };
+        let port = UdpPort::bind(address).map_err(error)?;
+        let local = port.local_address().map_err(error)?;
+        Ok(Self {
             port,
             local,
-            Some(server),
             config,
-            Side::Server { key, limit },
-        )
+        })
     }
 }
 

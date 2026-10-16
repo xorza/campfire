@@ -14,4 +14,4 @@ pub use crate::zero_hour::error::{
 };
 pub use crate::zero_hour::game_version::{ArchiveHash, GameVersion};
 pub use crate::zero_hour::production_import::{DropCause, DroppedButton};
-pub use crate::zero_hour::{Imported, SkipReason, SkippedModel, ZeroHour};
+pub use crate::zero_hour::{Imported, ImportedMap, SkipReason, SkippedModel, ZeroHour};

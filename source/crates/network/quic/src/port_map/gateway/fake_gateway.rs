@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use campfire_store::Worker;
 
-use crate::gateway::MESSAGE_MAX;
+use crate::port_map::gateway::MESSAGE_MAX;
 
 /// A gateway on a loopback port: it answers each request it reads with the datagrams `answer`
 /// gives, none for silence, and keeps each request. Its read blocks with no timeout, as a read

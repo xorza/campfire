@@ -1,5 +1,8 @@
+use std::net::UdpSocket;
+use std::sync::Arc;
+
 use super::*;
-use crate::upnp_gateway::fake_router::{Answer, Call, FakeRouter};
+use crate::port_map::upnp_gateway::fake_router::{Answer, Call, FakeRouter};
 
 const LIFETIME: Duration = Duration::from_secs(7200);
 const EXTERNAL_IP: Ipv4Addr = FakeRouter::EXTERNAL_IP;
@@ -8,23 +11,32 @@ fn search(router: &FakeRouter) -> UpnpGateway {
     UpnpGateway::search(router.ssdp(), Duration::from_millis(500)).unwrap()
 }
 
+/// Maps port 4433 for `LIFETIME`, anew or `renewed`, with a stop that never comes.
+fn map(gateway: &UpnpGateway, renewed: Option<&Mapping>) -> Result<Mapping, MapError> {
+    let ask = Ask {
+        internal_port: 4433,
+        renewed,
+        lifetime: LIFETIME,
+    };
+    gateway.map(ask, &AtomicBool::new(false))
+}
+
 #[test]
 fn a_router_maps_the_port_at_the_same_port_renews_it_and_deletes_it() {
     let router = FakeRouter::start(|_| Answer::Done);
     let gateway = search(&router);
-    let mapping = gateway.map(4433, None, LIFETIME).unwrap();
+    let mapping = map(&gateway, None).unwrap();
     assert_eq!(
         mapping,
         Mapping {
-            external: SocketAddrV4::new(EXTERNAL_IP, 4433),
+            external_port: 4433,
+            address: None,
             lifetime: LIFETIME,
             by: MappedBy::Upnp,
         }
     );
-    assert_eq!(
-        gateway.map(4433, Some(&mapping), LIFETIME).unwrap(),
-        mapping
-    );
+    assert_eq!(gateway.address().unwrap(), EXTERNAL_IP);
+    assert_eq!(map(&gateway, Some(&mapping)).unwrap(), mapping);
     gateway.delete(&mapping).unwrap();
     let calls = router.calls();
     let actions: Vec<&str> = calls.iter().map(|call| call.action.as_str()).collect();
@@ -34,7 +46,6 @@ fn a_router_maps_the_port_at_the_same_port_renews_it_and_deletes_it() {
             "AddPortMapping",
             "GetExternalIPAddress",
             "AddPortMapping",
-            "GetExternalIPAddress",
             "DeletePortMapping",
         ]
     );
@@ -49,8 +60,8 @@ fn a_router_maps_the_port_at_the_same_port_renews_it_and_deletes_it() {
     ] {
         assert_eq!(add.arg(arg), value, "{arg}");
     }
-    assert_eq!(calls[4].arg("NewExternalPort"), "4433");
-    assert_eq!(calls[4].arg("NewProtocol"), "UDP");
+    assert_eq!(calls[3].arg("NewExternalPort"), "4433");
+    assert_eq!(calls[3].arg("NewProtocol"), "UDP");
 }
 
 #[test]
@@ -63,7 +74,7 @@ fn a_router_that_takes_only_permanent_leases_gets_one_at_its_own_port_or_another
             "AddPortMapping" if call.arg("NewLeaseDuration") != "0" => Answer::Error(725),
             _ => Answer::Done,
         });
-        let mapping = search(&router).map(4433, None, LIFETIME).unwrap();
+        let mapping = map(&search(&router), None).unwrap();
         // The mapping still renews within the lifetime asked for.
         assert_eq!(mapping.lifetime, LIFETIME);
         let adds: Vec<(String, String)> = router
@@ -82,11 +93,11 @@ fn a_router_that_takes_only_permanent_leases_gets_one_at_its_own_port_or_another
             // 4433 with a lease, which the other host holds; a drawn port with a lease, refused as
             // a lease; and a port drawn again with none.
             assert_eq!(leases, ["7200", "7200", "0"]);
-            assert_eq!(adds[2].0, mapping.external.port().to_string());
-            assert_ne!(mapping.external.port(), 4433);
+            assert_eq!(adds[2].0, mapping.external_port.to_string());
+            assert_ne!(mapping.external_port, 4433);
         } else {
             assert_eq!(leases, ["7200", "0"]);
-            assert_eq!(mapping.external.port(), 4433);
+            assert_eq!(mapping.external_port, 4433);
         }
     }
 }
@@ -99,7 +110,7 @@ fn a_port_another_host_holds_is_mapped_at_another_and_its_renewal_fails() {
         _ => Answer::Done,
     });
     let gateway = search(&router);
-    let mapping = gateway.map(4433, None, LIFETIME).unwrap();
+    let mapping = map(&gateway, None).unwrap();
     let adds: Vec<Call> = router
         .calls()
         .into_iter()
@@ -110,17 +121,46 @@ fn a_port_another_host_holds_is_mapped_at_another_and_its_renewal_fails() {
     let drawn: u16 = adds[1].arg("NewExternalPort").parse().unwrap();
     assert_ne!(drawn, 4433);
     assert_eq!(adds[1].arg("NewInternalPort"), "4433");
-    assert_eq!(mapping.external, SocketAddrV4::new(EXTERNAL_IP, drawn));
+    assert_eq!(mapping.external_port, drawn);
 
     let held = Mapping {
-        external: SocketAddrV4::new(EXTERNAL_IP, 4433),
+        external_port: 4433,
         ..mapping
     };
-    let error = gateway.map(4433, Some(&held), LIFETIME).unwrap_err();
+    let error = map(&gateway, Some(&held)).unwrap_err();
     assert!(
         matches!(error, MapError::UpnpAdd(AddPortError::PortInUse)),
         "{error:?}"
     );
+}
+
+#[test]
+fn a_stop_ends_a_map_between_two_requests() {
+    // The router asks for a lease that never ends, 725, and the map stops as it answers.
+    let stop = Arc::new(AtomicBool::new(false));
+    let router = {
+        let stop = Arc::clone(&stop);
+        FakeRouter::start(move |_| {
+            stop.store(true, Ordering::SeqCst);
+            Answer::Error(725)
+        })
+    };
+    let gateway = search(&router);
+    let ask = Ask {
+        internal_port: 4433,
+        renewed: None,
+        lifetime: LIFETIME,
+    };
+    let error = gateway.map(ask, &stop).unwrap_err();
+    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    let calls = router.calls();
+    let actions: Vec<&str> = calls.iter().map(|call| call.action.as_str()).collect();
+    assert_eq!(actions, ["AddPortMapping"]);
+
+    // Stopped before it starts, it sends none.
+    let error = gateway.map(ask, &stop).unwrap_err();
+    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    assert_eq!(router.calls().len(), 1);
 }
 
 #[test]

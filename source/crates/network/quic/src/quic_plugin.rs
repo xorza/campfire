@@ -94,11 +94,11 @@ impl QuicPlugin {
     }
 
     fn receive(
-        endpoints: Query<'_, '_, (Entity, &QuicEndpoint)>,
+        mut endpoints: Query<'_, '_, (Entity, &mut QuicEndpoint)>,
         mut links: Query<'_, '_, (&mut Link, &mut PeerAddr)>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (entity, endpoint) in &endpoints {
+        for (entity, mut endpoint) in &mut endpoints {
             endpoint.receive(entity, &mut links, &mut commands);
         }
     }

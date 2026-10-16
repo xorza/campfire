@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use derive_more::Display;
 
 /// A process the check runs.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Process {
     #[display("the server")]
     Server,

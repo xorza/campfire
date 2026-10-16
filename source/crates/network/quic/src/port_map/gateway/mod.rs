@@ -1,10 +1,12 @@
 use std::io::{self, ErrorKind};
-use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
+use std::net::{Ipv4Addr, SocketAddrV4, UdpSocket};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use crate::error::MapError;
-use crate::nat_pmp_map::{NatPmpMap, NatPmpMapping, NatPmpReply};
-use crate::pcp_map::{MapNonce, PcpMap, PcpReply};
+use crate::port_map::error::MapError;
+use crate::port_map::facing_socket::FacingSocket;
+use crate::port_map::nat_pmp_map::{NatPmpMap, NatPmpMapping, NatPmpReply};
+use crate::port_map::pcp_map::{MapNonce, PcpMap, PcpReply};
 
 /// The longest PCP message, which bounds a NAT-PMP one too (RFC 6887 §7).
 const MESSAGE_MAX: usize = 1100;
@@ -22,14 +24,34 @@ pub(crate) struct Gateway {
     nat_pmp_only: bool,
 }
 
-/// A port a gateway maps: where it is reached outside, how long until it is renewed, and by which
-/// protocol.
+/// A port a gateway maps: its port outside, its router's address outside once read, how long
+/// until it is renewed, and by which protocol.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Mapping {
-    pub(crate) external: SocketAddrV4,
+    pub(crate) external_port: u16,
+    /// The router's address outside; none for a grant whose address did not read, which is
+    /// still the router's to delete.
+    pub(crate) address: Option<Ipv4Addr>,
     /// The lifetime the gateway granted; for a UPnP lease that never ends, the one asked for.
     pub(crate) lifetime: Duration,
     pub(crate) by: MappedBy,
+}
+
+/// What a map asks of a gateway or a router: `internal_port` for `lifetime`, anew, or `renewed`
+/// again at its port outside.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ask<'a> {
+    pub(crate) internal_port: u16,
+    pub(crate) renewed: Option<&'a Mapping>,
+    pub(crate) lifetime: Duration,
+}
+
+/// How a request to a gateway waits: its tries, and the map's stop, which ends the wait before
+/// the next try.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Wait<'a> {
+    pub(crate) tries: Tries,
+    pub(crate) stop: &'a AtomicBool,
 }
 
 /// The protocol a mapping was granted by, and what its renewal and deletion repeat.
@@ -48,29 +70,32 @@ pub(crate) struct Tries {
     pub(crate) count: u32,
 }
 
+impl Mapping {
+    /// Where a player outside reaches the port, once its address read.
+    pub(crate) fn external(&self) -> Option<SocketAddrV4> {
+        Some(SocketAddrV4::new(self.address?, self.external_port))
+    }
+}
+
 impl Gateway {
     /// A client of the gateway at `gateway`, from this host's address that faces it.
     pub(crate) fn connect(gateway: SocketAddrV4) -> io::Result<Self> {
-        let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))?;
-        socket.connect(gateway)?;
-        let SocketAddr::V4(local) = socket.local_addr()? else {
-            unreachable!("a socket bound to an IPv4 address keeps one");
-        };
+        let FacingSocket { socket, host } = FacingSocket::connect(gateway)?;
         Ok(Self {
             socket,
-            client: *local.ip(),
+            client: host,
             nat_pmp_only: false,
         })
     }
 
-    /// Maps `internal_port` for `lifetime`: anew, or `renewed` again at its external address.
-    pub(crate) fn map(
-        &mut self,
-        internal_port: u16,
-        renewed: Option<&Mapping>,
-        lifetime: Duration,
-        tries: Tries,
-    ) -> Result<Mapping, MapError> {
+    /// Maps as `ask` says. A PCP grant names its address outside; a NAT-PMP one does not, and
+    /// `address` reads it.
+    pub(crate) fn map(&mut self, ask: Ask<'_>, wait: Wait<'_>) -> Result<Mapping, MapError> {
+        let Ask {
+            internal_port,
+            renewed,
+            lifetime,
+        } = ask;
         if !self.nat_pmp_only {
             let nonce = match renewed {
                 Some(Mapping {
@@ -83,13 +108,14 @@ impl Gateway {
                 nonce,
                 client: self.client,
                 internal_port,
-                external: renewed.map_or(NO_EXTERNAL, |mapping| mapping.external),
+                external: renewed.and_then(Mapping::external).unwrap_or(NO_EXTERNAL),
                 lifetime,
             };
-            match self.pcp(&request, tries)? {
+            match self.pcp(&request, wait)? {
                 PcpReply::Granted(granted) => {
                     return Ok(Mapping {
-                        external: granted.external,
+                        external_port: granted.external.port(),
+                        address: Some(*granted.external.ip()),
                         lifetime: granted.lifetime,
                         by: MappedBy::Pcp(nonce),
                     });
@@ -102,25 +128,30 @@ impl Gateway {
         }
         let request = NatPmpMap {
             internal_port,
-            external_port: renewed.map_or(0, |mapping| mapping.external.port()),
+            external_port: renewed.map_or(0, |mapping| mapping.external_port),
             lifetime,
         };
-        let granted = match self.nat_pmp(&request, tries)? {
+        let granted = match self.nat_pmp(&request, wait)? {
             NatPmpReply::Granted(granted) => granted,
             NatPmpReply::Refused(refusal) => return Err(MapError::NatPmpRefused(refusal)),
         };
-        let address = self.exchange(&NatPmpMap::ADDRESS_REQUEST, tries, |reply| {
-            NatPmpMap::decode_address(reply).ok()
-        })?;
-        let address = match address {
-            NatPmpReply::Granted(address) => address,
-            NatPmpReply::Refused(refusal) => return Err(MapError::NatPmpRefused(refusal)),
-        };
         Ok(Mapping {
-            external: SocketAddrV4::new(address.address, granted.external_port),
+            external_port: granted.external_port,
+            address: None,
             lifetime: granted.lifetime,
             by: MappedBy::NatPmp,
         })
+    }
+
+    /// The gateway's address outside, by NAT-PMP.
+    pub(crate) fn address(&self, wait: Wait<'_>) -> Result<Ipv4Addr, MapError> {
+        let address = self.exchange(&NatPmpMap::ADDRESS_REQUEST, wait, |reply| {
+            NatPmpMap::decode_address(reply).ok()
+        })?;
+        match address {
+            NatPmpReply::Granted(address) => Ok(address.address),
+            NatPmpReply::Refused(refusal) => Err(MapError::NatPmpRefused(refusal)),
+        }
     }
 
     /// Deletes `mapping` of `internal_port`, which PCP or NAT-PMP granted: one request, its answer
@@ -131,9 +162,14 @@ impl Gateway {
         mapping: &Mapping,
         wait: Duration,
     ) -> Result<(), MapError> {
-        let once = Tries {
-            first: wait,
-            count: 1,
+        // A deletion comes as the map stops, which no stop cuts short.
+        let running = AtomicBool::new(false);
+        let once = Wait {
+            tries: Tries {
+                first: wait,
+                count: 1,
+            },
+            stop: &running,
         };
         match mapping.by {
             MappedBy::Pcp(nonce) => {
@@ -169,8 +205,8 @@ impl Gateway {
 
     /// A PCP request's answer: a reply that grants another mapping than the request's, or that
     /// does not read, answers some other request.
-    fn pcp(&self, request: &PcpMap, tries: Tries) -> Result<PcpReply, MapError> {
-        self.exchange(&request.encode(), tries, |reply| {
+    fn pcp(&self, request: &PcpMap, wait: Wait<'_>) -> Result<PcpReply, MapError> {
+        self.exchange(&request.encode(), wait, |reply| {
             match PcpReply::decode(reply) {
                 Ok(PcpReply::Granted(granted))
                     if granted.nonce != request.nonce
@@ -186,9 +222,9 @@ impl Gateway {
     fn nat_pmp(
         &self,
         request: &NatPmpMap,
-        tries: Tries,
+        wait: Wait<'_>,
     ) -> Result<NatPmpReply<NatPmpMapping>, MapError> {
-        self.exchange(&request.encode(), tries, |reply| {
+        self.exchange(&request.encode(), wait, |reply| {
             match NatPmpMap::decode(reply) {
                 Ok(NatPmpReply::Granted(granted))
                     if granted.internal_port != request.internal_port =>
@@ -200,18 +236,22 @@ impl Gateway {
         })
     }
 
-    /// Sends `request` as `tries` says, until `answer` takes a reply as its answer.
+    /// Sends `request` as `wait` says, until `answer` takes a reply as its answer, or the map
+    /// stops before a try.
     fn exchange<T>(
         &self,
         request: &[u8],
-        tries: Tries,
+        wait: Wait<'_>,
         mut answer: impl FnMut(&[u8]) -> Option<T>,
     ) -> Result<T, MapError> {
         let mut buffer = [0; MESSAGE_MAX];
-        let mut wait = tries.first;
-        for _ in 0..tries.count {
+        let mut awaited = wait.tries.first;
+        for _ in 0..wait.tries.count {
+            if wait.stop.load(Ordering::SeqCst) {
+                return Err(MapError::Stopped);
+            }
             self.socket.send(request).map_err(Self::fault)?;
-            let deadline = Instant::now() + wait;
+            let deadline = Instant::now() + awaited;
             loop {
                 let left = deadline.saturating_duration_since(Instant::now());
                 if left.is_zero() {
@@ -234,7 +274,7 @@ impl Gateway {
                     Err(error) => return Err(Self::fault(error)),
                 }
             }
-            wait *= 2;
+            awaited *= 2;
         }
         Err(MapError::NoAnswer)
     }

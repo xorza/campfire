@@ -1,7 +1,9 @@
+use std::net::SocketAddr;
+
 use super::*;
-use crate::gateway::fake_gateway::FakeGateway;
-use crate::nat_pmp_map::NatPmpRefusal;
-use crate::pcp_map::PcpRefusal;
+use crate::port_map::gateway::fake_gateway::FakeGateway;
+use crate::port_map::nat_pmp_map::NatPmpRefusal;
+use crate::port_map::pcp_map::PcpRefusal;
 
 const EXTERNAL: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(203, 0, 113, 7), 50_000);
 const LIFETIME: Duration = Duration::from_secs(7200);
@@ -11,23 +13,41 @@ const TRIES: Tries = Tries {
     count: 3,
 };
 
+/// Maps port 4433 for `LIFETIME` by `TRIES`, anew or `renewed`, with a stop that never comes.
+fn map(client: &mut Gateway, renewed: Option<&Mapping>) -> Result<Mapping, MapError> {
+    let running = AtomicBool::new(false);
+    let ask = Ask {
+        internal_port: 4433,
+        renewed,
+        lifetime: LIFETIME,
+    };
+    client.map(
+        ask,
+        Wait {
+            tries: TRIES,
+            stop: &running,
+        },
+    )
+}
+
 #[test]
 fn a_pcp_mapping_is_renewed_with_its_nonce_at_its_address_and_deleted() {
     let gateway = FakeGateway::start(|request| vec![FakeGateway::pcp_reply(request, 0, EXTERNAL)]);
     let mut client = Gateway::connect(gateway.address).unwrap();
-    let mapping = client.map(4433, None, LIFETIME, TRIES).unwrap();
+    let mapping = map(&mut client, None).unwrap();
     let MappedBy::Pcp(nonce) = mapping.by else {
         panic!("a PCP gateway maps by PCP");
     };
     assert_eq!(
         mapping,
         Mapping {
-            external: EXTERNAL,
+            external_port: 50_000,
+            address: Some(*EXTERNAL.ip()),
             lifetime: LIFETIME,
             by: MappedBy::Pcp(nonce),
         }
     );
-    let renewed = client.map(4433, Some(&mapping), LIFETIME, TRIES).unwrap();
+    let renewed = map(&mut client, Some(&mapping)).unwrap();
     assert_eq!(renewed, mapping);
     client
         .delete(4433, &mapping, Duration::from_millis(100))
@@ -71,19 +91,23 @@ fn a_gateway_that_answers_pcp_with_version_0_is_asked_by_nat_pmp_from_then_on() 
         }]
     });
     let mut client = Gateway::connect(gateway.address).unwrap();
-    let mapping = client.map(4433, None, LIFETIME, TRIES).unwrap();
+    let mapping = map(&mut client, None).unwrap();
     assert_eq!(
         mapping,
         Mapping {
-            external: EXTERNAL,
+            external_port: 50_000,
+            address: None,
             lifetime: Duration::from_secs(3600),
             by: MappedBy::NatPmp,
         }
     );
-    assert_eq!(
-        client.map(4433, Some(&mapping), LIFETIME, TRIES).unwrap(),
-        mapping
-    );
+    let running = AtomicBool::new(false);
+    let wait = Wait {
+        tries: TRIES,
+        stop: &running,
+    };
+    assert_eq!(client.address(wait).unwrap(), *EXTERNAL.ip());
+    assert_eq!(map(&mut client, Some(&mapping)).unwrap(), mapping);
     client
         .delete(4433, &mapping, Duration::from_millis(100))
         .unwrap();
@@ -92,10 +116,11 @@ fn a_gateway_that_answers_pcp_with_version_0_is_asked_by_nat_pmp_from_then_on() 
         .iter()
         .map(|request| [request[0], request[1]])
         .collect();
-    assert_eq!(kinds, [[2, 1], [0, 1], [0, 0], [0, 1], [0, 0], [0, 1]]);
+    // PCP, then NAT-PMP's mapping, its address apart, its renewal and its deletion.
+    assert_eq!(kinds, [[2, 1], [0, 1], [0, 0], [0, 1], [0, 1]]);
     // The first mapping suggests no port, its renewal the one granted, and the deletion asks for
     // none for no time.
-    let map = |external_port, lifetime| {
+    let request = |external_port, lifetime| {
         NatPmpMap {
             internal_port: 4433,
             external_port,
@@ -104,9 +129,9 @@ fn a_gateway_that_answers_pcp_with_version_0_is_asked_by_nat_pmp_from_then_on() 
         .encode()
         .to_vec()
     };
-    assert_eq!(requests[1], map(0, LIFETIME));
-    assert_eq!(requests[3], map(50_000, LIFETIME));
-    assert_eq!(requests[5], map(0, Duration::ZERO));
+    assert_eq!(requests[1], request(0, LIFETIME));
+    assert_eq!(requests[3], request(50_000, LIFETIME));
+    assert_eq!(requests[4], request(0, Duration::ZERO));
 }
 
 #[test]
@@ -114,7 +139,7 @@ fn a_silent_gateway_is_asked_each_try_and_given_up() {
     let gateway = FakeGateway::start(|_| vec![]);
     let mut client = Gateway::connect(gateway.address).unwrap();
     let start = Instant::now();
-    let error = client.map(4433, None, LIFETIME, TRIES).unwrap_err();
+    let error = map(&mut client, None).unwrap_err();
     assert!(matches!(error, MapError::NoAnswer), "{error:?}");
     // 20 + 40 + 80 ms of waits, each after its own request.
     assert!(start.elapsed() >= Duration::from_millis(140));
@@ -131,7 +156,7 @@ fn a_reply_to_another_request_is_passed_over_and_a_refusal_is_the_answer() {
         vec![vec![9, 9, 9], stray, refusal]
     });
     let mut client = Gateway::connect(gateway.address).unwrap();
-    let error = client.map(4433, None, LIFETIME, TRIES).unwrap_err();
+    let error = map(&mut client, None).unwrap_err();
     assert!(
         matches!(
             error,
@@ -151,7 +176,7 @@ fn a_reply_to_another_request_is_passed_over_and_a_refusal_is_the_answer() {
         }]
     });
     let mut client = Gateway::connect(gateway.address).unwrap();
-    let error = client.map(4433, None, LIFETIME, TRIES).unwrap_err();
+    let error = map(&mut client, None).unwrap_err();
     assert!(
         matches!(error, MapError::NatPmpRefused(NatPmpRefusal::NotAuthorized)),
         "{error:?}"
@@ -168,7 +193,24 @@ fn a_gateway_port_no_server_listens_on_is_told_at_once() {
     drop(closed);
     let mut client = Gateway::connect(address).unwrap();
     let start = Instant::now();
-    let error = client.map(4433, None, LIFETIME, TRIES).unwrap_err();
+    let error = map(&mut client, None).unwrap_err();
     assert!(matches!(error, MapError::NoServer), "{error:?}");
     assert!(start.elapsed() < TRIES.first);
+}
+
+#[test]
+fn a_stop_ends_a_request_before_its_next_try() {
+    let gateway = FakeGateway::start(|_| vec![]);
+    let client = Gateway::connect(gateway.address).unwrap();
+    let stopped = AtomicBool::new(true);
+    let wait = Wait {
+        tries: TRIES,
+        stop: &stopped,
+    };
+    let start = Instant::now();
+    let error = client.address(wait).unwrap_err();
+    assert!(matches!(error, MapError::Stopped), "{error:?}");
+    // No try went, so no wait of 20 ms came.
+    assert!(start.elapsed() < TRIES.first);
+    assert_eq!(gateway.requests(), Vec::<Vec<u8>>::new());
 }

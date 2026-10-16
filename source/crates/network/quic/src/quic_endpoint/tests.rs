@@ -52,6 +52,13 @@ fn pattern(len: usize) -> Vec<u8> {
 }
 
 /// The secret of the test server's own key, from which its TLS key and reset key derive.
+/// An endpoint's config whose connection ids are `cid_len` bytes, not `CID_LEN`.
+fn cid_config(cid_len: usize) -> EndpointConfig {
+    let mut config = QuicEndpoint::endpoint_config(ResetKey::random());
+    config.cid_generator(move || Box::new(RandomConnectionIdGenerator::new(cid_len)));
+    config
+}
+
 fn server_secret() -> Zeroizing<[u8; 32]> {
     Zeroizing::new([7; 32])
 }
@@ -273,7 +280,7 @@ fn handshake(client_cid: usize) -> (Connection, Connection) {
     let key = server_key();
     let now = Instant::now();
     let mut server = Endpoint::new(
-        Arc::new(QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN)),
+        Arc::new(QuicEndpoint::endpoint_config(ResetKey::random())),
         Some(Arc::new(QuicEndpoint::server_config(
             key.server_config(),
             LinkTimes::CAMPFIRE,
@@ -281,15 +288,7 @@ fn handshake(client_cid: usize) -> (Connection, Connection) {
         true,
         None,
     );
-    let mut client = Endpoint::new(
-        Arc::new(QuicEndpoint::endpoint_config(
-            ResetKey::random(),
-            client_cid,
-        )),
-        None,
-        true,
-        None,
-    );
+    let mut client = Endpoint::new(Arc::new(cid_config(client_cid)), None, true, None);
     let server_address = SocketAddr::from(([10, 0, 0, 1], 4433));
     let client_address = SocketAddr::from(([10, 0, 0, 2], 50_000));
     let config = QuicEndpoint::client_config(
@@ -378,7 +377,15 @@ fn a_client_whose_datagrams_cannot_carry_a_link_is_closed_and_never_linked() {
         LinkTimes::CAMPFIRE,
     );
     let mut client = ClientApp::start(
-        QuicEndpoint::client_of(loopback.address, loopback.key, config, 20).unwrap(),
+        QuicEndpoint::client_of(
+            ClientSide {
+                server: loopback.address,
+                pin: loopback.key,
+                config,
+            },
+            cid_config(20),
+        )
+        .unwrap(),
     );
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Unlinked>());
     assert!(Loopback::links(loopback.server.world_mut()).is_empty());
@@ -531,6 +538,27 @@ fn a_loss_the_frame_has_not_taken_ends_no_later_connection() {
 }
 
 #[test]
+fn a_failed_socket_ends_each_link_at_once_and_takes_no_new_one() {
+    let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
+    let mut client = loopback.client(LinkTimes::CAMPFIRE);
+    let link = loopback.join(&mut client);
+    // The thread fails as its socket does: the next frame unlinks the server's link with the
+    // failure, not by the idle timeout, and the endpoint takes no connection after.
+    loopback.quic().state().fail();
+    assert!(loopback.quic().state().ended());
+    loopback.server.update();
+    let world = loopback.server.world();
+    assert!(world.get::<Unlinked>(link).is_some());
+    assert_eq!(world.get::<LinkEnd>(link), Some(&LinkEnd::SocketFailed));
+    let mut late = loopback.client(LinkTimes::CAMPFIRE);
+    loopback.pump(&mut [&mut late], |_, clients| clients[0].is::<Unlinked>());
+    assert_eq!(
+        late.app.world().get::<LinkEnd>(late.entity),
+        Some(&LinkEnd::Refused)
+    );
+}
+
+#[test]
 fn a_close_of_a_link_gone_before_or_after_its_observer_closes_nothing() {
     let mut loopback = Loopback::new(LinkTimes::CAMPFIRE);
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
@@ -576,7 +604,15 @@ fn a_wrong_pin_fails_by_access_denied_and_each_connect_checks_the_key() {
         LinkTimes::CAMPFIRE,
     );
     let mut client = ClientApp::start(
-        QuicEndpoint::client_of(loopback.address, loopback.key, config, CID_LEN).unwrap(),
+        QuicEndpoint::client_of(
+            ClientSide {
+                server: loopback.address,
+                pin: loopback.key,
+                config,
+            },
+            QuicEndpoint::endpoint_config(ResetKey::random()),
+        )
+        .unwrap(),
     );
     loopback.pump(&mut [&mut client], |_, clients| clients[0].is::<Linked>());
     client.restart();
@@ -973,7 +1009,7 @@ impl Limited {
     fn new(limit: AddressLimit) -> Self {
         let config = QuicEndpoint::server_config(server_key().server_config(), LinkTimes::CAMPFIRE);
         let mut server = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::derive(&server_secret()), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::derive(&server_secret())),
             Some(Arc::new(config)),
             [1; 32],
             Self::SERVER,
@@ -992,7 +1028,7 @@ impl Limited {
     fn join(&mut self, address: SocketAddr) -> Option<PeerKey> {
         let seed = u8::try_from(self.clients.len() + 2).unwrap();
         let mut client = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::random()),
             None,
             [seed; 32],
             address,

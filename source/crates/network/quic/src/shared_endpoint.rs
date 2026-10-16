@@ -1,4 +1,4 @@
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{LockResult, Mutex, MutexGuard};
 
 use crate::endpoint_state::EndpointState;
 use crate::udp_port::UdpPort;
@@ -24,6 +24,11 @@ impl SharedEndpoint {
         self.state
             .lock()
             .expect("no thread panics while it holds an endpoint")
+    }
+
+    /// The state, or an error once a thread panicked while it held it.
+    pub(crate) fn try_lock(&self) -> LockResult<MutexGuard<'_, EndpointState>> {
+        self.state.lock()
     }
 
     pub(crate) const fn port(&self) -> &UdpPort {

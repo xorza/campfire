@@ -1,6 +1,6 @@
 use std::net::{IpAddr, SocketAddr};
 
-use crate::router_url::RouterUrl;
+use crate::port_map::router_url::RouterUrl;
 
 /// The notification types of a router that maps ports by UPnP-IGD: the gateway device, or its
 /// WAN connection service.

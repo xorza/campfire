@@ -41,8 +41,7 @@ fn main() -> ExitCode {
             rules,
             skipped_models,
             missing_textures,
-            untextured_cells,
-            dropped_waypoints,
+            maps,
             dropped_buttons,
             dropped_weapons,
             unliving,
@@ -67,17 +66,18 @@ fn main() -> ExitCode {
                     "a model names a texture no archive holds, and draws untextured"
                 );
             }
-            for (map, &cells) in &untextured_cells {
+            for (map, imported) in &maps {
+                let cells = imported.untextured_cells;
                 if cells > 0 {
                     warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
                 }
-            }
-            for (map, waypoints) in &dropped_waypoints {
-                warn!(
-                    %map,
-                    waypoints = %waypoints.join(", "),
-                    "a map's waypoints past its bounds are dropped"
-                );
+                if !imported.dropped_waypoints.is_empty() {
+                    warn!(
+                        %map,
+                        waypoints = %imported.dropped_waypoints.join(", "),
+                        "a map's waypoints past its bounds are dropped"
+                    );
+                }
             }
             for dropped in &dropped_buttons {
                 warn!(
@@ -108,7 +108,8 @@ fn main() -> ExitCode {
                 %rules,
                 skipped_models = skipped_models.len(),
                 missing_textures = missing_textures.len(),
-                untextured_cells = untextured_cells.values().sum::<usize>(),
+                maps = maps.len(),
+                untextured_cells = maps.values().map(|map| map.untextured_cells).sum::<usize>(),
                 dropped_buttons = dropped_buttons.len(),
                 dropped_weapons = dropped_weapons.len(),
                 unliving = unliving.len(),

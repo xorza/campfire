@@ -41,6 +41,8 @@ pub enum LinkEnd {
     VersionMismatch,
     /// The endpoint could not open the connection.
     NotOpened,
+    /// The endpoint's socket failed, and its thread ended: no connection carries anything more.
+    SocketFailed,
 }
 
 impl LinkEnd {

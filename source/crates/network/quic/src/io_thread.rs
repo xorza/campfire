@@ -41,7 +41,8 @@ impl IoThread {
                 let timeout =
                     deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
                 if let Err(error) = self.shared.port().wait(&mut self.events, timeout) {
-                    error!(error = %ErrorReport::of(&error), "the QUIC thread cannot wait on its socket; its links end by their idle timeout");
+                    error!(error = %ErrorReport::of(&error), "the QUIC thread cannot wait on its socket; its links end");
+                    self.shared.lock().fail();
                     return;
                 }
             }

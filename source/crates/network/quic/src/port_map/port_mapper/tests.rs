@@ -1,12 +1,13 @@
 use std::net::UdpSocket;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::AtomicUsize;
 
 use super::*;
-use crate::gateway::MappedBy;
-use crate::gateway::fake_gateway::FakeGateway;
-use crate::pcp_map::PcpMap;
-use crate::upnp_gateway::fake_router::{Answer, FakeRouter};
+use crate::port_map::gateway::MappedBy;
+use crate::port_map::gateway::fake_gateway::FakeGateway;
+use crate::port_map::nat_pmp_map::NatPmpMap;
+use crate::port_map::pcp_map::PcpMap;
+use crate::port_map::upnp_gateway::fake_router::{Answer, FakeRouter};
 
 const EXTERNAL: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::new(203, 0, 113, 7), 50_000);
 /// The production times, with tries and waits short enough for a test.
@@ -38,6 +39,11 @@ fn assert_renews_in_time(wait: Duration) {
     );
 }
 
+/// A turn with a stop that never comes.
+fn turn(mapper: &mut PortMapper) -> Duration {
+    mapper.turn(&AtomicBool::new(false))
+}
+
 fn mapping(mapper: &PortMapper) -> Option<Mapping> {
     mapper.held.as_ref().map(|held| held.mapping)
 }
@@ -51,13 +57,13 @@ fn a_pcp_mapping_is_renewed_within_its_lifetime_and_deleted_at_the_end() {
         announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
-    assert_renews_in_time(mapper.turn());
+    assert_renews_in_time(turn(&mut mapper));
     let first = mapping(&mapper).unwrap();
-    assert_eq!(first.external, EXTERNAL);
+    assert_eq!(first.external(), Some(EXTERNAL));
     let MappedBy::Pcp(nonce) = first.by else {
         panic!("a PCP gateway maps by PCP");
     };
-    assert_renews_in_time(mapper.turn());
+    assert_renews_in_time(turn(&mut mapper));
     assert_eq!(mapping(&mapper), Some(first));
     mapper.end();
     assert_eq!(mapping(&mapper), None);
@@ -104,9 +110,9 @@ fn a_renewal_the_gateway_refuses_maps_the_port_anew_in_the_same_turn() {
         announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
-    mapper.turn();
+    turn(&mut mapper);
     let first = mapping(&mapper).unwrap();
-    assert_renews_in_time(mapper.turn());
+    assert_renews_in_time(turn(&mut mapper));
     let second = mapping(&mapper).unwrap();
     assert_eq!(gateway.requests().len(), 3);
     // A mapping anew draws its own nonce.
@@ -122,11 +128,12 @@ fn a_gateway_with_no_pcp_server_gives_way_to_a_upnp_router() {
         announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
-    assert_renews_in_time(mapper.turn());
+    assert_renews_in_time(turn(&mut mapper));
     assert_eq!(
         mapping(&mapper),
         Some(Mapping {
-            external: SocketAddrV4::new(FakeRouter::EXTERNAL_IP, 4433),
+            external_port: 4433,
+            address: Some(FakeRouter::EXTERNAL_IP),
             lifetime: TIMES.lifetime,
             by: MappedBy::Upnp,
         })
@@ -144,6 +151,82 @@ fn a_gateway_with_no_pcp_server_gives_way_to_a_upnp_router() {
 }
 
 #[test]
+fn a_grant_whose_address_does_not_read_is_held_and_deleted_at_the_end() {
+    // A NAT-PMP gateway, as PCP's version 2 is unsupported, that grants port 50,000 for 3,600 s
+    // and never answers the request of its address outside.
+    let gateway = FakeGateway::start(|request| match request[..2] {
+        [2, _] => vec![vec![0, 0, 0, 1, 0, 0, 0, 5]],
+        [0, 1] => {
+            let mut reply = vec![0, 129, 0, 0, 0, 0, 0x03, 0xe8];
+            reply.extend(&request[4..6]);
+            reply.extend([0xc3, 0x50, 0, 0, 0x0e, 0x10]);
+            vec![reply]
+        }
+        _ => vec![],
+    });
+    let routes = Routes::At {
+        pcp: gateway.address,
+        ssdp: SocketAddr::V4(closed()),
+        announce: closed(),
+    };
+    let mut mapper = PortMapper::new(4433, routes, TIMES);
+    // The renewal of 3,600 s comes between 1,800 s, 1/2, and 2,250 s, 5/8.
+    let wait = turn(&mut mapper);
+    assert!(
+        wait >= Duration::from_mins(30) && wait <= Duration::from_secs(2250),
+        "{wait:?}"
+    );
+    assert_eq!(
+        mapping(&mapper),
+        Some(Mapping {
+            external_port: 50_000,
+            address: None,
+            lifetime: Duration::from_secs(3600),
+            by: MappedBy::NatPmp,
+        })
+    );
+    mapper.end();
+    assert_eq!(mapping(&mapper), None);
+    let deletion = NatPmpMap {
+        internal_port: 4433,
+        external_port: 0,
+        lifetime: Duration::ZERO,
+    };
+    let requests = gateway.requests();
+    // PCP, the mapping, the address asked TIMES' two tries, and the deletion.
+    let kinds: Vec<[u8; 2]> = requests
+        .iter()
+        .map(|request| [request[0], request[1]])
+        .collect();
+    assert_eq!(kinds, [[2, 1], [0, 1], [0, 0], [0, 0], [0, 1]]);
+    assert_eq!(requests[4], deletion.encode().to_vec());
+}
+
+#[test]
+fn a_stop_ends_a_turn_before_its_next_request() {
+    let gateway = FakeGateway::start(|request| vec![FakeGateway::pcp_reply(request, 0, EXTERNAL)]);
+    let router = FakeRouter::start(|_| Answer::Done);
+    let routes = Routes::At {
+        pcp: gateway.address,
+        ssdp: router.ssdp(),
+        announce: closed(),
+    };
+    let mut mapper = PortMapper::new(4433, routes, TIMES);
+    assert_eq!(mapper.turn(&AtomicBool::new(true)), Duration::ZERO);
+    assert_eq!(mapping(&mapper), None);
+    assert!(!mapper.told);
+    assert_eq!(gateway.requests(), Vec::<Vec<u8>>::new());
+    assert_eq!(router.calls().len(), 0);
+
+    // A mapping held when the map stops is kept for the end, and its renewal sends nothing.
+    assert_renews_in_time(turn(&mut mapper));
+    let held = mapping(&mapper);
+    assert_eq!(mapper.turn(&AtomicBool::new(true)), Duration::ZERO);
+    assert_eq!(mapping(&mapper), held);
+    assert_eq!(gateway.requests().len(), 1);
+}
+
+#[test]
 fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps_it_at_once() {
     // A socket that reads the search and never answers.
     let silent = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
@@ -153,7 +236,7 @@ fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps
         announce: closed(),
     };
     let mut mapper = PortMapper::new(4433, routes, TIMES);
-    assert_eq!(mapper.turn(), TIMES.retry);
+    assert_eq!(turn(&mut mapper), TIMES.retry);
     assert!(mapper.told);
     assert_eq!(mapping(&mapper), None);
     // A router announces itself, as a host firewall drops its answer to the search: it starts a
@@ -162,10 +245,10 @@ fn a_port_no_router_maps_waits_its_retry_and_a_router_that_announces_itself_maps
     let from = SocketAddr::from((Ipv4Addr::LOCALHOST, 41_952));
     assert!(!mapper.hear(b"M-SEARCH * HTTP/1.1\r\n\r\n", from));
     assert!(mapper.hear(&router.announcement(), from));
-    assert_renews_in_time(mapper.turn());
+    assert_renews_in_time(turn(&mut mapper));
     let by_router = SocketAddrV4::new(FakeRouter::EXTERNAL_IP, 4433);
     assert_eq!(
-        mapping(&mapper).map(|mapping| mapping.external),
+        mapping(&mapper).and_then(|mapping| mapping.external()),
         Some(by_router)
     );
     assert!(!mapper.hear(&router.announcement(), from));
@@ -211,7 +294,7 @@ fn a_pcp_refusal_is_asked_again_once_its_lifetime_ends() {
             ..TIMES
         };
         let mut mapper = PortMapper::new(4433, routes, times);
-        assert_eq!(mapper.turn(), wait, "result {result}");
+        assert_eq!(turn(&mut mapper), wait, "result {result}");
         assert_eq!(mapping(&mapper), None);
     }
 }

@@ -1,25 +1,18 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::Order;
-use campfire_common::Tick;
 use campfire_geometry::Shape;
-use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
+use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
-use campfire_runner::SessionWorld;
-use campfire_sim::{Position, StableId};
-use campfire_units::{Body, Destination, Units};
-use campfire_values::{DeclaredName, UnitType};
+use campfire_sim::Position;
+use campfire_units::{Body, Destination};
+use campfire_values::DeclaredName;
 
 use crate::failure::Failure;
-
-/// The unit type of America's command center, the building a skirmish starts a player with.
-const BUILDING: &str = "americacommandcenter";
-
-/// The unit type of America's dozer, the unit a skirmish starts a player with.
-const DOZER: &str = "americavehicledozer";
+use crate::match_play::{CENTER, DOZER, MatchPlay};
 
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
 const DRIVE_LIMIT: u64 = 30 * 60 * 10;
@@ -44,9 +37,7 @@ struct WallRect {
 
 impl StartDrive {
     /// Plays the start and the drive in a match of `packages` at `rate` ticks a second; the
-    /// failures it finds go to `failures`, and none when the start lacks a unit it checks. The
-    /// match takes the log's events while it lives, as its harness checks them, so it ends
-    /// before the check logs again.
+    /// failures it finds go to `failures`, and none when the start lacks a unit it checks.
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
@@ -60,42 +51,35 @@ impl StartDrive {
             failures.push(Failure::NoStarts);
             return None;
         };
-        let mut fixed = FixedSession::new(packages, rate, 1).start();
-        let drive = Self::play(&mut fixed, &WallRect::of(&map), [start, goal], failures);
-        fixed.end();
-        drive
+        let mut play = MatchPlay::new(FixedSession::new(packages, rate, 1).start());
+        let drive = Self::play(&mut play, &WallRect::of(&map), [start, goal], failures);
+        play.end();
+        match drive {
+            Ok(drive) => Some(drive),
+            Err(failure) => {
+                failures.push(failure);
+                None
+            }
+        }
     }
 
-    /// The start and the drive in `fixed`, from `start` to `goal`, among `walls`.
+    /// The start and the drive in `play`, from `start` to `goal`, among `walls`: a failure that
+    /// ends it, and each other one in `failures`.
     fn play(
-        fixed: &mut FixedMatch,
+        play: &mut MatchPlay,
         walls: &[WallRect],
         [start, goal]: [Vec3; 2],
         failures: &mut Vec<Failure>,
-    ) -> Option<Self> {
-        let mut tick = 0;
-        fixed.game_mut().run_tick_alone();
-        tick += 1;
-        let world = fixed.game();
-        let units = MatchUnits::of(world);
-        let typed = |name: &str| Units::type_named(world, name).expect("a start type of the mode");
-        let owned = |unit_type: UnitType| -> Vec<StableId> {
-            units
-                .all()
-                .filter(|(_, unit)| {
-                    unit.get::<UnitType>() == Some(&unit_type) && MatchUnits::owned_by(unit, 0)
-                })
-                .map(|(id, _)| id)
-                .collect()
-        };
-        let (buildings, dozers) = (owned(typed(BUILDING)), owned(typed(DOZER)));
+    ) -> Result<Self, Failure> {
+        play.step();
+        let (buildings, dozers) = (play.owned(CENTER, 0)?, play.owned(DOZER, 0)?);
         let (&[building], &[dozer]) = (buildings.as_slice(), dozers.as_slice()) else {
-            failures.push(Failure::StartUnits {
+            return Err(Failure::StartUnits {
                 buildings: buildings.len(),
                 dozers: dozers.len(),
             });
-            return None;
         };
+        let units = MatchUnits::of(play.game());
         let center = units.pos(building);
         if [center.x, center.z] != [start.x, start.z] {
             failures.push(Failure::BuildingPlace(center));
@@ -110,42 +94,39 @@ impl StartDrive {
         if !clear {
             failures.push(Failure::DozerInBuilding(units.pos(dozer)));
         }
-        let order = Order::one(
+        play.order(&[Order::one(
             dozer,
             OrdersAction::Move {
                 x: goal.x,
                 z: goal.z,
             },
-        );
-        fixed.send(0, Tick::new(tick), &Order::payload(&[order]));
+        )]);
         let mut ordered = false;
-        while tick < DRIVE_LIMIT {
-            fixed.game_mut().run_tick_alone();
-            tick += 1;
-            let units = MatchUnits::of(fixed.game());
+        while play.tick().get() < DRIVE_LIMIT {
+            play.step();
+            let tick = play.tick().get();
+            let units = MatchUnits::of(play.game());
             let unit = units.unit(dozer);
             let pos = unit
                 .get::<Position>()
                 .expect("a unit stands somewhere")
                 .get();
             if walls.iter().any(|wall| wall.holds(pos)) {
-                failures.push(Failure::DozerInWall { tick, pos });
-                return None;
+                return Err(Failure::DozerInWall { tick, pos });
             }
             let walking = unit
                 .get::<Destination>()
                 .is_some_and(|destination| destination.get().is_some());
             ordered |= walking;
             if ordered && !walking {
-                return Some(Self {
+                return Ok(Self {
                     ticks: tick,
                     end: pos,
                     left: pos.ground_offset(goal).length(),
                 });
             }
         }
-        failures.push(Failure::NeverArrived);
-        None
+        Err(Failure::NeverArrived)
     }
 
     /// The point of the waypoint `name` of `map`, of its start markers.

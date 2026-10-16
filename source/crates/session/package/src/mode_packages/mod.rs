@@ -411,7 +411,8 @@ impl ModePackages {
         let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
             .expect("a map's name is a package path's name");
         let map = files
-            .read_file_data(&map_data)
+            .reader()
+            .read_data(&map_data)
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let mode = Package::read(files, &manifest.header, &parser, &api)?;

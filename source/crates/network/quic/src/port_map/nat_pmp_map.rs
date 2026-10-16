@@ -1,7 +1,7 @@
 use std::net::Ipv4Addr;
 use std::time::Duration;
 
-use crate::reply_error::ReplyError;
+use crate::port_map::reply_error::ReplyError;
 
 /// NAT-PMP's version (RFC 6886 §3).
 const VERSION: u8 = 0;

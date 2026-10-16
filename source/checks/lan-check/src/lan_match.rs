@@ -1,18 +1,18 @@
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::thread;
 use std::time::{Duration, Instant};
-use std::{mem, thread};
 
-use campfire_common::{Bytes32, Tick};
+use campfire_common::{Bytes32, PlayerSlot, Tick};
 use campfire_net::{InputLogged, Listening, MatchStarted};
 use campfire_store::OutputFile;
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
+use crate::log_tail::LogTail;
 use crate::process::Process;
 use crate::process_group::{POLL, ProcessGroup};
-use crate::process_log::ProcessLog;
 use crate::process_outcome::ProcessOutcome;
 
 /// How long the server gets to listen, and then the whole match to end, before the check stops
@@ -83,22 +83,23 @@ impl Played {
 }
 
 impl LanMatch<'_> {
-    /// Starts the server, waits until it listens, starts the bots and the impostor; once the
-    /// server logged the first order of bot `RESTARTED` and each other bot's order of that stamp,
-    /// stops that bot and starts it again with its key file; once it logged an input stamped `SERVER_STOP` or later, stops the server
-    /// and starts it again on its data directory; and waits until every process ended or the
-    /// deadline passed.
+    /// Starts the server on a port the OS picks, waits until it listens, starts the bots and the
+    /// impostor; once the server logged the first order of bot `RESTARTED` and each other bot's
+    /// order of that stamp, stops that bot and starts it again with its key file; once it logged
+    /// an input stamped `SERVER_STOP` or later, stops the server and starts it again on its data
+    /// directory and its port; and waits until every process ended or the deadline passed.
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
         let deadline = Instant::now() + DEADLINE;
-        let address = SocketAddr::from(([127, 0, 0, 1], free_port()?));
         let mut children = ProcessGroup::default();
-        let server = children.push(Process::Server, self.server(Process::Server, address)?);
+        let any_port = SocketAddr::from(([127, 0, 0, 1], 0));
+        children.start(Process::Server, self.server(Process::Server, any_port)?);
         let Listening {
+            address,
             tls_key,
             server_key,
             tick_hz,
             ..
-        } = match self.listen(&mut children, server, deadline)? {
+        } = match self.listen(&mut children, deadline)? {
             Listened::Yes(listening) => listening,
             Listened::No(outcome) => return Ok(Played::unplayed(outcome, self.scripts.len())),
         };
@@ -124,71 +125,51 @@ impl LanMatch<'_> {
             self.start(process, &mut command)
         };
         for (process, script, tls_key) in bots.chain([impostor]) {
-            children.push(process, bot(process, process, script, &tls_key)?);
+            children.start(process, bot(process, process, script, &tls_key)?);
         }
-        let restarted = Process::Bot(RESTARTED);
-        let stopped = if self.first_orders_logged(deadline)? {
+        if self.first_orders_logged(deadline)? {
+            let restarted = Process::Bot(RESTARTED);
             let again = Process::Rejoined(RESTARTED);
             let script = &self.scripts[RESTARTED];
-            children.replace(1 + RESTARTED, again, || {
+            children.replace(restarted, again, || {
                 bot(again, restarted, script, &tls_key.to_string())
             })?;
-            Some(ProcessOutcome::Stopped)
-        } else {
-            None
-        };
-        let restored = if self.logged_by(SERVER_STOP, deadline)? {
-            children.replace(server, Process::ServerAgain, || {
+        }
+        if self.logged_by(SERVER_STOP, deadline)? {
+            children.replace(Process::Server, Process::ServerAgain, || {
                 self.server(Process::ServerAgain, address)
             })?;
-            true
-        } else {
-            false
-        };
+        }
         let mut ended = children.wait(deadline)?;
-        let (server, server_again) = if restored {
-            (ProcessOutcome::Stopped, ended.remove(0))
-        } else {
-            (ended.remove(0), ProcessOutcome::NotStarted)
-        };
-        let impostor = ended.pop().expect("the impostor ran");
-        let rejoined = match stopped {
-            Some(outcome) => mem::replace(&mut ended[RESTARTED], outcome),
-            None => ProcessOutcome::NotStarted,
-        };
+        let mut outcome = |process| ended.remove(&process).unwrap_or(ProcessOutcome::NotStarted);
         Ok(Played {
-            server,
-            server_again,
-            bots: ended,
-            rejoined,
-            impostor,
+            server: outcome(Process::Server),
+            server_again: outcome(Process::ServerAgain),
+            bots: (0..self.scripts.len())
+                .map(|bot| outcome(Process::Bot(bot)))
+                .collect(),
+            rejoined: outcome(Process::Rejoined(RESTARTED)),
+            impostor: outcome(Process::Impostor),
         })
     }
 
-    /// Waits until the first server, at `server` among `children`, listens, ends, or the
-    /// deadline passed, when the check stops it.
+    /// Waits until the first server among `children` listens, ends, or the deadline passed, when
+    /// the check stops it.
     fn listen(
         &self,
         children: &mut ProcessGroup,
-        server: usize,
         deadline: Instant,
     ) -> Result<Listened, CheckError> {
-        let log = Process::Server.log_path(self.dir);
+        let mut log = LogTail::new(Process::Server, self.dir);
         loop {
-            if let Some(listening) =
-                ProcessLog::read(Process::Server, &log)?.first::<Listening>()?
-            {
+            if let Some(listening) = log.read::<Listening>()?.into_iter().next() {
                 return Ok(Listened::Yes(listening));
             }
             if Instant::now() >= deadline {
-                return Ok(Listened::No(children.stop(server)?));
+                return Ok(Listened::No(children.stop(Process::Server)?));
             }
-            let ended = children.child_mut(server).try_wait();
-            if let Some(status) = ended.map_err(|error| CheckError::Wait {
-                process: Process::Server,
-                error,
-            })? {
-                return Ok(Listened::No(ProcessOutcome::of(status)));
+            if let Some(outcome) = children.try_wait(Process::Server)? {
+                return Ok(Listened::No(outcome));
             }
             thread::sleep(POLL);
         }
@@ -209,9 +190,9 @@ impl LanMatch<'_> {
     /// Waits until the server logged an input stamped `stamp` or later, or the deadline passed;
     /// whether it did.
     fn logged_by(&self, stamp: Tick, deadline: Instant) -> Result<bool, CheckError> {
-        let path = Process::Server.log_path(self.dir);
+        let mut log = LogTail::new(Process::Server, self.dir);
         while Instant::now() < deadline {
-            let logged = ProcessLog::read(Process::Server, &path)?.read_all::<InputLogged>()?;
+            let logged = log.read::<InputLogged>()?;
             if logged.iter().any(|input| input.stamp >= stamp) {
                 return Ok(true);
             }
@@ -225,20 +206,23 @@ impl LanMatch<'_> {
     /// whether it did. A bot's order of that stamp still on its way would share the machine with
     /// the restarted bot's new process as it starts, and could miss its stamp tick.
     fn first_orders_logged(&self, deadline: Instant) -> Result<bool, CheckError> {
-        let mut slots = Vec::with_capacity(self.scripts.len());
+        let mut bots: Vec<LogTail> = (0..self.scripts.len())
+            .map(|bot| LogTail::new(Process::Bot(bot), self.dir))
+            .collect();
+        let mut slots: Vec<Option<PlayerSlot>> = vec![None; bots.len()];
+        let mut server = LogTail::new(Process::Server, self.dir);
+        let mut logged = Vec::new();
         while Instant::now() < deadline {
-            slots.clear();
-            for bot in (0..self.scripts.len()).map(Process::Bot) {
-                let log = ProcessLog::read(bot, &bot.log_path(self.dir))?;
-                let Some(MatchStarted { slot, .. }) = log.first::<MatchStarted>()? else {
-                    break;
-                };
-                slots.push(slot);
+            for (log, slot) in bots.iter_mut().zip(&mut slots) {
+                if slot.is_none() {
+                    *slot = log
+                        .read::<MatchStarted>()?
+                        .first()
+                        .map(|started| started.slot);
+                }
             }
-            if slots.len() == self.scripts.len() {
-                let server =
-                    ProcessLog::read(Process::Server, &Process::Server.log_path(self.dir))?;
-                let logged = server.read_all::<InputLogged>()?;
+            logged.extend(server.read::<InputLogged>()?);
+            if let Some(slots) = slots.iter().copied().collect::<Option<Vec<_>>>() {
                 let first = logged
                     .iter()
                     .filter(|input| input.slot == slots[RESTARTED])
@@ -282,9 +266,9 @@ impl LanMatch<'_> {
                 )
                 .arg(self.mode),
         )?;
-        children.push(Process::Local, client);
+        children.start(Process::Local, client);
         let mut ended = children.wait(deadline)?;
-        Ok(ended.pop().expect("the local client ran"))
+        Ok(ended.remove(&Process::Local).expect("the local client ran"))
     }
 
     /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
@@ -304,12 +288,4 @@ impl LanMatch<'_> {
             .spawn()
             .map_err(|error| CheckError::Start { process, error })
     }
-}
-
-/// A UDP port on `127.0.0.1` that no socket holds now.
-fn free_port() -> Result<u16, CheckError> {
-    UdpSocket::bind(("127.0.0.1", 0))
-        .and_then(|socket| socket.local_addr())
-        .map(|address| address.port())
-        .map_err(CheckError::Port)
 }

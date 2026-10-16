@@ -1,3 +1,17 @@
+mod control_schema;
+mod error;
+mod facing_socket;
+mod gateway;
+mod nat_pmp_map;
+mod pcp_map;
+mod port_mapper;
+mod reply_error;
+mod router_description;
+mod router_url;
+mod router_xml;
+mod ssdp_announcement;
+mod upnp_gateway;
+
 use std::io::{self, ErrorKind};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -9,7 +23,7 @@ use campfire_store::{SharedPort, Worker};
 use polling::{Event, Events, Poller};
 use tracing::{error, info, warn};
 
-use crate::port_mapper::{MapTimes, PortMapper, Routes};
+use crate::port_map::port_mapper::{MapTimes, PortMapper, Routes};
 
 /// The poller's key of the announcements' socket.
 const ANNOUNCEMENTS: usize = 0;
@@ -20,8 +34,8 @@ const DATAGRAM: usize = 1500;
 /// D12): it maps the port by PCP or NAT-PMP at the default gateway, else by UPnP, renews the
 /// mapping, maps it anew when a renewal fails, and tries again while no router maps it, in 30
 /// minutes, when a PCP refusal's lifetime ends, or at once when a router at an address not heard
-/// before announces itself, logging each change. Dropped, it ends the thread after its turn, which
-/// deletes the mapping, and joins it.
+/// before announces itself, logging each change. Dropped, it stops the thread's turn before its next
+/// request, has the thread delete the mapping, and joins it.
 #[derive(Debug)]
 pub struct PortMap {
     stop: Arc<Stop>,
@@ -130,7 +144,7 @@ impl Listening {
     /// A turn of `mapper` and the wait after it: whether another turn comes, which none does once
     /// stopped, or once the wait fails.
     fn turn(&mut self, mapper: &mut PortMapper) -> bool {
-        let next = Instant::now() + mapper.turn();
+        let next = Instant::now() + mapper.turn(&self.stop.stopped);
         loop {
             if self.stop.stopped.load(Ordering::SeqCst) {
                 return false;
@@ -192,9 +206,9 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::gateway::Tries;
-    use crate::gateway::fake_gateway::FakeGateway;
-    use crate::upnp_gateway::fake_router::{Answer, FakeRouter};
+    use crate::port_map::gateway::Tries;
+    use crate::port_map::gateway::fake_gateway::FakeGateway;
+    use crate::port_map::upnp_gateway::fake_router::{Answer, FakeRouter};
 
     #[test]
     fn a_dropped_map_wakes_its_thread_which_deletes_the_mapping() {

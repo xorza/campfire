@@ -50,6 +50,7 @@ mod binaries;
 mod error;
 mod failure;
 mod lan_match;
+mod log_tail;
 mod mode;
 mod process;
 mod process_group;

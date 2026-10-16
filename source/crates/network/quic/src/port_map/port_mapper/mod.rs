@@ -1,5 +1,6 @@
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use campfire_log::ErrorReport;
@@ -7,10 +8,10 @@ use campfire_store::SharedPort;
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{debug, info, warn};
 
-use crate::error::MapError;
-use crate::gateway::{Gateway, Mapping, Tries};
-use crate::ssdp_announcement::SsdpAnnouncement;
-use crate::upnp_gateway::{SSDP, UpnpGateway};
+use crate::port_map::error::MapError;
+use crate::port_map::gateway::{Ask, Gateway, Mapping, Tries, Wait};
+use crate::port_map::ssdp_announcement::SsdpAnnouncement;
+use crate::port_map::upnp_gateway::{SSDP, UpnpGateway};
 
 /// The port PCP and NAT-PMP gateways answer on (RFC 6887 §19.1, RFC 6886 §3).
 const PCP_PORT: u16 = 5351;
@@ -159,36 +160,40 @@ impl PortMapper {
     }
 
     /// One turn: the mapping it holds renewed, or the port mapped anew when it holds none or the
-    /// renewal failed. How long until the next turn: a renewal's time; when no router mapped the
-    /// port, the lifetime of a PCP refusal, for which RFC 6887 §7.2 has a client expect the same
-    /// answer, or else `retry`. A server started again meets such a refusal for the mapping its
-    /// last run left, under that run's nonce, which forwards to the same port until it ends: so a
-    /// refusal's wait is at most the lifetime the map asks for, as a router's refusal may last
-    /// for years.
-    pub(crate) fn turn(&mut self) -> Duration {
+    /// renewal failed, each grant held as the router makes it, so the map's end deletes it
+    /// whether its address outside read or not. How long until the next turn: a renewal's time;
+    /// when no router mapped the port, the lifetime of a PCP refusal, for which RFC 6887 §7.2 has
+    /// a client expect the same answer, or else `retry`. A server started again meets such a
+    /// refusal for the mapping its last run left, under that run's nonce, which forwards to the
+    /// same port until it ends: so a refusal's wait is at most the lifetime the map asks for, as a
+    /// router's refusal may last for years. `stop` ends the turn between two requests.
+    pub(crate) fn turn(&mut self, stop: &AtomicBool) -> Duration {
         if let Some(held) = &mut self.held {
-            match held.renew(self.internal_port, self.times) {
-                Ok(mapping) => {
-                    if mapping.external != held.mapping.external {
-                        Self::announce(&mapping);
+            let known = held.mapping.external();
+            match held.renew(self.internal_port, self.times, stop) {
+                Ok(()) => {
+                    held.read_address(self.times, stop);
+                    if held.mapping.external() != known {
+                        Self::announce(&held.mapping);
                     }
-                    held.mapping = mapping;
-                    return Self::renewal(mapping.lifetime, Self::draw());
+                    return Self::renewal(held.mapping.lifetime, Self::draw());
                 }
+                Err(MapError::Stopped) => return Duration::ZERO,
                 Err(error) => {
                     warn!(error = %ErrorReport::of(&error), "the router did not renew the server's port mapping; the port is mapped anew");
                     self.held = None;
                 }
             }
         }
-        match self.map_anew() {
+        match self.map_anew(stop) {
             Ok(held) => {
+                let held = self.held.insert(held);
+                held.read_address(self.times, stop);
                 Self::announce(&held.mapping);
                 self.told = false;
-                let wait = Self::renewal(held.mapping.lifetime, Self::draw());
-                self.held = Some(held);
-                wait
+                Self::renewal(held.mapping.lifetime, Self::draw())
             }
+            Err(_) if stop.load(Ordering::SeqCst) => Duration::ZERO,
             Err(unmapped) => {
                 let pmp = ErrorReport::of(&unmapped.pmp);
                 let upnp = ErrorReport::of(&unmapped.upnp);
@@ -237,29 +242,33 @@ impl PortMapper {
             Mapper::Upnp(router) => router.delete(&held.mapping),
         };
         if let Err(error) = deleted {
-            warn!(error = %ErrorReport::of(&error), external = %held.mapping.external, "the router did not delete the server's port mapping; it ends with its lifetime");
+            warn!(error = %ErrorReport::of(&error), external_port = held.mapping.external_port, "the router did not delete the server's port mapping; it ends with its lifetime");
         }
     }
 
-    fn map_anew(&self) -> Result<Held, Unmapped> {
-        let pmp = match self.map_by_pmp() {
+    fn map_anew(&self, stop: &AtomicBool) -> Result<Held, Unmapped> {
+        let pmp = match self.map_by_pmp(stop) {
             Ok(held) => return Ok(held),
             Err(error) => error,
         };
-        match self.map_by_upnp() {
+        match self.map_by_upnp(stop) {
             Ok(held) => Ok(held),
             Err(upnp) => Err(Unmapped { pmp, upnp }),
         }
     }
 
-    fn map_by_pmp(&self) -> Result<Held, MapError> {
+    fn map_by_pmp(&self, stop: &AtomicBool) -> Result<Held, MapError> {
         let mut gateway = Gateway::connect(self.routes.pcp()?).map_err(MapError::Io)?;
-        let mapping = gateway.map(
-            self.internal_port,
-            None,
-            self.times.lifetime,
-            self.times.tries,
-        )?;
+        let ask = Ask {
+            internal_port: self.internal_port,
+            renewed: None,
+            lifetime: self.times.lifetime,
+        };
+        let wait = Wait {
+            tries: self.times.tries,
+            stop,
+        };
+        let mapping = gateway.map(ask, wait)?;
         Ok(Held {
             by: Mapper::Pmp(gateway),
             mapping,
@@ -268,15 +277,23 @@ impl PortMapper {
 
     /// Maps the port through the router a search finds, else through the last that announced
     /// itself, whose answer a host firewall may have dropped (design 15, D12).
-    fn map_by_upnp(&self) -> Result<Held, MapError> {
+    fn map_by_upnp(&self, stop: &AtomicBool) -> Result<Held, MapError> {
+        if stop.load(Ordering::SeqCst) {
+            return Err(MapError::Stopped);
+        }
         let router = match UpnpGateway::search(self.routes.ssdp(), self.times.search) {
             Ok(router) => router,
             Err(searched) => match &self.heard {
-                Some(heard) => UpnpGateway::announced(heard, self.times.search)?,
+                Some(heard) => UpnpGateway::announced(heard, self.times.search, stop)?,
                 None => return Err(searched),
             },
         };
-        let mapping = router.map(self.internal_port, None, self.times.lifetime)?;
+        let ask = Ask {
+            internal_port: self.internal_port,
+            renewed: None,
+            lifetime: self.times.lifetime,
+        };
+        let mapping = router.map(ask, stop)?;
         Ok(Held {
             by: Mapper::Upnp(router),
             mapping,
@@ -286,7 +303,9 @@ impl PortMapper {
     /// Logs where a player outside joins through `mapping`, or that another NAT stands before the
     /// router, whose own address is then private.
     fn announce(mapping: &Mapping) {
-        let external = mapping.external;
+        let Some(external) = mapping.external() else {
+            return;
+        };
         if Self::public(*external.ip()) {
             info!(%external, by = ?mapping.by, "the router forwards the server's port; a player outside joins at this address");
         } else {
@@ -327,15 +346,52 @@ impl PortMapper {
 }
 
 impl Held {
-    fn renew(&mut self, internal_port: u16, times: MapTimes) -> Result<Mapping, MapError> {
-        match &mut self.by {
+    /// Renews the mapping, as its gateway or router grants it again, its address outside to read
+    /// again.
+    fn renew(
+        &mut self,
+        internal_port: u16,
+        times: MapTimes,
+        stop: &AtomicBool,
+    ) -> Result<(), MapError> {
+        let ask = Ask {
+            internal_port,
+            renewed: Some(&self.mapping),
+            lifetime: times.lifetime,
+        };
+        let mapping = match &mut self.by {
             Mapper::Pmp(gateway) => gateway.map(
-                internal_port,
-                Some(&self.mapping),
-                times.lifetime,
-                times.tries,
+                ask,
+                Wait {
+                    tries: times.tries,
+                    stop,
+                },
             ),
-            Mapper::Upnp(router) => router.map(internal_port, Some(&self.mapping), times.lifetime),
+            Mapper::Upnp(router) => router.map(ask, stop),
+        }?;
+        self.mapping = mapping;
+        Ok(())
+    }
+
+    /// Reads the mapping's address outside, which a PCP grant names already; one that does not
+    /// read is logged, and the mapping is held still, for its renewal and its deletion.
+    fn read_address(&mut self, times: MapTimes, stop: &AtomicBool) {
+        if self.mapping.address.is_some() {
+            return;
+        }
+        let address = match &self.by {
+            Mapper::Pmp(gateway) => gateway.address(Wait {
+                tries: times.tries,
+                stop,
+            }),
+            Mapper::Upnp(router) => router.address(),
+        };
+        match address {
+            Ok(address) => self.mapping.address = Some(address),
+            Err(MapError::Stopped) => {}
+            Err(error) => {
+                warn!(error = %ErrorReport::of(&error), external_port = self.mapping.external_port, "the router forwards the server's port, but its address outside did not read; the map renews the mapping");
+            }
         }
     }
 }

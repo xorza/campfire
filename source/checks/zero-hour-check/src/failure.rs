@@ -1,14 +1,14 @@
-use campfire_common::{MapName, PackageFingerprint};
-use campfire_import::{DropCause, WeaponDrop};
+use campfire_common::MapName;
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
-use campfire_mode::MatchResult;
 use campfire_orders::OrdersAction;
 use campfire_package::LoadError;
 use derive_more::Display;
 
-use crate::{
-    DRIVE_TICKS, FIGHT, FINGERPRINTS, FOUGHT, LOOKS, PRODUCED, PRODUCTION, TERRAIN, WALLS,
+use crate::pins::{
+    CLIENT_OBJECTS, DRIVE_TICKS, FIGHT, FINGERPRINTS, FOUGHT, FightSteps, Fingerprints,
+    FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION,
+    ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS, WALLS,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -18,17 +18,19 @@ pub(crate) enum Failure {
     /// The import's fingerprints differ from those the runs on Linux and on macOS gave.
     #[display("it gave {_0}, not {FINGERPRINTS}")]
     Fingerprints(Fingerprints),
-    /// Its heights are not 270 × 340 samples.
-    #[display("its heights are {columns} × {rows} samples, not 270 × 340")]
+    /// Its heights are not `HEIGHTS` samples.
+    #[display("its heights are {columns} × {rows} samples, not {} × {}", HEIGHTS[0], HEIGHTS[1])]
     Heights { columns: u32, rows: u32 },
-    /// It places other than 142 units of 41 types.
-    #[display("it places {units} units of {types} types, not 142 of 41")]
+    /// It places other than `UNITS` units of `UNIT_TYPES` types.
+    #[display("it places {units} units of {types} types, not {UNITS} of {UNIT_TYPES}")]
     Units { units: usize, types: usize },
-    /// It has other than 438 client objects of 22 looks.
-    #[display("it has {objects} client objects of {looks} looks, not 438 of 22")]
+    /// It has other than `CLIENT_OBJECTS` client objects of `OBJECT_LOOKS` looks.
+    #[display(
+        "it has {objects} client objects of {looks} looks, not {CLIENT_OBJECTS} of {OBJECT_LOOKS}"
+    )]
     ClientObjects { objects: usize, looks: usize },
-    /// It has other than 28 markers.
-    #[display("it has {_0} markers, not 28")]
+    /// It has other than `MARKERS` markers.
+    #[display("it has {_0} markers, not {MARKERS}")]
     Markers(usize),
     /// Its terrain file holds other than its pinned quads, overlays, copies and wraps.
     #[display(
@@ -53,6 +55,15 @@ pub(crate) enum Failure {
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.
     #[display("it converted {_0}, not {PRODUCED}")]
     Produced(ProducedCounts),
+    /// The imported mode has no unit type a play reads.
+    #[display("the imported mode has no unit type {_0}")]
+    NoType(&'static str),
+    /// A unit type of the imported mode lacks an action a play orders.
+    #[display("the unit type {unit} has no action {action}")]
+    NoAction {
+        unit: &'static str,
+        action: &'static str,
+    },
     /// The imported mode has no player resource `money` for the production play to pay with.
     #[display("the imported mode has no money")]
     NoMoney,
@@ -103,81 +114,4 @@ pub(crate) enum Failure {
     /// The dozer took more ticks to the other start than the check pins.
     #[display("the dozer took {_0} ticks to the other start, not at most {DRIVE_TICKS}")]
     DriveTicks(u64),
-}
-
-/// How many looks have night or snow variants, how many have no models, and how many maps are
-/// night maps and snowy maps.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[display("{varied} varied looks, {empty} empty looks, {night} night maps and {snowy} snowy maps")]
-pub(crate) struct LookCounts {
-    pub(crate) varied: usize,
-    pub(crate) empty: usize,
-    pub(crate) night: usize,
-    pub(crate) snowy: usize,
-}
-
-/// The production play's steps: each one's ticks, from the tick its order applies to the tick
-/// its unit or building is whole, and player 1's money after each pays.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ProductionSteps {
-    pub(crate) dozer_ticks: u64,
-    pub(crate) barracks_ticks: u64,
-    pub(crate) ranger_ticks: u64,
-    pub(crate) money: [i64; 3],
-}
-
-/// The fight's steps: the ticks from the first further train to the last ranger trained, and from
-/// the attack's order to the match's end; player 1's money as the attack is ordered; how the
-/// match ended; and whether the bot's dozer's life is gone.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FightSteps {
-    pub(crate) train_ticks: u64,
-    pub(crate) fight_ticks: u64,
-    pub(crate) money: i64,
-    pub(crate) result: MatchResult,
-    pub(crate) killed: bool,
-}
-
-/// How many weapons the import converts, how many it drops for each cause, in the order of the
-/// causes, how many armors and damage kinds it writes, and how many unit types' objects it gives
-/// no life, or a life that starts below its most.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[display(
-    "{weapons} weapons, dropped {:?}, {armors} armors, {kinds} damage kinds, {unliving} unliving, {wounded} wounded",
-    dropped
-)]
-pub(crate) struct FoughtCounts {
-    pub(crate) weapons: usize,
-    pub(crate) dropped: [usize; WeaponDrop::ALL.len()],
-    pub(crate) armors: usize,
-    pub(crate) kinds: usize,
-    pub(crate) unliving: usize,
-    pub(crate) wounded: usize,
-}
-
-/// How many trains and builds the import converts, and how many buttons it drops for each
-/// cause, in the order of the causes.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[display("{trains} trains, {builds} builds, dropped {:?}", dropped)]
-pub(crate) struct ProducedCounts {
-    pub(crate) trains: usize,
-    pub(crate) builds: usize,
-    pub(crate) dropped: [usize; DropCause::ALL.len()],
-}
-
-/// How many ground quads, overlays, texture copies and border wraps a terrain file holds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct TerrainDrawn {
-    pub(crate) quads: usize,
-    pub(crate) overlays: usize,
-    pub(crate) copies: usize,
-    pub(crate) wraps: usize,
-}
-
-/// The fingerprints of an import: the imported package's and the rules package's.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
-#[display("the fingerprints {game} and rules {rules}")]
-pub(crate) struct Fingerprints {
-    pub(crate) game: PackageFingerprint,
-    pub(crate) rules: PackageFingerprint,
 }

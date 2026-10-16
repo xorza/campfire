@@ -9,6 +9,7 @@ use quinn_proto::{Endpoint, EndpointConfig, ServerConfig};
 use quinn_udp::BATCH_SIZE;
 use zeroize::Zeroizing;
 
+use crate::LINK_MIN_MTU;
 use crate::address_limit::AddressLimit;
 use crate::endpoint_state::{EndpointState, News};
 use crate::link_times::LinkTimes;
@@ -19,7 +20,6 @@ use crate::quic_endpoint::QuicEndpoint;
 use crate::recv_batch::RecvBatch;
 use crate::reset_key::ResetKey;
 use crate::server_key::ServerKey;
-use crate::{CID_LEN, LINK_MIN_MTU};
 
 /// The fixture clock's step from one read to the next: a frame at 60 Hz.
 const STEP: Duration = Duration::from_millis(16);
@@ -64,7 +64,7 @@ impl ThreadFixture {
         let server_key = ServerKey::derive(&secret);
         let server = QuicEndpoint::server_config(server_key.server_config(), LinkTimes::CAMPFIRE);
         let mut server = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::derive(&secret), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::derive(&secret)),
             Some(Arc::new(server)),
             [1; 32],
             SERVER,
@@ -72,7 +72,7 @@ impl ThreadFixture {
         let now = Instant::now();
         server.state.start_accepting(Self::LIMIT, now);
         let mut client = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::random()),
             None,
             [2; 32],
             CLIENT,

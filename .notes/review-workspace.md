@@ -101,25 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 15. QUIC and the checks
-
-`quic`: `io_thread`, `shared_endpoint`, `port_mapper`, `gateway`, `upnp_gateway`, `quic_endpoint`, the root; `lan-check`; `zero-hour-check`; `import`: `zero_hour/mod.rs`; `docs/design/15-quic-transport.md`. After batch 7 (`Worker`).
-
-- [ ] quic/src/io_thread.rs:598-600, shared_endpoint.rs:542-545 — when `UdpPort::wait` fails, the thread returns and logs that the links end by their idle timeout. They never do, as only the thread calls `handle_timeout`. A panic is invisible, or shows as a poisoned mutex with a false message. → The thread's end is a state of `EndpointState`; `receive` turns it into the loss of each link, or resumes the panic.
-- [ ] quic/src/port_mapper/mod.rs:474-515, gateway/mod.rs:67-124, upnp_gateway/mod.rs:50-155 — a drop waits up to about a minute (NAT-PMP exchanges, router fetches, four `igd-next` requests at 10 s), where D12 says 3.75 s plus 3 s. → Check `Stop` between requests, and D12 states the true bound.
-- [ ] quic/src/upnp_gateway/mod.rs:126-149, gateway/mod.rs:108-118 — a grant followed by a failed address read leaves a mapping nobody deletes; with a permanent lease it outlives the server. → `Held` owns a mapping as soon as the router grants it.
-- [ ] quic/src/quic_endpoint/mod.rs:414-425 — a server link spawns, then gets `RemoteId` and `Linked`. → One bundle.
-- [ ] quic/src/quic_endpoint/mod.rs:240-250, 528-546 — bind, address and error mapping written twice. → One constructor.
-- [ ] quic/src/quic_endpoint/mod.rs:189-211, 234 — `cid_len` in production signatures for one test. → `CID_LEN`; a test reach-in.
-- [ ] quic/src/gateway/mod.rs:53-63, upnp_gateway/mod.rs:79-86 — "this host's address facing X" twice. → One fn.
-- [ ] quic/src/lib.rs:11-47 — the port map's twelve modules flat beside the transport; `MapError` in the shared error file. → A `port_map/` tree with its own `error.rs`.
-- [ ] checks/lan-check/src/lan_match.rs:610-616 — `free_port` releases the port before the server binds it. → Bind to 0 and read the port from `Listening`.
-- [ ] checks/lan-check/src/lan_match.rs:396-457, process_group.rs:23-78 — roles by position in a `Vec`. → Key by `Process`.
-- [ ] checks/lan-check/src/lan_match.rs:478-561 — each 50 ms, every log is read and parsed whole. → Keep an offset.
-- [ ] checks/zero-hour-check/src/main.rs:265, 320; import/src/zero_hour/mod.rs:100-118 — the map list comes from a fault report's keys. → `Imported` lists the maps it wrote.
-- [ ] checks/zero-hour-check/src/main.rs:218-241, failure.rs:10 — four pins written twice; main and `failure` import each other. → A `pins.rs`.
-- [ ] checks/zero-hour-check/src/skirmish_play.rs:251-270, start_drive.rs:20-125, main.rs:212-506 — some missing parts panic, others fail; type names, the owned-units query and the stepper written twice (one counts the dead); `run` is 250 lines; `read_toml` takes a parser all callers pass alike. → One play helper that returns `Failure`; `run` split by check group.
-
 ### 16. Packages
 
 `package`: `file_index`, `package_walk`, `mode_packages`, `files`, `error`, `texts`; `package-disk`: `package_writer`, `package_dir`; `client-files`; `server`: `main`, `opening`; `client`: `action_names`, `item_names`.
